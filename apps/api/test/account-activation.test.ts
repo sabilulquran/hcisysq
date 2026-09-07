@@ -38,6 +38,9 @@ describe("AccountActivationService", () => {
           rowCount: 1,
         };
       }
+      if (sql.includes(`SELECT principal_type AS "principalType" FROM accounts`)) {
+        return { rows: [{ principalType: "EMPLOYEE" }], rowCount: 1 };
+      }
       return { rows: [], rowCount: 1 };
     });
     const client = { query, release: vi.fn() };
@@ -75,6 +78,9 @@ describe("AccountActivationService", () => {
           ],
           rowCount: 1,
         };
+      }
+      if (sql.includes(`SELECT principal_type AS "principalType" FROM accounts`)) {
+        return { rows: [{ principalType: "EMPLOYEE" }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });

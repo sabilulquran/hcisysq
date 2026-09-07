@@ -23,6 +23,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
   let hcRoleId: string;
   let adminRoleId: string;
   let unitId: string;
+  let managedBoardId: string;
+  let managedEmployeeId: string;
 
   beforeAll(async () => {
     const url = new URL(databaseUrl!);
@@ -42,7 +44,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     unitId = randomUUID();
     await pool.query("INSERT INTO organizational_units(id, name, normalized_name) VALUES ($1,'Synthetic Unit','synthetic-unit')", [unitId]);
     auth = new AuthService(pool, "11".repeat(32), 8, true);
-    for (const name of ["employee", "unit_hc", "admin", "board", "legacy", "target", "unit_admin"]) {
+    for (const name of ["employee", "unit_hc", "admin", "board", "legacy", "target", "unit_admin", "delegate", "governance"]) {
       const principalType = name === "board" ? "FOUNDATION_BOARD" : name === "legacy" ? "SUPER_ADMIN" : "EMPLOYEE";
       const id = randomUUID();
       const employeeId = principalType === "EMPLOYEE" ? randomUUID() : null;
@@ -59,6 +61,43 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       await pool.query(`INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,organizational_unit_id)
         VALUES($1,$2,$3,$4,$5)`, [randomUUID(), actors.get(name)!.principal.id, roleId, scope, unit]);
     }
+    for (const [name, roleKey, permissions] of [
+      ["delegate", "synthetic_account_delegate", ["access.manage", "access.roles.delegate"]],
+      ["governance", "synthetic_governance_manager", ["access.manage", "access.governance.manage"]],
+    ] as const) {
+      const roleId = randomUUID();
+      await pool.query("INSERT INTO roles(id,role_key,name) VALUES($1,$2,$2)", [roleId, roleKey]);
+      await pool.query(
+        "INSERT INTO role_permissions(role_id,permission_key) SELECT $1, unnest($2::text[])",
+        [roleId, permissions],
+      );
+      await pool.query(
+        "INSERT INTO account_role_assignments(id,account_id,role_id,scope_type) VALUES($1,$2,$3,'organization')",
+        [randomUUID(), actors.get(name)!.principal.id, roleId],
+      );
+    }
+    managedBoardId = randomUUID();
+    await pool.query(
+      `INSERT INTO accounts(id,email,principal_type,status)
+       VALUES($1,'managed-board@example.invalid','FOUNDATION_BOARD','invited')`,
+      [managedBoardId],
+    );
+    const managedEmployeeRecordId = randomUUID();
+    managedEmployeeId = randomUUID();
+    await pool.query(
+      "INSERT INTO employees(id,employee_number,full_name,status) VALUES($1,$2,'Synthetic Managed Employee','active')",
+      [managedEmployeeRecordId, `AUTH011-${managedEmployeeRecordId}`],
+    );
+    await pool.query(
+      `INSERT INTO accounts(id,employee_id,email,principal_type,status)
+       VALUES($1,$2,'managed-employee@example.invalid','EMPLOYEE','invited')`,
+      [managedEmployeeId, managedEmployeeRecordId],
+    );
+    await pool.query(
+      `INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,reason)
+       VALUES($1,$2,$3,'organization','Synthetic delegated account management')`,
+      [randomUUID(), managedEmployeeId, adminRoleId],
+    );
     app = await createApp({ NODE_ENV: "test", HOST: "127.0.0.1", PORT: 3001, DATABASE_URL: databaseUrl!,
       AUTH_MODE: "local", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8 }, pool);
   }, 60000);
@@ -187,6 +226,65 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await request("admin", "PATCH", `/admin/access/accounts/${actors.get("admin")!.principal.id}/status`, { status: "suspended" })).statusCode).toBe(403);
     await removeRoleAssignment(pool, actors.get("legacy")!.principal, assignment);
     await pool.query("UPDATE accounts SET status='active' WHERE id=$1", [target]);
+  });
+
+  it("denies Board activation to a delegate without governance permission and issues no token", async () => {
+    const before = await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM account_activation_tokens WHERE account_id=$1",
+      [managedBoardId],
+    );
+    const response = await request("delegate", "POST", `/admin/access/accounts/${managedBoardId}/activation`);
+    expect(response.statusCode).toBe(403);
+    const after = await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM account_activation_tokens WHERE account_id=$1",
+      [managedBoardId],
+    );
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+  });
+
+  it("denies Board status changes to a delegate without governance permission", async () => {
+    const response = await request(
+      "delegate", "PATCH", `/admin/access/accounts/${managedBoardId}/status`, { status: "suspended" },
+    );
+    expect(response.statusCode).toBe(403);
+    expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [managedBoardId])).rows[0].status).toBe("invited");
+  });
+
+  it("allows explicit governance account management for a Foundation Board target", async () => {
+    const activation = await request("governance", "POST", `/admin/access/accounts/${managedBoardId}/activation`);
+    expect(activation.statusCode).toBe(201);
+    expect(activation.json().activationPath).toContain("/activate#token=");
+    const status = await request(
+      "governance", "PATCH", `/admin/access/accounts/${managedBoardId}/status`, { status: "suspended" },
+    );
+    expect(status.statusCode).toBe(200);
+    expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [managedBoardId])).rows[0].status).toBe("suspended");
+  });
+
+  it("preserves delegated Employee account management", async () => {
+    const activation = await request("delegate", "POST", `/admin/access/accounts/${managedEmployeeId}/activation`);
+    expect(activation.statusCode).toBe(201);
+    const status = await request(
+      "delegate", "PATCH", `/admin/access/accounts/${managedEmployeeId}/status`, { status: "suspended" },
+    );
+    expect(status.statusCode).toBe(200);
+    expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [managedEmployeeId])).rows[0].status).toBe("suspended");
+  });
+
+  it("keeps Super Admin outside normal account management", async () => {
+    const targetId = actors.get("legacy")!.principal.id;
+    expect((await request("delegate", "POST", `/admin/access/accounts/${targetId}/activation`)).statusCode).toBe(403);
+    expect((await request("delegate", "PATCH", `/admin/access/accounts/${targetId}/status`, { status: "suspended" })).statusCode).toBe(403);
+    expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [targetId])).rows[0].status).toBe("active");
+  });
+
+  it("keeps self account management denied for delegated actors", async () => {
+    const targetId = actors.get("delegate")!.principal.id;
+    const response = await request(
+      "delegate", "PATCH", `/admin/access/accounts/${targetId}/status`, { status: "suspended" },
+    );
+    expect(response.statusCode).toBe(403);
+    expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [targetId])).rows[0].status).toBe("active");
   });
 
   it("rolls back role assignment if the audit insert fails", async () => {

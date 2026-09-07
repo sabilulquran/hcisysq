@@ -129,11 +129,16 @@ export async function assertAccountManagementTarget(
 ): Promise<void> {
   if (actor.id === targetId) forbidden();
   if (!(await hasEffectiveOrganizationPermission(db, actor, "access.manage"))) forbidden();
-  if (await hasEffectiveOrganizationPermission(db, actor, "access.roles.delegate")) return;
   const account = await db.query<{ principalType: string }>(
     `SELECT principal_type AS "principalType" FROM accounts WHERE id = $1`, [targetId]);
   if (!account.rows[0]) throw new AuthError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
+  if (account.rows[0].principalType === "SUPER_ADMIN") forbidden();
+  if (account.rows[0].principalType === "FOUNDATION_BOARD") {
+    if (!(await hasEffectiveOrganizationPermission(db, actor, "access.governance.manage"))) forbidden();
+    return;
+  }
   if (account.rows[0].principalType !== "EMPLOYEE") forbidden();
+  if (await hasEffectiveOrganizationPermission(db, actor, "access.roles.delegate")) return;
   const roles = await db.query<AssignableRole>(
     `SELECT role.role_key AS "roleKey", coalesce(array_agg(permission.permission_key)
       FILTER (WHERE permission.permission_key IS NOT NULL), ARRAY[]::text[]) AS permissions

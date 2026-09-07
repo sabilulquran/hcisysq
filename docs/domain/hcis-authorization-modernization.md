@@ -66,8 +66,11 @@ scope and a nonempty mandate/reason.
 
 Normal account administrators cannot change their own account state or issue
 activation for themselves, governance/legacy accounts, or accounts with privileged
-assignments outside the operational HC bundle. This prevents taking over a more
-privileged invited account. Existing legacy account protection remains in force.
+assignments outside the operational HC bundle. Foundation Board account management
+requires the separate effective organization permission `access.governance.manage`;
+delegation permission alone is insufficient. Super Admin remains outside the normal
+account-management path. This prevents taking over a more privileged invited account.
+Existing legacy account protection remains in force.
 Role mutation and its audit event are committed atomically; failure rolls back.
 Assigning a role outside the operational HC bundle atomically revokes outstanding
 activation tokens, so an earlier invitation cannot be used after elevation. The

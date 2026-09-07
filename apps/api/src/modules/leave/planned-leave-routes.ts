@@ -1,3 +1,4 @@
+import { hasOrganizationPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -342,47 +343,7 @@ async function buildPreview(
   return { calculation, validation, approvalChain, authorityResolution };
 }
 
-async function hasActiveRole(
-  db: Pool | PoolClient,
-  accountId: string,
-  roleKey: string,
-) {
-  const result = await db.query<{ allowed: boolean }>(
-    `SELECT EXISTS (
-      SELECT 1
-      FROM account_role_assignments assignment
-      JOIN roles role ON role.id = assignment.role_id
-      WHERE assignment.account_id = $1
-        AND role.role_key = $2
-        AND assignment.scope_type = 'organization'
-        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-    ) AS allowed`,
-    [accountId, roleKey],
-  );
-  return result.rows[0]?.allowed ?? false;
-}
-
-export async function hasActivePermission(
-  db: Pool | PoolClient,
-  accountId: string,
-  permissionKey: string,
-) {
-  const result = await db.query<{ allowed: boolean }>(
-    `SELECT EXISTS (
-      SELECT 1
-      FROM account_role_assignments assignment
-      JOIN role_permissions role_permission ON role_permission.role_id = assignment.role_id
-      WHERE assignment.account_id = $1
-        AND role_permission.permission_key = $2
-        AND assignment.scope_type = 'organization'
-        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-    ) AS allowed`,
-    [accountId, permissionKey],
-  );
-  return result.rows[0]?.allowed ?? false;
-}
+export const hasActivePermission = hasOrganizationPermission;
 
 async function requireHcValidator(db: Pool | PoolClient, principal: AuthPrincipal) {
   if (!(await hasActivePermission(db, principal.id, "leave.validate"))) {
@@ -396,7 +357,7 @@ async function requireHcValidator(db: Pool | PoolClient, principal: AuthPrincipa
 
 async function requireHcActualApprover(db: Pool | PoolClient, principal: AuthPrincipal) {
   const [isHc, canApprove] = await Promise.all([
-    hasActiveRole(db, principal.id, "human_capital"),
+    hasActivePermission(db, principal.id, "leave.validate"),
     hasActivePermission(db, principal.id, "leave.hc.approve"),
   ]);
   if (!isHc || !canApprove) {
@@ -1198,7 +1159,7 @@ export async function registerPlannedLeaveRoutes(
         const [canValidate, canApprove] = await Promise.all([
           hasActivePermission(pool, principal.id, "leave.validate"),
           Promise.all([
-            hasActiveRole(pool, principal.id, "human_capital"),
+            hasActivePermission(pool, principal.id, "leave.validate"),
             hasActivePermission(pool, principal.id, "leave.hc.approve"),
           ]).then(([isHc, canHcApprove]) => isHc && canHcApprove),
         ]);

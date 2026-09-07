@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import type { PhysicalCapabilityKey } from "./physical-parity-protocol.js";
 import { queuePhysicalOperation } from "./physical-parity-service.js";
@@ -76,9 +77,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -271,7 +273,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   const auth = new AuthService(pool, config.AUTH_ENCRYPTION_KEY, config.AUTH_SESSION_TTL_HOURS, config.NODE_ENV === "production");
 
   app.get("/admin/attendance/adms/devices/:deviceId/wdms-profile", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -291,7 +293,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.patch("/admin/attendance/adms/devices/:deviceId/wdms-profile", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = profileSchema.safeParse(request.body);
@@ -351,7 +353,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-profile", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userProfileSchema.safeParse(request.body);
@@ -382,7 +384,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-enabled", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userEnabledSchema.safeParse(request.body);
@@ -423,7 +425,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/ntp", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = ntpSchema.safeParse(request.body);
@@ -451,7 +453,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/server-config", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = serverSchema.safeParse(request.body);
@@ -486,7 +488,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.get("/admin/attendance/adms/job-codes", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const result = await pool.query<{
       id: string;
@@ -504,7 +506,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/job-codes", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const body = jobCodeSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_JOB_CODE", message: "Job Code tidak valid." });

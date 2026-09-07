@@ -1,3 +1,5 @@
+import { assertAccountManagementTarget } from "./role-assignment.js";
+import type { AuthPrincipal } from "./service.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
@@ -138,7 +140,7 @@ export class AccountActivationService {
 
   async issue(
     accountId: string,
-    issuedByAccountId: string,
+    actor: AuthPrincipal,
   ): Promise<{ token: string; expiresAt: string }> {
     const client = await this.pool.connect();
     try {
@@ -160,6 +162,7 @@ export class AccountActivationService {
       if (!account) {
         throw new AccountActivationError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
       }
+      await assertAccountManagementTarget(client, actor, accountId);
       if (account.principalType === "SUPER_ADMIN") {
         throw new AccountActivationError(
           403,
@@ -204,7 +207,7 @@ export class AccountActivationService {
         `INSERT INTO account_activation_tokens (
           id, account_id, token_hash, expires_at, issued_by_account_id
         ) VALUES ($1, $2, $3, $4, $5)`,
-        [randomUUID(), account.id, hashActivationToken(token), expiresAt, issuedByAccountId],
+        [randomUUID(), account.id, hashActivationToken(token), expiresAt, actor.id],
       );
       await client.query("COMMIT");
       return { token, expiresAt: expiresAt.toISOString() };

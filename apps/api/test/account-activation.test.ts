@@ -46,7 +46,7 @@ describe("AccountActivationService", () => {
 
     const result = await service.issue(
       "10000000-0000-4000-8000-000000000001",
-      "20000000-0000-4000-8000-000000000001",
+      { id: "20000000-0000-4000-8000-000000000001", email: "admin@example.invalid", principalType: "SUPER_ADMIN" },
     );
 
     const insertCall = query.mock.calls.find(([sql]) =>
@@ -85,7 +85,7 @@ describe("AccountActivationService", () => {
     await expect(
       service.issue(
         "10000000-0000-4000-8000-000000000002",
-        "20000000-0000-4000-8000-000000000001",
+        { id: "20000000-0000-4000-8000-000000000001", email: "admin@example.invalid", principalType: "SUPER_ADMIN" },
       ),
     ).rejects.toMatchObject({ code: "ACCOUNT_ALREADY_ACTIVATED", statusCode: 409 });
 

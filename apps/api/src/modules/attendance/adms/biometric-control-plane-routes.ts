@@ -1,9 +1,10 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { biometricKeyringReadiness } from "./biometric-crypto.js";
 import {
@@ -38,9 +39,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -67,7 +69,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
   );
 
   app.get("/admin/attendance/adms/biometric-control-plane", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const query = summaryQuerySchema.safeParse(request.query);
     if (!query.success) {
@@ -93,7 +95,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
   });
 
   app.get("/admin/attendance/adms/biometric-control-plane/credentials", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const query = credentialsQuerySchema.safeParse(request.query);
     if (!query.success) {
@@ -118,7 +120,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
   });
 
   app.post("/admin/attendance/adms/biometric-control-plane/reencrypt", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const body = reencryptSchema.safeParse(request.body);
     if (!body.success) {

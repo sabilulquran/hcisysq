@@ -1,3 +1,4 @@
+import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
 import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
@@ -174,22 +175,7 @@ export async function hasPayslipCapability(
   principal: AuthPrincipal,
   permission: PayslipPermission,
 ): Promise<boolean> {
-  if (principal.principalType === "FOUNDATION_BOARD") return false;
-  if (principal.principalType === "SUPER_ADMIN") return true;
-
-  const result = await pool.query(
-    `SELECT 1
-       FROM account_role_assignments assignment
-       JOIN role_permissions permission ON permission.role_id = assignment.role_id
-      WHERE assignment.account_id = $1
-        AND permission.permission_key = $2
-        AND assignment.scope_type = 'organization'
-        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-      LIMIT 1`,
-    [principal.id, permission],
-  );
-  return Boolean(result.rowCount);
+  return hasEffectiveOrganizationPermission(pool, principal, permission);
 }
 
 export async function registerPayslipRoutes(

@@ -1,5 +1,9 @@
 # Organization and Access Administration Foundation
 
+> AUTH-011 supersedes principal-only administrative eligibility in this document.
+> See [HCIS authorization modernization](hcis-authorization-modernization.md) for
+> domain/platform boundaries, granular permissions and transitional legacy compatibility.
+
 **Status:** VERIFIED MVP BASELINE  
 **Specifications:** ORG-001, AUTH-010, SEC-001
 

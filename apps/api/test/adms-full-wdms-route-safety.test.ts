@@ -8,9 +8,9 @@ const registryUser = new URL("../src/modules/attendance/adms/physical-parity-reg
 const observability = new URL("../src/modules/attendance/adms/physical-parity-observability-routes.ts", import.meta.url);
 
 describe("full WDMS route safety", () => {
-  it("keeps all physical command routes SUPER_ADMIN typed and fail-closed", async () => {
+  it("keeps physical command routes permission-authorized and fail-closed", async () => {
     const source = `${await readFile(routes, "utf8")}\n${await readFile(extended, "utf8")}\n${await readFile(registryUser, "utf8")}`;
-    expect(source).toContain('requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN")');
+    expect(source).toContain('requirePermissionsFromCookie(auth, request.headers.cookie, permission)');
     expect(source).toContain("PHYSICAL_CAPABILITY_NOT_VERIFIED");
     expect(source).toContain("PHYSICAL_CANARY_PENDING");
     expect(source).toContain("PHYSICAL_CONFIRMATION_MISMATCH");

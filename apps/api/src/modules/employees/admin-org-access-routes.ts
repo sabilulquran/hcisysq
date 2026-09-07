@@ -1,3 +1,6 @@
+import { createRoleAssignment, removeRoleAssignment, assertAccountManagementTarget, canDelegateRole } from "../auth/role-assignment.js";
+import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
+import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,15 +8,13 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
   AuthService,
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
-  assertAssignmentDates,
-  assertAssignmentScope,
   assertManagerAssignment,
   OrgAccessPolicyError,
 } from "./org-access-policy.js";
@@ -136,7 +137,7 @@ interface SimpleUnitRow {
 }
 
 async function audit(
-  pool: Pool,
+  pool: Pick<Pool, "query">,
   principal: AuthPrincipal,
   action: string,
   entityType: string,
@@ -170,12 +171,13 @@ export async function registerOrgAccessAdminRoutes(
   async function authenticateAdmin(
     request: FastifyRequest,
     reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
+      return await requirePermissionsFromCookie(
         auth,
         request.headers.cookie,
-        "SUPER_ADMIN",
+        permission,
       );
     } catch (error) {
       if (error instanceof AuthError) {
@@ -191,7 +193,7 @@ export async function registerOrgAccessAdminRoutes(
   }
 
   app.get("/admin/organization", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "organization.manage");
     if (!principal) return;
 
     const [units, positions, coverage] = await Promise.all([
@@ -246,7 +248,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.get("/admin/employees/:employeeId", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
     const parsed = employeeIdSchema.safeParse(request.params);
@@ -348,7 +350,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.patch("/admin/employees/:employeeId/manager", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "approvals.policy.manage");
     if (!principal) return;
 
     const params = employeeIdSchema.safeParse(request.params);
@@ -426,7 +428,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.get("/admin/access", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.manage");
     if (!principal) return;
 
     const [accounts, assignments, roles, units, unaccounted] = await Promise.all([
@@ -502,6 +504,7 @@ export async function registerOrgAccessAdminRoutes(
       ),
     ]);
 
+    const canDelegate = await hasEffectiveOrganizationPermission(pool, principal, "access.roles.delegate");
     reply.header("Cache-Control", "no-store");
     return reply.send({
       accounts: accounts.rows.map((row) => ({
@@ -514,7 +517,7 @@ export async function registerOrgAccessAdminRoutes(
             createdAt: assignment.createdAt.toISOString(),
           })),
       })),
-      roles: roles.rows,
+      roles: roles.rows.filter((role) => canDelegateRole(role, canDelegate)),
       units: units.rows,
       summary: {
         accounts: accounts.rows.length,
@@ -526,7 +529,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.post("/admin/access/employee-accounts", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.manage");
     if (!principal) return;
 
     const parsed = createEmployeeAccountSchema.safeParse(request.body);
@@ -597,7 +600,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.patch("/admin/access/accounts/:accountId/status", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.manage");
     if (!principal) return;
 
     const params = accountIdSchema.safeParse(request.params);
@@ -606,44 +609,57 @@ export async function registerOrgAccessAdminRoutes(
       return reply.status(400).send({ code: "INVALID_ACCOUNT_STATUS", message: "Status account tidak valid." });
     }
 
-    const account = await pool.query<{
-      id: string;
-      principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
-      passwordHash: string | null;
-    }>(
-      `SELECT id, principal_type AS "principalType", password_hash AS "passwordHash"
-       FROM accounts WHERE id = $1`,
-      [params.data.accountId],
-    );
-    const row = account.rows[0];
-    if (!row) {
-      return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
-    }
-    if (row.principalType === "SUPER_ADMIN") {
-      return reply.status(403).send({
-        code: "SUPER_ADMIN_STATUS_PROTECTED",
-        message: "Status Super Admin tidak diubah melalui employee access administration.",
-      });
-    }
-    if (body.data.status === "active" && !row.passwordHash) {
-      return reply.status(409).send({
-        code: "ACCOUNT_ACTIVATION_NOT_READY",
-        message: "Account belum memiliki metode autentikasi. Aktivasi akan dibuka pada flow invite/login berikutnya.",
-      });
-    }
+    const client = await pool.connect();
+    let committed = false;
+    try {
+      await client.query("BEGIN");
+      const account = await client.query<{
+        id: string;
+        principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
+        passwordHash: string | null;
+      }>(
+        `SELECT id, principal_type AS "principalType", password_hash AS "passwordHash"
+         FROM accounts WHERE id = $1 FOR UPDATE`,
+        [params.data.accountId],
+      );
+      const row = account.rows[0];
+      if (!row) {
+        return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
+      }
+      await assertAccountManagementTarget(client, principal, row.id);
+      if (row.principalType === "SUPER_ADMIN") {
+        return reply.status(403).send({
+          code: "SUPER_ADMIN_STATUS_PROTECTED",
+          message: "Status Super Admin tidak diubah melalui employee access administration.",
+        });
+      }
+      if (body.data.status === "active" && !row.passwordHash) {
+        return reply.status(409).send({
+          code: "ACCOUNT_ACTIVATION_NOT_READY",
+          message: "Account belum memiliki metode autentikasi. Aktivasi akan dibuka pada flow invite/login berikutnya.",
+        });
+      }
 
-    await pool.query(
-      "UPDATE accounts SET status = $2, updated_at = now() WHERE id = $1",
-      [row.id, body.data.status],
-    );
-    await audit(pool, principal, "account.status.updated", "account", row.id, {
-      status: body.data.status,
-    });
-    return reply.send({ id: row.id, status: body.data.status });
+      await client.query(
+        "UPDATE accounts SET status = $2, updated_at = now() WHERE id = $1",
+        [row.id, body.data.status],
+      );
+      await audit(client, principal, "account.status.updated", "account", row.id, {
+        status: body.data.status,
+      });
+      await client.query("COMMIT");
+      committed = true;
+      return reply.send({ id: row.id, status: body.data.status });
+    } catch (error) {
+      if (error instanceof AuthError) return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      throw error;
+    } finally {
+      try { if (!committed) await client.query("ROLLBACK"); } finally { client.release(); }
+    }
   });
 
   app.post("/admin/access/accounts/:accountId/role-assignments", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.roles.assign");
     if (!principal) return;
 
     const params = accountIdSchema.safeParse(request.params);
@@ -652,83 +668,19 @@ export async function registerOrgAccessAdminRoutes(
       return reply.status(400).send({ code: "INVALID_ROLE_ASSIGNMENT", message: "Role assignment tidak valid." });
     }
 
-    const unitId = body.data.organizationalUnitId ?? null;
-    const startsOn = body.data.startsOn ?? null;
-    const endsOn = body.data.endsOn ?? null;
-    const reason = body.data.reason?.trim() || null;
-
     try {
-      assertAssignmentScope(body.data.scopeType, unitId);
-      assertAssignmentDates(startsOn, endsOn);
+      const id = await createRoleAssignment(pool, principal, params.data.accountId, body.data);
+      return reply.status(201).send({ id });
     } catch (error) {
-      if (error instanceof OrgAccessPolicyError) {
-        return reply.status(400).send({ code: error.code, message: error.message });
+      if (error instanceof AuthError || error instanceof OrgAccessPolicyError) {
+        return reply.status(error instanceof AuthError ? error.statusCode : 400).send({ code: error.code, message: error.message });
       }
       throw error;
     }
-
-    const [account, role, unit] = await Promise.all([
-      pool.query<{ id: string; principalType: string }>(
-        `SELECT id, principal_type AS "principalType" FROM accounts WHERE id = $1`,
-        [params.data.accountId],
-      ),
-      pool.query<{ id: string }>("SELECT id FROM roles WHERE id = $1", [body.data.roleId]),
-      unitId
-        ? pool.query<{ id: string }>("SELECT id FROM organizational_units WHERE id = $1", [unitId])
-        : Promise.resolve({ rows: [{ id: "not-required" }] }),
-    ]);
-
-    if (!account.rows[0]) {
-      return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
-    }
-    if (account.rows[0].principalType !== "EMPLOYEE") {
-      return reply.status(409).send({
-        code: "ROLE_ASSIGNMENT_EMPLOYEE_ONLY",
-        message: "Role tambahan tahap ini hanya dapat diberikan ke account pegawai.",
-      });
-    }
-    if (!role.rows[0]) {
-      return reply.status(404).send({ code: "ROLE_NOT_FOUND", message: "Role tidak ditemukan." });
-    }
-    if (!unit.rows[0]) {
-      return reply.status(404).send({ code: "UNIT_NOT_FOUND", message: "Unit organisasi tidak ditemukan." });
-    }
-
-    const assignmentId = randomUUID();
-    await pool.query(
-      `
-        INSERT INTO account_role_assignments (
-          id, account_id, role_id, scope_type, organizational_unit_id,
-          starts_on, ends_on, reason, assigned_by_account_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      `,
-      [
-        assignmentId,
-        params.data.accountId,
-        body.data.roleId,
-        body.data.scopeType,
-        unitId,
-        startsOn,
-        endsOn,
-        reason,
-        principal.id,
-      ],
-    );
-    await audit(pool, principal, "role.assignment.created", "role_assignment", assignmentId, {
-      accountId: params.data.accountId,
-      roleId: body.data.roleId,
-      scopeType: body.data.scopeType,
-      organizationalUnitId: unitId,
-      startsOn,
-      endsOn,
-      reason,
-    });
-
-    return reply.status(201).send({ id: assignmentId });
   });
 
   app.delete("/admin/access/role-assignments/:assignmentId", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.roles.assign");
     if (!principal) return;
 
     const params = assignmentIdSchema.safeParse(request.params);
@@ -736,23 +688,12 @@ export async function registerOrgAccessAdminRoutes(
       return reply.status(400).send({ code: "INVALID_ASSIGNMENT_ID", message: "Assignment ID tidak valid." });
     }
 
-    const removed = await pool.query<{ id: string; accountId: string; roleId: string }>(
-      `
-        DELETE FROM account_role_assignments
-        WHERE id = $1
-        RETURNING id, account_id AS "accountId", role_id AS "roleId"
-      `,
-      [params.data.assignmentId],
-    );
-    const row = removed.rows[0];
-    if (!row) {
-      return reply.status(404).send({ code: "ASSIGNMENT_NOT_FOUND", message: "Role assignment tidak ditemukan." });
+    try {
+      await removeRoleAssignment(pool, principal, params.data.assignmentId);
+      return reply.status(204).send();
+    } catch (error) {
+      if (error instanceof AuthError) return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      throw error;
     }
-
-    await audit(pool, principal, "role.assignment.removed", "role_assignment", row.id, {
-      accountId: row.accountId,
-      roleId: row.roleId,
-    });
-    return reply.status(204).send();
   });
 }

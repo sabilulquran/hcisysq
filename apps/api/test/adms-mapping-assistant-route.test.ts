@@ -18,6 +18,7 @@ const deviceId = "00000000-0000-4000-8000-000000000901";
 
 function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE" = "SUPER_ADMIN") {
   const query = vi.fn(async (sql: string) => {
+    if (sql.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM auth_sessions s")) {
       return {
         rows: [{

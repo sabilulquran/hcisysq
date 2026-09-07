@@ -116,7 +116,7 @@ export async function registerAuthRoutes(
     try {
       const result = await auth.login(parsed.data, requestContext(request));
       reply.header("Set-Cookie", result.setCookie);
-      return reply.send(result.session);
+      return reply.send({ ...result.session, authorization: await auth.getAuthorizationContext(result.session.principal) });
     } catch (error) {
       if (error instanceof AuthError) return sendAuthError(reply, error);
       throw error;
@@ -176,7 +176,7 @@ export async function registerAuthRoutes(
       });
     }
 
-    return reply.send(session);
+    return reply.send({ ...session, authorization: await auth.getAuthorizationContext(session.principal) });
   });
 
   app.post("/auth/logout", async (request, reply) => {

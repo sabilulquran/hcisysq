@@ -1,3 +1,4 @@
+import { hasOrganizationPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -175,25 +176,12 @@ async function loadActor(
   return actor;
 }
 
-export async function hasHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
-  const result = await db.query<{ allowed: boolean }>(
-    `SELECT EXISTS (
-      SELECT 1
-      FROM account_role_assignments assignment
-      JOIN roles role ON role.id = assignment.role_id
-      WHERE assignment.account_id = $1
-        AND role.role_key = 'human_capital'
-        AND assignment.scope_type = 'organization'
-        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-    ) AS allowed`,
-    [accountId],
-  );
-  return result.rows[0]?.allowed ?? false;
+export async function hasAttendanceResolutionPermission(db: Pool | PoolClient, accountId: string) {
+  return hasOrganizationPermission(db, accountId, "attendance.resolution.manage");
 }
 
-async function requireHumanCapitalRole(db: Pool | PoolClient, principal: AuthPrincipal) {
-  if (!(await hasHumanCapitalRole(db, principal.id))) {
+async function requireHcPermission(db: Pool | PoolClient, principal: AuthPrincipal) {
+  if (!(await hasAttendanceResolutionPermission(db, principal.id))) {
     throw new AttendanceResolutionRouteError(
       403,
       "ATTENDANCE_RESOLUTION_FORBIDDEN",
@@ -375,7 +363,7 @@ export async function registerAttendanceResolutionRoutes(
 
     try {
       const actor = await loadActor(pool, principal.id);
-      await requireHumanCapitalRole(pool, principal);
+      await requireHcPermission(pool, principal);
       const result = await pool.query<AdministrationQueueRow>(
         `SELECT
           task.id AS "taskId",
@@ -470,7 +458,7 @@ export async function registerAttendanceResolutionRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await requireHumanCapitalRole(client, principal);
+      await requireHcPermission(client, principal);
       const result = await client.query<{
         taskId: string;
         requestId: string;
@@ -708,7 +696,7 @@ export async function registerAttendanceResolutionRoutes(
 
     try {
       const actor = await loadActor(pool, principal.id);
-      await requireHumanCapitalRole(pool, principal);
+      await requireHcPermission(pool, principal);
       const result = await loadResolutionCases(
         pool,
         `WHERE resolution.status IN ('open', 'awaiting_employee')`,
@@ -759,7 +747,7 @@ export async function registerAttendanceResolutionRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await requireHumanCapitalRole(client, principal);
+      await requireHcPermission(client, principal);
       const result = await loadResolutionCases(
         client,
         `WHERE resolution.id = $1`,

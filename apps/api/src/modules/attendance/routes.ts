@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,12 +6,11 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePrincipalFromCookie, requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
   AuthService,
   type AuthPrincipal,
-  type PrincipalType,
 } from "../auth/service.js";
 
 const isoDateSchema = z.string().refine(isIsoDate, "Tanggal tidak valid.");
@@ -302,10 +302,12 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-  expected: PrincipalType,
+  expected: "EMPLOYEE" | AdminPermission | readonly AdminPermission[],
 ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, expected);
+    return expected === "EMPLOYEE"
+      ? await requirePrincipalFromCookie(auth, request.headers.cookie, expected)
+      : await requirePermissionsFromCookie(auth, request.headers.cookie, expected);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -367,7 +369,7 @@ export async function registerAttendanceRoutes(
   });
 
   app.get("/admin/attendance/employees/:employeeId", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "SUPER_ADMIN");
+    const principal = await authenticate(auth, request, reply, "attendance.records.manage");
     if (!principal) return;
 
     const params = employeeParamSchema.safeParse(request.params);
@@ -393,7 +395,7 @@ export async function registerAttendanceRoutes(
   app.put(
     "/admin/attendance/employees/:employeeId/:attendanceDate",
     async (request, reply) => {
-      const principal = await authenticate(auth, request, reply, "SUPER_ADMIN");
+      const principal = await authenticate(auth, request, reply, "attendance.records.manage");
       if (!principal) return;
 
       const params = recordParamSchema.safeParse(request.params);
@@ -498,7 +500,7 @@ export async function registerAttendanceRoutes(
   app.delete(
     "/admin/attendance/employees/:employeeId/:attendanceDate",
     async (request, reply) => {
-      const principal = await authenticate(auth, request, reply, "SUPER_ADMIN");
+      const principal = await authenticate(auth, request, reply, "attendance.records.manage");
       if (!principal) return;
 
       const params = recordParamSchema.safeParse(request.params);

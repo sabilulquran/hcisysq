@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import {
   attlogRangeWireCommand,
@@ -34,9 +35,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -95,7 +97,7 @@ export async function registerAdmsWave1AdminRoutes(
   );
 
   app.get("/admin/attendance/adms/detected-devices", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const result = await pool.query(
       `SELECT
@@ -117,7 +119,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.post("/admin/attendance/adms/detected-devices/:detectedId/claim", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = detectedIdSchema.safeParse(request.params);
     const body = claimSchema.safeParse(request.body ?? {});
@@ -186,7 +188,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/health", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -275,7 +277,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/commands", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -307,7 +309,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/commands/read-information", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -322,7 +324,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/transfers/sync-new", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -337,7 +339,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/transfers/attendance-range", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     const body = rangeSchema.safeParse(request.body);
@@ -376,7 +378,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.post("/admin/attendance/adms/commands/:commandId/cancel", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = commandIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_COMMAND", message: "ID command tidak valid." });
@@ -423,7 +425,7 @@ export async function registerAdmsWave1AdminRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/transactions", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });

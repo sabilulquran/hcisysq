@@ -1,4 +1,5 @@
-import type { AuthSession, LoginCredentials, PrincipalType } from "@/types/hcis";
+import type { AuthSession, LoginCredentials } from "@/types/hcis";
+import { canAccessAdminPath } from "@/lib/authorization";
 
 interface ErrorPayload {
   code?: string;
@@ -120,9 +121,9 @@ export function oidcLoginFailureMessage(category: string | null): string | null 
 }
 
 export function landingPath(
-  principalType: PrincipalType,
+  session: AuthSession,
 ): "/app" | "/admin" | "/board" {
-  if (principalType === "SUPER_ADMIN") return "/admin";
-  if (principalType === "FOUNDATION_BOARD") return "/board";
+  if (session.principal.principalType === "FOUNDATION_BOARD") return "/board";
+  if (canAccessAdminPath(session, "/admin")) return "/admin";
   return "/app";
 }

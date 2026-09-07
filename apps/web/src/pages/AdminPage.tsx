@@ -1,3 +1,6 @@
+import { getCurrentSession } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import { ArrowRight, Building2, History, KeyRound, Upload, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -16,26 +19,29 @@ interface OverviewState {
 }
 
 export function AdminPage() {
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [overview, setOverview] = useState<OverviewState | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    void Promise.all([
-      listEmployees({ pageSize: 1 }),
-      listEmployeeImports(),
-      getOrganizationAdmin(),
-      getAccessAdmin(),
-    ])
+    void getCurrentSession().then((current) => {
+      if (mounted) setSession(current);
+      return Promise.all([
+      canAccessAdminPath(current, "/admin/employees") ? listEmployees({ pageSize: 1 }) : null,
+      canAccessAdminPath(current, "/admin/employees/imports") ? listEmployeeImports() : null,
+      canAccessAdminPath(current, "/admin/organization") ? getOrganizationAdmin() : null,
+      canAccessAdminPath(current, "/admin/access") ? getAccessAdmin() : null,
+    ]); })
       .then(([employees, imports, organization, access]) => {
         if (!mounted) return;
         setOverview({
-          totalEmployees: employees.summary.total,
-          activeEmployees: employees.summary.active,
-          imports: imports.items.length,
-          units: organization.units.length,
-          missingManagers: organization.reportingLines.missingManagers,
-          accounts: access.summary.accounts,
-          invitedAccounts: access.summary.invited,
+          totalEmployees: employees?.summary?.total ?? 0,
+          activeEmployees: employees?.summary?.active ?? 0,
+          imports: imports?.items?.length ?? 0,
+          units: organization?.units?.length ?? 0,
+          missingManagers: organization?.reportingLines?.missingManagers ?? 0,
+          accounts: access?.summary?.accounts ?? 0,
+          invitedAccounts: access?.summary?.invited ?? 0,
         });
       })
       .catch(() => {
@@ -102,11 +108,11 @@ export function AdminPage() {
   return (
     <AdminShell
       active="overview"
-      title="Ringkasan Super Admin"
+      title="Ringkasan Administrator HCIS"
       description="Employee master, struktur organisasi, reporting line, account, role, dan scope sekarang dikelola sebagai domain terpisah tetapi terhubung."
     >
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((card) => {
+        {cards.filter((card) => canAccessAdminPath(session, card.href)).map((card) => {
           const Icon = card.icon;
           return (
             <a
@@ -134,7 +140,7 @@ export function AdminPage() {
       <section className="mt-5 rounded-2xl border border-brand-yellow/30 bg-brand-yellow/10 p-5">
         <p className="text-sm font-bold text-amber-950">Aktivasi account</p>
         <p className="mt-1 max-w-4xl text-sm leading-6 text-amber-950/70">
-          Account pegawai dan Organ Yayasan dapat disiapkan sebagai invited, lalu Super Admin membuat link aktivasi sekali pakai yang berlaku 24 jam. Password dibuat langsung oleh pemilik account melalui link tersebut; sistem tidak menyimpan token aktivasi dalam bentuk plaintext.
+          Account dapat disiapkan dan diberi link aktivasi sesuai mandat administrasi yang berlaku. Password dibuat langsung oleh pemilik account melalui link tersebut; sistem tidak menyimpan token aktivasi dalam bentuk plaintext.
         </p>
       </section>
     </AdminShell>

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
+import { resolveAuthorizationContext } from "./permissions.js";
 
 import {
   decryptSecret,
@@ -78,6 +79,10 @@ export class AuthError extends Error {
 export class AuthService {
   private readonly attempts = new Map<string, RateState>();
   private readonly sessionTtlSeconds: number;
+
+  getAuthorizationContext(principal: AuthPrincipal) {
+    return resolveAuthorizationContext(this.pool, principal);
+  }
 
   constructor(
     private readonly pool: Pool,

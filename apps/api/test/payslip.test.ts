@@ -97,7 +97,7 @@ describe("payslip capability scope", () => {
       expect(normalized).toContain("assignment.scope_type = 'organization'");
       expect(normalized).toContain("assignment.starts_on IS NULL OR assignment.starts_on <= current_date");
       expect(normalized).toContain("assignment.ends_on IS NULL OR assignment.ends_on >= current_date");
-      return scope === "organization" && active ? result([{ allowed: 1 }]) : result([]);
+      return scope === "organization" && active ? result([{ allowed: true }]) : result([]);
     });
     return { pool: { query } as unknown as Pool, query };
   }

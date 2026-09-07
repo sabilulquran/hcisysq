@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { userInfoNameUpdateWireCommand } from "./protocol.js";
 
@@ -26,9 +27,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -55,7 +57,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
   );
 
   app.post("/admin/attendance/adms/devices/:deviceId/users/:pin/commands/sync-name", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = devicePinSchema.safeParse(request.params);
     if (!params.success) {
@@ -234,7 +236,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/user-corrections", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) {
@@ -271,7 +273,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/user-corrections", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     const body = correctionPlanSchema.safeParse(request.body);
@@ -436,7 +438,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
   });
 
   app.delete("/admin/attendance/adms/user-corrections/:correctionId", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = correctionIdSchema.safeParse(request.params);
     if (!params.success) {

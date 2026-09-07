@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { attlogRangeWireCommand, formatDeviceLocalTimestamp } from "./protocol.js";
 
@@ -32,9 +33,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -107,7 +109,7 @@ export async function registerAdmsWave1RecoveryRoutes(
   );
 
   app.get("/admin/attendance/adms/devices/:deviceId/recovery-jobs", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) {
@@ -162,7 +164,7 @@ export async function registerAdmsWave1RecoveryRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/transfers/attendance-recovery-job", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     const body = recoveryJobSchema.safeParse(request.body);
@@ -360,7 +362,7 @@ export async function registerAdmsWave1RecoveryRoutes(
   });
 
   app.post("/admin/attendance/adms/recovery-jobs/:jobId/cancel", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = recoveryJobIdSchema.safeParse(request.params);
     if (!params.success) {

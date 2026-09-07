@@ -1,9 +1,10 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 
 const deviceParamsSchema = z.object({ deviceId: z.string().uuid() });
@@ -15,9 +16,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -92,7 +94,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   );
 
   app.get("/admin/attendance/adms/devices/:deviceId/wdms-evidence", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -161,7 +163,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/physical/operations", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const query = historyQuerySchema.safeParse(request.query);
@@ -207,7 +209,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const result = await pool.query(
       `SELECT serial_number, display_name, lifecycle, model, firmware_version,
@@ -223,7 +225,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/mappings/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -242,7 +244,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/work-codes/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -262,7 +264,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/physical/operations/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -287,7 +289,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/physical/audit/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -306,7 +308,7 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/attendance/export.csv", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.export");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });

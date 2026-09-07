@@ -45,7 +45,8 @@ describe("ATT-005 bounded long-range recovery planning", () => {
 
   it("rejects employee principals before recovery data is queried", async () => {
     const query = vi.fn(async (sql: string) => {
-      if (sql.includes("FROM auth_sessions s")) {
+      if (sql.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) return { rows: [], rowCount: 0 };
+    if (sql.includes("FROM auth_sessions s")) {
         return {
           rows: [
             {

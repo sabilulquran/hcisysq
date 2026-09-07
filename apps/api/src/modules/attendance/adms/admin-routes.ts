@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { normalizeDeviceSerial } from "./protocol.js";
 import { projectAdmsAttendanceDay } from "./projection.js";
@@ -58,9 +59,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -250,7 +252,7 @@ export async function registerAdmsAdminRoutes(
   );
 
   app.get("/admin/attendance/adms/devices", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const result = await pool.query<{
       id: string;
@@ -304,7 +306,7 @@ export async function registerAdmsAdminRoutes(
   });
 
   app.post("/admin/attendance/adms/devices", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const body = createDeviceSchema.safeParse(request.body);
     if (!body.success) {
@@ -363,7 +365,7 @@ export async function registerAdmsAdminRoutes(
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) {
@@ -462,7 +464,7 @@ export async function registerAdmsAdminRoutes(
   });
 
   app.patch("/admin/attendance/adms/devices/:deviceId", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     const body = updateDeviceSchema.safeParse(request.body);
@@ -523,7 +525,7 @@ export async function registerAdmsAdminRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/mappings", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     const body = createMappingSchema.safeParse(request.body);
@@ -607,7 +609,7 @@ export async function registerAdmsAdminRoutes(
   });
 
   app.delete("/admin/attendance/adms/mappings/:mappingId", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = mappingIdSchema.safeParse(request.params);
     if (!params.success) {

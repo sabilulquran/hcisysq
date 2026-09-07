@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
   AuthService,
@@ -88,12 +89,13 @@ export async function registerLeaveCalendarAdminRoutes(
   async function authenticateAdmin(
     request: FastifyRequest,
     reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
+      return await requirePermissionsFromCookie(
         auth,
         request.headers.cookie,
-        "SUPER_ADMIN",
+        permission,
       );
     } catch (error) {
       if (error instanceof AuthError) {
@@ -109,7 +111,7 @@ export async function registerLeaveCalendarAdminRoutes(
   }
 
   app.get("/admin/leave/calendar", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const parsed = yearQuerySchema.safeParse(request.query);
@@ -159,7 +161,7 @@ export async function registerLeaveCalendarAdminRoutes(
   });
 
   app.patch("/admin/leave/calendar/workweek", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const parsed = workweekSchema.safeParse(request.body);
@@ -191,7 +193,7 @@ export async function registerLeaveCalendarAdminRoutes(
   });
 
   app.put("/admin/leave/calendar/exceptions/:date", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const params = dateParamSchema.safeParse(request.params);
@@ -232,7 +234,7 @@ export async function registerLeaveCalendarAdminRoutes(
   });
 
   app.delete("/admin/leave/calendar/exceptions/:date", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const params = dateParamSchema.safeParse(request.params);

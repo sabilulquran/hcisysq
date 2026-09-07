@@ -48,7 +48,7 @@ export function LoginForm() {
         password: form.password,
         ...(mfaRequired && form.mfaCode ? { mfaCode: form.mfaCode } : {}),
       });
-      await navigate({ to: landingPath(session.principal.principalType) });
+      await navigate({ to: landingPath(session) });
     } catch (error) {
       if (error instanceof AuthApiError && error.code === "MFA_REQUIRED") {
         setMfaRequired(true);

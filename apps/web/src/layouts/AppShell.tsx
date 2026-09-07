@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { getCurrentSession } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
   Bell,
@@ -98,6 +101,12 @@ export function AppShell({
   activeItem = "Beranda",
   capabilities,
 }: AppShellProps) {
+  const [canAdminister, setCanAdminister] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getCurrentSession().then((session) => { if (active) setCanAdminister(canAccessAdminPath(session, "/admin")); });
+    return () => { active = false; };
+  }, []);
   const hasOrganizationHcAccess = capabilities?.humanCapitalOrganization === true;
   const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
 
@@ -195,6 +204,7 @@ export function AppShell({
               <button type="button" aria-label="Notifikasi" className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
+              {canAdminister ? <a href="/admin" className="text-xs font-semibold text-brand-primary-deep">Administrasi HCIS</a> : null}
               <AccountMenu user={user} variant="header" />
             </div>
           </div>

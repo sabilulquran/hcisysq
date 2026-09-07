@@ -1,0 +1,1083 @@
+[
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/mappings",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/devices/:deviceId",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/attendance/adms/mappings/:mappingId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/biometric-control-plane-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/biometric-control-plane/credentials",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/biometric-control-plane-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/biometric-control-plane/reencrypt",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/biometric-control-plane-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/biometric-control-plane",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-extended-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/firmware",
+    "permissions": [
+      "attendance.devices.firmware"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-extended-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/time-sync",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-extended-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/firmware-packages",
+    "permissions": [
+      "attendance.devices.firmware"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-extended-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/firmware-packages",
+    "permissions": [
+      "attendance.devices.firmware"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/attendance/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/mappings/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/audit/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/operations/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/operations",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/wdms-evidence",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/work-codes/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/ntp",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/server-config",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/user-enabled",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/user-profile",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/wdms-profile",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/devices/:deviceId/wdms-profile",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/job-codes",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-registry-user-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/job-codes",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical-capabilities",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/${spec.path}",
+    "permissions": [
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/attendance-photo-canary",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-delete",
+    "permissions": [
+      "attendance.devices.biometrics",
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-enroll",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-query",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-restore",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/capability-state",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/duplicate-punch",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/message",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/reboot",
+    "permissions": [
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/time-sync-canary",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/work-code",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/commands/:commandId/cancel",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/detected-devices/:detectedId/claim",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/detected-devices",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/commands/read-information",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/commands",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/health",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/transactions",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/transfers/attendance-range",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/transfers/sync-new",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-ops-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/devices/:deviceId/connectivity-policy",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-ops-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/logs",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-ops-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/devices/:deviceId/reconciliation-policy",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-ops-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/reconciliation",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-ops-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/telemetry",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-recovery-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/recovery-jobs",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-recovery-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/transfers/attendance-recovery-job",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-recovery-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/recovery-jobs/:jobId/cancel",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/biometrics",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/biometric-collection-policy",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/devices/:deviceId/biometric-collection-policy",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/biometric-inventory",
+    "permissions": [
+      "attendance.devices.biometrics"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/mapping-lifecycle-summary",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/roster",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-mapping-assistant-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/mapping-assistant",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-user-correction-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/user-corrections",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-user-correction-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/user-corrections",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-user-correction-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/users/:pin/commands/sync-name",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave2-user-correction-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/attendance/adms/user-corrections/:correctionId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/commands/clear-pending",
+    "permissions": [
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/attendance/adms/devices/:deviceId/messages/:messageId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/messages",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/offline-attlog-imports",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/offline-attlog-imports",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/operations",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/transactions/export.csv",
+    "permissions": [
+      "attendance.devices.export"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/attendance/adms/devices/:deviceId/work-codes/:workCodeId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/devices/:deviceId/work-codes",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/adms/messages/:messageId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/messages",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/attendance/adms/saved-filters/:filterId",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/saved-filters",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/saved-filters",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave3-admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/work-codes",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/routes.ts",
+    "method": "DELETE",
+    "url": "/admin/attendance/employees/:employeeId/:attendanceDate",
+    "permissions": [
+      "attendance.records.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/routes.ts",
+    "method": "PUT",
+    "url": "/admin/attendance/employees/:employeeId/:attendanceDate",
+    "permissions": [
+      "attendance.records.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/employees/:employeeId",
+    "permissions": [
+      "attendance.records.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/auth/admin-account-activation-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/accounts/:accountId/activation",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/auth/admin-account-activation-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/board-accounts",
+    "permissions": [
+      "access.governance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-employee-contact-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/employees/:employeeId/contact",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/accounts/:accountId/role-assignments",
+    "permissions": [
+      "access.roles.assign"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/access/accounts/:accountId/status",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/employee-accounts",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/access/role-assignments/:assignmentId",
+    "permissions": [
+      "access.roles.assign"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "GET",
+    "url": "/admin/access",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/employees/:employeeId/manager",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-imports/:importId/commit",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-imports/:importId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-imports/preview",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-imports",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/leave/configuration",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/leave/employees/:employeeId/entitlement-group",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/leave/employees/:employeeId/preview",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/leave/units/:unitId/approver",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/calendar-admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/leave/calendar/exceptions/:date",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/calendar-admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/leave/calendar/exceptions/:date",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/calendar-admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/leave/calendar/workweek",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/calendar-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/leave/calendar",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/authority-bindings",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/drafts/:draftId/impact",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/organization/designer/drafts/:draftId/incumbencies",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/organization/designer/drafts/:draftId/memberships",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/organization/designer/drafts/:draftId/nodes/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/nodes",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/organization/designer/drafts/:draftId/positions/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/positions",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/publish",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/reporting-overrides",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/resolution-preview",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/validate",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/drafts/:draftId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/employees",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/rollout",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/organization/rollout",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "GET",
+    "url": "/admin/payslip-imports",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "POST",
+    "url": "/admin/payslip-imports/preview",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "GET",
+    "url": "/admin/payslip-imports/:batchId",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "POST",
+    "url": "/admin/payslip-imports/:batchId/commit",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "POST",
+    "url": "/admin/payslip-imports/:batchId/publish",
+    "permissions": [
+      "payslips.publish"
+    ]
+  }
+]

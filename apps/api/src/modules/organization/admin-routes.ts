@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
@@ -168,9 +169,11 @@ export async function registerOrganizationAdminRoutes(
   const repository = new PostgresOrganizationRepository(pool);
   const draftService = new OrganizationDraftService(repository);
 
-  async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+  async function authenticate(request: FastifyRequest, reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
+  ) {
     try {
-      return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+      return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
     } catch (error) {
       if (error instanceof AuthError) {
         await reply.status(error.statusCode).send({ code: error.code, message: error.message });
@@ -201,7 +204,7 @@ export async function registerOrganizationAdminRoutes(
   }
 
   app.get("/admin/organization/designer", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const query = z.object({ effectiveDate: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_ORGANIZATION_VIEW", "Invalid date or draft identifier.");
     const viewDate = query.data.effectiveDate ?? jakartaBusinessDate();
@@ -286,7 +289,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.get("/admin/organization/designer/employees", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const result = await pool.query(
       `SELECT e.id, e.employee_number AS "employeeNumber", e.full_name AS "fullName",
         e.status, u.name AS "unitName", p.name AS "positionName"
@@ -299,7 +302,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const parsed = draftInput.safeParse(request.body);
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
@@ -315,7 +318,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.get("/admin/organization/designer/drafts/:draftId", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const parsed = draftParams.safeParse(request.params);
     if (!parsed.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const snapshot = await repository.loadChangeSetSnapshot(parsed.data.draftId);
@@ -323,7 +326,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/nodes", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = nodeInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -339,7 +342,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.patch("/admin/organization/designer/drafts/:draftId/nodes/:itemId", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = itemParams.safeParse(request.params); const body = nodePatch.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group update.");
     const result = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -357,7 +360,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/positions", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = positionInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid organization position.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -373,7 +376,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.patch("/admin/organization/designer/drafts/:draftId/positions/:itemId", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = itemParams.safeParse(request.params); const body = positionPatch.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid position update.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -389,7 +392,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.put("/admin/organization/designer/drafts/:draftId/memberships", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = membershipInput.safeParse(request.body);
     if (!params.success || !body.success || (body.data.effectiveTo && body.data.effectiveTo < body.data.effectiveFrom))
       return invalid(reply, "INVALID_ORGANIZATION_MEMBERSHIP", "Invalid membership assignment.");
@@ -409,7 +412,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.put("/admin/organization/designer/drafts/:draftId/incumbencies", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = incumbencyInput.safeParse(request.body);
     if (!params.success || !body.success || (body.data.actingEmployeeId && (!body.data.actingFrom || !body.data.actingTo))
       || (body.data.actingFrom && body.data.actingTo && body.data.actingTo < body.data.actingFrom))
@@ -433,7 +436,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/authority-bindings", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = bindingInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_AUTHORITY_BINDING", "Invalid authority relationship.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -453,7 +456,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/reporting-overrides", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = overrideInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -470,7 +473,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/validate", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const report = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
@@ -488,7 +491,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.get("/admin/organization/designer/drafts/:draftId/impact", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
@@ -503,7 +506,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/resolution-preview", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const params = draftParams.safeParse(request.params); const body = resolutionInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_RESOLUTION_PREVIEW", "Invalid resolution preview input.");
     const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
@@ -529,7 +532,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/publish", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
@@ -548,7 +551,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.get("/admin/organization/rollout", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
     const result = await pool.query(
       `SELECT mode, workflow_key AS "workflowKey", node_key AS "organizationalNodeKey",
         effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason, updated_at AS "updatedAt"
@@ -558,7 +561,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.patch("/admin/organization/rollout", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
+    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const body = rolloutInput.safeParse(request.body);
     if (!body.success) return invalid(reply, "INVALID_ORGANIZATION_ROLLOUT", "Invalid rollout configuration.");
     const item = { id: randomUUID(), ...body.data, organizationalNodeKey: body.data.organizationalNodeKey ?? null,

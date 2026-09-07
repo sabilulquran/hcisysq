@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { biometricKeyringReadiness } from "./biometric-crypto.js";
 import {
@@ -144,9 +145,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -405,7 +407,7 @@ export async function registerAdmsPhysicalParityRoutes(
   );
 
   app.get("/admin/attendance/adms/devices/:deviceId/physical-capabilities", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -465,7 +467,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/work-code", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = workCodeBodySchema.safeParse(request.body);
@@ -510,7 +512,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/message", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = messageBodySchema.safeParse(request.body);
@@ -592,7 +594,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/time-sync-canary", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
@@ -617,7 +619,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/duplicate-punch", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = duplicatePunchBodySchema.safeParse(request.body);
@@ -648,7 +650,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/reboot", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.destructive");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = rebootBodySchema.safeParse(request.body);
@@ -676,7 +678,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/biometric-query", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = biometricQueryBodySchema.safeParse(request.body);
@@ -707,7 +709,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/biometric-enroll", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = biometricEnrollBodySchema.safeParse(request.body);
@@ -739,7 +741,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/biometric-restore", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.biometrics");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = biometricRestoreBodySchema.safeParse(request.body);
@@ -769,7 +771,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/biometric-delete", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, ["attendance.devices.biometrics","attendance.devices.destructive"]);
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = biometricDeleteBodySchema.safeParse(request.body);
@@ -822,7 +824,7 @@ export async function registerAdmsPhysicalParityRoutes(
     { path: "clear-all", capabilityKey: "clear_all_data" as const, phrase: "CLEAR ALL DATA", wire: clearAllDataWireCommand() },
   ]) {
     app.post(`/admin/attendance/adms/devices/:deviceId/physical/${spec.path}`, async (request, reply) => {
-      const principal = await authenticate(auth, request, reply);
+      const principal = await authenticate(auth, request, reply, "attendance.devices.destructive");
       if (!principal) return;
       const params = deviceParamsSchema.safeParse(request.params);
       const body = destructiveBodySchema.safeParse(request.body);
@@ -852,7 +854,7 @@ export async function registerAdmsPhysicalParityRoutes(
   }
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/attendance-photo-canary", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = passiveCanaryBodySchema.safeParse(request.body);
@@ -899,7 +901,7 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/capability-state", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = capabilityOverrideBodySchema.safeParse(request.body);

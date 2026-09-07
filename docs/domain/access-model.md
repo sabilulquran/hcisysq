@@ -1,5 +1,9 @@
 # Access Model
 
+> AUTH-011 supersedes principal-only administrative eligibility in this document.
+> See [HCIS authorization modernization](hcis-authorization-modernization.md) for
+> domain/platform boundaries, granular permissions and transitional legacy compatibility.
+
 **Status:** ACCEPTED — ORG-004 STRUCTURAL AUTHORITY EXTENSION PLANNED  
 **Specifications:** AUTH-001, AUTH-010, SEC-001  
 **Related:** ORG-001, ORG-002, ORG-004

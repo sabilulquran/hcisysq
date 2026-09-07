@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../auth/permissions.js";
 import { basename } from "node:path";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
   AuthService,
@@ -110,12 +111,13 @@ export async function registerEmployeeAdminRoutes(
   async function authenticateAdmin(
     request: FastifyRequest,
     reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
+      return await requirePermissionsFromCookie(
         auth,
         request.headers.cookie,
-        "SUPER_ADMIN",
+        permission,
       );
     } catch (error) {
       if (error instanceof AuthError) {
@@ -131,7 +133,7 @@ export async function registerEmployeeAdminRoutes(
   }
 
   app.get("/admin/employees", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
     const parsed = listQuerySchema.safeParse(request.query);
@@ -236,7 +238,7 @@ export async function registerEmployeeAdminRoutes(
   });
 
   app.get("/admin/employee-imports", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
     const result = await pool.query<ImportHistoryRow>(
@@ -277,7 +279,7 @@ export async function registerEmployeeAdminRoutes(
     "/admin/employee-imports/preview",
     { bodyLimit: 16 * 1024 * 1024 },
     async (request, reply) => {
-      const principal = await authenticateAdmin(request, reply);
+      const principal = await authenticateAdmin(request, reply, "employees.manage");
       if (!principal) return;
 
       if (!Buffer.isBuffer(request.body)) {
@@ -323,7 +325,7 @@ export async function registerEmployeeAdminRoutes(
   );
 
   app.get("/admin/employee-imports/:importId", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
     const parsed = importIdSchema.safeParse(request.params);
@@ -341,7 +343,7 @@ export async function registerEmployeeAdminRoutes(
   });
 
   app.post("/admin/employee-imports/:importId/commit", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
     const parsed = importIdSchema.safeParse(request.params);

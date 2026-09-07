@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
   AuthService,
@@ -102,12 +103,13 @@ export async function registerLeaveAdminRoutes(
   async function authenticateAdmin(
     request: FastifyRequest,
     reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
+      return await requirePermissionsFromCookie(
         auth,
         request.headers.cookie,
-        "SUPER_ADMIN",
+        permission,
       );
     } catch (error) {
       if (error instanceof AuthError) {
@@ -123,7 +125,7 @@ export async function registerLeaveAdminRoutes(
   }
 
   app.get("/admin/leave/configuration", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const [units, employees] = await Promise.all([
@@ -191,7 +193,7 @@ export async function registerLeaveAdminRoutes(
   });
 
   app.patch("/admin/leave/units/:unitId/approver", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "approvals.policy.manage");
     if (!principal) return;
 
     const params = unitIdSchema.safeParse(request.params);
@@ -251,7 +253,7 @@ export async function registerLeaveAdminRoutes(
   app.patch(
     "/admin/leave/employees/:employeeId/entitlement-group",
     async (request, reply) => {
-      const principal = await authenticateAdmin(request, reply);
+      const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
       if (!principal) return;
 
       const params = employeeIdSchema.safeParse(request.params);
@@ -297,7 +299,7 @@ export async function registerLeaveAdminRoutes(
   );
 
   app.get("/admin/leave/employees/:employeeId/preview", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
     const params = employeeIdSchema.safeParse(request.params);

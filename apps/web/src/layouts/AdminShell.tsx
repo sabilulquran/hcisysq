@@ -1,3 +1,4 @@
+import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
   Building2,
@@ -89,10 +90,10 @@ const navGroups: AdminNavGroup[] = [
   },
 ];
 
-function AdminNavigation({ active, compact = false }: { active: AdminNavKey; compact?: boolean }) {
+export function AdminNavigation({ active, session, compact = false }: { active: AdminNavKey; session: AuthSession | null; compact?: boolean }) {
   return (
-    <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Super Admin">
-      {navGroups.map((group, groupIndex) => (
+    <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Administrator HCIS">
+      {navGroups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.href)) })).filter((group) => group.items.length).map((group, groupIndex) => (
         <div key={group.label ?? `root-${groupIndex}`}>
           {group.label ? (
             <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p>
@@ -144,7 +145,7 @@ export function AdminShell({
     let mounted = true;
     void getCurrentSession().then((current) => {
       if (!mounted) return;
-      if (!current || current.principal.principalType !== "SUPER_ADMIN") {
+      if (!canAccessAdminPath(current, "/admin")) {
         void navigate({ to: "/" });
         return;
       }
@@ -182,19 +183,19 @@ export function AdminShell({
             Menu administrasi
           </summary>
           <div className="border-t border-border bg-white p-2">
-            <AdminNavigation active={active} compact />
+            <AdminNavigation session={session} active={active} compact />
           </div>
         </details>
 
         <div className="hidden px-4 lg:block">
-          <AdminNavigation active={active} />
+          <AdminNavigation session={session} active={active} />
         </div>
 
         <div className="hidden px-4 pb-5 pt-8 lg:block">
           <div className="rounded-2xl border border-border/70 bg-surface p-4">
             <div className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              Super Admin
+              Administrator HCIS
             </div>
             <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">
               {session?.principal.email ?? "Memuat sesi..."}
@@ -220,7 +221,10 @@ export function AdminShell({
             {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-6 sm:px-7 lg:px-10 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-7xl px-5 py-6 sm:px-7 lg:px-10 lg:py-8">
+          {session?.principal.principalType === "EMPLOYEE" ? <a href="/app" className="mb-4 inline-block text-sm font-semibold text-brand-primary-deep">Buka ruang pegawai</a> : null}
+          {session ? children : <p>Memuat izin administrasi...</p>}
+        </main>
       </div>
     </div>
   );

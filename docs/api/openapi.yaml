@@ -4,7 +4,10 @@ info:
   version: 0.0.1
   description: |
     Kontrak awal untuk vertical slice identity, employee profile, leave, organization, dan attendance operations.
-    Status dokumen DRAFT; endpoint belum menyatakan implementasi telah tersedia.
+    Status dokumen DRAFT kecuali kontrak AUTH-011 /auth/me yang mengikuti implementasi.
+    AUTH-011 admin route permissions: docs/domain/AUTH-011-admin-route-permissions.json.
+    Every administrative operation requires the declared effective organization permission;
+    deprecated legacy HCIS SUPER_ADMIN compatibility grants no platform or workflow approval authority.
 servers:
   - url: https://api.example.invalid
     description: Placeholder only
@@ -36,7 +39,7 @@ paths:
                     type: string
                     const: ok
 
-  /session:
+  /auth/me:
     get:
       tags: [Session]
       operationId: getCurrentSession
@@ -1421,14 +1424,25 @@ components:
 
     Session:
       type: object
-      required: [actor, permissions]
+      required: [principal, expiresAt, authorization]
       properties:
-        actor:
-          $ref: '#/components/schemas/Actor'
-        permissions:
-          type: array
-          items:
-            type: string
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
 
     Actor:
       type: object

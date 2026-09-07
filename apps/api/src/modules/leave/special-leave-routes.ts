@@ -1,3 +1,4 @@
+import { hasOrganizationPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -195,25 +196,12 @@ async function loadEmployeeContext(
   return employee;
 }
 
-export async function hasActiveHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
-  const result = await db.query<{ allowed: boolean }>(
-    `SELECT EXISTS (
-      SELECT 1
-      FROM account_role_assignments assignment
-      JOIN roles role ON role.id = assignment.role_id
-      WHERE assignment.account_id = $1
-        AND role.role_key = 'human_capital'
-        AND assignment.scope_type = 'organization'
-        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-    ) AS allowed`,
-    [accountId],
-  );
-  return result.rows[0]?.allowed ?? false;
+export async function hasHcValidationPermission(db: Pool | PoolClient, accountId: string) {
+  return hasOrganizationPermission(db, accountId, "leave.validate");
 }
 
-async function requireHumanCapitalRole(db: Pool | PoolClient, principal: AuthPrincipal) {
-  if (!(await hasActiveHumanCapitalRole(db, principal.id))) {
+async function requireHcPermission(db: Pool | PoolClient, principal: AuthPrincipal) {
+  if (!(await hasHcValidationPermission(db, principal.id))) {
     throw new EmployeeSpecialLeaveError(
       403,
       "HC_VALIDATION_FORBIDDEN",
@@ -499,7 +487,7 @@ export async function registerSpecialLeaveRoutes(
           LIMIT 20`,
           [employee.id, [...SUPPORTED_SPECIAL_LEAVE_KEYS]],
         ),
-        hasActiveHumanCapitalRole(pool, principal.id),
+        hasHcValidationPermission(pool, principal.id),
       ]);
 
       reply.header("Cache-Control", "no-store");
@@ -814,7 +802,7 @@ export async function registerSpecialLeaveRoutes(
 
     try {
       const actor = await loadEmployeeContext(pool, principal.id);
-      await requireHumanCapitalRole(pool, principal);
+      await requireHcPermission(pool, principal);
       const result = await pool.query<HcQueueRow>(
         `SELECT
           task.id AS "taskId",
@@ -890,7 +878,7 @@ export async function registerSpecialLeaveRoutes(
       }
 
       try {
-        await requireHumanCapitalRole(pool, principal);
+        await requireHcPermission(pool, principal);
         const result = await pool.query<EvidenceRow>(
           `SELECT
             evidence.id,
@@ -943,7 +931,7 @@ export async function registerSpecialLeaveRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await requireHumanCapitalRole(client, principal);
+      await requireHcPermission(client, principal);
       const result = await client.query<{
         taskId: string;
         requestId: string;

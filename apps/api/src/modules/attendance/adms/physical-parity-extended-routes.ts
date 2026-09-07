@@ -1,3 +1,4 @@
+import type { AdminPermission } from "../../auth/permissions.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
-import { requirePrincipalFromCookie } from "../../auth/authorization.js";
+import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import {
   activeTimeSyncWireCommand,
@@ -45,9 +46,10 @@ async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
   reply: FastifyReply,
-): Promise<AuthPrincipal | null> {
+    permission: AdminPermission | readonly AdminPermission[],
+  ): Promise<AuthPrincipal | null> {
   try {
-    return await requirePrincipalFromCookie(auth, request.headers.cookie, "SUPER_ADMIN");
+    return await requirePermissionsFromCookie(auth, request.headers.cookie, permission);
   } catch (error) {
     if (error instanceof AuthError) {
       reply.header("Cache-Control", "no-store");
@@ -169,7 +171,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.get("/admin/attendance/adms/firmware-packages", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
     if (!principal) return;
     const result = await pool.query<{
       id: string;
@@ -193,7 +195,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
     "/admin/attendance/adms/firmware-packages",
     { bodyLimit: 128 * 1024 * 1024 },
     async (request, reply) => {
-      const principal = await authenticate(auth, request, reply);
+      const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
       if (!principal) return;
       const query = packageQuerySchema.safeParse(request.query);
       if (!query.success || !Buffer.isBuffer(request.body) || request.body.length === 0) {
@@ -254,7 +256,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/time-sync", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = timeSyncBodySchema.safeParse(request.body);
@@ -300,7 +302,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/firmware", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
+    const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = firmwareBodySchema.safeParse(request.body);

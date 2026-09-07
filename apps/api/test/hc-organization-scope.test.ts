@@ -1,9 +1,9 @@
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
-import { hasHumanCapitalRole } from "../src/modules/leave/attendance-resolution-routes.js";
+import { hasAttendanceResolutionPermission } from "../src/modules/leave/attendance-resolution-routes.js";
 import { hasActivePermission } from "../src/modules/leave/planned-leave-routes.js";
-import { hasActiveHumanCapitalRole } from "../src/modules/leave/special-leave-routes.js";
+import { hasHcValidationPermission } from "../src/modules/leave/special-leave-routes.js";
 
 const accountId = "00000000-0000-4000-8000-000000000101";
 
@@ -35,8 +35,8 @@ describe("organization-scoped Human Capital capability", () => {
     const attendance = capabilityPool("unit");
     const planned = capabilityPool("unit");
 
-    await expect(hasActiveHumanCapitalRole(special.pool, accountId)).resolves.toBe(false);
-    await expect(hasHumanCapitalRole(attendance.pool, accountId)).resolves.toBe(false);
+    await expect(hasHcValidationPermission(special.pool, accountId)).resolves.toBe(false);
+    await expect(hasAttendanceResolutionPermission(attendance.pool, accountId)).resolves.toBe(false);
     await expect(hasActivePermission(planned.pool, accountId, "leave.validate")).resolves.toBe(false);
   });
 
@@ -45,14 +45,14 @@ describe("organization-scoped Human Capital capability", () => {
     const attendance = capabilityPool("organization");
     const planned = capabilityPool("organization");
 
-    await expect(hasActiveHumanCapitalRole(special.pool, accountId)).resolves.toBe(true);
-    await expect(hasHumanCapitalRole(attendance.pool, accountId)).resolves.toBe(true);
+    await expect(hasHcValidationPermission(special.pool, accountId)).resolves.toBe(true);
+    await expect(hasAttendanceResolutionPermission(attendance.pool, accountId)).resolves.toBe(true);
     await expect(hasActivePermission(planned.pool, accountId, "leave.validate")).resolves.toBe(true);
   });
 
   it("does not grant an expired organization-scoped assignment", async () => {
     const special = capabilityPool("organization", false);
 
-    await expect(hasActiveHumanCapitalRole(special.pool, accountId)).resolves.toBe(false);
+    await expect(hasHcValidationPermission(special.pool, accountId)).resolves.toBe(false);
   });
 });

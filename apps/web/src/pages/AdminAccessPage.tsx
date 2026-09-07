@@ -1,3 +1,5 @@
+import { getCurrentSession } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
 import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -24,6 +26,12 @@ function statusLabel(status: string) {
 }
 
 export function AdminAccessPage() {
+  const [canPrepareBoard, setCanPrepareBoard] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getCurrentSession().then((session) => { if (active) setCanPrepareBoard(hasPermission(session, "access.governance.manage")); });
+    return () => { active = false; };
+  }, []);
   const [data, setData] = useState<AccessAdminResponse | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -261,6 +269,7 @@ export function AdminAccessPage() {
         ))}
       </section>
 
+      {canPrepareBoard ? (
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Account Organ Yayasan</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -283,6 +292,7 @@ export function AdminAccessPage() {
           </button>
         </form>
       </section>
+      ) : null}
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>

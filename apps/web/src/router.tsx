@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
@@ -59,12 +60,19 @@ async function requirePrincipal(expected: PrincipalType) {
   return session;
 }
 
+async function requireAdminPath(path: string) {
+  const session = await getCurrentSession();
+  if (!session) throw redirect({ to: "/" });
+  if (!canAccessAdminPath(session, path)) throw notFound();
+  return session;
+}
+
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: async () => {
     const session = await getCurrentSession();
-    if (session) throw redirect({ to: landingPath(session.principal.principalType) });
+    if (session) throw redirect({ to: landingPath(session) });
   },
   component: LoginPage,
 });
@@ -155,140 +163,140 @@ const hcAttendanceResolutionRoute = createRoute({
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin"),
   component: AdminPage,
 });
 
 const adminEmployeesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/employees",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/employees"),
   component: AdminEmployeesPage,
 });
 
 const adminEmployeeDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/employees/$employeeId",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/employees/$employeeId"),
   component: AdminEmployeeDetailRoutePage,
 });
 
 const adminEmployeeImportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/employees/import",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/employees/import"),
   component: AdminEmployeeImportPage,
 });
 
 const adminEmployeeImportHistoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/employees/imports",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/employees/imports"),
   component: AdminEmployeeImportHistoryPage,
 });
 
 const adminOrganizationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/organization",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/organization"),
   component: AdminOrganizationPage,
 });
 
 const adminAttendanceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance"),
   component: AdminAttendancePage,
 });
 
 const adminAdmsDevicesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices"),
   component: AdminAdmsDevicesPage,
 });
 
 const adminAdmsDeviceOverviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId"),
   component: AdminAdmsDeviceOverviewRoutePage,
 });
 
 const adminAdmsDeviceUsersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/users",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/users"),
   component: AdminAdmsDeviceUsersRoutePage,
 });
 
 const adminAdmsDeviceBiometricsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/biometrics",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/biometrics"),
   component: AdminAdmsDeviceBiometricsRoutePage,
 });
 
 const adminAdmsDeviceTransactionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/transactions",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/transactions"),
   component: AdminAdmsDeviceTransactionsRoutePage,
 });
 
 const adminAdmsDeviceCommandsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/commands",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/commands"),
   component: AdminAdmsDeviceCommandsRoutePage,
 });
 
 const adminAdmsDeviceOperationsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/operations",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/operations"),
   component: AdminAdmsDeviceOperationsRoutePage,
 });
 
 const adminAdmsDeviceSettingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/settings",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/settings"),
   component: AdminAdmsDeviceSettingsRoutePage,
 });
 
 const adminAdmsDeviceDiagnosticsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/diagnostics",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/diagnostics"),
   component: AdminAdmsDeviceDiagnosticsRoutePage,
 });
 
 const adminLeaveRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/leave",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/leave"),
   component: AdminLeaveConfigurationPage,
 });
 
 const adminLeaveCalendarRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/leave/calendar",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/leave/calendar"),
   component: AdminLeaveCalendarPage,
 });
 
 const adminPayslipsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/payslips",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/payslips"),
   component: AdminPayslipsPage,
 });
 
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
-  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  beforeLoad: () => requireAdminPath("/admin/access"),
   component: AdminAccessPage,
 });
 

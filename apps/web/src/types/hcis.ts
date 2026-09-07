@@ -15,4 +15,5 @@ export interface AuthPrincipal {
 export interface AuthSession {
   principal: AuthPrincipal;
   expiresAt: string;
+  authorization?: { organizationPermissions: string[] };
 }

@@ -1,3 +1,4 @@
+import type { AdminPermission } from "./permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -5,7 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePrincipalFromCookie } from "./authorization.js";
+import { requirePermissionsFromCookie } from "./authorization.js";
 import {
   AccountActivationError,
   AccountActivationService,
@@ -57,12 +58,13 @@ export async function registerAccountActivationAdminRoutes(
   async function authenticateAdmin(
     request: FastifyRequest,
     reply: FastifyReply,
+    permission: AdminPermission | readonly AdminPermission[],
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
+      return await requirePermissionsFromCookie(
         auth,
         request.headers.cookie,
-        "SUPER_ADMIN",
+        permission,
       );
     } catch (error) {
       if (error instanceof AuthError) {
@@ -78,7 +80,7 @@ export async function registerAccountActivationAdminRoutes(
   }
 
   app.post("/admin/access/board-accounts", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.governance.manage");
     if (!principal) return;
     const body = boardAccountSchema.safeParse(request.body);
     if (!body.success) {
@@ -122,7 +124,7 @@ export async function registerAccountActivationAdminRoutes(
   });
 
   app.post("/admin/access/accounts/:accountId/activation", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
+    const principal = await authenticateAdmin(request, reply, "access.manage");
     if (!principal) return;
     const params = accountIdSchema.safeParse(request.params);
     if (!params.success) {
@@ -133,7 +135,7 @@ export async function registerAccountActivationAdminRoutes(
     }
 
     try {
-      const issued = await activation.issue(params.data.accountId, principal.id);
+      const issued = await activation.issue(params.data.accountId, principal);
       await audit(pool, principal, "account.activation.issued", "account", params.data.accountId, {
         expiresAt: issued.expiresAt,
       });
@@ -143,7 +145,7 @@ export async function registerAccountActivationAdminRoutes(
         expiresAt: issued.expiresAt,
       });
     } catch (error) {
-      if (error instanceof AccountActivationError) {
+      if (error instanceof AccountActivationError || error instanceof AuthError) {
         return reply.status(error.statusCode).send({ code: error.code, message: error.message });
       }
       throw error;

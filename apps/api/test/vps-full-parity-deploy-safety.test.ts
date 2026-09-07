@@ -38,6 +38,26 @@ describe("VPS full parity deployment safety", () => {
     expect(source).toContain("apps/web/Dockerfile");
   });
 
+  it("wires the accepted production OIDC and private Application Access contract", async () => {
+    const source = await readFile(composeUrl, "utf8");
+    for (const requiredName of [
+      "AUTH_MODE",
+      "OIDC_ISSUER",
+      "OIDC_CLIENT_ID",
+      "OIDC_CLIENT_SECRET",
+      "OIDC_REDIRECT_URI",
+      "OIDC_POST_LOGOUT_REDIRECT_URI",
+      "SQ_HUB_APPLICATION_ACCESS_URL",
+      "SQ_HUB_MACHINE_CLIENT_ID",
+      "SQ_HUB_MACHINE_CLIENT_SECRET",
+    ]) {
+      expect(source).toContain(`${requiredName}: \${${requiredName}:?set ${requiredName}}`);
+    }
+    expect(source).toContain("sq_platform_production:");
+    expect(source).toContain("name: ${SQ_PLATFORM_PRODUCTION_NETWORK:?set SQ_PLATFORM_PRODUCTION_NETWORK}");
+    expect(source).toContain("hcis-api-production");
+  });
+
   it("verifier checks full parity without requesting device commands", async () => {
     const source = await readFile(verifyUrl, "utf8");
     expect(source).toContain("physical_parity_table_count");

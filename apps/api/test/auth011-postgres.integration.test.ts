@@ -332,3 +332,159 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await auth.getAuthorizationContext(actors.get("legacy")!.principal)).organizationPermissions).toEqual([...ADMIN_PERMISSIONS]);
   });
 });
+
+const migrationCompatibilitySchema = `auth011_migration_${randomUUID().replaceAll("-", "")}`;
+const governanceRoleId = "10000000-0000-4000-8000-000000000006";
+const humanCapitalAdminRoleId = "f0d1fad8-bbbf-49b8-a42f-f534ce14da27";
+const sensitiveDevicePermissions = [
+  "attendance.devices.read",
+  "attendance.devices.configure",
+  "attendance.devices.operate",
+  "attendance.devices.export",
+  "attendance.devices.destructive",
+  "attendance.devices.firmware",
+  "attendance.devices.biometrics",
+];
+
+describe.skipIf(!databaseUrl)("AUTH-011 migration 0045 production compatibility", () => {
+  let pool: Pool;
+  let control: Pool;
+  let migrationSql: string;
+  let governanceAssignmentId: string;
+  let ordinaryHumanCapitalPermissions: string[];
+
+  beforeAll(async () => {
+    const url = new URL(databaseUrl!);
+    if (url.hostname !== "127.0.0.1" || url.pathname !== "/hcis_auth011_permissions_test") {
+      throw new Error("AUTH-011 migration integration requires an isolated loopback hcis_auth011_permissions_test database");
+    }
+
+    control = new Pool({ connectionString: databaseUrl });
+    await control.query(`CREATE SCHEMA ${migrationCompatibilitySchema}`);
+    pool = new Pool({ connectionString: databaseUrl, options: `-c search_path=${migrationCompatibilitySchema},public` });
+
+    const migrations = new URL("../migrations/", import.meta.url);
+    const files = (await readdir(migrations)).filter((name) => name.endsWith(".sql")).sort();
+    const priorMigrations = files.filter((name) => name < "0045_hcis_human_capital_admin.sql");
+    for (const file of priorMigrations) {
+      await pool.query(await readFile(new URL(file, migrations), "utf8"));
+    }
+    migrationSql = await readFile(new URL("0045_hcis_human_capital_admin.sql", migrations), "utf8");
+    await pool.query(`CREATE TABLE schema_migrations (
+      name text PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
+    )`);
+    await pool.query("INSERT INTO schema_migrations(name) SELECT unnest($1::text[])", [priorMigrations]);
+
+    // Production retained this role from the historical 0023_leave_approval_principals.sql migration,
+    // whose source commit is not an ancestor of the current main migration chain.
+    await pool.query(
+      "INSERT INTO permissions(permission_key,description) VALUES('leave.governance.approve','Synthetic historical permission')",
+    );
+    await pool.query(
+      `INSERT INTO roles(id,role_key,name,description,is_system)
+       VALUES($1,'governance_leave_approver','Governance Leave Approver','Synthetic historical role',true)`,
+      [governanceRoleId],
+    );
+    await pool.query(
+      "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'leave.governance.approve')",
+      [governanceRoleId],
+    );
+
+    const employeeId = randomUUID();
+    const accountId = randomUUID();
+    governanceAssignmentId = randomUUID();
+    await pool.query(
+      "INSERT INTO employees(id,employee_number,full_name,status) VALUES($1,$2,'Synthetic Governance Assignee','active')",
+      [employeeId, `AUTH011-MIGRATION-${employeeId}`],
+    );
+    await pool.query(
+      "INSERT INTO accounts(id,employee_id,email,principal_type,status) VALUES($1,$2,$3,'EMPLOYEE','active')",
+      [accountId, employeeId, `${accountId}@example.invalid`],
+    );
+    await pool.query(
+      `INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,reason)
+       VALUES($1,$2,$3,'organization','Synthetic pre-0045 governance assignment')`,
+      [governanceAssignmentId, accountId, governanceRoleId],
+    );
+    ordinaryHumanCapitalPermissions = (
+      await pool.query<{ permissionKey: string }>(
+        `SELECT permission_key AS "permissionKey" FROM role_permissions
+         WHERE role_id=(SELECT id FROM roles WHERE role_key='human_capital') ORDER BY permission_key`,
+      )
+    ).rows.map((row) => row.permissionKey);
+  }, 60000);
+
+  afterAll(async () => {
+    await pool?.end();
+    if (control) {
+      await control.query(`DROP SCHEMA ${migrationCompatibilitySchema} CASCADE`);
+      await control.end();
+    }
+  });
+
+  async function runPending0045() {
+    const recorded = await pool.query(
+      "SELECT 1 FROM schema_migrations WHERE name='0045_hcis_human_capital_admin.sql'",
+    );
+    if (recorded.rowCount) return;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(migrationSql);
+      await client.query("INSERT INTO schema_migrations(name) VALUES('0045_hcis_human_capital_admin.sql')");
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  it("preserves the existing governance role and assignment while applying 0045 exactly once", async () => {
+    expect(
+      (await pool.query("SELECT id FROM roles WHERE role_key='governance_leave_approver'")).rows,
+    ).toEqual([{ id: governanceRoleId }]);
+
+    await runPending0045();
+    await runPending0045();
+
+    expect(
+      (await pool.query("SELECT id FROM roles WHERE role_key='governance_leave_approver'")).rows,
+    ).toEqual([{ id: governanceRoleId }]);
+    expect(
+      (await pool.query("SELECT id,role_id FROM account_role_assignments WHERE id=$1", [governanceAssignmentId])).rows,
+    ).toEqual([{ id: governanceAssignmentId, role_id: governanceRoleId }]);
+    expect(
+      (await pool.query("SELECT id FROM roles WHERE role_key='human_capital_admin'")).rows,
+    ).toEqual([{ id: humanCapitalAdminRoleId }]);
+
+    const adminPermissions = (
+      await pool.query<{ permissionKey: string }>(
+        `SELECT permission_key AS "permissionKey" FROM role_permissions
+         WHERE role_id=$1 ORDER BY permission_key`,
+        [humanCapitalAdminRoleId],
+      )
+    ).rows.map((row) => row.permissionKey);
+    expect(adminPermissions).toEqual([...HC_ADMIN_PERMISSIONS].sort());
+    expect(adminPermissions.filter((permission) => sensitiveDevicePermissions.includes(permission))).toEqual([]);
+    expect(adminPermissions.filter((permission) => [
+      "leave.approve", "leave.hc.approve", "leave.governance.approve",
+    ].includes(permission))).toEqual([]);
+
+    expect(
+      (
+        await pool.query<{ permissionKey: string }>(
+          `SELECT permission_key AS "permissionKey" FROM role_permissions
+           WHERE role_id=(SELECT id FROM roles WHERE role_key='human_capital') ORDER BY permission_key`,
+        )
+      ).rows.map((row) => row.permissionKey),
+    ).toEqual(ordinaryHumanCapitalPermissions);
+    expect(
+      (await pool.query(
+        "SELECT count(*)::int AS count FROM schema_migrations WHERE name='0045_hcis_human_capital_admin.sql'",
+      )).rows,
+    ).toEqual([{ count: 1 }]);
+  }, 60000);
+});

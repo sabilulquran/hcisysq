@@ -18,7 +18,7 @@ INSERT INTO permissions (permission_key, description) VALUES
 ON CONFLICT (permission_key) DO NOTHING;
 
 INSERT INTO roles (id, role_key, name, description, is_system) VALUES
-  ('10000000-0000-4000-8000-000000000006', 'human_capital_admin', 'Human Capital Administrator',
+  ('f0d1fad8-bbbf-49b8-a42f-f534ce14da27', 'human_capital_admin', 'Human Capital Administrator',
    'HCIS domain administration; explicit organization scope. Excludes technical and approval authority.', true)
 ON CONFLICT (role_key) DO NOTHING;
 

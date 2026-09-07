@@ -124,6 +124,7 @@ export function landingPath(
   session: AuthSession,
 ): "/app" | "/admin" | "/board" {
   if (session.principal.principalType === "FOUNDATION_BOARD") return "/board";
+  if (session.principal.principalType === "EMPLOYEE") return "/app";
   if (canAccessAdminPath(session, "/admin")) return "/admin";
   return "/app";
 }

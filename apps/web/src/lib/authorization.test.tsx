@@ -15,7 +15,7 @@ const hcAdmin = ["employees.manage", "organization.manage", "access.manage", "ac
 describe("AUTH-011 backend-derived admin navigation", () => {
   it("shows intended HC admin surfaces in both desktop and compact menus", () => {
     const actor = session("EMPLOYEE", hcAdmin);
-    expect(landingPath(actor)).toBe("/admin");
+    expect(landingPath(actor)).toBe("/app");
     for (const compact of [false, true]) {
       const html = renderToStaticMarkup(<AdminNavigation active="overview" session={actor} compact={compact} />);
       for (const path of ["/admin/employees", "/admin/organization", "/admin/access", "/admin/attendance", "/admin/payslips", "/admin/leave"]) {
@@ -47,5 +47,16 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(renderToStaticMarkup(<AdminNavigation active="overview" session={legacy} />)).toContain('href="/admin/attendance/devices"');
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/biometrics")).toBe(true);
     expect(canAccessAdminPath(legacy, "/admin/unknown")).toBe(false);
+  });
+});
+
+describe("default landing by principal persona", () => {
+  it.each([
+    ["Foundation Board", session("FOUNDATION_BOARD", hcAdmin), "/board"],
+    ["ordinary employee", session("EMPLOYEE", []), "/app"],
+    ["employee with admin capability", session("EMPLOYEE", hcAdmin), "/app"],
+    ["non-Employee with admin capability", session("SUPER_ADMIN", hcAdmin), "/admin"],
+  ] as const)("lands %s at the expected path", (_label, actor, expected) => {
+    expect(landingPath(actor)).toBe(expected);
   });
 });

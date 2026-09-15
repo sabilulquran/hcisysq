@@ -1,13 +1,13 @@
 # Product Scope
 
-**Status:** ACCEPTED — MVP COMPLETE, POST-MVP PLANNING ACTIVE  
-**Updated:** 2026-08-22
+**Status:** ACCEPTED — MVP COMPLETE, POST-MVP OPERATIONAL VALIDATION ACTIVE  
+**Updated:** 2026-09-15
 
 ## Sequencing principle
 
 HCIS is built through vertical slices rather than by creating every screen first. Each slice must include the relevant UI, API, domain rules, permissions, audit, tests, and minimum operational behavior.
 
-Detailed MVP scope is defined in `docs/product/mvp.md`. Final MVP evidence is frozen in `docs/product/mvp-release-checkpoint.md`.
+Detailed MVP scope is defined in `docs/product/mvp.md`. Final MVP evidence is frozen in `docs/product/mvp-release-checkpoint.md`. Those documents are historical verification checkpoints; current deployment/pilot readiness is tracked separately in `docs/development/hcis-operational-readiness.md`.
 
 ## Verified MVP foundation
 
@@ -98,9 +98,9 @@ Reimbursement is not part of the completed MVP.
 
 `/board` is an aggregate-first, read-only governance dashboard. Browser UAT verified that Foundation Board cannot cross into employee/admin principal areas and does not receive personal payslip access.
 
-# Immediate post-MVP design priority: ORG-004 Dynamic Organization Foundation
+# Immediate post-MVP operational priority: ORG-004 Dynamic Organization Foundation
 
-Before broad employee-account activation or deeper feature expansion, HCIS should evolve the current explicit organization mapping into a modular, effective-dated structure model.
+Before broad employee-account activation or deeper feature expansion, HCIS must operationally validate the implemented modular, effective-dated organization structure model for a controlled pilot.
 
 Design baseline:
 
@@ -162,25 +162,26 @@ Social Staff -> Director
 
 The vacant seat remains in the organization structure; the resolver climbs according to configured vacancy policy.
 
-ORG-004 is a **planned successor** to the verified MVP current-state organization model. It is not current runtime behavior yet. Migration must preserve all existing approval snapshots.
+ORG-004 is the **implemented successor** to the verified MVP current-state organization model, but it is not automatically active. Migration and deployment must preserve all existing approval snapshots. Rollout remains explicitly controlled through `LEGACY -> SHADOW -> STRUCTURE`.
 
-## Why ORG-004 comes before broad real-user approval testing
+## Why ORG-004 validation comes before broad real-user approval testing
 
-The completed MVP already proves the technical approval engine with synthetic data. The next important operational proof is that imported real employee identities can participate in a real organization-driven approval chain.
+The completed MVP already proves the technical approval engine with synthetic data. The next important operational proof is that authoritative employee identities can participate in a reviewed organization-driven approval chain without weakening access boundaries.
 
-Activating many employee accounts while normal reporting still depends on repetitive employee-by-employee manager setup would validate a model that is already planned to evolve.
+Activating many employee accounts before one selected unit passes structure, authority, SHADOW, access, restore, and rollback gates would expand risk before the operating model is proven.
 
 Recommended sequence:
 
 ```text
 MVP COMPLETE
-  -> finalize ORG-004 organization model
-  -> implement structure read/visualization
-  -> configure/validate real YSQ structure
-  -> shadow-compare structural resolver with current explicit resolver
-  -> controlled activation for selected units/personas
-  -> real employee approval-chain verification
-  -> deeper feature-by-feature product refinement
+  -> ORG-004 implementation/deployment baseline
+  -> Human Capital selects one pilot unit
+  -> configure/validate authoritative structure as DRAFT
+  -> SHADOW-compare structural resolver with current explicit resolver
+  -> positive/negative access UAT
+  -> controlled STRUCTURE canary after approval
+  -> monitor + rollback readiness
+  -> only then consider broader activation
 ```
 
 ## Other post-MVP target modules
@@ -230,34 +231,40 @@ After organization/pilot readiness is stable, candidate modules include:
 - Cross-principal authorization passed browser UAT.
 - Final verified application SHA is recorded in `docs/product/mvp-release-checkpoint.md`.
 
-## Organization foundation ready — IMPLEMENTED LOCALLY, OPERATIONAL VALIDATION PENDING
+## Organization foundation ready — IMPLEMENTED/DEPLOYED BASELINE OBSERVED; OPERATIONAL VALIDATION PENDING
+
+Repository main contains the ORG-004 data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage.
+
+The supplied Codex Local audit dated 2026-09-15 reports that the inspected VPS is on the same main SHA, required schema is installed, and `organization_rollout_settings` contains zero rows. By contract, absence of rollout configuration means `LEGACY`. This is evidence of deployed software/schema with the safe rollout mode, **not** evidence that the real YSQ structure is configured, SHADOW-comparable, or pilot-validated.
 
 Before structure-driven approval is activated for real pilot users:
 
-- ORG-004 data model is implemented without rewriting existing snapshots;
-- current YSQ structure is represented as nodes/positions/memberships/incumbencies;
-- acting and vacancy behavior have automated tests;
+- Human Capital explicitly selects one pilot unit and participants from authoritative data;
+- current structure is represented as nodes/positions/memberships/incumbencies without inferring authority from job titles;
+- acting and vacancy behavior remain covered by automated tests and are reviewed if used by the pilot;
 - organization cycles and invalid effective-date overlaps are rejected;
-- Organization Designer can preview structure and resolved approval chains;
-- shadow resolution can compare ORG-004 results with current explicit mapping;
-- Director governance rule resolves Secretary as approver and Chair as post-approval notification recipient;
-- one-level-above post-final-approval line/governance notification is verified;
+- Organization Designer validates the selected DRAFT and approval-chain preview;
+- SHADOW resolution compares ORG-004 results with current explicit mapping;
+- Director governance and one-level-above oversight rules are tested only when relevant to the pilot scope;
 - structure-derived authority remains constrained by backend RBAC;
-- selected real organization configuration is reviewed before activation.
+- selected real configuration and access are reviewed before STRUCTURE activation.
 
-The canonical history now contains the ORG-004 data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage. The phased operational gate is documented in `docs/development/org004-operational-validation.md`. ORG-004 remains **not deployed** and **not production validated**. The real YSQ structure, SHADOW comparison evidence, selected-unit activation approval, and real-principal capability review remain operational prerequisites rather than completed claims.
+The phased operational gate is documented in `docs/development/org004-operational-validation.md` and the one-unit decision form in `docs/development/org004-pilot-unit-validation.md`.
 
 ## Pilot ready — PENDING
 
-MVP complete does not automatically mean Pilot Ready. Before pilot:
+MVP complete and deployed ORG-004 code do not automatically mean Pilot Ready. Before pilot:
 
-- define staging/pilot data policy (synthetic or sanitized/approved real configuration);
-- perform a backup **and restore drill**, not only backup creation;
-- ensure minimum observability and incident/rollback paths exist;
-- define pilot users/personas and operational scope;
-- validate the organization setup used by the pilot (manager, authority, role/scope, calendar);
-- review security/operational assumptions for any real data used by the pilot;
-- decide whether password recovery and production notification delivery are required for the selected pilot population or whether documented administrative/manual fallback is acceptable.
+- select one unit/persona set and document the data-use boundary;
+- validate manager, approver, acting authority, role/scope, and calendar for that pilot;
+- complete LEGACY baseline and SHADOW comparison with zero unexplained mismatch;
+- execute positive/negative access UAT from `docs/testing/hcis-pilot-uat.md`;
+- perform a backup **and isolated restore drill**, not only backup creation;
+- assign minimum observability, incident, stop, and rollback ownership;
+- keep biometric collection OFF unless separately approved;
+- separate passive device verification from any explicitly approved active hardware canary;
+- decide whether password recovery and production notification delivery are required for the selected pilot population or whether documented administrative/manual fallback is acceptable;
+- record a human go/no-go decision before STRUCTURE activation/deployment changes.
 
 ## Production ready — PENDING
 

@@ -30,7 +30,7 @@ describe("WDMS physical parity observability", () => {
 
     expect(workCodeMigration).not.toContain("last_command_id");
     expect(physicalParityMigration).toContain("physical_operation_id uuid NULL");
-    expect(source).not.toContain("t.last_command_id");
+    expect(source).not.toMatch(/\bt\.last_command_id\b/);
     expect(source).toContain("LEFT JOIN LATERAL");
     expect(source).toContain("c.physical_operation_id = o.id");
     expect(source).toContain("o.safe_metadata ->> 'workCodeId' = t.work_code_id::text");

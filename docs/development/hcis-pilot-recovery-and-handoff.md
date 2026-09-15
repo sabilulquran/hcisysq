@@ -18,7 +18,7 @@ Codex Local may, subject to normal VPS read authorization:
 
 - confirm exact deployed SHA/image tags and health/readiness;
 - confirm latest migration and `BIOMETRIC_COLLECTION_ENABLED=0`;
-- confirm retired USERINFO safety trigger/control and that verification requests zero commands;
+- confirm retired USERINFO safety control and that verification requests zero commands;
 - inspect device inventory/last-seen, request journal summaries, capability states, operation history, and safe audit/export surfaces;
 - confirm Work Code export returns CSV after the fix and excludes `wire_command`/biometric secrets;
 - reconcile the count and keys of `verified` capability rows with recorded canary evidence;
@@ -38,25 +38,17 @@ Biometric collection remains OFF. Do not enable global/per-device biometric gate
 
 Prerequisites: operational owner approves the backup copy/use, isolated PostgreSQL target exists with network/access controls, enough disk is available, target database name/host cannot be confused with production, and evidence handling excludes personal row contents.
 
-Suggested procedure (adapt credentials/paths only in the approved local/VPS environment):
+Suggested procedure (adapt credentials/paths only in the approved environment):
 
 ```bash
-# 1. Record source backup filename, timestamp and checksum without exposing data.
 sha256sum <approved-backup-file>
-
-# 2. Create a NEW isolated database/cluster. Never reuse the active HCIS database.
 createdb <isolated_restore_db>
-
-# 3. Restore custom-format backup to the isolated target.
 pg_restore --exit-on-error --no-owner --no-privileges --dbname=<isolated_restore_db> <approved-backup-file>
-
-# 4. Point an isolated API process/session only at the restored database.
-# Do not reuse production secrets unnecessarily and do not start external notification/device workers.
-
-# 5. Run migration/integrity/application read checks appropriate to the isolated environment.
+# Point only an isolated API process/session at this database.
+# Keep notification/device workers disabled for the drill.
 ```
 
-Record start/end/duration; backup checksum; PostgreSQL restore exit result; migration table consistency; expected table/index/constraint presence; safe aggregate row counts (not personal values); ability of isolated API to start/read representative synthetic or approved non-sensitive records; and absence of outbound notification/device side effects.
+Record start/end/duration; backup checksum; PostgreSQL restore exit result; migration table consistency; expected table/index/constraint presence; safe aggregate row counts (not personal values); ability of an isolated API to start/read representative synthetic or approved non-sensitive records; and absence of outbound notification/device side effects.
 
 **Failure handling:** preserve logs with secrets/PII redacted, stop the isolated app, do not retry against production, classify whether backup corruption/version/storage/config caused the failure, and escalate to operations owner. A failed drill is NO-GO until resolved/repeated successfully.
 
@@ -66,7 +58,7 @@ Measured drill duration informs RTO discussion but does not set an RTO automatic
 
 ## Monitoring and incident ownership
 
-Before pilot, name owners for: application health, database/storage, access/auth, organization/approval workflow, device integration if in scope, and operational decision/escalation. Define who may stop the pilot and who may approve rollback/deployment.
+Before pilot, name owners for application health, database/storage, access/auth, organization/approval workflow, device integration if in scope, and operational decision/escalation. Define who may stop the pilot and who may approve rollback/deployment.
 
 Minimum monitor set during pilot: API/Web/DB health; readiness; HTTP error/auth-denial anomalies; DB/storage capacity; queue/outbox backlog if used; failed approval resolution; audit stream for privileged changes; device last-seen/ingress if attendance device is in pilot. Do not log private payloads merely for observability.
 
@@ -74,65 +66,86 @@ Stop pilot on privacy/authorization breach, wrong approval routing, unexplained 
 
 ## Codex Local handoff — Task 7
 
-### Repositories / branches / PRs
+### Repository, branches, commits, PRs
 
 - Canonical repository: `sabilulquran/hcisysq`.
 - Baseline main: `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`.
 - Bug branch: `fix/hcis-operational-readiness`.
-- Bug commit: `ba9732d89c0461baa296579b77c734f5ae4ef1dd`.
+- Bug implementation commit: `ba9732d89c0461baa296579b77c734f5ae4ef1dd`.
+- Bug test-correction commit after first CI feedback: `948cbc86f4b81df847465ae713fff10de25066a0`.
 - Bug PR: `#55` — Work Code export command lookup.
 - Documentation branch: `docs/hcis-operational-readiness`.
-- Documentation PR/head: use the current head shown by GitHub when checking out this handoff; do not assume this document's baseline SHA is the PR head.
+- Documentation content head verified by GitHub CI before this metadata-only handoff update: `cae3f3fd921e255cc76f96c53f361e81c26f1906`.
+- Documentation PR: `#56` — one-unit operational readiness.
+- For execution, always verify `git rev-parse HEAD` against the current PR head because this file itself may add a later documentation-only commit.
 
-### Changed areas to inspect
+### Changed files to inspect
 
-Bug PR: `apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts`, `apps/api/test/adms-physical-parity-observability.test.ts`.
+PR #55:
 
-Documentation PR: `AGENTS.md`, AI workflow/transfer notes, this operational-status package, ORG-004 pilot form, and UAT plan.
+- `apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts`
+- `apps/api/test/adms-physical-parity-observability.test.ts`
 
-### Local verification commands
+PR #56:
 
-Use a clean checkout and synthetic disposable PostgreSQL databases. Follow package scripts rather than inventing weaker gates:
+- `AGENTS.md`
+- `docs/development/ai-assisted-workflow.md`
+- `docs/development/github-org-transfer-readiness.md`
+- `docs/development/hcis-operational-readiness.md`
+- `docs/development/hcis-pilot-recovery-and-handoff.md`
+- `docs/development/org004-pilot-unit-validation.md`
+- `docs/product/feature-parity.yaml`
+- `docs/product/scope.md`
+- `docs/testing/hcis-pilot-uat.md`
+
+### Local verification and prerequisites
+
+Use a clean checkout, Node version required by repository/CI, PostgreSQL 16, and empty disposable loopback databases. Synthetic data only.
 
 ```bash
 npm ci
+npm run migrate:api
 npm run typecheck
 npm run lint
 npm run test
 npm run build
+node apps/api/scripts/rehearse-org004-upgrade.mjs
+node apps/api/scripts/rehearse-wave2-upgrade.mjs
+node apps/api/scripts/rehearse-wave2-userinfo-upgrade.mjs
+node apps/api/scripts/rehearse-wave2-user-correction-upgrade.mjs
 ```
 
-For migration/integration gates, follow `docs/testing/AUTH-011-verification.md`, ORG-004 runbook, and repository scripts. Use empty disposable loopback databases; never use a production dump as a general development fixture.
+For AUTH-011 PostgreSQL coverage, reproduce the documented setup in `docs/testing/AUTH-011-verification.md` with two empty loopback databases named `hcis_auth011_test` and `hcis_auth011_permissions_test` (or the exact names enforced by the test), set `DATABASE_URL` and `HCIS_AUTH011_TEST_DATABASE_URL`, migrate, then run the full gates. Do not point these variables at production.
 
 Targeted Work Code regression expectations:
 
 - all migrations apply to a fresh synthetic database;
-- export query no longer references `attendance_adms_work_code_targets.last_command_id`;
-- a synthetic Work Code target with no physical operation exports an empty `last_command_id` rather than erroring;
-- after a synthetic physical Work Code operation/command is present, export reports that latest related command ID;
-- an unrelated device/work-code operation is not selected;
+- export query does not read `attendance_adms_work_code_targets.last_command_id`;
+- a synthetic Work Code target with no physical operation exports an empty `last_command_id` rather than SQL error;
+- after a synthetic physical Work Code operation/command exists, export reports the latest related command ID;
+- unrelated device/work-code operations are not selected;
 - route still requires `attendance.devices.export`;
 - output contains no wire command or biometric secret fields.
 
-If repository integration tooling makes it practical, add/execute a real PostgreSQL route test rather than relying only on the static regression test; do not weaken existing tests to make the branch pass.
+The repository regression in PR #55 is a schema/query contract test. If local tooling permits, add/run a PostgreSQL route-level regression for the two data cases above; do not weaken existing authorization or safety tests.
 
 ### VPS read-only verification
 
 After local/CI review and only with authorized VPS access:
 
 ```bash
-./scripts/verify-vps.sh <EXPECTED_MAIN_SHA>
+./scripts/verify-vps.sh <EXPECTED_DEPLOYED_SHA>
 ```
 
-Use it only for the actually deployed approved SHA. Confirm its result records `verification_device_commands_requested=0`. Supplement with read-only SQL/API inspection for rollout mode, capability keys/evidence, backup inventory, health, and safe Work Code export as appropriate. Do not execute active physical routes during this phase.
+Use the actually deployed approved SHA. Confirm the result records `verification_device_commands_requested=0`. Supplement with read-only SQL/API inspection for rollout mode, capability keys/evidence, backup inventory, health, and safe Work Code export as appropriate. Do not execute active physical routes during this phase.
 
-### State-changing steps — require separate approval
+### State-changing steps — separate approval required
 
 - merge PR;
-- deploy/recreate application containers or apply a new application SHA;
+- deploy/recreate containers or apply a new SHA;
 - create/modify role assignments or accounts;
 - create/publish organization structure or change LEGACY/SHADOW/STRUCTURE rollout;
-- restore a backup (even to isolated DB) until environment/data-use approval exists;
+- restore a backup, even to isolated DB, until environment/data-use approval exists;
 - send external notifications;
 - request any device command;
 - enable biometric collection.

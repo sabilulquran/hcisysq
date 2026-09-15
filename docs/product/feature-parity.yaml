@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-09-02
+updated_at: 2026-09-15
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -21,7 +21,7 @@ rules:
   - MVP scope is defined in docs/product/mvp.md.
   - MVP verification evidence is frozen in docs/product/mvp-release-checkpoint.md.
   - A verified MVP feature does not imply full legacy parity or production cutover readiness.
-  - ORG-004 is an accepted post-MVP design direction and must not be treated as current runtime behavior until explicitly implemented and activated.
+  - ORG-004 implementation/deployment does not imply activation; rollout remains LEGACY until explicitly configured and must pass SHADOW and pilot validation before STRUCTURE.
 
 features:
   - id: AUTH-001
@@ -95,7 +95,7 @@ features:
     target_status: verified
     priority: foundation
     risk: high
-    mvp_note: Verified MVP uses explicit current Direct Manager and Unit Approver relationships; ORG-004 is the planned successor for modular structure-driven administration.
+    mvp_note: Verified MVP uses explicit current Direct Manager and Unit Approver relationships; ORG-004 is the implemented successor but remains explicitly rollout-gated.
     docs:
       - docs/domain/organization-access-foundation.md
       - docs/domain/organization-mapping.md
@@ -104,16 +104,18 @@ features:
     module: organization
     name: Dynamic organization structure and authority resolution
     legacy_evidence: YSQ organization, leadership layers, vacancies, acting responsibility, and approval authority can change over time
-    target_status: planned
+    target_status: implemented
     priority: immediate-post-mvp-foundation
     risk: critical
-    planning_note: Structure changes must become effective-dated configuration data rather than source-code rules or repetitive employee-by-employee manager maintenance.
+    planning_note: Repository implementation exists and the supplied 2026-09-15 VPS audit reports the code/schema installed at the inspected main SHA. Zero rollout rows means LEGACY remains authoritative. Real structure selection, SHADOW comparison, access review, STRUCTURE activation, and pilot UAT remain unverified operational gates.
     docs:
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
       - docs/domain/workflows/approval-engine.md
       - docs/domain/access-model.md
       - docs/product/scope.md
+      - docs/development/org004-operational-validation.md
+      - docs/development/org004-pilot-unit-validation.md
 
   - id: AUTH-010
     module: authorization
@@ -173,7 +175,7 @@ features:
     target_status: implementing
     priority: core
     risk: critical
-    planning_note: Packages 1-3 established and production-verified the HCIS device plane, recovery, Admin operations, encrypted biometric control plane, and safe HCIS-side catalogs. ATT-005 remains implementing because the accepted parity contract also requires physical Work Code/message delivery, supported configuration/time sync/reboot, guarded maintenance, attendance-photo handling, and biometric query/backup/restore/distribution/enrollment/delete where the device protocol supports them. Full parity must use typed documented commands plus physical canary evidence; active USERINFO reads stay retired and no arbitrary command escape hatch is permitted.
+    planning_note: Packages 1-3 established the HCIS device plane, recovery, Admin operations, encrypted biometric control plane, safe catalogs, and typed physical parity implementation. The supplied 2026-09-15 VPS audit reports three capability rows in state verified, but does not identify enough row-level evidence here to close any specific ledger row. ATT-005 therefore remains implementing. Physical functions require one-capability-at-a-time evidence; BIOMETRIC_COLLECTION_ENABLED remains OFF, active USERINFO reads stay retired, and no arbitrary command escape hatch is permitted.
     docs:
       - docs/domain/attendance-wdms-device-parity.md
       - docs/domain/attendance-wdms-implementation-plan.md
@@ -184,6 +186,7 @@ features:
       - docs/domain/attendance-adms-ingress.md
       - docs/domain/attendance-adms-projection.md
       - docs/domain/attendance-adms-admin.md
+      - docs/domain/attendance-wdms-full-physical-parity-ledger.md
 
   - id: LEAVE-001
     module: leave
@@ -192,7 +195,7 @@ features:
     target_status: verified
     priority: first-slice
     risk: high
-    mvp_note: Current MVP line approval is verified; ORG-004 plans structure-driven authority resolution plus one-level-above notification after final approval.
+    mvp_note: Current MVP line approval is verified; ORG-004 structure-driven authority resolution remains rollout-gated and must preserve snapshot semantics.
     docs:
       - docs/domain/workflows/leave-request.md
       - docs/domain/annual-leave-vertical-slice.md

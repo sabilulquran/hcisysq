@@ -17,7 +17,7 @@ Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification
 
 ## 2. Canonical repository
 
-`imadjinasi/hcisysq` adalah satu-satunya repository development canonical.
+`sabilulquran/hcisysq` adalah repository development canonical yang teramati setelah transfer GitHub. Repository lama `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut. Perubahan canonical ini hanya mendokumentasikan transfer repository yang sudah terjadi; **bukan** bukti bahwa package GHCR, deployment target, secret, atau runtime production ikut berpindah.
 
 - Frontend canonical: `apps/web`.
 - Target API: `apps/api`.
@@ -25,6 +25,8 @@ Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification
 - Shared contracts: `packages/contracts` ketika dibutuhkan.
 
 `imadjinasi/hcis-ysq-foundation` adalah design/reference archive. Jangan membuat fitur baru di sana dan jangan merge history repository tersebut ke canonical repo.
+
+Untuk batas repository-transfer vs runtime/GHCR, lihat `docs/development/github-org-transfer-readiness.md`.
 
 ## 3. Documentation first
 

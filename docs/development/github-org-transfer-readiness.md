@@ -1,118 +1,46 @@
-# GitHub Organization Transfer Readiness
+# GitHub Organization Transfer — Observed State and Runtime Boundary
 
-**Status:** READINESS RUNBOOK  
-**Current repository:** `imadjinasi/hcisysq`  
-**Planned canonical repository:** `sabilulquran/hcisysq`
+**Status:** REPOSITORY TRANSFER OBSERVED; RUNTIME/GHCR MIGRATION NOT IMPLIED  
+**Canonical repository:** `sabilulquran/hcisysq`  
+**Historical repository:** `imadjinasi/hcisysq` (redirect observed through GitHub)
 
-This runbook prepares the repository for a manual GitHub organization transfer without changing the running HCIS environments during the transfer itself.
+## Why this document changed
 
-## Invariants
+The earlier readiness runbook described `imadjinasi/hcisysq` as current and `sabilulquran/hcisysq` as planned. On 2026-09-15, repository inspection through GitHub showed the active repository at `sabilulquran/hcisysq`; a request for the old repository returned a permanent redirect. This is repository-level evidence that the transfer has occurred.
 
-The transfer must preserve all of these invariants:
+This documentation update records that observed transfer. It does **not** claim that organization-owned GHCR packages, Actions permissions, deployment credentials, VPS remotes, or running workloads were migrated merely because the repository moved.
 
-- repository name remains exactly `hcisysq`;
-- repository visibility remains **PUBLIC**;
+## Preserved invariants
+
+- repository name remains `hcisysq`;
 - default branch remains `main`;
-- no production, staging, or VPS runtime change is part of the repository transfer;
-- no production/staging secrets or environment values are changed as part of the transfer;
-- existing runtime image references remain on the currently proven personal GHCR namespace until organization-owned packages are published and verified separately.
+- no production/staging secret or runtime change is authorized by this documentation;
+- existing runtime image references remain on the proven personal GHCR namespace until organization-owned publication and consumption are independently verified;
+- production deployment remains a separate human-approved exact-SHA operation.
 
-## Repository transfer and GHCR are separate changes
+## Repository transfer and GHCR remain separate
 
-Transferring `imadjinasi/hcisysq` to `sabilulquran/hcisysq` changes the GitHub repository owner. It must not be treated as proof that the existing GHCR packages have moved with the repository.
-
-The current runtime defaults intentionally remain on:
+Current deployment documentation still uses the proven runtime package namespace:
 
 - `ghcr.io/imadjinasi/hcisysq-api`
 - `ghcr.io/imadjinasi/hcisysq-web`
 
-Do not change `infra/docker-compose.staging.yml`, the VPS deploy defaults, or any running environment to `ghcr.io/sabilulquran/...` during transfer readiness.
+Do not change those runtime defaults merely because the GitHub repository owner changed. A later reviewed runtime-migration change may switch namespaces only after exact-SHA API and Web packages in the organization namespace are published and independently verified.
 
-The publisher workflow is owner-aware so that, after the repository is transferred, a new workflow run targets:
+## Post-transfer evidence still required before runtime migration
 
-- `ghcr.io/${{ github.repository_owner }}/hcisysq-api`
-- `ghcr.io/${{ github.repository_owner }}/hcisysq-web`
+Record evidence for:
 
-Published OCI metadata must identify the repository that executed the workflow through:
+1. repository owner/name/default branch and expected `main` SHA;
+2. required branches and PR behavior;
+3. GitHub App/integration access under organization policy;
+4. required Actions workflows and permissions;
+5. successful exact-SHA publication of both API and Web images in `ghcr.io/sabilulquran/...`;
+6. OCI source metadata pointing at the organization repository;
+7. an explicitly reviewed decision to change staging/production runtime image targets.
 
-```text
-org.opencontainers.image.source=https://github.com/${{ github.repository }}
-```
+If any of 3–6 are not proven, keep runtime on the existing proven namespace. Repository transfer success is not runtime-migration approval.
 
-## Pre-transfer checklist
+## Historical checkpoint
 
-Before the manual transfer:
-
-- [ ] readiness PR is reviewed, CI is green, and the approved readiness change is merged to `main`;
-- [ ] `main` has no unreviewed concurrent hotfix or release work;
-- [ ] no GitHub Actions workflow is queued or in progress;
-- [ ] repository is still PUBLIC;
-- [ ] repository name is still `hcisysq`;
-- [ ] production and staging are healthy on their already-proven image namespace;
-- [ ] no runtime image, environment, or secret change is bundled with the transfer.
-
-Do not transfer while a release/deploy workflow or hotfix is in flight.
-
-## Manual transfer
-
-The repository transfer itself is an explicit GitHub administration action. Transfer the repository to the `sabilulquran` organization while keeping the repository name `hcisysq` and visibility PUBLIC.
-
-The expected canonical repository after the transfer is:
-
-```text
-https://github.com/sabilulquran/hcisysq
-```
-
-Fresh clones should use that URL only after the transfer has completed. Existing checkouts should update their `origin` URL only after the new canonical repository is confirmed.
-
-## Deployment freeze after transfer
-
-After the repository transfer, freeze deployment of any **new SHA** until organization-owned GHCR publishing has been proven.
-
-During this freeze:
-
-- existing production/staging workloads remain on the already-proven personal GHCR packages;
-- do not point production or staging at `ghcr.io/sabilulquran/...`;
-- do not change `scripts/deploy-vps.sh` GHCR defaults merely because the repository owner changed;
-- do not infer package readiness from repository transfer success.
-
-The freeze ends only after an exact-SHA API image and exact-SHA Web image have both been published successfully in the organization namespace and verified.
-
-## Post-transfer verification
-
-Verify the following before ending the repository-transfer maintenance window:
-
-1. **Repository identity**
-   - owner is `sabilulquran`;
-   - name is `hcisysq`;
-   - canonical URL is `https://github.com/sabilulquran/hcisysq`.
-2. **Visibility**
-   - repository remains PUBLIC.
-3. **Default branch**
-   - default branch remains `main`;
-   - expected `main` SHA is present.
-4. **Branches and pull requests**
-   - required branches are present;
-   - open PR state is preserved;
-   - no unexpected branch or PR disappeared during transfer.
-5. **GitHub App/integration permissions**
-   - required GitHub Apps and repository integrations still have access in the organization;
-   - organization policy has not silently removed permissions needed by automation.
-6. **GitHub Actions**
-   - workflow files are present and enabled;
-   - required Actions permissions/policies allow the validation workflows to run;
-   - repository `GITHUB_TOKEN` can perform the permissions declared by each workflow.
-7. **Organization GHCR publisher**
-   - manually run the image publisher for a reviewed exact SHA after transfer;
-   - confirm API publishes as `ghcr.io/sabilulquran/hcisysq-api:sha-<SHA>`;
-   - confirm Web publishes as `ghcr.io/sabilulquran/hcisysq-web:sha-<SHA>`;
-   - confirm both package/image publications succeeded;
-   - confirm OCI source metadata points to `https://github.com/sabilulquran/hcisysq`.
-
-If organization package publishing fails, keep the deployment freeze in place and keep runtime on the existing personal GHCR namespace.
-
-## Runtime migration is a later change
-
-Only after organization GHCR publishing is proven should a separate, reviewed runtime-migration change consider switching staging/production image targets to `ghcr.io/sabilulquran/...`.
-
-That later change must use the normal branch -> PR -> CI -> approval -> merge -> controlled deploy/verify process. It is intentionally outside this repository-transfer readiness work.
+The pre-transfer checklist and freeze logic from the earlier runbook remain historical evidence of the intended transfer procedure. They must not be read as current proof that package publishing or VPS configuration changed. The current-state correction in this file is documentation-only.

@@ -4,7 +4,9 @@
 
 ## Goal
 
-Gunakan satu repository canonical (`imadjinasi/hcisysq`) dengan pembagian kerja yang jelas antara implementation owner dan agent lokal yang dapat menjalankan environment/test secara langsung.
+Gunakan satu repository canonical (`sabilulquran/hcisysq`) dengan pembagian kerja yang jelas antara implementation owner dan agent lokal yang dapat menjalankan environment/test secara langsung.
+
+Repository tersebut adalah hasil transfer repository yang sudah teramati. Perubahan nama canonical di dokumentasi tidak memindahkan GHCR package, runtime, secret, atau deployment target; batas itu tetap diatur oleh `github-org-transfer-readiness.md` dan runbook deployment.
 
 ## Current workflow
 
@@ -51,7 +53,7 @@ Do not spend maximum reasoning effort on routine green-path verification.
 ## Prompt contract for Codex Local
 
 ```text
-Repository: imadjinasi/hcisysq
+Repository: sabilulquran/hcisysq
 Branch: <branch>
 Specification ID: <ID>
 Outcome: <expected result>

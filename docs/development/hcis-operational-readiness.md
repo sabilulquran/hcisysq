@@ -25,29 +25,33 @@ Use these labels consistently:
 | Bug | Main baseline contains Work Code export SQL referencing nonexistent `attendance_adms_work_code_targets.last_command_id`. | Fixed in separate code PR; close only after CI + synthetic PostgreSQL export regression + later read-only smoke. |
 | Keputusan masih diperlukan | Pilot unit/participants; real manager/approver/acting authority; operator roles; RPO/RTO; restore-drill environment/data approval; notification/recovery expectations; whether/which active device canaries are required. | Decision owner must record approval and evidence; repository must not guess. |
 
-## Reconciliation of older documents
+## Reconciliation of project documents
 
 ### MVP and scope
 
-`docs/product/mvp.md` and `docs/product/mvp-release-checkpoint.md` are historical acceptance evidence. Do not rewrite those checkpoints to reflect a later deployment.
+`docs/product/mvp.md` and `docs/product/mvp-release-checkpoint.md` remain historical acceptance evidence. They are intentionally not rewritten to imply later production validation.
 
-`docs/product/scope.md` contains an older statement that ORG-004 was “implemented locally” and “not deployed”. The supplied VPS audit states migration `0045_hcis_human_capital_admin.sql` is applied and ORG-004 code/schema is installed at the inspected SHA, while rollout configuration is absent and therefore behavior remains `LEGACY`. For operational decisions, use the distinction:
+`docs/product/scope.md` is updated by this package to replace the stale “implemented locally / not deployed” wording. The current distinction is:
 
 ```text
 software/schema installed != structure configured != rollout activated != pilot validated
 ```
 
-The older wording is retained as a historical sequencing checkpoint until that product document is edited in a focused product-doc review; it must not override this dated operational note.
+The supplied VPS audit states migration `0045_hcis_human_capital_admin.sql` is applied and ORG-004 code/schema is installed at the inspected SHA, while rollout configuration is absent and therefore behavior remains `LEGACY`. Scope now records this as an implemented/deployed baseline with operational validation pending.
 
 ### Feature parity
 
-`docs/product/feature-parity.yaml` still lists ORG-004 as `planned`. Repository inspection and supplied VPS evidence support a more precise operational interpretation: implementation exists, but real structure/activation/UAT are not verified. This package does not relabel it `verified`.
+`docs/product/feature-parity.yaml` is updated from ORG-004 `planned` to `implemented`, not `verified`. Real structure selection, SHADOW comparison, access review, STRUCTURE activation, and pilot UAT remain operational gates.
 
-ATT-005 remains `implementing`. The supplied VPS audit reports three rows in `attendance_adms_physical_capabilities` with state `verified`, but did not identify capability keys/evidence. Therefore no specific physical capability row is marked verified by this package and ATT-005 is not closed.
+ATT-005 remains `implementing`. The supplied VPS audit reports three rows in `attendance_adms_physical_capabilities` with state `verified`, but did not identify capability keys/evidence. Therefore no specific physical capability row is promoted by this package and ATT-005 is not closed.
 
-### Repository transfer
+### AUTH-011
 
-GitHub inspection on 2026-09-15 observed `sabilulquran/hcisysq` as active and the old `imadjinasi/hcisysq` endpoint redirecting. `AGENTS.md`, AI-assisted workflow, and transfer documentation are updated in this package to name the observed canonical repository. This does not change GHCR/runtime ownership; `docs/development/vps-deployment.md` remains the runtime source and keeps the proven personal GHCR namespace until separately verified.
+The accepted AUTH-011 contract and its 2026-09-07 synthetic verification remain the basis for pilot access boundaries. The implementation exists in the inspected main baseline according to repository history/audit evidence, but no real `human_capital_admin` assignment or pilot UAT is inferred. HC administration does not imply leave approval, approval-policy management, or technical attendance-device permissions.
+
+### Repository transfer and deployment
+
+GitHub inspection on 2026-09-15 observed `sabilulquran/hcisysq` as active and the old `imadjinasi/hcisysq` endpoint redirecting. `AGENTS.md`, AI-assisted workflow, and transfer documentation are updated in this package to name the observed canonical repository. This does not change GHCR/runtime ownership; the proven personal GHCR namespace remains a separate deployment concern until organization package publication/consumption is verified and approved.
 
 ## Work package and ownership
 

@@ -1,6 +1,6 @@
 # Leave Policy YSQ
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
+**Status:** VERIFIED MVP BASELINE — ORG-004 CODE/SCHEMA DEPLOYED; STRUCTURE ACTIVATION/PILOT VALIDATION PENDING — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
 **Specification:** LEAVE-003  
 **Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002, ORG-004
 
@@ -10,9 +10,11 @@ This specification translates the current internal `Master Ketentuan Cuti Final 
 
 The source itself states that it remains an internal policy working document that should receive legal review before becoming a final company regulation/SOP. HCIS therefore keeps the policy configurable and does not hardcode legal conclusions outside the approved YSQ rules.
 
-The **implementation behavior** described here has been verified for the MVP. That verification does not convert the underlying working policy source into a legally final regulation.
+The **implementation behavior** described here was verified for the MVP. That verification does not convert the underlying working policy source into a legally final regulation.
 
-ORG-004 introduces a planned organization/authority-resolution extension. Its structural routing and notification rules are system workflow decisions and must not be mistaken for legal conclusions about leave entitlement.
+At the historical MVP checkpoint, ORG-004 was a planned post-MVP organization/authority-resolution extension. Its code/schema are now implemented and deployed at the inspected production baseline, but deployment does not activate structural routing. Codex Local evidence reports no `organization_rollout_settings` rows, so `LEGACY` remains authoritative. Real structure configuration, SHADOW comparison, STRUCTURE activation, and production pilot validation remain pending.
+
+ORG-004 structural routing and notification rules are system workflow decisions and must not be mistaken for legal conclusions about leave entitlement.
 
 ## Human Capital handling
 
@@ -32,9 +34,9 @@ HC_APPROVER
 
 These responsibilities must not be collapsed into one generic `HC approval` step.
 
-## Line approval — verified MVP
+## Line approval — verified MVP / current LEGACY behavior
 
-For leave that needs line approval, the verified MVP uses ORG-002:
+For leave that needs line approval, the verified MVP and current `LEGACY` rollout use ORG-002:
 
 ```text
 DIRECT_MANAGER
@@ -47,9 +49,9 @@ The resolved concrete people are snapshotted at submission according to APR-001.
 
 ## ORG-004 authority resolution
 
-`docs/domain/dynamic-organization-structure.md` defines the accepted post-MVP direction for modular organization structure.
+`docs/domain/dynamic-organization-structure.md` defines the implemented structure-driven organization model.
 
-ORG-004 allows line/governance authority to resolve from when `SHADOW` or `STRUCTURE` is explicitly configured:
+When `SHADOW` or `STRUCTURE` is explicitly configured, ORG-004 can resolve line/governance authority from:
 
 - employee team/node membership;
 - authority-bearing organizational positions;
@@ -65,9 +67,11 @@ Concrete approvers are still snapshotted at submission. A later restructure does
 
 The resolved rollout mode is also snapshotted. `LEGACY` and `SHADOW` preserve the verified routing and produce no ORG-004 oversight notification; only a request submitted in `STRUCTURE` may produce that structural side effect. A later rollout-mode change does not alter an in-flight request.
 
+Current production evidence shows the software/schema is present but rollout remains `LEGACY`; no real-user structural routing is inferred from deployment alone.
+
 ## Post-final-approval structural oversight notification
 
-Accepted workflow rule:
+Implemented ORG-004 workflow rule, active only under a request's snapshotted `STRUCTURE` mode:
 
 > For every leave workflow that contains a line/governance approval stage, once the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
@@ -78,7 +82,7 @@ This notification:
 - is not an additional approval step;
 - does not block the completed request if delivery fails;
 - remains separate from Human Capital notification/validation/approval responsibilities;
-- is resolved through ORG-004 structure/authority configuration.
+- is resolved through ORG-004 structure/authority configuration;
 - applies only when the request's submission snapshot selected `STRUCTURE` mode.
 
 The reference point is the final **line/governance approver**, not automatically the last actor in the whole workflow.
@@ -119,7 +123,7 @@ Existing policy-specific HC notifications remain additive where required.
 
 ## Director governance rule — ORG-004
 
-Accepted operational rule for Director leave:
+Implemented configuration-driven rule, pending real structure configuration and STRUCTURE activation:
 
 ```text
 Director
@@ -133,6 +137,8 @@ Pembina/Foundation Supervisor is not notified by this rule.
 This must be configuration-driven through organizational positions and authority relationships, not title-specific source code.
 
 If YSQ later changes this governance arrangement, future requests should follow the newly effective configuration while existing approval snapshots remain unchanged.
+
+At the historical MVP checkpoint this was a planned ORG-004 rule. The code now implements it, but the inspected production rollout remains `LEGACY` and therefore does not prove the real governance configuration or a production pilot.
 
 ## Leave behavior groups
 
@@ -174,7 +180,7 @@ These notification/validation-only workflows do not automatically enter the ORG-
 
 HC is therefore an actual approver for this leave type, not merely a validator.
 
-For the planned ORG-004 structural oversight notification, the reference point remains the final **line/governance approver** (for example Unit Approver), while HC continues as the policy-required actual approver.
+For ORG-004 structural oversight under `STRUCTURE`, the reference point remains the final **line/governance approver** (for example Unit Approver), while HC continues as the policy-required actual approver.
 
 ### 4. Organization event, not individual leave request
 
@@ -273,7 +279,7 @@ Annual Leave is submitted at least 7 days before the leave starts.
 
 The policy engine must validate this before submission. The exact day-count convention should remain configuration-driven if YSQ later clarifies whether the notice uses calendar days or working days.
 
-### Verified MVP approval flow
+### Verified MVP/current LEGACY approval flow
 
 ```text
 System validation
@@ -295,7 +301,7 @@ System validation includes at minimum:
 
 HC does not manually validate every normal Annual Leave request unless an exception workflow is introduced later.
 
-When ORG-004 is implemented, the concrete Direct Manager/Unit Approver may be structure-derived, but the approval chain is still snapshotted and HC notification remains separate from the planned structural oversight notification.
+When ORG-004 `STRUCTURE` is explicitly activated for a scope, the concrete Direct Manager/Unit Approver may be structure-derived. The approval chain remains snapshotted and HC notification remains separate from structural oversight notification.
 
 ## Education employees
 
@@ -328,7 +334,7 @@ HCIS must keep education/non-education classification explicit; it must not infe
 
 Detailed duration/payroll consequences remain policy data and must not be inferred by the frontend.
 
-## Data model direction implemented by MVP slices
+## Data model direction implemented by MVP and ORG-004
 
 The MVP keeps the policy small and explicit:
 
@@ -359,11 +365,11 @@ Leave requests/slices persist the relevant submission-time facts needed by their
 
 Later organization changes must not rewrite already snapshotted approval chains.
 
-ORG-004 plans to replace direct person-based organization administration with effective-dated structure/position authority for new resolution while preserving this transaction history boundary.
+ORG-004 is now implemented/deployed as the effective-dated structure/position authority successor for new resolution, while current rollout remains `LEGACY`. Real structure configuration and activation are operational work, not source-code assumptions.
 
 ## Verification
 
-Final synthetic browser UAT verified the implemented policy boundaries across:
+Final synthetic browser UAT verified the implemented MVP policy boundaries across:
 
 - Annual Leave: system validation -> Direct Manager -> Unit Approver -> approved -> HC notified;
 - Special Leave: HC administrative validation with encrypted evidence where applicable;
@@ -374,7 +380,7 @@ Final synthetic browser UAT verified the implemented policy boundaries across:
 
 These tests verify HCIS behavior against the working policy baseline. They do not replace the pending legal review of the underlying YSQ policy document.
 
-ORG-004 structural resolution and oversight notification are implemented and covered by isolated automated tests on the implementation branch. They were not part of the completed MVP UAT, are not deployed, and are not production validated.
+ORG-004 structural resolution and oversight notification are implemented and have synthetic automated coverage. Codex Local evidence shows the software/schema is deployed, but real structure configuration, SHADOW, STRUCTURE activation, and production pilot UAT remain unverified.
 
 ## Acceptance criteria
 
@@ -390,11 +396,13 @@ ORG-004 structural resolution and oversight notification are implemented and cov
 - LEAVE-003-H: organization-event leave and attendance dispensation are not modeled as ordinary individual leave requests.
 - LEAVE-003-I: education/non-education classification is explicit and never inferred from title text.
 
-### Planned ORG-004 extension
+### ORG-004 extension — implemented; operational activation pending
 
 - LEAVE-003-J: line/governance authority can be resolved from effective organization structure without title-text inference.
 - LEAVE-003-K: concrete approvers remain snapshotted at submission even when structural resolution is used.
-- LEAVE-003-L: after overall final approval, leave with a line/governance approval stage creates an informational notification intent for one layer above the final line/governance approver.
+- LEAVE-003-L: after overall final approval, leave with a line/governance approval stage creates an informational notification intent for one layer above the final line/governance approver when the request was submitted under `STRUCTURE`.
 - LEAVE-003-M: later HC validation/actual approval does not automatically redefine the structural oversight target.
 - LEAVE-003-N: Director leave resolves Secretary as approver and Chair as post-approval recipient; Pembina is not notified by this rule.
 - LEAVE-003-O: existing HC notification requirements remain separate and additive to the structural oversight notification.
+
+Implementation of these criteria is not evidence that real YSQ structure configuration or production pilot validation has completed.

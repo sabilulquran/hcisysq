@@ -34,16 +34,25 @@ Do not pull the target commit manually before running the deploy script. The scr
 
 The normal deploy mode is `HCIS_DEPLOY_IMAGE_MODE=ghcr`. In this mode the VPS **does not build release images**. It pulls immutable exact-SHA API and Web images before cutover.
 
-The deploy script currently defaults to the already-proven personal GHCR packages:
+Fresh Codex Local verification reported on 2026-09-16 records the current production runtime at application SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` using:
+
+```text
+ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+```
+
+The repository script `scripts/deploy-vps.sh` still contains legacy fallback/default package values under:
 
 ```text
 ghcr.io/imadjinasi/hcisysq-api:sha-<SHA>
 ghcr.io/imadjinasi/hcisysq-web:sha-<SHA>
 ```
 
-Those runtime defaults intentionally remain unchanged during the planned GitHub repository transfer. Repository ownership and GHCR package ownership are separate concerns. Do not point production or staging at the organization GHCR namespace until organization-owned package publishing has been proven separately.
+Those defaults do **not** describe the current production runtime. The GitHub production workflow explicitly supplies `HCIS_GHCR_API_REPO=ghcr.io/sabilulquran/hcisysq-api` and `HCIS_GHCR_WEB_REPO=ghcr.io/sabilulquran/hcisysq-web`, overriding the script defaults for the production path.
 
-See [`github-org-transfer-readiness.md`](github-org-transfer-readiness.md) for the transfer freeze and post-transfer verification sequence.
+This documentation-only reconciliation deliberately does not change the script defaults. Retiring the legacy defaults changes deployment code and should be handled in a separate reviewed PR with the normal deployment regression gates.
+
+See [`github-org-transfer-readiness.md`](github-org-transfer-readiness.md) for the observed transfer/runtime evidence and [`github-vps-production-deployment.md`](github-vps-production-deployment.md) for the workflow override boundary.
 
 `HCIS_DEPLOY_IMAGE_MODE=local` remains an explicit fallback supported by the script, but it is not the normal release path and must not be used merely to bypass a missing/failed GHCR publication.
 
@@ -65,7 +74,7 @@ In the normal GHCR path the deploy script:
 4. creates a timestamped PostgreSQL custom-format backup before application migration/cutover;
 5. records backup checksum and deployment metadata under ignored `backups/deploy/`;
 6. fast-forwards local `main` only;
-7. resolves API and Web to exact `sha-<SHA>` GHCR tags and pulls both images;
+7. resolves API and Web to exact `sha-<SHA>` GHCR tags and pulls both images from the repositories supplied by the invoking environment/workflow;
 8. recreates API and lets the API-start migration runner apply additive migrations;
 9. waits for API health/readiness;
 10. recreates Web and waits for Web health;
@@ -79,7 +88,7 @@ PostgreSQL is not intentionally restarted by the normal application cutover.
 
 The script differentiates application rollback from database rollback.
 
-If target application health fails after target preparation, the default guard attempts to restore API and Web to the previous application SHA. In normal GHCR mode it resolves and pulls the previous exact-SHA images.
+If target application health fails after target preparation, the default guard attempts to restore API and Web to the previous application SHA. In normal GHCR mode it resolves and pulls the previous exact-SHA images from the configured repository values for that deployment invocation.
 
 The database is **never automatically rolled back**. Migrations may have committed before application health failed. A release that contains a non-backward-compatible or destructive schema migration requires its own reviewed recovery procedure and must not rely on generic application rollback.
 

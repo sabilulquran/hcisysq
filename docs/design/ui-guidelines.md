@@ -6,7 +6,7 @@
 
 Reviewed product UI now lives in `apps/web` in this repository. The earlier `imadjinasi/hcis-ysq-foundation` repository is design/reference history only.
 
-GitHub `imadjinasi/hcisysq` is the source of truth for product UI, domain rules, API contracts, and engineering work.
+GitHub `sabilulquran/hcisysq` is the source of truth for product UI, domain rules, API contracts, and engineering work.
 
 ## Current MVP screens
 

@@ -1,6 +1,6 @@
 # Annual Leave Submission and Approval Snapshot
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED
+**Status:** VERIFIED MVP BASELINE — ORG-004 CODE/SCHEMA DEPLOYED; STRUCTURE ACTIVATION/PILOT VALIDATION PENDING
 **Specification:** LEAVE-004  
 **Related:** LEAVE-001, LEAVE-002, LEAVE-003, APR-001, ORG-002, ORG-004
 
@@ -21,11 +21,11 @@ The same employee is never required to approve twice. The approver chain is reso
 
 ## Current implementation boundary
 
-The flow above describes the **verified MVP runtime**.
+The flow above remains the **verified MVP checkpoint** and is also the authoritative production behavior while ORG-004 rollout resolves to `LEGACY`.
 
-ORG-004 (`docs/domain/dynamic-organization-structure.md`) is the implemented-local post-MVP successor for structure-driven authority resolution, effective-dated positions/incumbencies, vacancy fallback, and post-approval structural oversight notification.
+ORG-004 (`docs/domain/dynamic-organization-structure.md`) is now implemented and its code/schema are deployed at the inspected production baseline. It provides structure-driven authority resolution, effective-dated positions/incumbencies, vacancy fallback, and post-approval structural oversight behavior.
 
-Agents must not assume ORG-004 behavior is already live until that milestone is implemented and activated.
+Deployment does not equal activation. Codex Local evidence reports no `organization_rollout_settings` rows at the inspected production SHA, so `LEGACY` remains authoritative. Real YSQ structure configuration, selected-unit `SHADOW` comparison, explicit `STRUCTURE` activation, and production pilot validation remain pending. Agents must not treat structural resolution as active merely because the implementation is deployed.
 
 ## Annual right versus current availability
 
@@ -92,7 +92,7 @@ Approving the active step activates the next stored step. The hierarchy is never
 
 A Direct Manager and Unit Approver resolving to the same employee become one stored step with both source labels.
 
-ORG-004 must preserve this invariant even when authority is resolved from dynamic organization structure.
+ORG-004 preserves this invariant when `STRUCTURE` authority is explicitly activated: structure changes resolution for a new submission, never an existing snapshot.
 
 ## Notifications — verified MVP
 
@@ -106,7 +106,7 @@ Notification-provider failure must not roll back the leave transaction.
 
 ## ORG-004 structural oversight notification
 
-Accepted post-MVP rule:
+Implemented ORG-004 rule, active only for requests submitted under `STRUCTURE`:
 
 > After the **overall leave request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
@@ -128,16 +128,18 @@ This notification is:
 - separate from the existing Human Capital notification required by Annual Leave policy;
 - resolved through ORG-004 structure/authority configuration rather than job-title code.
 
-Therefore an approved Annual Leave request may legitimately produce both:
+Therefore an Annual Leave request submitted under `STRUCTURE` may legitimately produce both:
 
 ```text
 HC notification               [existing leave-policy responsibility]
-Structural oversight notice   [planned ORG-004 rule]
+Structural oversight notice   [ORG-004 STRUCTURE behavior]
 ```
+
+`LEGACY` and `SHADOW` requests do not produce the ORG-004 oversight side effect.
 
 ### Director requester
 
-Accepted planned governance behavior:
+Implemented ORG-004 governance behavior, pending real structure configuration and `STRUCTURE` activation:
 
 ```text
 Director
@@ -148,7 +150,7 @@ Director
 
 Pembina/Foundation Supervisor is not included by this rule.
 
-This is a **planned ORG-004 behavior**, not the current verified MVP runtime. It must be represented through structure/authority configuration, not a source-code title check.
+At the historical MVP checkpoint this was a planned post-MVP rule. The code/schema now implement the rule, but the inspected production rollout remains `LEGACY`; it must still be represented through reviewed structure/authority configuration, not a source-code title check.
 
 ## Employee surfaces
 
@@ -163,7 +165,7 @@ The employee leave surface shows:
 - recent request history and current approver;
 - pending approval inbox for employees who are approvers.
 
-A future ORG-004-enabled preview should explain the resolved structural approvers without exposing unnecessary internal configuration detail.
+When a selected scope is explicitly activated to ORG-004 `STRUCTURE`, preview should explain the resolved structural approvers without exposing unnecessary internal configuration detail.
 
 ## Slice boundary and later MVP slices
 
@@ -177,17 +179,19 @@ When LEAVE-004 was first introduced, the following were intentionally outside th
 - notification-provider adapter;
 - collective/academic calendar event management beyond working-day exceptions.
 
-By the final MVP checkpoint, encrypted evidence/HC validation, planned/unpaid leave, and Attendance Resolution are implemented by later leave slices and were verified separately. They do **not** change the verified LEAVE-004 annual approval rule: normal Annual Leave remains Direct Manager -> Unit Approver -> approved -> HC notified until ORG-004 is implemented.
+By the final MVP checkpoint, encrypted evidence/HC validation, planned/unpaid leave, and Attendance Resolution are implemented by later leave slices and were verified separately. They do **not** change the verified LEAVE-004 annual approval rule: under `LEGACY`, normal Annual Leave remains Direct Manager -> Unit Approver -> approved -> HC notified. ORG-004 code/schema are now deployed, but structure-driven routing is authoritative only after explicit `STRUCTURE` activation for the applicable scope.
 
 Half-day leave, post-approval cancellation, production notification delivery adapters, and fuller collective/academic calendar management remain outside the verified MVP unless specified elsewhere.
 
 ## Verification
 
-The final isolated synthetic UAT completed a real browser Annual Leave flow from preview and submission through snapshotted Direct Manager and Unit Approver decisions to final approved state. This verification used synthetic employees/accounts only and did not touch the VPS employee data.
+The final isolated synthetic MVP UAT completed a real browser Annual Leave flow from preview and submission through snapshotted Direct Manager and Unit Approver decisions to final approved state. This verification used synthetic employees/accounts only and did not touch VPS employee data.
+
+ORG-004 automated/synthetic evidence is separate from production pilot evidence. Deployment of its code/schema does not prove real structure correctness, SHADOW parity, STRUCTURE activation, or user UAT.
 
 ## Audit and privacy
 
-Store identifiers, dates, policy metadata, structural resolution metadata when ORG-004 is introduced, and decision metadata only. Do not copy raw employee import rows into leave audit payloads.
+Store identifiers, dates, policy metadata, and—when ORG-004 is used—structural resolution metadata and decision metadata only. Do not copy raw employee import rows into leave audit payloads.
 
 Decision notes and leave reasons are authorized leave-domain data and must not be included in notification payloads by default.
 
@@ -206,10 +210,12 @@ Decision notes and leave reasons are authorized leave-domain data and must not b
 - LEAVE-004-I: submission is idempotent by employee + idempotency key.
 - LEAVE-004-J: employee and approver APIs are authenticated as EMPLOYEE and cannot operate on another employee's request or step.
 
-### Planned ORG-004 extension
+### ORG-004 extension — implemented; operational activation pending
 
 - LEAVE-004-K: Annual Leave authority can be resolved from effective organization structure without changing the immutable approval-snapshot rule.
 - LEAVE-004-L: vacant supervisory positions follow the configured ORG-004 vacancy policy; no title-text inference is permitted.
-- LEAVE-004-M: after overall final approval, one structural layer above the final line/governance approver receives an informational notification intent.
+- LEAVE-004-M: after overall final approval, one structural layer above the final line/governance approver receives an informational notification intent for requests submitted under `STRUCTURE`.
 - LEAVE-004-N: the structural oversight notification remains separate from the existing HC notification.
 - LEAVE-004-O: Director leave resolves Secretary as approver and Chair as the post-approval structural notification recipient; Pembina is not included by this rule.
+
+These ORG-004 criteria being implemented in software do not by themselves prove the selected real structure or production pilot; those require the ORG-004 operational-validation gates.

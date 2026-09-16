@@ -1,6 +1,6 @@
 # Approval Engine
 
-**Status:** ACCEPTED — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED
+**Status:** ACCEPTED — ORG-004 CODE/SCHEMA DEPLOYED; STRUCTURE ACTIVATION/PILOT VALIDATION PENDING
 **Specification:** APR-001  
 **Related:** ORG-002, ORG-004
 
@@ -16,11 +16,11 @@ Hierarchy, role, or organization changes after submission must not silently rewr
 
 ## Current implementation boundary
 
-APR-001 describes the verified approval engine behavior used by the completed MVP. The accepted post-MVP organization successor is ORG-004 (`docs/domain/dynamic-organization-structure.md`).
+APR-001 describes the verified approval engine behavior used by the completed MVP. At that historical checkpoint, ORG-004 (`docs/domain/dynamic-organization-structure.md`) was the accepted post-MVP organization successor.
 
-ORG-004 changes how semantic authority may be resolved from organization data; it does **not** change APR-001's immutable snapshot rule.
+ORG-004 is now implemented and its code/schema are deployed at the inspected production baseline. It changes how semantic authority **can** be resolved from organization data; it does **not** change APR-001's immutable snapshot rule.
 
-Agents must not assume ORG-004 structural resolution is already implemented until that milestone is explicitly activated.
+Deployment does not equal activation. Codex Local evidence reports no `organization_rollout_settings` rows at the inspected production SHA, so `LEGACY` remains authoritative. Real YSQ structure configuration, `SHADOW` comparison, explicit `STRUCTURE` activation, and production pilot validation remain pending. Agents must distinguish “implemented/deployed” from “authoritative for this request.”
 
 ## Initial release scope
 
@@ -46,7 +46,7 @@ More complex behavior may be added only for a documented domain requirement.
 
 A workflow template should not normally store a person's name. It stores a semantic way to find the required authority.
 
-Verified/current resolver vocabulary includes patterns such as:
+Verified/current LEGACY resolver vocabulary includes patterns such as:
 
 ```text
 DIRECT_MANAGER
@@ -75,9 +75,9 @@ The stored approval steps are `Budi -> Siti`, not a live query that keeps follow
 
 ## ORG-004 structural resolvers
 
-ORG-004 introduces the accepted direction for structure-driven authority resolution.
+ORG-004 implements structure-driven authority resolution for rollout modes that select it.
 
-The implementation may expose semantic resolvers such as:
+The implementation supports semantic concepts equivalent to:
 
 ```text
 STRUCTURAL_DIRECT_MANAGER
@@ -100,6 +100,14 @@ Structural resolution may use:
 
 It must never infer authority from free-text job-title strings or a hardcoded numeric organization level.
 
+Rollout semantics:
+
+- `LEGACY`: existing ORG-002 resolution is authoritative;
+- `SHADOW`: ORG-002 remains authoritative while ORG-004 resolution is compared/recorded without changing routing;
+- `STRUCTURE`: ORG-004 structural resolution is authoritative and fails closed rather than silently falling back.
+
+The inspected production baseline currently resolves to `LEGACY` because no rollout setting is present.
+
 ### Vacancy behavior
 
 ORG-004 may allow a structural resolver to climb past one or more vacant supervisory seats when the configured vacancy policy allows it.
@@ -112,7 +120,7 @@ Director
 -> Social Staff
 ```
 
-For a Social Staff requester, `STRUCTURAL_DIRECT_MANAGER` may resolve to the Director.
+For a Social Staff requester under `STRUCTURE`, `STRUCTURAL_DIRECT_MANAGER` may resolve to the Director.
 
 Higher-risk authorities may require an acting assignment or fail closed instead of climbing.
 
@@ -125,16 +133,17 @@ An effective acting assignment must be honored when its mandate applies. Acting 
 When a request is submitted:
 
 1. validate the domain request;
-2. load the organization context relevant to the effective resolver;
+2. load the organization context relevant to the effective resolver/rollout mode;
 3. select the applicable workflow template/variant;
 4. resolve every required approval step to a concrete approver;
 5. apply documented fallback, vacancy, and override rules;
 6. reject self-approval and deduplicate repeated concrete approvers;
 7. validate the complete chain;
 8. persist ordered approval steps as a snapshot;
-9. mark the first step pending and later steps waiting;
-10. commit request + chain + audit atomically;
-11. enqueue notifications after commit.
+9. persist the resolution/rollout context needed to explain the snapshot;
+10. mark the first step pending and later steps waiting;
+11. commit request + chain + audit atomically;
+12. enqueue notifications after commit.
 
 If a mandatory resolver cannot find a valid approver, the request must **not** enter a partially resolved chain. Submission fails with an actionable configuration error.
 
@@ -187,11 +196,12 @@ After the chain is stored, changes to any of the following do not rewrite it:
 - organization parent relationship;
 - authority binding;
 - role/scope;
+- rollout mode;
 - future restructure.
 
 An existing request changes only through normal decisions, cancellation where the domain permits it, or authorized reassignment.
 
-ORG-004 must preserve this rule during and after migration.
+ORG-004 preserves this rule during rollout and after activation.
 
 ## Generic request state
 
@@ -265,6 +275,7 @@ Store at minimum:
 - request type and request ID;
 - requester ID;
 - relevant organization context snapshot/explanation;
+- rollout/resolver mode where applicable;
 - workflow/template version;
 - ordered steps;
 - resolver type and parameter;
@@ -276,7 +287,7 @@ Store at minimum:
 - version/concurrency token;
 - audit correlation ID.
 
-When ORG-004 becomes authoritative, resolution metadata should be sufficient to trace the structural path used at submission without making the chain dynamic.
+When `STRUCTURE` is authoritative, resolution metadata must be sufficient to trace the structural path used at submission without making the chain dynamic.
 
 ## Concurrency
 
@@ -295,7 +306,7 @@ Notification is not the source of truth for approval.
 
 ### One-level-above line/governance notification
 
-Implemented ORG-004 rule for leave workflows that contain line/governance approval:
+Implemented ORG-004 rule for leave workflows that contain line/governance approval, active for requests submitted under `STRUCTURE`:
 
 > After the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
@@ -351,7 +362,7 @@ Existing HC-role notification requirements remain separate and additive where a 
 
 ## Examples
 
-### Annual leave — verified MVP authority pattern
+### Annual leave — verified MVP/current LEGACY authority pattern
 
 ```text
 Employee
@@ -396,10 +407,12 @@ When ORG-004 is used, the audit/resolution explanation must allow operators to u
 - APR-001-H: reassignment requires permission, old/new approver, actor, and reason.
 - APR-001-I: decisions and reassignment produce audit events.
 - APR-001-J: notification delivery can retry without repeating the approval transition.
-- APR-001-K: ORG-004 structural resolution, when activated, still produces a concrete immutable snapshot at submission.
+- APR-001-K: ORG-004 structural resolution, when `STRUCTURE` is activated, produces a concrete immutable snapshot at submission.
 - APR-001-L: structural vacancy fallback cannot bypass self-approval, duplicate, active-employee, capability, or fail-closed validation.
-- APR-001-M: after overall final approval, the planned structural oversight notification is resolved from the final line/governance approver rather than automatically from a later HC validator/approver.
+- APR-001-M: after overall final approval, structural oversight notification is resolved from the final line/governance approver rather than automatically from a later HC validator/approver.
 - APR-001-N: the oversight notification remains informational and is never converted into an implicit extra approval step.
+
+The ORG-004 criteria above are implemented in software but still require real structure configuration, SHADOW evidence, explicit STRUCTURE activation, and production pilot validation before they can be treated as operationally proven.
 
 ## Deferred unless separately specified
 

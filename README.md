@@ -8,7 +8,16 @@ Repository ini adalah **source of truth canonical** untuk dokumentasi dan implem
 
 **Active implementation and controlled production delivery.** Production releases dari repository ini menggunakan reviewed `main` SHA, exact-SHA GHCR images, `scripts/deploy-vps.sh`, dan `scripts/verify-vps.sh`; release image tidak dibangun sebagai langkah normal di VPS.
 
-Repository saat ini berada di `imadjinasi/hcisysq` dan sedang disiapkan untuk transfer manual ke organisasi dengan canonical target `sabilulquran/hcisysq`. Transfer harus mempertahankan nama `hcisysq` dan visibility **PUBLIC**. Lihat [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) untuk boundary GHCR dan deployment freeze setelah transfer.
+Repository canonical saat ini adalah `sabilulquran/hcisysq`. Repository historis `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut. Transfer repository sudah terjadi; jangan membaca dokumen checkpoint lama sebagai bukti bahwa transfer masih menunggu.
+
+Bukti Codex Local terbaru pada 2026-09-16 mencatat production API/Web berjalan pada exact-SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` dari:
+
+```text
+ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+```
+
+`scripts/deploy-vps.sh` masih memiliki default legacy ke namespace personal `ghcr.io/imadjinasi/...`; workflow production memasok override `HCIS_GHCR_API_REPO` dan `HCIS_GHCR_WEB_REPO` ke namespace organisasi. Fakta bahwa default script belum dibersihkan tidak berarti production masih memakai image personal. Perubahan default tersebut sengaja tidak dibundel dalam PR dokumentasi ini dan, bila diperlukan, harus menjadi PR runtime/deployment tersendiri yang direview. Lihat [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md), [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md), dan [`docs/development/github-vps-production-deployment.md`](docs/development/github-vps-production-deployment.md).
 
 Implementasi HCIS sebelumnya diperlakukan sebagai referensi perilaku dan sumber discovery. Repository UI awal `imadjinasi/hcis-ysq-foundation` sekarang juga diperlakukan sebagai reference/archive; selected UI sudah dikonsolidasikan ke `apps/web`.
 
@@ -98,9 +107,9 @@ Lockfile harus diperbarui dan seluruh gate diverifikasi dari environment lokal/C
 - [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — baseline keamanan.
 - [`docs/testing/`](docs/testing/) — strategi test dan definition of done.
 - [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md) — active exact-SHA GHCR deployment/verification runbook.
-- [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) — GitHub organization transfer readiness, GHCR boundary, dan post-transfer freeze/checklist.
+- [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) — observed repository-transfer state, GHCR/runtime evidence, dan batas cleanup yang masih terpisah.
 - [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — implementation + Codex Local verification workflow.
 
 ## Catatan keamanan
 
-Repository saat ini bersifat publik dan harus tetap PUBLIC selama transfer organisasi. Jangan pernah memasukkan credential, `.env`, database dump, master spreadsheet pegawai, foto absensi, dokumen pegawai, slip gaji production, data payroll production, atau contoh yang dapat mengidentifikasi individu.
+Repository saat ini bersifat publik. Jangan pernah memasukkan credential, `.env`, database dump, master spreadsheet pegawai, foto absensi, dokumen pegawai, slip gaji production, data payroll production, atau contoh yang dapat mengidentifikasi individu.

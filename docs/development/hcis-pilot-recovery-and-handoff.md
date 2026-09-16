@@ -1,16 +1,29 @@
 # HCIS Pilot Recovery, Device Boundary, and Codex Local Handoff
 
 **Status:** READY FOR HANDOFF; EXECUTION PENDING  
-**Date:** 2026-09-15  
-**Baseline main:** `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`
+**Updated:** 2026-09-16  
+**Baseline main/runtime SHA discussed:** `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`
 
-This runbook separates passive/read-only verification from state-changing operations. Creating this document does not complete Task 7 or Task 8.
+This runbook separates passive/read-only verification from state-changing operations. Creating or updating this document does not complete Task 7 or Task 8.
+
+## Current verified runtime context from Codex Local
+
+Codex Local evidence supplied on 2026-09-16 reports production API/Web running exact-SHA organization-owned images:
+
+```text
+ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+```
+
+ORG-004 code/schema are installed, while no `organization_rollout_settings` row exists, so `LEGACY` remains authoritative by contract. Real structure configuration, SHADOW evidence, STRUCTURE activation, and pilot validation remain pending.
+
+`scripts/deploy-vps.sh` still contains legacy personal-GHCR defaults, but the production GitHub workflow supplies organization-GHCR overrides. Do not infer the current production image source from the script defaults alone. This documentation PR does not modify deployment code/defaults.
 
 ## ATT-005 boundary for this pilot
 
 ATT-005 remains `IMPLEMENTING`. Repository code includes typed physical operations and safe observability/export surfaces, but repository implementation is not physical-device proof.
 
-The supplied 2026-09-15 VPS audit reports three `attendance_adms_physical_capabilities` rows in state `verified`. Because the audit summary supplied to this package does not identify which capability keys or underlying canary evidence correspond to those rows, this package does not promote any specific ledger row to verified and does not close ATT-005.
+The supplied VPS evidence reports three `attendance_adms_physical_capabilities` rows in state `verified`. Because that count alone does not prove every ATT-005 capability or the underlying canary evidence, this package does not close ATT-005.
 
 ### Passive verification — may be performed read-only
 
@@ -20,7 +33,7 @@ Codex Local may, subject to normal VPS read authorization:
 - confirm latest migration and `BIOMETRIC_COLLECTION_ENABLED=0`;
 - confirm retired USERINFO safety control and that verification requests zero commands;
 - inspect device inventory/last-seen, request journal summaries, capability states, operation history, and safe audit/export surfaces;
-- confirm Work Code export returns CSV after the fix and excludes `wire_command`/biometric secrets;
+- confirm Work Code export returns CSV after an approved deployment of PR #55 and excludes `wire_command`/biometric secrets;
 - reconcile the count and keys of `verified` capability rows with recorded canary evidence;
 - record disk/memory/container observations without treating capacity alone as an incident.
 
@@ -66,18 +79,16 @@ Stop pilot on privacy/authorization breach, wrong approval routing, unexplained 
 
 ## Codex Local handoff — Task 7
 
-### Repository, branches, commits, PRs
+### Repository, branches, PRs
 
 - Canonical repository: `sabilulquran/hcisysq`.
-- Baseline main: `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`.
+- Baseline main/runtime SHA discussed: `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`.
 - Bug branch: `fix/hcis-operational-readiness`.
-- Bug implementation commit: `ba9732d89c0461baa296579b77c734f5ae4ef1dd`.
-- Bug test-correction commit after first CI feedback: `948cbc86f4b81df847465ae713fff10de25066a0`.
 - Bug PR: `#55` — Work Code export command lookup.
+- PR #55 head after PostgreSQL integration-regression revision: `5bc45868f1378fa207579306aebe62aee6a063a5`.
 - Documentation branch: `docs/hcis-operational-readiness`.
-- Documentation content head verified by GitHub CI before this metadata-only handoff update: `cae3f3fd921e255cc76f96c53f361e81c26f1906`.
 - Documentation PR: `#56` — one-unit operational readiness.
-- For execution, always verify `git rev-parse HEAD` against the current PR head because this file itself may add a later documentation-only commit.
+- For PR #56, always verify `git rev-parse HEAD` against the current GitHub PR head. This handoff file itself contributes to the final documentation head, so an embedded pre-write SHA would immediately become stale.
 
 ### Changed files to inspect
 
@@ -86,17 +97,24 @@ PR #55:
 - `apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts`
 - `apps/api/test/adms-physical-parity-observability.test.ts`
 
-PR #56:
+PR #56 includes:
 
-- `AGENTS.md`
-- `docs/development/ai-assisted-workflow.md`
-- `docs/development/github-org-transfer-readiness.md`
-- `docs/development/hcis-operational-readiness.md`
-- `docs/development/hcis-pilot-recovery-and-handoff.md`
-- `docs/development/org004-pilot-unit-validation.md`
-- `docs/product/feature-parity.yaml`
-- `docs/product/scope.md`
-- `docs/testing/hcis-pilot-uat.md`
+- `README.md` and `AGENTS.md`;
+- `docs/development/ai-assisted-workflow.md`;
+- `docs/development/github-org-transfer-readiness.md`;
+- `docs/development/vps-deployment.md`;
+- `docs/development/github-vps-production-deployment.md`;
+- `docs/development/hcis-operational-readiness.md`;
+- `docs/development/hcis-pilot-recovery-and-handoff.md`;
+- `docs/development/org004-pilot-unit-validation.md`;
+- `docs/domain/dynamic-organization-structure.md`;
+- `docs/domain/annual-leave-vertical-slice.md`;
+- `docs/domain/leave-policy-ysq.md`;
+- `docs/domain/organization-designer-visual-ranking.md`;
+- `docs/domain/workflows/approval-engine.md`;
+- `docs/product/feature-parity.yaml`;
+- `docs/product/scope.md`;
+- `docs/testing/hcis-pilot-uat.md`.
 
 ### Local verification and prerequisites
 
@@ -115,19 +133,21 @@ node apps/api/scripts/rehearse-wave2-userinfo-upgrade.mjs
 node apps/api/scripts/rehearse-wave2-user-correction-upgrade.mjs
 ```
 
-For AUTH-011 PostgreSQL coverage, reproduce the documented setup in `docs/testing/AUTH-011-verification.md` with two empty loopback databases named `hcis_auth011_test` and `hcis_auth011_permissions_test` (or the exact names enforced by the test), set `DATABASE_URL` and `HCIS_AUTH011_TEST_DATABASE_URL`, migrate, then run the full gates. Do not point these variables at production.
+For AUTH-011 PostgreSQL coverage, reproduce `docs/testing/AUTH-011-verification.md` with the required empty loopback databases and environment variables. Do not point test variables at production.
 
-Targeted Work Code regression expectations:
+### Work Code regression — PR #55
 
-- all migrations apply to a fresh synthetic database;
-- export query does not read `attendance_adms_work_code_targets.last_command_id`;
-- a synthetic Work Code target with no physical operation exports an empty `last_command_id` rather than SQL error;
-- after a synthetic physical Work Code operation/command exists, export reports the latest related command ID;
-- unrelated device/work-code operations are not selected;
-- route still requires `attendance.devices.export`;
-- output contains no wire command or biometric secret fields.
+Codex Local reported that the implementation passed PostgreSQL 16 semantic verification. PR #55 now also contains a PostgreSQL integration regression that executes the SQL extracted from the actual production route against the migrated test database.
 
-The repository regression in PR #55 is a schema/query contract test. If local tooling permits, add/run a PostgreSQL route-level regression for the two data cases above; do not weaken existing authorization or safety tests.
+The regression uses synthetic rows inside `BEGIN` and always `ROLLBACK`; it proves:
+
+1. a target with no physical operation returns `NULL last_command_id`;
+2. the latest related Work Code physical command is returned;
+3. a newer operation for another Work Code is ignored;
+4. migrated `attendance_adms_work_code_targets` has no `last_command_id` column;
+5. the route still requires `attendance.devices.export` and export safety does not expose wire commands or biometric secret material.
+
+GitHub CI on head `5bc45868f1378fa207579306aebe62aee6a063a5` completed successfully. A later production smoke remains a separate read-only check after an approved merge/deploy; CI success is not deployment evidence.
 
 ### VPS read-only verification
 
@@ -148,7 +168,8 @@ Use the actually deployed approved SHA. Confirm the result records `verification
 - restore a backup, even to isolated DB, until environment/data-use approval exists;
 - send external notifications;
 - request any device command;
-- enable biometric collection.
+- enable biometric collection;
+- change `deploy-vps.sh` GHCR defaults.
 
 ## Pilot execution handoff — Task 8
 

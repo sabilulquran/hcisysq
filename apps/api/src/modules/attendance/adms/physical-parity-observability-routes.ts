@@ -250,9 +250,19 @@ export async function registerAdmsPhysicalParityObservabilityRoutes(
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
     const result = await pool.query(
       `SELECT w.code, w.name, w.active, t.desired_state, t.delivery_state,
-              t.last_command_id, t.updated_at
+              latest.last_command_id, t.updated_at
        FROM attendance_adms_work_code_targets t
        JOIN attendance_adms_work_codes w ON w.id = t.work_code_id
+       LEFT JOIN LATERAL (
+         SELECT c.id AS last_command_id
+         FROM attendance_adms_physical_operations o
+         JOIN attendance_adms_commands c ON c.physical_operation_id = o.id
+         WHERE o.device_id = t.device_id
+           AND o.capability_key = 'work_code_delivery'
+           AND o.safe_metadata ->> 'workCodeId' = t.work_code_id::text
+         ORDER BY o.created_at DESC, c.physical_sequence DESC
+         LIMIT 1
+       ) latest ON true
        WHERE t.device_id = $1
        ORDER BY w.code`,
       [params.data.deviceId],

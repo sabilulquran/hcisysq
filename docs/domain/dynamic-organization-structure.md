@@ -1,13 +1,36 @@
 # Dynamic Organization Structure and Authority Resolution
 
-**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
+**Status:** IMPLEMENTED/DEPLOYED CODE+SCHEMA — REAL STRUCTURE/SHADOW/STRUCTURE/PILOT VALIDATION PENDING
 **Specification:** ORG-004  
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
-**Decision date:** 2026-08-22
+**Decision date:** 2026-08-22  
+**Current-state reconciliation:** 2026-09-16
 
 ## Implementation record
 
-ORG-004 originated on `agent/dynamic-organization-foundation` and is present in the current canonical `main` history as an additive successor to ORG-002. Review and phased operational validation follow `docs/development/org004-operational-validation.md`. The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
+ORG-004 originated on `agent/dynamic-organization-foundation` and is present in the current canonical `main` history as an additive successor to ORG-002. Review and phased operational validation follow `docs/development/org004-operational-validation.md`.
+
+The historical implementation checkpoint described ORG-004 as implemented/tested locally but not deployed. That checkpoint remains useful evidence of sequencing, but it is no longer the current deployment state.
+
+Codex Local evidence for the inspected production baseline reports:
+
+- application SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` is deployed;
+- ORG-004 code/schema are installed;
+- the required migration set is present;
+- `organization_rollout_settings` contains zero rows;
+- by contract, absence of a rollout row resolves to `LEGACY`.
+
+Therefore the current operational distinction is:
+
+```text
+code/schema deployed
+!= real YSQ structure configured
+!= SHADOW validated
+!= STRUCTURE activated
+!= production pilot validated
+```
+
+The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
 
 ### Physical persistence model
 
@@ -52,19 +75,32 @@ Leave is the first consumer. Annual and Planned Leave preserve Direct Manager th
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
-### Local browser-UAT regression invariants
+### Synthetic implementation evidence
 
-Focused synthetic ORG-004 browser UAT established these additional implementation invariants:
+Focused synthetic ORG-004 browser UAT established these implementation invariants:
 
 - PostgreSQL `DATE` values are returned as Asia/Jakarta calendar dates and must not move to the previous UTC day when a snapshot is loaded and rewritten;
 - **Tambah di bawah** keeps the selected node available and preselected as the structural parent, while edit mode alone excludes the edited node from its own parent choices;
 - impact comparison is based on stable structural/authority content rather than per-snapshot physical row IDs, so a visual-rank-only future draft is reported as **no approval-routing impact**.
 
-Automated regression coverage accompanies each invariant. The browser UAT used only a disposable loopback PostgreSQL cluster and synthetic personas; it did not validate or alter production/pre-release data.
+Automated regression coverage accompanies each invariant. The browser UAT used only a disposable loopback PostgreSQL cluster and synthetic personas; it did not validate or alter production employee configuration.
 
 ### Deployment and deferred operational work
 
-This implementation has not been deployed and has not been validated with production/pre-release employee data. Before real activation, authorized YSQ owners must configure and review the real structure, map governance principals to active employee accounts/capabilities, run SHADOW comparison, approve selected workflow/node activation, and complete targeted pilot/security review. Production notification delivery adapters remain outside ORG-004.
+ORG-004 code/schema are deployed at the inspected production baseline. The deployment has **not** established or validated the real YSQ structure and has **not** activated structure-driven routing.
+
+Before real activation, authorized YSQ owners must:
+
+- select the real pilot unit and participants from authoritative data;
+- configure and review nodes, positions, memberships, incumbencies and authority bindings;
+- map workflow authorities to active employee accounts/capabilities;
+- validate the DRAFT without cycles/invalid overlaps;
+- run selected-scope `SHADOW` comparison;
+- resolve every unexplained mismatch and eligibility gap;
+- explicitly approve `STRUCTURE` activation for the selected workflow/node/date;
+- complete targeted access/security/pilot review.
+
+Production notification delivery adapters remain outside ORG-004.
 
 ## Purpose
 
@@ -381,9 +417,11 @@ Do not implement title-specific source-code branches.
 
 If the governance rule changes next year, change the authority binding. Existing submitted approval snapshots remain unchanged.
 
+This behavior is implemented in software; real governance bindings and production activation remain operational configuration and validation work.
+
 ## One-level-above post-approval notification
 
-Accepted rule:
+Accepted and implemented ORG-004 rule for `STRUCTURE` requests:
 
 > Every leave workflow that contains a line/governance approval stage should, after the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
@@ -442,7 +480,7 @@ The notification:
 - does not create another approval step;
 - does not block the completed workflow if delivery fails;
 - is stored as a notification intent/auditable event;
-- applies to line/governance-approved leave unless a future policy explicitly opts out.
+- applies to line/governance-approved leave when the request's snapshotted rollout mode is `STRUCTURE`.
 
 The structural recipient may be resolved against the effective organization when final approval commits, then persisted on the notification intent. Concrete approval authority remains snapshotted at submission.
 
@@ -511,17 +549,11 @@ Ahmad: 2026-01-01 through 2026-12-31
 Yusuf: 2027-01-01 onward
 ```
 
-Admin UX should allow viewing:
-
-- past structure;
-- current structure;
-- scheduled future structure.
-
-Historical structure must not be overwritten when current structure changes.
+Admin UX supports the model for past, current, and scheduled future structure. Historical structure must not be overwritten when current structure changes.
 
 ## Draft, validate, preview, publish
 
-Future restructure should be preparable before activation.
+Future restructure can be prepared before activation.
 
 ```text
 Draft restructure
@@ -552,9 +584,11 @@ Publishing validates at least:
 - resolvable or intentionally vacant required authority;
 - no unbounded authority loop.
 
+Publishing structure data does not itself authorize `STRUCTURE` rollout.
+
 ## Organization Designer UX
 
-Target experience is a visual organization designer, not only maintenance tables.
+The Organization Designer is a visual organization/authority configuration surface, not merely maintenance tables.
 
 Illustrative chart:
 
@@ -587,7 +621,7 @@ Head of Social Division
 Social Staff [5]
 ```
 
-Minimum planned actions:
+Implemented/accepted actions include:
 
 - add organizational node/team;
 - add authority-bearing position;
@@ -606,9 +640,11 @@ Minimum planned actions:
 - inspect structure by effective date;
 - publish validated future changes.
 
-## Do not use numeric organization level as workflow logic
+Real production use of these actions remains subject to access control and operational approval.
 
-The UI may display a level/depth for readability. Workflow logic must follow semantic relationships, not `level N -> level N-1` arithmetic.
+## Visual ranking is not authority
+
+The UI may display a level/depth or visual offset for readability. Workflow logic follows semantic relationships, not `level N -> level N-1` arithmetic.
 
 This allows a restructure such as:
 
@@ -622,9 +658,11 @@ Director -> Head of Education Affairs -> Head of SDIT
 
 without workflow source-code changes.
 
+Detailed visual-ranking semantics are in `docs/domain/organization-designer-visual-ranking.md`.
+
 ## Multiple hierarchy types
 
-Initial ORG-004 should support only what current YSQ workflows require:
+Initial ORG-004 supports only what current YSQ workflows require:
 
 1. supervisory/operational structure;
 2. governance approval/oversight relationships;
@@ -647,45 +685,41 @@ Requirements:
 
 ## Compatibility with the verified MVP
 
-The verified MVP uses explicit current Direct Manager and Unit Approver relationships. ORG-004 is a planned successor, not a claim about current runtime behavior.
+At the verified MVP checkpoint, explicit current Direct Manager and Unit Approver relationships were authoritative and ORG-004 was a planned successor. Preserve that checkpoint as historical evidence.
 
-Recommended migration:
+Current production software now contains ORG-004 code/schema, but because no rollout setting is present the operational result remains `LEGACY`: the verified ORG-002 mapping continues to route approvals. This is a controlled compatibility state, not evidence that ORG-004 failed to deploy.
+
+The rollout sequence remains:
 
 ### Phase 1 — model + read-only visualization
 
-- add effective-dated nodes, positions, memberships, incumbencies;
-- map current references without changing approval authority;
-- render read-only chart;
-- identify ambiguous/missing mappings.
+Software capability exists. Operationally, model the reviewed real structure without changing approval authority; identify ambiguous/missing mappings.
 
 ### Phase 2 — configuration + preview
 
-- Organization Designer editing;
-- draft/effective-date validation;
-- acting/vacancy visualization;
-- approval-chain preview;
-- current MVP resolver remains production authority.
+Software capability exists. Operationally, validate DRAFT structure, acting/vacancy behavior and approval-chain preview while `LEGACY` remains authoritative.
 
 ### Phase 3 — shadow resolver
 
+- enable only the reviewed selected scope;
 - resolve using current explicit model and ORG-004 in parallel;
 - compare results without changing transactions;
-- investigate mismatches using real YSQ structure.
+- investigate mismatches using authoritative YSQ structure;
+- require zero unexplained mismatches before advancement.
 
 ### Phase 4 — controlled activation
 
-- activate structure-driven resolution for selected units/workflows;
+- explicitly approve `STRUCTURE` only for selected units/workflows/date;
 - preserve employee override for exceptions;
 - record resolver/version used for each chain;
-- preserve snapshot invariants.
+- preserve snapshot invariants;
+- monitor and retain future-effective `LEGACY` rollback route.
 
 ### Phase 5 — structure authoritative
 
-- structural resolution becomes normal administration;
-- legacy per-employee manager setup becomes compatibility/exception behavior;
-- ordinary restructuring requires no source-code change.
+Only after operational proof may structural resolution become normal administration for broader scope. Legacy per-employee manager setup can then become compatibility/exception behavior according to an approved rollout decision.
 
-Existing submitted snapshots are never recomputed during migration.
+Existing submitted snapshots are never recomputed during migration or rollout.
 
 ## Required planning scenarios
 
@@ -713,11 +747,13 @@ Existing submitted snapshots are never recomputed during migration.
 - ORG-004-K: future restructure can be drafted, validated, impact-previewed, and published before its effective date.
 - ORG-004-L: semantic authority resolves to concrete employees and approval steps are snapshotted at submission.
 - ORG-004-M: vacancy fallback cannot bypass self-approval/duplicate/capability validation.
-- ORG-004-N: after overall final approval, leave with line/governance approval notifies one layer above the final line/governance approver; HC validation/approval does not redefine that target by default.
+- ORG-004-N: after overall final approval, leave with line/governance approval notifies one layer above the final line/governance approver under `STRUCTURE`; HC validation/approval does not redefine that target by default.
 - ORG-004-O: Director leave resolves Secretary as approver and Chair as post-approval recipient; Pembina is not included by this rule.
 - ORG-004-P: Organization Designer exposes nodes, positions, vacancies, incumbents, memberships, authority relationships, effective dates, and draft/publish state visually.
 - ORG-004-Q: structure does not bypass RBAC or imply Super Admin authority.
 - ORG-004-R: existing submitted approval snapshots are never rewritten by restructure or ORG-004 migration.
+
+These criteria are implemented targets with automated/synthetic evidence where recorded. They are not a substitute for the pending real-configuration, SHADOW, activation, access-review and pilot evidence.
 
 ## Explicit non-goals for initial ORG-004
 
@@ -732,7 +768,7 @@ Existing submitted snapshots are never recomputed during migration.
 
 ## Product decision summary
 
-Accepted direction:
+Accepted and implemented design direction:
 
 ```text
 Structure-driven defaults
@@ -746,4 +782,4 @@ Structure-driven defaults
 + visual Organization Designer
 ```
 
-This is the planning baseline for replacing repetitive current-state organization administration with a modular, restructuring-safe organization foundation.
+The remaining work is operational, not permission to invent configuration: authoritative real structure entry/review, selected-scope SHADOW evidence, explicit STRUCTURE activation, targeted UAT/security review, monitoring, and rollback validation.

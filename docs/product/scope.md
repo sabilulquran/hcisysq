@@ -1,13 +1,15 @@
 # Product Scope
 
 **Status:** ACCEPTED — MVP COMPLETE, POST-MVP OPERATIONAL VALIDATION ACTIVE  
-**Updated:** 2026-09-15
+**Updated:** 2026-09-16
 
 ## Sequencing principle
 
 HCIS is built through vertical slices rather than by creating every screen first. Each slice must include the relevant UI, API, domain rules, permissions, audit, tests, and minimum operational behavior.
 
 Detailed MVP scope is defined in `docs/product/mvp.md`. Final MVP evidence is frozen in `docs/product/mvp-release-checkpoint.md`. Those documents are historical verification checkpoints; current deployment/pilot readiness is tracked separately in `docs/development/hcis-operational-readiness.md`.
+
+Current production evidence is also separate from the historical MVP checkpoint. Codex Local verification reported on 2026-09-16 records API/Web running exact-SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` from `ghcr.io/sabilulquran/hcisysq-api` and `ghcr.io/sabilulquran/hcisysq-web`. This does not itself close pilot-readiness gates.
 
 ## Verified MVP foundation
 
@@ -100,7 +102,7 @@ Reimbursement is not part of the completed MVP.
 
 # Immediate post-MVP operational priority: ORG-004 Dynamic Organization Foundation
 
-Before broad employee-account activation or deeper feature expansion, HCIS must operationally validate the implemented modular, effective-dated organization structure model for a controlled pilot.
+Before broad employee-account activation or deeper feature expansion, HCIS must operationally validate the implemented and deployed modular, effective-dated organization structure model for a controlled pilot.
 
 Design baseline:
 
@@ -162,7 +164,7 @@ Social Staff -> Director
 
 The vacant seat remains in the organization structure; the resolver climbs according to configured vacancy policy.
 
-ORG-004 is the **implemented successor** to the verified MVP current-state organization model, but it is not automatically active. Migration and deployment must preserve all existing approval snapshots. Rollout remains explicitly controlled through `LEGACY -> SHADOW -> STRUCTURE`.
+ORG-004 is the **implemented and deployed software/schema successor** to the verified MVP current-state organization model, but it is not automatically authoritative. The inspected production baseline has no rollout rows, so the contract resolves to `LEGACY`. Real structure configuration, SHADOW evidence, STRUCTURE activation, and production pilot validation remain pending. Migration and deployment must preserve all existing approval snapshots. Rollout remains explicitly controlled through `LEGACY -> SHADOW -> STRUCTURE`.
 
 ## Why ORG-004 validation comes before broad real-user approval testing
 
@@ -174,7 +176,7 @@ Recommended sequence:
 
 ```text
 MVP COMPLETE
-  -> ORG-004 implementation/deployment baseline
+  -> ORG-004 code/schema deployed; LEGACY remains authoritative
   -> Human Capital selects one pilot unit
   -> configure/validate authoritative structure as DRAFT
   -> SHADOW-compare structural resolver with current explicit resolver
@@ -231,11 +233,11 @@ After organization/pilot readiness is stable, candidate modules include:
 - Cross-principal authorization passed browser UAT.
 - Final verified application SHA is recorded in `docs/product/mvp-release-checkpoint.md`.
 
-## Organization foundation ready — IMPLEMENTED/DEPLOYED BASELINE OBSERVED; OPERATIONAL VALIDATION PENDING
+## Organization foundation ready — CODE/SCHEMA DEPLOYED; OPERATIONAL VALIDATION PENDING
 
 Repository main contains the ORG-004 data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage.
 
-The supplied Codex Local audit dated 2026-09-15 reports that the inspected VPS is on the same main SHA, required schema is installed, and `organization_rollout_settings` contains zero rows. By contract, absence of rollout configuration means `LEGACY`. This is evidence of deployed software/schema with the safe rollout mode, **not** evidence that the real YSQ structure is configured, SHADOW-comparable, or pilot-validated.
+Codex Local audit evidence reports that the inspected production runtime is on SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`, required schema is installed, and `organization_rollout_settings` contains zero rows. By contract, absence of rollout configuration means `LEGACY`. This is evidence of deployed software/schema with the safe rollout mode, **not** evidence that the real YSQ structure is configured, SHADOW-comparable, STRUCTURE-active, or pilot-validated.
 
 Before structure-driven approval is activated for real pilot users:
 
@@ -268,10 +270,12 @@ MVP complete and deployed ORG-004 code do not automatically mean Pilot Ready. Be
 
 ## Production ready — PENDING
 
+Production application delivery is active, but full HCIS production-readiness/cutover remains broader than “application currently running.” The following remain separate gates:
+
 - legacy-data migration/cutover rehearsal succeeds and reconciles;
 - security review is complete;
-- production operational runbook and ownership exist;
+- production operational ownership remains current;
 - legacy freeze/cutover plan is approved;
-- rollback/data-recovery procedure is tested;
-- old system remains read-only during the agreed verification period;
-- production go-live is approved by the authorized operational owner.
+- rollback/data-recovery procedure is tested, including isolated restore drill;
+- old system remains read-only during the agreed verification period when full cutover occurs;
+- broader production go-live/cutover is approved by the authorized operational owner.

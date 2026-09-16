@@ -1,9 +1,17 @@
 # Organization Designer Visual Ranking
 
-**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
+**Status:** IMPLEMENTED/DEPLOYED CODE+SCHEMA — REAL STRUCTURE/STRUCTURE ACTIVATION/PILOT VALIDATION PENDING
 **Specification:** ORG-004 visual-layout addendum  
 **Related:** ORG-002, ORG-004, APR-001  
 **Decision date:** 2026-08-22
+
+## Current-state note
+
+This document originated as an ORG-004 design requirement and records the historical design rationale below. The visual-ranking behavior and Organization Designer implementation now exist in the deployed ORG-004 software/schema at the inspected production baseline.
+
+Deployment does not make the modeled structure authoritative. Codex Local evidence reports no `organization_rollout_settings` rows at the inspected production SHA, so `LEGACY` remains authoritative. Real YSQ structure configuration, selected-unit `SHADOW` comparison, explicit `STRUCTURE` activation, and production pilot validation remain pending.
+
+Visual rank continues to have **zero authority semantics** regardless of rollout mode.
 
 ## Purpose
 
@@ -101,9 +109,7 @@ Visual layout metadata must therefore be separate from structural entities and v
 
 ## Visual offset
 
-The implementation may use an internal concept such as `visual_offset`, `display_depth_offset`, or an equivalent layout property.
-
-The exact physical field name is an implementation decision, but the semantics must remain:
+The implementation uses layout metadata whose semantics remain:
 
 ```text
 render depth = structural depth + visual offset
@@ -122,7 +128,7 @@ visual offset = 2
 -> render two visual bands lower
 ```
 
-Negative offsets should not be introduced in the first implementation unless a real YSQ case requires them, because rendering a structural child above its structural parent can make the chart misleading.
+Negative offsets should not be introduced unless a real reviewed YSQ case requires them, because rendering a structural child above its structural parent can make the chart misleading.
 
 ## Example with multiple offsets
 
@@ -162,7 +168,7 @@ or:
 if visual_offset == 1 then use school head
 ```
 
-Instead, approval resolution continues to use semantic structural relationships defined by ORG-004, for example:
+Instead, approval resolution uses semantic structural relationships defined by ORG-004, for example:
 
 - structural/supervisory parent;
 - configured leader position;
@@ -180,7 +186,7 @@ structural parent = Head of Education Affairs
 visual offset = +1
 ```
 
-Then:
+Then when `STRUCTURE` is authoritative for the applicable workflow/scope:
 
 ```text
 DIRECT_MANAGER
@@ -191,19 +197,7 @@ The system must **not** choose a school head merely because `Al-Qur'an Bureau` i
 
 ## Vacancy behavior remains structural
 
-Example:
-
-```text
-Head of Education Affairs
-|
-+-- Al-Qur'an Bureau
-```
-
-If `Head of Education Affairs` is a real authority-bearing position and is vacant, vacancy resolution follows ORG-004 vacancy rules.
-
-Visual offset does not add, remove, or skip authority steps.
-
-In particular:
+If a real authority-bearing parent position is vacant, vacancy resolution follows ORG-004 vacancy rules. Visual offset does not add, remove, or skip authority steps.
 
 ```text
 visual skip != vacancy skip
@@ -215,20 +209,13 @@ These are unrelated concepts.
 
 Administrators should not need to understand an internal field named `visual_offset`.
 
-The Organization Designer should expose a simple visual control, for example:
+The Organization Designer exposes a user-facing visual control equivalent to:
 
 ```text
 Display position
 (*) Normal structural level
 ( ) Lower by 1 visual level
 ( ) Lower by 2 visual levels
-```
-
-or direct chart controls such as:
-
-```text
-[Move one visual level down]
-[Move one visual level up]
 ```
 
 The UI copy must make clear that this changes **chart presentation only**.
@@ -239,7 +226,7 @@ Suggested explanation:
 
 ## Add-below and add-sibling actions
 
-The visual builder should preserve the simple administration model already accepted for ORG-004:
+The visual builder preserves the administration model accepted for ORG-004:
 
 - **Add below** creates a new structural child of the selected item.
 - **Add alongside** creates a sibling under the same structural parent.
@@ -247,36 +234,20 @@ The visual builder should preserve the simple administration model already accep
 
 These actions must remain conceptually separate.
 
-Example:
-
-```text
-Selected: Head of Education Affairs
-
-Add below
--> Al-Qur'an Bureau
-
-Adjust visual rank
--> lower by 1
-```
-
-The result is still a direct structural child of `Head of Education Affairs`.
-
 ## Rendering requirements
 
-The chart renderer must be able to draw a connector across skipped visual bands so users can still see the true parent-child relationship.
+The chart renderer must draw a connector across skipped visual bands so users can still see the true parent-child relationship.
 
 A visually offset item must not appear disconnected or incorrectly attached to an item on its displayed row.
 
-The first implementation should prioritize correctness and readability over automatic aesthetic optimization.
-
-The renderer must also support:
+The renderer supports or must preserve:
 
 - compact and expanded organization views;
 - vacant positions remaining visible;
 - occupied position labels;
 - collapsed member counts for non-leadership employees;
 - historical/current/future effective-date views from ORG-004;
-- visual offsets that remain stable across those views when effective for the selected date.
+- visual offsets stable for the selected effective structure.
 
 ## Effective dating
 
@@ -293,9 +264,7 @@ Al-Qur'an Bureau moved structurally under a new directorate
 visual offset = 0
 ```
 
-A future Organization Designer implementation should therefore treat layout-affecting structural configuration as effective-dated rather than destructively overwriting history.
-
-Whether visual offset is independently effective-dated or versioned as part of the published organization structure is an implementation detail; historical chart rendering must nevertheless remain correct.
+The implemented organization snapshot model treats layout-affecting configuration as part of effective-dated structure history. Historical chart rendering must remain correct rather than destructively overwriting prior structure.
 
 ## Draft / impact preview
 
@@ -304,7 +273,7 @@ A draft restructure preview must show both:
 1. visual changes to the chart; and
 2. structural/authority changes that affect workflow resolution.
 
-A pure visual-rank change should be explicitly identified as **no approval-routing impact**.
+A pure visual-rank change is identified as **no approval-routing impact**.
 
 Example preview:
 
@@ -323,8 +292,6 @@ Conversely, moving the same bureau to a different structural parent must be iden
 
 Organization APIs consumed by workflow code must expose structural/authority relationships independently from layout metadata.
 
-A workflow consumer should not need visual information to resolve an approver.
-
 Conceptually:
 
 ```text
@@ -335,7 +302,7 @@ Approval resolver model
 = structure + assignments + authority
 ```
 
-This keeps future features such as attendance clarification, reimbursement, loan, performance review, document requests, and other approval workflows independent of chart aesthetics.
+This keeps future workflow modules independent of chart aesthetics.
 
 ## Acceptance criteria
 
@@ -349,8 +316,10 @@ This keeps future features such as attendance clarification, reimbursement, loan
 - ORG-004-VIS-H: historical/future chart views preserve the visual layout appropriate to the selected effective structure.
 - ORG-004-VIS-I: future workflow modules can consume organization authority without depending on visualization metadata.
 
-## Implementation boundary
+## Historical implementation boundary and current operational boundary
 
-This document is a **design requirement only**.
+At the 2026-08-22 design checkpoint this file was a **design requirement only** and explicitly did not describe deployed behavior. That historical checkpoint is preserved here so implementation history is not rewritten.
 
-It does not change the currently deployed HCIS runtime or the verified MVP approval resolver. Implementation must be performed as part of ORG-004 and validated before any workflow treats the dynamic structure as authoritative.
+Current state is different: ORG-004 code/schema and the Organization Designer implementation are deployed at the inspected production baseline. However, the real YSQ structure has not been validated for the pilot, `SHADOW` evidence has not been completed, and `STRUCTURE` is not activated. The current production contract therefore remains `LEGACY` until an authorized rollout setting says otherwise.
+
+No visual-ranking implementation fact is permission to infer, seed, or activate a real authority relationship.

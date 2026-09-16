@@ -1,6 +1,6 @@
 # GitHub to HCIS Production VPS Deployment
 
-**Status:** READINESS — workflow may be merged before production credentials are configured, but production deployment must remain manually approved.
+**Status:** ACTIVE MANUAL PRODUCTION WORKFLOW — ORGANIZATION GHCR RUNTIME OBSERVED; EACH DEPLOY STILL REQUIRES APPROVAL
 
 ## Goal
 
@@ -12,9 +12,18 @@ PR -> CI green -> merge main -> exact-SHA GHCR publish -> manual GitHub producti
 
 The workflow is intentionally **not** triggered automatically by a merge or image publication.
 
+Fresh Codex Local verification reported on 2026-09-16 records production API/Web running SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` from the organization GHCR repositories:
+
+```text
+ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+```
+
+This current-state evidence replaces the older assumption that production might still be on the personal `imadjinasi` image namespace. It does not authorize another deployment.
+
 ## Required GitHub environment
 
-Create a GitHub Environment named `production`. Configure required reviewers / deployment protection there before enabling routine use.
+The production path uses a GitHub Environment named `production` with the required reviewer/deployment protection configured by repository owners.
 
 The workflow expects these Environment secrets:
 
@@ -52,21 +61,13 @@ Before `deploy-vps.sh` can run, the workflow verifies remotely that:
 
 The last condition is required because `deploy-vps.sh` automatically attempts application rollback to the previous SHA if the new application fails health checks. The GitHub workflow must not start a cutover unless that rollback image is available.
 
-## First organization-GHCR cutover
+## Organization-GHCR cutover — historical checkpoint
 
-The currently deployed production SHA may predate the repository transfer and therefore may exist only in `ghcr.io/imadjinasi/...`.
+Before organization GHCR was proven in production, the runbook treated the first organization-owned cutover as a pending migration and allowed for a production SHA that might exist only in `ghcr.io/imadjinasi/...`.
 
-If the production preflight reports that rollback images are missing, **do not bypass the check** and do not disable automatic rollback.
+That was a valid transition checkpoint, but it is no longer the current production state. Codex Local evidence on 2026-09-16 shows the inspected production SHA already uses `ghcr.io/sabilulquran/...` exact-SHA API and Web images.
 
-Instead:
-
-1. read the current production SHA from the VPS without changing runtime;
-2. run **Publish HCIS Staging Images** manually with that full historical SHA in `target_sha`;
-3. the publisher verifies that the SHA is an ancestor of `main` and publishes only the immutable `sha-<SHA>` API/Web tags to `ghcr.io/sabilulquran/...`;
-4. it intentionally does **not** move the `staging` tag when backfilling a historical SHA;
-5. rerun the production workflow preflight.
-
-Once the previous production SHA and target SHA are both present in organization GHCR, the first cutover is rollback-safe.
+The historical recovery logic remains useful if a required rollback SHA is missing from organization GHCR: do not bypass the check or disable automatic rollback. Publish/backfill the required reviewed historical exact-SHA image through the approved publisher, then rerun preflight.
 
 ## Runtime image namespace
 
@@ -77,9 +78,9 @@ HCIS_GHCR_API_REPO=ghcr.io/sabilulquran/hcisysq-api
 HCIS_GHCR_WEB_REPO=ghcr.io/sabilulquran/hcisysq-web
 ```
 
-This means the first organization cutover does not require changing the default repository values in `scripts/deploy-vps.sh` ahead of time. Keeping the script defaults unchanged until the first organization deployment succeeds reduces the migration blast radius.
+`scripts/deploy-vps.sh` still contains legacy personal-namespace defaults. The production workflow overrides them, which is why current production can and does run organization-owned images without changing those defaults.
 
-After a successful organization-GHCR production deployment and verification, the old personal-namespace defaults can be retired in a separate cleanup PR.
+Do not interpret the legacy defaults as evidence of the current production image source. Retiring them is a deployment-code cleanup and is intentionally kept out of this documentation-only PR; perform that cleanup, if desired, in a separate reviewed PR with deployment-script tests and rollback review.
 
 ## What the GitHub workflow does not do
 
@@ -96,18 +97,18 @@ It does not:
 
 Database rollback remains manual and release-specific, exactly as documented in `vps-deployment.md`.
 
-## First-use checklist
+## Per-deployment checklist
 
-Before the first real GitHub-triggered production cutover:
+Before every GitHub-triggered production cutover:
 
-- [ ] `production` Environment exists with required reviewer protection.
-- [ ] all five SSH/VPS Environment secrets are configured.
-- [ ] the SSH account is least-privilege and can run the required Docker/Git operations non-interactively.
-- [ ] the pinned host key has been independently verified.
+- [ ] `production` Environment reviewer protection is active.
+- [ ] required SSH/VPS Environment secrets remain configured and valid.
+- [ ] the SSH account remains least-privilege and can run required Docker/Git operations non-interactively.
+- [ ] the pinned host key is still the expected production host key.
 - [ ] current production SHA is recorded read-only.
 - [ ] organization GHCR contains exact-SHA API/Web images for both current production and target `main`.
 - [ ] target PR/CI is green and target SHA is current `main`.
 - [ ] production deployment is explicitly approved.
 - [ ] no concurrent HCIS production deployment is running.
 
-The workflow itself also uses a non-cancelling `hcis-production` concurrency group so two GitHub-triggered production deployments cannot run simultaneously.
+The workflow uses a non-cancelling `hcis-production` concurrency group so two GitHub-triggered production deployments cannot run simultaneously.

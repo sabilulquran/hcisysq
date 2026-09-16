@@ -17,7 +17,7 @@ Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification
 
 ## 2. Canonical repository
 
-`sabilulquran/hcisysq` adalah repository development canonical yang teramati setelah transfer GitHub. Repository lama `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut. Perubahan canonical ini hanya mendokumentasikan transfer repository yang sudah terjadi; **bukan** bukti bahwa package GHCR, deployment target, secret, atau runtime production ikut berpindah.
+`sabilulquran/hcisysq` adalah repository development canonical setelah transfer GitHub. Repository lama `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut.
 
 - Frontend canonical: `apps/web`.
 - Target API: `apps/api`.
@@ -26,7 +26,9 @@ Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification
 
 `imadjinasi/hcis-ysq-foundation` adalah design/reference archive. Jangan membuat fitur baru di sana dan jangan merge history repository tersebut ke canonical repo.
 
-Untuk batas repository-transfer vs runtime/GHCR, lihat `docs/development/github-org-transfer-readiness.md`.
+Repository ownership, GHCR package source, script defaults, dan runtime production adalah bukti yang berbeda. Codex Local verification 2026-09-16 mencatat production API/Web pada SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` menggunakan exact-SHA images `ghcr.io/sabilulquran/hcisysq-api` dan `ghcr.io/sabilulquran/hcisysq-web`. `scripts/deploy-vps.sh` masih memiliki legacy personal-namespace defaults, sedangkan production workflow memasok organization-GHCR overrides. Jangan menyimpulkan current runtime dari default script saja, dan jangan mengubah deployment defaults sebagai efek samping perubahan dokumentasi.
+
+Untuk batas repository-transfer vs runtime/GHCR, lihat `docs/development/github-org-transfer-readiness.md`, `docs/development/vps-deployment.md`, dan `docs/development/github-vps-production-deployment.md`.
 
 ## 3. Documentation first
 

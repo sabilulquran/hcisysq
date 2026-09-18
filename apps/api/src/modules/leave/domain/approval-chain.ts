@@ -51,13 +51,17 @@ function addStep(
   source: LeaveApprovalSource,
 ) {
   const principalType = principal.principalType ?? "EMPLOYEE";
-  const key = principalType === "ACCOUNT" ? principal.accountId : principal.employeeId;
-  if (!key) {
+  const hasEmployee = Boolean(principal.employeeId);
+  const hasAccount = Boolean(principal.accountId);
+  if (hasEmployee === hasAccount
+      || (principalType === "EMPLOYEE" && !hasEmployee)
+      || (principalType === "ACCOUNT" && !hasAccount)) {
     throw new LeaveApprovalConfigurationError(
       "APPROVAL_CHAIN_EMPTY",
-      "Rantai approval berisi principal yang tidak valid.",
+      "Rantai approval berisi principal yang ambigu atau tidak valid.",
     );
   }
+  const key = principalType === "ACCOUNT" ? principal.accountId! : principal.employeeId!;
   const existing = steps.find((step) =>
     (step.principalType ?? "EMPLOYEE") === principalType &&
     (principalType === "ACCOUNT" ? step.accountId === key : step.employeeId === key));

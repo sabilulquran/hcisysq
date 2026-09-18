@@ -387,7 +387,7 @@ async function enqueueNotification(
   db: PoolClient,
   requestId: string,
   eventType: string,
-  targetType: "employee" | "role",
+  targetType: "employee" | "account" | "role",
   targetKey: string,
 ) {
   await db.query(

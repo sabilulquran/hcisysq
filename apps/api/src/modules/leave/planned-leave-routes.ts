@@ -313,10 +313,8 @@ async function hydrateApprovalChain(
       );
     }
     return {
-      ...step,
-      principalType: "EMPLOYEE" as const,
       employeeId: actor.id,
-      accountId: null,
+      sources: step.sources,
       name: actor.fullName,
     };
   });

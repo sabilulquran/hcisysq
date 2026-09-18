@@ -7,8 +7,10 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
+  AUTH_COOKIE_NAME,
   AuthError,
   AuthService,
+  readCookie,
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
@@ -91,6 +93,13 @@ interface ApprovalActorRow {
   accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
 }
 
+interface GovernanceActorRow {
+  id: string;
+  email: string;
+  status: string;
+  principalType: string;
+}
+
 interface RequestSummaryRow {
   id: string;
   policyKey: string;
@@ -168,6 +177,7 @@ async function loadEmployeeContext(
     WHERE a.id = $1
       AND a.principal_type = 'EMPLOYEE'
       AND a.status = 'active'
+      AND e.removed_at IS NULL
     ${lock ? "FOR UPDATE OF e" : ""}`,
     [accountId],
   );

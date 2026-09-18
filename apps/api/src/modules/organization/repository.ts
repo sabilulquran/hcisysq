@@ -130,7 +130,7 @@ export class PostgresOrganizationRepository {
           validated_at AS "validatedAt", published_at AS "publishedAt"
         FROM organization_change_sets
         WHERE status = 'PUBLISHED' AND effective_on <= $1::date
-        ORDER BY effective_on DESC, published_at DESC
+        ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
         LIMIT 1
       `,
       [effectiveDate],
@@ -162,7 +162,7 @@ export class PostgresOrganizationRepository {
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
           validated_at AS "validatedAt", published_at AS "publishedAt"
         FROM organization_change_sets
-        ORDER BY effective_on DESC, created_at DESC
+        ORDER BY effective_on DESC, created_at DESC, id DESC
       `,
     );
     return result.rows.map(mapChangeSet);

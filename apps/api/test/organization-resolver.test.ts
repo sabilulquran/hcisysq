@@ -117,7 +117,7 @@ function membership(id: string, employeeId: string) {
 function incumbency(
   id: string,
   positionKey: string,
-  employeeId: string,
+  employeeId: string | null,
   kind: "PRIMARY" | "ACTING",
   from = effectiveFrom,
   to: string | null = null,
@@ -305,6 +305,65 @@ describe("ORG-004 authority resolver", () => {
       .resolves.toMatchObject({ employeeId: employeeIds.acting });
   });
 
+  it("uses the explicit primary structural position as the reporting anchor", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-head", "node-team", "position-director"),
+        position("position-secondary", "node-team", null),
+      ],
+      memberships: [membership("head-membership", employeeIds.head)],
+      incumbencies: [
+        { ...incumbency("head-primary", "position-head", employeeIds.head, "PRIMARY"), isPrimaryStructural: true },
+        incumbency("head-secondary", "position-secondary", employeeIds.head, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+      authorityBindings: [],
+    });
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.head,
+      effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({
+      employeeId: employeeIds.director,
+      path: ["position-head", "position-director"],
+    });
+  });
+
+  it("fails closed instead of choosing a secondary structural position by row order", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-head", "node-team", "position-director"),
+        position("position-secondary", "node-team", "position-director"),
+      ],
+      memberships: [membership("head-membership", employeeIds.head)],
+      incumbencies: [
+        incumbency("head-one", "position-head", employeeIds.head, "PRIMARY"),
+        incumbency("head-two", "position-secondary", employeeIds.head, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+      authorityBindings: [],
+    });
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.head,
+      effectiveDate: "2026-08-22",
+    })).rejects.toMatchObject({ code: "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED" });
+  });
+
+  it("preserves account-held incumbency data but refuses to activate it as structural routing", async () => {
+    const structure = snapshot();
+    structure.positions[1] = { ...structure.positions[1]!, holderSource: "ACCOUNT" };
+    structure.incumbencies[0] = {
+      ...structure.incumbencies[0]!,
+      employeeId: null,
+      accountId: "foundation-board-account",
+    };
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    })).rejects.toMatchObject({ code: "INVALID_AUTHORITY_PRINCIPAL" });
+  });
+
   it("uses governance and oversight bindings without title checks", async () => {
     const structure = snapshot({
       positions: [
@@ -419,10 +478,12 @@ describe("ORG-004 rollout service", () => {
 describe("ORG-004 draft validation and impact", () => {
   it("separates active structural employment from login eligibility", async () => {
     const query = vi.fn(async (sql: string) => {
-      if (sql.includes("SELECT (status = 'active')")) {
+      if (sql.includes("FROM employees\n       WHERE id")) {
+        expect(sql).toContain("removed_at IS NULL");
         return { rows: [{ employeeActive: true }], rowCount: 1 };
       }
-      if (sql.includes("(e.status = 'active')")) {
+      if (sql.includes("FROM employees e WHERE e.id")) {
+        expect(sql).toContain("e.removed_at IS NULL");
         return {
           rows: [{ employeeActive: true, accountActive: false, capabilityValid: false }],
           rowCount: 1,
@@ -506,6 +567,18 @@ describe("ORG-004 draft validation and impact", () => {
     });
   });
 
+  it("treats a removed employee as ineligible for new structural authority without deleting history", async () => {
+    const query = vi.fn(async (sql: string) => {
+      expect(sql).toContain("removed_at IS NULL");
+      return { rows: [{ employeeActive: false, accountActive: true, capabilityValid: true }], rowCount: 1 };
+    });
+    const repository = new PostgresOrganizationRepository({ query } as never);
+    await expect(repository.validate(employeeIds.head, {
+      effectiveDate: "2026-08-22",
+      requiredCapability: "leave.approve",
+    })).resolves.toEqual({ eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" });
+  });
+
   it("keeps an inactive employee invalid as an active incumbent", async () => {
     const draft = snapshot();
     draft.changeSet.status = "DRAFT";
@@ -525,6 +598,32 @@ describe("ORG-004 draft validation and impact", () => {
     expect(report.issues).toContainEqual(expect.objectContaining({
       code: "INACTIVE_INCUMBENT",
       entityId: "incumbency-head",
+    }));
+  });
+
+  it("rejects overlapping primary structural assignments for the same employee", async () => {
+    const draft = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-head", "node-team", "position-director"),
+        position("position-secondary", "node-team", "position-director"),
+      ],
+      incumbencies: [
+        { ...incumbency("primary-one", "position-head", employeeIds.head, "PRIMARY"), isPrimaryStructural: true },
+        { ...incumbency("primary-two", "position-secondary", employeeIds.head, "PRIMARY"), isPrimaryStructural: true },
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    });
+    draft.changeSet.status = "DRAFT";
+    const fakeRepository = {
+      loadChangeSetSnapshot: async () => draft,
+      validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
+      markValidated: async () => undefined,
+    } as unknown as PostgresOrganizationRepository;
+    const report = await new OrganizationDraftService(fakeRepository).validateDraft(draft.changeSet.id, "admin");
+    expect(report.valid).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: "PRIMARY_STRUCTURAL_POSITION_OVERLAP",
     }));
   });
 

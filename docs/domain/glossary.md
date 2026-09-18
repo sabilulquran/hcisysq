@@ -11,6 +11,9 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Unit | Bagian organisasi tempat pegawai ditugaskan. Struktur dan kewenangannya perlu diverifikasi. |
 | Position / Posisi | Jabatan atau fungsi organisasi yang dapat memengaruhi akses dan approval. |
 | Direct Manager / Atasan Langsung | Pegawai yang ditetapkan sebagai atasan operasional utama untuk approval tertentu. Tidak selalu identik dengan role aplikasi. |
+| Organization Snapshot | Satu change set ORG-004 yang memuat struktur efektif bertanggal; identitas snapshot tidak sama dengan ordered external version/cursor. |
+| Organization Directory | Projection read-only fakta struktur yang bersumber dari HCIS untuk pencarian, navigasi, integrasi, dan distribusi lintas aplikasi; bukan editor/master kedua dan bukan pemilik workflow aplikasi. |
+| Stable Business Identifier | Identifier domain yang dimaksudkan bertahan lintas versi/snapshot; tidak boleh disamakan otomatis dengan primary-row id. |
 | Role | Kelompok kewenangan tingkat tinggi, misalnya pegawai atau super admin. |
 | Permission | Kemampuan spesifik terhadap aksi/resource. Permission lebih presisi daripada role. |
 | Policy | Aturan otorisasi yang menilai actor, aksi, dan resource. |

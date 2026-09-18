@@ -15,6 +15,7 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
 7. `domain/access-model.md`
 8. `domain/roles-permissions.md`
 9. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
+   - untuk Organization Directory publishing, baca `domain/organization-directory-publishing.md` (ORG-006) setelah ORG-002/ORG-004.
 10. `architecture/system-context.md`
 11. ADR yang relevan
 12. `api/openapi.yaml`

@@ -76,8 +76,11 @@ Recruitment belongs to HCIS but is an HC/admin workspace capability rather than 
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005.
+- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (DISCOVERY).
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
+
+`ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is planned as a read-only projection/distribution layer. It is discovery only: external identifiers, privacy, versioning, transport, freshness, replay, and bootstrap remain undecided, and no runtime publication path exists yet.
 
 ## UX presentation
 

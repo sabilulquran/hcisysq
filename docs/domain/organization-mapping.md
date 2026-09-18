@@ -1,6 +1,6 @@
 # Organization Mapping and Approval Context
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 SUCCESSOR IMPLEMENTED LOCALLY, LEGACY DEFAULT PRESERVED
+**Status:** VERIFIED MVP BASELINE — ORG-004 CODE/SCHEMA DEPLOYED, LEGACY WORKFLOW AUTHORITY PRESERVED
 **Specification:** ORG-002  
 **Related:** ORG-001, ORG-004, APR-001, AUTH-010, EMP-001, LEAVE-001
 
@@ -24,11 +24,19 @@ Unit
   -> current Unit Approver
 ```
 
-This model remains the authoritative description of the already-implemented MVP behavior until ORG-004 is implemented and activated.
+This model remains the authoritative description of HCIS approval routing while ORG-004 rollout resolves to `LEGACY`. ORG-004 code/schema are deployed, but deployment alone does not make the structural resolver authoritative.
 
-The implemented-local post-MVP successor is `docs/domain/dynamic-organization-structure.md` (ORG-004). ORG-004 moves normal administration toward effective-dated organizational nodes, authority-bearing positions, incumbencies, acting assignments, structural vacancy fallback, and a visual Organization Designer.
+The deployed code/schema successor is `docs/domain/dynamic-organization-structure.md` (ORG-004). ORG-004 provides effective-dated organizational nodes, authority-bearing positions, incumbencies, acting assignments, structural vacancy fallback, and a visual Organization Designer.
 
-**Do not treat ORG-004 as deployed or authoritative runtime behavior yet.** The additive migration defaults to `LEGACY`; activation is explicit and must not rewrite existing approval snapshots.
+**Do not confuse deployment with operational activation.** ORG-004 code/schema are deployed, while the current production rollout evidence remains `LEGACY` because no rollout configuration is active. The real YSQ structure, accepted SHADOW comparison, STRUCTURE activation, and production pilot remain pending. Activation is explicit and must not rewrite existing approval snapshots.
+
+```text
+code/schema deployed
+!= real YSQ structure configured
+!= SHADOW validated
+!= STRUCTURE activated
+!= production pilot validated
+```
 
 ## Current-state organization model
 
@@ -81,7 +89,7 @@ Direct-manager assignment must reject:
 - inactive manager;
 - reporting-line cycle.
 
-### Planned successor behavior
+### ORG-004 successor behavior under structural rollout
 
 Under ORG-004, repetitive employee-by-employee manager setup should become the exception rather than the normal mechanism.
 
@@ -105,7 +113,7 @@ Director
   -> Social Staff
 ```
 
-Future structure-driven resolution may resolve Social Staff directly to the Director without deleting the vacant Head of Social Division position. This behavior belongs to ORG-004 and is not yet implied by the MVP `direct_manager_employee_id` field.
+Under an accepted `STRUCTURE` rollout, structural resolution may resolve Social Staff directly to the Director without deleting the vacant Head of Social Division position. This behavior belongs to ORG-004 and is not implied by the MVP `direct_manager_employee_id` field while rollout remains `LEGACY`.
 
 ## Unit Approver
 
@@ -193,7 +201,7 @@ Resolved:
   Head of Education Affairs
 ```
 
-## Planned governance and post-approval rule
+## ORG-004 governance and post-approval rule
 
 The accepted ORG-004 planning direction adds structural governance resolution and a post-final-approval information rule.
 
@@ -214,7 +222,7 @@ This distinction matters when HC validation or HC actual approval occurs after l
 
 This notification is informational only and must not create another approval step. Existing HC notification requirements remain separate and additive.
 
-This rule is **planned, not current MVP runtime behavior**. Detailed resolution is defined by ORG-004 and must be implemented through structure/authority configuration rather than title-specific source code.
+This rule is implemented in ORG-004 software but is **not current authoritative production behavior while rollout remains `LEGACY`**. Detailed resolution is defined by ORG-004 and must be activated through reviewed structure/authority configuration rather than title-specific source code.
 
 ## Vacancy rule
 
@@ -255,7 +263,7 @@ The verified MVP admin experience prioritizes setup speed and visibility:
 - preview the resolved approval chain where supported;
 - warn on self-manager, cycles, inactive approvers, and incomplete configuration.
 
-ORG-004 plans to replace repetitive administration with a visual Organization Designer supporting structural nodes, positions, memberships, incumbencies, acting assignments, effective dates, vacancy policies, draft/publish restructure, and impact preview.
+ORG-004 provides a visual Organization Designer for structural nodes, positions, memberships, incumbencies, acting assignments, effective dates, vacancy policies, draft/publish restructure, and impact preview. Those deployed capabilities do not prove that the real YSQ structure has been configured or accepted.
 
 ## Audit
 
@@ -280,4 +288,4 @@ ORG-004 adds audit requirements for structure publication, position/incumbent ch
 - ORG-002-F: missing mandatory approval configuration blocks submission instead of guessing.
 - ORG-002-G: changes affect future submissions only; submitted approval snapshots remain unchanged.
 - ORG-002-H: the verified MVP did not depend on organization versioning, alias history, or a formal Position registry.
-- ORG-002-I: agents must treat ORG-004 as the planned successor and must not assume its behavior exists until implementation/activation is completed.
+- ORG-002-I: agents must treat ORG-004 as the deployed software/schema successor but must not treat structure-driven approval as authoritative until real structure configuration, SHADOW validation, explicit `STRUCTURE` activation, and the required pilot evidence are complete.

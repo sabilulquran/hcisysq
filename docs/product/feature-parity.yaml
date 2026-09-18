@@ -129,6 +129,19 @@ features:
     docs:
       - docs/product/hcis-capability-map.md
 
+  - id: ORG-006
+    module: organization
+    name: Organization Directory publishing to SQ Hub
+    legacy_evidence: none; cross-repository projection boundary is a new discovery contract
+    target_status: discovery
+    priority: post-org004-integration
+    risk: high
+    planning_note: HCIS remains the organization authoring/system-of-authority side. SQ Hub is planned as a read-only local projection/distribution layer. Transport, external identifiers, ordered versioning, privacy, freshness, replay, and bootstrap remain TBD; no runtime publication path is implemented by ORG-006 discovery.
+    docs:
+      - docs/domain/organization-directory-publishing.md
+      - docs/domain/dynamic-organization-structure.md
+      - docs/domain/organization-mapping.md
+
   - id: AUTH-010
     module: authorization
     name: Role and permission management

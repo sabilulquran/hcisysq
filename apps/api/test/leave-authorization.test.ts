@@ -171,8 +171,10 @@ function createReadIsolationPool(actorEmployeeId: string) {
       expect(values?.[0]).toBe(actorEmployeeId);
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("FROM leave_request_approval_steps s") && sql.includes("WHERE s.approver_employee_id = $1")) {
+    if (sql.includes("FROM leave_request_approval_steps s")
+        && sql.includes("s.approver_employee_id = $1 OR s.approver_account_id = $2")) {
       expect(values?.[0]).toBe(actorEmployeeId);
+      expect(values?.[1]).toBeNull();
       return { rows: [], rowCount: 0 };
     }
     throw new Error(`Unexpected SQL in leave read-isolation test: ${sql}`);
@@ -338,6 +340,33 @@ describe("leave approval multi-account authorization", () => {
     const response = await decide(pool, DM_STEP);
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ code: "APPROVAL_FORBIDDEN" });
+  });
+
+  it("scopes a Foundation Board approval inbox to the exact account and explicit capability", async () => {
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (sql.includes("FROM auth_sessions s")) return authRows("FOUNDATION_BOARD");
+      if (sql.includes("UPDATE auth_sessions SET last_seen_at")) return { rows: [], rowCount: 1 };
+      if (sql.includes("leave.governance.approve") && sql.includes("account_role_assignments")) {
+        expect(values?.[0]).toBe(ACTOR_ACCOUNT);
+        return { rows: [{ allowed: true }], rowCount: 1 };
+      }
+      if (sql.includes("s.approver_employee_id = $1 OR s.approver_account_id = $2")) {
+        expect(values?.[0]).toBeNull();
+        expect(values?.[1]).toBe(ACTOR_ACCOUNT);
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error(`Unexpected SQL in board approval inbox test: ${sql}`);
+    });
+    const app = Fastify({ logger: false });
+    await registerEmployeeLeaveRoutes(app, { query } as unknown as Pool, config);
+    const response = await app.inject({
+      method: "GET",
+      url: "/leave/approvals",
+      headers: { cookie: "hcis_session=test-token" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ items: [] });
+    await app.close();
   });
 
   it("allows the exact snapshotted Foundation Board account only with explicit governance capability", async () => {

@@ -268,6 +268,26 @@ Reassignment must store:
 
 Reassignment does not recompute the entire chain from the latest organization structure.
 
+## Approval principal compatibility
+
+A stored approval step is an immutable principal snapshot. The deployed schema supports exactly one of:
+
+```text
+approver_employee_id
+XOR
+approver_account_id
+```
+
+Compatibility rules:
+
+- existing employee-principal steps continue unchanged;
+- an account-principal step is owned only by that exact account;
+- account-principal execution additionally requires the explicit workflow capability already assigned to that account; snapshot ownership never grants the capability;
+- ambiguous/missing principal shapes fail closed;
+- employee removal or later organization changes do not rewrite a historical approval step;
+- removed employees are not eligible to become new authorities, but their historical employee/approval records remain auditable;
+- this compatibility does not create governance routing under `LEGACY`, and does not authorize SHADOW/STRUCTURE.
+
 ## Required data
 
 Store at minimum:

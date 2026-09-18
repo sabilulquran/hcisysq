@@ -10,6 +10,21 @@
 
 This runbook governs the gradual operational validation of the Dynamic Organization Foundation. It does not authorize deployment, real-user account activation, production data mutation, or `STRUCTURE` activation. Every production-facing phase requires its normal human approval and change record.
 
+## Source/schema reconciliation status
+
+Canonical source now preserves the production-evolved ORG-004 holder/principal fields and rejects unsafe ambiguity. This closes a source/schema compatibility gap only.
+
+It does **not** advance the operational rollout phase:
+
+```text
+schema/source compatibility available
+!= SHADOW accepted
+!= STRUCTURE activated
+!= direct cutover authorized
+```
+
+With no rollout setting, resolver authority remains `LEGACY`. Account-held structural data cannot become new routing authority through this compatibility work; separately accepted configuration, capability mapping, SHADOW evidence, and activation approval remain required.
+
 ## Immutable safety boundaries
 
 - Keep all workflows in `LEGACY` immediately after an eventual deployment.

@@ -201,6 +201,7 @@ async function loadEmployeeContext(
     WHERE account.id = $1
       AND account.principal_type = 'EMPLOYEE'
       AND account.status = 'active'
+      AND employee.removed_at IS NULL
     ${lock ? "FOR UPDATE OF employee" : ""}`,
     [accountId],
   );
@@ -249,7 +250,8 @@ async function hydrateApprovalChain(
   db: Pool | PoolClient,
   chain: readonly LeaveApprovalStep[],
 ): Promise<Array<LeaveApprovalStep & { name: string }>> {
-  const ids = chain.map((step) => step.employeeId);
+  const ids = chain.flatMap((step) => step.employeeId ? [step.employeeId] : []);
+  const accountIds = chain.flatMap((step) => step.accountId ? [step.accountId] : []);
   const result = await db.query<ApprovalActorRow>(
     `SELECT
       employee.id,
@@ -261,11 +263,40 @@ async function hydrateApprovalChain(
     LEFT JOIN accounts account
       ON account.employee_id = employee.id
       AND account.principal_type = 'EMPLOYEE'
-    WHERE employee.id = ANY($1::uuid[])`,
+    WHERE employee.id = ANY($1::uuid[])
+      AND employee.removed_at IS NULL`,
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
+  const governance = accountIds.length === 0
+    ? { rows: [] as Array<{ id: string; email: string; status: string; principalType: string }> }
+    : await db.query<{ id: string; email: string; status: string; principalType: string }>(
+      `SELECT id, email, status, principal_type AS "principalType"
+       FROM accounts WHERE id = ANY($1::uuid[])`,
+      [accountIds],
+    );
+  const accountById = new Map(governance.rows.map((row) => [row.id, row]));
   return chain.map((step) => {
+    if ((step.principalType ?? "EMPLOYEE") === "ACCOUNT") {
+      const actor = step.accountId ? accountById.get(step.accountId) : undefined;
+      if (!actor || actor.principalType !== "FOUNDATION_BOARD" || actor.status !== "active") {
+        throw new PlannedLeaveRouteError(
+          409,
+          "APPROVER_ACCOUNT_NOT_READY",
+          "Akun governance approver belum aktif.",
+        );
+      }
+      return {
+        ...step,
+        principalType: "ACCOUNT" as const,
+        employeeId: null,
+        accountId: actor.id,
+        name: "Penyetuju Pengurus Yayasan",
+      };
+    }
+    if (!step.employeeId) {
+      throw new PlannedLeaveRouteError(409, "APPROVER_NOT_ACTIVE", "Principal approver tidak valid.");
+    }
     const actor = byId.get(step.employeeId);
     if (!actor || actor.status !== "active") {
       throw new PlannedLeaveRouteError(
@@ -281,7 +312,11 @@ async function hydrateApprovalChain(
         `Akun approver ${actor.fullName} belum aktif.`,
       );
     }
-    return { ...step, name: actor.fullName };
+    return {
+      employeeId: actor.id,
+      sources: step.sources,
+      name: actor.fullName,
+    };
   });
 }
 
@@ -388,7 +423,7 @@ async function enqueueNotification(
   db: PoolClient,
   requestId: string,
   eventType: string,
-  targetType: "employee" | "role",
+  targetType: "employee" | "account" | "role",
   targetKey: string,
 ) {
   await db.query(
@@ -611,7 +646,13 @@ export async function registerPlannedLeaveRoutes(
           request.validation_summary AS "validationSummary",
           request.submitted_at AS "submittedAt",
           request.final_decided_at AS "finalDecidedAt",
-          approver.full_name AS "currentApproverName",
+          CASE
+            WHEN approver.id IS NOT NULL THEN approver.full_name
+            WHEN active_step.approver_account_id IS NOT NULL
+              AND active_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+              THEN 'Penyetuju Pengurus Yayasan'
+            ELSE NULL
+          END AS "currentApproverName",
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus"
         FROM leave_requests request
@@ -747,7 +788,9 @@ export async function registerPlannedLeaveRoutes(
               noticeDays: preview.validation.noticeDays,
               unpaid: preview.validation.unpaid,
               approvalSnapshot: preview.approvalChain.map((step) => ({
+                principalType: step.principalType ?? "EMPLOYEE",
                 employeeId: step.employeeId,
+                accountId: step.accountId ?? null,
                 sources: step.sources,
               })),
               authorityResolution: preview.authorityResolution,
@@ -759,23 +802,24 @@ export async function registerPlannedLeaveRoutes(
           ? await storeEvidence(client, requestId, principal.id, evidenceInput, encryptionKey)
           : null;
 
-        const insertedSteps: Array<{ id: string; employeeId: string; name: string }> = [];
+        const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
         for (const [index, step] of preview.approvalChain.entries()) {
           const stepId = randomUUID();
           await client.query(
             `INSERT INTO leave_request_approval_steps (
-              id, leave_request_id, step_order, approver_employee_id, sources, status
-            ) VALUES ($1, $2, $3, $4, $5::text[], $6)`,
+              id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
+            ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
             [
               stepId,
               requestId,
               index + 1,
               step.employeeId,
+              step.accountId ?? null,
               step.sources,
               index === 0 ? "pending" : "waiting",
             ],
           );
-          insertedSteps.push({ id: stepId, employeeId: step.employeeId, name: step.name });
+          insertedSteps.push({ id: stepId, employeeId: step.employeeId, accountId: step.accountId ?? null, name: step.name });
         }
 
         await client.query(
@@ -798,8 +842,8 @@ export async function registerPlannedLeaveRoutes(
             client,
             requestId,
             "leave.approval.requested",
-            "employee",
-            firstStep.employeeId,
+            firstStep.accountId ? "account" : "employee",
+            firstStep.accountId ?? firstStep.employeeId!,
           );
         }
         await client.query("COMMIT");

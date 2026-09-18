@@ -56,8 +56,9 @@ describe("AppShell employee service discovery", () => {
 
     expect(html).toContain('href="/app/services"');
     expect(html).toContain(">Lainnya<");
-    expect(html).toContain('href="/app/services/reimbursement"');
-    expect(html).toContain('href="/app/services/documents"');
+    expect(html).toContain('href="/app/services#time-attendance"');
+    expect(html).toContain('href="/app/services#finance"');
+    expect(html).toContain('href="/app/services#employee-services"');
     expect(html).not.toContain('href="#"');
   });
 });

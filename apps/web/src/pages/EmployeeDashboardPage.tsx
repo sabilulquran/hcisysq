@@ -5,7 +5,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock3,
-  FileText,
+  Grid2X2,
   Loader2,
   ShieldCheck,
   WalletCards,
@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
+import { getMyAttendance, type AttendanceRecord } from "@/lib/attendance";
 import {
   getMyAttendanceResolutions,
   type AttendanceResolutionItem,
@@ -35,6 +36,17 @@ function initials(name: string) {
     .join("");
 }
 
+function jakartaDateParts() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Jakarta",
+  }).formatToParts(new Date());
+  const read = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value ?? "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
 function getDateLabel() {
   return new Intl.DateTimeFormat("id-ID", {
     weekday: "long",
@@ -54,6 +66,16 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T00:00:00+07:00`));
 }
 
+function formatTime(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(value));
+}
+
 function requestStatusLabel(status: string, specialTaskStatus?: string | null) {
   if (specialTaskStatus === "needs_correction") return "Perlu dilengkapi";
   if (specialTaskStatus === "pending") return "Validasi HC";
@@ -67,6 +89,7 @@ interface DashboardState {
   annual: EmployeeLeaveSummary;
   special: SpecialLeaveSummary;
   resolutions: AttendanceResolutionItem[];
+  attendance: AttendanceRecord | null;
 }
 
 export function EmployeeDashboardPage() {
@@ -76,13 +99,20 @@ export function EmployeeDashboardPage() {
 
   useEffect(() => {
     const load = async () => {
+      const today = jakartaDateParts();
       try {
-        const [annual, special, resolutions] = await Promise.all([
+        const [annual, special, resolutions, attendance] = await Promise.all([
           getEmployeeLeaveSummary(),
           getSpecialLeaveSummary(),
           getMyAttendanceResolutions(),
+          getMyAttendance({ from: today, to: today }),
         ]);
-        setData({ annual, special, resolutions: resolutions.items });
+        setData({
+          annual,
+          special,
+          resolutions: resolutions.items,
+          attendance: attendance.items.find((item) => item.attendanceDate === today) ?? null,
+        });
         setError(null);
       } catch (cause) {
         setData(null);
@@ -100,12 +130,8 @@ export function EmployeeDashboardPage() {
   const needsCompletion =
     data?.special.requests.filter((item) => item.hcTaskStatus === "needs_correction").length ?? 0;
   const pendingApprovals = data?.annual.pendingApprovalCount ?? 0;
+  const totalActions = pendingEmployeeResolution + needsCompletion + pendingApprovals;
   const hasOrganizationHcAccess = data?.special.hasHumanCapitalRole ?? false;
-  const activeRequests = [
-    ...(data?.annual.requests ?? []).filter((item) => item.status === "in_review"),
-    ...(data?.special.requests ?? []).filter((item) => item.status === "in_review"),
-  ].length;
-
   const additionalRole = pendingApprovals > 0 ? "Approver" : undefined;
   const accessLabel = hasOrganizationHcAccess ? "Human Capital" : additionalRole;
   const user = {
@@ -138,7 +164,7 @@ export function EmployeeDashboardPage() {
     }));
     return [...annual, ...special]
       .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-      .slice(0, 5);
+      .slice(0, 4);
   }, [data]);
 
   return (
@@ -147,19 +173,16 @@ export function EmployeeDashboardPage() {
       activeItem="Beranda"
       capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
     >
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold capitalize tracking-wide text-muted-foreground">{getDateLabel()}</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
             Assalamu&apos;alaikum, {firstName}.
           </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Ringkasan data Anda dan hal yang perlu ditindaklanjuti hari ini.
-          </p>
         </div>
         {accessLabel ? (
-          <div className="inline-flex w-fit items-center gap-2 rounded-2xl border border-brand-yellow/35 bg-brand-yellow/12 px-3.5 py-2 text-xs font-semibold text-amber-950 shadow-[var(--shadow-soft)]">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Akses tambahan · {accessLabel}
+          <div className="inline-flex w-fit items-center gap-2 rounded-xl border border-brand-yellow/35 bg-brand-yellow/12 px-3 py-2 text-xs font-semibold text-amber-950">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" /> {accessLabel}
           </div>
         ) : null}
       </section>
@@ -171,157 +194,145 @@ export function EmployeeDashboardPage() {
       ) : null}
 
       {loading ? (
-        <div className="mt-6 flex items-center gap-2 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat dashboard Anda...
+        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat beranda Anda...
         </div>
       ) : !data ? (
-        <div className="mt-6 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
-          Dashboard belum dapat ditampilkan. Muat ulang halaman setelah koneksi tersedia kembali.
+        <div className="mt-6 rounded-2xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          Beranda belum dapat ditampilkan. Muat ulang halaman setelah koneksi tersedia kembali.
         </div>
       ) : (
         <>
-          {(pendingEmployeeResolution > 0 || needsCompletion > 0 || pendingApprovals > 0) ? (
-            <section className="mt-6 grid gap-3 lg:grid-cols-3">
-              {pendingEmployeeResolution > 0 ? (
-                <a href="/app/attendance-resolution" className="rounded-3xl border border-brand-yellow/40 bg-brand-yellow/12 p-5 shadow-[var(--shadow-soft)]">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-900/70">Perlu keputusan Anda</p>
-                  <p className="mt-2 text-2xl font-bold text-amber-950">{pendingEmployeeResolution}</p>
-                  <p className="mt-1 text-sm font-bold text-amber-950">Tindak lanjut ketidakhadiran</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-950/70">Buka untuk menerima atau menolak usulan penyelesaian.</p>
-                </a>
-              ) : null}
-              {needsCompletion > 0 ? (
-                <a href="/app/leave/special" className="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-[var(--shadow-soft)]">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">Dokumen cuti</p>
-                  <p className="mt-2 text-2xl font-bold text-amber-950">{needsCompletion}</p>
-                  <p className="mt-1 text-sm font-bold text-amber-950">Perlu dilengkapi</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-900">Human Capital meminta kelengkapan administrasi.</p>
-                </a>
-              ) : null}
-              {pendingApprovals > 0 ? (
-                <a href="/app/approvals" className="rounded-3xl border border-brand-primary/20 bg-brand-primary-pale/50 p-5 shadow-[var(--shadow-soft)]">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-primary-deep/70">Persetujuan</p>
-                  <p className="mt-2 text-2xl font-bold text-brand-heading">{pendingApprovals}</p>
-                  <p className="mt-1 text-sm font-bold text-brand-heading">Menunggu tindakan</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Pengajuan tim yang sedang menunggu keputusan Anda.</p>
-                </a>
-              ) : null}
-            </section>
-          ) : (
-            <div className="mt-6 flex items-center gap-3 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" /> Tidak ada tindakan mendesak untuk Anda saat ini.
-            </div>
-          )}
-
-          <section className="mt-4 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-            <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
+          <section className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+            <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cuti tahunan</p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Hari ini</p>
+                  <h2 className="mt-1 text-lg font-bold text-brand-heading">Kehadiran</h2>
+                </div>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-cyan/14 text-cyan-900">
+                  <Clock3 className="h-5 w-5" aria-hidden="true" />
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-surface p-4">
+                  <p className="text-xs font-semibold text-muted-foreground">Masuk</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkInAt ?? null)}</p>
+                </div>
+                <div className="rounded-2xl bg-surface p-4">
+                  <p className="text-xs font-semibold text-muted-foreground">Pulang</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkOutAt ?? null)}</p>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs leading-5 text-muted-foreground">
+                {data.attendance
+                  ? "Menampilkan rekaman faktual. HCIS belum menyimpulkan telat, absen, lembur, atau jam kerja."
+                  : "Belum ada rekaman kehadiran untuk hari ini."}
+              </p>
+              <a href="/app/attendance" className="mt-4 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-primary-deep">
+                Lihat kehadiran <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </article>
+
+            <article className={totalActions > 0 ? "rounded-3xl border border-brand-yellow/40 bg-brand-yellow/10 p-5" : "rounded-3xl border border-emerald-200 bg-emerald-50 p-5"}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Perlu tindakan</p>
+                  <p className="mt-2 text-3xl font-bold text-brand-heading">{totalActions}</p>
+                </div>
+                {totalActions > 0 ? <ClipboardCheck className="h-5 w-5 text-amber-900" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5 text-emerald-800" aria-hidden="true" />}
+              </div>
+              {totalActions > 0 ? (
+                <div className="mt-4 space-y-2 text-sm">
+                  {pendingEmployeeResolution > 0 ? <a href="/app/attendance-resolution" className="flex items-center justify-between font-semibold text-brand-heading"><span>{pendingEmployeeResolution} tindak lanjut kehadiran</span><ArrowRight className="h-4 w-4" /></a> : null}
+                  {needsCompletion > 0 ? <a href="/app/leave/special" className="flex items-center justify-between font-semibold text-brand-heading"><span>{needsCompletion} dokumen cuti perlu dilengkapi</span><ArrowRight className="h-4 w-4" /></a> : null}
+                  {pendingApprovals > 0 ? <a href="/app/approvals" className="flex items-center justify-between font-semibold text-brand-heading"><span>{pendingApprovals} persetujuan menunggu</span><ArrowRight className="h-4 w-4" /></a> : null}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-6 text-emerald-900">Tidak ada hal yang perlu Anda tindaklanjuti saat ini.</p>
+              )}
+            </article>
+          </section>
+
+          <section className="mt-7">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Akses cepat</p>
+                <h2 className="mt-1 text-lg font-bold text-brand-heading">Apa yang ingin Anda lakukan?</h2>
+              </div>
+              <a href="/app/services" className="hidden text-xs font-bold text-brand-primary-deep sm:inline">Semua layanan</a>
+            </div>
+
+            <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
+              {[
+                ["Kehadiran", "/app/attendance", Clock3],
+                ["Cuti & Izin", "/app/leave", CalendarDays],
+                ["Slip Gaji", "/app/payslips", WalletCards],
+                ["Lainnya", "/app/services", Grid2X2],
+              ].map(([label, href, Icon]) => {
+                const TileIcon = Icon as typeof Clock3;
+                return (
+                  <a key={String(label)} href={String(href)} className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-border/70 bg-white px-2 py-3 text-center shadow-[var(--shadow-soft)]">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
+                      <TileIcon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <span className="text-[11px] font-bold leading-4 text-brand-heading sm:text-xs">{String(label)}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+            <article className="rounded-2xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti tahunan</p>
                   {employee?.leaveEntitlementGroup === "non_education" ? (
                     <>
-                      <p className="mt-2 text-3xl font-bold text-brand-heading">12 <span className="text-sm font-semibold text-muted-foreground">hari / tahun</span></p>
-                      <p className="mt-3 text-sm font-bold text-brand-heading">
-                        {annualView?.availableNowDays ?? 0} hari tersedia sekarang
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="mt-2 text-3xl font-bold text-brand-heading">{annualView?.availableNowDays ?? 0} <span className="text-sm font-semibold text-muted-foreground">hari tersedia</span></p>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
                         {currentPeriod ? `${currentPeriod.label} · ${currentPeriod.remainingDays} dari 3 hari belum digunakan` : "Belum masuk periode yang dapat digunakan."}
                       </p>
                     </>
                   ) : employee?.leaveEntitlementGroup === "education" ? (
                     <>
-                      <p className="mt-2 text-lg font-bold text-brand-heading">Dipenuhi melalui kalender akademik</p>
-                      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        Cuti Akhir Semester dan Akhir Tahun Pelajaran menjadi pemenuhan hak tahunan tenaga pendidikan.
-                      </p>
+                      <p className="mt-2 text-base font-bold text-brand-heading">Kalender akademik</p>
+                      <p className="mt-2 text-xs leading-5 text-muted-foreground">Hak tahunan dipenuhi melalui Cuti Akhir Semester dan Akhir Tahun Pelajaran.</p>
                     </>
                   ) : (
                     <p className="mt-2 text-sm font-semibold text-amber-900">Kelompok hak cuti belum dikonfigurasi.</p>
                   )}
                 </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
-                  <CalendarDays className="h-5 w-5" aria-hidden="true" />
-                </span>
+                <CalendarDays className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
               </div>
-              <a href="/app/leave" className="mt-6 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-primary-deep">
-                Buka Cuti & Izin <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </a>
+              <a href="/app/leave" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-brand-primary-deep">Buka Cuti & Izin <ArrowRight className="h-4 w-4" /></a>
             </article>
 
-            <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
-              <div className="flex items-start justify-between gap-4">
+            <article className="overflow-hidden rounded-2xl border border-border/75 bg-white shadow-[var(--shadow-soft)]">
+              <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kehadiran</p>
-                  <p className="mt-2 text-lg font-bold text-brand-heading">Rekaman harian</p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    Lihat jam masuk dan jam keluar yang sudah tercatat. HCIS belum menyimpulkan telat atau absen sebelum jadwal kerja dihubungkan.
-                  </p>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Aktivitas terbaru</p>
+                  <h2 className="mt-1 text-base font-bold text-brand-heading">Pengajuan saya</h2>
                 </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-900">
-                  <Clock3 className="h-5 w-5" aria-hidden="true" />
-                </span>
+                <a href="/app/leave" className="text-xs font-bold text-brand-primary-deep">Lihat semua</a>
               </div>
-              <a href="/app/attendance" className="mt-6 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-primary-deep">
-                Buka Kehadiran <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </a>
-            </article>
-          </section>
-
-          <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <a href="/app/leave" className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-              <CalendarDays className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-              <p className="mt-4 text-sm font-bold text-brand-heading">Ajukan / laporkan cuti</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Cuti Tahunan, sakit, atau kondisi khusus dari satu pintu.</p>
-            </a>
-            <a href="/app/approvals" className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-              <ClipboardCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-              <p className="mt-4 text-sm font-bold text-brand-heading">Persetujuan</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{pendingApprovals > 0 ? `${pendingApprovals} pengajuan menunggu Anda.` : "Tidak ada approval yang menunggu."}</p>
-            </a>
-            {hasOrganizationHcAccess ? (
-              <a href="/app/hc/leave" className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-                <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-                <p className="mt-4 text-sm font-bold text-brand-heading">Ruang kerja HC</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">Validasi administrasi cuti dan penyelesaian kehadiran.</p>
-              </a>
-            ) : (
-              <div className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-                <FileText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                <p className="mt-4 text-sm font-bold text-brand-heading">Pengajuan berjalan</p>
-                <p className="mt-1 text-2xl font-bold text-brand-heading">{activeRequests}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Cuti atau izin yang masih diproses.</p>
-              </div>
-            )}
-            <div className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-              <WalletCards className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              <p className="mt-4 text-sm font-bold text-brand-heading">Slip gaji</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">Belum tersedia. Tidak ada periode atau nominal sintetis yang ditampilkan.</p>
-            </div>
-          </section>
-
-          <section className="mt-6 overflow-hidden rounded-[2rem] border border-border/80 bg-white shadow-[var(--shadow-raised)]">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 sm:px-6">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pengajuan saya</p>
-                <h2 className="mt-1 text-lg font-bold text-brand-heading">Status terbaru</h2>
-              </div>
-              <a href="/app/leave" className="text-xs font-bold text-brand-primary-deep">Lihat Cuti & Izin</a>
-            </div>
-            <div className="divide-y divide-border/70">
-              {latestRequests.length === 0 ? (
-                <p className="px-5 py-8 text-sm text-muted-foreground sm:px-6">Belum ada pengajuan cuti atau izin.</p>
-              ) : (
-                latestRequests.map((item) => (
-                  <div key={item.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                    <div>
-                      <p className="text-sm font-bold text-brand-heading">{item.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
+              <div className="divide-y divide-border/70">
+                {latestRequests.length === 0 ? (
+                  <p className="px-5 py-7 text-sm text-muted-foreground">Belum ada pengajuan cuti atau izin.</p>
+                ) : latestRequests.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-4 px-5 py-4">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-brand-heading">{item.name}</p>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">{item.detail}</p>
                     </div>
-                    <span className="w-fit rounded-full bg-surface px-3 py-1 text-xs font-semibold text-brand-heading">{item.status}</span>
+                    <span className="shrink-0 rounded-full bg-surface px-3 py-1 text-[11px] font-semibold text-brand-heading">{item.status}</span>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            </article>
           </section>
         </>
       )}

@@ -4,7 +4,9 @@ export type LeaveApprovalSource =
   | "GOVERNANCE_APPROVER";
 
 export interface LeaveApprovalStep {
-  employeeId: string;
+  principalType?: "EMPLOYEE" | "ACCOUNT";
+  employeeId: string | null;
+  accountId?: string | null;
   sources: LeaveApprovalSource[];
 }
 
@@ -17,7 +19,9 @@ export interface LeaveLineApprovalInput {
 export interface ResolvedLeaveAuthorityInput {
   requesterEmployeeId: string;
   authorities: ReadonlyArray<{
-    employeeId: string;
+    principalType?: "EMPLOYEE" | "ACCOUNT";
+    employeeId: string | null;
+    accountId?: string | null;
     source: LeaveApprovalSource;
   }>;
 }
@@ -39,16 +43,32 @@ export class LeaveApprovalConfigurationError extends Error {
 
 function addStep(
   steps: LeaveApprovalStep[],
-  employeeId: string,
+  principal: {
+    principalType?: "EMPLOYEE" | "ACCOUNT";
+    employeeId: string | null;
+    accountId?: string | null;
+  },
   source: LeaveApprovalSource,
 ) {
-  const existing = steps.find((step) => step.employeeId === employeeId);
+  const principalType = principal.principalType ?? "EMPLOYEE";
+  const key = principalType === "ACCOUNT" ? principal.accountId : principal.employeeId;
+  if (!key) {
+    throw new LeaveApprovalConfigurationError(
+      "APPROVAL_CHAIN_EMPTY",
+      "Rantai approval berisi principal yang tidak valid.",
+    );
+  }
+  const existing = steps.find((step) =>
+    (step.principalType ?? "EMPLOYEE") === principalType &&
+    (principalType === "ACCOUNT" ? step.accountId === key : step.employeeId === key));
   if (existing) {
     if (!existing.sources.includes(source)) existing.sources.push(source);
     return;
   }
 
-  steps.push({ employeeId, sources: [source] });
+  steps.push(principalType === "ACCOUNT"
+    ? { principalType: "ACCOUNT", employeeId: null, accountId: key, sources: [source] }
+    : { employeeId: key, sources: [source] });
 }
 
 export function resolveLeaveLineApprovalChain(
@@ -76,10 +96,18 @@ export function resolveLeaveLineApprovalChain(
   }
 
   const steps: LeaveApprovalStep[] = [];
-  addStep(steps, input.directManagerEmployeeId, "DIRECT_MANAGER");
+  addStep(
+    steps,
+    { principalType: "EMPLOYEE", employeeId: input.directManagerEmployeeId, accountId: null },
+    "DIRECT_MANAGER",
+  );
 
   if (input.unitApproverEmployeeId !== input.requesterEmployeeId) {
-    addStep(steps, input.unitApproverEmployeeId, "UNIT_APPROVER");
+    addStep(
+      steps,
+      { principalType: "EMPLOYEE", employeeId: input.unitApproverEmployeeId, accountId: null },
+      "UNIT_APPROVER",
+    );
   }
 
   if (steps.length === 0) {
@@ -102,8 +130,9 @@ export function snapshotResolvedLeaveAuthorities(
 ): LeaveApprovalStep[] {
   const steps: LeaveApprovalStep[] = [];
   for (const authority of input.authorities) {
-    if (authority.employeeId === input.requesterEmployeeId) continue;
-    addStep(steps, authority.employeeId, authority.source);
+    if ((authority.principalType ?? "EMPLOYEE") === "EMPLOYEE"
+        && authority.employeeId === input.requesterEmployeeId) continue;
+    addStep(steps, authority, authority.source);
   }
 
   if (steps.length === 0) {

@@ -34,12 +34,14 @@ Do not pull the target commit manually before running the deploy script. The scr
 
 The normal deploy mode is `HCIS_DEPLOY_IMAGE_MODE=ghcr`. In this mode the VPS **does not build release images**. It pulls immutable exact-SHA API and Web images before cutover.
 
-Fresh Codex Local verification reported on 2026-09-16 records the current production runtime at application SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` using:
+The latest recorded verified production release is the 2026-09-18 deployment of application SHA `acd22b438a7468dc6ea53ae001980cd06f7343cd` using:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-api:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
+ghcr.io/sabilulquran/hcisysq-web:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
 ```
+
+See [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md) for the dated publisher, deployment, verifier, health, and browser-acceptance evidence. Repository `main` later advanced beyond this deployed SHA; a newer repository commit is not automatically a newer production runtime.
 
 The repository script `scripts/deploy-vps.sh` still contains legacy fallback/default package values under:
 

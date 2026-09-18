@@ -136,8 +136,8 @@ For a candidate pilot execution SHA containing current `main`, use a clean check
 ```bash
 npm ci
 npm run migrate:api
-npm run check:migration-source-of-truth
-npm run rehearse:organization-migration-recovery
+npm run migrations:check
+npm run migrations:rehearse-recovery
 node apps/api/scripts/rehearse-org004-upgrade.mjs
 npm run typecheck
 npm run lint

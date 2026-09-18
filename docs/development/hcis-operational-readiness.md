@@ -1,9 +1,9 @@
 # HCIS Operational Readiness — One-Unit Pilot
 
-**Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED  
-**Updated:** 2026-09-16  
-**Specifications:** ORG-004, AUTH-011, ATT-005  
-**Repository/runtime baseline discussed:** `sabilulquran/hcisysq@9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`
+**Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED
+**Updated:** 2026-09-18
+**Specifications:** ORG-004, AUTH-011, ATT-005
+**Repository baseline:** canonical `main`; **latest supplied read-only production image evidence:** `ca38db08e85f064ffe5513f32ae0b75c11a3cf56`
 
 This document is the current operational status note for the one-unit pilot. Historical MVP checkpoints remain valid evidence for what was verified at those checkpoints; they are not automatically proof of current production or pilot state.
 
@@ -34,10 +34,10 @@ Use these labels consistently:
 Current distinction:
 
 ```text
-software/schema deployed != real structure configured != SHADOW validated != STRUCTURE activated != pilot validated
+structure records exist != Human Capital acceptance complete != SHADOW validated != STRUCTURE activated != production pilot accepted
 ```
 
-Codex Local evidence states required ORG-004 code/schema are installed at the inspected SHA, while rollout configuration is absent and therefore behavior remains `LEGACY`.
+Latest supplied read-only evidence states ORG-004 schema and organization records/revisions exist, while rollout configuration is absent and therefore workflow behavior remains `LEGACY`. Repository source recovery is required because four production-recorded migration filenames were missing from canonical main.
 
 ### ORG-004 domain documentation
 
@@ -46,7 +46,8 @@ Current-state wording in `dynamic-organization-structure.md`, Annual Leave, leav
 ORG-004 status for operational decisions is:
 
 - code/schema: deployed at the inspected production baseline;
-- real YSQ structure configuration: pending;
+- structure records/published revisions: present; latest inspected published revision stored validation is valid;
+- Human Capital acceptance of the real structure: not proven;
 - selected-unit SHADOW comparison: pending;
 - STRUCTURE activation: pending explicit approval;
 - production pilot validation: pending.
@@ -96,6 +97,8 @@ Reported environment evidence includes:
 - `/healthz`, `/api/health`, `/api/ready` succeeded and `/login` returned 200 in the earlier audit;
 - migration 0045 applied;
 - zero `organization_rollout_settings` rows, therefore `LEGACY` by contract;
+- production `schema_migrations` records four organization/employee/Leave migrations that were missing from canonical source and are recovered by `docs/development/migration-source-of-truth-recovery.md`;
+- organization structure records and published revisions exist; supplied aggregate evidence reports 25 change sets (15 PUBLISHED, 7 DRAFT, 3 VALIDATED) and a latest inspected published revision with valid stored validation and zero issues; these aggregates contain no employee identity data;
 - ORG-004 code/schema installed but real structure/SHADOW/STRUCTURE/pilot validation not proven;
 - three physical-capability records had state `verified`, insufficient to close ATT-005 as a whole;
 - `BIOMETRIC_COLLECTION_ENABLED=0`;

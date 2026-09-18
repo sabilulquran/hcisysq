@@ -17,6 +17,8 @@
     "test:web": "npm --workspace @hcis/web run test",
     "test:api": "npm --workspace @hcis/api run test",
     "migrate:api": "npm --workspace @hcis/api run migrate",
+    "migrations:check": "node apps/api/scripts/check-migration-source-of-truth.mjs",
+    "migrations:rehearse-recovery": "node apps/api/scripts/rehearse-organization-migration-recovery.mjs",
     "auth:map-oidc-identity": "npm --workspace @hcis/api run auth:map-oidc-identity --",
     "employees:import": "npm --workspace @hcis/api run employees:import --",
     "db:up": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up -d postgres",

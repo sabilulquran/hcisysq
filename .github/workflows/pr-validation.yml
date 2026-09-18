@@ -65,8 +65,14 @@ jobs:
           AUTH_SESSION_TTL_HOURS=8
           EOF
 
+      - name: Check migration source of truth
+        run: npm run migrations:check
+
       - name: Run clean migration
         run: npm run migrate:api
+
+      - name: Rehearse recovered production migration history
+        run: npm run migrations:rehearse-recovery
 
       - name: Rehearse pre-ORG-004 to ORG-004 migration
         run: node apps/api/scripts/rehearse-org004-upgrade.mjs

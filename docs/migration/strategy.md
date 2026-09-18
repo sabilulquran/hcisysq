@@ -77,6 +77,21 @@ Migration tool harus:
 - tidak log secret/data sensitif penuh;
 - memiliki test fixture sintetis.
 
+## Schema migration source of truth
+
+Database schema migration identity is the full SQL filename recorded in `schema_migrations.name`, not the numeric prefix alone.
+
+Production-history recovery rules are defined in `docs/development/migration-source-of-truth-recovery.md`. In particular:
+
+- never rename or renumber a migration already recorded by production;
+- never silently edit a deployed migration;
+- historical duplicate numeric prefixes are retained when full filenames differ and the collision is explicitly allowlisted;
+- canonical source must contain every production-critical historical migration;
+- clean install and disposable restore must converge on the same final schema as the accepted migration history;
+- missing history is recovered from verified Git blobs, not reconstructed from production data.
+
+The CI migration-history manifest/checksum guard is part of the recovery control and contains no production credentials or data.
+
 ## Rollback
 
 Rollback tidak selalu berarti menghapus data target. Sebelum cutover tetapkan:

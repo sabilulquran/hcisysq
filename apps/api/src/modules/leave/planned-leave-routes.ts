@@ -646,7 +646,13 @@ export async function registerPlannedLeaveRoutes(
           request.validation_summary AS "validationSummary",
           request.submitted_at AS "submittedAt",
           request.final_decided_at AS "finalDecidedAt",
-          approver.full_name AS "currentApproverName",
+          CASE
+            WHEN approver.id IS NOT NULL THEN approver.full_name
+            WHEN current_step.approver_account_id IS NOT NULL
+              AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+              THEN 'Penyetuju Pengurus Yayasan'
+            ELSE NULL
+          END AS "currentApproverName",
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus"
         FROM leave_requests request

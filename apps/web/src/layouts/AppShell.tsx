@@ -221,7 +221,7 @@ export function AppShell({
 
             <div className="flex items-center gap-2">
               <a
-                href="/app/services/announcements"
+                href="/app/services/notifications"
                 aria-label="Pengumuman dan notifikasi"
                 className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >

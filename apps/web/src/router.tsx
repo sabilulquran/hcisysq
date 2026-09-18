@@ -33,6 +33,7 @@ import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
+import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
@@ -40,6 +41,7 @@ import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
 import { EmployeePayslipsPage } from "@/pages/EmployeePayslipsPage";
 import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
+import { EmployeeServicesPage } from "@/pages/EmployeeServicesPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
@@ -137,6 +139,20 @@ const employeeApprovalsRoute = createRoute({
   path: "/app/approvals",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeApprovalsPage,
+});
+
+const employeeServicesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/services",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeServicesPage,
+});
+
+const employeeComingSoonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/services/$serviceKey",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeComingSoonPage,
 });
 
 const hcLeaveValidationRoute = createRoute({
@@ -318,6 +334,8 @@ const routeTree = rootRoute.addChildren([
   employeePlannedLeaveRoute,
   employeeAttendanceResolutionRoute,
   employeeApprovalsRoute,
+  employeeServicesRoute,
+  employeeComingSoonRoute,
   hcLeaveValidationRoute,
   hcPlannedLeaveRoute,
   hcAttendanceResolutionRoute,

@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock3 } from "lucide-react";
+import { ArrowLeft, Check, Clock3 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 
@@ -57,6 +57,20 @@ export function EmployeeComingSoonPage() {
           <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">{employeeServiceStageLabel(service.stage)}</p>
           <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">{service.label}</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">{service.description}</p>
+
+          {service.details?.length ? (
+            <div className="mt-5">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Cakupan yang direncanakan</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {service.details.map((detail) => (
+                  <div key={detail} className="flex items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-sm font-semibold text-brand-heading">
+                    <Check className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
+                    {detail}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 rounded-2xl bg-surface p-4">
             <p className="text-sm font-bold text-brand-heading">Belum tersedia untuk digunakan</p>

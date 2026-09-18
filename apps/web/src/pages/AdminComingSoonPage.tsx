@@ -32,7 +32,7 @@ export function AdminComingSoonPage() {
             <Clock3 className="h-6 w-6" aria-hidden="true" />
           </span>
           <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">{adminServiceStageLabel(service.stage)}</p>
-          <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Coming Soon</h2>
+          <h2 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Belum tersedia untuk digunakan</h2>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Modul ini sudah masuk arah produk HCIS, tetapi workflow operasionalnya belum aktif. Belum ada tanggal peluncuran yang dijanjikan.
           </p>

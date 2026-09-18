@@ -51,14 +51,15 @@ describe("AppShell account affordances", () => {
 
 
 describe("AppShell employee service discovery", () => {
-  it("keeps mobile navigation bounded and routes planned services away from dead links", () => {
+  it("keeps mobile navigation bounded and uses one catalog entrypoint for planned services", () => {
     const html = renderWithHcCapability(false);
 
     expect(html).toContain('href="/app/services"');
     expect(html).toContain(">Lainnya<");
-    expect(html).toContain('href="/app/services#time-attendance"');
-    expect(html).toContain('href="/app/services#finance"');
-    expect(html).toContain('href="/app/services#employee-services"');
+    expect(html).not.toContain('href="/app/services#time-attendance"');
+    expect(html).not.toContain('href="/app/services#finance"');
+    expect(html).not.toContain('href="/app/services#employee-services"');
+    expect(html).not.toContain(">Roadmap<");
     expect(html).not.toContain('href="#"');
   });
 });

@@ -156,7 +156,7 @@ Primary mobile navigation is limited to five stable destinations:
 
 ### Desktop
 
-Desktop retains the employee sidebar. Verified services remain primary. Planned services may appear in a clearly labeled **Akan hadir** group and always route to the coming-soon contract rather than a dead `#` link.
+Desktop retains the employee sidebar. Verified services remain primary, and **Semua Layanan** is the single entrypoint for the planned-service roadmap. Do not repeat roadmap categories in the sidebar; the catalog provides the category hierarchy and routes planned capabilities to the coming-soon contract rather than a dead `#` link.
 
 Role/capability-specific Human Capital navigation remains capability-gated and is not mixed with planned self-service items.
 
@@ -168,6 +168,7 @@ For employee self-service:
 
 - use fewer, more purposeful cards;
 - prefer launcher tiles for navigation;
+- use compact single-column service rows on narrow mobile screens so names, descriptions, and stage labels remain readable;
 - keep turquoise as the primary action color;
 - reserve yellow/orange for attention and status support;
 - reduce excessive elevation and oversized radius when hierarchy can be expressed by spacing and typography;

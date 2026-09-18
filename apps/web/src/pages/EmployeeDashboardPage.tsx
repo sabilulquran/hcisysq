@@ -204,7 +204,7 @@ export function EmployeeDashboardPage() {
       ) : (
         <>
           <section className="mt-6 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-            <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+            <article className="order-1 rounded-2xl border border-border/75 bg-white p-4 shadow-[var(--shadow-soft)] sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Hari ini</p>
@@ -215,12 +215,12 @@ export function EmployeeDashboardPage() {
                 </span>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-surface p-4">
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5">
+                <div className="rounded-xl bg-surface p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-xs font-semibold text-muted-foreground">Masuk</p>
                   <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkInAt ?? null)}</p>
                 </div>
-                <div className="rounded-2xl bg-surface p-4">
+                <div className="rounded-xl bg-surface p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-xs font-semibold text-muted-foreground">Pulang</p>
                   <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkOutAt ?? null)}</p>
                 </div>
@@ -236,7 +236,36 @@ export function EmployeeDashboardPage() {
               </a>
             </article>
 
-            <article className={totalActions > 0 ? "rounded-3xl border border-brand-yellow/40 bg-brand-yellow/10 p-5" : "rounded-3xl border border-emerald-200 bg-emerald-50 p-5"}>
+            <section className="order-2 lg:order-3 lg:col-span-2 lg:mt-2">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Akses cepat</p>
+                  <h2 className="mt-1 text-lg font-bold text-brand-heading">Apa yang ingin Anda lakukan?</h2>
+                </div>
+                <a href="/app/services" className="hidden text-xs font-bold text-brand-primary-deep sm:inline">Semua layanan</a>
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
+                {[
+                  ["Kehadiran", "/app/attendance", Clock3],
+                  ["Cuti & Izin", "/app/leave", CalendarDays],
+                  ["Slip Gaji", "/app/payslips", WalletCards],
+                  ["Lainnya", "/app/services", Grid2X2],
+                ].map(([label, href, Icon]) => {
+                  const TileIcon = Icon as typeof Clock3;
+                  return (
+                    <a key={String(label)} href={String(href)} className="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border/70 bg-white px-1.5 py-2.5 text-center shadow-[var(--shadow-soft)] sm:min-h-24 sm:gap-2 sm:px-2 sm:py-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep sm:h-10 sm:w-10">
+                        <TileIcon className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                      <span className="text-[10px] font-bold leading-4 text-brand-heading sm:text-xs">{String(label)}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+
+            <article className={totalActions > 0 ? "order-3 rounded-2xl border border-brand-yellow/40 bg-brand-yellow/10 p-4 sm:p-5 lg:order-2" : "order-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5 lg:order-2"}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Perlu tindakan</p>
@@ -254,35 +283,6 @@ export function EmployeeDashboardPage() {
                 <p className="mt-3 text-sm leading-6 text-emerald-900">Tidak ada hal yang perlu Anda tindaklanjuti saat ini.</p>
               )}
             </article>
-          </section>
-
-          <section className="mt-7">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Akses cepat</p>
-                <h2 className="mt-1 text-lg font-bold text-brand-heading">Apa yang ingin Anda lakukan?</h2>
-              </div>
-              <a href="/app/services" className="hidden text-xs font-bold text-brand-primary-deep sm:inline">Semua layanan</a>
-            </div>
-
-            <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
-              {[
-                ["Kehadiran", "/app/attendance", Clock3],
-                ["Cuti & Izin", "/app/leave", CalendarDays],
-                ["Slip Gaji", "/app/payslips", WalletCards],
-                ["Lainnya", "/app/services", Grid2X2],
-              ].map(([label, href, Icon]) => {
-                const TileIcon = Icon as typeof Clock3;
-                return (
-                  <a key={String(label)} href={String(href)} className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-border/70 bg-white px-2 py-3 text-center shadow-[var(--shadow-soft)]">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
-                      <TileIcon className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <span className="text-[11px] font-bold leading-4 text-brand-heading sm:text-xs">{String(label)}</span>
-                  </a>
-                );
-              })}
-            </div>
           </section>
 
           <section className="mt-7 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">

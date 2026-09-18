@@ -42,14 +42,6 @@ const employeeNavigation = [
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2 },
 ];
 
-const plannedNavigation = [
-  { label: "Waktu & Kehadiran", href: "/app/services#time-attendance", icon: Clock3 },
-  { label: "Keuangan Saya", href: "/app/services#finance", icon: WalletCards },
-  { label: "Kinerja & Pengembangan", href: "/app/services#development", icon: Grid2X2 },
-  { label: "Layanan Pegawai", href: "/app/services#employee-services", icon: Grid2X2 },
-  { label: "Informasi", href: "/app/services#information", icon: Grid2X2 },
-];
-
 const managementNavigation = [
   { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
 ];
@@ -67,13 +59,11 @@ function NavigationLink({
   href,
   icon: Icon,
   active = false,
-  planned = false,
 }: {
   label: string;
   href: string;
   icon: typeof Home;
   active?: boolean;
-  planned?: boolean;
 }) {
   return (
     <a
@@ -97,11 +87,6 @@ function NavigationLink({
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {planned ? (
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
-          Segera
-        </span>
-      ) : null}
     </a>
   );
 }
@@ -181,24 +166,6 @@ export function AppShell({
               </div>
             </div>
           ) : null}
-
-          <div className="pt-6">
-            <div className="mb-2 px-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Roadmap</p>
-              <p className="mt-1 text-[10px] leading-4 text-muted-foreground/80">Sudah ada dalam roadmap HCIS</p>
-            </div>
-            <div className="space-y-1">
-              {plannedNavigation.map((item) => (
-                <NavigationLink
-                  key={item.label}
-                  label={item.label}
-                  href={item.href}
-                  icon={item.icon}
-                  planned
-                />
-              ))}
-            </div>
-          </div>
         </nav>
 
         <div className="px-5 pb-5">

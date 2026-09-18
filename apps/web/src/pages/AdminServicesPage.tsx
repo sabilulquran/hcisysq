@@ -45,7 +45,7 @@ function ServiceTile({ service }: { service: AdminServiceDefinition }) {
   return (
     <a
       href={service.href}
-      className="group flex min-h-36 flex-col rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group flex min-h-32 flex-col rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-colors hover:border-brand-primary/35 hover:bg-brand-primary-pale/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-start justify-between gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
@@ -55,7 +55,7 @@ function ServiceTile({ service }: { service: AdminServiceDefinition }) {
           {adminServiceStageLabel(service.stage)}
         </span>
       </div>
-      <p className="mt-4 text-sm font-bold text-brand-heading">{service.label}</p>
+      <p className="mt-3 text-sm font-bold text-brand-heading">{service.label}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{service.description}</p>
       {service.details?.length ? (
         <p className="mt-2 text-[10px] font-semibold leading-4 text-brand-primary-deep">

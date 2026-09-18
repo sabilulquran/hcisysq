@@ -480,6 +480,26 @@ export async function registerEmployeeLeaveRoutes(
     }
   }
 
+  async function authenticateApprovalPrincipal(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<AuthPrincipal | null> {
+    try {
+      const session = await auth.getSession(readCookie(request.headers.cookie, AUTH_COOKIE_NAME));
+      if (!session || !["EMPLOYEE", "FOUNDATION_BOARD"].includes(session.principal.principalType)) {
+        throw new AuthError(403, "FORBIDDEN", "Akun ini tidak memiliki akses approval.");
+      }
+      return session.principal;
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+        return null;
+      }
+      throw error;
+    }
+  }
+
   app.get("/leave/me/summary", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;

@@ -554,7 +554,13 @@ export async function registerEmployeeLeaveRoutes(
             r.annual_period_key AS "annualPeriodKey",
             r.submitted_at AS "submittedAt",
             r.final_decided_at AS "finalDecidedAt",
-            approver.full_name AS "currentApproverName"
+            CASE
+              WHEN approver.id IS NOT NULL THEN approver.full_name
+              WHEN current_step.approver_account_id IS NOT NULL
+                AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+                THEN 'Penyetuju Pengurus Yayasan'
+              ELSE NULL
+            END AS "currentApproverName"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'

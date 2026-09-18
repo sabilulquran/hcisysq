@@ -256,7 +256,8 @@ async function hydrateApprovalChain(
   db: Pool | PoolClient,
   chain: readonly LeaveApprovalStep[],
 ): Promise<Array<LeaveApprovalStep & { name: string }>> {
-  const ids = chain.map((step) => step.employeeId);
+  const ids = chain.flatMap((step) => step.employeeId ? [step.employeeId] : []);
+  const accountIds = chain.flatMap((step) => step.accountId ? [step.accountId] : []);
   const result = await db.query<ApprovalActorRow>(
     `SELECT
       e.id,
@@ -268,12 +269,39 @@ async function hydrateApprovalChain(
     LEFT JOIN accounts a
       ON a.employee_id = e.id
       AND a.principal_type = 'EMPLOYEE'
-    WHERE e.id = ANY($1::uuid[])`,
+    WHERE e.id = ANY($1::uuid[])
+      AND e.removed_at IS NULL`,
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
+  const accounts = await db.query<GovernanceActorRow>(
+    `SELECT id, email, status, principal_type AS "principalType"
+     FROM accounts WHERE id = ANY($1::uuid[])`,
+    [accountIds],
+  );
+  const accountById = new Map(accounts.rows.map((row) => [row.id, row]));
 
   return chain.map((step) => {
+    if ((step.principalType ?? "EMPLOYEE") === "ACCOUNT") {
+      const actor = step.accountId ? accountById.get(step.accountId) : undefined;
+      if (!actor || actor.principalType !== "FOUNDATION_BOARD" || actor.status !== "active") {
+        throw new EmployeeLeaveError(
+          409,
+          "APPROVER_ACCOUNT_NOT_READY",
+          "Akun governance approver belum aktif.",
+        );
+      }
+      return {
+        ...step,
+        principalType: "ACCOUNT" as const,
+        employeeId: null,
+        accountId: actor.id,
+        name: "Penyetuju Pengurus Yayasan",
+      };
+    }
+    if (!step.employeeId) {
+      throw new EmployeeLeaveError(409, "APPROVER_NOT_ACTIVE", "Principal approver tidak valid.");
+    }
     const actor = byId.get(step.employeeId);
     if (!actor || actor.status !== "active") {
       throw new EmployeeLeaveError(
@@ -289,7 +317,13 @@ async function hydrateApprovalChain(
         `Akun approver ${actor.fullName} belum aktif.`,
       );
     }
-    return { ...step, name: actor.fullName };
+    return {
+      ...step,
+      principalType: "EMPLOYEE" as const,
+      employeeId: actor.id,
+      accountId: null,
+      name: actor.fullName,
+    };
   });
 }
 

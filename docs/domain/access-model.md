@@ -182,6 +182,16 @@ The second pattern is forbidden.
 
 A person occupying such a position normally authenticates through their `EMPLOYEE` account and receives additional capabilities according to explicit authority bindings.
 
+### Account-held organization position is not access
+
+The deployed organization schema can represent a position/incumbency held directly by an account rather than by a synthetic employee. This is a persistence capability, not an authorization grant.
+
+- Do not create a fake employee to represent a governance account.
+- Do not create/assign a role or capability when reading, cloning, validating, or publishing an account-held position.
+- An account-held structural record must not make the account an operational approver by itself.
+- Existing Application Access, account state, RBAC assignments, effective scope, and workflow-specific permission checks remain separate and authoritative.
+- Current source preserves account-held organization data but fails closed if it would be used for structural routing before a separately accepted activation contract exists.
+
 ### Governance approval vs Foundation Board account
 
 The accepted ORG-004 planning rule for Director leave is:

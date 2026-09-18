@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-09-15
+updated_at: 2026-09-18
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -117,6 +117,17 @@ features:
       - docs/development/org004-operational-validation.md
       - docs/development/org004-pilot-unit-validation.md
 
+  - id: ORG-005
+    module: organization
+    name: Organization sites, branches, and work locations
+    legacy_evidence: one YSQ organization may operate employees and attendance across multiple physical sites or branches
+    target_status: planned
+    priority: later
+    risk: high
+    planning_note: This is one-organization multi-site capability, not commercial multi-tenancy. It may later provide work-location context to schedules, attendance/geofence policy, temporary assignment, and workplace booking.
+    docs:
+      - docs/product/hcis-capability-map.md
+
   - id: AUTH-010
     module: authorization
     name: Role and permission management
@@ -161,12 +172,13 @@ features:
 
   - id: ATT-003
     module: attendance
-    name: Work schedules and holidays
+    name: Work schedules, shifts, and holidays
     legacy_evidence: unit-based schedules and holiday calendar exist
     target_status: discovery
     priority: core
     risk: high
-    mvp_note: Leave working-calendar rules exist, but attendance schedule and lateness/overtime policy remain outside ATT-001.
+    mvp_note: Leave working-calendar rules exist, but attendance schedule, shift assignment, and lateness/overtime policy remain outside ATT-001.
+    planning_note: Product scope now includes employee schedule/shift visibility. Shift exchange is tracked separately as ATT-008.
 
   - id: ATT-005
     module: attendance
@@ -187,6 +199,39 @@ features:
       - docs/domain/attendance-adms-projection.md
       - docs/domain/attendance-adms-admin.md
       - docs/domain/attendance-wdms-full-physical-parity-ledger.md
+
+  - id: ATT-006
+    module: attendance
+    name: Mobile clock-in/out and attendance evidence
+    legacy_evidence: mobile attendance patterns are required for future employee self-service beyond device-ingested factual records
+    target_status: planned
+    priority: after-pilot
+    risk: critical
+    planning_note: Product scope includes mobile clock in/out with policy-controlled GPS, geotagging/geofence, photo evidence, and face-recognition capability. Privacy, biometric, fallback, retention, spoofing-resistance, and device-trust rules require specification before activation.
+    docs:
+      - docs/product/hcis-capability-map.md
+
+  - id: ATT-007
+    module: attendance
+    name: Attendance evaluation, lateness, and overtime
+    legacy_evidence: operational HR requires schedule-aware evaluation beyond raw punch records
+    target_status: planned
+    priority: after-pilot
+    risk: critical
+    planning_note: Evaluation must consume authoritative schedule/holiday/permission policy and must not reinterpret ATT-001 raw factual records without explicit rules.
+    docs:
+      - docs/product/hcis-capability-map.md
+
+  - id: ATT-008
+    module: attendance
+    name: Shift exchange workflow
+    legacy_evidence: shift-based operations may require employee-requested schedule exchange with approval
+    target_status: planned
+    priority: later
+    risk: high
+    planning_note: Product scope accepted; eligibility, counterpart consent, approval, cutoff, audit, and conflict rules remain to be specified.
+    docs:
+      - docs/product/hcis-capability-map.md
 
   - id: LEAVE-001
     module: leave
@@ -214,6 +259,17 @@ features:
       - docs/domain/leave-policy-ysq.md
       - docs/domain/annual-leave-vertical-slice.md
       - docs/product/mvp.md
+
+  - id: PAY-003
+    module: payroll
+    name: Payroll calculation, review, reconciliation, and finalization
+    legacy_evidence: employee compensation ultimately requires controlled payroll processing beyond imported payslip display
+    target_status: planned
+    priority: later
+    risk: critical
+    planning_note: This is a future payroll engine/domain and does not change the verified PAY-001/PAY-002 imported-payslip boundary until separately specified and implemented.
+    docs:
+      - docs/product/hcis-capability-map.md
 
   - id: REIMB-001
     module: reimbursement
@@ -286,6 +342,39 @@ features:
     target_status: discovery
     priority: later
     risk: high
+
+  - id: TRIP-001
+    module: employee-service
+    name: Business travel and official trip workflow
+    legacy_evidence: official travel can affect approval, documents, attendance context, and expense administration
+    target_status: planned
+    priority: later
+    risk: high
+    planning_note: Product scope accepted; travel request, approval, assignment letter, attendance interaction, advance/reimbursement boundaries, and document evidence remain to be specified.
+    docs:
+      - docs/product/hcis-capability-map.md
+
+  - id: ASSET-001
+    module: employee-service
+    name: Employee asset assignment and return
+    legacy_evidence: employees may receive organization-owned work assets requiring accountable handover and return history
+    target_status: planned
+    priority: later
+    risk: medium
+    planning_note: Scope is employee-assigned assets, not a general warehouse or accounting inventory system.
+    docs:
+      - docs/product/hcis-capability-map.md
+
+  - id: WORK-001
+    module: workplace
+    name: Desk and workplace booking
+    legacy_evidence: shared workplace resources may require employee reservation
+    target_status: planned
+    priority: later
+    risk: medium
+    planning_note: Product scope accepted; resource types, availability, conflicts, approval, and location semantics remain to be specified.
+    docs:
+      - docs/product/hcis-capability-map.md
 
   - id: NOTIF-001
     module: notification

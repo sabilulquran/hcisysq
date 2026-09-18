@@ -216,6 +216,28 @@ export class OrganizationDraftService {
     for (const incumbency of snapshot.incumbencies.filter(
       (item) => isEffective(item.effectiveFrom, item.effectiveTo, snapshot.changeSet.effectiveOn),
     )) {
+      const position = snapshot.positions.find((item) => item.stableKey === incumbency.positionKey);
+      const holderSource = position?.holderSource ?? "EMPLOYEE";
+      if (holderSource === "ACCOUNT") {
+        if (!incumbency.accountId || incumbency.employeeId) {
+          issues.push(issue(
+            "INVALID_INCUMBENCY_PRINCIPAL",
+            "Account-held position must reference exactly one account principal.",
+            "incumbency",
+            incumbency.id,
+          ));
+        }
+        continue;
+      }
+      if (!incumbency.employeeId || incumbency.accountId) {
+        issues.push(issue(
+          "INVALID_INCUMBENCY_PRINCIPAL",
+          "Employee-held position must reference exactly one employee principal.",
+          "incumbency",
+          incumbency.id,
+        ));
+        continue;
+      }
       const eligibility = await this.repository.validateStructuralIncumbent(incumbency.employeeId);
       if (!eligibility.eligible) {
         issues.push(issue(
@@ -298,11 +320,12 @@ function routingFingerprint(snapshot: OrganizationSnapshot): string {
       item.active, item.effectiveFrom, item.effectiveTo]),
     positions: order(snapshot.positions, (item) => [item.stableKey, item.nodeKey,
       item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy, item.active,
-      item.effectiveFrom, item.effectiveTo]),
+      item.effectiveFrom, item.effectiveTo, item.holderSource ?? "EMPLOYEE"]),
     memberships: order(snapshot.memberships, (item) => [item.employeeId, item.nodeKey,
       item.jobProfileKey, item.isPrimary, item.effectiveFrom, item.effectiveTo]),
     incumbencies: order(snapshot.incumbencies, (item) => [item.positionKey, item.employeeId,
-      item.kind, item.effectiveFrom, item.effectiveTo]),
+      item.accountId ?? null, item.kind, item.isPrimaryStructural ?? false,
+      item.effectiveFrom, item.effectiveTo]),
     authorityBindings: order(snapshot.authorityBindings, (item) => [item.subjectKind,
       item.subjectKey, item.bindingType, item.targetPositionKey, item.vacancyPolicy,
       item.effectiveFrom, item.effectiveTo]),

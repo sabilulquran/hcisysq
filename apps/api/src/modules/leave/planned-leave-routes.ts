@@ -268,11 +268,13 @@ async function hydrateApprovalChain(
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
-  const governance = await db.query<{ id: string; email: string; status: string; principalType: string }>(
-    `SELECT id, email, status, principal_type AS "principalType"
-     FROM accounts WHERE id = ANY($1::uuid[])`,
-    [accountIds],
-  );
+  const governance = accountIds.length === 0
+    ? { rows: [] as Array<{ id: string; email: string; status: string; principalType: string }> }
+    : await db.query<{ id: string; email: string; status: string; principalType: string }>(
+      `SELECT id, email, status, principal_type AS "principalType"
+       FROM accounts WHERE id = ANY($1::uuid[])`,
+      [accountIds],
+    );
   const accountById = new Map(governance.rows.map((row) => [row.id, row]));
   return chain.map((step) => {
     if ((step.principalType ?? "EMPLOYEE") === "ACCOUNT") {

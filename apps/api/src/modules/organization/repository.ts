@@ -269,11 +269,12 @@ export class PostgresOrganizationRepository {
       await this.db.query(
         `INSERT INTO organization_positions
           (id, change_set_id, stable_key, node_key, title, parent_position_key,
-           single_incumbent, vacancy_policy, active, effective_from, effective_to, visual_rank_offset)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           single_incumbent, vacancy_policy, active, effective_from, effective_to, visual_rank_offset,
+           holder_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.nodeKey, item.title,
           item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy, item.active,
-          item.effectiveFrom, item.effectiveTo, item.visualRankOffset],
+          item.effectiveFrom, item.effectiveTo, item.visualRankOffset, item.holderSource ?? "EMPLOYEE"],
       );
     }
     for (const item of snapshot.memberships) {
@@ -289,10 +290,11 @@ export class PostgresOrganizationRepository {
     for (const item of snapshot.incumbencies) {
       await this.db.query(
         `INSERT INTO organization_incumbencies
-          (id, change_set_id, position_key, employee_id, kind, effective_from, effective_to, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [item.id, snapshot.changeSet.id, item.positionKey, item.employeeId,
-          item.kind, item.effectiveFrom, item.effectiveTo, item.reason],
+          (id, change_set_id, position_key, employee_id, account_id, kind, is_primary_structural,
+           effective_from, effective_to, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [item.id, snapshot.changeSet.id, item.positionKey, item.employeeId, item.accountId ?? null,
+          item.kind, item.isPrimaryStructural ?? false, item.effectiveFrom, item.effectiveTo, item.reason],
       );
     }
     for (const item of snapshot.authorityBindings) {
@@ -385,7 +387,7 @@ export class PostgresOrganizationRepository {
       capabilityValid: boolean;
     }>(
       `SELECT
-         (e.status = 'active') AS "employeeActive",
+         (e.status = 'active' AND e.removed_at IS NULL) AS "employeeActive",
          EXISTS (
            SELECT 1 FROM accounts a
            WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE' AND a.status = 'active'
@@ -417,7 +419,7 @@ export class PostgresOrganizationRepository {
    */
   async validateStructuralIncumbent(employeeId: string): Promise<AuthorityEligibilityResult> {
     const result = await this.db.query<{ employeeActive: boolean }>(
-      `SELECT (status = 'active') AS "employeeActive"
+      `SELECT (status = 'active' AND removed_at IS NULL) AS "employeeActive"
        FROM employees
        WHERE id = $1`,
       [employeeId],
@@ -445,7 +447,8 @@ export class PostgresOrganizationRepository {
           `SELECT id, stable_key AS "stableKey", node_key AS "nodeKey", title,
             parent_position_key AS "parentPositionKey", single_incumbent AS "singleIncumbent",
             vacancy_policy AS "vacancyPolicy", active, effective_from AS "effectiveFrom",
-            effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset"
+            effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
+            holder_source AS "holderSource"
            FROM organization_positions WHERE change_set_id = $1`, [id]),
         this.db.query<MembershipRow>(
           `SELECT id, employee_id AS "employeeId", node_key AS "nodeKey",
@@ -453,7 +456,8 @@ export class PostgresOrganizationRepository {
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
            FROM organization_memberships WHERE change_set_id = $1`, [id]),
         this.db.query<IncumbencyRow>(
-          `SELECT id, position_key AS "positionKey", employee_id AS "employeeId", kind,
+          `SELECT id, position_key AS "positionKey", employee_id AS "employeeId",
+            account_id AS "accountId", kind, is_primary_structural AS "isPrimaryStructural",
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason
            FROM organization_incumbencies WHERE change_set_id = $1`, [id]),
         this.db.query<BindingRow>(

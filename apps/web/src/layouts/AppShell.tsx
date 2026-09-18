@@ -4,21 +4,12 @@ import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
   Bell,
-  BellRing,
-  CalendarClock,
   CalendarDays,
   ClipboardCheck,
   Clock3,
-  FolderOpen,
-  GraduationCap,
   Grid2X2,
-  HandCoins,
   Home,
-  Landmark,
-  Megaphone,
   ShieldCheck,
-  TrendingUp,
-  UserRoundPen,
   WalletCards,
 } from "lucide-react";
 
@@ -52,15 +43,11 @@ const employeeNavigation = [
 ];
 
 const plannedNavigation = [
-  { label: "Data Saya", href: "/app/services/profile-change", icon: UserRoundPen },
-  { label: "Klarifikasi Kehadiran", href: "/app/services/attendance-clarification", icon: BellRing },
-  { label: "Jadwal Kerja", href: "/app/services/work-schedule", icon: CalendarClock },
-  { label: "Reimbursement", href: "/app/services/reimbursement", icon: HandCoins },
-  { label: "Pinjaman", href: "/app/services/loan", icon: Landmark },
-  { label: "Kinerja", href: "/app/services/performance", icon: TrendingUp },
-  { label: "Pengembangan", href: "/app/services/training", icon: GraduationCap },
-  { label: "Dokumen", href: "/app/services/documents", icon: FolderOpen },
-  { label: "Pengumuman", href: "/app/services/announcements", icon: Megaphone },
+  { label: "Waktu & Kehadiran", href: "/app/services#time-attendance", icon: Clock3 },
+  { label: "Keuangan Saya", href: "/app/services#finance", icon: WalletCards },
+  { label: "Kinerja & Pengembangan", href: "/app/services#development", icon: Grid2X2 },
+  { label: "Layanan Pegawai", href: "/app/services#employee-services", icon: Grid2X2 },
+  { label: "Informasi", href: "/app/services#information", icon: Grid2X2 },
 ];
 
 const managementNavigation = [
@@ -197,7 +184,7 @@ export function AppShell({
 
           <div className="pt-6">
             <div className="mb-2 px-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Akan hadir</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Roadmap</p>
               <p className="mt-1 text-[10px] leading-4 text-muted-foreground/80">Sudah ada dalam roadmap HCIS</p>
             </div>
             <div className="space-y-1">

@@ -7,8 +7,10 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
+  AUTH_COOKIE_NAME,
   AuthError,
   AuthService,
+  readCookie,
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
@@ -91,6 +93,13 @@ interface ApprovalActorRow {
   accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
 }
 
+interface GovernanceActorRow {
+  id: string;
+  email: string;
+  status: string;
+  principalType: string;
+}
+
 interface RequestSummaryRow {
   id: string;
   policyKey: string;
@@ -168,6 +177,7 @@ async function loadEmployeeContext(
     WHERE a.id = $1
       AND a.principal_type = 'EMPLOYEE'
       AND a.status = 'active'
+      AND e.removed_at IS NULL
     ${lock ? "FOR UPDATE OF e" : ""}`,
     [accountId],
   );
@@ -246,7 +256,8 @@ async function hydrateApprovalChain(
   db: Pool | PoolClient,
   chain: readonly LeaveApprovalStep[],
 ): Promise<Array<LeaveApprovalStep & { name: string }>> {
-  const ids = chain.map((step) => step.employeeId);
+  const ids = chain.flatMap((step) => step.employeeId ? [step.employeeId] : []);
+  const accountIds = chain.flatMap((step) => step.accountId ? [step.accountId] : []);
   const result = await db.query<ApprovalActorRow>(
     `SELECT
       e.id,
@@ -258,12 +269,41 @@ async function hydrateApprovalChain(
     LEFT JOIN accounts a
       ON a.employee_id = e.id
       AND a.principal_type = 'EMPLOYEE'
-    WHERE e.id = ANY($1::uuid[])`,
+    WHERE e.id = ANY($1::uuid[])
+      AND e.removed_at IS NULL`,
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
+  const accounts = accountIds.length === 0
+    ? { rows: [] as GovernanceActorRow[] }
+    : await db.query<GovernanceActorRow>(
+      `SELECT id, email, status, principal_type AS "principalType"
+       FROM accounts WHERE id = ANY($1::uuid[])`,
+      [accountIds],
+    );
+  const accountById = new Map(accounts.rows.map((row) => [row.id, row]));
 
   return chain.map((step) => {
+    if ((step.principalType ?? "EMPLOYEE") === "ACCOUNT") {
+      const actor = step.accountId ? accountById.get(step.accountId) : undefined;
+      if (!actor || actor.principalType !== "FOUNDATION_BOARD" || actor.status !== "active") {
+        throw new EmployeeLeaveError(
+          409,
+          "APPROVER_ACCOUNT_NOT_READY",
+          "Akun governance approver belum aktif.",
+        );
+      }
+      return {
+        ...step,
+        principalType: "ACCOUNT" as const,
+        employeeId: null,
+        accountId: actor.id,
+        name: "Penyetuju Pengurus Yayasan",
+      };
+    }
+    if (!step.employeeId) {
+      throw new EmployeeLeaveError(409, "APPROVER_NOT_ACTIVE", "Principal approver tidak valid.");
+    }
     const actor = byId.get(step.employeeId);
     if (!actor || actor.status !== "active") {
       throw new EmployeeLeaveError(
@@ -279,7 +319,11 @@ async function hydrateApprovalChain(
         `Akun approver ${actor.fullName} belum aktif.`,
       );
     }
-    return { ...step, name: actor.fullName };
+    return {
+      employeeId: actor.id,
+      sources: step.sources,
+      name: actor.fullName,
+    };
   });
 }
 
@@ -343,7 +387,7 @@ async function enqueueNotification(
   db: PoolClient,
   requestId: string,
   eventType: string,
-  targetType: "employee" | "role",
+  targetType: "employee" | "account" | "role",
   targetKey: string,
 ) {
   await db.query(
@@ -436,6 +480,51 @@ export async function registerEmployeeLeaveRoutes(
     }
   }
 
+  async function authenticateApprovalPrincipal(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<AuthPrincipal | null> {
+    try {
+      const session = await auth.getSession(readCookie(request.headers.cookie, AUTH_COOKIE_NAME));
+      if (!session || !["EMPLOYEE", "FOUNDATION_BOARD"].includes(session.principal.principalType)) {
+        throw new AuthError(403, "FORBIDDEN", "Akun ini tidak memiliki akses approval.");
+      }
+      return session.principal;
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+        return null;
+      }
+      throw error;
+    }
+  }
+  async function assertGovernanceApprovalCapability(
+    db: Pool | PoolClient,
+    accountId: string,
+  ): Promise<void> {
+    const capability = await db.query<{ allowed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM account_role_assignments ara
+         JOIN role_permissions rp ON rp.role_id = ara.role_id
+         WHERE ara.account_id = $1
+           AND rp.permission_key = 'leave.governance.approve'
+           AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+           AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+           AND ara.scope_type = 'organization'
+       ) AS allowed`,
+      [accountId, jakartaToday()],
+    );
+    if (!capability.rows[0]?.allowed) {
+      throw new EmployeeLeaveError(
+        403,
+        "APPROVAL_FORBIDDEN",
+        "Capability governance approval tidak tersedia.",
+      );
+    }
+  }
+
+
   app.get("/leave/me/summary", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
@@ -465,7 +554,13 @@ export async function registerEmployeeLeaveRoutes(
             r.annual_period_key AS "annualPeriodKey",
             r.submitted_at AS "submittedAt",
             r.final_decided_at AS "finalDecidedAt",
-            approver.full_name AS "currentApproverName"
+            CASE
+              WHEN approver.id IS NOT NULL THEN approver.full_name
+              WHEN current_step.approver_account_id IS NOT NULL
+                AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+                THEN 'Penyetuju Pengurus Yayasan'
+              ELSE NULL
+            END AS "currentApproverName"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
@@ -601,7 +696,9 @@ export async function registerEmployeeLeaveRoutes(
           parsed.data.idempotencyKey,
           JSON.stringify({
             approvalSnapshot: preview.approvalChain.map((step) => ({
+              principalType: step.principalType ?? "EMPLOYEE",
               employeeId: step.employeeId,
+              accountId: step.accountId ?? null,
               sources: step.sources,
             })),
             authorityResolution: preview.authorityResolution,
@@ -609,23 +706,29 @@ export async function registerEmployeeLeaveRoutes(
         ],
       );
 
-      const insertedSteps: Array<{ id: string; employeeId: string; name: string }> = [];
+      const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
       for (const [index, step] of preview.approvalChain.entries()) {
         const stepId = randomUUID();
         await client.query(
           `INSERT INTO leave_request_approval_steps (
-            id, leave_request_id, step_order, approver_employee_id, sources, status
-          ) VALUES ($1, $2, $3, $4, $5::text[], $6)`,
+            id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
+          ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
           [
             stepId,
             requestId,
             index + 1,
             step.employeeId,
+            step.accountId ?? null,
             step.sources,
             index === 0 ? "pending" : "waiting",
           ],
         );
-        insertedSteps.push({ id: stepId, employeeId: step.employeeId, name: step.name });
+        insertedSteps.push({
+          id: stepId,
+          employeeId: step.employeeId,
+          accountId: step.accountId ?? null,
+          name: step.name,
+        });
       }
 
       await addEvent(client, requestId, principal.id, "leave.request.submitted", {
@@ -640,8 +743,8 @@ export async function registerEmployeeLeaveRoutes(
           client,
           requestId,
           "leave.approval.requested",
-          "employee",
-          firstStep.employeeId,
+          firstStep.accountId ? "account" : "employee",
+          firstStep.accountId ?? firstStep.employeeId!,
         );
       }
 
@@ -703,10 +806,13 @@ export async function registerEmployeeLeaveRoutes(
   });
 
   app.get("/leave/approvals", async (request, reply) => {
-    const principal = await authenticateEmployee(request, reply);
+    const principal = await authenticateApprovalPrincipal(request, reply);
     if (!principal) return;
     try {
-      const employee = await loadEmployeeContext(pool, principal.id);
+      const employee = principal.principalType === "EMPLOYEE"
+        ? await loadEmployeeContext(pool, principal.id)
+        : null;
+      if (!employee) await assertGovernanceApprovalCapability(pool, principal.id);
       const result = await pool.query<InboxRow>(
         `SELECT
           s.id AS "stepId",
@@ -723,11 +829,14 @@ export async function registerEmployeeLeaveRoutes(
         FROM leave_request_approval_steps s
         JOIN leave_requests r ON r.id = s.leave_request_id
         JOIN employees requester ON requester.id = r.employee_id
-        WHERE s.approver_employee_id = $1
+        WHERE (s.approver_employee_id = $1 OR s.approver_account_id = $2)
           AND s.status = 'pending'
           AND r.status = 'in_review'
         ORDER BY r.submitted_at ASC`,
-        [employee.id],
+        [
+          employee?.id ?? null,
+          principal.principalType === "FOUNDATION_BOARD" ? principal.id : null,
+        ],
       );
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -742,7 +851,7 @@ export async function registerEmployeeLeaveRoutes(
   });
 
   app.post("/leave/approvals/:stepId/decision", async (request, reply) => {
-    const principal = await authenticateEmployee(request, reply);
+    const principal = await authenticateApprovalPrincipal(request, reply);
     if (!principal) return;
     const params = stepParamSchema.safeParse(request.params);
     const body = decisionSchema.safeParse(request.body);
@@ -756,12 +865,15 @@ export async function registerEmployeeLeaveRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const actor = await loadEmployeeContext(client, principal.id);
+      const actor = principal.principalType === "EMPLOYEE"
+        ? await loadEmployeeContext(client, principal.id)
+        : null;
       const stepResult = await client.query<{
         id: string;
         requestId: string;
         requesterEmployeeId: string;
-        approverEmployeeId: string;
+        approverEmployeeId: string | null;
+        approverAccountId: string | null;
         status: "waiting" | "pending" | "approved" | "rejected";
         requestStatus: LeaveRequestStatus;
         hcHandling: HcHandling;
@@ -772,6 +884,7 @@ export async function registerEmployeeLeaveRoutes(
           s.leave_request_id AS "requestId",
           r.employee_id AS "requesterEmployeeId",
           s.approver_employee_id AS "approverEmployeeId",
+          s.approver_account_id AS "approverAccountId",
           s.status,
           r.status AS "requestStatus",
           r.hc_handling AS "hcHandling",
@@ -786,12 +899,18 @@ export async function registerEmployeeLeaveRoutes(
       if (!current) {
         throw new EmployeeLeaveError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
       }
-      if (current.approverEmployeeId !== actor.id) {
+      const ownsStep = actor
+        ? current.approverEmployeeId === actor.id
+        : current.approverAccountId === principal.id;
+      if (!ownsStep) {
         throw new EmployeeLeaveError(
           403,
           "APPROVAL_FORBIDDEN",
           "Tahap approval ini bukan milik akun Anda.",
         );
+      }
+      if (!actor) {
+        await assertGovernanceApprovalCapability(client, principal.id);
       }
 
       const allStepsResult = await client.query<{
@@ -824,11 +943,11 @@ export async function registerEmployeeLeaveRoutes(
       );
 
       if (decision.nextPendingStepId) {
-        const next = await client.query<{ approverEmployeeId: string }>(
+        const next = await client.query<{ approverEmployeeId: string | null; approverAccountId: string | null }>(
           `UPDATE leave_request_approval_steps
            SET status = 'pending'
            WHERE id = $1
-           RETURNING approver_employee_id AS "approverEmployeeId"`,
+           RETURNING approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"`,
           [decision.nextPendingStepId],
         );
         const target = next.rows[0];
@@ -837,8 +956,8 @@ export async function registerEmployeeLeaveRoutes(
             client,
             current.requestId,
             "leave.approval.requested",
-            "employee",
-            target.approverEmployeeId,
+            target.approverAccountId ? "account" : "employee",
+            target.approverAccountId ?? target.approverEmployeeId!,
           );
         }
       }
@@ -932,7 +1051,9 @@ export async function registerEmployeeLeaveRoutes(
           requestId: current.requestId,
           workflowKey: `leave.${current.policyKey}`,
           effectiveDate: jakartaToday(),
-          finalApproverEmployeeId: current.approverEmployeeId,
+          ...(current.approverEmployeeId
+            ? { finalApproverEmployeeId: current.approverEmployeeId }
+            : {}),
         });
       }
 

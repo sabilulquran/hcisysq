@@ -53,6 +53,20 @@ Published structure is stored as complete, immutable, effective-dated snapshots:
 
 The migration is additive. No synthetic employee, inferred authority, rollout row, or organization snapshot is seeded. Absence of a rollout setting resolves to `LEGACY`.
 
+### Deployed schema compatibility
+
+The canonical source is compatible with the production-evolved ORG-004 persistence fields recovered in migrations 0020-0023:
+
+- positions preserve `holder_source = EMPLOYEE | ACCOUNT`;
+- incumbencies preserve exactly one employee/account principal and `is_primary_structural`;
+- multiple employee-held structural positions require one explicit effective primary structural reporting anchor instead of database row order;
+- `removed_at` excludes an employee from new structural/workflow authority eligibility without deleting the employee or historical snapshots;
+- Leave approval snapshots may preserve either `approver_employee_id` or `approver_account_id` according to the database exactly-one-principal constraint.
+
+Schema availability is **not rollout activation**. Account-held organization incumbencies are preserved for round-trip, validation, and historical readability, but current structural authority resolution fails closed if such an incumbent would become a routing authority. A separate accepted mapping/activation decision is required before account-held structure may drive new workflow routing.
+
+An account-held position or incumbency never grants Application Access, role, permission, capability, or account state. Existing explicit authorization remains authoritative.
+
 ### Resolver behavior
 
 The reusable backend resolver applies this precedence:

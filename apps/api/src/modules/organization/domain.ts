@@ -142,8 +142,7 @@ export interface AuthorityResolutionInput {
 }
 
 export interface OversightResolutionInput {
-  approverEmployeeId?: string | undefined;
-  approverAccountId?: string | undefined;
+  approverEmployeeId: string;
   effectiveDate?: string | undefined;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;

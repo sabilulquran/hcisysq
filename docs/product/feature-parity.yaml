@@ -120,7 +120,7 @@ features:
   - id: ORG-005
     module: organization
     name: Organization sites, branches, and work locations
-    legacy_evidence: one YSQ organization may operate employees and attendance across multiple physical sites or branches
+    legacy_evidence: none recorded; product owner accepted multi-site/branch capability in HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: high
@@ -203,7 +203,7 @@ features:
   - id: ATT-006
     module: attendance
     name: Mobile clock-in/out and attendance evidence
-    legacy_evidence: mobile attendance patterns are required for future employee self-service beyond device-ingested factual records
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: after-pilot
     risk: critical
@@ -214,7 +214,7 @@ features:
   - id: ATT-007
     module: attendance
     name: Attendance evaluation, lateness, and overtime
-    legacy_evidence: operational HR requires schedule-aware evaluation beyond raw punch records
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: after-pilot
     risk: critical
@@ -225,7 +225,7 @@ features:
   - id: ATT-008
     module: attendance
     name: Shift exchange workflow
-    legacy_evidence: shift-based operations may require employee-requested schedule exchange with approval
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: high
@@ -263,7 +263,7 @@ features:
   - id: PAY-003
     module: payroll
     name: Payroll calculation, review, reconciliation, and finalization
-    legacy_evidence: employee compensation ultimately requires controlled payroll processing beyond imported payslip display
+    legacy_evidence: none recorded for the new engine; product owner accepted payroll calculation in HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: critical
@@ -346,7 +346,7 @@ features:
   - id: TRIP-001
     module: employee-service
     name: Business travel and official trip workflow
-    legacy_evidence: official travel can affect approval, documents, attendance context, and expense administration
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: high
@@ -357,7 +357,7 @@ features:
   - id: ASSET-001
     module: employee-service
     name: Employee asset assignment and return
-    legacy_evidence: employees may receive organization-owned work assets requiring accountable handover and return history
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: medium
@@ -368,7 +368,7 @@ features:
   - id: WORK-001
     module: workplace
     name: Desk and workplace booking
-    legacy_evidence: shared workplace resources may require employee reservation
+    legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: medium

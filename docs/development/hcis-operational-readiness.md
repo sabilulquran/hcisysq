@@ -3,7 +3,7 @@
 **Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED
 **Updated:** 2026-09-18
 **Specifications:** ORG-004, AUTH-011, ATT-005
-**Repository baseline:** canonical `main`; **latest supplied read-only production image evidence:** `ca38db08e85f064ffe5513f32ae0b75c11a3cf56`
+**Repository baseline:** canonical `main`; **latest verified production application SHA:** `acd22b438a7468dc6ea53ae001980cd06f7343cd`; **repository main later advanced to:** `92889f14ae5c39b817945fc71ee26f8fdbca9471`
 
 This document is the current operational status note for the one-unit pilot. Historical MVP checkpoints remain valid evidence for what was verified at those checkpoints; they are not automatically proof of current production or pilot state.
 
@@ -13,13 +13,14 @@ Use these labels consistently:
 
 - **Repository fact:** directly observed in the GitHub repository/CI during this package.
 - **Codex Local evidence:** environment/VPS/PostgreSQL verification reported by Codex Local on 2026-09-15 or 2026-09-16; this GitHub-only agent did not independently access the VPS/local machine.
+- **Operator-supplied production evidence:** authorized production/browser verification supplied on 2026-09-18 after the exact-SHA deployment; GitHub-observed workflow state is recorded separately.
 - **Unverified/TBD:** requires local, VPS, hardware, user, or operational-owner evidence not yet supplied.
 
 ## Executive status
 
 | Category | Current state | Evidence / closure requirement |
 | --- | --- | --- |
-| Selesai terverifikasi | MVP checkpoint remains historically verified; repository transfer to `sabilulquran/hcisysq` is observed; AUTH-011 has recorded synthetic verification from 2026-09-07; Codex Local reports current production API/Web at exact SHA `9e9098c5...` on organization GHCR images. | Keep historical and current evidence dated separately. Production image evidence does not equal pilot approval. |
+| Selesai terverifikasi | MVP checkpoint remains historically verified; repository transfer to `sabilulquran/hcisysq` is observed; AUTH-011 has recorded synthetic verification from 2026-09-07; the 2026-09-18 release at exact SHA `acd22b...` has publisher, production preflight, deploy/verifier, runtime health, unauthenticated boundary, and authenticated UI smoke evidence recorded as PASS. | Keep historical and current evidence dated separately. Release acceptance closure does not equal pilot approval. |
 | Implemented but not yet operationally verified | ORG-004 code/schema are deployed; AUTH-011 production-style role model exists; ATT-005 software capabilities exist. | Real ORG-004 structure, SHADOW, STRUCTURE activation, real pilot UAT, and physical-device evidence remain separate gates. |
 | Belum aktif | ORG-004 resolver rollout for the pilot remains `LEGACY` according to Codex Local evidence because `organization_rollout_settings` had zero rows; real pilot users/unit are not selected; biometric collection remains OFF. | HC selection + reviewed configuration + SHADOW gates + explicit STRUCTURE activation approval. |
 | Bug / fix evidence | Main baseline contains the Work Code export defect. PR #55 fixes it; Codex Local reports PostgreSQL 16 semantic verification passed. A repository PostgreSQL integration regression is being added so CI proves the behavior rather than only source-string shape. | PR #55 integration regression + green CI + later read-only deployed smoke after approved deployment. |
@@ -66,12 +67,14 @@ The accepted AUTH-011 contract and its 2026-09-07 synthetic verification remain 
 
 GitHub inspection observed `sabilulquran/hcisysq` as canonical and the old `imadjinasi/hcisysq` endpoint redirecting.
 
-Fresh Codex Local verification on 2026-09-16 reports production API/Web currently running exact-SHA organization images:
+The latest verified production release checkpoint is the 2026-09-18 deployment of exact-SHA organization images:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-api:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
+ghcr.io/sabilulquran/hcisysq-web:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
 ```
+
+Publisher run `35371463160` and production run `35371563402` are GitHub-observed successful. Operator-supplied evidence records exact runtime images, health/readiness, device-command delta `0`, biometric OFF, and authenticated UI smoke PASS. See `production-release-verification-2026-09-18.md`.
 
 `scripts/deploy-vps.sh` still contains legacy `ghcr.io/imadjinasi/...` defaults, while the production GitHub workflow supplies `HCIS_GHCR_API_REPO` / `HCIS_GHCR_WEB_REPO` organization overrides. Therefore the default script text is **not** evidence that production still runs personal-namespace images. This PR documents the distinction only; changing deployment defaults is deliberately left to a separate reviewed code/deployment PR if desired.
 
@@ -87,6 +90,12 @@ ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
 | ATT-005 pilot boundary | Partially evidenced | Technical device operator + HC owner | Approved device/canary scope | Passive evidence first; each active command separately approved and recorded |
 | Backup/restore readiness | Not proven | Operations owner | Isolated DB/host + approved backup handling | Successful isolated restore drill, integrity/app checks, measured duration |
 | Pilot go/no-go | Waiting decision | Operational owner | All mandatory gates | Recorded go/no-go decision; rollback owner and trigger confirmed |
+
+## Production release evidence — 2026-09-18
+
+See [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md) for the dated release checkpoint. The release at `acd22b438a7468dc6ea53ae001980cd06f7343cd` is closed for application deployment acceptance. This does **not** close pilot-selection, ORG-004 SHADOW/STRUCTURE, restore-drill, or other one-unit pilot gates.
+
+Repository `main` subsequently advanced to `92889f14ae5c39b817945fc71ee26f8fdbca9471` through PR #59. That later repository state must not be inferred to be deployed merely because it is on `main`.
 
 ## Codex Local evidence — 2026-09-15/16
 

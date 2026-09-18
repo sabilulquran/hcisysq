@@ -1,8 +1,8 @@
 # HCIS Operational Readiness — One-Unit Pilot
 
-**Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED  
-**Updated:** 2026-09-18  
-**Specifications:** ORG-004, AUTH-011, ATT-005  
+**Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED
+**Updated:** 2026-09-18
+**Specifications:** ORG-004, AUTH-011, ATT-005
 **Repository baseline:** canonical `main`; **latest supplied read-only production image evidence:** `ca38db08e85f064ffe5513f32ae0b75c11a3cf56`
 
 This document is the current operational status note for the one-unit pilot. Historical MVP checkpoints remain valid evidence for what was verified at those checkpoints; they are not automatically proof of current production or pilot state.

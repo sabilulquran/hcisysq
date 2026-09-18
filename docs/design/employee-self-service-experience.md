@@ -193,3 +193,6 @@ For employee self-service:
 - UX-001-F: desktop planned navigation is visually separated from available services.
 - UX-001-G: capability-gated Human Capital navigation behavior is preserved.
 - UX-001-H: no planned feature is represented with fake operational data or an invented delivery date.
+- UX-001-I: the employee service catalog groups accepted capabilities by user intent and includes the expanded HCIS capability map without presenting admin-only operations as employee actions.
+- UX-001-J: GPS, geotagging/geofence, photo, and face recognition are presented only as planned attendance-evidence capabilities until their policies and implementation are separately accepted.
+- UX-001-K: HC/admin users can discover future operational modules through a separate roadmap catalog; that catalog remains informational and does not grant permissions or execute unimplemented workflows.

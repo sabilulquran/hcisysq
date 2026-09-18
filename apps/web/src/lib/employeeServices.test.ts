@@ -11,6 +11,8 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("attendance")?.stage).toBe("available");
     expect(getEmployeeService("reimbursement")?.stage).toBe("deferred");
     expect(getEmployeeService("performance")?.stage).toBe("discovery");
+    expect(getEmployeeService("clock-in")?.stage).toBe("planned");
+    expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");
   });
 
   it("maps every planned service to a real coming-soon route and feature id", () => {
@@ -26,6 +28,7 @@ describe("employee service catalog", () => {
   it("uses plain-language roadmap labels", () => {
     expect(employeeServiceStageLabel("available")).toBe("Tersedia");
     expect(employeeServiceStageLabel("discovery")).toBe("Dalam perencanaan");
+    expect(employeeServiceStageLabel("planned")).toBe("Direncanakan");
     expect(employeeServiceStageLabel("deferred")).toBe("Setelah MVP");
   });
 });

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "identity": "full-filename",
+  "protectedMigrations": [
+    {
+      "filename": "0020_organization_revisions_and_account_holders.sql",
+      "sha256": "4ed6015f373b0f254af091a4387f6ebb7ddc1dd539dee854e9bfa15bd80cdd7c",
+      "gitBlobSha": "a4228312396a28ebe7cbba51a6a7cddff64d6031",
+      "deploymentStatus": "deployed-production",
+      "sourceCommit": "3de832a0cf098dc86f11e28b1b8c938827ef36a7"
+    },
+    {
+      "filename": "0021_multiple_structural_positions.sql",
+      "sha256": "d87b2eeada82999137c881426911f8ee188a65026176f4bc1b7b7ac6a8a57b25",
+      "gitBlobSha": "578604ec00baef7ed0c1f0bfac92bc8111e0480c",
+      "deploymentStatus": "deployed-production",
+      "sourceCommit": "3de832a0cf098dc86f11e28b1b8c938827ef36a7"
+    },
+    {
+      "filename": "0022_employee_master_lifecycle_and_source_snapshots.sql",
+      "sha256": "54dc786f9087371dbfd7ec00687d384909d86923f9ff89832992e223d64d35b2",
+      "gitBlobSha": "9e8c513e2d0a8abe594a555532d130a08c3e11f7",
+      "deploymentStatus": "deployed-production",
+      "sourceCommit": "3de832a0cf098dc86f11e28b1b8c938827ef36a7"
+    },
+    {
+      "filename": "0023_leave_approval_principals.sql",
+      "sha256": "a663deab2d7de1b23202029a13f67d6562f72304e302c58040719d1e7517c22d",
+      "gitBlobSha": "033c160d055975b1079b52c89c925f4878fb9154",
+      "deploymentStatus": "deployed-production",
+      "sourceCommit": "3de832a0cf098dc86f11e28b1b8c938827ef36a7"
+    }
+  ],
+  "historicalDuplicatePrefixes": [
+    {
+      "prefix": "0020",
+      "filenames": [
+        "0020_hub_oidc_identity_mapping.sql",
+        "0020_organization_revisions_and_account_holders.sql"
+      ],
+      "reason": "Both full filenames are already part of deployed migration history; full filename is the migration identity."
+    },
+    {
+      "prefix": "0021",
+      "filenames": [
+        "0021_attendance_adms_ingress.sql",
+        "0021_multiple_structural_positions.sql"
+      ],
+      "reason": "Both full filenames are already part of deployed migration history; full filename is the migration identity."
+    },
+    {
+      "prefix": "0022",
+      "filenames": [
+        "0022_attendance_adms_projection.sql",
+        "0022_employee_master_lifecycle_and_source_snapshots.sql"
+      ],
+      "reason": "Both full filenames are already part of deployed migration history; full filename is the migration identity."
+    },
+    {
+      "prefix": "0023",
+      "filenames": [
+        "0023_attendance_adms_admin.sql",
+        "0023_leave_approval_principals.sql"
+      ],
+      "reason": "Both full filenames are already part of deployed migration history; full filename is the migration identity."
+    }
+  ]
+}

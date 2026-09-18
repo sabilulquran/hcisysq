@@ -61,6 +61,8 @@ export interface OrganizationPosition extends EffectivePeriod {
   vacancyPolicy: VacancyPolicy;
   active: boolean;
   visualRankOffset: number;
+  /** Defaults to EMPLOYEE for snapshots created before migration 0020. */
+  holderSource?: "EMPLOYEE" | "ACCOUNT";
 }
 
 export interface OrganizationMembership extends EffectivePeriod {
@@ -74,8 +76,11 @@ export interface OrganizationMembership extends EffectivePeriod {
 export interface OrganizationIncumbency extends EffectivePeriod {
   id: string;
   positionKey: string;
-  employeeId: string;
+  employeeId: string | null;
+  accountId?: string | null;
   kind: IncumbencyKind;
+  /** Explicit reporting anchor for employees with multiple structural positions. */
+  isPrimaryStructural?: boolean;
   reason: string | null;
 }
 
@@ -137,7 +142,8 @@ export interface AuthorityResolutionInput {
 }
 
 export interface OversightResolutionInput {
-  approverEmployeeId: string;
+  approverEmployeeId?: string | undefined;
+  approverAccountId?: string | undefined;
   effectiveDate?: string | undefined;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
@@ -219,6 +225,8 @@ export interface OrganizationImpactPreview {
 
 export type OrganizationResolutionErrorCode =
   | "INVALID_EFFECTIVE_DATE"
+  | "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED"
+  | "INVALID_AUTHORITY_PRINCIPAL"
   | "STRUCTURE_NOT_CONFIGURED"
   | "MEMBERSHIP_NOT_CONFIGURED"
   | "AMBIGUOUS_MEMBERSHIP"

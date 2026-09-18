@@ -20,6 +20,8 @@ Complete outside Git with real identities; use synthetic identifiers in reposito
 
 | Field | Required decision | Synthetic example |
 | --- | --- | --- |
+| Pilot execution SHA | Exact application SHA proven deployed for the pilot environment | `66da50cb...` |
+| Runtime evidence | Exact API/Web images + health/verifier evidence for that SHA | `sha-66da50cb...` |
 | Pilot unit/node | Exact authoritative unit selected by HC | `UNIT-PILOT-A` |
 | Pilot date window | Start/end/effective business date | `2026-10-01..2026-10-14` |
 | Employee participants | Active employees in scope | `EMP-A01`, `EMP-A02` |
@@ -38,6 +40,7 @@ Complete outside Git with real identities; use synthetic identifiers in reposito
 
 For each participant/authority, verify:
 
+- pilot execution SHA is actually deployed and verified; repository `main` alone is not runtime proof;
 - employee is active where employee principal is required;
 - account is active;
 - assignment/incumbency is effective for the test date;
@@ -48,9 +51,18 @@ For each participant/authority, verify:
 - Human Capital admin capability is not mistaken for `leave.approve`;
 - technical/device capability is separately granted and is not inherited from HC admin;
 - Board account remains governance/read-only unless a specific accepted capability says otherwise;
+- an account-held organization position/incumbency is persistence data, not an access grant and not structural routing authority under the current accepted boundary;
+- an already-snapshotted account approval step, if governance is in scope, belongs only to the exact stored account and still requires the explicit workflow capability;
 - no assignment implies `SUPER_ADMIN`.
 
 ## Validation sequence
+
+### 0. Execution baseline gate
+
+Before any real pilot configuration or SHADOW work, prove the exact application SHA that is running in the pilot environment. If the pilot depends on source/schema reconciliation merged in PR #59/#60, the deployed SHA must contain those changes and must have passed the normal exact-SHA publication/deployment/verifier path.
+
+**Pass:** deployed repository SHA, API/Web image tags, health/readiness, biometric OFF, and current rollout state are recorded without mutation.  
+**Stop:** the selected behavior exists only on repository `main`, runtime SHA cannot be proven, or the environment would need an unapproved deployment merely to continue the test.
 
 ### 1. LEGACY baseline
 
@@ -87,4 +99,4 @@ Operational rollback is a reviewed future-effective `LEGACY` rollout setting for
 
 ## Closure evidence
 
-A one-unit ORG-004 pilot gate closes only when evidence includes environment/SHA, approved pilot scope, configuration/change-set IDs, mode/date, resolver explanations, mismatch table, actor eligibility, audit references, before/after snapshot counts, decision owner, and rollback owner. Repository documentation alone is not closure evidence.
+A one-unit ORG-004 pilot gate closes only when evidence includes environment, exact deployed application SHA and image references, approved pilot scope, configuration/change-set IDs, mode/date, resolver explanations, mismatch table, actor eligibility, audit references, before/after snapshot counts, decision owner, and rollback owner. Repository documentation alone is not closure evidence.

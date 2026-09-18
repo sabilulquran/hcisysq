@@ -184,7 +184,7 @@ export class OrganizationAuthorityResolver {
     }
 
     const incumbentPositions = this.employeePositions(context, context.requesterEmployeeId);
-    const supervisedPositions = incumbentPositions.filter((position) =>
+    const supervisedPositions = this.reportingPositions(context, incumbentPositions).filter((position) =>
       position.parentPositionKey !== null
       || this.binding(context, "POSITION", position.stableKey, "SUPERVISORY_PARENT") !== null,
     );
@@ -314,6 +314,20 @@ export class OrganizationAuthorityResolver {
         }
         const candidate = candidates[0];
         if (!candidate) continue;
+        if ((position.holderSource ?? "EMPLOYEE") === "ACCOUNT" || candidate.accountId) {
+          throw new OrganizationResolutionError(
+            "INVALID_AUTHORITY_PRINCIPAL",
+            "Account-held organization authority is preserved but not activated for structural routing.",
+            { positionKey, accountId: candidate.accountId ?? null, source },
+          );
+        }
+        if (!candidate.employeeId) {
+          throw new OrganizationResolutionError(
+            "INVALID_AUTHORITY_PRINCIPAL",
+            "Employee-held position has no employee incumbent.",
+            { positionKey, source },
+          );
+        }
         const eligibility = await this.eligibilityValidator.validate(candidate.employeeId, {
           effectiveDate: context.effectiveDate,
           workflowKey: context.workflowKey,
@@ -459,6 +473,35 @@ export class OrganizationAuthorityResolver {
       (item) => keys.has(item.stableKey) && item.active
         && isEffective(item.effectiveFrom, item.effectiveTo, context.effectiveDate),
     );
+  }
+
+  // A person may hold multiple positions. Only an explicitly marked primary
+  // structural incumbency anchors requester reporting; secondary assignments
+  // remain available for explicit authority bindings but never win by row order.
+  private reportingPositions(
+    context: ResolutionContext,
+    positions: OrganizationPosition[],
+  ): OrganizationPosition[] {
+    if (positions.length <= 1) return positions;
+    const primaryKeys = new Set(
+      context.snapshot.incumbencies
+        .filter((item) => item.employeeId === context.requesterEmployeeId
+          && item.kind === "PRIMARY"
+          && item.isPrimaryStructural
+          && isEffective(item.effectiveFrom, item.effectiveTo, context.effectiveDate))
+        .map((item) => item.positionKey),
+    );
+    if (primaryKeys.size !== 1) {
+      throw new OrganizationResolutionError(
+        "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED",
+        "Employee has multiple effective structural positions but no single primary structural position is configured.",
+        {
+          employeeId: context.requesterEmployeeId,
+          positionKeys: positions.map((item) => item.stableKey),
+        },
+      );
+    }
+    return positions.filter((item) => primaryKeys.has(item.stableKey));
   }
 
   private position(context: ResolutionContext, positionKey: string): OrganizationPosition {

@@ -9,7 +9,6 @@ import {
   CalendarDays,
   ClipboardCheck,
   Clock3,
-  FileText,
   FolderOpen,
   GraduationCap,
   Grid2X2,

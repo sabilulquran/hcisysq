@@ -705,8 +705,8 @@ export async function registerEmployeeLeaveRoutes(
         const stepId = randomUUID();
         await client.query(
           `INSERT INTO leave_request_approval_steps (
-            id, leave_request_id, step_order, approver_employee_id, sources, status
-          ) VALUES ($1, $2, $3, $4, $5::text[], $6)`,
+            id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
+          ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
           [
             stepId,
             requestId,

@@ -48,3 +48,16 @@ describe("AppShell account affordances", () => {
     expect(html).toContain('aria-expanded="false"');
   });
 });
+
+
+describe("AppShell employee service discovery", () => {
+  it("keeps mobile navigation bounded and routes planned services away from dead links", () => {
+    const html = renderWithHcCapability(false);
+
+    expect(html).toContain('href="/app/services"');
+    expect(html).toContain(">Lainnya<");
+    expect(html).toContain('href="/app/services/reimbursement"');
+    expect(html).toContain('href="/app/services/documents"');
+    expect(html).not.toContain('href="#"');
+  });
+});

@@ -22,15 +22,19 @@ const REQUEST = "00000000-0000-4000-8000-000000000100";
 const DM_STEP = "00000000-0000-4000-8000-000000000110";
 const UNIT_STEP = "00000000-0000-4000-8000-000000000120";
 const HC_TASK = "00000000-0000-4000-8000-000000000130";
+const ACTOR_ACCOUNT = "00000000-0000-4000-8000-000000000002";
+const OTHER_BOARD_ACCOUNT = "00000000-0000-4000-8000-000000000003";
 
 type HcHandling = "notify" | "validate" | "approve" | "none";
 
-function authRows(principalType: "EMPLOYEE" | "SUPER_ADMIN" = "EMPLOYEE") {
+function authRows(
+  principalType: "EMPLOYEE" | "SUPER_ADMIN" | "FOUNDATION_BOARD" = "EMPLOYEE",
+) {
   return {
     rows: [
       {
         sessionId: "00000000-0000-4000-8000-000000000001",
-        accountId: "00000000-0000-4000-8000-000000000002",
+        accountId: ACTOR_ACCOUNT,
         email: "actor@example.org",
         principalType,
         expiresAt: new Date("2026-08-22T12:00:00.000Z"),
@@ -57,11 +61,13 @@ function employeeRow(id: string) {
 }
 
 function createDecisionPool(input: {
-  actorEmployeeId: string;
+  actorEmployeeId?: string;
   requestedStepId: string;
-  stepApproverEmployeeId: string;
+  stepApproverEmployeeId: string | null;
+  stepApproverAccountId?: string | null;
   stepStatus: "waiting" | "pending" | "approved" | "rejected";
-  principalType?: "EMPLOYEE" | "SUPER_ADMIN";
+  principalType?: "EMPLOYEE" | "SUPER_ADMIN" | "FOUNDATION_BOARD";
+  governanceAllowed?: boolean;
   hcHandling?: HcHandling;
   steps?: Array<{
     id: string;
@@ -80,7 +86,7 @@ function createDecisionPool(input: {
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e")) {
-      return { rows: [employeeRow(input.actorEmployeeId)], rowCount: 1 };
+      return { rows: [employeeRow(input.actorEmployeeId ?? M)], rowCount: 1 };
     }
     if (sql.includes("FROM leave_request_approval_steps s") && sql.includes("FOR UPDATE OF s, r")) {
       expect(values?.[0]).toBe(input.requestedStepId);
@@ -91,6 +97,7 @@ function createDecisionPool(input: {
             requestId: REQUEST,
             requesterEmployeeId: E,
             approverEmployeeId: input.stepApproverEmployeeId,
+            approverAccountId: input.stepApproverAccountId ?? null,
             status: input.stepStatus,
             requestStatus: "in_review",
             hcHandling: input.hcHandling ?? "notify",
@@ -99,6 +106,9 @@ function createDecisionPool(input: {
         ],
         rowCount: 1,
       };
+    }
+    if (sql.includes("leave.governance.approve") && sql.includes("account_role_assignments")) {
+      return { rows: [{ allowed: input.governanceAllowed ?? false }], rowCount: 1 };
     }
     if (sql.includes("FROM leave_request_approval_steps") && sql.includes("ORDER BY step_order ASC")) {
       return {
@@ -114,7 +124,7 @@ function createDecisionPool(input: {
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("UPDATE leave_request_approval_steps") && sql.includes("SET status = 'pending'")) {
-      return { rows: [{ approverEmployeeId: U }], rowCount: 1 };
+      return { rows: [{ approverEmployeeId: U, approverAccountId: null }], rowCount: 1 };
     }
     if (sql.includes("UPDATE leave_request_hc_tasks") && sql.includes("status = 'pending'")) {
       expect(values?.[0]).toBe(REQUEST);
@@ -205,7 +215,9 @@ describe("leave employee read isolation", () => {
     expect(
       query.mock.calls.some(
         ([sql, values]) =>
-          String(sql).includes("WHERE s.approver_employee_id = $1") && values?.[0] === M,
+          String(sql).includes("s.approver_employee_id = $1 OR s.approver_account_id = $2")
+          && values?.[0] === M
+          && values?.[1] === null,
       ),
     ).toBe(true);
     await app.close();
@@ -324,6 +336,61 @@ describe("leave approval multi-account authorization", () => {
       stepStatus: "pending",
     });
     const response = await decide(pool, DM_STEP);
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "APPROVAL_FORBIDDEN" });
+  });
+
+  it("allows the exact snapshotted Foundation Board account only with explicit governance capability", async () => {
+    const { pool, query } = createDecisionPool({
+      requestedStepId: UNIT_STEP,
+      stepApproverEmployeeId: null,
+      stepApproverAccountId: ACTOR_ACCOUNT,
+      stepStatus: "pending",
+      principalType: "FOUNDATION_BOARD",
+      governanceAllowed: true,
+      steps: [{ id: UNIT_STEP, order: 1, status: "pending" }],
+    });
+    const response = await decide(pool, UNIT_STEP);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      requestStatus: "approved",
+      stepStatus: "approved",
+    });
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes("leave.governance.approve"),
+    )).toBe(true);
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes("INSERT INTO account_role_assignments")
+      || String(sql).includes("INSERT INTO role_permissions"),
+    )).toBe(false);
+  });
+
+  it("rejects a snapshotted Foundation Board account without the explicit governance capability", async () => {
+    const { pool } = createDecisionPool({
+      requestedStepId: UNIT_STEP,
+      stepApproverEmployeeId: null,
+      stepApproverAccountId: ACTOR_ACCOUNT,
+      stepStatus: "pending",
+      principalType: "FOUNDATION_BOARD",
+      governanceAllowed: false,
+      steps: [{ id: UNIT_STEP, order: 1, status: "pending" }],
+    });
+    const response = await decide(pool, UNIT_STEP);
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "APPROVAL_FORBIDDEN" });
+  });
+
+  it("rejects a different Foundation Board account even when it has governance capability", async () => {
+    const { pool } = createDecisionPool({
+      requestedStepId: UNIT_STEP,
+      stepApproverEmployeeId: null,
+      stepApproverAccountId: OTHER_BOARD_ACCOUNT,
+      stepStatus: "pending",
+      principalType: "FOUNDATION_BOARD",
+      governanceAllowed: true,
+      steps: [{ id: UNIT_STEP, order: 1, status: "pending" }],
+    });
+    const response = await decide(pool, UNIT_STEP);
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ code: "APPROVAL_FORBIDDEN" });
   });

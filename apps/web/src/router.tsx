@@ -23,6 +23,7 @@ import {
 } from "@/pages/AdminAdmsDeviceRoutePages";
 import { AdminAdmsDevicesPage } from "@/pages/AdminAdmsDevicesPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
+import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
@@ -32,6 +33,7 @@ import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
+import { AdminServicesPage } from "@/pages/AdminServicesPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
@@ -316,6 +318,20 @@ const adminAccessRoute = createRoute({
   component: AdminAccessPage,
 });
 
+const adminServicesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/services",
+  beforeLoad: () => requireAdminPath("/admin"),
+  component: AdminServicesPage,
+});
+
+const adminComingSoonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/services/$serviceKey",
+  beforeLoad: () => requireAdminPath("/admin"),
+  component: AdminComingSoonPage,
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/board",
@@ -359,6 +375,8 @@ const routeTree = rootRoute.addChildren([
   adminLeaveCalendarRoute,
   adminPayslipsRoute,
   adminAccessRoute,
+  adminServicesRoute,
+  adminComingSoonRoute,
   boardRoute,
 ]);
 

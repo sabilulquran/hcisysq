@@ -22,6 +22,7 @@ rules:
   - MVP verification evidence is frozen in docs/product/mvp-release-checkpoint.md.
   - A verified MVP feature does not imply full legacy parity or production cutover readiness.
   - ORG-004 implementation/deployment does not imply activation; rollout remains LEGACY until explicitly configured and must pass SHADOW and pilot validation before STRUCTURE.
+  - Planned, discovery, or deferred capabilities may appear in UI only as clearly non-operational Coming Soon surfaces; visibility is not implementation or release evidence.
 
 features:
   - id: AUTH-001

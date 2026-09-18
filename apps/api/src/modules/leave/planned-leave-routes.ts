@@ -648,8 +648,8 @@ export async function registerPlannedLeaveRoutes(
           request.final_decided_at AS "finalDecidedAt",
           CASE
             WHEN approver.id IS NOT NULL THEN approver.full_name
-            WHEN current_step.approver_account_id IS NOT NULL
-              AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+            WHEN active_step.approver_account_id IS NOT NULL
+              AND active_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
               THEN 'Penyetuju Pengurus Yayasan'
             ELSE NULL
           END AS "currentApproverName",

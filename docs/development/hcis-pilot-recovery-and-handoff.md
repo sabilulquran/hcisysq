@@ -1,57 +1,93 @@
 # HCIS Pilot Recovery, Device Boundary, and Codex Local Handoff
 
-**Status:** READY FOR HANDOFF; EXECUTION PENDING  
-**Updated:** 2026-09-16  
-**Baseline main/runtime SHA discussed:** `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`
+**Status:** READY FOR OPERATIONAL OWNER INPUT; EXECUTION PENDING  
+**Updated:** 2026-09-19  
+**Canonical repository main:** `66da50cbd2a12f6099a59adbda28b657863e8e40`  
+**Latest verified production application SHA:** `acd22b438a7468dc6ea53ae001980cd06f7343cd`
 
-This runbook separates passive/read-only verification from state-changing operations. Creating or updating this document does not complete Task 7 or Task 8.
+This runbook separates repository readiness, verified production state, passive verification, and state-changing pilot operations. Updating this document does not authorize deployment, account/role changes, organization rollout changes, restore operations, device commands, biometric collection, or pilot activation.
 
-## Current verified runtime context from Codex Local
+## Repository vs production boundary
 
-Codex Local evidence supplied on 2026-09-16 reports production API/Web running exact-SHA organization-owned images:
+The latest operator-supplied production verification on 2026-09-18 records API/Web running exact-SHA organization images for:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-api:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
+ghcr.io/sabilulquran/hcisysq-web:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
 ```
 
-ORG-004 code/schema are installed, while no `organization_rollout_settings` row exists, so `LEGACY` remains authoritative by contract. Real structure configuration, SHADOW evidence, STRUCTURE activation, and pilot validation remain pending.
+GitHub-observed publisher run `35371463160` completed successfully for API and Web, and production run `35371563402` completed Production preflight and Deploy and verify successfully. Operator-supplied evidence also records exact runtime images, healthy API/Web/PostgreSQL, health/readiness HTTP 200, biometric collection OFF, device-command delta 0, unauthenticated boundary PASS, and authenticated UI smoke PASS.
 
-`scripts/deploy-vps.sh` still contains legacy personal-GHCR defaults, but the production GitHub workflow supplies organization-GHCR overrides. Do not infer the current production image source from the script defaults alone. This documentation PR does not modify deployment code/defaults.
+Repository `main` subsequently advanced beyond that deployed SHA:
+
+- PR #59 restored production-recorded migration history into canonical source;
+- PR #60 reconciled application source with the deployed organization/Leave principal schema;
+- current `main` is `66da50cbd2a12f6099a59adbda28b657863e8e40`.
+
+Those later repository commits are **not production evidence**. Do not infer that PR #59/#60 behavior is live merely because it is on `main`.
+
+The last supplied read-only ORG-004 rollout inspection reported zero `organization_rollout_settings` rows. Under the accepted contract, missing rollout configuration resolves to `LEGACY`. Re-check the actual pilot execution environment before relying on that historical observation.
+
+## Pilot execution SHA gate
+
+Before executing DRAFT/SHADOW/STRUCTURE validation, record one exact application SHA and prove that the intended pilot environment is actually running it.
+
+If the pilot depends on behavior introduced by PR #59/#60, the execution SHA must contain those commits and must go through the normal exact-SHA publication, approved deployment, and verifier path first. This requirement is a readiness gate, **not** authorization to deploy.
+
+Required evidence before pilot execution:
+
+- repository commit selected for pilot;
+- published exact-SHA API/Web images for that commit;
+- deployed repository SHA equals the selected commit;
+- runtime API/Web images equal the selected exact-SHA tags;
+- health/readiness pass;
+- biometric collection remains OFF;
+- verifier records zero device commands unless a separately approved device canary is explicitly in scope;
+- current ORG-004 rollout mode/configuration is read and recorded without mutating it.
+
+A green `main`, merged PR, or successful CI run is not a substitute for this runtime gate.
 
 ## ATT-005 boundary for this pilot
 
-ATT-005 remains `IMPLEMENTING`. Repository code includes typed physical operations and safe observability/export surfaces, but repository implementation is not physical-device proof.
+ATT-005 remains `IMPLEMENTING`. Repository code includes typed physical operations and safe observability/export surfaces, but repository implementation is not full physical-device proof.
 
-The supplied VPS evidence reports three `attendance_adms_physical_capabilities` rows in state `verified`. Because that count alone does not prove every ATT-005 capability or the underlying canary evidence, this package does not close ATT-005.
+PR #55, which repaired the Work Code export SQL, is merged and is an ancestor of the verified `acd22b...` production release. The supplied production release evidence did not separately record a route-specific Work Code export smoke, so treat that as a passive read-only check if Work Code export is actually relevant to the pilot.
 
-### Passive verification — may be performed read-only
+### Passive verification
 
-Codex Local may, subject to normal VPS read authorization:
+Subject to normal read authorization, an operator may:
 
 - confirm exact deployed SHA/image tags and health/readiness;
 - confirm latest migration and `BIOMETRIC_COLLECTION_ENABLED=0`;
-- confirm retired USERINFO safety control and that verification requests zero commands;
-- inspect device inventory/last-seen, request journal summaries, capability states, operation history, and safe audit/export surfaces;
-- confirm Work Code export returns CSV after an approved deployment of PR #55 and excludes `wire_command`/biometric secrets;
-- reconcile the count and keys of `verified` capability rows with recorded canary evidence;
+- confirm the retired USERINFO safety control;
+- inspect device inventory/last-seen, request-journal summaries, capability states, operation history, and safe exports;
+- reconcile recorded physical-capability evidence with the ATT-005 ledger;
 - record disk/memory/container observations without treating capacity alone as an incident.
 
 A passive verification must finish with **zero new device commands requested**.
 
-### Active device tests — separate authorization required
+### Active device tests
 
-Any time sync, duplicate-punch setting, Work Code delivery, message, profile push, enable/disable, reboot, server/NTP config, firmware, biometric query/enrollment/restore/delete, or destructive clear operation is a state-changing hardware test. Run one capability at a time only after an authorized owner approves exact device, capability, expected command, recovery/restore value, test window, and evidence capture.
+Any time sync, duplicate-punch setting, Work Code delivery, message, profile push, enable/disable, reboot, server/NTP config, firmware, biometric query/enrollment/restore/delete, or destructive clear operation is state-changing hardware work.
 
-Biometric collection remains OFF. Do not enable global/per-device biometric gates as part of routine pilot readiness. Active USERINFO reads remain retired. No arbitrary/raw command escape hatch is permitted. Do not expand this package into full WDMS parity closure.
+Such work is **not required by default for an ORG-004/Leave one-unit pilot**. Run one capability at a time only if an authorized owner explicitly places that capability in pilot scope and approves the exact device, command, expected result, recovery value, window, and evidence capture.
+
+Biometric collection remains OFF. Active USERINFO reads remain retired. No arbitrary/raw command escape hatch is permitted.
 
 ## Isolated restore drill
 
 **Never restore over the active production database.**
 
-Prerequisites: operational owner approves the backup copy/use, isolated PostgreSQL target exists with network/access controls, enough disk is available, target database name/host cannot be confused with production, and evidence handling excludes personal row contents.
+Prerequisites:
 
-Suggested procedure (adapt credentials/paths only in the approved environment):
+- operational owner approves backup copy/use;
+- isolated PostgreSQL target exists with network/access controls;
+- target database/host cannot be confused with production;
+- enough storage is available;
+- notification/device workers remain disabled;
+- evidence handling excludes personal row contents.
+
+Suggested procedure in the approved environment:
 
 ```bash
 sha256sum <approved-backup-file>
@@ -61,131 +97,113 @@ pg_restore --exit-on-error --no-owner --no-privileges --dbname=<isolated_restore
 # Keep notification/device workers disabled for the drill.
 ```
 
-Record start/end/duration; backup checksum; PostgreSQL restore exit result; migration table consistency; expected table/index/constraint presence; safe aggregate row counts (not personal values); ability of an isolated API to start/read representative synthetic or approved non-sensitive records; and absence of outbound notification/device side effects.
+Record start/end/duration, checksum, restore exit result, migration consistency, expected table/index/constraint presence, safe aggregate counts, isolated API startup/read result, and absence of outbound side effects.
 
-**Failure handling:** preserve logs with secrets/PII redacted, stop the isolated app, do not retry against production, classify whether backup corruption/version/storage/config caused the failure, and escalate to operations owner. A failed drill is NO-GO until resolved/repeated successfully.
+A pre-deploy backup existing in production is **not** a successful restore drill.
 
 **RPO:** TBD by operational owner.  
-**RTO:** TBD by operational owner.  
-Measured drill duration informs RTO discussion but does not set an RTO automatically.
+**RTO:** TBD by operational owner.
+
+Measured restore duration informs the RTO decision but does not set it automatically.
 
 ## Monitoring and incident ownership
 
-Before pilot, name owners for application health, database/storage, access/auth, organization/approval workflow, device integration if in scope, and operational decision/escalation. Define who may stop the pilot and who may approve rollback/deployment.
+Before pilot, name owners for:
 
-Minimum monitor set during pilot: API/Web/DB health; readiness; HTTP error/auth-denial anomalies; DB/storage capacity; queue/outbox backlog if used; failed approval resolution; audit stream for privileged changes; device last-seen/ingress if attendance device is in pilot. Do not log private payloads merely for observability.
+- application health;
+- database/storage;
+- access/auth;
+- organization/approval workflow;
+- device integration only if included in pilot scope;
+- go/no-go, stop, rollback, and escalation decisions.
 
-Stop pilot on privacy/authorization breach, wrong approval routing, unexplained STRUCTURE/SHADOW behavior, repeated critical errors/data-integrity concern, inability to restore service within owner-approved tolerance, or unauthorized device/biometric action.
+Minimum monitor set during pilot:
 
-## Codex Local handoff — Task 7
+- API/Web/DB health and readiness;
+- HTTP error/auth-denial anomalies;
+- DB/storage capacity;
+- queue/outbox backlog when applicable;
+- failed approval resolution;
+- audit stream for privileged changes;
+- device last-seen/ingress only when attendance device scope is included.
 
-### Repository, branches, PRs
+Stop the pilot on privacy/authorization breach, wrong approval routing, unexplained SHADOW/STRUCTURE behavior, repeated critical errors/data-integrity concern, inability to recover service within owner-approved tolerance, or unauthorized device/biometric action.
 
-- Canonical repository: `sabilulquran/hcisysq`.
-- Baseline main/runtime SHA discussed: `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`.
-- Bug branch: `fix/hcis-operational-readiness`.
-- Bug PR: `#55` — Work Code export command lookup.
-- PR #55 head after PostgreSQL integration-regression revision: `5bc45868f1378fa207579306aebe62aee6a063a5`.
-- Documentation branch: `docs/hcis-operational-readiness`.
-- Documentation PR: `#56` — one-unit operational readiness.
-- For PR #56, always verify `git rev-parse HEAD` against the current GitHub PR head. This handoff file itself contributes to the final documentation head, so an embedded pre-write SHA would immediately become stale.
+## Repository/local verification baseline
 
-### Changed files to inspect
-
-PR #55:
-
-- `apps/api/src/modules/attendance/adms/physical-parity-observability-routes.ts`
-- `apps/api/test/adms-physical-parity-observability.test.ts`
-
-PR #56 includes:
-
-- `README.md` and `AGENTS.md`;
-- `docs/development/ai-assisted-workflow.md`;
-- `docs/development/github-org-transfer-readiness.md`;
-- `docs/development/vps-deployment.md`;
-- `docs/development/github-vps-production-deployment.md`;
-- `docs/development/hcis-operational-readiness.md`;
-- `docs/development/hcis-pilot-recovery-and-handoff.md`;
-- `docs/development/org004-pilot-unit-validation.md`;
-- `docs/domain/dynamic-organization-structure.md`;
-- `docs/domain/annual-leave-vertical-slice.md`;
-- `docs/domain/leave-policy-ysq.md`;
-- `docs/domain/organization-designer-visual-ranking.md`;
-- `docs/domain/workflows/approval-engine.md`;
-- `docs/product/feature-parity.yaml`;
-- `docs/product/scope.md`;
-- `docs/testing/hcis-pilot-uat.md`.
-
-### Local verification and prerequisites
-
-Use a clean checkout, Node version required by repository/CI, PostgreSQL 16, and empty disposable loopback databases. Synthetic data only.
+For a candidate pilot execution SHA containing current `main`, use a clean checkout, the repository/CI Node version, PostgreSQL 16, and disposable loopback databases. Synthetic data only.
 
 ```bash
 npm ci
 npm run migrate:api
+npm run check:migration-source-of-truth
+npm run rehearse:organization-migration-recovery
+node apps/api/scripts/rehearse-org004-upgrade.mjs
 npm run typecheck
 npm run lint
 npm run test
 npm run build
-node apps/api/scripts/rehearse-org004-upgrade.mjs
-node apps/api/scripts/rehearse-wave2-upgrade.mjs
-node apps/api/scripts/rehearse-wave2-userinfo-upgrade.mjs
-node apps/api/scripts/rehearse-wave2-user-correction-upgrade.mjs
 ```
 
-For AUTH-011 PostgreSQL coverage, reproduce `docs/testing/AUTH-011-verification.md` with the required empty loopback databases and environment variables. Do not point test variables at production.
+Run additional ATT-005 migration rehearsals only when attendance-device work is actually in scope.
 
-### Work Code regression — PR #55
+For AUTH-011 PostgreSQL coverage, follow `docs/testing/AUTH-011-verification.md` using empty disposable loopback databases. Never point test variables at production.
 
-Codex Local reported that the implementation passed PostgreSQL 16 semantic verification. PR #55 now also contains a PostgreSQL integration regression that executes the SQL extracted from the actual production route against the migrated test database.
+Repository verification proves the candidate source, not the production runtime.
 
-The regression uses synthetic rows inside `BEGIN` and always `ROLLBACK`; it proves:
+## AUTH-011 access review
 
-1. a target with no physical operation returns `NULL last_command_id`;
-2. the latest related Work Code physical command is returned;
-3. a newer operation for another Work Code is ignored;
-4. migrated `attendance_adms_work_code_targets` has no `last_command_id` column;
-5. the route still requires `attendance.devices.export` and export safety does not expose wire commands or biometric secret material.
+Before real pilot UAT:
 
-GitHub CI on head `5bc45868f1378fa207579306aebe62aee6a063a5` completed successfully. A later production smoke remains a separate read-only check after an approved merge/deploy; CI success is not deployment evidence.
+- Human Capital selects the actual pilot participants;
+- every account/employee must be active as required by the principal type;
+- effective role/capability scope is reviewed explicitly;
+- organization-scoped HC administration must not be confused with `leave.approve`, governance approval, technical/device permission, or Super Admin;
+- no job title, organization label, or account-held organization position grants access by itself;
+- no missing permission may be auto-granted merely to complete UAT.
 
-### VPS read-only verification
+Use `docs/testing/hcis-pilot-uat.md` as the executable test matrix.
 
-After local/CI review and only with authorized VPS access:
+## Pilot execution sequence
 
-```bash
-./scripts/verify-vps.sh <EXPECTED_DEPLOYED_SHA>
-```
+0. **Execution baseline:** prove the exact deployed pilot SHA and record current rollout state read-only.
+1. **Owner decisions:** Human Capital selects one unit, participants, pilot window, real manager/approver/acting mapping, rollback owner, and evidence owner.
+2. **Access review:** validate accounts, capabilities/scopes, principal types, and effective dates without auto-granting missing rights.
+3. **LEGACY baseline:** prove current accepted routing and immutable snapshots before introducing pilot structure.
+4. **DRAFT:** configure only the selected scope using authoritative HC data; validate structure and authority eligibility.
+5. **SHADOW:** compare LEGACY vs structural candidates; require zero unexplained mismatch and zero blocking safety gaps.
+6. **UAT:** execute positive and negative access/workflow cases; record actual results.
+7. **Recovery/monitoring:** complete isolated restore drill and assign monitoring/escalation owners.
+8. **Go/no-go:** authorized owner reviews evidence and decides whether STRUCTURE canary may begin.
+9. **STRUCTURE canary, only if approved:** activate only the selected workflow/unit/date scope, monitor, and preserve the reviewed LEGACY rollback route.
 
-Use the actually deployed approved SHA. Confirm the result records `verification_device_commands_requested=0`. Supplement with read-only SQL/API inspection for rollout mode, capability keys/evidence, backup inventory, health, and safe Work Code export as appropriate. Do not execute active physical routes during this phase.
+Do not expand the pilot to other units, biometric collection, payroll calculation, reimbursement, or full WDMS parity without separate scope and approval.
 
-### State-changing steps — separate approval required
+## State-changing actions requiring separate approval
 
-- merge PR;
-- deploy/recreate containers or apply a new SHA;
+- merge or production deployment;
 - create/modify role assignments or accounts;
-- create/publish organization structure or change LEGACY/SHADOW/STRUCTURE rollout;
-- restore a backup, even to isolated DB, until environment/data-use approval exists;
+- create/publish real organization structure;
+- create/change LEGACY/SHADOW/STRUCTURE rollout settings;
+- restore any backup, even to an isolated target, until environment/data-use approval exists;
 - send external notifications;
 - request any device command;
 - enable biometric collection;
-- change `deploy-vps.sh` GHCR defaults.
-
-## Pilot execution handoff — Task 8
-
-1. Human Capital selects one real unit and participants using `org004-pilot-unit-validation.md`; do not derive them from titles/import labels.
-2. Authorized operator validates account status, capability/scope, approver and acting assignments without auto-granting missing rights.
-3. Configure structure as DRAFT, validate, then run selected-unit SHADOW comparison while LEGACY remains authoritative.
-4. Execute `docs/testing/hcis-pilot-uat.md`; record actual results, not planned status.
-5. Complete isolated restore drill and monitoring/escalation assignments.
-6. Hold go/no-go review. STRUCTURE activation/deployment requires explicit approval after all mandatory gates pass.
-7. If approved, activate only the selected workflow/unit/date window, monitor, and preserve rollback route to a reviewed future-effective LEGACY setting.
-8. Do not expand the pilot to other units, technical device permissions, biometric collection, payroll engine, reimbursement, or full WDMS parity without separate scope/approval.
-
-## Expected result and rollback
-
-Expected handoff result is evidence sufficient for a human go/no-go decision, not automatic activation. For application regressions, rollback to the previously proven application SHA according to the deployment runbook; database migrations are never automatically rolled back. For ORG-004 routing, operational rollback is an authorized future-effective LEGACY setting while preserving submitted snapshots/history. For restore-drill failure, discard/stop the isolated target and investigate; never compensate by restoring over production.
+- change production deployment defaults.
 
 ## Inputs still needed from operational owner
 
-Pilot unit/participants; pilot window; real manager/approver/acting mapping; authority/capability approvals; notification expectations/fallback; RPO; RTO; isolated restore environment/data-use approval; monitoring/escalation owners; whether any active attendance-device canary is required for this pilot; exact authorization for each such canary; final go/no-go and later deploy/activation approval.
+- pilot unit and participants;
+- pilot date window;
+- authoritative manager/approver/acting mapping;
+- authority/capability approvals;
+- whether governance account approval is in scope;
+- notification expectations/fallback;
+- RPO and RTO;
+- isolated restore environment/data-use approval;
+- monitoring/escalation owners;
+- whether any active attendance-device canary is required;
+- exact authorization for each such canary;
+- final go/no-go and later deploy/activation approval.
+
+The expected handoff result is evidence sufficient for a human go/no-go decision, not automatic activation.

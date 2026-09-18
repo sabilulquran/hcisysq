@@ -115,7 +115,7 @@ export function EmployeeServicesPage() {
             const services = employeeServices.filter((service) => service.category === category.key);
             if (!services.length) return null;
             return (
-              <section key={category.key}>
+              <section key={category.key} id={category.key} className="scroll-mt-24">
                 <div className="mb-3">
                   <h2 className="text-base font-bold text-brand-heading">{category.label}</h2>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{category.description}</p>

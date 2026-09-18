@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
 import {
+  employeeServiceCategories,
   employeeServices,
   employeeServiceStageLabel,
   type EmployeeServiceDefinition,
@@ -29,18 +30,27 @@ import { employeeShellUser } from "@/lib/employeeIdentity";
 
 const icons = {
   attendance: Clock3,
-  leave: CalendarDays,
-  payslips: WalletCards,
-  approvals: ClipboardCheck,
-  "profile-change": UserRoundPen,
-  "attendance-clarification": BellRing,
+  "clock-in": Clock3,
   "work-schedule": CalendarClock,
+  "shift-swap": CalendarClock,
+  "attendance-clarification": BellRing,
+  lateness: Clock3,
+  overtime: Clock3,
+  leave: CalendarDays,
+  "leave-balance": CalendarDays,
+  approvals: ClipboardCheck,
+  payslips: WalletCards,
   reimbursement: HandCoins,
   loan: Landmark,
   performance: TrendingUp,
   training: GraduationCap,
+  "profile-change": UserRoundPen,
   documents: FileText,
+  "business-travel": Landmark,
+  assets: FileText,
+  "desk-booking": CalendarDays,
   announcements: Megaphone,
+  notifications: BellRing,
 } as const;
 
 function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
@@ -82,8 +92,8 @@ export function EmployeeServicesPage() {
   }, []);
 
   const user = useMemo(() => employeeShellUser(employee), [employee]);
-  const available = employeeServices.filter((service) => service.stage === "available");
-  const planned = employeeServices.filter((service) => service.stage !== "available");
+  const availableCount = employeeServices.filter((service) => service.stage === "available").length;
+  const plannedCount = employeeServices.length - availableCount;
 
   return (
     <AppShell user={user} activeItem="Lainnya">
@@ -92,29 +102,31 @@ export function EmployeeServicesPage() {
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary-deep">Layanan pegawai</p>
           <h1 className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Semua layanan HCIS</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Layanan yang sudah tersedia dapat langsung digunakan. Fitur yang masih direncanakan tetap ditampilkan agar arah pengembangan HCIS terlihat jelas.
+            Layanan disusun berdasarkan kebutuhan Anda. Yang belum aktif tetap ditampilkan sebagai arah pengembangan HCIS dan akan membuka halaman Coming Soon.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">{availableCount} tersedia</span>
+            <span className="rounded-full bg-muted px-3 py-1.5 text-muted-foreground">{plannedCount} direncanakan</span>
+          </div>
         </header>
 
-        <section className="mt-7">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-brand-heading">Tersedia sekarang</h2>
-            <span className="text-xs text-muted-foreground">{available.length} layanan</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {available.map((service) => <ServiceTile key={service.key} service={service} />)}
-          </div>
-        </section>
-
-        <section className="mt-8">
-          <div className="mb-3">
-            <h2 className="text-sm font-bold text-brand-heading">Akan hadir</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Sudah ada dalam roadmap produk, tetapi workflow pengguna belum diaktifkan.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {planned.map((service) => <ServiceTile key={service.key} service={service} />)}
-          </div>
-        </section>
+        <div className="mt-8 space-y-9">
+          {employeeServiceCategories.map((category) => {
+            const services = employeeServices.filter((service) => service.category === category.key);
+            if (!services.length) return null;
+            return (
+              <section key={category.key}>
+                <div className="mb-3">
+                  <h2 className="text-base font-bold text-brand-heading">{category.label}</h2>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{category.description}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {services.map((service) => <ServiceTile key={service.key} service={service} />)}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </div>
     </AppShell>
   );

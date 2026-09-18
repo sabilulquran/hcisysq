@@ -1,6 +1,6 @@
 # ORG-004 Operational Validation Runbook
 
-**Status:** REVIEW-READY PLAN — NOT EXECUTED
+**Status:** READY FOR AUTHORIZED PILOT PREPARATION — NOT EXECUTED
 
 **Specification:** ORG-004
 
@@ -25,16 +25,22 @@ schema/source compatibility available
 
 With no rollout setting, resolver authority remains `LEGACY`. Account-held structural data cannot become new routing authority through this compatibility work; separately accepted configuration, capability mapping, SHADOW evidence, and activation approval remain required.
 
+### Repository/runtime separation
+
+Canonical `main` now contains migration-history recovery (PR #59) and source/schema reconciliation (PR #60). The latest verified production release supplied to this repository audit is still application SHA `acd22b438a7468dc6ea53ae001980cd06f7343cd`, which predates those two merges.
+
+Therefore current-source compatibility is not automatically production capability. Before any pilot step depends on PR #59/#60 behavior, the exact pilot execution SHA must be published, deployed, and verified through the normal production path. A merged commit or green CI run is not evidence that production is running it.
+
 ## Immutable safety boundaries
 
-- Keep all workflows in `LEGACY` immediately after an eventual deployment.
+- Keep all workflows in `LEGACY` until the selected pilot scope has completed the required baseline/SHADOW gates and explicit activation approval.
 - Do not create a default rollout row and do not seed a synthetic YSQ structure.
 - Do not infer hierarchy or authority from job titles, unit labels, numeric levels, imports, or visual rank.
 - Do not rewrite existing employee reporting fields or submitted Leave approval snapshots.
 - Do not create/activate accounts or grant role/capability assignments as a side effect of organization configuration.
 - Do not send external notifications during validation; inspect notification intents/outbox records only in an approved isolated environment.
 - Keep `BIOMETRIC_COLLECTION_ENABLED=0`; USERINFO and fingerprint-device work are outside ORG-004.
-- Keep the post-transfer deployment freeze for new SHAs until exact-SHA organization GHCR publication is independently proven. Do not change the existing runtime image namespace as part of ORG-004.
+- Exact-SHA organization GHCR publication has been proven for the recorded `acd22b...` release only. Every later pilot execution SHA must independently satisfy publish, deploy, exact-image, health, and verifier gates before use. Do not change the runtime image namespace as part of ORG-004.
 
 ## Evidence record
 
@@ -53,7 +59,7 @@ Use identifiers and normalized metadata only. Do not copy employee documents, pa
 
 ## Phase A — LEGACY baseline
 
-After an eventual authorized deployment, keep rollout configuration absent or explicitly `LEGACY` for every workflow/node scope.
+At the approved pilot execution baseline, first prove the exact deployed SHA and read the current rollout configuration without mutation. Keep rollout configuration absent or explicitly `LEGACY` for every workflow/node scope during Phase A.
 
 Verify:
 
@@ -149,6 +155,7 @@ The review branch must provide evidence for:
 
 - typecheck, lint, full automated tests, API build, and Web build;
 - clean PostgreSQL migration;
+- migration source-of-truth guard and recovered-organization migration rehearsal for a candidate SHA containing PR #59;
 - `apps/api/scripts/rehearse-org004-upgrade.mjs`, proving upgrade from the pre-ORG-004 schema preserves ORG-002 mappings and submitted Leave snapshots and creates no rollout/structure seed data;
 - targeted resolver, rollout, authorization-negative, Leave, date, acting, vacancy, cycle/self, deduplication, governance, oversight-idempotency, and Organization Designer regression tests;
 - staging Compose static validation.

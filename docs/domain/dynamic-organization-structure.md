@@ -1,10 +1,10 @@
 # Dynamic Organization Structure and Authority Resolution
 
-**Status:** IMPLEMENTED/DEPLOYED CODE+SCHEMA — REAL STRUCTURE/SHADOW/STRUCTURE/PILOT VALIDATION PENDING
+**Status:** IMPLEMENTED/DEPLOYED CODE+SCHEMA — STRUCTURE RECORDS EXIST; HC ACCEPTANCE/SHADOW/STRUCTURE/PILOT PENDING
 **Specification:** ORG-004  
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
 **Decision date:** 2026-08-22  
-**Current-state reconciliation:** 2026-09-16
+**Current-state reconciliation:** 2026-09-18
 
 ## Implementation record
 
@@ -12,25 +12,29 @@ ORG-004 originated on `agent/dynamic-organization-foundation` and is present in 
 
 The historical implementation checkpoint described ORG-004 as implemented/tested locally but not deployed. That checkpoint remains useful evidence of sequencing, but it is no longer the current deployment state.
 
-Codex Local evidence for the inspected production baseline reports:
+Read-only production evidence supplied for the 2026-09-18 source-recovery audit reports:
 
-- application SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` is deployed;
-- ORG-004 code/schema are installed;
-- the required migration set is present;
+- production API/Web image SHA `ca38db08e85f064ffe5513f32ae0b75c11a3cf56`;
+- ORG-004 schema plus later revision migrations are installed;
+- organization structure records and published revisions exist;
+- the latest inspected published revision has a valid stored validation report with zero issues;
 - `organization_rollout_settings` contains zero rows;
-- by contract, absence of a rollout row resolves to `LEGACY`.
+- SHADOW and STRUCTURE counts are zero;
+- by contract, absence of rollout configuration resolves workflow behavior to `LEGACY`.
+
+Repository history had lost four migration files that production records as applied; `docs/development/migration-source-of-truth-recovery.md` documents their exact recovery and revision-index semantics.
 
 Therefore the current operational distinction is:
 
 ```text
-code/schema deployed
-!= real YSQ structure configured
+structure records exist
+!= Human Capital acceptance complete
 != SHADOW validated
 != STRUCTURE activated
-!= production pilot validated
+!= production pilot accepted
 ```
 
-The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
+Existing structure records are evidence that configuration data exists, not evidence that Human Capital has accepted the structure or that structure-driven approval is active. Migration recovery does not modify organization data, rollout settings, or submitted Leave approval snapshots.
 
 ### Physical persistence model
 
@@ -87,7 +91,7 @@ Automated regression coverage accompanies each invariant. The browser UAT used o
 
 ### Deployment and deferred operational work
 
-ORG-004 code/schema are deployed at the inspected production baseline. The deployment has **not** established or validated the real YSQ structure and has **not** activated structure-driven routing.
+ORG-004 code/schema and organization structure records exist at the inspected production baseline. The latest inspected published revision is schema-valid, but Human Capital acceptance is not established and structure-driven routing is not activated.
 
 Before real activation, authorized YSQ owners must:
 

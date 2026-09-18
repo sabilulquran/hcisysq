@@ -645,7 +645,9 @@ export async function registerEmployeeLeaveRoutes(
           parsed.data.idempotencyKey,
           JSON.stringify({
             approvalSnapshot: preview.approvalChain.map((step) => ({
+              principalType: step.principalType ?? "EMPLOYEE",
               employeeId: step.employeeId,
+              accountId: step.accountId ?? null,
               sources: step.sources,
             })),
             authorityResolution: preview.authorityResolution,
@@ -653,7 +655,7 @@ export async function registerEmployeeLeaveRoutes(
         ],
       );
 
-      const insertedSteps: Array<{ id: string; employeeId: string; name: string }> = [];
+      const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
       for (const [index, step] of preview.approvalChain.entries()) {
         const stepId = randomUUID();
         await client.query(
@@ -665,11 +667,17 @@ export async function registerEmployeeLeaveRoutes(
             requestId,
             index + 1,
             step.employeeId,
+            step.accountId ?? null,
             step.sources,
             index === 0 ? "pending" : "waiting",
           ],
         );
-        insertedSteps.push({ id: stepId, employeeId: step.employeeId, name: step.name });
+        insertedSteps.push({
+          id: stepId,
+          employeeId: step.employeeId,
+          accountId: step.accountId ?? null,
+          name: step.name,
+        });
       }
 
       await addEvent(client, requestId, principal.id, "leave.request.submitted", {
@@ -684,8 +692,8 @@ export async function registerEmployeeLeaveRoutes(
           client,
           requestId,
           "leave.approval.requested",
-          "employee",
-          firstStep.employeeId,
+          firstStep.accountId ? "account" : "employee",
+          firstStep.accountId ?? firstStep.employeeId!,
         );
       }
 

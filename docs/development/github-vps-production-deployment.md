@@ -12,14 +12,14 @@ PR -> CI green -> merge main -> exact-SHA GHCR publish -> manual GitHub producti
 
 The workflow is intentionally **not** triggered automatically by a merge or image publication.
 
-Fresh Codex Local verification reported on 2026-09-16 records production API/Web running SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` from the organization GHCR repositories:
+The latest recorded verified production release is the 2026-09-18 deployment of SHA `acd22b438a7468dc6ea53ae001980cd06f7343cd` from the organization GHCR repositories:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
+ghcr.io/sabilulquran/hcisysq-api:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
+ghcr.io/sabilulquran/hcisysq-web:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
 ```
 
-This current-state evidence replaces the older assumption that production might still be on the personal `imadjinasi` image namespace. It does not authorize another deployment.
+Publisher run `35371463160` and production run `35371563402` completed successfully. The dated evidence record is [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md). This proves that release checkpoint; it does not authorize another deployment and it does not imply later `main` commits are already live.
 
 ## Required GitHub environment
 
@@ -65,7 +65,7 @@ The last condition is required because `deploy-vps.sh` automatically attempts ap
 
 Before organization GHCR was proven in production, the runbook treated the first organization-owned cutover as a pending migration and allowed for a production SHA that might exist only in `ghcr.io/imadjinasi/...`.
 
-That was a valid transition checkpoint, but it is no longer the current production state. Codex Local evidence on 2026-09-16 shows the inspected production SHA already uses `ghcr.io/sabilulquran/...` exact-SHA API and Web images.
+That was a valid transition checkpoint, but it is no longer the current production state. The latest recorded 2026-09-18 production checkpoint confirms the deployed API/Web use `ghcr.io/sabilulquran/...` exact-SHA images.
 
 The historical recovery logic remains useful if a required rollback SHA is missing from organization GHCR: do not bypass the check or disable automatic rollback. Publish/backfill the required reviewed historical exact-SHA image through the approved publisher, then rerun preflight.
 

@@ -1,7 +1,7 @@
 # Product Scope
 
 **Status:** ACCEPTED — MVP COMPLETE, POST-MVP OPERATIONAL VALIDATION ACTIVE  
-**Updated:** 2026-09-16
+**Updated:** 2026-09-18
 
 ## Sequencing principle
 
@@ -188,21 +188,31 @@ MVP COMPLETE
 
 ## Other post-MVP target modules
 
-After organization/pilot readiness is stable, candidate modules include:
+The longer-term HCIS product direction was explicitly accepted on 2026-09-18 and is mapped in `docs/product/hcis-capability-map.md`. Inclusion there means the capability belongs to HCIS product scope; it does not mean implementation, production readiness, or a release date.
 
-- Attendance schedule/shift, location, GPS/photo/fingerprint, and evidence policy beyond ATT-001;
-- Reimbursement;
-- Payroll calculation, reconciliation, statutory semantics, and full payslip behavior beyond opaque imported lines;
-- Employee loan and installments;
-- Performance review;
-- Training and learning records;
-- Employment certificates and warning letters;
+After organization/pilot readiness is stable, target modules include:
+
+- work schedules, shifts, holidays, and shift exchange;
+- mobile clock in/out with policy-controlled GPS/geotagging, photo evidence, and face-recognition capability;
+- schedule-aware attendance evaluation including lateness and overtime;
+- reimbursement;
+- payroll calculation, review, reconciliation, finalization, statutory semantics, and payslip publication beyond opaque imported lines;
+- employee loan and installments;
+- performance review and KPI;
+- training/LMS and learning records;
+- employment certificates, warning letters, and broader employee document services;
+- business/official travel;
+- employee-assigned asset handover and return;
+- desk/workplace booking;
+- organization sites, branches, and work locations within one YSQ organization;
 - richer organization/academic calendar management;
 - announcement, reminder, production email, and WhatsApp notification adapters;
 - employee data change request;
-- recruitment/careers if discovery validates product priority;
+- recruitment/careers;
 - additional role-aware/governance reporting;
 - full legacy-data migration/cutover.
+
+The employee/admin UI may expose these accepted future capabilities as clearly marked Coming Soon surfaces before backend implementation. Such placeholders must not fabricate operational data, permissions, or release dates.
 
 ## Outside initial scope
 

@@ -23,6 +23,7 @@ import {
 } from "@/pages/AdminAdmsDeviceRoutePages";
 import { AdminAdmsDevicesPage } from "@/pages/AdminAdmsDevicesPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
+import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
@@ -32,7 +33,9 @@ import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
+import { AdminServicesPage } from "@/pages/AdminServicesPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
+import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
@@ -40,6 +43,7 @@ import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
 import { EmployeePayslipsPage } from "@/pages/EmployeePayslipsPage";
 import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
+import { EmployeeServicesPage } from "@/pages/EmployeeServicesPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
@@ -137,6 +141,20 @@ const employeeApprovalsRoute = createRoute({
   path: "/app/approvals",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeApprovalsPage,
+});
+
+const employeeServicesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/services",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeServicesPage,
+});
+
+const employeeComingSoonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/services/$serviceKey",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeComingSoonPage,
 });
 
 const hcLeaveValidationRoute = createRoute({
@@ -300,6 +318,20 @@ const adminAccessRoute = createRoute({
   component: AdminAccessPage,
 });
 
+const adminServicesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/services",
+  beforeLoad: () => requireAdminPath("/admin"),
+  component: AdminServicesPage,
+});
+
+const adminComingSoonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/services/$serviceKey",
+  beforeLoad: () => requireAdminPath("/admin"),
+  component: AdminComingSoonPage,
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/board",
@@ -318,6 +350,8 @@ const routeTree = rootRoute.addChildren([
   employeePlannedLeaveRoute,
   employeeAttendanceResolutionRoute,
   employeeApprovalsRoute,
+  employeeServicesRoute,
+  employeeComingSoonRoute,
   hcLeaveValidationRoute,
   hcPlannedLeaveRoute,
   hcAttendanceResolutionRoute,
@@ -341,6 +375,8 @@ const routeTree = rootRoute.addChildren([
   adminLeaveCalendarRoute,
   adminPayslipsRoute,
   adminAccessRoute,
+  adminServicesRoute,
+  adminComingSoonRoute,
   boardRoute,
 ]);
 

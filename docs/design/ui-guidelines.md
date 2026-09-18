@@ -23,6 +23,8 @@ GitHub `sabilulquran/hcisysq` is the source of truth for product UI, domain rule
 
 Follow `docs/design/brand-guideline.md`.
 
+Employee self-service hierarchy, service discovery, and planned-feature presentation follow `docs/design/employee-self-service-experience.md` (UX-001).
+
 ## Design tokens
 
 Define and reuse:

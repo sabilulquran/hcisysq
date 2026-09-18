@@ -6,6 +6,7 @@ import {
   CalendarRange,
   Clock3,
   Fingerprint,
+  Grid2X2,
   History,
   KeyRound,
   LayoutDashboard,
@@ -35,13 +36,15 @@ export type AdminNavKey =
   | "leave"
   | "leave-calendar"
   | "payslips"
-  | "access";
+  | "access"
+  | "services";
 
 type AdminNavItem = {
   key: AdminNavKey;
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
+  authorizationPath?: string;
 };
 
 type AdminNavGroup = {
@@ -88,12 +91,24 @@ const navGroups: AdminNavGroup[] = [
     label: "Sistem",
     items: [{ key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound }],
   },
+  {
+    label: "Roadmap",
+    items: [
+      {
+        key: "services",
+        label: "Modul Mendatang",
+        href: "/admin/services",
+        authorizationPath: "/admin",
+        icon: Grid2X2,
+      },
+    ],
+  },
 ];
 
 export function AdminNavigation({ active, session, compact = false }: { active: AdminNavKey; session: AuthSession | null; compact?: boolean }) {
   return (
     <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Administrator HCIS">
-      {navGroups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.href)) })).filter((group) => group.items.length).map((group, groupIndex) => (
+      {navGroups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.authorizationPath ?? item.href)) })).filter((group) => group.items.length).map((group, groupIndex) => (
         <div key={group.label ?? `root-${groupIndex}`}>
           {group.label ? (
             <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p>

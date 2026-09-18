@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED  
 **Specification:** UX-001  
-**Related feature IDs:** EMP-003, ATT-001, ATT-002, ATT-003, APR-001, LEAVE-001, LEAVE-002, PAY-002, REIMB-001, LOAN-001, PERF-001, TRAIN-001, DOC-001, DOC-002, NOTIF-002, NOTIF-003  
+**Related feature IDs:** EMP-003, ATT-001, ATT-002, ATT-003, ATT-006, ATT-007, ATT-008, APR-001, LEAVE-001, LEAVE-002, PAY-002, REIMB-001, LOAN-001, PERF-001, TRAIN-001, DOC-001, DOC-002, TRIP-001, ASSET-001, WORK-001, NOTIF-001, NOTIF-002, NOTIF-003  
 **Decision date:** 2026-09-18
 
 ## Purpose
@@ -21,7 +21,7 @@ This specification changes presentation and navigation only. It does not expand 
 
 ## Source of truth for service availability
 
-`docs/product/feature-parity.yaml` remains authoritative for whether a feature is verified, implementing, discovery, deferred, or otherwise planned.
+`docs/product/feature-parity.yaml` remains authoritative for whether a feature is verified, implementing, discovery, deferred, or otherwise planned. The accepted longer-term product boundary is recorded in `docs/product/hcis-capability-map.md`.
 
 Employee navigation may expose a planned service before implementation only when the service already exists in that roadmap. The UI must clearly distinguish:
 
@@ -75,23 +75,56 @@ If there is nothing actionable, render a concise completed/clear state.
 
 Keep useful current-state information such as annual-leave availability and recent requests, but place it below today's task-oriented controls.
 
-## Planned employee services
+## Employee service catalog
 
-The following menu items may be visible before implementation because they already exist in the product roadmap.
+The employee catalog groups services by user intent rather than by backend package.
 
-| Menu label | Feature ID | Current roadmap state | User-facing behavior before implementation |
-| --- | --- | --- | --- |
-| Data Saya | EMP-003 | discovery | Coming-soon information page |
-| Klarifikasi Kehadiran | ATT-002 | discovery | Coming-soon information page |
-| Jadwal Kerja | ATT-003 | discovery | Coming-soon information page |
-| Reimbursement | REIMB-001 | deferred / after MVP | Coming-soon information page |
-| Pinjaman | LOAN-001 | discovery | Coming-soon information page |
-| Kinerja | PERF-001 | discovery | Coming-soon information page |
-| Pengembangan | TRAIN-001 | discovery | Coming-soon information page |
-| Dokumen | DOC-001 / DOC-002 | discovery | Coming-soon information page |
-| Pengumuman | NOTIF-002 / NOTIF-003 | discovery | Coming-soon information page |
+### Waktu & Kehadiran
 
-Recruitment, migration, technical device administration, security controls, and authentication infrastructure are not employee launcher items merely because they appear in feature parity.
+- Kehadiran — ATT-001 — available.
+- Clock In/Out — ATT-006 — planned; may later use approved GPS, geotagging/geofence, photo evidence, and face recognition.
+- Jadwal & Shift — ATT-003 — discovery.
+- Tukar Shift — ATT-008 — planned.
+- Klarifikasi Kehadiran — ATT-002 — discovery.
+- Keterlambatan — ATT-007 — planned.
+- Lembur — ATT-007 — planned.
+
+### Cuti
+
+- Cuti & Izin — LEAVE-001 — available.
+- Saldo Cuti — LEAVE-002 — available through the current leave experience.
+
+### Tugas & Persetujuan
+
+- Persetujuan — APR-001 — available when the authenticated employee has an approval task.
+
+### Keuangan Saya
+
+- Slip Gaji — PAY-002 — available.
+- Reimbursement — REIMB-001 — deferred/after MVP.
+- Pinjaman — LOAN-001 — discovery.
+
+Payroll calculation is an HC/admin workspace capability, not an employee launcher action.
+
+### Kinerja & Pengembangan
+
+- Kinerja / KPI — PERF-001 — discovery.
+- Training / LMS — TRAIN-001 — discovery.
+
+### Layanan Pegawai
+
+- Data Saya — EMP-003 — discovery for change requests; current identity/master data remains authoritative.
+- Dokumen — DOC-001 / DOC-002 — discovery.
+- Perjalanan Dinas — TRIP-001 — planned.
+- Asset Saya — ASSET-001 — planned.
+- Desk Booking — WORK-001 — planned.
+
+### Informasi
+
+- Pengumuman — NOTIF-002 — discovery.
+- Notifikasi & Pengingat — NOTIF-001 / NOTIF-003 — discovery.
+
+Fingerprint/device administration, payroll processing, recruitment, and multi-site/branch configuration belong to HC/admin workspaces and therefore are not shown as ordinary employee actions.
 
 ## Coming-soon contract
 

@@ -130,9 +130,9 @@ This recovery does not configure organization data and does not authorize rollou
 
 The canonical source understands same-day revision selection after restoring deterministic `effective_on / published_at / created_at / id` ordering.
 
-Other schema capabilities recovered from production history are **not automatically activated by this recovery**. Current `main` does not yet model all historical direct-cutover behavior, including the complete account-held incumbency, primary-structural-position, employee-removal lifecycle, and account-based Leave approval-principal paths found on the historical branch.
+A separately scoped source reconciliation now models the recovered persistence fields without adopting direct cutover: account-held incumbency is preserved but structural use fails closed; multiple structural positions use an explicit primary reporting anchor; removed employees are excluded from new authority selection without deletion; and already-snapshotted account-based Leave principals can be authorized by exact account plus explicit capability.
 
-Those are separate compatibility/product changes because adopting them can affect authority, access, or approval behavior. Do not cherry-pick them as part of migration source recovery. Review them in a separately scoped change before any workflow activation that depends on those fields.
+This source compatibility does not activate account-held structural routing, grant access, create role/capability assignments, change rollout settings, or recompute existing approval snapshots. The historical direct-cutover branch remains evidence only.
 
 ## If production history and repository diverge again
 

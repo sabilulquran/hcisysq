@@ -775,10 +775,12 @@ export async function registerEmployeeLeaveRoutes(
   });
 
   app.get("/leave/approvals", async (request, reply) => {
-    const principal = await authenticateEmployee(request, reply);
+    const principal = await authenticateApprovalPrincipal(request, reply);
     if (!principal) return;
     try {
-      const employee = await loadEmployeeContext(pool, principal.id);
+      const employee = principal.principalType === "EMPLOYEE"
+        ? await loadEmployeeContext(pool, principal.id)
+        : null;
       const result = await pool.query<InboxRow>(
         `SELECT
           s.id AS "stepId",
@@ -795,11 +797,14 @@ export async function registerEmployeeLeaveRoutes(
         FROM leave_request_approval_steps s
         JOIN leave_requests r ON r.id = s.leave_request_id
         JOIN employees requester ON requester.id = r.employee_id
-        WHERE s.approver_employee_id = $1
+        WHERE (s.approver_employee_id = $1 OR s.approver_account_id = $2)
           AND s.status = 'pending'
           AND r.status = 'in_review'
         ORDER BY r.submitted_at ASC`,
-        [employee.id],
+        [
+          employee?.id ?? null,
+          principal.principalType === "FOUNDATION_BOARD" ? principal.id : null,
+        ],
       );
       reply.header("Cache-Control", "no-store");
       return reply.send({

@@ -224,22 +224,40 @@ export async function registerOrganizationAdminRoutes(
     }
     const employeeIds = [...new Set([
       ...snapshot.memberships.map((item) => item.employeeId),
-      ...snapshot.incumbencies.map((item) => item.employeeId),
+      ...snapshot.incumbencies.flatMap((item) => item.employeeId ? [item.employeeId] : []),
     ])];
     const employees = employeeIds.length === 0 ? { rows: [] as Array<{ id: string; employeeNumber: string; fullName: string }> }
       : await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
          FROM employees WHERE id = ANY($1::uuid[])`, [employeeIds]);
     const employeeById = new Map(employees.rows.map((item) => [item.id, item]));
+    const accountIds = [...new Set(
+      snapshot.incumbencies.flatMap((item) => item.accountId ? [item.accountId] : []),
+    )];
+    const accounts = accountIds.length === 0
+      ? { rows: [] as Array<{ id: string; email: string; status: string }> }
+      : await pool.query<{ id: string; email: string; status: string }>(
+        `SELECT id, email, status
+         FROM accounts
+         WHERE id = ANY($1::uuid[]) AND principal_type = 'FOUNDATION_BOARD'`,
+        [accountIds],
+      );
+    const accountById = new Map(accounts.rows.map((item) => [item.id, item]));
     const assignments = snapshot.incumbencies.map((item) => ({
       assignmentId: item.id,
       positionKey: item.positionKey,
       employeeId: item.employeeId,
-      employeeNumber: employeeById.get(item.employeeId)?.employeeNumber,
-      employeeName: employeeById.get(item.employeeId)?.fullName ?? "Unknown employee",
+      accountId: item.accountId ?? null,
+      accountEmail: item.accountId ? accountById.get(item.accountId)?.email ?? null : null,
+      employeeNumber: item.employeeId ? employeeById.get(item.employeeId)?.employeeNumber : undefined,
+      employeeName: item.employeeId
+        ? employeeById.get(item.employeeId)?.fullName ?? "Unknown employee"
+        : accountById.get(item.accountId ?? "")?.email ?? "Unknown governance account",
+      accountStatus: item.accountId ? accountById.get(item.accountId)?.status ?? "unknown" : null,
       effectiveFrom: item.effectiveFrom,
       effectiveTo: item.effectiveTo,
       assignmentType: item.kind,
+      isPrimaryStructural: item.isPrimaryStructural ?? false,
     }));
     return reply.send({
       viewDate,
@@ -419,6 +437,25 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_INCUMBENCY", "Invalid primary or acting assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      const position = snapshot.positions.find((item) => item.stableKey === body.data.positionKey);
+      const existingForPosition = snapshot.incumbencies.filter(
+        (item) => item.positionKey === body.data.positionKey,
+      );
+      if ((position?.holderSource ?? "EMPLOYEE") === "ACCOUNT"
+          || existingForPosition.some((item) => item.accountId)) {
+        await reply.status(409).send({
+          code: "ACCOUNT_HELD_POSITION_EDIT_REQUIRES_REVIEW",
+          message: "Account-held position is preserved read-only until its authoring contract is separately accepted.",
+        });
+        return false;
+      }
+      if (existingForPosition.some((item) => item.isPrimaryStructural)) {
+        await reply.status(409).send({
+          code: "PRIMARY_STRUCTURAL_EDIT_REQUIRES_REVIEW",
+          message: "Primary structural assignment requires an explicit compatible authoring flow.",
+        });
+        return false;
+      }
       snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
       if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
         employeeId: body.data.primaryEmployeeId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,

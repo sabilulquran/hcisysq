@@ -72,6 +72,11 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
       </div>
       <p className="mt-4 text-sm font-bold text-brand-heading">{service.label}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{service.description}</p>
+      {service.details?.length ? (
+        <p className="mt-2 text-[10px] font-semibold leading-4 text-brand-primary-deep">
+          {service.details.join(" · ")}
+        </p>
+      ) : null}
     </a>
   );
 }

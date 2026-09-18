@@ -5,6 +5,10 @@
 
 Use synthetic accounts locally/CI. Real-user validation is a separate pilot step after Human Capital selects the unit/participants and authorized operators configure accounts/structure. Never commit real credentials, cookies, employee documents, payroll values, or biometric data.
 
+## Execution baseline
+
+Before real-pilot UAT, record the exact application SHA actually deployed in the test environment and its exact API/Web image tags. Repository `main`, a merged PR, or green CI is not runtime proof. If a scenario depends on behavior introduced by PR #59/#60, the deployed test SHA must contain that behavior and must have passed the normal exact-SHA deployment/verifier path.
+
 ## Required personas
 
 | Persona | Expected baseline |
@@ -30,7 +34,7 @@ Use synthetic accounts locally/CI. Real-user validation is a separate pilot step
 | UAT-A09 | HC admin validates/administers allowed HC function | Allowed according to AUTH-011 organization permission | Yes | Yes |
 | UAT-A10 | HC admin attempts `leave.approve`/`leave.hc.approve` without explicit permission | Denied; HC admin bundle does not imply actual workflow approval | Yes | Yes |
 | UAT-A11 | HC admin attempts device operate/export/destructive/biometric action without separately granted technical permission | Denied | Yes | Do not run active command in routine UAT |
-| UAT-A12 | Board attempts employee mutation, leave approval, role management, or payslip-personal access | Denied | Yes | Optional later |
+| UAT-A12 | Board without exact snapshot ownership/accepted governance capability attempts employee mutation, leave approval, role management, or payslip-personal access | Denied | Yes | Optional later |
 | UAT-A13 | Unit-scoped HC assignment attempts organization-wide administration | Denied | Yes | Yes |
 | UAT-A14 | Expired/future assignment attempts privileged route | Denied | Yes | Optional |
 | UAT-A15 | Actor attempts self-role elevation | Denied and no assignment committed | Yes | Do not use real privileged identity just to prove this |
@@ -39,6 +43,8 @@ Use synthetic accounts locally/CI. Real-user validation is a separate pilot step
 | UAT-A18 | Manually typed admin URL without backend permission | UI may render forbidden state; API denies | Yes | Yes |
 | UAT-A19 | Relevant role/scope/structure change | Required audit event exists without secret/PII payload | Yes | Yes |
 | UAT-A20 | Logout/session invalidation then protected request | Protected request denied | Yes | Yes |
+| UAT-A21 | Exact snapshotted governance account with explicit organization-scoped `leave.governance.approve` acts on its own stored approval step | Allowed only for that exact account/step; another account or missing capability is denied | Yes | Only if governance approval is explicitly in pilot scope |
+| UAT-A22 | Account-held organization position/incumbency is present but no separately accepted structural account-routing contract exists | Must not create new routing authority; structural use fails closed and does not grant RBAC/Application Access | Yes | Only if such data exists in selected pilot scope |
 
 ## ORG-004 comparison cases
 
@@ -54,4 +60,4 @@ Stop pilot preparation and investigate on any cross-employee data disclosure, wr
 
 ## Evidence form
 
-For each UAT row record: environment, exact application SHA, synthetic/real-pilot classification, actor persona (pseudonymized in shared evidence), precondition, request/action, expected result, actual result, audit reference if applicable, pass/fail, issue owner. A row is not PASS until executed; this document itself is only the test plan.
+For each UAT row record: environment, exact deployed application SHA and image references, synthetic/real-pilot classification, actor persona (pseudonymized in shared evidence), precondition, request/action, expected result, actual result, audit reference if applicable, pass/fail, issue owner. A row is not PASS until executed; this document itself is only the test plan.

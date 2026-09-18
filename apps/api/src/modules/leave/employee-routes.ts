@@ -819,7 +819,7 @@ export async function registerEmployeeLeaveRoutes(
   });
 
   app.post("/leave/approvals/:stepId/decision", async (request, reply) => {
-    const principal = await authenticateEmployee(request, reply);
+    const principal = await authenticateApprovalPrincipal(request, reply);
     if (!principal) return;
     const params = stepParamSchema.safeParse(request.params);
     const body = decisionSchema.safeParse(request.body);
@@ -833,12 +833,15 @@ export async function registerEmployeeLeaveRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const actor = await loadEmployeeContext(client, principal.id);
+      const actor = principal.principalType === "EMPLOYEE"
+        ? await loadEmployeeContext(client, principal.id)
+        : null;
       const stepResult = await client.query<{
         id: string;
         requestId: string;
         requesterEmployeeId: string;
-        approverEmployeeId: string;
+        approverEmployeeId: string | null;
+        approverAccountId: string | null;
         status: "waiting" | "pending" | "approved" | "rejected";
         requestStatus: LeaveRequestStatus;
         hcHandling: HcHandling;
@@ -849,6 +852,7 @@ export async function registerEmployeeLeaveRoutes(
           s.leave_request_id AS "requestId",
           r.employee_id AS "requesterEmployeeId",
           s.approver_employee_id AS "approverEmployeeId",
+          s.approver_account_id AS "approverAccountId",
           s.status,
           r.status AS "requestStatus",
           r.hc_handling AS "hcHandling",
@@ -863,12 +867,36 @@ export async function registerEmployeeLeaveRoutes(
       if (!current) {
         throw new EmployeeLeaveError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
       }
-      if (current.approverEmployeeId !== actor.id) {
+      const ownsStep = actor
+        ? current.approverEmployeeId === actor.id
+        : current.approverAccountId === principal.id;
+      if (!ownsStep) {
         throw new EmployeeLeaveError(
           403,
           "APPROVAL_FORBIDDEN",
           "Tahap approval ini bukan milik akun Anda.",
         );
+      }
+      if (!actor) {
+        const capability = await client.query<{ allowed: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM account_role_assignments ara
+             JOIN role_permissions rp ON rp.role_id = ara.role_id
+             WHERE ara.account_id = $1
+               AND rp.permission_key = 'leave.governance.approve'
+               AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+               AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+               AND ara.scope_type = 'organization'
+           ) AS allowed`,
+          [principal.id, jakartaToday()],
+        );
+        if (!capability.rows[0]?.allowed) {
+          throw new EmployeeLeaveError(
+            403,
+            "APPROVAL_FORBIDDEN",
+            "Capability governance approval tidak tersedia.",
+          );
+        }
       }
 
       const allStepsResult = await client.query<{
@@ -901,11 +929,11 @@ export async function registerEmployeeLeaveRoutes(
       );
 
       if (decision.nextPendingStepId) {
-        const next = await client.query<{ approverEmployeeId: string }>(
+        const next = await client.query<{ approverEmployeeId: string | null; approverAccountId: string | null }>(
           `UPDATE leave_request_approval_steps
            SET status = 'pending'
            WHERE id = $1
-           RETURNING approver_employee_id AS "approverEmployeeId"`,
+           RETURNING approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"`,
           [decision.nextPendingStepId],
         );
         const target = next.rows[0];
@@ -914,8 +942,8 @@ export async function registerEmployeeLeaveRoutes(
             client,
             current.requestId,
             "leave.approval.requested",
-            "employee",
-            target.approverEmployeeId,
+            target.approverAccountId ? "account" : "employee",
+            target.approverAccountId ?? target.approverEmployeeId!,
           );
         }
       }
@@ -1009,7 +1037,9 @@ export async function registerEmployeeLeaveRoutes(
           requestId: current.requestId,
           workflowKey: `leave.${current.policyKey}`,
           effectiveDate: jakartaToday(),
-          finalApproverEmployeeId: current.approverEmployeeId,
+          ...(current.approverEmployeeId
+            ? { finalApproverEmployeeId: current.approverEmployeeId }
+            : {}),
         });
       }
 

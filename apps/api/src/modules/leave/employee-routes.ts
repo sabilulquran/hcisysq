@@ -499,6 +499,31 @@ export async function registerEmployeeLeaveRoutes(
       throw error;
     }
   }
+  async function assertGovernanceApprovalCapability(
+    db: Pool | PoolClient,
+    accountId: string,
+  ): Promise<void> {
+    const capability = await db.query<{ allowed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM account_role_assignments ara
+         JOIN role_permissions rp ON rp.role_id = ara.role_id
+         WHERE ara.account_id = $1
+           AND rp.permission_key = 'leave.governance.approve'
+           AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+           AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+           AND ara.scope_type = 'organization'
+       ) AS allowed`,
+      [accountId, jakartaToday()],
+    );
+    if (!capability.rows[0]?.allowed) {
+      throw new EmployeeLeaveError(
+        403,
+        "APPROVAL_FORBIDDEN",
+        "Capability governance approval tidak tersedia.",
+      );
+    }
+  }
+
 
   app.get("/leave/me/summary", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
@@ -781,6 +806,7 @@ export async function registerEmployeeLeaveRoutes(
       const employee = principal.principalType === "EMPLOYEE"
         ? await loadEmployeeContext(pool, principal.id)
         : null;
+      if (!employee) await assertGovernanceApprovalCapability(pool, principal.id);
       const result = await pool.query<InboxRow>(
         `SELECT
           s.id AS "stepId",
@@ -878,25 +904,7 @@ export async function registerEmployeeLeaveRoutes(
         );
       }
       if (!actor) {
-        const capability = await client.query<{ allowed: boolean }>(
-          `SELECT EXISTS (
-             SELECT 1 FROM account_role_assignments ara
-             JOIN role_permissions rp ON rp.role_id = ara.role_id
-             WHERE ara.account_id = $1
-               AND rp.permission_key = 'leave.governance.approve'
-               AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
-               AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
-               AND ara.scope_type = 'organization'
-           ) AS allowed`,
-          [principal.id, jakartaToday()],
-        );
-        if (!capability.rows[0]?.allowed) {
-          throw new EmployeeLeaveError(
-            403,
-            "APPROVAL_FORBIDDEN",
-            "Capability governance approval tidak tersedia.",
-          );
-        }
+        await assertGovernanceApprovalCapability(client, principal.id);
       }
 
       const allStepsResult = await client.query<{

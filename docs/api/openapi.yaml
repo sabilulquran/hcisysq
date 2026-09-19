@@ -1214,6 +1214,21 @@ paths:
   /admin/attendance/report:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1report'
 
+  /admin/attendance/work-locations/{locationId}:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1work-locations~1{locationId}'
+  /admin/attendance/schedules/{scheduleId}:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1schedules~1{scheduleId}'
+  /admin/attendance/schedule-assignments/{assignmentId}:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1schedule-assignments~1{assignmentId}'
+  /admin/attendance/rosters/{rosterId}/entries/{employeeId}/{workDate}:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1rosters~1{rosterId}~1entries~1{employeeId}~1{workDate}'
+  /admin/attendance/rosters/{rosterId}/copy-previous:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1rosters~1{rosterId}~1copy-previous'
+  /admin/attendance/mobile-evidence:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1mobile-evidence'
+  /admin/attendance/mobile-evidence/{evidenceId}/photo:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1mobile-evidence~1{evidenceId}~1photo'
+
 components:
   parameters:
     Cursor:

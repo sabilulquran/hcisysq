@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  applyBoundaryCorrections,
   buildSessions,
   evaluateSessions,
   haversineDistanceMeters,
@@ -178,6 +179,25 @@ describe("ATT-007 attendance evaluation", () => {
     expect(sessions).toHaveLength(2);
     expect(sessions[0]?.checkOutAt?.toISOString()).toBe("2026-09-19T05:00:00.000Z");
     expect(sessions[1]?.checkInAt.toISOString()).toBe("2026-09-19T06:00:00.000Z");
+  });
+
+  it("applies correction boundaries without creating synthetic extra sessions", () => {
+    const base = buildSessions([
+      { id: "a", eventKind: "punch", occurredAt: new Date("2026-09-19T01:00:00Z") },
+      { id: "b", eventKind: "punch", occurredAt: new Date("2026-09-19T05:00:00Z") },
+      { id: "c", eventKind: "punch", occurredAt: new Date("2026-09-19T06:00:00Z") },
+      { id: "d", eventKind: "punch", occurredAt: new Date("2026-09-19T10:00:00Z") },
+    ]);
+    const corrected = applyBoundaryCorrections(base, [{
+      proposedCheckInAt: new Date("2026-09-19T00:55:00Z"),
+      proposedCheckOutAt: new Date("2026-09-19T10:05:00Z"),
+    }]);
+
+    expect(corrected).toHaveLength(2);
+    expect(corrected[0]?.checkInAt.toISOString()).toBe("2026-09-19T00:55:00.000Z");
+    expect(corrected[0]?.checkOutAt?.toISOString()).toBe("2026-09-19T05:00:00.000Z");
+    expect(corrected[1]?.checkInAt.toISOString()).toBe("2026-09-19T06:00:00.000Z");
+    expect(corrected[1]?.checkOutAt?.toISOString()).toBe("2026-09-19T10:05:00.000Z");
   });
 
   it("calculates worked time and breaks from complete sessions", () => {

@@ -1,4 +1,5 @@
 name: Activate HCIS Mobile Attendance
+# Re-arm note: attendance admin GUI rollout 2026-09-19; activation policy is unchanged.
 
 on:
   push:

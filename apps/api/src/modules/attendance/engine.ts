@@ -4,10 +4,12 @@ import type { Pool, PoolClient } from "pg";
 
 type ScheduleRow = {
   scheduleTemplateId: string;
+  scheduleVersionId: string | null;
   rosterId: string | null;
   isOff: boolean;
   startTime: string | null;
   endTime: string | null;
+  endDayOffset: number | null;
   lateGraceMinutes: number | null;
   earlyLeaveToleranceMinutes: number | null;
   workLocationId: string | null;
@@ -20,6 +22,7 @@ type ScheduleRow = {
 export type ResolvedSchedule = {
   state: "scheduled" | "off" | "configuration_error";
   scheduleTemplateId: string | null;
+  scheduleVersionId: string | null;
   rosterId: string | null;
   scheduledStartAt: Date | null;
   scheduledEndAt: Date | null;
@@ -50,6 +53,10 @@ export type AttendanceComputation = {
   earlyLeaveMinutes: number;
   incompleteSession: boolean;
   justified: boolean;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  overtimeMinutes: number;
   sessions: AttendanceSession[];
 };
 
@@ -61,12 +68,19 @@ type AttendanceEventRow = {
 
 type ClarificationRow = {
   id: string;
+  kind: "missing_check_in" | "missing_check_out" | "machine_issue" | "lateness" | "early_leave" | "outside_geofence" | "other";
   mode: "correction" | "justification";
   proposedCheckInAt: Date | null;
   proposedCheckOutAt: Date | null;
 };
 
-type LeaveRow = { id: string };
+type LeaveDispositionRow = {
+  leaveRequestId: string | null;
+  resolutionCaseId: string | null;
+  disposition: "leave" | "absent";
+};
+
+type OvertimeRow = { id: string; approvedMinutes: number };
 
 type ResultRow = {
   id: string;
@@ -75,6 +89,7 @@ type ResultRow = {
   version: number;
   status: AttendanceComputation["status"];
   scheduleTemplateId: string | null;
+  scheduleVersionId: string | null;
   rosterId: string | null;
   scheduledStartAt: Date | null;
   scheduledEndAt: Date | null;
@@ -86,6 +101,10 @@ type ResultRow = {
   earlyLeaveMinutes: number;
   incompleteSession: boolean;
   justified: boolean;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  overtimeMinutes: number;
   inputHash: string;
   createdAt: Date;
 };
@@ -96,8 +115,8 @@ function isoDateShift(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
-function jakartaTimestamp(workDate: string, time: string, addDay = false) {
-  const date = addDay ? isoDateShift(workDate, 1) : workDate;
+function jakartaTimestamp(workDate: string, time: string, dayOffset = 0) {
+  const date = dayOffset ? isoDateShift(workDate, dayOffset) : workDate;
   const normalized = time.slice(0, 8);
   return new Date(`${date}T${normalized}+07:00`);
 }
@@ -144,24 +163,37 @@ export function buildSessions(events: readonly AttendanceEventRow[]): Attendance
 export function evaluateSessions(input: {
   schedule: ResolvedSchedule;
   sessions: AttendanceSession[];
-  approvedLeave: boolean;
-  justified: boolean;
+  attendanceDisposition: "leave" | "absent" | null;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  overtimeMinutes: number;
   now?: Date;
 }): AttendanceComputation {
   const now = input.now ?? new Date();
+  const justified = input.lateJustified || input.earlyLeaveJustified || input.outsideGeofenceJustified;
+  const empty = (status: AttendanceComputation["status"]) => emptyComputation(status, {
+    lateJustified: input.lateJustified,
+    earlyLeaveJustified: input.earlyLeaveJustified,
+    outsideGeofenceJustified: input.outsideGeofenceJustified,
+    overtimeMinutes: input.overtimeMinutes,
+  });
   if (input.schedule.state === "configuration_error") {
-    return emptyComputation("configuration_error", input.justified);
+    return empty("configuration_error");
   }
   if (input.schedule.state === "off") {
-    return emptyComputation("off", input.justified);
+    return empty("off");
   }
-  if (input.approvedLeave) {
-    return emptyComputation("leave", input.justified);
+  if (input.attendanceDisposition === "leave") {
+    return empty("leave");
+  }
+  if (input.attendanceDisposition === "absent") {
+    return empty("absent");
   }
   const scheduledStart = input.schedule.scheduledStartAt;
   const scheduledEnd = input.schedule.scheduledEndAt;
   if (!scheduledStart || !scheduledEnd) {
-    return emptyComputation("configuration_error", input.justified);
+    return empty("configuration_error");
   }
 
   const complete = input.sessions.filter((session) => session.checkOutAt);
@@ -180,9 +212,9 @@ export function evaluateSessions(input: {
   const incompleteSession = input.sessions.some((session) => !session.checkOutAt);
 
   if (!first) {
-    if (now < scheduledStart) return emptyComputation("scheduled", input.justified);
-    if (now <= scheduledEnd) return emptyComputation("pending", input.justified);
-    return emptyComputation("absent", input.justified);
+    if (now < scheduledStart) return empty("scheduled");
+    if (now <= scheduledEnd) return empty("pending");
+    return empty("absent");
   }
 
   const graceEnd = new Date(scheduledStart.getTime() + input.schedule.lateGraceMinutes * 60_000);
@@ -207,14 +239,23 @@ export function evaluateSessions(input: {
     lateMinutes,
     earlyLeaveMinutes,
     incompleteSession,
-    justified: input.justified,
+    justified,
+    lateJustified: input.lateJustified,
+    earlyLeaveJustified: input.earlyLeaveJustified,
+    outsideGeofenceJustified: input.outsideGeofenceJustified,
+    overtimeMinutes: input.overtimeMinutes,
     sessions: input.sessions,
   };
 }
 
 function emptyComputation(
   status: AttendanceComputation["status"],
-  justified: boolean,
+  input: {
+    lateJustified: boolean;
+    earlyLeaveJustified: boolean;
+    outsideGeofenceJustified: boolean;
+    overtimeMinutes: number;
+  },
 ): AttendanceComputation {
   return {
     status,
@@ -225,7 +266,11 @@ function emptyComputation(
     lateMinutes: 0,
     earlyLeaveMinutes: 0,
     incompleteSession: false,
-    justified,
+    justified: input.lateJustified || input.earlyLeaveJustified || input.outsideGeofenceJustified,
+    lateJustified: input.lateJustified,
+    earlyLeaveJustified: input.earlyLeaveJustified,
+    outsideGeofenceJustified: input.outsideGeofenceJustified,
+    overtimeMinutes: input.overtimeMinutes,
     sessions: [],
   };
 }
@@ -246,12 +291,14 @@ export async function resolveSchedule(
      )
      SELECT
        entry.schedule_template_id AS "scheduleTemplateId",
+       entry.schedule_version_id AS "scheduleVersionId",
        latest.id AS "rosterId",
        coalesce(entry.is_off, false) AS "isOff",
-       schedule.start_time::text AS "startTime",
-       schedule.end_time::text AS "endTime",
-       schedule.late_grace_minutes AS "lateGraceMinutes",
-       schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+       version.start_time::text AS "startTime",
+       version.end_time::text AS "endTime",
+       version.end_day_offset AS "endDayOffset",
+       version.late_grace_minutes AS "lateGraceMinutes",
+       version.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
        location.id AS "workLocationId",
        location.name AS "locationName",
        location.latitude,
@@ -262,8 +309,8 @@ export async function resolveSchedule(
        ON entry.roster_id = latest.id
       AND entry.employee_id = $1
       AND entry.work_date = $2::date
-     LEFT JOIN attendance_schedule_templates schedule ON schedule.id = entry.schedule_template_id
-     LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id`,
+     LEFT JOIN attendance_schedule_versions version ON version.id = entry.schedule_version_id
+     LEFT JOIN attendance_work_locations location ON location.id = version.work_location_id`,
     [employeeId, workDate],
   );
   if (roster.rows[0]?.rosterId && (roster.rows[0].scheduleTemplateId || roster.rows[0].isOff)) {
@@ -283,12 +330,14 @@ export async function resolveSchedule(
   const assigned = await db.query<ScheduleRow>(
     `SELECT
        assignment.schedule_template_id AS "scheduleTemplateId",
+       version.id AS "scheduleVersionId",
        NULL::uuid AS "rosterId",
        false AS "isOff",
-       schedule.start_time::text AS "startTime",
-       schedule.end_time::text AS "endTime",
-       schedule.late_grace_minutes AS "lateGraceMinutes",
-       schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+       version.start_time::text AS "startTime",
+       version.end_time::text AS "endTime",
+       version.end_day_offset AS "endDayOffset",
+       version.late_grace_minutes AS "lateGraceMinutes",
+       version.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
        location.id AS "workLocationId",
        location.name AS "locationName",
        location.latitude,
@@ -296,7 +345,16 @@ export async function resolveSchedule(
        location.radius_meters AS "radiusMeters"
      FROM attendance_schedule_assignments assignment
      JOIN attendance_schedule_templates schedule ON schedule.id = assignment.schedule_template_id
-     LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
+     JOIN LATERAL (
+       SELECT candidate.*
+       FROM attendance_schedule_versions candidate
+       WHERE candidate.schedule_template_id = assignment.schedule_template_id
+         AND candidate.effective_from <= (($2::date + time '12:00') AT TIME ZONE 'Asia/Jakarta')
+         AND (candidate.effective_to IS NULL OR candidate.effective_to > (($2::date + time '12:00') AT TIME ZONE 'Asia/Jakarta'))
+       ORDER BY candidate.version DESC
+       LIMIT 1
+     ) version ON true
+     LEFT JOIN attendance_work_locations location ON location.id = version.work_location_id
      WHERE assignment.employee_id = $1
        AND $2::date >= assignment.effective_from
        AND (assignment.effective_to IS NULL OR $2::date <= assignment.effective_to)
@@ -316,6 +374,7 @@ export async function resolveSchedule(
 function baseSchedule(): Omit<ResolvedSchedule, "state"> {
   return {
     scheduleTemplateId: null,
+    scheduleVersionId: null,
     rosterId: null,
     scheduledStartAt: null,
     scheduledEndAt: null,
@@ -330,7 +389,7 @@ function mapScheduleRow(row: ScheduleRow, workDate: string): ResolvedSchedule {
   if (!row.startTime || !row.endTime) {
     return { ...baseSchedule(), state: "configuration_error", reason: "missing_schedule_template" };
   }
-  const overnight = row.endTime <= row.startTime;
+  const endDayOffset = row.endDayOffset ?? (row.endTime <= row.startTime ? 1 : 0);
   const location = row.workLocationId && row.locationName !== null && row.latitude !== null &&
     row.longitude !== null && row.radiusMeters !== null
     ? {
@@ -344,9 +403,10 @@ function mapScheduleRow(row: ScheduleRow, workDate: string): ResolvedSchedule {
   return {
     state: "scheduled",
     scheduleTemplateId: row.scheduleTemplateId,
+    scheduleVersionId: row.scheduleVersionId,
     rosterId: row.rosterId,
     scheduledStartAt: jakartaTimestamp(workDate, row.startTime),
-    scheduledEndAt: jakartaTimestamp(workDate, row.endTime, overnight),
+    scheduledEndAt: jakartaTimestamp(workDate, row.endTime, endDayOffset),
     lateGraceMinutes: row.lateGraceMinutes ?? 0,
     earlyLeaveToleranceMinutes: row.earlyLeaveToleranceMinutes ?? 0,
     workLocation: location,
@@ -404,7 +464,7 @@ export async function materializeAttendanceResult(
     }
 
     const clarifications = await client.query<ClarificationRow>(
-      `SELECT id, mode,
+      `SELECT id, kind, mode,
          proposed_check_in_at AS "proposedCheckInAt",
          proposed_check_out_at AS "proposedCheckOutAt"
        FROM attendance_clarifications
@@ -412,18 +472,70 @@ export async function materializeAttendanceResult(
        ORDER BY created_at, id`,
       [employeeId, workDate],
     );
-    const justified = clarifications.rows.some((item) => item.mode === "justification");
+    const lateJustified = clarifications.rows.some((item) => item.mode === "justification" && item.kind === "lateness");
+    const earlyLeaveJustified = clarifications.rows.some((item) => item.mode === "justification" && item.kind === "early_leave");
+    const outsideGeofenceJustified = clarifications.rows.some((item) => item.mode === "justification" && item.kind === "outside_geofence");
 
-    const leave = await client.query<LeaveRow>(
-      `SELECT id
-       FROM leave_requests
-       WHERE employee_id = $1
-         AND status = 'approved'
-         AND $2::date BETWEEN start_on AND end_on
-       ORDER BY final_decided_at DESC NULLS LAST, submitted_at DESC
+    const leaveDisposition = await client.query<LeaveDispositionRow>(
+      `WITH candidates AS (
+         SELECT request.id AS "leaveRequestId", NULL::uuid AS "resolutionCaseId",
+                'leave'::text AS disposition, 1 AS priority
+         FROM leave_requests request
+         WHERE request.employee_id = $1
+           AND request.status = 'approved'
+           AND $2::date BETWEEN request.start_on AND request.end_on
+           AND (
+             request.administration_status IN ('not_applicable', 'validated')
+             OR EXISTS (
+               SELECT 1
+               FROM leave_request_validation_days day
+               WHERE day.leave_request_id = request.id
+                 AND day.calendar_date = $2::date
+                 AND day.status = 'validated'
+             )
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM leave_request_validation_days day
+             WHERE day.leave_request_id = request.id
+               AND day.calendar_date = $2::date
+               AND day.status = 'unresolved'
+           )
+
+         UNION ALL
+
+         SELECT resolution.source_leave_request_id AS "leaveRequestId",
+                resolution.id AS "resolutionCaseId",
+                CASE WHEN resolution.final_resolution = 'unpaid_absence'
+                     THEN 'absent' ELSE 'leave' END AS disposition,
+                2 AS priority
+         FROM attendance_resolution_cases resolution
+         JOIN attendance_resolution_days day
+           ON day.attendance_resolution_case_id = resolution.id
+         WHERE resolution.employee_id = $1
+           AND resolution.status = 'resolved'
+           AND day.calendar_date = $2::date
+           AND resolution.final_resolution IN ('dispensation', 'annual_conversion', 'unpaid_absence')
+       )
+       SELECT "leaveRequestId", "resolutionCaseId", disposition
+       FROM candidates
+       ORDER BY priority DESC
        LIMIT 1`,
       [employeeId, workDate],
     );
+    const disposition = leaveDisposition.rows[0] ?? null;
+
+    const overtime = await client.query<OvertimeRow>(
+      `SELECT id, approved_minutes AS "approvedMinutes"
+       FROM attendance_overtime_requests
+       WHERE employee_id = $1
+         AND work_date = $2::date
+         AND status = 'approved'
+       ORDER BY decided_at DESC NULLS LAST, created_at DESC
+       LIMIT 1`,
+      [employeeId, workDate],
+    );
+    const overtimeMinutes = Number(overtime.rows[0]?.approvedMinutes ?? 0);
 
     const events: AttendanceEventRow[] = [];
     if (schedule.scheduledStartAt && schedule.scheduledEndAt) {
@@ -463,14 +575,18 @@ export async function materializeAttendanceResult(
     const computed = evaluateSessions({
       schedule,
       sessions,
-      approvedLeave: Boolean(leave.rows[0]),
-      justified,
+      attendanceDisposition: disposition?.disposition ?? null,
+      lateJustified,
+      earlyLeaveJustified,
+      outsideGeofenceJustified,
+      overtimeMinutes,
       now,
     });
     const input = {
       schedule: {
         state: schedule.state,
         scheduleTemplateId: schedule.scheduleTemplateId,
+        scheduleVersionId: schedule.scheduleVersionId,
         rosterId: schedule.rosterId,
         start: schedule.scheduledStartAt?.toISOString() ?? null,
         end: schedule.scheduledEndAt?.toISOString() ?? null,
@@ -479,7 +595,9 @@ export async function materializeAttendanceResult(
       },
       events: events.map((event) => [event.id, event.eventKind, event.occurredAt.toISOString()]),
       clarifications: clarifications.rows.map((item) => item.id),
-      leave: leave.rows[0]?.id ?? null,
+      leave: disposition?.leaveRequestId ?? null,
+      resolutionCase: disposition?.resolutionCaseId ?? null,
+      overtime: overtime.rows[0]?.id ?? null,
       computed: {
         status: computed.status,
         workedMinutes: computed.workedMinutes,
@@ -488,6 +606,10 @@ export async function materializeAttendanceResult(
         earlyLeaveMinutes: computed.earlyLeaveMinutes,
         incompleteSession: computed.incompleteSession,
         justified: computed.justified,
+        lateJustified: computed.lateJustified,
+        earlyLeaveJustified: computed.earlyLeaveJustified,
+        outsideGeofenceJustified: computed.outsideGeofenceJustified,
+        overtimeMinutes: computed.overtimeMinutes,
       },
     };
     const inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
@@ -495,12 +617,15 @@ export async function materializeAttendanceResult(
     const existing = await client.query<ResultRow>(
       `SELECT
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
-         schedule_template_id AS "scheduleTemplateId", roster_id AS "rosterId",
+         schedule_template_id AS "scheduleTemplateId", schedule_version_id AS "scheduleVersionId", roster_id AS "rosterId",
          scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
          first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt",
          worked_minutes AS "workedMinutes", break_minutes AS "breakMinutes",
          late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes",
-         incomplete_session AS "incompleteSession", justified, input_hash AS "inputHash",
+         incomplete_session AS "incompleteSession", justified,
+         late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
+         outside_geofence_justified AS "outsideGeofenceJustified",
+         overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
          created_at AS "createdAt"
        FROM attendance_result_versions
        WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3
@@ -520,40 +645,59 @@ export async function materializeAttendanceResult(
     );
     const result = await client.query<ResultRow>(
       `INSERT INTO attendance_result_versions (
-         id, employee_id, work_date, version, status, schedule_template_id, roster_id,
+         id, employee_id, work_date, version, status, schedule_template_id, schedule_version_id, roster_id,
          scheduled_start_at, scheduled_end_at, first_check_in_at, last_check_out_at,
          worked_minutes, break_minutes, late_minutes, early_leave_minutes,
-         incomplete_session, justified, input_hash, source_event_ids,
-         source_clarification_ids, source_leave_request_id, safe_metadata
+         incomplete_session, justified, late_justified, early_leave_justified,
+         outside_geofence_justified, overtime_minutes, input_hash, source_event_ids,
+         source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata
        ) VALUES (
-         $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11,
-         $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb
+         $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb
        )
        RETURNING
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
-         schedule_template_id AS "scheduleTemplateId", roster_id AS "rosterId",
+         schedule_template_id AS "scheduleTemplateId", schedule_version_id AS "scheduleVersionId", roster_id AS "rosterId",
          scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
          first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt",
          worked_minutes AS "workedMinutes", break_minutes AS "breakMinutes",
          late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes",
-         incomplete_session AS "incompleteSession", justified, input_hash AS "inputHash",
+         incomplete_session AS "incompleteSession", justified,
+         late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
+         outside_geofence_justified AS "outsideGeofenceJustified",
+         overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
          created_at AS "createdAt"`,
       [
         randomUUID(), employeeId, workDate, versionResult.rows[0]?.version ?? 1, computed.status,
-        schedule.scheduleTemplateId, schedule.rosterId, schedule.scheduledStartAt, schedule.scheduledEndAt,
+        schedule.scheduleTemplateId, schedule.scheduleVersionId, schedule.rosterId,
+        schedule.scheduledStartAt, schedule.scheduledEndAt,
         computed.firstCheckInAt, computed.lastCheckOutAt, computed.workedMinutes, computed.breakMinutes,
         computed.lateMinutes, computed.earlyLeaveMinutes, computed.incompleteSession, computed.justified,
-        inputHash, JSON.stringify(events.map((event) => event.id)),
-        JSON.stringify(clarifications.rows.map((item) => item.id)), leave.rows[0]?.id ?? null,
-        JSON.stringify({ sessions: computed.sessions.map((session) => ({
-          checkInAt: session.checkInAt.toISOString(),
-          checkOutAt: session.checkOutAt?.toISOString() ?? null,
-        })) }),
+        computed.lateJustified, computed.earlyLeaveJustified, computed.outsideGeofenceJustified,
+        computed.overtimeMinutes, inputHash, JSON.stringify(events.map((event) => event.id)),
+        JSON.stringify(clarifications.rows.map((item) => item.id)), disposition?.leaveRequestId ?? null,
+        disposition?.resolutionCaseId ?? null,
+        JSON.stringify({ overtimeRequestId: overtime.rows[0]?.id ?? null }),
       ],
     );
+    const insertedResult = result.rows[0];
+    if (!insertedResult) throw new Error("Attendance result insert did not return a row");
+    for (const [index, session] of computed.sessions.entries()) {
+      await client.query(
+        `INSERT INTO attendance_result_sessions (
+           id, attendance_result_version_id, employee_id, work_date, sequence,
+           check_in_at, check_out_at, worked_minutes, complete, source_summary
+         ) VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10)`,
+        [
+          randomUUID(), insertedResult.id, employeeId, workDate, index + 1,
+          session.checkInAt, session.checkOutAt,
+          session.checkOutAt ? minutesBetween(session.checkInAt, session.checkOutAt) : null,
+          Boolean(session.checkOutAt), "normalized attendance events",
+        ],
+      );
+    }
     await client.query("COMMIT");
-    if (!result.rows[0]) throw new Error("Attendance result insert did not return a row");
-    return result.rows[0];
+    return insertedResult;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

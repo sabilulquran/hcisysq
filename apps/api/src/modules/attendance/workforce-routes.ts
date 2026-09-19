@@ -14,6 +14,7 @@ import {
   materializeAttendanceResult,
   resolveSchedule,
 } from "./engine.js";
+import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
   encryptMobileAttendancePhoto,
@@ -60,6 +61,7 @@ const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).default(0),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
@@ -68,6 +70,7 @@ const scheduleTemplatePatchSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
   workLocationId: z.string().uuid().nullable().optional(),
@@ -97,12 +100,48 @@ const mobileEvidenceQuerySchema = z.object({
   date: dateSchema.optional(),
   reviewState: z.enum(["all", "accepted", "needs_review"]).default("all"),
 });
+const attendanceStatusSchema = z.enum([
+  "scheduled", "pending", "present", "late", "incomplete", "leave",
+  "absent", "off", "configuration_error",
+]);
 const reportQuerySchema = z.object({
-  date: dateSchema,
-  status: z.enum([
-    "scheduled", "pending", "present", "late", "incomplete", "leave",
-    "absent", "off", "configuration_error",
-  ]).optional(),
+  type: z.enum(["detail", "period", "unit", "sessions", "scans", "schedule", "overtime"]).default("detail"),
+  date: dateSchema.optional(),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+  employeeId: z.string().uuid().optional(),
+  unitId: z.string().uuid().optional(),
+  status: attendanceStatusSchema.optional(),
+  scheduleId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
+  source: z.enum(["adms", "mobile", "manual"]).optional(),
+  deviceId: z.string().uuid().optional(),
+}).superRefine((value, ctx) => {
+  const from = value.from ?? value.date;
+  const to = value.to ?? value.date;
+  if (!from || !to) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Tanggal laporan wajib diisi." });
+});
+const overtimeInputSchema = z.object({
+  workDate: dateSchema,
+  requestedMinutes: z.number().int().min(1).max(1440),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+const adminOvertimeInputSchema = overtimeInputSchema.extend({ employeeId: z.string().uuid() });
+const overtimeDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  approvedMinutes: z.number().int().min(0).max(1440).nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+const manualCorrectionSchema = z.object({
+  employeeId: z.string().uuid(),
+  workDate: dateSchema,
+  checkInAt: z.string().datetime({ offset: true }).nullable(),
+  checkOutAt: z.string().datetime({ offset: true }).nullable(),
+  reason: z.string().trim().min(3).max(1000),
+}).superRefine((value, ctx) => {
+  if (!value.checkInAt && !value.checkOutAt) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Minimal satu batas waktu wajib diisi." });
+  }
 });
 
 class WorkforceAttendanceError extends Error {
@@ -173,7 +212,7 @@ function datesBetween(from: string, to: string, maximum: number) {
 function mapResult(row: Record<string, unknown> | null | undefined) {
   if (!row) return null;
   const date = (value: unknown) => value instanceof Date ? value.toISOString() : value ?? null;
-  return {
+  const mapped: Record<string, unknown> = {
     ...row,
     scheduledStartAt: date(row.scheduledStartAt),
     scheduledEndAt: date(row.scheduledEndAt),
@@ -181,24 +220,45 @@ function mapResult(row: Record<string, unknown> | null | undefined) {
     lastCheckOutAt: date(row.lastCheckOutAt),
     createdAt: date(row.createdAt),
   };
+  return mapped;
 }
 
 async function latestResult(db: Pool | PoolClient, employeeId: string, workDate: string) {
   const result = await db.query<Record<string, unknown>>(
     `SELECT
        id, work_date::text AS "workDate", version, status,
-       schedule_template_id AS "scheduleTemplateId", roster_id AS "rosterId",
+       schedule_template_id AS "scheduleTemplateId", schedule_version_id AS "scheduleVersionId", roster_id AS "rosterId",
        scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
        first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt",
        worked_minutes AS "workedMinutes", break_minutes AS "breakMinutes",
        late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes",
-       incomplete_session AS "incompleteSession", justified, created_at AS "createdAt"
+       incomplete_session AS "incompleteSession", justified,
+       late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
+       outside_geofence_justified AS "outsideGeofenceJustified",
+       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,
     [employeeId, workDate],
   );
-  return mapResult(result.rows[0]);
+  const mapped = mapResult(result.rows[0]);
+  if (!mapped || typeof mapped.id !== "string") return mapped;
+  const sessions = await db.query(
+    `SELECT sequence, check_in_at AS "checkInAt", check_out_at AS "checkOutAt",
+       worked_minutes AS "workedMinutes", complete, source_summary AS "sourceSummary"
+     FROM attendance_result_sessions
+     WHERE attendance_result_version_id = $1
+     ORDER BY sequence`,
+    [mapped.id],
+  );
+  return {
+    ...mapped,
+    sessions: sessions.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      checkInAt: item.checkInAt instanceof Date ? item.checkInAt.toISOString() : item.checkInAt ?? null,
+      checkOutAt: item.checkOutAt instanceof Date ? item.checkOutAt.toISOString() : item.checkOutAt ?? null,
+    })),
+  };
 }
 
 function scheduleResponse(schedule: Awaited<ReturnType<typeof resolveSchedule>>) {
@@ -267,7 +327,7 @@ export async function registerAttendanceWorkforceRoutes(
       const employee = await employeeForAccount(pool, principal.id);
       const workDate = query.data.date ?? jakartaWorkDate();
       const schedule = await resolveSchedule(pool, employee.id, workDate);
-      const [result, clarifications, mobile] = await Promise.all([
+      const [result, clarifications, mobile, overtime] = await Promise.all([
         latestResult(pool, employee.id, workDate),
         pool.query(
           `SELECT id, work_date::text AS "workDate", kind, mode, reason, status,
@@ -288,6 +348,16 @@ export async function registerAttendanceWorkforceRoutes(
            ORDER BY created_at DESC`,
           [employee.id, workDate],
         ),
+        pool.query(
+          `SELECT id, work_date::text AS "workDate", requested_minutes AS "requestedMinutes",
+             approved_minutes AS "approvedMinutes", note, status,
+             decision_note AS "decisionNote", created_at AS "createdAt", decided_at AS "decidedAt"
+           FROM attendance_overtime_requests
+           WHERE employee_id = $1
+           ORDER BY work_date DESC, created_at DESC
+           LIMIT 20`,
+          [employee.id],
+        ),
       ]);
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -298,6 +368,7 @@ export async function registerAttendanceWorkforceRoutes(
         result,
         clarifications: clarifications.rows,
         mobileEvidence: mobile.rows,
+        overtimeRequests: overtime.rows,
       });
     } catch (error) {
       return sendError(reply, error);
@@ -724,16 +795,19 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const result = await pool.query(
       `SELECT schedule.id, schedule.name, schedule.start_time::text AS "startTime",
-         schedule.end_time::text AS "endTime", schedule.late_grace_minutes AS "lateGraceMinutes",
+         schedule.end_time::text AS "endTime", schedule.end_day_offset AS "endDayOffset",
+         schedule.late_grace_minutes AS "lateGraceMinutes",
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
-         schedule.active, location.id AS "workLocationId", location.name AS "workLocationName"
+         schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
+         version.id AS "currentVersionId", version.version AS "currentVersion"
        FROM attendance_schedule_templates schedule
        LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
+       LEFT JOIN attendance_schedule_versions version
+         ON version.schedule_template_id = schedule.id AND version.effective_to IS NULL
        ORDER BY schedule.active DESC, schedule.name`,
     );
     return reply.send({ items: result.rows });
   });
-
 
   app.patch("/admin/attendance/schedules/:scheduleId", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
@@ -743,36 +817,84 @@ export async function registerAttendanceWorkforceRoutes(
     if (!params.success || !body.success) {
       return reply.status(400).send({ code: "INVALID_SCHEDULE_UPDATE", message: "Perubahan jadwal tidak valid." });
     }
-    const current = await pool.query<{
-      name: string; startTime: string; endTime: string; lateGraceMinutes: number;
-      earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
-    }>(
-      `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
-         late_grace_minutes AS "lateGraceMinutes",
-         early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
-         work_location_id AS "workLocationId", active
-       FROM attendance_schedule_templates WHERE id = $1`,
-      [params.data.scheduleId],
-    );
-    const item = current.rows[0];
-    if (!item) return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
-    const next = { ...item, ...body.data };
-    await pool.query(
-      `UPDATE attendance_schedule_templates
-       SET name = $2, start_time = $3::time, end_time = $4::time,
-           late_grace_minutes = $5, early_leave_tolerance_minutes = $6,
-           work_location_id = $7, active = $8, updated_at = now()
-       WHERE id = $1`,
-      [
-        params.data.scheduleId, next.name, next.startTime, next.endTime,
-        next.lateGraceMinutes, next.earlyLeaveToleranceMinutes,
-        next.workLocationId ?? null, next.active,
-      ],
-    );
-    await insertAudit(pool, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
-      fields: Object.keys(body.data),
-    });
-    return reply.send({ id: params.data.scheduleId });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{
+        name: string; startTime: string; endTime: string; endDayOffset: number; lateGraceMinutes: number;
+        earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+      }>(
+        `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
+           end_day_offset AS "endDayOffset", late_grace_minutes AS "lateGraceMinutes",
+           early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+           work_location_id AS "workLocationId", active
+         FROM attendance_schedule_templates WHERE id = $1 FOR UPDATE`,
+        [params.data.scheduleId],
+      );
+      const item = current.rows[0];
+      if (!item) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
+      }
+      const next = { ...item, ...body.data } as typeof item;
+      if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
+        next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
+      }
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId"]
+        .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
+
+      await client.query(
+        `UPDATE attendance_schedule_templates
+         SET name = $2, start_time = $3::time, end_time = $4::time, end_day_offset = $5,
+             late_grace_minutes = $6, early_leave_tolerance_minutes = $7,
+             work_location_id = $8, active = $9, updated_at = now()
+         WHERE id = $1`,
+        [
+          params.data.scheduleId, next.name, next.startTime, next.endTime, next.endDayOffset,
+          next.lateGraceMinutes, next.earlyLeaveToleranceMinutes, next.workLocationId ?? null, next.active,
+        ],
+      );
+
+      let versionId: string | null = null;
+      let versionNumber: number | null = null;
+      if (semanticChanged) {
+        const atResult = await client.query<{ at: Date }>("SELECT clock_timestamp() AS at");
+        const effectiveAt = atResult.rows[0]?.at ?? new Date();
+        const previous = await client.query<{ version: number }>(
+          `UPDATE attendance_schedule_versions
+           SET effective_to = $2
+           WHERE schedule_template_id = $1 AND effective_to IS NULL
+           RETURNING version`,
+          [params.data.scheduleId, effectiveAt],
+        );
+        versionNumber = (previous.rows[0]?.version ?? 0) + 1;
+        versionId = randomUUID();
+        await client.query(
+          `INSERT INTO attendance_schedule_versions (
+             id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
+             late_grace_minutes, early_leave_tolerance_minutes, work_location_id,
+             effective_from, created_by_account_id
+           ) VALUES ($1, $2, $3, $4, $5::time, $6::time, $7, $8, $9, $10, $11, $12)`,
+          [
+            versionId, params.data.scheduleId, versionNumber, next.name, next.startTime, next.endTime,
+            next.endDayOffset, next.lateGraceMinutes, next.earlyLeaveToleranceMinutes,
+            next.workLocationId ?? null, effectiveAt, principal.id,
+          ],
+        );
+      }
+
+      await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
+        fields: Object.keys(body.data), versionId, version: versionNumber,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.scheduleId, versionId, version: versionNumber });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   app.post("/admin/attendance/schedules", async (request, reply) => {
@@ -781,19 +903,44 @@ export async function registerAttendanceWorkforceRoutes(
     const body = scheduleTemplateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_SCHEDULE_TEMPLATE", message: "Template jadwal tidak valid." });
     const id = randomUUID();
-    await pool.query(
-      `INSERT INTO attendance_schedule_templates (
-         id, name, start_time, end_time, late_grace_minutes,
-         early_leave_tolerance_minutes, work_location_id, created_by_account_id
-       ) VALUES ($1, $2, $3::time, $4::time, $5, $6, $7, $8)`,
-      [
-        id, body.data.name, body.data.startTime, body.data.endTime,
-        body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
-        body.data.workLocationId ?? null, principal.id,
-      ],
-    );
-    await insertAudit(pool, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {});
-    return reply.status(201).send({ id });
+    const versionId = randomUUID();
+    const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_schedule_templates (
+           id, name, start_time, end_time, end_day_offset, late_grace_minutes,
+           early_leave_tolerance_minutes, work_location_id, created_by_account_id
+         ) VALUES ($1, $2, $3::time, $4::time, $5, $6, $7, $8, $9)`,
+        [
+          id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
+          body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
+          body.data.workLocationId ?? null, principal.id,
+        ],
+      );
+      await client.query(
+        `INSERT INTO attendance_schedule_versions (
+           id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
+           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id
+         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10)`,
+        [
+          versionId, id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
+          body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
+          body.data.workLocationId ?? null, principal.id,
+        ],
+      );
+      await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
+        versionId, version: 1,
+      });
+      await client.query("COMMIT");
+      return reply.status(201).send({ id, versionId, version: 1 });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
 
@@ -880,7 +1027,7 @@ export async function registerAttendanceWorkforceRoutes(
       pool.query(
         `SELECT entry.roster_id AS "rosterId", entry.employee_id AS "employeeId",
            entry.work_date::text AS "workDate", entry.schedule_template_id AS "scheduleTemplateId",
-           entry.is_off AS "isOff", entry.note
+           entry.schedule_version_id AS "scheduleVersionId", entry.is_off AS "isOff", entry.note
          FROM attendance_roster_entries entry
          JOIN attendance_rosters roster ON roster.id = entry.roster_id
          WHERE roster.week_start = $1::date
@@ -949,9 +1096,9 @@ export async function registerAttendanceWorkforceRoutes(
          LIMIT 1
        )
        INSERT INTO attendance_roster_entries (
-         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+         roster_id, employee_id, work_date, schedule_template_id, schedule_version_id, is_off, note
        )
-       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.is_off, entry.note
+       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.schedule_version_id, entry.is_off, entry.note
        FROM attendance_roster_entries entry
        JOIN previous ON previous.id = entry.roster_id
        ON CONFLICT DO NOTHING`,
@@ -985,6 +1132,7 @@ export async function registerAttendanceWorkforceRoutes(
            ) VALUES ($1, $2, $3::date, $4, $5, $6)
            ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
              schedule_template_id = EXCLUDED.schedule_template_id,
+             schedule_version_id = NULL,
              is_off = EXCLUDED.is_off,
              note = EXCLUDED.note`,
           [params.data.rosterId, entry.employeeId, entry.workDate, entry.scheduleTemplateId, entry.isOff, entry.note ?? null],
@@ -1045,14 +1193,15 @@ export async function registerAttendanceWorkforceRoutes(
          ORDER BY version DESC LIMIT 1
        )
        INSERT INTO attendance_roster_entries (
-         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+         roster_id, employee_id, work_date, schedule_template_id, schedule_version_id, is_off, note
        )
        SELECT $1, entry.employee_id, (entry.work_date + interval '7 days')::date,
-              entry.schedule_template_id, entry.is_off, entry.note
+              entry.schedule_template_id, NULL, entry.is_off, entry.note
        FROM attendance_roster_entries entry
        JOIN source_roster source ON source.id = entry.roster_id
        ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
          schedule_template_id = EXCLUDED.schedule_template_id,
+         schedule_version_id = NULL,
          is_off = EXCLUDED.is_off,
          note = EXCLUDED.note
        RETURNING employee_id`,
@@ -1066,16 +1215,59 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const params = z.object({ rosterId: z.string().uuid() }).safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ROSTER", message: "Roster tidak valid." });
-    const changed = await pool.query(
-      `UPDATE attendance_rosters
-       SET status = 'PUBLISHED', published_by_account_id = $2, published_at = now(), updated_at = now()
-       WHERE id = $1 AND status = 'DRAFT'
-       RETURNING id`,
-      [params.data.rosterId, principal.id],
-    );
-    if (!changed.rows[0]) return reply.status(409).send({ code: "ROSTER_NOT_DRAFT", message: "Roster tidak dapat dipublikasikan." });
-    await insertAudit(pool, principal.id, "attendance.roster.published", "attendance_roster", params.data.rosterId, {});
-    return reply.send({ id: params.data.rosterId, status: "PUBLISHED" });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const roster = await client.query<{ id: string }>(
+        `SELECT id FROM attendance_rosters WHERE id = $1 AND status = 'DRAFT' FOR UPDATE`,
+        [params.data.rosterId],
+      );
+      if (!roster.rows[0]) throw new WorkforceAttendanceError(409, "ROSTER_NOT_DRAFT", "Roster tidak dapat dipublikasikan.");
+
+      await client.query(
+        `UPDATE attendance_roster_entries entry
+         SET schedule_version_id = version.id
+         FROM attendance_schedule_versions version
+         WHERE entry.roster_id = $1
+           AND entry.is_off = false
+           AND entry.schedule_version_id IS NULL
+           AND version.schedule_template_id = entry.schedule_template_id
+           AND version.effective_to IS NULL`,
+        [params.data.rosterId],
+      );
+      const unresolved = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM attendance_roster_entries
+         WHERE roster_id = $1
+           AND is_off = false
+           AND schedule_version_id IS NULL`,
+        [params.data.rosterId],
+      );
+      if ((unresolved.rows[0]?.count ?? 0) > 0) {
+        throw new WorkforceAttendanceError(
+          409,
+          "ROSTER_SCHEDULE_VERSION_UNRESOLVED",
+          "Ada jadwal roster yang belum memiliki versi aktif.",
+        );
+      }
+
+      await client.query(
+        `UPDATE attendance_rosters
+         SET status = 'PUBLISHED', published_by_account_id = $2, published_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [params.data.rosterId, principal.id],
+      );
+      await insertAudit(client, principal.id, "attendance.roster.published", "attendance_roster", params.data.rosterId, {
+        scheduleVersionsPinned: true,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.rosterId, status: "PUBLISHED" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
   });
 
 
@@ -1151,6 +1343,287 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send(payload);
   });
 
+  app.get("/attendance/overtime/me", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const rows = await pool.query(
+        `SELECT id, work_date::text AS "workDate", requested_minutes AS "requestedMinutes",
+           approved_minutes AS "approvedMinutes", note, status, decision_note AS "decisionNote",
+           created_at AS "createdAt", decided_at AS "decidedAt"
+         FROM attendance_overtime_requests
+         WHERE employee_id = $1
+         ORDER BY work_date DESC, created_at DESC
+         LIMIT 100`,
+        [employee.id],
+      );
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ items: rows.rows });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post("/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    const body = overtimeInputSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const id = randomUUID();
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO attendance_overtime_requests (
+             id, employee_id, work_date, requested_minutes, note, requested_by_account_id
+           ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
+          [id, employee.id, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
+        );
+        await client.query(
+          `INSERT INTO attendance_overtime_events (
+             id, overtime_request_id, actor_account_id, event_type, payload
+           ) VALUES ($1, $2, $3, 'submitted', $4::jsonb)`,
+          [randomUUID(), id, principal.id, JSON.stringify({ requestedMinutes: body.data.requestedMinutes })],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return reply.status(201).send({ id, status: "submitted" });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post("/attendance/overtime/:overtimeId/cancel", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    const params = z.object({ overtimeId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const changed = await client.query(
+          `UPDATE attendance_overtime_requests
+           SET status = 'cancelled', updated_at = now()
+           WHERE id = $1 AND employee_id = $2 AND status = 'submitted'
+           RETURNING id`,
+          [params.data.overtimeId, employee.id],
+        );
+        if (!changed.rows[0]) throw new WorkforceAttendanceError(409, "OVERTIME_NOT_CANCELLABLE", "Pengajuan lembur tidak dapat dibatalkan.");
+        await client.query(
+          `INSERT INTO attendance_overtime_events (
+             id, overtime_request_id, actor_account_id, event_type, payload
+           ) VALUES ($1, $2, $3, 'cancelled', '{}'::jsonb)`,
+          [randomUUID(), params.data.overtimeId, principal.id],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return reply.status(204).send();
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get("/admin/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const query = z.object({
+      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
+    const values: unknown[] = [];
+    const clause = query.data.status === "all" ? "" : (values.push(query.data.status), "WHERE request.status = $1");
+    const rows = await pool.query(
+      `SELECT request.id, request.employee_id AS "employeeId",
+         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
+         unit.name AS "unitName", request.work_date::text AS "workDate",
+         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
+         request.note, request.status, request.decision_note AS "decisionNote",
+         request.created_at AS "createdAt", request.decided_at AS "decidedAt"
+       FROM attendance_overtime_requests request
+       JOIN employees employee ON employee.id = request.employee_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       ${clause}
+       ORDER BY request.work_date DESC, request.created_at DESC
+       LIMIT 1000`,
+      values,
+    );
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: rows.rows });
+  });
+
+  app.post("/admin/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const body = adminOvertimeInputSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    const id = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_overtime_requests (
+           id, employee_id, work_date, requested_minutes, note, requested_by_account_id
+         ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
+        [id, body.data.employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
+      );
+      await client.query(
+        `INSERT INTO attendance_overtime_events (
+           id, overtime_request_id, actor_account_id, event_type, payload
+         ) VALUES ($1, $2, $3, 'submitted', $4::jsonb)`,
+        [randomUUID(), id, principal.id, JSON.stringify({ requestedMinutes: body.data.requestedMinutes, createdByHc: true })],
+      );
+      await client.query("COMMIT");
+      return reply.status(201).send({ id, status: "submitted" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/attendance/overtime/:overtimeId/decision", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const params = z.object({ overtimeId: z.string().uuid() }).safeParse(request.params);
+    const body = overtimeDecisionSchema.safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_DECISION", message: "Keputusan lembur tidak valid." });
+    const client = await pool.connect();
+    let employeeId = "";
+    let workDate = "";
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{ employeeId: string; workDate: string; requestedMinutes: number }>(
+        `SELECT employee_id AS "employeeId", work_date::text AS "workDate",
+           requested_minutes AS "requestedMinutes"
+         FROM attendance_overtime_requests
+         WHERE id = $1 AND status = 'submitted'
+         FOR UPDATE`,
+        [params.data.overtimeId],
+      );
+      const item = current.rows[0];
+      if (!item) throw new WorkforceAttendanceError(409, "OVERTIME_ALREADY_DECIDED", "Pengajuan lembur sudah diputuskan.");
+      employeeId = item.employeeId;
+      workDate = item.workDate;
+      const approvedMinutes = body.data.decision === "approve"
+        ? (body.data.approvedMinutes ?? item.requestedMinutes)
+        : null;
+      if (approvedMinutes !== null && approvedMinutes > item.requestedMinutes) {
+        throw new WorkforceAttendanceError(400, "OVERTIME_APPROVED_EXCEEDS_REQUEST", "Menit lembur disetujui tidak boleh melebihi pengajuan.");
+      }
+      const status = body.data.decision === "approve" ? "approved" : "rejected";
+      await client.query(
+        `UPDATE attendance_overtime_requests
+         SET status = $2, approved_minutes = $3, decided_by_account_id = $4,
+             decision_note = $5, decided_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [params.data.overtimeId, status, approvedMinutes, principal.id, body.data.note ?? null],
+      );
+      await client.query(
+        `INSERT INTO attendance_overtime_events (
+           id, overtime_request_id, actor_account_id, event_type, payload
+         ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [randomUUID(), params.data.overtimeId, principal.id, status, JSON.stringify({ approvedMinutes, note: body.data.note ?? null })],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
+    const result = await materializeAttendanceResult(pool, employeeId, workDate);
+    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "approve" ? "approved" : "rejected", result: mapResult(result as unknown as Record<string, unknown>) });
+  });
+
+  app.post("/admin/attendance/manual-corrections", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.records.manage");
+    if (!principal) return;
+    const body = manualCorrectionSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_MANUAL_CORRECTION", message: "Koreksi manual tidak valid." });
+    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    const clarificationId = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_clarifications (
+           id, employee_id, work_date, kind, mode, reason,
+           proposed_check_in_at, proposed_check_out_at, status,
+           decided_by_account_id, decision_note, decided_at
+         ) VALUES (
+           $1, $2, $3::date, 'other', 'correction', $4, $5, $6,
+           'approved', $7, 'Koreksi manual oleh administrator', now()
+         )`,
+        [
+          clarificationId, body.data.employeeId, body.data.workDate, body.data.reason,
+          body.data.checkInAt, body.data.checkOutAt, principal.id,
+        ],
+      );
+      await client.query(
+        `INSERT INTO attendance_clarification_events (
+           id, clarification_id, actor_account_id, event_type, payload
+         ) VALUES
+           ($1, $3, $4, 'submitted', $5::jsonb),
+           ($2, $3, $4, 'approved', $5::jsonb)`,
+        [
+          randomUUID(), randomUUID(), clarificationId, principal.id,
+          JSON.stringify({ administrativeCorrection: true, reason: body.data.reason }),
+        ],
+      );
+      await insertAudit(client, principal.id, "attendance.manual_correction.approved", "attendance_clarification", clarificationId, {
+        employeeId: body.data.employeeId, workDate: body.data.workDate,
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const result = await materializeAttendanceResult(pool, body.data.employeeId, body.data.workDate);
+    return reply.status(201).send({ clarificationId, result: mapResult(result as unknown as Record<string, unknown>) });
+  });
+
+  app.get("/admin/attendance/daily", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    const query = z.object({
+      date: dateSchema,
+      employeeId: z.string().uuid().optional(),
+      unitId: z.string().uuid().optional(),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_DAILY_QUERY", message: "Tanggal/filter tidak valid." });
+    const items = await attendanceDailyReadModel(pool, query.data.date, {
+      ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+      ...(query.data.unitId ? { unitId: query.data.unitId } : {}),
+    });
+    const summary = items.reduce<Record<string, number>>((accumulator, item) => {
+      accumulator[item.status] = (accumulator[item.status] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ date: query.data.date, summary, items });
+  });
+
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.policy.manage");
     if (!principal) return;
@@ -1171,36 +1644,27 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const query = reportQuerySchema.safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_REPORT_QUERY", message: "Filter laporan tidak valid." });
-    const values: unknown[] = [query.data.date];
-    const statusClause = query.data.status ? "AND latest.status = $2" : "";
-    if (query.data.status) values.push(query.data.status);
-    const result = await pool.query(
-      `SELECT employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
-         employee.full_name AS "employeeName", unit.name AS "unitName",
-         latest.status, latest.first_check_in_at AS "firstCheckInAt",
-         latest.last_check_out_at AS "lastCheckOutAt", latest.worked_minutes AS "workedMinutes",
-         latest.late_minutes AS "lateMinutes", latest.early_leave_minutes AS "earlyLeaveMinutes",
-         latest.justified
-       FROM employees employee
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       LEFT JOIN LATERAL (
-         SELECT result.*
-         FROM attendance_result_versions result
-         WHERE result.employee_id = employee.id AND result.work_date = $1::date
-         ORDER BY result.version DESC LIMIT 1
-       ) latest ON true
-       WHERE employee.status = 'active'
-         AND latest.id IS NOT NULL
-         ${statusClause}
-       ORDER BY unit.name NULLS LAST, employee.full_name`,
-      values,
-    );
-    const summary = result.rows.reduce<Record<string, number>>((accumulator, row: Record<string, unknown>) => {
-      const status = String(row.status);
-      accumulator[status] = (accumulator[status] ?? 0) + 1;
-      return accumulator;
-    }, {});
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ date: query.data.date, summary, items: result.rows });
-  });
-}
+    const from = query.data.from ?? query.data.date!;
+    const to = query.data.to ?? query.data.date!;
+    try {
+      const result = await buildAttendanceReport(pool, {
+        type: query.data.type as AttendanceReportType,
+        from,
+        to,
+        ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+        ...(query.data.unitId ? { unitId: query.data.unitId } : {}),
+        ...(query.data.status ? { status: query.data.status } : {}),
+        ...(query.data.scheduleId ? { scheduleId: query.data.scheduleId } : {}),
+        ...(query.data.locationId ? { locationId: query.data.locationId } : {}),
+        ...(query.data.source ? { source: query.data.source } : {}),
+        ...(query.data.deviceId ? { deviceId: query.data.deviceId } : {}),
+      });
+      reply.header("Cache-Control", "no-store");
+      return reply.send(result);
+    } catch (error) {
+      if (error instanceof Error && ["INVALID_REPORT_RANGE", "REPORT_RANGE_TOO_LARGE"].includes(error.message)) {
+        return reply.status(400).send({ code: error.message, message: "Rentang laporan tidak valid atau terlalu panjang." });
+      }
+      throw error;
+    }
+  });}

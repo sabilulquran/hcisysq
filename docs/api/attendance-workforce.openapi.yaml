@@ -243,7 +243,19 @@ paths:
       operationId: getAttendanceReport
       x-required-permission: attendance.reports.read
       parameters:
-        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - name: type
+          in: query
+          required: false
+          schema: { type: string, enum: [detail, period, unit, sessions, scans, schedule, overtime], default: detail }
+        - { name: date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: scheduleId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: locationId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: deviceId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual] } }
         - name: status
           in: query
           required: false
@@ -251,7 +263,7 @@ paths:
             type: string
             enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
       responses:
-        '200': { description: Current attendance result snapshot by employee }
+        '200': { description: Canonical detail, period, unit, session, scan, schedule, or overtime report }
 
 
   /admin/attendance/work-locations/{locationId}:
@@ -333,6 +345,84 @@ paths:
           content:
             image/jpeg: { schema: { type: string, contentEncoding: binary } }
 
+
+  /attendance/overtime/me:
+    get:
+      tags: [Attendance]
+      operationId: listMyAttendanceOvertime
+      responses:
+        '200': { description: Own overtime request history }
+
+  /attendance/overtime:
+    post:
+      tags: [Attendance]
+      operationId: submitAttendanceOvertime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceOvertimeInput' }
+      responses:
+        '201': { description: Overtime request submitted }
+
+  /attendance/overtime/{overtimeId}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelMyAttendanceOvertime
+      parameters:
+        - { name: overtimeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Submitted overtime request cancelled }
+
+  /admin/attendance/overtime:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceOvertimeForHc
+      x-required-permission: attendance.overtime.manage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted }
+      responses:
+        '200': { description: Overtime queue/history }
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceOvertimeForEmployee
+      x-required-permission: attendance.overtime.manage
+      responses:
+        '201': { description: HC-created overtime request }
+
+  /admin/attendance/overtime/{overtimeId}/decision:
+    post:
+      tags: [Attendance]
+      operationId: decideAttendanceOvertime
+      x-required-permission: attendance.overtime.manage
+      parameters:
+        - { name: overtimeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Overtime approved/rejected and attendance result recomputed }
+
+  /admin/attendance/manual-corrections:
+    post:
+      tags: [Attendance]
+      operationId: createCanonicalManualAttendanceCorrection
+      x-required-permission: attendance.records.manage
+      responses:
+        '201': { description: Audited append-only canonical correction created and result recomputed }
+
+  /admin/attendance/daily:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceDailyOperationalReadModel
+      x-required-permission: attendance.reports.read
+      parameters:
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: All active employees for the work date, including transient scheduled/pending/absent states without materializing evidence }
+
 components:
   schemas:
     AttendanceResult:
@@ -354,6 +444,21 @@ components:
         earlyLeaveMinutes: { type: integer, minimum: 0 }
         incompleteSession: { type: boolean }
         justified: { type: boolean }
+        lateJustified: { type: boolean }
+        earlyLeaveJustified: { type: boolean }
+        outsideGeofenceJustified: { type: boolean }
+        overtimeMinutes: { type: integer, minimum: 0 }
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              sequence: { type: integer, minimum: 1 }
+              checkInAt: { type: string, format: date-time }
+              checkOutAt: { type: [string, 'null'], format: date-time }
+              workedMinutes: { type: [integer, 'null'], minimum: 0 }
+              complete: { type: boolean }
+              sourceSummary: { type: string }
 
     AttendanceWorkforceSnapshot:
       type: object
@@ -368,12 +473,14 @@ components:
           properties:
             state: { type: string, enum: [scheduled, off, configuration_error] }
             scheduleTemplateId: { type: [string, 'null'], format: uuid }
+            scheduleVersionId: { type: [string, 'null'], format: uuid }
             scheduledStartAt: { type: [string, 'null'], format: date-time }
             scheduledEndAt: { type: [string, 'null'], format: date-time }
             workLocation: { type: [object, 'null'] }
         result: { $ref: '#/components/schemas/AttendanceResult' }
         clarifications: { type: array, items: { type: object } }
         mobileEvidence: { type: array, items: { type: object } }
+        overtimeRequests: { type: array, items: { type: object } }
 
     AttendanceClarificationInput:
       type: object
@@ -404,6 +511,15 @@ components:
         name: { type: string, minLength: 1, maxLength: 160 }
         startTime: { type: string }
         endTime: { type: string }
+        endDayOffset: { type: integer, enum: [0, 1] }
         lateGraceMinutes: { type: integer, minimum: 0, maximum: 240 }
         earlyLeaveToleranceMinutes: { type: integer, minimum: 0, maximum: 240 }
         workLocationId: { type: [string, 'null'], format: uuid }
+
+    AttendanceOvertimeInput:
+      type: object
+      required: [workDate, requestedMinutes]
+      properties:
+        workDate: { type: string, format: date }
+        requestedMinutes: { type: integer, minimum: 1, maximum: 1440 }
+        note: { type: [string, 'null'], maxLength: 2000 }

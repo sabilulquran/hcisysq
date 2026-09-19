@@ -1,128 +1,48 @@
-import { AlertTriangle, ArrowRight, CalendarRange, ClipboardCheck, MapPin, Radio, Smartphone, UsersRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, CalendarRange, ClipboardCheck, MapPin, Search, Smartphone, UsersRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { listEmployees } from "@/lib/adminEmployees";
 import {
-  getAttendanceReport,
+  getAttendanceDaily,
   listAttendanceClarificationsForHcByStatus,
   listAttendanceMobileEvidence,
   listAttendanceSchedules,
   listAttendanceWorkLocations,
+  type AttendanceDailyItem,
 } from "@/lib/workforceAttendance";
 
-function todayJakarta() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+function todayJakarta() { return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jakarta"}).format(new Date()); }
+function fmt(value:string|null){return value?new Intl.DateTimeFormat("id-ID",{hour:"2-digit",minute:"2-digit",hourCycle:"h23",timeZone:"Asia/Jakarta"}).format(new Date(value)):"—";}
+function label(value:string){const map:Record<string,string>={scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti/Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Konfigurasi"};return map[value]??value;}
 
-export function AdminAttendanceWorkforceOverviewPage() {
-  const [summary, setSummary] = useState({
-    employees: 0,
-    schedules: 0,
-    locations: 0,
-    clarifications: 0,
-    mobileReview: 0,
-    present: 0,
-    late: 0,
-    absent: 0,
-  });
-  const [error, setError] = useState<string | null>(null);
+export function AdminAttendanceWorkforceOverviewPage(){
+ const [date,setDate]=useState(todayJakarta()); const [items,setItems]=useState<AttendanceDailyItem[]>([]); const [summary,setSummary]=useState<Record<string,number>>({});
+ const [schedules,setSchedules]=useState(0); const [locations,setLocations]=useState(0); const [clarifications,setClarifications]=useState(0); const [mobileReview,setMobileReview]=useState(0);
+ const [q,setQ]=useState(""); const [status,setStatus]=useState(""); const [error,setError]=useState<string|null>(null);
 
-  useEffect(() => {
-    const date = todayJakarta();
-    void Promise.allSettled([
-      listEmployees({ page: 1, pageSize: 1, status: "active" }),
-      listAttendanceSchedules(),
-      listAttendanceWorkLocations(),
-      listAttendanceClarificationsForHcByStatus("submitted"),
-      listAttendanceMobileEvidence({ date, reviewState: "needs_review" }),
-      getAttendanceReport(date),
-    ]).then(([employees, schedules, locations, clarifications, mobile, report]) => {
-      setSummary({
-        employees: employees.status === "fulfilled" ? employees.value.pagination.total : 0,
-        schedules: schedules.status === "fulfilled" ? schedules.value.items.filter((item) => item.active).length : 0,
-        locations: locations.status === "fulfilled" ? locations.value.items.filter((item) => item.active).length : 0,
-        clarifications: clarifications.status === "fulfilled" ? clarifications.value.items.length : 0,
-        mobileReview: mobile.status === "fulfilled" ? mobile.value.items.length : 0,
-        present: report.status === "fulfilled" ? report.value.summary.present ?? 0 : 0,
-        late: report.status === "fulfilled" ? report.value.summary.late ?? 0 : 0,
-        absent: report.status === "fulfilled" ? report.value.summary.absent ?? 0 : 0,
-      });
-      const failures = [employees, schedules, locations, clarifications, mobile, report]
-        .filter((result) => result.status === "rejected").length;
-      setError(failures > 0 ? "Sebagian ringkasan disembunyikan karena izin akun atau data belum tersedia." : null);
-    });
-  }, []);
+ useEffect(()=>{void Promise.allSettled([
+  getAttendanceDaily(date),listAttendanceSchedules(),listAttendanceWorkLocations(),listAttendanceClarificationsForHcByStatus("submitted"),listAttendanceMobileEvidence({date,reviewState:"needs_review"})
+ ]).then(([daily,sch,loc,clar,mob])=>{
+  if(daily.status==="fulfilled"){setItems(daily.value.items);setSummary(daily.value.summary);} else setError(daily.reason instanceof Error?daily.reason.message:"Dashboard harian tidak dapat dimuat.");
+  if(sch.status==="fulfilled")setSchedules(sch.value.items.filter(i=>i.active).length);
+  if(loc.status==="fulfilled")setLocations(loc.value.items.filter(i=>i.active).length);
+  if(clar.status==="fulfilled")setClarifications(clar.value.items.length);
+  if(mob.status==="fulfilled")setMobileReview(mob.value.items.length);
+ });},[date]);
 
-  const cards = [
-    ["Pegawai aktif", summary.employees, UsersRound],
-    ["Jadwal aktif", summary.schedules, CalendarRange],
-    ["Lokasi aktif", summary.locations, MapPin],
-    ["Klarifikasi menunggu", summary.clarifications, ClipboardCheck],
-    ["Evidence perlu review", summary.mobileReview, Smartphone],
-    ["Hadir / telat", summary.present + summary.late, Radio],
-  ] as const;
+ const filtered=useMemo(()=>{const needle=q.trim().toLowerCase();return items.filter(i=>(!status||i.status===status)&&(!needle||[i.employeeName,i.employeeNumber,i.unitName??""].join(" ").toLowerCase().includes(needle)));},[items,q,status]);
+ const cards=[
+  ["Pegawai aktif",items.length,UsersRound],["Jadwal aktif",schedules,CalendarRange],["Lokasi aktif",locations,MapPin],
+  ["Belum check-in",summary.pending??0,UsersRound],["Klarifikasi",clarifications,ClipboardCheck],["Evidence review",mobileReview,Smartphone],
+ ] as const;
 
-  return (
-    <AttendanceWorkforceShell
-      section="overview"
-      title="Operasional Kehadiran"
-      description="Workspace Human Capital untuk jadwal, roster, evidence, klarifikasi, dan laporan kehadiran YSQ."
-    >
-      {error ? (
-        <div className="mb-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
-        </div>
-      ) : null}
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {cards.map(([label, value, Icon]) => (
-          <article key={label} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
-            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-              <Icon className="h-4 w-4" /> {label}
-            </div>
-            <p className="mt-2 text-2xl font-bold text-brand-heading">{value}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="mt-5 grid gap-4 lg:grid-cols-3">
-        <a href="/admin/attendance/workforce/roster" className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] hover:border-brand-primary/40">
-          <h2 className="font-bold text-brand-heading">Roster mingguan</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Atur shift per pegawai dengan grid Senin–Minggu, draft, salin minggu lalu, dan publish.</p>
-          <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep">Buka roster <ArrowRight className="h-3.5 w-3.5" /></span>
-        </a>
-        <a href="/admin/attendance/workforce/clarifications" className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] hover:border-brand-primary/40">
-          <h2 className="font-bold text-brand-heading">Klarifikasi</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{summary.clarifications} pengajuan masih menunggu keputusan Human Capital.</p>
-          <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep">Tinjau klarifikasi <ArrowRight className="h-3.5 w-3.5" /></span>
-        </a>
-        <a href="/admin/attendance/workforce/mobile" className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] hover:border-brand-primary/40">
-          <h2 className="font-bold text-brand-heading">Evidence mobile</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{summary.mobileReview} evidence GPS/foto hari ini perlu ditinjau.</p>
-          <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep">Buka evidence <ArrowRight className="h-3.5 w-3.5" /></span>
-        </a>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-brand-heading">Status hasil hari ini</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Data muncul dari result version yang sudah dimaterialisasi.</p>
-          </div>
-          <a href="/admin/attendance/workforce/reports" className="text-xs font-bold text-brand-primary-deep hover:underline">Buka laporan</a>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs font-semibold text-emerald-700">Hadir</p><p className="mt-1 text-2xl font-bold text-emerald-900">{summary.present}</p></div>
-          <div className="rounded-xl bg-amber-50 p-4"><p className="text-xs font-semibold text-amber-700">Terlambat</p><p className="mt-1 text-2xl font-bold text-amber-900">{summary.late}</p></div>
-          <div className="rounded-xl bg-red-50 p-4"><p className="text-xs font-semibold text-red-700">Tidak hadir</p><p className="mt-1 text-2xl font-bold text-red-900">{summary.absent}</p></div>
-        </div>
-      </section>
-    </AttendanceWorkforceShell>
-  );
+ return <AttendanceWorkforceShell section="overview" title="Operasional Kehadiran" description="Dashboard harian canonical: seluruh pegawai aktif tetap terlihat meski belum mempunyai result materialized.">
+  {error?<div className="mb-5 flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><AlertTriangle className="h-4 w-4"/>{error}</div>:null}
+  <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{cards.map(([name,value,Icon])=><article key={name} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Icon className="h-4 w-4"/>{name}</div><p className="mt-2 text-2xl font-bold text-brand-heading">{value}</p></article>)}</section>
+  <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+   <header className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-bold text-brand-heading">Kehadiran pegawai</h2><p className="mt-1 text-xs text-muted-foreground">Status tanpa result dihitung read-only dari jadwal efektif, kalender, cuti/resolution, dan waktu saat ini.</p></div><div className="flex flex-wrap gap-2"><input className="h-10 rounded-xl border px-3 text-sm" type="date" value={date} onChange={e=>setDate(e.target.value)}/><select className="h-10 rounded-xl border px-3 text-sm" value={status} onChange={e=>setStatus(e.target.value)}><option value="">Semua status</option>{["pending","present","late","incomplete","leave","absent","off","scheduled","configuration_error"].map(s=><option key={s} value={s}>{label(s)}</option>)}</select><label className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"/><input className="h-10 rounded-xl border pl-9 pr-3 text-sm" placeholder="Cari pegawai/unit…" value={q} onChange={e=>setQ(e.target.value)}/></label></div></header>
+   <div className="flex flex-wrap gap-2 border-b px-4 py-3">{Object.entries(summary).map(([key,value])=><span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{label(key)}: {value}</span>)}</div>
+   <div className="overflow-x-auto"><table className="min-w-[1050px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Unit</th><th className="p-3">Status</th><th className="p-3">Jadwal</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Kerja</th><th className="p-3">Telat</th><th className="p-3">Lembur</th><th className="p-3">Sumber</th></tr></thead><tbody className="divide-y">{filtered.map(i=><tr key={i.employeeId}><td className="p-3"><p className="font-semibold">{i.employeeName}</p><p className="text-xs text-muted-foreground">{i.employeeNumber}{i.materialized?" · v"+i.resultVersion:" · live"}</p></td><td className="p-3">{i.unitName??"—"}</td><td className="p-3">{label(i.status)}</td><td className="p-3">{fmt(i.scheduledStartAt)}–{fmt(i.scheduledEndAt)}</td><td className="p-3">{fmt(i.firstCheckInAt)}</td><td className="p-3">{fmt(i.lastCheckOutAt)}</td><td className="p-3">{i.workedMinutes} mnt</td><td className="p-3">{i.lateMinutes} mnt{i.lateJustified?" ✓":""}</td><td className="p-3">{i.overtimeMinutes} mnt</td><td className="p-3">{i.sources.join(", ")||"—"}</td></tr>)}{filtered.length===0?<tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Tidak ada pegawai yang cocok dengan filter.</td></tr>:null}</tbody></table></div>
+  </section>
+ </AttendanceWorkforceShell>;
 }

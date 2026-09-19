@@ -22,10 +22,13 @@ import {
   AdminAdmsDeviceUsersRoutePage,
 } from "@/pages/AdminAdmsDeviceRoutePages";
 import { AdminAdmsBackOfficePage } from "@/pages/AdminAdmsBackOfficePage";
+import { AdminAdmsGlobalTransactionsPage } from "@/pages/AdminAdmsGlobalTransactionsPage";
 import { AdminAdmsDevicesPage } from "@/pages/AdminAdmsDevicesPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
-import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage, AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReviewPages";
+import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
+import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
+import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
 import { AdminAttendanceWorkforceOverviewPage } from "@/pages/AdminAttendanceWorkforceOverviewPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
@@ -289,11 +292,19 @@ const adminAttendanceMobileRoute = createRoute({
   component: AdminAttendanceMobileEvidencePage,
 });
 
+
+const adminAttendanceOvertimeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/overtime",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/overtime"),
+  component: AdminAttendanceOvertimePage,
+});
+
 const adminAttendanceReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/workforce/reports",
   beforeLoad: () => requireAdminPath("/admin/attendance/workforce/reports"),
-  component: AdminAttendanceReportsPage,
+  component: AdminAttendanceReportsV2Page,
 });
 
 const adminAdmsBackOfficeRoute = createRoute({
@@ -301,6 +312,14 @@ const adminAdmsBackOfficeRoute = createRoute({
   path: "/admin/attendance/adms",
   beforeLoad: () => requireAdminPath("/admin/attendance/adms"),
   component: AdminAdmsBackOfficePage,
+});
+
+
+const adminAdmsGlobalTransactionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms/transactions",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms/transactions"),
+  component: AdminAdmsGlobalTransactionsPage,
 });
 
 const adminAdmsDevicesRoute = createRoute({
@@ -446,8 +465,10 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceRosterRoute,
   adminAttendanceClarificationsRoute,
   adminAttendanceMobileRoute,
+  adminAttendanceOvertimeRoute,
   adminAttendanceReportsRoute,
   adminAdmsBackOfficeRoute,
+  adminAdmsGlobalTransactionsRoute,
   adminAdmsDevicesRoute,
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,

@@ -424,6 +424,62 @@ export async function registerAdmsWave1AdminRoutes(
     }
   });
 
+  app.get("/admin/attendance/adms/transactions", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.devices.read");
+    if (!principal) return;
+    const query = z.object({
+      from: z.string().datetime({ offset: true }).optional(),
+      to: z.string().datetime({ offset: true }).optional(),
+      deviceId: z.string().uuid().optional(),
+      pin: z.string().trim().max(64).optional(),
+      employeeId: z.string().uuid().optional(),
+      mapping: z.enum(["all", "mapped", "unmapped"]).default("all"),
+    }).safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_TRANSACTION_FILTER", message: "Filter transaksi ADMS tidak valid." });
+    }
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    if (query.data.from) { values.push(query.data.from); clauses.push(`event.occurred_at >= $${values.length}::timestamptz`); }
+    if (query.data.to) { values.push(query.data.to); clauses.push(`event.occurred_at <= $${values.length}::timestamptz`); }
+    if (query.data.deviceId) { values.push(query.data.deviceId); clauses.push(`event.device_id = $${values.length}`); }
+    if (query.data.pin) { values.push(query.data.pin); clauses.push(`event.pin = $${values.length}`); }
+    if (query.data.employeeId) { values.push(query.data.employeeId); clauses.push(`mapping.employee_id = $${values.length}`); }
+    if (query.data.mapping === "mapped") clauses.push("mapping.employee_id IS NOT NULL");
+    if (query.data.mapping === "unmapped") clauses.push("mapping.employee_id IS NULL");
+    const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+    const result = await pool.query(
+      `SELECT event.id, event.device_id AS "deviceId",
+         device.serial_number AS "serialNumber", device.display_name AS "deviceName",
+         event.pin, event.occurred_at_raw AS "occurredAtRaw",
+         event.occurred_at AS "occurredAt", event.received_at AS "receivedAt",
+         event.source_request_id AS "sourceRequestId",
+         mapping.employee_id AS "employeeId", employee.employee_number AS "employeeNumber",
+         employee.full_name AS "employeeName", unit.name AS "unitName",
+         CASE WHEN mapping.employee_id IS NULL THEN 'unmapped' ELSE 'mapped' END AS "mappingState"
+       FROM attendance_adms_events event
+       JOIN attendance_adms_devices device ON device.id = event.device_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.employee_id
+         FROM attendance_adms_employee_mappings candidate
+         WHERE candidate.device_id = event.device_id
+           AND candidate.pin = event.pin
+           AND event.occurred_at >= candidate.effective_from
+           AND (candidate.effective_to IS NULL OR event.occurred_at < candidate.effective_to)
+         ORDER BY candidate.effective_from DESC
+         LIMIT 1
+       ) mapping ON true
+       LEFT JOIN employees employee ON employee.id = mapping.employee_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       ${where}
+       ORDER BY event.occurred_at DESC, event.id DESC
+       LIMIT 1000`,
+      values,
+    );
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: result.rows });
+  });
+
   app.get("/admin/attendance/adms/devices/:deviceId/transactions", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;

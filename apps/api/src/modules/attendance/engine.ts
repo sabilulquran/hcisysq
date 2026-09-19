@@ -160,6 +160,39 @@ export function buildSessions(events: readonly AttendanceEventRow[]): Attendance
   return sessions;
 }
 
+export function applyBoundaryCorrections(
+  sessions: readonly AttendanceSession[],
+  corrections: readonly Array<{
+    proposedCheckInAt: Date | null;
+    proposedCheckOutAt: Date | null;
+  }>,
+): AttendanceSession[] {
+  let next = sessions.map((session) => ({ ...session }));
+
+  for (const correction of corrections) {
+    if (correction.proposedCheckInAt) {
+      if (next.length === 0) {
+        next = [{ checkInAt: correction.proposedCheckInAt, checkOutAt: null }];
+      } else {
+        next[0] = { ...next[0]!, checkInAt: correction.proposedCheckInAt };
+      }
+    }
+
+    if (correction.proposedCheckOutAt) {
+      if (next.length === 0) {
+        // A checkout-only correction without any other boundary cannot invent a
+        // worked duration. Preserve it as incomplete evidence for HC review.
+        next = [{ checkInAt: correction.proposedCheckOutAt, checkOutAt: null }];
+      } else {
+        const lastIndex = next.length - 1;
+        next[lastIndex] = { ...next[lastIndex]!, checkOutAt: correction.proposedCheckOutAt };
+      }
+    }
+  }
+
+  return next;
+}
+
 export function evaluateSessions(input: {
   schedule: ResolvedSchedule;
   sessions: AttendanceSession[];
@@ -553,25 +586,10 @@ export async function materializeAttendanceResult(
       );
       events.push(...eventRows.rows);
     }
-    for (const clarification of clarifications.rows) {
-      if (clarification.mode !== "correction") continue;
-      if (clarification.proposedCheckInAt) {
-        events.push({
-          id: `clarification:${clarification.id}:in`,
-          eventKind: "check_in",
-          occurredAt: clarification.proposedCheckInAt,
-        });
-      }
-      if (clarification.proposedCheckOutAt) {
-        events.push({
-          id: `clarification:${clarification.id}:out`,
-          eventKind: "check_out",
-          occurredAt: clarification.proposedCheckOutAt,
-        });
-      }
-    }
-
-    const sessions = buildSessions(events);
+    const sessions = applyBoundaryCorrections(
+      buildSessions(events),
+      clarifications.rows.filter((item) => item.mode === "correction"),
+    );
     const computed = evaluateSessions({
       schedule,
       sessions,

@@ -1314,6 +1314,287 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send(payload);
   });
 
+  app.get("/attendance/overtime/me", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const rows = await pool.query(
+        `SELECT id, work_date::text AS "workDate", requested_minutes AS "requestedMinutes",
+           approved_minutes AS "approvedMinutes", note, status, decision_note AS "decisionNote",
+           created_at AS "createdAt", decided_at AS "decidedAt"
+         FROM attendance_overtime_requests
+         WHERE employee_id = $1
+         ORDER BY work_date DESC, created_at DESC
+         LIMIT 100`,
+        [employee.id],
+      );
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ items: rows.rows });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post("/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    const body = overtimeInputSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const id = randomUUID();
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `INSERT INTO attendance_overtime_requests (
+             id, employee_id, work_date, requested_minutes, note, requested_by_account_id
+           ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
+          [id, employee.id, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
+        );
+        await client.query(
+          `INSERT INTO attendance_overtime_events (
+             id, overtime_request_id, actor_account_id, event_type, payload
+           ) VALUES ($1, $2, $3, 'submitted', $4::jsonb)`,
+          [randomUUID(), id, principal.id, JSON.stringify({ requestedMinutes: body.data.requestedMinutes })],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return reply.status(201).send({ id, status: "submitted" });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.post("/attendance/overtime/:overtimeId/cancel", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    const params = z.object({ overtimeId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    try {
+      const employee = await employeeForAccount(pool, principal.id);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const changed = await client.query(
+          `UPDATE attendance_overtime_requests
+           SET status = 'cancelled', updated_at = now()
+           WHERE id = $1 AND employee_id = $2 AND status = 'submitted'
+           RETURNING id`,
+          [params.data.overtimeId, employee.id],
+        );
+        if (!changed.rows[0]) throw new WorkforceAttendanceError(409, "OVERTIME_NOT_CANCELLABLE", "Pengajuan lembur tidak dapat dibatalkan.");
+        await client.query(
+          `INSERT INTO attendance_overtime_events (
+             id, overtime_request_id, actor_account_id, event_type, payload
+           ) VALUES ($1, $2, $3, 'cancelled', '{}'::jsonb)`,
+          [randomUUID(), params.data.overtimeId, principal.id],
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      return reply.status(204).send();
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get("/admin/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const query = z.object({
+      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
+    const values: unknown[] = [];
+    const clause = query.data.status === "all" ? "" : (values.push(query.data.status), "WHERE request.status = $1");
+    const rows = await pool.query(
+      `SELECT request.id, request.employee_id AS "employeeId",
+         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
+         unit.name AS "unitName", request.work_date::text AS "workDate",
+         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
+         request.note, request.status, request.decision_note AS "decisionNote",
+         request.created_at AS "createdAt", request.decided_at AS "decidedAt"
+       FROM attendance_overtime_requests request
+       JOIN employees employee ON employee.id = request.employee_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       ${clause}
+       ORDER BY request.work_date DESC, request.created_at DESC
+       LIMIT 1000`,
+      values,
+    );
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: rows.rows });
+  });
+
+  app.post("/admin/attendance/overtime", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const body = adminOvertimeInputSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
+    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    const id = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_overtime_requests (
+           id, employee_id, work_date, requested_minutes, note, requested_by_account_id
+         ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
+        [id, body.data.employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
+      );
+      await client.query(
+        `INSERT INTO attendance_overtime_events (
+           id, overtime_request_id, actor_account_id, event_type, payload
+         ) VALUES ($1, $2, $3, 'submitted', $4::jsonb)`,
+        [randomUUID(), id, principal.id, JSON.stringify({ requestedMinutes: body.data.requestedMinutes, createdByHc: true })],
+      );
+      await client.query("COMMIT");
+      return reply.status(201).send({ id, status: "submitted" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/attendance/overtime/:overtimeId/decision", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
+    if (!principal) return;
+    const params = z.object({ overtimeId: z.string().uuid() }).safeParse(request.params);
+    const body = overtimeDecisionSchema.safeParse(request.body);
+    if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_DECISION", message: "Keputusan lembur tidak valid." });
+    const client = await pool.connect();
+    let employeeId = "";
+    let workDate = "";
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{ employeeId: string; workDate: string; requestedMinutes: number }>(
+        `SELECT employee_id AS "employeeId", work_date::text AS "workDate",
+           requested_minutes AS "requestedMinutes"
+         FROM attendance_overtime_requests
+         WHERE id = $1 AND status = 'submitted'
+         FOR UPDATE`,
+        [params.data.overtimeId],
+      );
+      const item = current.rows[0];
+      if (!item) throw new WorkforceAttendanceError(409, "OVERTIME_ALREADY_DECIDED", "Pengajuan lembur sudah diputuskan.");
+      employeeId = item.employeeId;
+      workDate = item.workDate;
+      const approvedMinutes = body.data.decision === "approve"
+        ? (body.data.approvedMinutes ?? item.requestedMinutes)
+        : null;
+      if (approvedMinutes !== null && approvedMinutes > item.requestedMinutes) {
+        throw new WorkforceAttendanceError(400, "OVERTIME_APPROVED_EXCEEDS_REQUEST", "Menit lembur disetujui tidak boleh melebihi pengajuan.");
+      }
+      const status = body.data.decision === "approve" ? "approved" : "rejected";
+      await client.query(
+        `UPDATE attendance_overtime_requests
+         SET status = $2, approved_minutes = $3, decided_by_account_id = $4,
+             decision_note = $5, decided_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [params.data.overtimeId, status, approvedMinutes, principal.id, body.data.note ?? null],
+      );
+      await client.query(
+        `INSERT INTO attendance_overtime_events (
+           id, overtime_request_id, actor_account_id, event_type, payload
+         ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [randomUUID(), params.data.overtimeId, principal.id, status, JSON.stringify({ approvedMinutes, note: body.data.note ?? null })],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
+    const result = await materializeAttendanceResult(pool, employeeId, workDate);
+    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "approve" ? "approved" : "rejected", result: mapResult(result as unknown as Record<string, unknown>) });
+  });
+
+  app.post("/admin/attendance/manual-corrections", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.records.manage");
+    if (!principal) return;
+    const body = manualCorrectionSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ code: "INVALID_MANUAL_CORRECTION", message: "Koreksi manual tidak valid." });
+    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    const clarificationId = randomUUID();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_clarifications (
+           id, employee_id, work_date, kind, mode, reason,
+           proposed_check_in_at, proposed_check_out_at, status,
+           decided_by_account_id, decision_note, decided_at
+         ) VALUES (
+           $1, $2, $3::date, 'other', 'correction', $4, $5, $6,
+           'approved', $7, 'Koreksi manual oleh administrator', now()
+         )`,
+        [
+          clarificationId, body.data.employeeId, body.data.workDate, body.data.reason,
+          body.data.checkInAt, body.data.checkOutAt, principal.id,
+        ],
+      );
+      await client.query(
+        `INSERT INTO attendance_clarification_events (
+           id, clarification_id, actor_account_id, event_type, payload
+         ) VALUES
+           ($1, $3, $4, 'submitted', $5::jsonb),
+           ($2, $3, $4, 'approved', $5::jsonb)`,
+        [
+          randomUUID(), randomUUID(), clarificationId, principal.id,
+          JSON.stringify({ administrativeCorrection: true, reason: body.data.reason }),
+        ],
+      );
+      await insertAudit(client, principal.id, "attendance.manual_correction.approved", "attendance_clarification", clarificationId, {
+        employeeId: body.data.employeeId, workDate: body.data.workDate,
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const result = await materializeAttendanceResult(pool, body.data.employeeId, body.data.workDate);
+    return reply.status(201).send({ clarificationId, result: mapResult(result as unknown as Record<string, unknown>) });
+  });
+
+  app.get("/admin/attendance/daily", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    const query = z.object({
+      date: dateSchema,
+      employeeId: z.string().uuid().optional(),
+      unitId: z.string().uuid().optional(),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_DAILY_QUERY", message: "Tanggal/filter tidak valid." });
+    const items = await attendanceDailyReadModel(pool, query.data.date, {
+      ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+      ...(query.data.unitId ? { unitId: query.data.unitId } : {}),
+    });
+    const summary = items.reduce<Record<string, number>>((accumulator, item) => {
+      accumulator[item.status] = (accumulator[item.status] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ date: query.data.date, summary, items });
+  });
+
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.policy.manage");
     if (!principal) return;
@@ -1334,36 +1615,27 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const query = reportQuerySchema.safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_REPORT_QUERY", message: "Filter laporan tidak valid." });
-    const values: unknown[] = [query.data.date];
-    const statusClause = query.data.status ? "AND latest.status = $2" : "";
-    if (query.data.status) values.push(query.data.status);
-    const result = await pool.query(
-      `SELECT employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
-         employee.full_name AS "employeeName", unit.name AS "unitName",
-         latest.status, latest.first_check_in_at AS "firstCheckInAt",
-         latest.last_check_out_at AS "lastCheckOutAt", latest.worked_minutes AS "workedMinutes",
-         latest.late_minutes AS "lateMinutes", latest.early_leave_minutes AS "earlyLeaveMinutes",
-         latest.justified
-       FROM employees employee
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       LEFT JOIN LATERAL (
-         SELECT result.*
-         FROM attendance_result_versions result
-         WHERE result.employee_id = employee.id AND result.work_date = $1::date
-         ORDER BY result.version DESC LIMIT 1
-       ) latest ON true
-       WHERE employee.status = 'active'
-         AND latest.id IS NOT NULL
-         ${statusClause}
-       ORDER BY unit.name NULLS LAST, employee.full_name`,
-      values,
-    );
-    const summary = result.rows.reduce<Record<string, number>>((accumulator, row: Record<string, unknown>) => {
-      const status = String(row.status);
-      accumulator[status] = (accumulator[status] ?? 0) + 1;
-      return accumulator;
-    }, {});
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ date: query.data.date, summary, items: result.rows });
-  });
-}
+    const from = query.data.from ?? query.data.date!;
+    const to = query.data.to ?? query.data.date!;
+    try {
+      const result = await buildAttendanceReport(pool, {
+        type: query.data.type as AttendanceReportType,
+        from,
+        to,
+        ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+        ...(query.data.unitId ? { unitId: query.data.unitId } : {}),
+        ...(query.data.status ? { status: query.data.status } : {}),
+        ...(query.data.scheduleId ? { scheduleId: query.data.scheduleId } : {}),
+        ...(query.data.locationId ? { locationId: query.data.locationId } : {}),
+        ...(query.data.source ? { source: query.data.source } : {}),
+        ...(query.data.deviceId ? { deviceId: query.data.deviceId } : {}),
+      });
+      reply.header("Cache-Control", "no-store");
+      return reply.send(result);
+    } catch (error) {
+      if (error instanceof Error && ["INVALID_REPORT_RANGE", "REPORT_RANGE_TOO_LARGE"].includes(error.message)) {
+        return reply.status(400).send({ code: error.message, message: "Rentang laporan tidak valid atau terlalu panjang." });
+      }
+      throw error;
+    }
+  });}

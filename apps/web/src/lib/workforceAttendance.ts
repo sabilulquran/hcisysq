@@ -244,3 +244,199 @@ export async function getAttendanceReport(date: string, status?: string) {
     }),
   );
 }
+
+
+export interface AttendanceScheduleAssignmentItem {
+  id: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitName: string | null;
+  scheduleTemplateId: string;
+  scheduleName: string;
+  weekdayMask: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdAt: string;
+}
+
+export interface AttendanceRosterWorkspace {
+  weekStart: string;
+  rosters: Array<{
+    id: string;
+    weekStart: string;
+    version: number;
+    status: "DRAFT" | "PUBLISHED";
+    publishedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  entries: Array<{
+    rosterId: string;
+    employeeId: string;
+    workDate: string;
+    scheduleTemplateId: string | null;
+    isOff: boolean;
+    note: string | null;
+  }>;
+  employees: Array<{
+    id: string;
+    employeeNumber: string;
+    employeeName: string;
+    unitName: string | null;
+    defaultScheduleId: string | null;
+  }>;
+  schedules: Array<{
+    id: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+    active: boolean;
+  }>;
+}
+
+export interface AttendanceMobileEvidenceItem {
+  id: string;
+  action: "check_in" | "check_out";
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  distanceMeters: number | null;
+  geofenceStatus: "inside" | "outside" | "uncertain_accuracy" | "unassigned_location";
+  reviewState: "accepted" | "needs_review";
+  photoByteLength: number;
+  createdAt: string;
+  occurredAt: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitName: string | null;
+  workLocationId: string | null;
+  workLocationName: string | null;
+  radiusMeters: number | null;
+}
+
+export async function updateAttendanceWorkLocation(
+  locationId: string,
+  input: Partial<{ name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean }>,
+) {
+  return readJson<{ id: string }>(await fetch(`/api/admin/attendance/work-locations/${locationId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function updateAttendanceSchedule(
+  scheduleId: string,
+  input: Partial<{
+    name: string; startTime: string; endTime: string; lateGraceMinutes: number;
+    earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+  }>,
+) {
+  return readJson<{ id: string }>(await fetch(`/api/admin/attendance/schedules/${scheduleId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function listAttendanceScheduleAssignments() {
+  return readJson<{ items: AttendanceScheduleAssignmentItem[] }>(
+    await fetch("/api/admin/attendance/schedule-assignments", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function updateAttendanceScheduleAssignment(
+  assignmentId: string,
+  effectiveTo: string | null,
+) {
+  return readJson<{ id: string }>(await fetch(`/api/admin/attendance/schedule-assignments/${assignmentId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ effectiveTo }),
+  }));
+}
+
+export async function getAttendanceRosterWeek(weekStart: string) {
+  return readJson<AttendanceRosterWorkspace>(
+    await fetch(`/api/admin/attendance/rosters?weekStart=${encodeURIComponent(weekStart)}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function removeAttendanceRosterEntry(
+  rosterId: string,
+  employeeId: string,
+  workDate: string,
+) {
+  const response = await fetch(
+    `/api/admin/attendance/rosters/${rosterId}/entries/${employeeId}/${workDate}`,
+    { method: "DELETE", credentials: "include", headers: { Accept: "application/json" } },
+  );
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+export async function copyPreviousAttendanceRoster(rosterId: string) {
+  return readJson<{ copied: number }>(
+    await fetch(`/api/admin/attendance/rosters/${rosterId}/copy-previous`, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function listAttendanceClarificationsForHcByStatus(
+  status: "all" | "submitted" | "approved" | "rejected" | "cancelled" = "submitted",
+) {
+  return readJson<{ items: Array<{
+    id: string;
+    workDate: string;
+    kind: string;
+    mode: string;
+    reason: string;
+    status: string;
+    proposedCheckInAt: string | null;
+    proposedCheckOutAt: string | null;
+    decisionNote: string | null;
+    decidedAt: string | null;
+    employeeId: string;
+    employeeNumber: string;
+    employeeName: string;
+    unitName: string | null;
+    createdAt: string;
+  }> }>(await fetch(`/api/admin/attendance/clarifications?status=${encodeURIComponent(status)}`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  }));
+}
+
+export async function listAttendanceMobileEvidence(input: {
+  date?: string;
+  reviewState?: "all" | "accepted" | "needs_review";
+} = {}) {
+  const params = new URLSearchParams();
+  if (input.date) params.set("date", input.date);
+  if (input.reviewState && input.reviewState !== "all") params.set("reviewState", input.reviewState);
+  const query = params.toString();
+  return readJson<{ items: AttendanceMobileEvidenceItem[] }>(
+    await fetch(`/api/admin/attendance/mobile-evidence${query ? `?${query}` : ""}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export function attendanceMobileEvidencePhotoUrl(evidenceId: string) {
+  return `/api/admin/attendance/mobile-evidence/${encodeURIComponent(evidenceId)}/photo`;
+}

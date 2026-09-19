@@ -1,5 +1,7 @@
 # Production Release Verification — 2026-09-18
 
+**Historical checkpoint:** superseded as the latest production baseline by [`production-release-verification-2026-09-19.md`](production-release-verification-2026-09-19.md), which records deployment of `66da50cbd2a12f6099a59adbda28b657863e8e40`. This file remains the authoritative dated record for the earlier `acd22b...` release and its browser acceptance evidence.
+
 **Status:** VERIFIED — RELEASE ACCEPTANCE CLOSED  
 **Deployed application SHA:** `acd22b438a7468dc6ea53ae001980cd06f7343cd`  
 **Repository state after release:** `main` later advanced to `92889f14ae5c39b817945fc71ee26f8fdbca9471`; that later commit is repository state, not evidence of the deployed runtime.

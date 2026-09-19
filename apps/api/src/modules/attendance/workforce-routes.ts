@@ -240,7 +240,24 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
      ORDER BY version DESC LIMIT 1`,
     [employeeId, workDate],
   );
-  return mapResult(result.rows[0]);
+  const mapped = mapResult(result.rows[0]);
+  if (!mapped || typeof mapped.id !== "string") return mapped;
+  const sessions = await db.query(
+    `SELECT sequence, check_in_at AS "checkInAt", check_out_at AS "checkOutAt",
+       worked_minutes AS "workedMinutes", complete, source_summary AS "sourceSummary"
+     FROM attendance_result_sessions
+     WHERE attendance_result_version_id = $1
+     ORDER BY sequence`,
+    [mapped.id],
+  );
+  return {
+    ...mapped,
+    sessions: sessions.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      checkInAt: item.checkInAt instanceof Date ? item.checkInAt.toISOString() : item.checkInAt ?? null,
+      checkOutAt: item.checkOutAt instanceof Date ? item.checkOutAt.toISOString() : item.checkOutAt ?? null,
+    })),
+  };
 }
 
 function scheduleResponse(schedule: Awaited<ReturnType<typeof resolveSchedule>>) {
@@ -309,7 +326,7 @@ export async function registerAttendanceWorkforceRoutes(
       const employee = await employeeForAccount(pool, principal.id);
       const workDate = query.data.date ?? jakartaWorkDate();
       const schedule = await resolveSchedule(pool, employee.id, workDate);
-      const [result, clarifications, mobile] = await Promise.all([
+      const [result, clarifications, mobile, overtime] = await Promise.all([
         latestResult(pool, employee.id, workDate),
         pool.query(
           `SELECT id, work_date::text AS "workDate", kind, mode, reason, status,
@@ -330,6 +347,16 @@ export async function registerAttendanceWorkforceRoutes(
            ORDER BY created_at DESC`,
           [employee.id, workDate],
         ),
+        pool.query(
+          `SELECT id, work_date::text AS "workDate", requested_minutes AS "requestedMinutes",
+             approved_minutes AS "approvedMinutes", note, status,
+             decision_note AS "decisionNote", created_at AS "createdAt", decided_at AS "decidedAt"
+           FROM attendance_overtime_requests
+           WHERE employee_id = $1
+           ORDER BY work_date DESC, created_at DESC
+           LIMIT 20`,
+          [employee.id],
+        ),
       ]);
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -340,6 +367,7 @@ export async function registerAttendanceWorkforceRoutes(
         result,
         clarifications: clarifications.rows,
         mobileEvidence: mobile.rows,
+        overtimeRequests: overtime.rows,
       });
     } catch (error) {
       return sendError(reply, error);

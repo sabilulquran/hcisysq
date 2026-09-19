@@ -21,9 +21,13 @@ import {
   AdminAdmsDeviceTransactionsRoutePage,
   AdminAdmsDeviceUsersRoutePage,
 } from "@/pages/AdminAdmsDeviceRoutePages";
+import { AdminAdmsBackOfficePage } from "@/pages/AdminAdmsBackOfficePage";
 import { AdminAdmsDevicesPage } from "@/pages/AdminAdmsDevicesPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
-import { AdminAttendanceWorkforcePage } from "@/pages/AdminAttendanceWorkforcePage";
+import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
+import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage, AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReviewPages";
+import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
+import { AdminAttendanceWorkforceOverviewPage } from "@/pages/AdminAttendanceWorkforceOverviewPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
@@ -240,7 +244,63 @@ const adminAttendanceWorkforceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/workforce",
   beforeLoad: () => requireAdminPath("/admin/attendance/workforce"),
-  component: AdminAttendanceWorkforcePage,
+  component: AdminAttendanceWorkforceOverviewPage,
+});
+
+const adminAttendanceLocationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/locations",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/locations"),
+  component: AdminAttendanceLocationsPage,
+});
+
+const adminAttendanceSchedulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/schedules",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/schedules"),
+  component: AdminAttendanceSchedulesPage,
+});
+
+const adminAttendanceAssignmentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/assignments",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/assignments"),
+  component: AdminAttendanceAssignmentsPage,
+});
+
+const adminAttendanceRosterRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/roster",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/roster"),
+  component: AdminAttendanceRosterPage,
+});
+
+const adminAttendanceClarificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/clarifications",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/clarifications"),
+  component: AdminAttendanceClarificationsPage,
+});
+
+const adminAttendanceMobileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/mobile",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/mobile"),
+  component: AdminAttendanceMobileEvidencePage,
+});
+
+const adminAttendanceReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/reports",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/reports"),
+  component: AdminAttendanceReportsPage,
+});
+
+const adminAdmsBackOfficeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms"),
+  component: AdminAdmsBackOfficePage,
 });
 
 const adminAdmsDevicesRoute = createRoute({
@@ -380,6 +440,14 @@ const routeTree = rootRoute.addChildren([
   adminOrganizationRoute,
   adminAttendanceRoute,
   adminAttendanceWorkforceRoute,
+  adminAttendanceLocationsRoute,
+  adminAttendanceSchedulesRoute,
+  adminAttendanceAssignmentsRoute,
+  adminAttendanceRosterRoute,
+  adminAttendanceClarificationsRoute,
+  adminAttendanceMobileRoute,
+  adminAttendanceReportsRoute,
+  adminAdmsBackOfficeRoute,
   adminAdmsDevicesRoute,
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,

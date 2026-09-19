@@ -14,6 +14,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
+  if (path === "/admin/attendance/adms") return hasPermission(session, "attendance.devices.read");
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))
@@ -24,6 +25,15 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "attendance.schedule.manage", "attendance.policy.manage",
     "attendance.clarification.manage", "attendance.reports.read",
   ].some((permission) => hasPermission(session, permission));
+  if (/^\/admin\/attendance\/workforce\/(locations|schedules|assignments|roster)$/.test(path)) {
+    return hasPermission(session, "attendance.schedule.manage");
+  }
+  if (/^\/admin\/attendance\/workforce\/(clarifications|mobile)$/.test(path)) {
+    return hasPermission(session, "attendance.clarification.manage");
+  }
+  if (path === "/admin/attendance/workforce/reports") {
+    return hasPermission(session, "attendance.reports.read");
+  }
   if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

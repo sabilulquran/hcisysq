@@ -53,6 +53,9 @@ const workLocationSchema = z.object({
   longitude: z.number().min(-180).max(180),
   radiusMeters: z.number().int().min(10).max(5000),
 });
+const workLocationPatchSchema = workLocationSchema.partial().extend({
+  active: z.boolean().optional(),
+}).refine((value) => Object.keys(value).length > 0, "Perubahan lokasi kosong.");
 const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
@@ -61,6 +64,15 @@ const scheduleTemplateSchema = z.object({
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
 });
+const scheduleTemplatePatchSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  lateGraceMinutes: z.number().int().min(0).max(240).optional(),
+  earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
+  workLocationId: z.string().uuid().nullable().optional(),
+  active: z.boolean().optional(),
+}).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
 const assignmentSchema = z.object({
   employeeId: z.string().uuid(),
   scheduleTemplateId: z.string().uuid(),
@@ -77,6 +89,14 @@ const rosterEntrySchema = z.object({
   note: z.string().trim().max(500).nullable().optional(),
 });
 const scheduleRangeSchema = z.object({ from: dateSchema, to: dateSchema });
+const rosterQuerySchema = z.object({ weekStart: dateSchema });
+const clarificationAdminQuerySchema = z.object({
+  status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+});
+const mobileEvidenceQuerySchema = z.object({
+  date: dateSchema.optional(),
+  reviewState: z.enum(["all", "accepted", "needs_review"]).default("all"),
+});
 const reportQuerySchema = z.object({
   date: dateSchema,
   status: z.enum([
@@ -572,19 +592,30 @@ export async function registerAttendanceWorkforceRoutes(
   app.get("/admin/attendance/clarifications", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.clarification.manage");
     if (!principal) return;
+    const query = clarificationAdminQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_CLARIFICATION_FILTER", message: "Filter klarifikasi tidak valid." });
+    const values: unknown[] = [];
+    let statusClause = "";
+    if (query.data.status !== "all") {
+      values.push(query.data.status);
+      statusClause = "WHERE clarification.status = $1";
+    }
     const rows = await pool.query(
       `SELECT clarification.id, clarification.work_date::text AS "workDate",
          clarification.kind, clarification.mode, clarification.reason, clarification.status,
          clarification.proposed_check_in_at AS "proposedCheckInAt",
          clarification.proposed_check_out_at AS "proposedCheckOutAt",
+         clarification.decision_note AS "decisionNote", clarification.decided_at AS "decidedAt",
          employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
          employee.full_name AS "employeeName", unit.name AS "unitName",
          clarification.created_at AS "createdAt"
        FROM attendance_clarifications clarification
        JOIN employees employee ON employee.id = clarification.employee_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       WHERE clarification.status = 'submitted'
-       ORDER BY clarification.created_at`,
+       ${statusClause}
+       ORDER BY clarification.work_date DESC, clarification.created_at DESC
+       LIMIT 500`,
+      values,
     );
     reply.header("Cache-Control", "no-store");
     return reply.send({ items: rows.rows });
@@ -640,6 +671,38 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send({ items: result.rows });
   });
 
+
+  app.patch("/admin/attendance/work-locations/:locationId", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ locationId: z.string().uuid() }).safeParse(request.params);
+    const body = workLocationPatchSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_WORK_LOCATION_UPDATE", message: "Perubahan lokasi kerja tidak valid." });
+    }
+    const current = await pool.query<{
+      name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean;
+    }>(
+      `SELECT name, latitude, longitude, radius_meters AS "radiusMeters", active
+       FROM attendance_work_locations WHERE id = $1`,
+      [params.data.locationId],
+    );
+    const item = current.rows[0];
+    if (!item) return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
+    const next = { ...item, ...body.data };
+    await pool.query(
+      `UPDATE attendance_work_locations
+       SET name = $2, latitude = $3, longitude = $4, radius_meters = $5,
+           active = $6, updated_at = now()
+       WHERE id = $1`,
+      [params.data.locationId, next.name, next.latitude, next.longitude, next.radiusMeters, next.active],
+    );
+    await insertAudit(pool, principal.id, "attendance.work_location.updated", "attendance_work_location", params.data.locationId, {
+      fields: Object.keys(body.data),
+    });
+    return reply.send({ id: params.data.locationId });
+  });
+
   app.post("/admin/attendance/work-locations", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
@@ -671,6 +734,47 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send({ items: result.rows });
   });
 
+
+  app.patch("/admin/attendance/schedules/:scheduleId", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ scheduleId: z.string().uuid() }).safeParse(request.params);
+    const body = scheduleTemplatePatchSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_SCHEDULE_UPDATE", message: "Perubahan jadwal tidak valid." });
+    }
+    const current = await pool.query<{
+      name: string; startTime: string; endTime: string; lateGraceMinutes: number;
+      earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+    }>(
+      `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
+         late_grace_minutes AS "lateGraceMinutes",
+         early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+         work_location_id AS "workLocationId", active
+       FROM attendance_schedule_templates WHERE id = $1`,
+      [params.data.scheduleId],
+    );
+    const item = current.rows[0];
+    if (!item) return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
+    const next = { ...item, ...body.data };
+    await pool.query(
+      `UPDATE attendance_schedule_templates
+       SET name = $2, start_time = $3::time, end_time = $4::time,
+           late_grace_minutes = $5, early_leave_tolerance_minutes = $6,
+           work_location_id = $7, active = $8, updated_at = now()
+       WHERE id = $1`,
+      [
+        params.data.scheduleId, next.name, next.startTime, next.endTime,
+        next.lateGraceMinutes, next.earlyLeaveToleranceMinutes,
+        next.workLocationId ?? null, next.active,
+      ],
+    );
+    await insertAudit(pool, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
+      fields: Object.keys(body.data),
+    });
+    return reply.send({ id: params.data.scheduleId });
+  });
+
   app.post("/admin/attendance/schedules", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
@@ -692,6 +796,54 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.status(201).send({ id });
   });
 
+
+  app.get("/admin/attendance/schedule-assignments", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const result = await pool.query(
+      `SELECT assignment.id,
+         employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
+         employee.full_name AS "employeeName", unit.name AS "unitName",
+         schedule.id AS "scheduleTemplateId", schedule.name AS "scheduleName",
+         assignment.weekday_mask AS "weekdayMask",
+         assignment.effective_from::text AS "effectiveFrom",
+         assignment.effective_to::text AS "effectiveTo",
+         assignment.created_at AS "createdAt"
+       FROM attendance_schedule_assignments assignment
+       JOIN employees employee ON employee.id = assignment.employee_id
+       JOIN attendance_schedule_templates schedule ON schedule.id = assignment.schedule_template_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       ORDER BY employee.full_name, assignment.effective_from DESC`,
+    );
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: result.rows });
+  });
+
+  app.patch("/admin/attendance/schedule-assignments/:assignmentId", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ assignmentId: z.string().uuid() }).safeParse(request.params);
+    const body = z.object({ effectiveTo: dateSchema.nullable() }).safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_SCHEDULE_ASSIGNMENT_UPDATE", message: "Perubahan assignment tidak valid." });
+    }
+    const changed = await pool.query(
+      `UPDATE attendance_schedule_assignments
+       SET effective_to = $2::date
+       WHERE id = $1
+         AND ($2::date IS NULL OR $2::date >= effective_from)
+       RETURNING id`,
+      [params.data.assignmentId, body.data.effectiveTo],
+    );
+    if (!changed.rows[0]) {
+      return reply.status(409).send({ code: "SCHEDULE_ASSIGNMENT_UPDATE_REJECTED", message: "Assignment tidak ditemukan atau tanggal akhir sebelum tanggal mulai." });
+    }
+    await insertAudit(pool, principal.id, "attendance.schedule_assignment.updated", "attendance_schedule_assignment", params.data.assignmentId, {
+      effectiveTo: body.data.effectiveTo,
+    });
+    return reply.send({ id: params.data.assignmentId });
+  });
+
   app.post("/admin/attendance/schedule-assignments", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
@@ -710,6 +862,65 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.status(201).send({ id });
   });
 
+
+  app.get("/admin/attendance/rosters", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const query = rosterQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_ROSTER_WEEK", message: "Minggu roster tidak valid." });
+    const [rosters, entries, employees, schedules] = await Promise.all([
+      pool.query(
+        `SELECT id, week_start::text AS "weekStart", version, status,
+           published_at AS "publishedAt", created_at AS "createdAt", updated_at AS "updatedAt"
+         FROM attendance_rosters
+         WHERE week_start = $1::date
+         ORDER BY version DESC`,
+        [query.data.weekStart],
+      ),
+      pool.query(
+        `SELECT entry.roster_id AS "rosterId", entry.employee_id AS "employeeId",
+           entry.work_date::text AS "workDate", entry.schedule_template_id AS "scheduleTemplateId",
+           entry.is_off AS "isOff", entry.note
+         FROM attendance_roster_entries entry
+         JOIN attendance_rosters roster ON roster.id = entry.roster_id
+         WHERE roster.week_start = $1::date
+         ORDER BY roster.version DESC, entry.employee_id, entry.work_date`,
+        [query.data.weekStart],
+      ),
+      pool.query(
+        `SELECT employee.id, employee.employee_number AS "employeeNumber",
+           employee.full_name AS "employeeName", unit.name AS "unitName",
+           assignment.schedule_template_id AS "defaultScheduleId"
+         FROM employees employee
+         LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+         LEFT JOIN LATERAL (
+           SELECT schedule_template_id
+           FROM attendance_schedule_assignments a
+           WHERE a.employee_id = employee.id
+             AND $1::date >= a.effective_from
+             AND (a.effective_to IS NULL OR $1::date <= a.effective_to)
+           ORDER BY a.effective_from DESC
+           LIMIT 1
+         ) assignment ON true
+         WHERE employee.status = 'active'
+         ORDER BY unit.name NULLS LAST, employee.full_name`,
+        [query.data.weekStart],
+      ),
+      pool.query(
+        `SELECT id, name, start_time::text AS "startTime", end_time::text AS "endTime", active
+         FROM attendance_schedule_templates ORDER BY active DESC, name`,
+      ),
+    ]);
+    reply.header("Cache-Control", "no-store");
+    return reply.send({
+      weekStart: query.data.weekStart,
+      rosters: rosters.rows,
+      entries: entries.rows,
+      employees: employees.rows,
+      schedules: schedules.rows,
+    });
+  });
+
   app.post("/admin/attendance/rosters", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
@@ -726,6 +937,25 @@ export async function registerAttendanceWorkforceRoutes(
       `INSERT INTO attendance_rosters (id, week_start, version, status, created_by_account_id)
        VALUES ($1, $2::date, $3, 'DRAFT', $4)`,
       [id, body.data.weekStart, version.rows[0]?.version ?? 1, principal.id],
+    );
+    await pool.query(
+      `WITH previous AS (
+         SELECT id
+         FROM attendance_rosters
+         WHERE week_start = $2::date
+           AND status = 'PUBLISHED'
+           AND id <> $1
+         ORDER BY version DESC
+         LIMIT 1
+       )
+       INSERT INTO attendance_roster_entries (
+         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+       )
+       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.is_off, entry.note
+       FROM attendance_roster_entries entry
+       JOIN previous ON previous.id = entry.roster_id
+       ON CONFLICT DO NOTHING`,
+      [id, body.data.weekStart],
     );
     return reply.status(201).send({ id, version: version.rows[0]?.version ?? 1, status: "DRAFT" });
   });
@@ -770,6 +1000,67 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+
+  app.delete("/admin/attendance/rosters/:rosterId/entries/:employeeId/:workDate", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({
+      rosterId: z.string().uuid(),
+      employeeId: z.string().uuid(),
+      workDate: dateSchema,
+    }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_ROSTER_ENTRY", message: "Entry roster tidak valid." });
+    const changed = await pool.query(
+      `DELETE FROM attendance_roster_entries entry
+       USING attendance_rosters roster
+       WHERE entry.roster_id = roster.id
+         AND roster.id = $1
+         AND roster.status = 'DRAFT'
+         AND entry.employee_id = $2
+         AND entry.work_date = $3::date
+       RETURNING entry.employee_id`,
+      [params.data.rosterId, params.data.employeeId, params.data.workDate],
+    );
+    if (!changed.rows[0]) return reply.status(409).send({ code: "ROSTER_ENTRY_NOT_REMOVABLE", message: "Entry tidak ditemukan atau roster bukan draft." });
+    return reply.status(204).send();
+  });
+
+  app.post("/admin/attendance/rosters/:rosterId/copy-previous", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ rosterId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_ROSTER", message: "Roster tidak valid." });
+    const target = await pool.query<{ weekStart: string; status: string }>(
+      `SELECT week_start::text AS "weekStart", status FROM attendance_rosters WHERE id = $1`,
+      [params.data.rosterId],
+    );
+    const roster = target.rows[0];
+    if (!roster || roster.status !== "DRAFT") return reply.status(409).send({ code: "ROSTER_NOT_DRAFT", message: "Roster tidak dapat menerima salinan." });
+    const previousWeek = shiftDate(roster.weekStart, -7);
+    const inserted = await pool.query(
+      `WITH source_roster AS (
+         SELECT id
+         FROM attendance_rosters
+         WHERE week_start = $2::date AND status = 'PUBLISHED'
+         ORDER BY version DESC LIMIT 1
+       )
+       INSERT INTO attendance_roster_entries (
+         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+       )
+       SELECT $1, entry.employee_id, (entry.work_date + interval '7 days')::date,
+              entry.schedule_template_id, entry.is_off, entry.note
+       FROM attendance_roster_entries entry
+       JOIN source_roster source ON source.id = entry.roster_id
+       ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
+         schedule_template_id = EXCLUDED.schedule_template_id,
+         is_off = EXCLUDED.is_off,
+         note = EXCLUDED.note
+       RETURNING employee_id`,
+      [params.data.rosterId, previousWeek],
+    );
+    return reply.send({ copied: inserted.rowCount ?? 0 });
+  });
+
   app.post("/admin/attendance/rosters/:rosterId/publish", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
@@ -785,6 +1076,79 @@ export async function registerAttendanceWorkforceRoutes(
     if (!changed.rows[0]) return reply.status(409).send({ code: "ROSTER_NOT_DRAFT", message: "Roster tidak dapat dipublikasikan." });
     await insertAudit(pool, principal.id, "attendance.roster.published", "attendance_roster", params.data.rosterId, {});
     return reply.send({ id: params.data.rosterId, status: "PUBLISHED" });
+  });
+
+
+  app.get("/admin/attendance/mobile-evidence", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.clarification.manage");
+    if (!principal) return;
+    const query = mobileEvidenceQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_MOBILE_EVIDENCE_FILTER", message: "Filter evidence mobile tidak valid." });
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    if (query.data.date) {
+      values.push(query.data.date);
+      clauses.push(`(evidence.created_at AT TIME ZONE 'Asia/Jakarta')::date = ${values.length}::date`);
+    }
+    if (query.data.reviewState !== "all") {
+      values.push(query.data.reviewState);
+      clauses.push(`evidence.review_state = ${values.length}`);
+    }
+    const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
+    const result = await pool.query(
+      `SELECT evidence.id, evidence.action,
+         evidence.latitude, evidence.longitude, evidence.accuracy_meters AS "accuracyMeters",
+         evidence.distance_meters AS "distanceMeters", evidence.geofence_status AS "geofenceStatus",
+         evidence.review_state AS "reviewState", evidence.photo_byte_length AS "photoByteLength",
+         evidence.created_at AS "createdAt",
+         event.occurred_at AS "occurredAt",
+         employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
+         employee.full_name AS "employeeName", unit.name AS "unitName",
+         location.id AS "workLocationId", location.name AS "workLocationName",
+         location.radius_meters AS "radiusMeters"
+       FROM attendance_mobile_evidence evidence
+       JOIN attendance_events event ON event.id = evidence.event_id
+       JOIN employees employee ON employee.id = evidence.employee_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       LEFT JOIN attendance_work_locations location ON location.id = evidence.work_location_id
+       ${where}
+       ORDER BY evidence.created_at DESC
+       LIMIT 500`,
+      values,
+    );
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: result.rows });
+  });
+
+  app.get("/admin/attendance/mobile-evidence/:evidenceId/photo", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.clarification.manage");
+    if (!principal) return;
+    const params = z.object({ evidenceId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_EVIDENCE_ID", message: "Evidence tidak valid." });
+    const evidence = await pool.query<{
+      id: string; employeeId: string; eventId: string; ciphertext: Buffer; iv: Buffer;
+      authTag: Buffer; keyId: string; sha256: string; byteLength: number;
+    }>(
+      `SELECT id, employee_id AS "employeeId", event_id AS "eventId",
+         photo_ciphertext AS ciphertext, photo_iv AS iv, photo_auth_tag AS "authTag",
+         encryption_key_id AS "keyId", photo_sha256 AS sha256,
+         photo_byte_length AS "byteLength"
+       FROM attendance_mobile_evidence WHERE id = $1`,
+      [params.data.evidenceId],
+    );
+    const item = evidence.rows[0];
+    if (!item) return reply.status(404).send({ code: "EVIDENCE_NOT_FOUND", message: "Evidence tidak ditemukan." });
+    const payload = decryptMobileAttendancePhoto(item, {
+      evidenceId: item.id,
+      employeeId: item.employeeId,
+      eventId: item.eventId,
+    }, config);
+    await insertAudit(pool, principal.id, "attendance.mobile.photo.read", "attendance_mobile_evidence", item.id, {
+      admin: true, employeeId: item.employeeId,
+    });
+    reply.header("Cache-Control", "no-store");
+    reply.type("image/jpeg");
+    return reply.send(payload);
   });
 
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {

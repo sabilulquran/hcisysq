@@ -110,8 +110,13 @@ paths:
       tags: [Attendance]
       operationId: listAttendanceClarificationsForHc
       x-required-permission: attendance.clarification.manage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted }
       responses:
-        '200': { description: Pending clarification queue }
+        '200': { description: Clarification queue or history filtered by status }
 
   /admin/attendance/clarifications/{clarificationId}/decision:
     post:
@@ -172,6 +177,12 @@ paths:
         '201': { description: Schedule template created }
 
   /admin/attendance/schedule-assignments:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceScheduleAssignments
+      x-required-permission: attendance.schedule.manage
+      responses:
+        '200': { description: Effective-dated schedule assignments with employee and schedule labels }
     post:
       tags: [Attendance]
       operationId: createAttendanceScheduleAssignment
@@ -180,6 +191,14 @@ paths:
         '201': { description: Effective-dated employee schedule assignment created }
 
   /admin/attendance/rosters:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceRosterWeek
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: weekStart, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Roster versions, entries, active employees, and schedule templates for the week }
     post:
       tags: [Attendance]
       operationId: createAttendanceRosterDraft
@@ -233,6 +252,86 @@ paths:
             enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
       responses:
         '200': { description: Current attendance result snapshot by employee }
+
+
+  /admin/attendance/work-locations/{locationId}:
+    patch:
+      tags: [Attendance]
+      operationId: updateAttendanceWorkLocation
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: locationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Work location updated without deleting historical references }
+
+  /admin/attendance/schedules/{scheduleId}:
+    patch:
+      tags: [Attendance]
+      operationId: updateAttendanceSchedule
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: scheduleId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Schedule template updated }
+
+  /admin/attendance/schedule-assignments/{assignmentId}:
+    patch:
+      tags: [Attendance]
+      operationId: updateAttendanceScheduleAssignment
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: assignmentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Effective-to boundary updated }
+
+  /admin/attendance/rosters/{rosterId}/entries/{employeeId}/{workDate}:
+    delete:
+      tags: [Attendance]
+      operationId: removeAttendanceRosterOverride
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: workDate, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '204': { description: Draft override removed so the employee returns to default schedule }
+
+  /admin/attendance/rosters/{rosterId}/copy-previous:
+    post:
+      tags: [Attendance]
+      operationId: copyPreviousAttendanceRoster
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Latest published roster from previous week copied into draft }
+
+  /admin/attendance/mobile-evidence:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceMobileEvidence
+      x-required-permission: attendance.clarification.manage
+      parameters:
+        - { name: date, in: query, required: false, schema: { type: string, format: date } }
+        - name: reviewState
+          in: query
+          required: false
+          schema: { type: string, enum: [all, accepted, needs_review] }
+      responses:
+        '200': { description: Mobile GPS/photo metadata list without photo plaintext }
+
+  /admin/attendance/mobile-evidence/{evidenceId}/photo:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceMobileEvidencePhotoForHc
+      x-required-permission: attendance.clarification.manage
+      parameters:
+        - { name: evidenceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Decrypted attendance JPEG for authorized HC review; no-store and audited
+          content:
+            image/jpeg: { schema: { type: string, contentEncoding: binary } }
 
 components:
   schemas:

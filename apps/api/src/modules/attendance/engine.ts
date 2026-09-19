@@ -236,10 +236,18 @@ export async function resolveSchedule(
   workDate: string,
 ): Promise<ResolvedSchedule> {
   const roster = await db.query<ScheduleRow>(
-    `SELECT
+    `WITH latest_roster AS (
+       SELECT id
+       FROM attendance_rosters
+       WHERE status = 'PUBLISHED'
+         AND week_start = date_trunc('week', $2::date)::date
+       ORDER BY version DESC
+       LIMIT 1
+     )
+     SELECT
        entry.schedule_template_id AS "scheduleTemplateId",
-       roster.id AS "rosterId",
-       entry.is_off AS "isOff",
+       latest.id AS "rosterId",
+       coalesce(entry.is_off, false) AS "isOff",
        schedule.start_time::text AS "startTime",
        schedule.end_time::text AS "endTime",
        schedule.late_grace_minutes AS "lateGraceMinutes",
@@ -249,18 +257,18 @@ export async function resolveSchedule(
        location.latitude,
        location.longitude,
        location.radius_meters AS "radiusMeters"
-     FROM attendance_rosters roster
-     JOIN attendance_roster_entries entry ON entry.roster_id = roster.id
+     FROM latest_roster latest
+     LEFT JOIN attendance_roster_entries entry
+       ON entry.roster_id = latest.id
+      AND entry.employee_id = $1
+      AND entry.work_date = $2::date
      LEFT JOIN attendance_schedule_templates schedule ON schedule.id = entry.schedule_template_id
-     LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
-     WHERE roster.status = 'PUBLISHED'
-       AND entry.employee_id = $1
-       AND entry.work_date = $2::date
-     ORDER BY roster.version DESC
-     LIMIT 1`,
+     LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id`,
     [employeeId, workDate],
   );
-  if (roster.rows[0]) return mapScheduleRow(roster.rows[0], workDate);
+  if (roster.rows[0]?.rosterId && (roster.rows[0].scheduleTemplateId || roster.rows[0].isOff)) {
+    return mapScheduleRow(roster.rows[0], workDate);
+  }
 
   const holiday = await db.query<{ isWorkingDay: boolean }>(
     `SELECT is_working_day AS "isWorkingDay"

@@ -155,7 +155,7 @@ Outside-geofence tidak dibuang karena evidence tersebut penting untuk tugas lapa
 
 ### Activation and retention boundary
 
-Repository implementation dapat selesai tanpa otomatis mengaktifkan production mobile capture. `MOBILE_ATTENDANCE_ENABLED=0` adalah default fail-closed. Enablement production membutuhkan keputusan operasional eksplisit termasuk retention/purge period foto. Implementasi ini **tidak mengarang angka retention** dan tidak menambahkan auto-purge sebelum kebijakan tersebut disetujui.
+Repository implementation tetap default fail-closed dengan `MOBILE_ATTENDANCE_ENABLED=0`. Pada 2026-09-19 pemilik produk memberi keputusan eksplisit untuk mengaktifkan mobile GPS + foto di production. Aktivasi dilakukan melalui workflow production yang memastikan restricted-media keyring siap dan `BIOMETRIC_COLLECTION_ENABLED` tetap `0`. Kebijakan retention/purge foto belum ditetapkan; implementasi tidak mengarang angka retention dan belum menambahkan auto-purge.
 
 ## ATT-007 — Attendance engine
 

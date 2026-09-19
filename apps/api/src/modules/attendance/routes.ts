@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie, requirePermissionsFromCookie } from "../auth/authorization.js";
+import { materializeAttendanceResult } from "./engine.js";
 import {
   AuthError,
   AuthService,
@@ -230,20 +231,56 @@ async function loadRecords(
   range: { from: string; to: string },
 ): Promise<AttendanceRecordRow[]> {
   const result = await db.query<AttendanceRecordRow>(
-    `SELECT
-      employee_id AS "employeeId",
-      attendance_date::text AS "attendanceDate",
-      check_in_at AS "checkInAt",
-      check_out_at AS "checkOutAt",
-      source,
-      source_reference AS "sourceReference",
-      note,
-      created_at AS "createdAt",
-      updated_at AS "updatedAt"
-    FROM attendance_daily_records
-    WHERE employee_id = $1
-      AND attendance_date BETWEEN $2::date AND $3::date
-    ORDER BY attendance_date DESC`,
+    `WITH canonical AS (
+       SELECT DISTINCT ON (employee_id, work_date)
+         employee_id,
+         work_date AS attendance_date,
+         first_check_in_at AS check_in_at,
+         last_check_out_at AS check_out_at,
+         'integration'::text AS source,
+         'canonical-result:' || id::text AS source_reference,
+         NULL::text AS note,
+         created_at,
+         created_at AS updated_at
+       FROM attendance_result_versions
+       WHERE employee_id = $1
+         AND work_date BETWEEN $2::date AND $3::date
+       ORDER BY employee_id, work_date, version DESC
+     ),
+     compatibility AS (
+       SELECT legacy.*
+       FROM attendance_daily_records legacy
+       WHERE legacy.employee_id = $1
+         AND legacy.attendance_date BETWEEN $2::date AND $3::date
+         AND NOT EXISTS (
+           SELECT 1 FROM canonical current
+           WHERE current.attendance_date = legacy.attendance_date
+         )
+     )
+     SELECT
+       employee_id AS "employeeId",
+       attendance_date::text AS "attendanceDate",
+       check_in_at AS "checkInAt",
+       check_out_at AS "checkOutAt",
+       source,
+       source_reference AS "sourceReference",
+       note,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+     FROM canonical
+     UNION ALL
+     SELECT
+       employee_id AS "employeeId",
+       attendance_date::text AS "attendanceDate",
+       check_in_at AS "checkInAt",
+       check_out_at AS "checkOutAt",
+       source,
+       source_reference AS "sourceReference",
+       note,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+     FROM compatibility
+     ORDER BY "attendanceDate" DESC`,
     [employeeId, range.from, range.to],
   );
   return result.rows;
@@ -410,87 +447,62 @@ export async function registerAttendanceRoutes(
       try {
         validateAttendanceTimes(body.data);
         await loadEmployeeById(pool, params.data.employeeId);
-
+        const clarificationId = randomUUID();
+        const reason = body.data.note?.trim() || "Koreksi manual administrator";
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
-          await lockAttendanceKey(client, params.data.employeeId, params.data.attendanceDate);
-          const before = await loadRecordForUpdate(
-            client,
-            params.data.employeeId,
-            params.data.attendanceDate,
-          );
-          assertManualAttendanceMutation(before);
-
-          const result = await client.query<AttendanceRecordRow>(
-            `INSERT INTO attendance_daily_records (
-              employee_id,
-              attendance_date,
-              check_in_at,
-              check_out_at,
-              source,
-              source_reference,
-              note,
-              created_by_account_id,
-              updated_by_account_id
-            ) VALUES ($1, $2::date, $3::timestamptz, $4::timestamptz, 'manual', NULL, $5, $6, $6)
-            ON CONFLICT (employee_id, attendance_date) DO UPDATE SET
-              check_in_at = EXCLUDED.check_in_at,
-              check_out_at = EXCLUDED.check_out_at,
-              note = EXCLUDED.note,
-              updated_by_account_id = EXCLUDED.updated_by_account_id,
-              updated_at = now()
-            RETURNING
-              employee_id AS "employeeId",
-              attendance_date::text AS "attendanceDate",
-              check_in_at AS "checkInAt",
-              check_out_at AS "checkOutAt",
-              source,
-              source_reference AS "sourceReference",
-              note,
-              created_at AS "createdAt",
-              updated_at AS "updatedAt"`,
-            [
-              params.data.employeeId,
-              params.data.attendanceDate,
-              body.data.checkInAt,
-              body.data.checkOutAt,
-              body.data.note,
-              principal.id,
-            ],
-          );
-          const after = result.rows[0];
-          if (!after) throw new Error("Attendance upsert did not return a record");
-
           await client.query(
-            `INSERT INTO attendance_daily_audit_events (
-              id,
-              employee_id,
-              attendance_date,
-              actor_account_id,
-              action,
-              before_record,
-              after_record
-            ) VALUES ($1, $2, $3::date, $4, $5, $6::jsonb, $7::jsonb)`,
+            `INSERT INTO attendance_clarifications (
+               id, employee_id, work_date, kind, mode, reason,
+               proposed_check_in_at, proposed_check_out_at, status,
+               decided_by_account_id, decision_note, decided_at
+             ) VALUES (
+               $1, $2, $3::date, 'other', 'correction', $4,
+               $5::timestamptz, $6::timestamptz, 'approved',
+               $7, 'Canonical manual correction via ATT-001 compatibility route', now()
+             )`,
             [
-              randomUUID(),
-              params.data.employeeId,
-              params.data.attendanceDate,
-              principal.id,
-              before ? "updated" : "created",
-              before ? JSON.stringify(snapshotRecord(before)) : null,
-              JSON.stringify(snapshotRecord(after)),
+              clarificationId, params.data.employeeId, params.data.attendanceDate, reason,
+              body.data.checkInAt, body.data.checkOutAt, principal.id,
             ],
+          );
+          const eventPayload = JSON.stringify({ compatibilityRoute: true, reason });
+          await client.query(
+            `INSERT INTO attendance_clarification_events (
+               id, clarification_id, actor_account_id, event_type, payload
+             ) VALUES
+               ($1, $3, $4, 'submitted', $5::jsonb),
+               ($2, $3, $4, 'approved', $5::jsonb)`,
+            [randomUUID(), randomUUID(), clarificationId, principal.id, eventPayload],
           );
           await client.query("COMMIT");
-          reply.header("Cache-Control", "no-store");
-          return reply.send({ item: mapRecord(after) });
         } catch (error) {
           await client.query("ROLLBACK");
           throw error;
         } finally {
           client.release();
         }
+
+        const canonical = await materializeAttendanceResult(
+          pool,
+          params.data.employeeId,
+          params.data.attendanceDate,
+        );
+        const now = canonical.createdAt;
+        const item: AttendanceRecordRow = {
+          employeeId: params.data.employeeId,
+          attendanceDate: params.data.attendanceDate,
+          checkInAt: canonical.firstCheckInAt,
+          checkOutAt: canonical.lastCheckOutAt,
+          source: "integration",
+          sourceReference: `canonical-result:${canonical.id}`,
+          note: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        reply.header("Cache-Control", "no-store");
+        return reply.send({ item: mapRecord(item), canonical: true, clarificationId });
       } catch (error) {
         return sendAttendanceError(reply, error);
       }
@@ -502,7 +514,6 @@ export async function registerAttendanceRoutes(
     async (request, reply) => {
       const principal = await authenticate(auth, request, reply, "attendance.records.manage");
       if (!principal) return;
-
       const params = recordParamSchema.safeParse(request.params);
       if (!params.success) {
         return reply.status(400).send({
@@ -510,62 +521,10 @@ export async function registerAttendanceRoutes(
           message: "Pegawai atau tanggal tidak valid.",
         });
       }
-
-      try {
-        await loadEmployeeById(pool, params.data.employeeId);
-        const client = await pool.connect();
-        try {
-          await client.query("BEGIN");
-          await lockAttendanceKey(client, params.data.employeeId, params.data.attendanceDate);
-          const before = await loadRecordForUpdate(
-            client,
-            params.data.employeeId,
-            params.data.attendanceDate,
-          );
-          if (!before) {
-            throw new AttendanceError(
-              404,
-              "ATTENDANCE_RECORD_NOT_FOUND",
-              "Rekaman kehadiran tidak ditemukan.",
-            );
-          }
-          assertManualAttendanceMutation(before);
-
-          await client.query(
-            `DELETE FROM attendance_daily_records
-             WHERE employee_id = $1 AND attendance_date = $2::date`,
-            [params.data.employeeId, params.data.attendanceDate],
-          );
-          await client.query(
-            `INSERT INTO attendance_daily_audit_events (
-              id,
-              employee_id,
-              attendance_date,
-              actor_account_id,
-              action,
-              before_record,
-              after_record
-            ) VALUES ($1, $2, $3::date, $4, 'deleted', $5::jsonb, NULL)`,
-            [
-              randomUUID(),
-              params.data.employeeId,
-              params.data.attendanceDate,
-              principal.id,
-              JSON.stringify(snapshotRecord(before)),
-            ],
-          );
-          await client.query("COMMIT");
-          reply.header("Cache-Control", "no-store");
-          return reply.status(204).send();
-        } catch (error) {
-          await client.query("ROLLBACK");
-          throw error;
-        } finally {
-          client.release();
-        }
-      } catch (error) {
-        return sendAttendanceError(reply, error);
-      }
+      reply.header("Cache-Control", "no-store");
+      return reply.status(409).send({
+        code: "CANONICAL_ATTENDANCE_IS_APPEND_ONLY",
+        message: "Fakta presensi canonical tidak dihapus. Gunakan koreksi manual dengan alasan agar riwayat audit tetap utuh.",
+      });
     },
-  );
-}
+  );}

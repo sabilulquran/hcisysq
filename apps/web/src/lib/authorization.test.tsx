@@ -11,6 +11,7 @@ function session(principalType: PrincipalType, permissions: string[]): AuthSessi
 }
 const hcAdmin = ["employees.manage", "organization.manage", "access.manage", "access.roles.assign",
   "leave.configuration.manage", "attendance.records.manage", "payslips.import", "payslips.publish"];
+const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read"];
 
 describe("AUTH-011 backend-derived admin navigation", () => {
   it("shows intended HC admin surfaces in both desktop and compact menus", () => {
@@ -36,6 +37,30 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     const missingContext: AuthSession = { principal: session("SUPER_ADMIN", []).principal, expiresAt: "2099-01-01T00:00:00Z" };
     expect(canAccessAdminPath(missingContext, "/admin")).toBe(false);
     expect(landingPath(session("EMPLOYEE", []))).toBe("/app");
+  });
+
+  it("exposes attendance workspace child routes and ADMS back office by explicit permissions", () => {
+    const workforce = session("EMPLOYEE", workforcePermissions);
+    for (const path of [
+      "/admin/attendance/workforce",
+      "/admin/attendance/workforce/locations",
+      "/admin/attendance/workforce/schedules",
+      "/admin/attendance/workforce/assignments",
+      "/admin/attendance/workforce/roster",
+      "/admin/attendance/workforce/clarifications",
+      "/admin/attendance/workforce/mobile",
+      "/admin/attendance/workforce/reports",
+    ]) {
+      expect(canAccessAdminPath(workforce, path)).toBe(true);
+    }
+    expect(canAccessAdminPath(workforce, "/admin/attendance/adms")).toBe(false);
+
+    const deviceOperator = session("EMPLOYEE", ["attendance.devices.read"]);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices")).toBe(true);
+    const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);
+    expect(html).toContain('href="/admin/attendance/adms"');
+    expect(html).toContain('href="/admin/attendance/devices"');
   });
 
   it("keeps Board governance-only and honors trusted legacy compatibility context", () => {

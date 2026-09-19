@@ -257,13 +257,20 @@ export async function resolveSchedule(
        AND entry.employee_id = $1
        AND entry.work_date = $2::date
      ORDER BY roster.version DESC
-     LIMIT 2`,
+     LIMIT 1`,
     [employeeId, workDate],
   );
-  if (roster.rows.length > 1) {
-    return { ...baseSchedule(), state: "configuration_error", reason: "multiple_published_rosters" };
-  }
   if (roster.rows[0]) return mapScheduleRow(roster.rows[0], workDate);
+
+  const holiday = await db.query<{ isWorkingDay: boolean }>(
+    `SELECT is_working_day AS "isWorkingDay"
+     FROM leave_calendar_exceptions
+     WHERE calendar_date = $1::date`,
+    [workDate],
+  );
+  if (holiday.rows[0]?.isWorkingDay === false) {
+    return { ...baseSchedule(), state: "off", reason: "calendar_holiday" };
+  }
 
   const assigned = await db.query<ScheduleRow>(
     `SELECT

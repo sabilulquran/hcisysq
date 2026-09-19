@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Pencil, Plus, Save, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";

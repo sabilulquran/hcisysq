@@ -14,13 +14,14 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
+  if (path === "/admin/attendance/adms") return hasPermission(session, "attendance.devices.read");
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"));
   }
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
-  if (path === "/admin/attendance/workforce") return [
+  if (/^\/admin\/attendance\/workforce(?:\/|$)/.test(path)) return [
     "attendance.schedule.manage", "attendance.policy.manage",
     "attendance.clarification.manage", "attendance.reports.read",
   ].some((permission) => hasPermission(session, permission));

@@ -2,6 +2,8 @@ import { AlertTriangle, CheckCircle2, Eye, Loader2, Search, Smartphone, X } from
 import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { getCurrentSession } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
 import {
   attendanceMobileEvidencePhotoUrl,
   decideAttendanceClarification,
@@ -201,6 +203,9 @@ export function AdminAttendanceReportsPage() {
   const [busy, setBusy] = useState<"load" | "finalize" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [canFinalize, setCanFinalize] = useState(false);
+
+  useEffect(() => { void getCurrentSession().then((session) => setCanFinalize(hasPermission(session, "attendance.policy.manage"))); }, []);
 
   const load = async () => {
     setBusy("load");
@@ -234,7 +239,7 @@ export function AdminAttendanceReportsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs font-semibold text-muted-foreground">Tanggal<input className="mt-1 block h-10 rounded-xl border px-3 text-sm" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label className="text-xs font-semibold text-muted-foreground">Status<select className="mt-1 block h-10 rounded-xl border px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua</option><option value="present">Hadir</option><option value="late">Terlambat</option><option value="incomplete">Belum lengkap</option><option value="leave">Cuti/Izin</option><option value="absent">Tidak hadir</option><option value="off">Libur</option><option value="configuration_error">Configuration error</option></select></label>
-          <button disabled={busy !== null} onClick={() => void finalize()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finalisasi tanggal</button>
+          {canFinalize ? <button disabled={busy !== null} onClick={() => void finalize()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finalisasi tanggal</button> : null}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">{Object.entries(report?.summary ?? {}).map(([key,value]) => <span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{statusLabel(key)}: {value}</span>)}</div>
       </section>

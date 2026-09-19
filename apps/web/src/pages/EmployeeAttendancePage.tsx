@@ -45,7 +45,16 @@ export function EmployeeAttendancePage() {
     ]);
     setSnapshot(current); setHistory([...range.items].reverse()); setError(null);
   };
-  useEffect(()=>{void load().catch(cause=>setError(cause instanceof Error?cause.message:"Kehadiran tidak dapat dimuat.")).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{
+    void Promise.all([
+      getMyWorkforceAttendance(today),
+      getMyAttendanceScheduleRange(shiftDate(today,-29),today),
+    ]).then(([current, range]) => {
+      setSnapshot(current);
+      setHistory([...range.items].reverse());
+      setError(null);
+    }).catch(cause=>setError(cause instanceof Error?cause.message:"Kehadiran tidak dapat dimuat.")).finally(()=>setLoading(false));
+  },[today]);
 
   const user=useMemo(()=>({name:snapshot?.employee.fullName??"Pegawai",initials:initials(snapshot?.employee.fullName??"P"),position:"Pegawai",unit:"Yayasan Sabilul Qur'an"}),[snapshot?.employee.fullName]);
   const currentStatus=snapshot?.result?.status ?? snapshot?.schedule.state;

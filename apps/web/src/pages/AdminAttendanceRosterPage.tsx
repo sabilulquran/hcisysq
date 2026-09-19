@@ -38,7 +38,9 @@ export function AdminAttendanceRosterPage() {
     setData(await getAttendanceRosterWeek(weekStart));
   };
   useEffect(() => {
-    void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Roster tidak dapat dimuat."));
+    void getAttendanceRosterWeek(weekStart)
+      .then(setData)
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Roster tidak dapat dimuat."));
   }, [weekStart]);
 
   const draft = data?.rosters.find((item) => item.status === "DRAFT") ?? null;

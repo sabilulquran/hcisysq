@@ -263,8 +263,8 @@ export async function attendanceDailyReadModel(
       lateJustified: false,
       earlyLeaveJustified: false,
       outsideGeofenceJustified: false,
-      sources: [],
-      deviceIds: [],
+      sources: [] as string[],
+      deviceIds: [] as string[],
       materialized: false,
     });
   }

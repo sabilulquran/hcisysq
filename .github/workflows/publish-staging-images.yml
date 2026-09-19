@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/publish-staging-images.yml"
+      - "infra/docker-compose.vps.yml"
 
 permissions:
   contents: read

@@ -162,7 +162,7 @@ export function buildSessions(events: readonly AttendanceEventRow[]): Attendance
 
 export function applyBoundaryCorrections(
   sessions: readonly AttendanceSession[],
-  corrections: readonly Array<{
+  corrections: ReadonlyArray<{
     proposedCheckInAt: Date | null;
     proposedCheckOutAt: Date | null;
   }>,

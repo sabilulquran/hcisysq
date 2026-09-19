@@ -30,7 +30,16 @@ export function AdminAttendanceOvertimePage() {
     setEmployees(employeePage.items);
     setForm((current) => ({ ...current, employeeId: current.employeeId || employeePage.items[0]?.id || "" }));
   };
-  useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Data lembur tidak dapat dimuat.")); }, [status]);
+  useEffect(() => {
+    void Promise.all([
+      listAttendanceOvertime(status),
+      listEmployees({ page: 1, pageSize: 100, status: "active" }),
+    ]).then(([overtimeResult, employeePage]) => {
+      setItems(overtimeResult.items);
+      setEmployees(employeePage.items);
+      setForm((current) => ({ ...current, employeeId: current.employeeId || employeePage.items[0]?.id || "" }));
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : "Data lembur tidak dapat dimuat."));
+  }, [status]);
 
   const run = async (key: string, action: () => Promise<unknown>, message: string) => {
     setBusy(key); setError(null); setNotice(null);

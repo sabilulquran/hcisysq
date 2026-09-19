@@ -127,7 +127,7 @@ export function AdminAttendanceRosterPage() {
                   <td className="p-3 align-top">
                     <p className="font-semibold text-brand-heading">{employee.employeeName}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeNumber}{employee.unitName ? " · " + employee.unitName : ""}</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">Default: {data.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Default: {data?.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
                   </td>
                   {dates.map((workDate) => {
                     const entry = entryMap.get(employee.id + ":" + workDate);
@@ -143,7 +143,7 @@ export function AdminAttendanceRosterPage() {
                         >
                           <option value="inherit">Ikuti default</option>
                           <option value="off">Libur / OFF</option>
-                          {data.schedules.filter((item) => item.active).map((schedule) => <option key={schedule.id} value={"schedule:" + schedule.id}>{schedule.name}</option>)}
+                          {data?.schedules.filter((item) => item.active).map((schedule) => <option key={schedule.id} value={"schedule:" + schedule.id}>{schedule.name}</option>)}
                         </select>
                         <div className="mt-1 text-[10px]">
                           {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-amber-700">DRAFT</span> : published ? <span className="text-emerald-700">Published</span> : <span className="text-muted-foreground">Default</span>}

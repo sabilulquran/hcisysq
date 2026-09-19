@@ -21,10 +21,19 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"));
   }
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
-  if (/^\/admin\/attendance\/workforce(?:\/|$)/.test(path)) return [
+  if (path === "/admin/attendance/workforce") return [
     "attendance.schedule.manage", "attendance.policy.manage",
     "attendance.clarification.manage", "attendance.reports.read",
   ].some((permission) => hasPermission(session, permission));
+  if (/^\/admin\/attendance\/workforce\/(locations|schedules|assignments|roster)$/.test(path)) {
+    return hasPermission(session, "attendance.schedule.manage");
+  }
+  if (/^\/admin\/attendance\/workforce\/(clarifications|mobile)$/.test(path)) {
+    return hasPermission(session, "attendance.clarification.manage");
+  }
+  if (path === "/admin/attendance/workforce/reports") {
+    return hasPermission(session, "attendance.reports.read");
+  }
   if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

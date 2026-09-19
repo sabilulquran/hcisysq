@@ -8,9 +8,12 @@ import {
   Smartphone,
   UserCog,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { getCurrentSession } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import { cn } from "@/lib/utils";
 
 export type AttendanceWorkforceSection =
@@ -50,10 +53,15 @@ export function AttendanceWorkforceShell({
   title: string;
   description: string;
 }) {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  useEffect(() => { void getCurrentSession().then(setSession); }, []);
+  const visibleTabs = tabs.filter((tab) => !session || canAccessAdminPath(session, tab.href));
+  const canOpenAdms = !session || canAccessAdminPath(session, "/admin/attendance/adms");
+
   return (
     <AdminShell active="attendance-workforce" title={title} description={description}>
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
-        <a
+        {canOpenAdms ? <a
           href="/admin/attendance/adms"
           className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition hover:border-brand-primary/40"
         >
@@ -61,7 +69,7 @@ export function AttendanceWorkforceShell({
             <Radio className="h-4 w-4" /> Back Office ADMS
           </div>
           <p className="mt-1 text-sm font-semibold text-brand-heading">Perangkat, mapping, transaksi, dan command</p>
-        </a>
+        </a> : <div className="rounded-2xl border border-border/70 bg-surface p-4 text-xs text-muted-foreground">Back Office ADMS memerlukan izin perangkat.</div>}
         <div className="rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-brand-primary-deep">
             <Clock3 className="h-4 w-4" /> Operasional Kehadiran
@@ -71,7 +79,7 @@ export function AttendanceWorkforceShell({
       </div>
 
       <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-border/80" aria-label="Navigasi operasional kehadiran">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const selected = tab.key === section;
           const Icon = tab.icon;
           return (

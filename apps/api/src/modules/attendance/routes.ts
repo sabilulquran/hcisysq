@@ -2,7 +2,7 @@ import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";

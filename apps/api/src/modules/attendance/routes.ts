@@ -2,7 +2,7 @@ import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
@@ -284,45 +284,6 @@ async function loadRecords(
     [employeeId, range.from, range.to],
   );
   return result.rows;
-}
-
-function snapshotRecord(row: AttendanceRecordRow | undefined) {
-  return row ? mapRecord(row) : null;
-}
-
-async function lockAttendanceKey(
-  client: PoolClient,
-  employeeId: string,
-  attendanceDate: string,
-): Promise<void> {
-  await client.query(
-    `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-    [`attendance:${employeeId}:${attendanceDate}`],
-  );
-}
-
-async function loadRecordForUpdate(
-  client: PoolClient,
-  employeeId: string,
-  attendanceDate: string,
-): Promise<AttendanceRecordRow | undefined> {
-  const result = await client.query<AttendanceRecordRow>(
-    `SELECT
-      employee_id AS "employeeId",
-      attendance_date::text AS "attendanceDate",
-      check_in_at AS "checkInAt",
-      check_out_at AS "checkOutAt",
-      source,
-      source_reference AS "sourceReference",
-      note,
-      created_at AS "createdAt",
-      updated_at AS "updatedAt"
-    FROM attendance_daily_records
-    WHERE employee_id = $1 AND attendance_date = $2::date
-    FOR UPDATE`,
-    [employeeId, attendanceDate],
-  );
-  return result.rows[0];
 }
 
 export function assertManualAttendanceMutation(record: Pick<AttendanceRecordRow, "source"> | undefined) {

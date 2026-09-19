@@ -11,7 +11,7 @@ function session(principalType: PrincipalType, permissions: string[]): AuthSessi
 }
 const hcAdmin = ["employees.manage", "organization.manage", "access.manage", "access.roles.assign",
   "leave.configuration.manage", "attendance.records.manage", "payslips.import", "payslips.publish"];
-const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read"];
+const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage"];
 
 describe("AUTH-011 backend-derived admin navigation", () => {
   it("shows intended HC admin surfaces in both desktop and compact menus", () => {
@@ -49,6 +49,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       "/admin/attendance/workforce/roster",
       "/admin/attendance/workforce/clarifications",
       "/admin/attendance/workforce/mobile",
+      "/admin/attendance/workforce/overtime",
       "/admin/attendance/workforce/reports",
     ]) {
       expect(canAccessAdminPath(workforce, path)).toBe(true);
@@ -57,6 +58,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
 
     const deviceOperator = session("EMPLOYEE", ["attendance.devices.read"]);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms/transactions")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices")).toBe(true);
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);
     expect(html).toContain('href="/admin/attendance/adms"');

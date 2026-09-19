@@ -32,6 +32,7 @@ const envSchema = z
   .superRefine((value, ctx) => {
     const biometricKeyringRequested =
       value.BIOMETRIC_COLLECTION_ENABLED === "1" ||
+      value.MOBILE_ATTENDANCE_ENABLED === "1" ||
       Boolean(value.BIOMETRIC_ACTIVE_KEY_ID) ||
       Boolean(value.BIOMETRIC_ENCRYPTION_KEYS);
 

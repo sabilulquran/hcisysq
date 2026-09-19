@@ -661,6 +661,23 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Command has already been delivered or completed }
 
+  /admin/attendance/adms/transactions:
+    get:
+      tags: [Attendance]
+      operationId: listGlobalAdmsTransactions
+      summary: Search attendance transactions across all registered fingerprint devices
+      parameters:
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: deviceId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: pin, in: query, required: false, schema: { type: string } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: mapping, in: query, required: false, schema: { type: string, enum: [all, mapped, unmapped], default: all } }
+      responses:
+        '200': { description: Cross-device transaction feed with mapping state and employee context }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/attendance/adms/devices/{deviceId}/transactions:
     get:
       tags: [Attendance]
@@ -1228,6 +1245,21 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1mobile-evidence'
   /admin/attendance/mobile-evidence/{evidenceId}/photo:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1mobile-evidence~1{evidenceId}~1photo'
+
+  /attendance/overtime/me:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1overtime~1me'
+  /attendance/overtime:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1overtime'
+  /attendance/overtime/{overtimeId}/cancel:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1overtime~1{overtimeId}~1cancel'
+  /admin/attendance/overtime:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime'
+  /admin/attendance/overtime/{overtimeId}/decision:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime~1{overtimeId}~1decision'
+  /admin/attendance/manual-corrections:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1manual-corrections'
+  /admin/attendance/daily:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1daily'
 
 components:
   parameters:

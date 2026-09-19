@@ -49,7 +49,7 @@ export function AdminAdmsBackOfficePage() {
     try {
       const [deviceResult, detectedResult] = await Promise.all([
         listAdmsDevices(),
-        listDetectedAdmsDevices(),
+        listDetectedAdmsDevices().catch(() => ({ items: [] })),
       ]);
       const [healthResults, mappingResults] = await Promise.all([
         Promise.allSettled(deviceResult.items.map(async (item) => [item.id, await getAdmsDeviceHealth(item.id)] as const)),

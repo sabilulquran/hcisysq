@@ -113,8 +113,9 @@ export function EmployeeAttendancePage() {
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kehadiran saya</p>
         <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Rekaman Kehadiran</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Jam masuk dan jam keluar yang sudah tercatat untuk account Anda. Halaman ini belum menilai telat, pulang cepat, atau tidak hadir karena jadwal kerja belum dihubungkan.
+          Jam masuk dan jam keluar yang sudah tercatat. Untuk presensi HP, jadwal/shift, hasil keterlambatan, dan klarifikasi, buka Clock In / Out.
         </p>
+        <a href="/app/attendance/clock" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">Buka Clock In / Out</a>
       </section>
 
       {error ? (
@@ -180,7 +181,7 @@ export function EmployeeAttendancePage() {
                 <div>
                   <h2 className="text-sm font-bold text-brand-heading">Status modul saat ini</h2>
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    HCIS baru menyimpan fakta jam masuk/keluar. Aturan jadwal, keterlambatan, kekurangan jam, lembur, dan integrasi mesin akan ditambahkan sebagai kebijakan terpisah.
+                    Rekaman faktual ATT-001 tetap dipertahankan. Evaluasi jadwal/shift, keterlambatan, GPS/foto, dan klarifikasi tersedia pada workspace presensi baru.
                   </p>
                 </div>
               </div>

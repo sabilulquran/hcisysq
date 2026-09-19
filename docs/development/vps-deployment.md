@@ -34,14 +34,14 @@ Do not pull the target commit manually before running the deploy script. The scr
 
 The normal deploy mode is `HCIS_DEPLOY_IMAGE_MODE=ghcr`. In this mode the VPS **does not build release images**. It pulls immutable exact-SHA API and Web images before cutover.
 
-The latest recorded verified production release is the 2026-09-18 deployment of application SHA `acd22b438a7468dc6ea53ae001980cd06f7343cd` using:
+The latest recorded verified production release is the 2026-09-19 Asia/Jakarta deployment of application SHA `66da50cbd2a12f6099a59adbda28b657863e8e40` using:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
-ghcr.io/sabilulquran/hcisysq-web:sha-acd22b438a7468dc6ea53ae001980cd06f7343cd
+ghcr.io/sabilulquran/hcisysq-api:sha-66da50cbd2a12f6099a59adbda28b657863e8e40
+ghcr.io/sabilulquran/hcisysq-web:sha-66da50cbd2a12f6099a59adbda28b657863e8e40
 ```
 
-See [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md) for the dated publisher, deployment, verifier, health, and browser-acceptance evidence. Repository `main` later advanced beyond this deployed SHA; a newer repository commit is not automatically a newer production runtime.
+See [`production-release-verification-2026-09-19.md`](production-release-verification-2026-09-19.md) for the latest exact-SHA publisher, production preflight, deploy/verify, backup, runtime-image, and health/readiness evidence. The earlier `acd22b...` browser-acceptance checkpoint remains in [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md). A later repository commit is not automatically a newer production runtime.
 
 The repository script `scripts/deploy-vps.sh` still contains legacy fallback/default package values under:
 

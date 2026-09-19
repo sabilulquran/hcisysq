@@ -14,7 +14,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
-  if (path === "/admin/attendance/adms") return hasPermission(session, "attendance.devices.read");
+  if (/^\/admin\/attendance\/adms(?:\/|$)/.test(path)) return hasPermission(session, "attendance.devices.read");
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))

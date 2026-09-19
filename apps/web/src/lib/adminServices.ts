@@ -1,4 +1,4 @@
-export type AdminServiceStage = "discovery" | "planned" | "deferred";
+export type AdminServiceStage = "available" | "discovery" | "planned" | "deferred";
 
 export type AdminServiceCategory =
   | "attendance"
@@ -56,18 +56,18 @@ export const adminServices: AdminServiceDefinition[] = [
     label: "Jadwal & Shift",
     description: "Atur jadwal kerja, hari libur, dan penugasan shift.",
     featureIds: ["ATT-003"],
-    stage: "discovery",
+    stage: "available",
     category: "attendance",
-    href: "/admin/services/schedules",
+    href: "/admin/attendance/workforce",
   },
   {
     key: "mobile-attendance",
     label: "Mobile Attendance",
     description: "Kebijakan clock in/out HP dan evidence kehadiran.",
     featureIds: ["ATT-006"],
-    stage: "planned",
+    stage: "available",
     category: "attendance",
-    href: "/admin/services/mobile-attendance",
+    href: "/admin/attendance/workforce",
     details: ["GPS", "Geotagging / geofence", "Foto kehadiran", "Face recognition"],
   },
   {
@@ -75,9 +75,9 @@ export const adminServices: AdminServiceDefinition[] = [
     label: "Evaluasi Kehadiran & Lembur",
     description: "Atur evaluasi terlambat, lembur, dan outcome berbasis jadwal.",
     featureIds: ["ATT-007"],
-    stage: "planned",
+    stage: "available",
     category: "attendance",
-    href: "/admin/services/attendance-evaluation",
+    href: "/admin/attendance/workforce",
   },
   {
     key: "shift-exchange",
@@ -203,6 +203,7 @@ export function getAdminService(key: string) {
 }
 
 export function adminServiceStageLabel(stage: AdminServiceStage) {
+  if (stage === "available") return "Tersedia";
   if (stage === "deferred") return "Setelah MVP";
   if (stage === "planned") return "Direncanakan";
   return "Dalam perencanaan";

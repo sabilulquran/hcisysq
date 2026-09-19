@@ -212,7 +212,7 @@ function datesBetween(from: string, to: string, maximum: number) {
 function mapResult(row: Record<string, unknown> | null | undefined) {
   if (!row) return null;
   const date = (value: unknown) => value instanceof Date ? value.toISOString() : value ?? null;
-  return {
+  const mapped: Record<string, unknown> = {
     ...row,
     scheduledStartAt: date(row.scheduledStartAt),
     scheduledEndAt: date(row.scheduledEndAt),
@@ -220,6 +220,7 @@ function mapResult(row: Record<string, unknown> | null | undefined) {
     lastCheckOutAt: date(row.lastCheckOutAt),
     createdAt: date(row.createdAt),
   };
+  return mapped;
 }
 
 async function latestResult(db: Pool | PoolClient, employeeId: string, workDate: string) {
@@ -836,7 +837,7 @@ export async function registerAttendanceWorkforceRoutes(
         await client.query("ROLLBACK");
         return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
       }
-      const next = { ...item, ...body.data };
+      const next = { ...item, ...body.data } as typeof item;
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }

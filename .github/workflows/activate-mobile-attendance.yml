@@ -1,0 +1,164 @@
+name: Activate HCIS Mobile Attendance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/activate-mobile-attendance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: hcis-production
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    name: Activate mobile attendance in production
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      PROD_HOST: ${{ secrets.HCIS_PROD_HOST }}
+      PROD_USER: ${{ secrets.HCIS_PROD_USER }}
+      PROD_REPO_PATH: ${{ secrets.HCIS_PROD_REPO_PATH }}
+      GHCR_USER: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GHCR_API_REPO: ghcr.io/${{ github.repository_owner }}/hcisysq-api
+      GHCR_WEB_REPO: ghcr.io/${{ github.repository_owner }}/hcisysq-web
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate activation target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          main_sha="$(git rev-parse origin/main)"
+          [[ "$TARGET_SHA" == "$main_sha" ]] || {
+            echo "STOP: activation target is not current main" >&2
+            exit 1
+          }
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HCIS_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HCIS_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Authenticate VPS to GHCR temporarily
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh "$PROD_USER@$PROD_HOST" "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+
+      - name: Activate, deploy, and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "$PROD_USER@$PROD_HOST" bash -s -- \
+            "$PROD_REPO_PATH" "$TARGET_SHA" "$GHCR_API_REPO" "$GHCR_WEB_REPO" <<'REMOTE'
+          set -euo pipefail
+          repo_path=$1
+          target_sha=$2
+          api_repo=$3
+          web_repo=$4
+          cd "$repo_path"
+
+          env_file=infra/.env.vps
+          [[ -f "$env_file" ]] || { echo "STOP: production env file missing" >&2; exit 1; }
+          grep -Eq '^BIOMETRIC_COLLECTION_ENABLED=0[[:space:]]*$' "$env_file" || {
+            echo "STOP: BIOMETRIC_COLLECTION_ENABLED must remain 0" >&2
+            exit 1
+          }
+
+          backup_dir="backups/config/$(date -u +%Y%m%dT%H%M%SZ)-mobile-attendance"
+          mkdir -p "$backup_dir"
+          cp "$env_file" "$backup_dir/env-before"
+
+          upsert_env() {
+            key=$1
+            value=$2
+            if grep -q "^$key=" "$env_file"; then
+              sed -i "s|^$key=.*|$key=$value|" "$env_file"
+            else
+              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+            fi
+          }
+
+          active_id="$(sed -n 's/^BIOMETRIC_ACTIVE_KEY_ID=//p' "$env_file" | tail -n1 | tr -d '\r')"
+          keyring="$(sed -n 's/^BIOMETRIC_ENCRYPTION_KEYS=//p' "$env_file" | tail -n1 | tr -d '\r')"
+
+          if [[ -z "$active_id" && -z "$keyring" ]]; then
+            active_id="attendance-mobile-$(date -u +%Y%m%d)"
+            generated_key="$(openssl rand -hex 32)"
+            keyring="{\"$active_id\":\"$generated_key\"}"
+            upsert_env BIOMETRIC_ACTIVE_KEY_ID "$active_id"
+            upsert_env BIOMETRIC_ENCRYPTION_KEYS "$keyring"
+            unset generated_key
+            echo "restricted_media_keyring=generated"
+          elif [[ -z "$active_id" || -z "$keyring" ]]; then
+            echo "STOP: restricted-media keyring is partially configured" >&2
+            exit 1
+          else
+            echo "restricted_media_keyring=existing"
+          fi
+
+          upsert_env MOBILE_ATTENDANCE_ENABLED 1
+
+          git fetch origin main
+          remote_sha="$(git rev-parse origin/main)"
+          [[ "$remote_sha" == "$target_sha" ]] || {
+            echo "STOP: origin/main moved during activation" >&2
+            exit 1
+          }
+
+          echo "Waiting for exact-SHA images..."
+          image_ready=0
+          for attempt in $(seq 1 36); do
+            if docker pull "$api_repo:sha-$target_sha" >/dev/null 2>&1 \
+              && docker pull "$web_repo:sha-$target_sha" >/dev/null 2>&1; then
+              image_ready=1
+              break
+            fi
+            sleep 5
+          done
+          [[ "$image_ready" == "1" ]] || {
+            echo "STOP: exact-SHA images were not available" >&2
+            exit 1
+          }
+
+          export HCIS_DEPLOY_IMAGE_MODE=ghcr
+          export HCIS_GHCR_API_REPO="$api_repo"
+          export HCIS_GHCR_WEB_REPO="$web_repo"
+          ./scripts/deploy-vps.sh "$target_sha"
+
+          compose=(docker compose --env-file "$env_file" -f infra/docker-compose.vps.yml)
+          "${compose[@]}" exec -T api sh -lc '
+            test "$MOBILE_ATTENDANCE_ENABLED" = "1"
+            test -n "$BIOMETRIC_ACTIVE_KEY_ID"
+            test -n "$BIOMETRIC_ENCRYPTION_KEYS"
+          '
+          "${compose[@]}" exec -T api node -e "Promise.all([fetch('http://127.0.0.1:3001/health'),fetch('http://127.0.0.1:3001/ready')]).then(([h,r])=>{if(!h.ok||!r.ok)process.exit(1);console.log('mobile_attendance_runtime=enabled');console.log('api_health=pass')}).catch(()=>process.exit(1))"
+          REMOTE
+
+      - name: Logout VPS from GHCR
+        if: always()
+        shell: bash
+        run: |
+          ssh "$PROD_USER@$PROD_HOST" 'docker logout ghcr.io >/dev/null 2>&1 || true'

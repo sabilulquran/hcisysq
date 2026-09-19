@@ -155,6 +155,9 @@ export function AdminAdmsBackOfficePage() {
               <RefreshCw className={refreshing ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
               Muat ulang
             </button>
+            <a href="/admin/attendance/adms/transactions" className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-bold">
+              Transaksi global
+            </a>
             <a href="/admin/attendance/devices" className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white">
               Semua mesin <ArrowRight className="h-3.5 w-3.5" />
             </a>

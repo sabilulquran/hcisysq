@@ -633,3 +633,14 @@ export async function createCanonicalManualCorrection(input: {
     }),
   );
 }
+
+
+export async function getMyAttendanceScheduleRange(from: string, to: string) {
+  const params = new URLSearchParams({ from, to });
+  return readJson<{ items: Array<{ workDate: string; schedule: ResolvedSchedule; result: WorkforceResult | null }> }>(
+    await fetch(`/api/attendance/me/schedule?${params.toString()}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}

@@ -66,14 +66,13 @@ ALTER TABLE attendance_roster_entries
     REFERENCES attendance_schedule_versions(id) ON DELETE RESTRICT;
 
 UPDATE attendance_roster_entries entry
-SET schedule_version_id = version.id
-FROM LATERAL (
+SET schedule_version_id = (
   SELECT candidate.id
   FROM attendance_schedule_versions candidate
   WHERE candidate.schedule_template_id = entry.schedule_template_id
   ORDER BY candidate.version DESC
   LIMIT 1
-) version
+)
 WHERE entry.schedule_template_id IS NOT NULL
   AND entry.schedule_version_id IS NULL;
 
@@ -89,8 +88,7 @@ ALTER TABLE attendance_result_versions
     REFERENCES attendance_resolution_cases(id) ON DELETE RESTRICT;
 
 UPDATE attendance_result_versions result
-SET schedule_version_id = version.id
-FROM LATERAL (
+SET schedule_version_id = (
   SELECT candidate.id
   FROM attendance_schedule_versions candidate
   WHERE candidate.schedule_template_id = result.schedule_template_id
@@ -98,7 +96,7 @@ FROM LATERAL (
     AND (candidate.effective_to IS NULL OR candidate.effective_to > coalesce(result.scheduled_start_at, result.created_at))
   ORDER BY candidate.version DESC
   LIMIT 1
-) version
+)
 WHERE result.schedule_template_id IS NOT NULL
   AND result.schedule_version_id IS NULL;
 

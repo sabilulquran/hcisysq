@@ -1,6 +1,8 @@
-# ATT-002 — ADMS/iClock Ingress Foundation
+# ATT-005 Historical Go 1 — ADMS/iClock Ingress Foundation
 
-**Status:** IMPLEMENTATION
+**Status:** IMPLEMENTED LEGACY SUB-SCOPE OF ATT-005
+
+> Historical note: this document originally used feature ID ATT-002. The canonical capability map now reserves ATT-002 for attendance clarification. ADMS ingress is an ATT-005 device-plane sub-scope; database filenames and historical PR references are intentionally unchanged.
 
 ## Tujuan
 

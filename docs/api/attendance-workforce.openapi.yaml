@@ -1,0 +1,310 @@
+openapi: 3.1.0
+info:
+  title: HCIS Attendance Workforce API Fragment
+  version: 0.0.1
+paths:
+  /attendance/me/workforce:
+    get:
+      tags: [Attendance]
+      operationId: getMyAttendanceWorkforce
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Own resolved schedule, current result, clarifications, and mobile evidence summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceWorkforceSnapshot' }
+        '401': { description: Authentication required }
+        '403': { description: Active employee required }
+
+  /attendance/me/schedule:
+    get:
+      tags: [Attendance]
+      operationId: getMyAttendanceSchedule
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Own schedule and current results for up to 31 days }
+
+  /attendance/mobile/clock:
+    post:
+      tags: [Attendance]
+      operationId: createMobileAttendanceEvidence
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 16, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, latitude, longitude, accuracyMeters, photoBase64]
+              properties:
+                action: { type: string, enum: [check_in, check_out] }
+                latitude: { type: number, minimum: -90, maximum: 90 }
+                longitude: { type: number, minimum: -180, maximum: 180 }
+                accuracyMeters: { type: number, minimum: 0, maximum: 100000 }
+                photoBase64:
+                  type: string
+                  description: Base64-encoded JPEG captured by the shipped camera UI; server validates JPEG signature and size.
+      responses:
+        '201':
+          description: Mobile evidence persisted; outside/uncertain geofence evidence is retained with needs_review.
+        '200':
+          description: Existing evidence returned for duplicate idempotency key.
+        '409':
+          description: Mobile attendance disabled or restricted-media keyring not ready.
+
+  /attendance/mobile/evidence/{evidenceId}/photo:
+    get:
+      tags: [Attendance]
+      operationId: getOwnMobileAttendancePhoto
+      parameters:
+        - { name: evidenceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Decrypted own attendance JPEG; no-store and audited
+          content:
+            image/jpeg: { schema: { type: string, contentEncoding: binary } }
+        '404': { description: Evidence not found or not owned by current employee }
+
+  /attendance/clarifications:
+    post:
+      tags: [Attendance]
+      operationId: submitAttendanceClarification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceClarificationInput' }
+      responses:
+        '201': { description: Clarification submitted }
+
+  /attendance/clarifications/me:
+    get:
+      tags: [Attendance]
+      operationId: listMyAttendanceClarifications
+      responses:
+        '200': { description: Own attendance clarification history }
+
+  /attendance/clarifications/{clarificationId}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelMyAttendanceClarification
+      parameters:
+        - { name: clarificationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Submitted clarification cancelled }
+        '409': { description: Clarification is no longer cancellable }
+
+  /admin/attendance/clarifications:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceClarificationsForHc
+      x-required-permission: attendance.clarification.manage
+      responses:
+        '200': { description: Pending clarification queue }
+
+  /admin/attendance/clarifications/{clarificationId}/decision:
+    post:
+      tags: [Attendance]
+      operationId: decideAttendanceClarification
+      x-required-permission: attendance.clarification.manage
+      parameters:
+        - { name: clarificationId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200': { description: Decision stored and result recomputed }
+
+  /admin/attendance/work-locations:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceWorkLocations
+      x-required-permission: attendance.schedule.manage
+      responses:
+        '200': { description: Work locations and geofence radius }
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceWorkLocation
+      x-required-permission: attendance.schedule.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceWorkLocationInput' }
+      responses:
+        '201': { description: Work location created }
+
+  /admin/attendance/schedules:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceSchedules
+      x-required-permission: attendance.schedule.manage
+      responses:
+        '200': { description: Schedule templates }
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceSchedule
+      x-required-permission: attendance.schedule.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AttendanceScheduleInput' }
+      responses:
+        '201': { description: Schedule template created }
+
+  /admin/attendance/schedule-assignments:
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceScheduleAssignment
+      x-required-permission: attendance.schedule.manage
+      responses:
+        '201': { description: Effective-dated employee schedule assignment created }
+
+  /admin/attendance/rosters:
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceRosterDraft
+      x-required-permission: attendance.schedule.manage
+      responses:
+        '201': { description: Weekly DRAFT roster created }
+
+  /admin/attendance/rosters/{rosterId}/entries:
+    put:
+      tags: [Attendance]
+      operationId: replaceAttendanceRosterEntries
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Draft roster entries upserted }
+        '409': { description: Roster is not DRAFT }
+
+  /admin/attendance/rosters/{rosterId}/publish:
+    post:
+      tags: [Attendance]
+      operationId: publishAttendanceRoster
+      x-required-permission: attendance.schedule.manage
+      parameters:
+        - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Immutable published roster version activated for resolution }
+
+  /admin/attendance/finalize/{date}:
+    post:
+      tags: [Attendance]
+      operationId: finalizeAttendanceDate
+      x-required-permission: attendance.policy.manage
+      parameters:
+        - { name: date, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Versioned results materialized for active employees }
+
+  /admin/attendance/report:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceReport
+      x-required-permission: attendance.reports.read
+      parameters:
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
+      responses:
+        '200': { description: Current attendance result snapshot by employee }
+
+components:
+  schemas:
+    AttendanceResult:
+      type: [object, 'null']
+      properties:
+        id: { type: string, format: uuid }
+        workDate: { type: string, format: date }
+        version: { type: integer, minimum: 1 }
+        status:
+          type: string
+          enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
+        scheduledStartAt: { type: [string, 'null'], format: date-time }
+        scheduledEndAt: { type: [string, 'null'], format: date-time }
+        firstCheckInAt: { type: [string, 'null'], format: date-time }
+        lastCheckOutAt: { type: [string, 'null'], format: date-time }
+        workedMinutes: { type: integer, minimum: 0 }
+        breakMinutes: { type: integer, minimum: 0 }
+        lateMinutes: { type: integer, minimum: 0 }
+        earlyLeaveMinutes: { type: integer, minimum: 0 }
+        incompleteSession: { type: boolean }
+        justified: { type: boolean }
+
+    AttendanceWorkforceSnapshot:
+      type: object
+      required: [employee, workDate, mobileEnabled, schedule, result, clarifications, mobileEvidence]
+      properties:
+        employee: { type: object }
+        workDate: { type: string, format: date }
+        mobileEnabled: { type: boolean }
+        schedule:
+          type: object
+          required: [state]
+          properties:
+            state: { type: string, enum: [scheduled, off, configuration_error] }
+            scheduleTemplateId: { type: [string, 'null'], format: uuid }
+            scheduledStartAt: { type: [string, 'null'], format: date-time }
+            scheduledEndAt: { type: [string, 'null'], format: date-time }
+            workLocation: { type: [object, 'null'] }
+        result: { $ref: '#/components/schemas/AttendanceResult' }
+        clarifications: { type: array, items: { type: object } }
+        mobileEvidence: { type: array, items: { type: object } }
+
+    AttendanceClarificationInput:
+      type: object
+      required: [workDate, kind, mode, reason]
+      properties:
+        workDate: { type: string, format: date }
+        kind:
+          type: string
+          enum: [missing_check_in, missing_check_out, machine_issue, lateness, early_leave, outside_geofence, other]
+        mode: { type: string, enum: [correction, justification] }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        proposedCheckInAt: { type: [string, 'null'], format: date-time }
+        proposedCheckOutAt: { type: [string, 'null'], format: date-time }
+
+    AttendanceWorkLocationInput:
+      type: object
+      required: [name, latitude, longitude, radiusMeters]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        latitude: { type: number, minimum: -90, maximum: 90 }
+        longitude: { type: number, minimum: -180, maximum: 180 }
+        radiusMeters: { type: integer, minimum: 10, maximum: 5000 }
+
+    AttendanceScheduleInput:
+      type: object
+      required: [name, startTime, endTime]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        startTime: { type: string }
+        endTime: { type: string }
+        lateGraceMinutes: { type: integer, minimum: 0, maximum: 240 }
+        earlyLeaveToleranceMinutes: { type: integer, minimum: 0, maximum: 240 }
+        workLocationId: { type: [string, 'null'], format: uuid }

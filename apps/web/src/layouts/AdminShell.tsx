@@ -32,6 +32,7 @@ export type AdminNavKey =
   | "history"
   | "organization"
   | "attendance"
+  | "attendance-workforce"
   | "attendance-devices"
   | "leave"
   | "leave-calendar"
@@ -73,6 +74,7 @@ const navGroups: AdminNavGroup[] = [
     label: "Kehadiran",
     items: [
       { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
+      { key: "attendance-workforce", label: "Jadwal & Presensi", href: "/admin/attendance/workforce", icon: CalendarRange },
       { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
     ],
   },

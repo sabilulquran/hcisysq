@@ -9,6 +9,8 @@ export const HC_OPERATIONAL_PERMISSIONS = [
 export const HC_ADMIN_PERMISSIONS = [
   ...HC_OPERATIONAL_PERMISSIONS, "organization.manage", "access.manage",
   "access.roles.assign", "leave.configuration.manage", "attendance.records.manage",
+  "attendance.schedule.manage", "attendance.policy.manage",
+  "attendance.clarification.manage", "attendance.reports.read",
 ] as const;
 
 // Only capabilities of the existing administrative APIs are eligible for legacy access.
@@ -19,6 +21,8 @@ export const ADMIN_PERMISSIONS = [
   "payslips.import", "payslips.publish", "attendance.devices.read",
   "attendance.devices.configure", "attendance.devices.operate", "attendance.devices.export",
   "attendance.devices.destructive", "attendance.devices.firmware", "attendance.devices.biometrics",
+  "attendance.schedule.manage", "attendance.policy.manage",
+  "attendance.clarification.manage", "attendance.reports.read",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 

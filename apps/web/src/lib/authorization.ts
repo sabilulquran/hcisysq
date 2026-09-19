@@ -10,6 +10,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin") return [
     "employees.manage", "organization.manage", "access.manage", "attendance.records.manage",
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
+    "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
@@ -19,6 +20,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"));
   }
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
+  if (path === "/admin/attendance/workforce") return [
+    "attendance.schedule.manage", "attendance.policy.manage",
+    "attendance.clarification.manage", "attendance.reports.read",
+  ].some((permission) => hasPermission(session, permission));
   if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

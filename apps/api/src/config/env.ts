@@ -11,6 +11,7 @@ const envSchema = z
     AUTH_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
     AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(8),
     BIOMETRIC_COLLECTION_ENABLED: z.enum(["0", "1"]).optional(),
+    MOBILE_ATTENDANCE_ENABLED: z.enum(["0", "1"]).optional(),
     BIOMETRIC_ACTIVE_KEY_ID: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().trim().regex(/^[A-Za-z0-9._-]{1,80}$/).optional(),
@@ -31,6 +32,7 @@ const envSchema = z
   .superRefine((value, ctx) => {
     const biometricKeyringRequested =
       value.BIOMETRIC_COLLECTION_ENABLED === "1" ||
+      value.MOBILE_ATTENDANCE_ENABLED === "1" ||
       Boolean(value.BIOMETRIC_ACTIVE_KEY_ID) ||
       Boolean(value.BIOMETRIC_ENCRYPTION_KEYS);
 

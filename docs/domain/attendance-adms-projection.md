@@ -1,6 +1,8 @@
-# ATT-003 — ADMS Employee Mapping & Attendance Projection
+# ATT-005 Historical Go 2 — ADMS Employee Mapping & Attendance Projection
 
-**Status:** IMPLEMENTATION
+**Status:** IMPLEMENTED LEGACY SUB-SCOPE OF ATT-005
+
+> Historical note: this document originally used feature ID ATT-003. The canonical capability map now reserves ATT-003 for schedules and shifts. ADMS mapping/projection is an ATT-005 device-plane sub-scope; database filenames and historical PR references are intentionally unchanged.
 
 ## Tujuan
 

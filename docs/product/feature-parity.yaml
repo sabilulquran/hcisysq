@@ -180,19 +180,24 @@ features:
     module: attendance
     name: Attendance clarification and permission
     legacy_evidence: stale attendance approval automation exists
-    target_status: discovery
+    target_status: implementing
     priority: core
     risk: high
+    planning_note: Repository implementation is in progress for correction-vs-justification workflow without rewriting raw evidence.
+    docs:
+      - docs/domain/attendance-engine-mobile.md
 
   - id: ATT-003
     module: attendance
     name: Work schedules, shifts, and holidays
     legacy_evidence: unit-based schedules and holiday calendar exist
-    target_status: discovery
+    target_status: implementing
     priority: core
     risk: high
     mvp_note: Leave working-calendar rules exist, but attendance schedule, shift assignment, and lateness/overtime policy remain outside ATT-001.
-    planning_note: Product scope now includes employee schedule/shift visibility. Shift exchange is tracked separately as ATT-008.
+    planning_note: Repository implementation is in progress for schedule templates, effective assignments, overnight shifts, published weekly rosters, and employee visibility. Shift exchange is tracked separately as ATT-008.
+    docs:
+      - docs/domain/attendance-engine-mobile.md
 
   - id: ATT-005
     module: attendance
@@ -218,21 +223,25 @@ features:
     module: attendance
     name: Mobile clock-in/out and attendance evidence
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: planned
+    target_status: implementing
     priority: after-pilot
     risk: critical
     planning_note: Product scope includes mobile clock in/out with policy-controlled GPS, geotagging/geofence, photo evidence, and face-recognition capability. Privacy, biometric, fallback, retention, spoofing-resistance, and device-trust rules require specification before activation.
     docs:
       - docs/product/hcis-capability-map.md
+      - docs/domain/attendance-engine-mobile.md
 
   - id: ATT-007
     module: attendance
     name: Attendance evaluation, lateness, and overtime
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: planned
+    target_status: implementing
     priority: after-pilot
     risk: critical
-    planning_note: Evaluation must consume authoritative schedule/holiday/permission policy and must not reinterpret ATT-001 raw factual records without explicit rules.
+    planning_note: Repository implementation is in progress for schedule-aware evaluation, versioned results, multi-punch sessions, leave override, and clarification-aware outcomes. Production activation/verification remains separate.
+    docs:
+      - docs/product/hcis-capability-map.md
+      - docs/domain/attendance-engine-mobile.md
     docs:
       - docs/product/hcis-capability-map.md
 

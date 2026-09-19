@@ -1179,6 +1179,41 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /attendance/me/workforce:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1workforce'
+  /attendance/me/schedule:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1me~1schedule'
+  /attendance/mobile/clock:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1mobile~1clock'
+  /attendance/mobile/evidence/{evidenceId}/photo:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1mobile~1evidence~1{evidenceId}~1photo'
+  /attendance/clarifications:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1clarifications'
+  /attendance/clarifications/me:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1clarifications~1me'
+  /attendance/clarifications/{clarificationId}/cancel:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1clarifications~1{clarificationId}~1cancel'
+  /admin/attendance/clarifications:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1clarifications'
+  /admin/attendance/clarifications/{clarificationId}/decision:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1clarifications~1{clarificationId}~1decision'
+  /admin/attendance/work-locations:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1work-locations'
+  /admin/attendance/schedules:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1schedules'
+  /admin/attendance/schedule-assignments:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1schedule-assignments'
+  /admin/attendance/rosters:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1rosters'
+  /admin/attendance/rosters/{rosterId}/entries:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1rosters~1{rosterId}~1entries'
+  /admin/attendance/rosters/{rosterId}/publish:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1rosters~1{rosterId}~1publish'
+  /admin/attendance/finalize/{date}:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1finalize~1{date}'
+  /admin/attendance/report:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1report'
+
 components:
   parameters:
     Cursor:

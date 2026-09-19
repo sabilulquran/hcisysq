@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ServerCog,
   ShieldCheck,
   Upload,
   UsersRound,
@@ -32,6 +33,7 @@ export type AdminNavKey =
   | "history"
   | "organization"
   | "attendance"
+  | "attendance-adms"
   | "attendance-workforce"
   | "attendance-devices"
   | "leave"
@@ -74,7 +76,8 @@ const navGroups: AdminNavGroup[] = [
     label: "Kehadiran",
     items: [
       { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
-      { key: "attendance-workforce", label: "Jadwal & Presensi", href: "/admin/attendance/workforce", icon: CalendarRange },
+      { key: "attendance-workforce", label: "Operasional Kehadiran", href: "/admin/attendance/workforce", icon: CalendarRange },
+      { key: "attendance-adms", label: "Back Office ADMS", href: "/admin/attendance/adms", icon: ServerCog },
       { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
     ],
   },

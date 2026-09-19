@@ -27,6 +27,7 @@ describe("ATT-003 schedule resolution", () => {
   it("keeps overnight shift work date on the start date", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM attendance_rosters")) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM leave_calendar_exceptions")) return { rows: [], rowCount: 0 };
       if (sql.includes("FROM attendance_schedule_assignments")) {
         return {
           rows: [{
@@ -53,9 +54,21 @@ describe("ATT-003 schedule resolution", () => {
     expect(resolved.scheduledEndAt?.toISOString()).toBe("2026-09-19T23:00:00.000Z");
   });
 
+  it("treats a non-working calendar exception as off when no roster overrides it", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM attendance_rosters")) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM leave_calendar_exceptions")) return { rows: [{ isWorkingDay: false }], rowCount: 1 };
+      throw new Error("Default assignment should not be read on a holiday");
+    });
+    const resolved = await resolveSchedule({ query } as unknown as Pool, "employee", "2026-09-19");
+    expect(resolved.state).toBe("off");
+    expect(resolved.reason).toBe("calendar_holiday");
+  });
+
   it("fails closed when default assignments are ambiguous", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM attendance_rosters")) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM leave_calendar_exceptions")) return { rows: [], rowCount: 0 };
       return {
         rows: [
           { scheduleTemplateId: "a", isOff: false, startTime: "08:00:00", endTime: "16:00:00" },

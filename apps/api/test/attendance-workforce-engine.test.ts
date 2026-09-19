@@ -13,6 +13,7 @@ function scheduled(overrides: Partial<ResolvedSchedule> = {}): ResolvedSchedule 
   return {
     state: "scheduled",
     scheduleTemplateId: "00000000-0000-4000-8000-000000000001",
+    scheduleVersionId: "00000000-0000-4000-8000-000000000101",
     rosterId: null,
     scheduledStartAt: new Date("2026-09-19T01:00:00.000Z"),
     scheduledEndAt: new Date("2026-09-19T09:00:00.000Z"),
@@ -32,10 +33,12 @@ describe("ATT-003 schedule resolution", () => {
         return {
           rows: [{
             scheduleTemplateId: "00000000-0000-4000-8000-000000000001",
+            scheduleVersionId: "00000000-0000-4000-8000-000000000101",
             rosterId: null,
             isOff: false,
             startTime: "22:00:00",
             endTime: "06:00:00",
+            endDayOffset: 1,
             lateGraceMinutes: 5,
             earlyLeaveToleranceMinutes: 0,
             workLocationId: null,
@@ -60,10 +63,12 @@ describe("ATT-003 schedule resolution", () => {
         return {
           rows: [{
             scheduleTemplateId: "00000000-0000-4000-8000-000000000009",
+            scheduleVersionId: "00000000-0000-4000-8000-000000000109",
             rosterId: "00000000-0000-4000-8000-000000000010",
             isOff: false,
             startTime: "09:00:00",
             endTime: "17:00:00",
+            endDayOffset: 0,
             lateGraceMinutes: 0,
             earlyLeaveToleranceMinutes: 0,
             workLocationId: null,
@@ -88,6 +93,7 @@ describe("ATT-003 schedule resolution", () => {
         return {
           rows: [{
             scheduleTemplateId: null,
+            scheduleVersionId: null,
             rosterId: "00000000-0000-4000-8000-000000000010",
             isOff: false,
             startTime: null,
@@ -108,10 +114,12 @@ describe("ATT-003 schedule resolution", () => {
         return {
           rows: [{
             scheduleTemplateId: "default",
+            scheduleVersionId: "default-version",
             rosterId: null,
             isOff: false,
             startTime: "08:00:00",
             endTime: "16:00:00",
+            endDayOffset: 0,
             lateGraceMinutes: 0,
             earlyLeaveToleranceMinutes: 0,
             workLocationId: null,
@@ -179,8 +187,11 @@ describe("ATT-007 attendance evaluation", () => {
         { checkInAt: new Date("2026-09-19T01:00:00Z"), checkOutAt: new Date("2026-09-19T05:00:00Z") },
         { checkInAt: new Date("2026-09-19T06:00:00Z"), checkOutAt: new Date("2026-09-19T10:00:00Z") },
       ],
-      approvedLeave: false,
-      justified: false,
+      attendanceDisposition: null,
+      lateJustified: false,
+      earlyLeaveJustified: false,
+      outsideGeofenceJustified: false,
+      overtimeMinutes: 0,
       now: new Date("2026-09-19T11:00:00Z"),
     });
     expect(result.workedMinutes).toBe(480);
@@ -195,21 +206,65 @@ describe("ATT-007 attendance evaluation", () => {
         checkInAt: new Date("2026-09-19T01:20:00Z"),
         checkOutAt: new Date("2026-09-19T09:00:00Z"),
       }],
-      approvedLeave: false,
-      justified: true,
+      attendanceDisposition: null,
+      lateJustified: true,
+      earlyLeaveJustified: false,
+      outsideGeofenceJustified: false,
+      overtimeMinutes: 0,
       now: new Date("2026-09-19T10:00:00Z"),
     });
     expect(result.status).toBe("late");
     expect(result.lateMinutes).toBe(10);
     expect(result.justified).toBe(true);
+    expect(result.lateJustified).toBe(true);
+    expect(result.earlyLeaveJustified).toBe(false);
+  });
+
+  it("does not let lateness justification excuse early leave", () => {
+    const result = evaluateSessions({
+      schedule: scheduled(),
+      sessions: [{
+        checkInAt: new Date("2026-09-19T01:20:00Z"),
+        checkOutAt: new Date("2026-09-19T08:00:00Z"),
+      }],
+      attendanceDisposition: null,
+      lateJustified: true,
+      earlyLeaveJustified: false,
+      outsideGeofenceJustified: false,
+      overtimeMinutes: 0,
+      now: new Date("2026-09-19T10:00:00Z"),
+    });
+    expect(result.lateJustified).toBe(true);
+    expect(result.earlyLeaveJustified).toBe(false);
+    expect(result.earlyLeaveMinutes).toBe(60);
+  });
+
+  it("carries only explicitly approved overtime minutes", () => {
+    const result = evaluateSessions({
+      schedule: scheduled(),
+      sessions: [{
+        checkInAt: new Date("2026-09-19T01:00:00Z"),
+        checkOutAt: new Date("2026-09-19T10:00:00Z"),
+      }],
+      attendanceDisposition: null,
+      lateJustified: false,
+      earlyLeaveJustified: false,
+      outsideGeofenceJustified: false,
+      overtimeMinutes: 45,
+      now: new Date("2026-09-19T11:00:00Z"),
+    });
+    expect(result.overtimeMinutes).toBe(45);
   });
 
   it("approved leave prevents a false absence", () => {
     const result = evaluateSessions({
       schedule: scheduled(),
       sessions: [],
-      approvedLeave: true,
-      justified: false,
+      attendanceDisposition: "leave",
+      lateJustified: false,
+      earlyLeaveJustified: false,
+      outsideGeofenceJustified: false,
+      overtimeMinutes: 0,
       now: new Date("2026-09-19T12:00:00Z"),
     });
     expect(result.status).toBe("leave");

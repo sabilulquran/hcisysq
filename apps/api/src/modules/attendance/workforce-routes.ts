@@ -932,6 +932,25 @@ export async function registerAttendanceWorkforceRoutes(
        VALUES ($1, $2::date, $3, 'DRAFT', $4)`,
       [id, body.data.weekStart, version.rows[0]?.version ?? 1, principal.id],
     );
+    await pool.query(
+      `WITH previous AS (
+         SELECT id
+         FROM attendance_rosters
+         WHERE week_start = $2::date
+           AND status = 'PUBLISHED'
+           AND id <> $1
+         ORDER BY version DESC
+         LIMIT 1
+       )
+       INSERT INTO attendance_roster_entries (
+         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+       )
+       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.is_off, entry.note
+       FROM attendance_roster_entries entry
+       JOIN previous ON previous.id = entry.roster_id
+       ON CONFLICT DO NOTHING`,
+      [id, body.data.weekStart],
+    );
     return reply.status(201).send({ id, version: version.rows[0]?.version ?? 1, status: "DRAFT" });
   });
 

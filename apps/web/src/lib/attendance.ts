@@ -270,3 +270,42 @@ export async function endAdmsMapping(mappingId: string): Promise<void> {
   if (response.ok) return;
   await readJson<never>(response);
 }
+
+
+export interface AdmsGlobalTransaction {
+  id: string;
+  deviceId: string;
+  serialNumber: string;
+  deviceName: string | null;
+  pin: string;
+  occurredAtRaw: string;
+  occurredAt: string;
+  receivedAt: string;
+  sourceRequestId: string;
+  employeeId: string | null;
+  employeeNumber: string | null;
+  employeeName: string | null;
+  unitName: string | null;
+  mappingState: "mapped" | "unmapped";
+}
+
+export async function listAdmsGlobalTransactions(input: {
+  deviceId?: string;
+  pin?: string;
+  employeeId?: string;
+  mapping?: "all" | "mapped" | "unmapped";
+  from?: string;
+  to?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "" && value !== "all") params.set(key, value);
+  }
+  const query = params.toString();
+  return readJson<{ items: AdmsGlobalTransaction[] }>(
+    await fetch(`/api/admin/attendance/adms/transactions${query ? `?${query}` : ""}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}

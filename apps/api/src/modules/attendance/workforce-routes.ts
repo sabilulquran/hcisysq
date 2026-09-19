@@ -14,6 +14,7 @@ import {
   materializeAttendanceResult,
   resolveSchedule,
 } from "./engine.js";
+import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
   encryptMobileAttendancePhoto,
@@ -60,6 +61,7 @@ const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  endDayOffset: z.number().int().min(0).max(1).default(0),
   lateGraceMinutes: z.number().int().min(0).max(240).default(0),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
@@ -68,6 +70,7 @@ const scheduleTemplatePatchSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
   workLocationId: z.string().uuid().nullable().optional(),
@@ -97,12 +100,48 @@ const mobileEvidenceQuerySchema = z.object({
   date: dateSchema.optional(),
   reviewState: z.enum(["all", "accepted", "needs_review"]).default("all"),
 });
+const attendanceStatusSchema = z.enum([
+  "scheduled", "pending", "present", "late", "incomplete", "leave",
+  "absent", "off", "configuration_error",
+]);
 const reportQuerySchema = z.object({
-  date: dateSchema,
-  status: z.enum([
-    "scheduled", "pending", "present", "late", "incomplete", "leave",
-    "absent", "off", "configuration_error",
-  ]).optional(),
+  type: z.enum(["detail", "period", "unit", "sessions", "scans", "schedule", "overtime"]).default("detail"),
+  date: dateSchema.optional(),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+  employeeId: z.string().uuid().optional(),
+  unitId: z.string().uuid().optional(),
+  status: attendanceStatusSchema.optional(),
+  scheduleId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
+  source: z.enum(["adms", "mobile", "manual"]).optional(),
+  deviceId: z.string().uuid().optional(),
+}).superRefine((value, ctx) => {
+  const from = value.from ?? value.date;
+  const to = value.to ?? value.date;
+  if (!from || !to) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Tanggal laporan wajib diisi." });
+});
+const overtimeInputSchema = z.object({
+  workDate: dateSchema,
+  requestedMinutes: z.number().int().min(1).max(1440),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+const adminOvertimeInputSchema = overtimeInputSchema.extend({ employeeId: z.string().uuid() });
+const overtimeDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  approvedMinutes: z.number().int().min(0).max(1440).nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+const manualCorrectionSchema = z.object({
+  employeeId: z.string().uuid(),
+  workDate: dateSchema,
+  checkInAt: z.string().datetime({ offset: true }).nullable(),
+  checkOutAt: z.string().datetime({ offset: true }).nullable(),
+  reason: z.string().trim().min(3).max(1000),
+}).superRefine((value, ctx) => {
+  if (!value.checkInAt && !value.checkOutAt) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Minimal satu batas waktu wajib diisi." });
+  }
 });
 
 class WorkforceAttendanceError extends Error {
@@ -187,12 +226,15 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
   const result = await db.query<Record<string, unknown>>(
     `SELECT
        id, work_date::text AS "workDate", version, status,
-       schedule_template_id AS "scheduleTemplateId", roster_id AS "rosterId",
+       schedule_template_id AS "scheduleTemplateId", schedule_version_id AS "scheduleVersionId", roster_id AS "rosterId",
        scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
        first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt",
        worked_minutes AS "workedMinutes", break_minutes AS "breakMinutes",
        late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes",
-       incomplete_session AS "incompleteSession", justified, created_at AS "createdAt"
+       incomplete_session AS "incompleteSession", justified,
+       late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
+       outside_geofence_justified AS "outsideGeofenceJustified",
+       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,

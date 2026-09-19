@@ -998,7 +998,7 @@ export async function registerAttendanceWorkforceRoutes(
       pool.query(
         `SELECT entry.roster_id AS "rosterId", entry.employee_id AS "employeeId",
            entry.work_date::text AS "workDate", entry.schedule_template_id AS "scheduleTemplateId",
-           entry.is_off AS "isOff", entry.note
+           entry.schedule_version_id AS "scheduleVersionId", entry.is_off AS "isOff", entry.note
          FROM attendance_roster_entries entry
          JOIN attendance_rosters roster ON roster.id = entry.roster_id
          WHERE roster.week_start = $1::date
@@ -1067,9 +1067,9 @@ export async function registerAttendanceWorkforceRoutes(
          LIMIT 1
        )
        INSERT INTO attendance_roster_entries (
-         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+         roster_id, employee_id, work_date, schedule_template_id, schedule_version_id, is_off, note
        )
-       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.is_off, entry.note
+       SELECT $1, entry.employee_id, entry.work_date, entry.schedule_template_id, entry.schedule_version_id, entry.is_off, entry.note
        FROM attendance_roster_entries entry
        JOIN previous ON previous.id = entry.roster_id
        ON CONFLICT DO NOTHING`,
@@ -1103,6 +1103,7 @@ export async function registerAttendanceWorkforceRoutes(
            ) VALUES ($1, $2, $3::date, $4, $5, $6)
            ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
              schedule_template_id = EXCLUDED.schedule_template_id,
+             schedule_version_id = NULL,
              is_off = EXCLUDED.is_off,
              note = EXCLUDED.note`,
           [params.data.rosterId, entry.employeeId, entry.workDate, entry.scheduleTemplateId, entry.isOff, entry.note ?? null],
@@ -1163,14 +1164,15 @@ export async function registerAttendanceWorkforceRoutes(
          ORDER BY version DESC LIMIT 1
        )
        INSERT INTO attendance_roster_entries (
-         roster_id, employee_id, work_date, schedule_template_id, is_off, note
+         roster_id, employee_id, work_date, schedule_template_id, schedule_version_id, is_off, note
        )
        SELECT $1, entry.employee_id, (entry.work_date + interval '7 days')::date,
-              entry.schedule_template_id, entry.is_off, entry.note
+              entry.schedule_template_id, NULL, entry.is_off, entry.note
        FROM attendance_roster_entries entry
        JOIN source_roster source ON source.id = entry.roster_id
        ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
          schedule_template_id = EXCLUDED.schedule_template_id,
+         schedule_version_id = NULL,
          is_off = EXCLUDED.is_off,
          note = EXCLUDED.note
        RETURNING employee_id`,
@@ -1184,16 +1186,59 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const params = z.object({ rosterId: z.string().uuid() }).safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ROSTER", message: "Roster tidak valid." });
-    const changed = await pool.query(
-      `UPDATE attendance_rosters
-       SET status = 'PUBLISHED', published_by_account_id = $2, published_at = now(), updated_at = now()
-       WHERE id = $1 AND status = 'DRAFT'
-       RETURNING id`,
-      [params.data.rosterId, principal.id],
-    );
-    if (!changed.rows[0]) return reply.status(409).send({ code: "ROSTER_NOT_DRAFT", message: "Roster tidak dapat dipublikasikan." });
-    await insertAudit(pool, principal.id, "attendance.roster.published", "attendance_roster", params.data.rosterId, {});
-    return reply.send({ id: params.data.rosterId, status: "PUBLISHED" });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const roster = await client.query<{ id: string }>(
+        `SELECT id FROM attendance_rosters WHERE id = $1 AND status = 'DRAFT' FOR UPDATE`,
+        [params.data.rosterId],
+      );
+      if (!roster.rows[0]) throw new WorkforceAttendanceError(409, "ROSTER_NOT_DRAFT", "Roster tidak dapat dipublikasikan.");
+
+      await client.query(
+        `UPDATE attendance_roster_entries entry
+         SET schedule_version_id = version.id
+         FROM attendance_schedule_versions version
+         WHERE entry.roster_id = $1
+           AND entry.is_off = false
+           AND entry.schedule_version_id IS NULL
+           AND version.schedule_template_id = entry.schedule_template_id
+           AND version.effective_to IS NULL`,
+        [params.data.rosterId],
+      );
+      const unresolved = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM attendance_roster_entries
+         WHERE roster_id = $1
+           AND is_off = false
+           AND schedule_version_id IS NULL`,
+        [params.data.rosterId],
+      );
+      if ((unresolved.rows[0]?.count ?? 0) > 0) {
+        throw new WorkforceAttendanceError(
+          409,
+          "ROSTER_SCHEDULE_VERSION_UNRESOLVED",
+          "Ada jadwal roster yang belum memiliki versi aktif.",
+        );
+      }
+
+      await client.query(
+        `UPDATE attendance_rosters
+         SET status = 'PUBLISHED', published_by_account_id = $2, published_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [params.data.rosterId, principal.id],
+      );
+      await insertAudit(client, principal.id, "attendance.roster.published", "attendance_roster", params.data.rosterId, {
+        scheduleVersionsPinned: true,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.rosterId, status: "PUBLISHED" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
   });
 
 

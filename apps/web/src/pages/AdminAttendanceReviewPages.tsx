@@ -65,7 +65,11 @@ export function AdminAttendanceClarificationsPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = async () => setItems((await listAttendanceClarificationsForHcByStatus(status)).items);
-  useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Klarifikasi tidak dapat dimuat.")); }, [status]);
+  useEffect(() => {
+    void listAttendanceClarificationsForHcByStatus(status)
+      .then((result) => setItems(result.items))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Klarifikasi tidak dapat dimuat."));
+  }, [status]);
 
   const decide = async (id: string, decision: "approve" | "reject") => {
     setBusy(id); setError(null); setNotice(null);
@@ -141,8 +145,11 @@ export function AdminAttendanceMobileEvidencePage() {
   const [photoId, setPhotoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => setItems((await listAttendanceMobileEvidence({ date, reviewState })).items);
-  useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Evidence mobile tidak dapat dimuat.")); }, [date, reviewState]);
+  useEffect(() => {
+    void listAttendanceMobileEvidence({ date, reviewState })
+      .then((result) => setItems(result.items))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Evidence mobile tidak dapat dimuat."));
+  }, [date, reviewState]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("id-ID");
@@ -207,17 +214,16 @@ export function AdminAttendanceReportsPage() {
 
   useEffect(() => { void getCurrentSession().then((session) => setCanFinalize(hasPermission(session, "attendance.policy.manage"))); }, []);
 
-  const load = async () => {
+  useEffect(() => {
     setBusy("load");
-    try {
-      const result = await getAttendanceReport(date, status || undefined);
-      setReport({ summary: result.summary, items: result.items });
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Laporan tidak dapat dimuat.");
-    } finally { setBusy(null); }
-  };
-  useEffect(() => { void load(); }, [date, status]);
+    void getAttendanceReport(date, status || undefined)
+      .then((result) => {
+        setReport({ summary: result.summary, items: result.items });
+        setError(null);
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Laporan tidak dapat dimuat."))
+      .finally(() => setBusy(null));
+  }, [date, status]);
 
   const finalize = async () => {
     setBusy("finalize"); setNotice(null); setError(null);

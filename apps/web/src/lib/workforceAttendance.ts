@@ -31,6 +31,18 @@ export interface WorkforceResult {
   earlyLeaveMinutes: number;
   incompleteSession: boolean;
   justified: boolean;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  overtimeMinutes: number;
+  sessions?: Array<{
+    sequence: number;
+    checkInAt: string;
+    checkOutAt: string | null;
+    workedMinutes: number | null;
+    complete: boolean;
+    sourceSummary: string;
+  }>;
 }
 
 export interface ResolvedSchedule {
@@ -65,6 +77,17 @@ export interface WorkforceSnapshot {
     proposedCheckOutAt: string | null;
     decisionNote: string | null;
     createdAt: string;
+  }>;
+  overtimeRequests: Array<{
+    id: string;
+    workDate: string;
+    requestedMinutes: number;
+    approvedMinutes: number | null;
+    note: string | null;
+    status: "submitted" | "approved" | "rejected" | "cancelled";
+    decisionNote: string | null;
+    createdAt: string;
+    decidedAt: string | null;
   }>;
   mobileEvidence: Array<{
     id: string;
@@ -173,14 +196,14 @@ export async function createAttendanceWorkLocation(input: {
 
 export async function listAttendanceSchedules() {
   return readJson<{ items: Array<{
-    id: string; name: string; startTime: string; endTime: string;
+    id: string; name: string; startTime: string; endTime: string; endDayOffset: number;
     lateGraceMinutes: number; earlyLeaveToleranceMinutes: number;
     active: boolean; workLocationId: string | null; workLocationName: string | null;
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
 }
 
 export async function createAttendanceSchedule(input: {
-  name: string; startTime: string; endTime: string; lateGraceMinutes: number;
+  name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
   earlyLeaveToleranceMinutes: number; workLocationId: string | null;
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
@@ -291,6 +314,7 @@ export interface AttendanceRosterWorkspace {
     name: string;
     startTime: string;
     endTime: string;
+    endDayOffset?: number;
     active: boolean;
   }>;
 }
@@ -331,7 +355,7 @@ export async function updateAttendanceWorkLocation(
 export async function updateAttendanceSchedule(
   scheduleId: string,
   input: Partial<{
-    name: string; startTime: string; endTime: string; lateGraceMinutes: number;
+    name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
     earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
   }>,
 ) {
@@ -439,4 +463,173 @@ export async function listAttendanceMobileEvidence(input: {
 
 export function attendanceMobileEvidencePhotoUrl(evidenceId: string) {
   return `/api/admin/attendance/mobile-evidence/${encodeURIComponent(evidenceId)}/photo`;
+}
+
+
+export interface AttendanceDailyItem {
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitId: string | null;
+  unitName: string | null;
+  workDate: string;
+  status: string;
+  resultVersion: number | null;
+  scheduleTemplateId: string | null;
+  scheduleVersionId: string | null;
+  rosterId: string | null;
+  workLocationId: string | null;
+  workLocationName: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  firstCheckInAt: string | null;
+  lastCheckOutAt: string | null;
+  workedMinutes: number;
+  breakMinutes: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  overtimeMinutes: number;
+  incompleteSession: boolean;
+  justified: boolean;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  sources: string[];
+  deviceIds: string[];
+  materialized: boolean;
+}
+
+export async function getAttendanceDaily(date: string) {
+  return readJson<{ date: string; summary: Record<string, number>; items: AttendanceDailyItem[] }>(
+    await fetch(`/api/admin/attendance/daily?date=${encodeURIComponent(date)}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export type AttendanceReportType = "detail" | "period" | "unit" | "sessions" | "scans" | "schedule" | "overtime";
+
+export async function getAttendanceReportV2(input: {
+  type: AttendanceReportType;
+  from: string;
+  to: string;
+  status?: string;
+  employeeId?: string;
+  unitId?: string;
+  scheduleId?: string;
+  locationId?: string;
+  source?: "adms" | "mobile" | "manual";
+  deviceId?: string;
+}) {
+  const params = new URLSearchParams({ type: input.type, from: input.from, to: input.to });
+  for (const [key, value] of Object.entries(input)) {
+    if (["type", "from", "to"].includes(key) || value === undefined || value === "") continue;
+    params.set(key, String(value));
+  }
+  return readJson<{ type: AttendanceReportType; from: string; to: string; summary?: Record<string, number>; items: Array<Record<string, unknown>> }>(
+    await fetch(`/api/admin/attendance/report?${params.toString()}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export interface AttendanceOvertimeItem {
+  id: string;
+  employeeId?: string;
+  employeeNumber?: string;
+  employeeName?: string;
+  unitName?: string | null;
+  workDate: string;
+  requestedMinutes: number;
+  approvedMinutes: number | null;
+  note: string | null;
+  status: "submitted" | "approved" | "rejected" | "cancelled";
+  decisionNote: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export async function listMyAttendanceOvertime() {
+  return readJson<{ items: AttendanceOvertimeItem[] }>(
+    await fetch("/api/attendance/overtime/me", { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function submitAttendanceOvertime(input: {
+  workDate: string;
+  requestedMinutes: number;
+  note?: string | null;
+}) {
+  return readJson<{ id: string; status: string }>(
+    await fetch("/api/attendance/overtime", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function cancelAttendanceOvertime(overtimeId: string) {
+  const response = await fetch(`/api/attendance/overtime/${encodeURIComponent(overtimeId)}/cancel`, {
+    method: "POST", credentials: "include", headers: { Accept: "application/json" },
+  });
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+export async function listAttendanceOvertime(
+  status: "all" | "submitted" | "approved" | "rejected" | "cancelled" = "submitted",
+) {
+  return readJson<{ items: AttendanceOvertimeItem[] }>(
+    await fetch(`/api/admin/attendance/overtime?status=${encodeURIComponent(status)}`, {
+      credentials: "include", headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function createAttendanceOvertimeForEmployee(input: {
+  employeeId: string;
+  workDate: string;
+  requestedMinutes: number;
+  note?: string | null;
+}) {
+  return readJson<{ id: string; status: string }>(
+    await fetch("/api/admin/attendance/overtime", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function decideAttendanceOvertime(
+  overtimeId: string,
+  input: { decision: "approve" | "reject"; approvedMinutes?: number | null; note?: string | null },
+) {
+  return readJson(
+    await fetch(`/api/admin/attendance/overtime/${encodeURIComponent(overtimeId)}/decision`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function createCanonicalManualCorrection(input: {
+  employeeId: string;
+  workDate: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  reason: string;
+}) {
+  return readJson(
+    await fetch("/api/admin/attendance/manual-corrections", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 }

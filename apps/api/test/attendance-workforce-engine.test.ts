@@ -54,6 +54,82 @@ describe("ATT-003 schedule resolution", () => {
     expect(resolved.scheduledEndAt?.toISOString()).toBe("2026-09-19T23:00:00.000Z");
   });
 
+  it("uses only the latest published roster version for the week", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("WITH latest_roster")) {
+        return {
+          rows: [{
+            scheduleTemplateId: "00000000-0000-4000-8000-000000000009",
+            rosterId: "00000000-0000-4000-8000-000000000010",
+            isOff: false,
+            startTime: "09:00:00",
+            endTime: "17:00:00",
+            lateGraceMinutes: 0,
+            earlyLeaveToleranceMinutes: 0,
+            workLocationId: null,
+            locationName: null,
+            latitude: null,
+            longitude: null,
+            radiusMeters: null,
+          }],
+          rowCount: 1,
+        };
+      }
+      throw new Error("Resolver should stop after the latest published roster override");
+    });
+    const resolved = await resolveSchedule({ query } as unknown as Pool, "employee", "2026-09-19");
+    expect(resolved.rosterId).toBe("00000000-0000-4000-8000-000000000010");
+    expect(resolved.scheduledStartAt?.toISOString()).toBe("2026-09-19T02:00:00.000Z");
+  });
+
+  it("falls back to default assignment when latest published roster has no override cell", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("WITH latest_roster")) {
+        return {
+          rows: [{
+            scheduleTemplateId: null,
+            rosterId: "00000000-0000-4000-8000-000000000010",
+            isOff: false,
+            startTime: null,
+            endTime: null,
+            lateGraceMinutes: null,
+            earlyLeaveToleranceMinutes: null,
+            workLocationId: null,
+            locationName: null,
+            latitude: null,
+            longitude: null,
+            radiusMeters: null,
+          }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("FROM leave_calendar_exceptions")) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM attendance_schedule_assignments")) {
+        return {
+          rows: [{
+            scheduleTemplateId: "default",
+            rosterId: null,
+            isOff: false,
+            startTime: "08:00:00",
+            endTime: "16:00:00",
+            lateGraceMinutes: 0,
+            earlyLeaveToleranceMinutes: 0,
+            workLocationId: null,
+            locationName: null,
+            latitude: null,
+            longitude: null,
+            radiusMeters: null,
+          }],
+          rowCount: 1,
+        };
+      }
+      throw new Error("Unexpected SQL");
+    });
+    const resolved = await resolveSchedule({ query } as unknown as Pool, "employee", "2026-09-19");
+    expect(resolved.scheduleTemplateId).toBe("default");
+    expect(resolved.rosterId).toBeNull();
+  });
+
   it("treats a non-working calendar exception as off when no roster overrides it", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM attendance_rosters")) return { rows: [], rowCount: 0 };

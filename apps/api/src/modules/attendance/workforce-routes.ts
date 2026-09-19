@@ -61,7 +61,7 @@ const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
-  endDayOffset: z.number().int().min(0).max(1).default(0),
+  endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).default(0),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
@@ -766,16 +766,19 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const result = await pool.query(
       `SELECT schedule.id, schedule.name, schedule.start_time::text AS "startTime",
-         schedule.end_time::text AS "endTime", schedule.late_grace_minutes AS "lateGraceMinutes",
+         schedule.end_time::text AS "endTime", schedule.end_day_offset AS "endDayOffset",
+         schedule.late_grace_minutes AS "lateGraceMinutes",
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
-         schedule.active, location.id AS "workLocationId", location.name AS "workLocationName"
+         schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
+         version.id AS "currentVersionId", version.version AS "currentVersion"
        FROM attendance_schedule_templates schedule
        LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
+       LEFT JOIN attendance_schedule_versions version
+         ON version.schedule_template_id = schedule.id AND version.effective_to IS NULL
        ORDER BY schedule.active DESC, schedule.name`,
     );
     return reply.send({ items: result.rows });
   });
-
 
   app.patch("/admin/attendance/schedules/:scheduleId", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
@@ -785,36 +788,84 @@ export async function registerAttendanceWorkforceRoutes(
     if (!params.success || !body.success) {
       return reply.status(400).send({ code: "INVALID_SCHEDULE_UPDATE", message: "Perubahan jadwal tidak valid." });
     }
-    const current = await pool.query<{
-      name: string; startTime: string; endTime: string; lateGraceMinutes: number;
-      earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
-    }>(
-      `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
-         late_grace_minutes AS "lateGraceMinutes",
-         early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
-         work_location_id AS "workLocationId", active
-       FROM attendance_schedule_templates WHERE id = $1`,
-      [params.data.scheduleId],
-    );
-    const item = current.rows[0];
-    if (!item) return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
-    const next = { ...item, ...body.data };
-    await pool.query(
-      `UPDATE attendance_schedule_templates
-       SET name = $2, start_time = $3::time, end_time = $4::time,
-           late_grace_minutes = $5, early_leave_tolerance_minutes = $6,
-           work_location_id = $7, active = $8, updated_at = now()
-       WHERE id = $1`,
-      [
-        params.data.scheduleId, next.name, next.startTime, next.endTime,
-        next.lateGraceMinutes, next.earlyLeaveToleranceMinutes,
-        next.workLocationId ?? null, next.active,
-      ],
-    );
-    await insertAudit(pool, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
-      fields: Object.keys(body.data),
-    });
-    return reply.send({ id: params.data.scheduleId });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{
+        name: string; startTime: string; endTime: string; endDayOffset: number; lateGraceMinutes: number;
+        earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+      }>(
+        `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
+           end_day_offset AS "endDayOffset", late_grace_minutes AS "lateGraceMinutes",
+           early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+           work_location_id AS "workLocationId", active
+         FROM attendance_schedule_templates WHERE id = $1 FOR UPDATE`,
+        [params.data.scheduleId],
+      );
+      const item = current.rows[0];
+      if (!item) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
+      }
+      const next = { ...item, ...body.data };
+      if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
+        next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
+      }
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId"]
+        .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
+
+      await client.query(
+        `UPDATE attendance_schedule_templates
+         SET name = $2, start_time = $3::time, end_time = $4::time, end_day_offset = $5,
+             late_grace_minutes = $6, early_leave_tolerance_minutes = $7,
+             work_location_id = $8, active = $9, updated_at = now()
+         WHERE id = $1`,
+        [
+          params.data.scheduleId, next.name, next.startTime, next.endTime, next.endDayOffset,
+          next.lateGraceMinutes, next.earlyLeaveToleranceMinutes, next.workLocationId ?? null, next.active,
+        ],
+      );
+
+      let versionId: string | null = null;
+      let versionNumber: number | null = null;
+      if (semanticChanged) {
+        const atResult = await client.query<{ at: Date }>("SELECT clock_timestamp() AS at");
+        const effectiveAt = atResult.rows[0]?.at ?? new Date();
+        const previous = await client.query<{ version: number }>(
+          `UPDATE attendance_schedule_versions
+           SET effective_to = $2
+           WHERE schedule_template_id = $1 AND effective_to IS NULL
+           RETURNING version`,
+          [params.data.scheduleId, effectiveAt],
+        );
+        versionNumber = (previous.rows[0]?.version ?? 0) + 1;
+        versionId = randomUUID();
+        await client.query(
+          `INSERT INTO attendance_schedule_versions (
+             id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
+             late_grace_minutes, early_leave_tolerance_minutes, work_location_id,
+             effective_from, created_by_account_id
+           ) VALUES ($1, $2, $3, $4, $5::time, $6::time, $7, $8, $9, $10, $11, $12)`,
+          [
+            versionId, params.data.scheduleId, versionNumber, next.name, next.startTime, next.endTime,
+            next.endDayOffset, next.lateGraceMinutes, next.earlyLeaveToleranceMinutes,
+            next.workLocationId ?? null, effectiveAt, principal.id,
+          ],
+        );
+      }
+
+      await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
+        fields: Object.keys(body.data), versionId, version: versionNumber,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.scheduleId, versionId, version: versionNumber });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   app.post("/admin/attendance/schedules", async (request, reply) => {
@@ -823,19 +874,44 @@ export async function registerAttendanceWorkforceRoutes(
     const body = scheduleTemplateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_SCHEDULE_TEMPLATE", message: "Template jadwal tidak valid." });
     const id = randomUUID();
-    await pool.query(
-      `INSERT INTO attendance_schedule_templates (
-         id, name, start_time, end_time, late_grace_minutes,
-         early_leave_tolerance_minutes, work_location_id, created_by_account_id
-       ) VALUES ($1, $2, $3::time, $4::time, $5, $6, $7, $8)`,
-      [
-        id, body.data.name, body.data.startTime, body.data.endTime,
-        body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
-        body.data.workLocationId ?? null, principal.id,
-      ],
-    );
-    await insertAudit(pool, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {});
-    return reply.status(201).send({ id });
+    const versionId = randomUUID();
+    const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO attendance_schedule_templates (
+           id, name, start_time, end_time, end_day_offset, late_grace_minutes,
+           early_leave_tolerance_minutes, work_location_id, created_by_account_id
+         ) VALUES ($1, $2, $3::time, $4::time, $5, $6, $7, $8, $9)`,
+        [
+          id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
+          body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
+          body.data.workLocationId ?? null, principal.id,
+        ],
+      );
+      await client.query(
+        `INSERT INTO attendance_schedule_versions (
+           id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
+           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id
+         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10)`,
+        [
+          versionId, id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
+          body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
+          body.data.workLocationId ?? null, principal.id,
+        ],
+      );
+      await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
+        versionId, version: 1,
+      });
+      await client.query("COMMIT");
+      return reply.status(201).send({ id, versionId, version: 1 });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
 

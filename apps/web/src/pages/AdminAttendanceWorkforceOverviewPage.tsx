@@ -35,28 +35,28 @@ export function AdminAttendanceWorkforceOverviewPage() {
 
   useEffect(() => {
     const date = todayJakarta();
-    void Promise.all([
+    void Promise.allSettled([
       listEmployees({ page: 1, pageSize: 1, status: "active" }),
       listAttendanceSchedules(),
       listAttendanceWorkLocations(),
       listAttendanceClarificationsForHcByStatus("submitted"),
       listAttendanceMobileEvidence({ date, reviewState: "needs_review" }),
       getAttendanceReport(date),
-    ])
-      .then(([employees, schedules, locations, clarifications, mobile, report]) => {
-        setSummary({
-          employees: employees.pagination.total,
-          schedules: schedules.items.filter((item) => item.active).length,
-          locations: locations.items.filter((item) => item.active).length,
-          clarifications: clarifications.items.length,
-          mobileReview: mobile.items.length,
-          present: report.summary.present ?? 0,
-          late: report.summary.late ?? 0,
-          absent: report.summary.absent ?? 0,
-        });
-        setError(null);
-      })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Ringkasan kehadiran tidak dapat dimuat."));
+    ]).then(([employees, schedules, locations, clarifications, mobile, report]) => {
+      setSummary({
+        employees: employees.status === "fulfilled" ? employees.value.pagination.total : 0,
+        schedules: schedules.status === "fulfilled" ? schedules.value.items.filter((item) => item.active).length : 0,
+        locations: locations.status === "fulfilled" ? locations.value.items.filter((item) => item.active).length : 0,
+        clarifications: clarifications.status === "fulfilled" ? clarifications.value.items.length : 0,
+        mobileReview: mobile.status === "fulfilled" ? mobile.value.items.length : 0,
+        present: report.status === "fulfilled" ? report.value.summary.present ?? 0 : 0,
+        late: report.status === "fulfilled" ? report.value.summary.late ?? 0 : 0,
+        absent: report.status === "fulfilled" ? report.value.summary.absent ?? 0 : 0,
+      });
+      const failures = [employees, schedules, locations, clarifications, mobile, report]
+        .filter((result) => result.status === "rejected").length;
+      setError(failures > 0 ? "Sebagian ringkasan disembunyikan karena izin akun atau data belum tersedia." : null);
+    });
   }, []);
 
   const cards = [

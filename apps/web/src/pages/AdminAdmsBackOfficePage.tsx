@@ -9,6 +9,7 @@ import {
   ServerCog,
   UsersRound,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
@@ -119,19 +120,19 @@ export function AdminAdmsBackOfficePage() {
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {[
-          ["Mesin", devices.length, Fingerprint],
-          ["Online", summary.online, Radio],
-          ["Offline", summary.offline, MonitorCog],
-          ["Belum diketahui", summary.unknown, MonitorCog],
-          ["PIN belum mapping", summary.unmapped, Link2],
-          ["Perlu review", summary.review + detected.length, AlertTriangle],
-        ].map(([label, value, Icon]) => (
-          <article key={String(label)} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+        {([
+          { label: "Mesin", value: devices.length, icon: Fingerprint },
+          { label: "Online", value: summary.online, icon: Radio },
+          { label: "Offline", value: summary.offline, icon: MonitorCog },
+          { label: "Belum diketahui", value: summary.unknown, icon: MonitorCog },
+          { label: "PIN belum mapping", value: summary.unmapped, icon: Link2 },
+          { label: "Perlu review", value: summary.review + detected.length, icon: AlertTriangle },
+        ] as Array<{ label: string; value: number; icon: LucideIcon }>).map(({ label, value, icon: Icon }) => (
+          <article key={label} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
             <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
               <Icon className="h-4 w-4" /> {String(label)}
             </div>
-            <p className="mt-2 text-2xl font-bold text-brand-heading">{String(value)}</p>
+            <p className="mt-2 text-2xl font-bold text-brand-heading">{value}</p>
           </article>
         ))}
       </section>

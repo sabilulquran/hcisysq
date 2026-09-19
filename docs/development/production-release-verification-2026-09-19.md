@@ -64,6 +64,19 @@ GitHub Actions logs record:
 
 The production job's combined **Deploy and verify** step completed successfully. The workflow intentionally redacts the passive device summary from GitHub Actions output.
 
+## ORG-004 rollout safety check
+
+A GitHub-only audit of the exact deployed delta `acd22b... -> 66da50c...` confirms:
+
+- recovered migrations `0020` through `0023` contain no `organization_rollout_settings` mutation;
+- PR #60 did not add a migration that creates or changes an ORG-004 rollout row;
+- the organization repository reads rollout mode from `organization_rollout_settings`;
+- the Admin API changes rollout only through an explicit authorized `PATCH /admin/organization/rollout` path.
+
+Therefore this deployment did **not automatically activate** `SHADOW` or `STRUCTURE`.
+
+This GitHub-only closure does not claim a fresh direct production row-count query, because the available GitHub connector has no read-only VPS/database session. The last supplied direct production evidence reported no rollout row and therefore `LEGACY`; no rollout-mutating deployment change or later activation evidence is present in this release record.
+
 ## Scope
 
 This deployment makes the source/schema reconciliation from PR #59/#60 part of the verified production application baseline. It does **not** by itself:

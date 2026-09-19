@@ -64,7 +64,13 @@ const scheduleTemplateSchema = z.object({
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
 });
-const scheduleTemplatePatchSchema = scheduleTemplateSchema.partial().extend({
+const scheduleTemplatePatchSchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  lateGraceMinutes: z.number().int().min(0).max(240).optional(),
+  earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
+  workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
 const assignmentSchema = z.object({

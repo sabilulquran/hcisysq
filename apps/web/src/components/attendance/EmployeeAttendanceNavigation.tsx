@@ -1,7 +1,7 @@
 import { ArrowLeftRight, CalendarRange, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const employeeAttendanceLinks = [
+const employeeAttendanceLinks = [
   { label: "Riwayat & Jadwal", href: "/app/attendance", icon: CalendarRange },
   { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera },
   { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight },

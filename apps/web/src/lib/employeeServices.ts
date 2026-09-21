@@ -94,11 +94,11 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "shift-swap",
     label: "Tukar Shift",
-    description: "Ajukan pertukaran shift dengan alur persetujuan yang terkontrol.",
+    description: "Ajukan pertukaran shift dengan rekan satu unit dan persetujuan Human Capital.",
     featureIds: ["ATT-008"],
-    stage: "planned",
+    stage: "available",
     category: "time-attendance",
-    href: "/app/services/shift-swap",
+    href: "/app/attendance/shift-swap",
   },
   {
     key: "attendance-clarification",

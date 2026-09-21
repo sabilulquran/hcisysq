@@ -271,12 +271,13 @@ features:
     module: attendance
     name: Shift exchange workflow
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: planned
+    target_status: implemented
     priority: later
     risk: high
-    planning_note: Product scope accepted; eligibility, counterpart consent, approval, cutoff, audit, and conflict rules remain to be specified.
+    planning_note: Same-date/same-unit exchange with immutable schedule snapshots, counterpart consent, Human Capital approval, conflict/cutoff checks, append-only audit, and new roster-version publication is repository-verified. Production deployment remains a separate gate.
     docs:
       - docs/product/hcis-capability-map.md
+      - docs/domain/attendance-shift-exchange.md
 
   - id: LEAVE-001
     module: leave

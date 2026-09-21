@@ -28,6 +28,7 @@ import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
+import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
 import { AdminAttendanceWorkforceOverviewPage } from "@/pages/AdminAttendanceWorkforceOverviewPage";
@@ -46,6 +47,7 @@ import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePage";
+import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
@@ -115,6 +117,13 @@ const employeeMobileAttendanceRoute = createRoute({
   path: "/app/attendance/clock",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeMobileAttendancePage,
+});
+
+const employeeShiftSwapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/attendance/shift-swap",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeShiftSwapPage,
 });
 
 const employeeLeaveRoute = createRoute({
@@ -300,6 +309,13 @@ const adminAttendanceOvertimeRoute = createRoute({
   component: AdminAttendanceOvertimePage,
 });
 
+const adminAttendanceShiftSwapsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/workforce/shift-swaps",
+  beforeLoad: () => requireAdminPath("/admin/attendance/workforce/shift-swaps"),
+  component: AdminAttendanceShiftSwapsPage,
+});
+
 const adminAttendanceReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/workforce/reports",
@@ -440,6 +456,7 @@ const routeTree = rootRoute.addChildren([
   appRoute,
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
+  employeeShiftSwapRoute,
   employeeLeaveRoute,
   employeePayslipsRoute,
   employeeSpecialLeaveRoute,
@@ -466,6 +483,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceClarificationsRoute,
   adminAttendanceMobileRoute,
   adminAttendanceOvertimeRoute,
+  adminAttendanceShiftSwapsRoute,
   adminAttendanceReportsRoute,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,

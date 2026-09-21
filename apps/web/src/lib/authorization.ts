@@ -10,7 +10,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin") return [
     "employees.manage", "organization.manage", "access.manage", "attendance.records.manage",
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
-    "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
+    "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
@@ -23,7 +23,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
   if (path === "/admin/attendance/workforce") return [
     "attendance.schedule.manage", "attendance.policy.manage",
-    "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
+    "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/attendance\/workforce\/(locations|schedules|assignments|roster)$/.test(path)) {
     return hasPermission(session, "attendance.schedule.manage");
@@ -33,6 +33,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   }
   if (path === "/admin/attendance/workforce/overtime") {
     return hasPermission(session, "attendance.overtime.manage");
+  }
+  if (path === "/admin/attendance/workforce/shift-swaps") {
+    return hasPermission(session, "attendance.shift_swap.manage");
   }
   if (path === "/admin/attendance/workforce/reports") {
     return hasPermission(session, "attendance.reports.read");

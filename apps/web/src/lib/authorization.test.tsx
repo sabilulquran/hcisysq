@@ -34,6 +34,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       expect(html).toContain('href="/admin/attendance/adms"');
     }
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/operations")).toBe(true);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/diagnostics")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/settings")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
@@ -79,6 +80,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms/transactions")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/operations")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/diagnostics")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/settings")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/biometrics")).toBe(false);
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);

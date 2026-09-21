@@ -107,8 +107,8 @@ const navGroups: AdminNavGroup[] = [
     items: [{ key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound }],
   },
   {
-    label: "Roadmap",
-    items: [{ key: "services", label: "Modul Mendatang", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
+    label: "Modul",
+    items: [{ key: "services", label: "Katalog Modul", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
   },
 ];
 

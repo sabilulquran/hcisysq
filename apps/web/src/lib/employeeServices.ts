@@ -63,12 +63,12 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "lateness", label: "Keterlambatan",
     description: "Lihat hasil evaluasi keterlambatan berbasis jadwal dan kebijakan.",
-    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance#overtime",
+    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance",
   },
   {
     key: "overtime", label: "Lembur",
     description: "Pengajuan, persetujuan, dan hasil lembur berbasis kebijakan.",
-    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance",
+    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance#overtime",
   },
   {
     key: "leave", label: "Cuti & Izin",

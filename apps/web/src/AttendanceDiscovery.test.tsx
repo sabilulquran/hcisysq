@@ -27,6 +27,8 @@ describe("employee attendance discoverability", () => {
   it("does not hide attendance actions beyond a horizontal scroll strip", () => {
     const html = renderToStaticMarkup(<EmployeeAttendanceNavigation currentPath="/app/attendance/shift-swap" />);
     expect(html).toContain('href="/app/attendance/shift-swap" aria-current="page"');
+    expect(html).toContain('href="/app/attendance#overtime"');
+    expect(html).toContain('href="/app/attendance/clock#clarification"');
     expect(html).not.toContain("overflow-x-auto");
     expect(html).toContain("min-h-11");
   });
@@ -44,7 +46,8 @@ describe("employee attendance discoverability", () => {
 
   it("links implemented services to real routes while reminders remain a proposal", () => {
     expect(getEmployeeService("overtime")?.stage).toBe("available");
-    expect(getEmployeeService("overtime")?.href).toBe("/app/attendance");
+    expect(getEmployeeService("overtime")?.href).toBe("/app/attendance#overtime");
+    expect(getEmployeeService("attendance-clarification")?.href).toBe("/app/attendance/clock#clarification");
     expect(getEmployeeService("work-schedule")?.href).toBe("/app/attendance");
     expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
     expect(getEmployeeService("notifications")?.stage).toBe("available");

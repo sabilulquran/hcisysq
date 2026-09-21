@@ -64,6 +64,14 @@ export interface WorkforceSnapshot {
   employee: { id: string; fullName: string; employeeNumber: string };
   workDate: string;
   mobileEnabled: boolean;
+  mobileReadiness: {
+    captureReady: boolean;
+    captureReason: "runtime_disabled" | "restricted_media_not_ready" | "ready";
+    scheduleState: ResolvedSchedule["state"];
+    scheduleReason: string | null;
+    hasWorkLocation: boolean;
+    workLocationId: string | null;
+  };
   schedule: ResolvedSchedule;
   result: WorkforceResult | null;
   clarifications: Array<{

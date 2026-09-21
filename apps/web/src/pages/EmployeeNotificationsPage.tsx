@@ -39,13 +39,14 @@ export function EmployeeNotificationsPage() {
   const load = async (filter = state) => {
     setLoading(true);
     try {
-      const [summary, notifications] = await Promise.all([
+      const [summary, notifications] = await Promise.allSettled([
         getEmployeeLeaveSummary(),
         getMyNotifications(filter),
       ]);
-      setEmployee(summary.employee);
-      setItems(notifications.items);
-      setUnreadCount(notifications.unreadCount);
+      if (summary.status === "fulfilled") setEmployee(summary.value.employee);
+      if (notifications.status === "rejected") throw notifications.reason;
+      setItems(notifications.value.items);
+      setUnreadCount(notifications.value.unreadCount);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Notifikasi tidak dapat dimuat.");

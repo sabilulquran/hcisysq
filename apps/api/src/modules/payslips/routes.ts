@@ -1,4 +1,5 @@
 import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
+import { notifyEmployee } from "../notifications/service.js";
 import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
@@ -598,12 +599,12 @@ export async function registerPayslipRoutes(
         });
       }
 
-      const published = await client.query(
+      const published = await client.query<{ id: string; employeeId: string; period: string }>(
         `UPDATE payslips
             SET published_at = now(), published_by_account_id = $2
           WHERE source_batch_id = $1
             AND published_at IS NULL
-        RETURNING id`,
+        RETURNING id, employee_id AS "employeeId", to_char(period, 'YYYY-MM') AS period`,
         [parsed.data.batchId, principal.id],
       );
       await client.query(
@@ -616,6 +617,17 @@ export async function registerPayslipRoutes(
         batchId: parsed.data.batchId,
         payload: { payslipCount: published.rowCount ?? published.rows.length },
       });
+      for (const payslip of published.rows) {
+        await notifyEmployee(client, payslip.employeeId, {
+          eventKey: `payslip:${payslip.id}:published`,
+          category: "payslip",
+          title: "Slip gaji tersedia",
+          body: `Slip gaji periode ${payslip.period} sudah dipublikasikan.`,
+          href: "/app/payslips",
+          actorAccountId: principal.id,
+          metadata: { payslipId: payslip.id, period: payslip.period },
+        });
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");

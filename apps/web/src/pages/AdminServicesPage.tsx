@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Building2,
   CalendarDays,
@@ -14,6 +15,9 @@ import {
 } from "lucide-react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { getCurrentSession } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import {
   adminServiceCategories,
   adminServices,
@@ -41,14 +45,14 @@ const icons = {
   sites: Building2,
 } as const;
 
-function ServiceTile({ service }: { service: AdminServiceDefinition }) {
+export function AdminServiceTile({ service, canOpen }: { service: AdminServiceDefinition; canOpen: boolean }) {
   const Icon = icons[service.key as keyof typeof icons] ?? FileText;
+  const className = "group flex min-h-32 flex-col rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    + (canOpen ? " hover:border-brand-primary/35 hover:bg-brand-primary-pale/15" : " cursor-not-allowed opacity-70");
 
-  return (
-    <a
-      href={service.href}
-      className="group flex min-h-32 flex-col rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-colors hover:border-brand-primary/35 hover:bg-brand-primary-pale/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
+  const content = (
+    <>
+
       <div className="flex items-start justify-between gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
           <Icon className="h-5 w-5" aria-hidden="true" />
@@ -66,11 +70,33 @@ function ServiceTile({ service }: { service: AdminServiceDefinition }) {
           {service.details.join(" · ")}
         </p>
       ) : null}
-    </a>
+      {!canOpen && service.stage === "available" ? (
+        <p className="mt-2 text-[10px] font-bold leading-4 text-amber-800">Tersedia di HCIS · akun ini belum memiliki akses</p>
+      ) : null}
+    </>
+  );
+
+  return canOpen ? (
+    <a href={service.href} className={className}>{content}</a>
+  ) : (
+    <div className={className} aria-disabled="true">{content}</div>
   );
 }
 
 export function AdminServicesPage() {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentSession().then((value) => {
+      if (active) setSession(value);
+    }).finally(() => {
+      if (active) setSessionResolved(true);
+    });
+    return () => { active = false; };
+  }, []);
+
   return (
     <AdminShell
       active="services"

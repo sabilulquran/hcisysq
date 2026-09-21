@@ -135,10 +135,10 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       <section className="rounded-2xl border border-slate-300 bg-slate-950 p-5 text-slate-100 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Area teknis · Super Admin</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Area teknis · operator ADMS berizin</div>
             <h2 className="mt-1 text-base font-bold">Diagnostik mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-300">
-              Protocol evidence, canary, reconciliation, log aman, dan metadata biometric. Halaman ini terikat hanya ke mesin pada URL dan tidak memilih mesin lain secara internal.
+              Protocol evidence, canary, reconciliation, dan log aman untuk mesin pada URL. Metadata biometrik hanya dimuat bila account memiliki izin biometrik terpisah.
             </p>
           </div>
           <button type="button" disabled={busy !== null} onClick={() => void refresh()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-700 px-3 text-xs font-semibold hover:bg-slate-900 disabled:opacity-50">

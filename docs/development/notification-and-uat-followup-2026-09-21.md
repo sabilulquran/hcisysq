@@ -1,6 +1,6 @@
 # Notification and UAT follow-up — 2026-09-21
 
-Status: PROPOSAL / INVENTORY ONLY. No new notification service or production cleanup is authorized by this document.
+Status: NOTIFICATION V1 IMPLEMENTATION IN PROGRESS / UAT INVENTORY ONLY. No production cleanup is authorized by this document.
 
 ## Notification investigation
 
@@ -12,9 +12,9 @@ Source evidence:
 
 Conclusion: the inspected release history does not establish removal of a functioning notification center. Preserve that uncertainty about other historical systems. Do not simply mark notifications available or restore a mock unread count.
 
-### Proposed first release, pending product confirmation
+### In-app first release — implemented in repository scope
 
-One in-app notification center shared by the header bell and Semua Layanan. Start with committed workflow events: requests received, counterpart shift-swap consent, current approval task, final decisions, and payslip publication.
+One in-app notification center is shared by the header bell and Semua Layanan. The initial repository implementation covers shift-exchange lifecycle notifications, overtime final decisions, and payslip publication. Leave/approval expansion can follow without changing the recipient-owned inbox model.
 
 Each message has a concrete recipient/account snapshot, event key, created time, short text, authorized deep link, read time, and category. A unique event/recipient key prevents duplicate messages on retries. Reading a message must not approve a request. Re-check current authorization on every linked resource and every inbox/read endpoint; no cross-employee access and no global unread count leak.
 
@@ -22,7 +22,7 @@ Separate informational messages from the actionable approval/task queue. Reuse e
 
 Schedule-aware reminders are a second step: respect published rosters, holidays, approved leave, overnight shifts, actual evidence, deduplication and quiet hours. Do not infer absence or payroll consequences from a reminder.
 
-Email/WhatsApp/browser push delivery are separate adapters and configuration decisions, not prerequisites for the in-app inbox. No GPS coordinates, photos, medical attachments, salary values or credentials in notification previews. No retention period, channel mandate or release date is invented here.
+Email/WhatsApp/browser push delivery remain separate adapters and configuration decisions, not prerequisites for the in-app inbox. NOTIF-003 reminder scheduling also remains discovery. No GPS coordinates, photos, medical attachments, salary values or credentials in notification previews. No retention period, channel mandate or release date is invented here.
 
 ## UAT cleanup boundary
 

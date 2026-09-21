@@ -1,8 +1,8 @@
-# ATT-008 — Canonical Attendance Convergence
+# ATT-010 — Canonical Attendance Convergence
 
-**Status:** IMPLEMENTATION  
+**Status:** IMPLEMENTED — DEPLOYED TO PRODUCTION 2026-09-21  
 **Decision date:** 2026-09-19  
-**Related:** ATT-001, ATT-002, ATT-003, ATT-005, ATT-006, ATT-007, LEAVE-007
+**Related:** ATT-001, ATT-002, ATT-003, ATT-005, ATT-006, ATT-007, ATT-009, LEAVE-007
 
 ## Tujuan
 
@@ -215,14 +215,14 @@ Role `human_capital_admin` mendapat overtime manage. Role `human_capital` juga b
 
 ## Acceptance criteria
 
-- ATT-008-A: manual admin correction menghasilkan canonical result baru tanpa mutasi raw ADMS/mobile evidence.
-- ATT-008-B: perubahan schedule template tidak mengubah historical published roster/result.
-- ATT-008-C: validated/partially validated leave dan Attendance Resolution menghasilkan classification yang tepat per date.
-- ATT-008-D: late dan early-leave justification independen.
-- ATT-008-E: approved overtime minutes masuk result/report; checkout terlambat tanpa approval tidak menjadi overtime.
-- ATT-008-F: session rows tersimpan per result version.
-- ATT-008-G: daily HC dashboard menampilkan employee aktif walau belum ada result version.
-- ATT-008-H: period/unit/session/scan/schedule/overtime report tersedia.
-- ATT-008-I: employee attendance utama membaca canonical result.
-- ATT-008-J: Back Office ADMS mempunyai transaksi lintas mesin.
-- ATT-008-K: typecheck, lint, tests, build, clean migration, and staging compose PASS before merge.
+- ATT-010-A: manual admin correction menghasilkan canonical result baru tanpa mutasi raw ADMS/mobile evidence.
+- ATT-010-B: perubahan schedule template tidak mengubah historical published roster/result.
+- ATT-010-C: validated/partially validated leave dan Attendance Resolution menghasilkan classification yang tepat per date.
+- ATT-010-D: late dan early-leave justification independen.
+- ATT-010-E: approved overtime minutes masuk result/report; checkout terlambat tanpa approval tidak menjadi overtime.
+- ATT-010-F: session rows tersimpan per result version.
+- ATT-010-G: daily HC dashboard menampilkan employee aktif walau belum ada result version.
+- ATT-010-H: period/unit/session/scan/schedule/overtime report tersedia.
+- ATT-010-I: employee attendance utama membaca canonical result.
+- ATT-010-J: Back Office ADMS mempunyai transaksi lintas mesin.
+- ATT-010-K: typecheck, lint, tests, build, clean migration, and staging compose PASS before merge.

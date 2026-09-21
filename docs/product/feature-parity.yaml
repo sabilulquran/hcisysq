@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-09-18
+updated_at: 2026-09-21
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -180,10 +180,10 @@ features:
     module: attendance
     name: Attendance clarification and permission
     legacy_evidence: stale attendance approval automation exists
-    target_status: implementing
+    target_status: implemented
     priority: core
     risk: high
-    planning_note: Repository implementation is in progress for correction-vs-justification workflow without rewriting raw evidence.
+    planning_note: Correction-vs-justification workflow is implemented and included in the verified 2026-09-21 production deployment baseline. Fresh post-deploy browser UAT is not implied.
     docs:
       - docs/domain/attendance-engine-mobile.md
 
@@ -191,11 +191,11 @@ features:
     module: attendance
     name: Work schedules, shifts, and holidays
     legacy_evidence: unit-based schedules and holiday calendar exist
-    target_status: implementing
+    target_status: implemented
     priority: core
     risk: high
     mvp_note: Leave working-calendar rules exist, but attendance schedule, shift assignment, and lateness/overtime policy remain outside ATT-001.
-    planning_note: Repository implementation is in progress for schedule templates, effective assignments, overnight shifts, published weekly rosters, and employee visibility. Shift exchange is tracked separately as ATT-008.
+    planning_note: Schedule templates, effective assignments, overnight shifts, schedule versions, published weekly rosters, employee visibility, and historical semantics are implemented and deployed. Shift exchange remains separately reserved as ATT-008.
     docs:
       - docs/domain/attendance-engine-mobile.md
 
@@ -223,10 +223,10 @@ features:
     module: attendance
     name: Mobile clock-in/out and attendance evidence
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: implementing
+    target_status: implemented
     priority: after-pilot
     risk: critical
-    planning_note: Product scope includes mobile clock in/out with policy-controlled GPS, geotagging/geofence, photo evidence, and face-recognition capability. Privacy, biometric, fallback, retention, spoofing-resistance, and device-trust rules require specification before activation.
+    planning_note: Mobile clock in/out with GPS/geofence and encrypted photo evidence is implemented; the production activation workflow completed successfully before the 2026-09-21 baseline. Face recognition remains outside this implemented scope.
     docs:
       - docs/product/hcis-capability-map.md
       - docs/domain/attendance-engine-mobile.md
@@ -235,15 +235,37 @@ features:
     module: attendance
     name: Attendance evaluation, lateness, and overtime
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: implementing
+    target_status: implemented
     priority: after-pilot
     risk: critical
-    planning_note: Repository implementation is in progress for schedule-aware evaluation, versioned results, multi-punch sessions, leave override, and clarification-aware outcomes. Production activation/verification remains separate.
+    planning_note: Schedule-aware evaluation, versioned results, multi-punch sessions, leave/resolution integration, independent justification outcomes, explicit overtime, and daily operational reads are implemented and deployed via ATT-010.
     docs:
       - docs/product/hcis-capability-map.md
       - docs/domain/attendance-engine-mobile.md
+
+  - id: ATT-009
+    module: attendance
+    name: Attendance operations and reporting polish
+    legacy_evidence: derived from accepted attendance operating model and RuangHadir comparison; not a separate legacy product capability
+    target_status: implemented
+    priority: post-attendance-foundation
+    risk: medium
+    planning_note: Operational report filters, CSV/print, dashboard refresh, employee overtime cancellation, and global ADMS transaction time filters are implemented and included in the verified 2026-09-21 production deployment baseline.
     docs:
-      - docs/product/hcis-capability-map.md
+      - docs/domain/attendance-operations-reporting-polish.md
+      - docs/development/production-release-verification-2026-09-21.md
+
+  - id: ATT-010
+    module: attendance
+    name: Canonical attendance convergence
+    legacy_evidence: implementation package required to converge ATT-001 manual records, ADMS, mobile, leave/resolution, overtime, schedule versions, sessions, reports, and self-service
+    target_status: implemented
+    priority: post-attendance-foundation
+    risk: critical
+    planning_note: Canonical convergence is implemented and included in the verified 2026-09-21 production deployment baseline. ATT-010 replaces the temporary duplicate ATT-008 label previously used by the convergence document; ATT-008 remains uniquely reserved for Shift Exchange Workflow.
+    docs:
+      - docs/domain/attendance-canonical-convergence.md
+      - docs/development/production-release-verification-2026-09-21.md
 
   - id: ATT-008
     module: attendance

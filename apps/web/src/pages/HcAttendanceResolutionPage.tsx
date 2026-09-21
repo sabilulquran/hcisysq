@@ -111,14 +111,6 @@ export function HcAttendanceResolutionPage() {
             Hanya tanggal yang administrasi cutinya belum terpenuhi yang masuk ke sini. Tentukan klasifikasi akhirnya tanpa mengubah hak cuti tenaga pendidikan.
           </p>
         </div>
-        {queueState.status === "ready" ? (
-          <a
-            href="/app/hc/leave"
-            className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
-          >
-            Validasi Cuti
-          </a>
-        ) : null}
       </section>
 
       {error ? (

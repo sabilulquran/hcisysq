@@ -400,8 +400,8 @@ async function publishSwapRoster(
        roster_id, employee_id, work_date, schedule_template_id,
        schedule_version_id, is_off, note
      ) VALUES
-       ($1, $2, $4::date, $6, $7, false, $10),
-       ($1, $3, $4::date, $8, $9, false, $11)
+       ($1, $2, $4::date, $5, $6, false, $9),
+       ($1, $3, $4::date, $7, $8, false, $10)
      ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
        schedule_template_id = EXCLUDED.schedule_template_id,
        schedule_version_id = EXCLUDED.schedule_version_id,
@@ -412,7 +412,6 @@ async function publishSwapRoster(
       request.requesterEmployeeId,
       request.counterpartEmployeeId,
       request.workDate,
-      request.id,
       request.counterpartScheduleTemplateId,
       request.counterpartScheduleVersionId,
       request.requesterScheduleTemplateId,

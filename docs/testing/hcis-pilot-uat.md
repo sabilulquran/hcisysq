@@ -11,7 +11,7 @@ Use synthetic accounts locally/CI. Real-user validation is a separate pilot step
 | --- | --- |
 | Employee | `/app`; own self-service only plus explicitly granted authority |
 | Manager/approver employee | `/app`; own access plus exact approval capability/scope resolved for the test |
-| Human Capital admin employee | employee workspace + permitted HC administration; organization scope required for global HC admin; no automatic approval/device privileges |
+| Human Capital admin employee | employee workspace + permitted HC administration; organization scope required for global HC admin; no automatic workflow approval; standard non-destructive ADMS read/configure/operate/export is included in the Human Capital Administrator bundle, while destructive/firmware/biometric authority requires separate grant |
 | Foundation Board | `/board`; aggregate-first/read-only unless an explicit accepted narrow capability exists |
 | Super Admin | `/admin`; technical/system administration boundary; not organizational leader and no implicit employee self-service |
 

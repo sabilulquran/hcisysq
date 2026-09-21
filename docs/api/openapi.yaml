@@ -20,6 +20,7 @@ tags:
   - name: Approvals
   - name: Organization
   - name: Attendance
+  - name: Payslips
 
 paths:
   /health:
@@ -1275,6 +1276,21 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps'
   /admin/attendance/shift-swaps/{shiftSwapId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
+
+  /admin/payslip-imports:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports'
+  /admin/payslip-imports/preview:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1preview'
+  /admin/payslip-imports/{batchId}:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}'
+  /admin/payslip-imports/{batchId}/commit:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}~1commit'
+  /admin/payslip-imports/{batchId}/publish:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}~1publish'
+  /payslips:
+    $ref: './payslips.openapi.yaml#/paths/~1payslips'
+  /payslips/{id}:
+    $ref: './payslips.openapi.yaml#/paths/~1payslips~1{id}'
 
   /notifications/me:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1me'

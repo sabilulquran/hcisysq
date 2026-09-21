@@ -14,6 +14,8 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("clock-in")?.stage).toBe("available");
     expect(getEmployeeService("work-schedule")?.stage).toBe("available");
     expect(getEmployeeService("attendance-clarification")?.stage).toBe("available");
+    expect(getEmployeeService("shift-swap")?.stage).toBe("available");
+    expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
     expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");
   });
 

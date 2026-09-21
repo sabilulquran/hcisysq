@@ -28,12 +28,14 @@ describe("employee attendance discoverability", () => {
     expect(html).not.toContain("overflow-x-auto");
     expect(html).toContain("min-h-11");
   });
-  it("links implemented services to real routes while notifications remain a proposal", () => {
+  it("links implemented services to real routes while reminders remain a proposal", () => {
     expect(getEmployeeService("overtime")?.stage).toBe("available");
     expect(getEmployeeService("overtime")?.href).toBe("/app/attendance");
     expect(getEmployeeService("work-schedule")?.href).toBe("/app/attendance");
     expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
-    expect(getEmployeeService("notifications")?.stage).toBe("discovery");
+    expect(getEmployeeService("notifications")?.stage).toBe("available");
+    expect(getEmployeeService("notifications")?.href).toBe("/app/notifications");
+    expect(getEmployeeService("reminders")?.stage).toBe("discovery");
     expect(getEmployeeService("clock-in")?.details ?? []).not.toContain("Face recognition");
   });
 });

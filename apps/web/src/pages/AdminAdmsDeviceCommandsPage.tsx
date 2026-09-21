@@ -158,7 +158,7 @@ export function AdminAdmsDeviceCommandsPage() {
             <option value="expired">Kedaluwarsa</option>
           </select>
         </div>
-        <SavedFilterBar deviceId={deviceId} viewKey="commands" criteria={{ query, status, pageSize }} onApply={applySavedFilter} />
+        <SavedFilterBar deviceId={deviceId} viewKey="commands" criteria={{ query, status, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
       </section>

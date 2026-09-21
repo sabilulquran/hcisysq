@@ -177,14 +177,6 @@ export function HcLeaveValidationPage() {
             Untuk kasus normal cukup pilih “Administrasi sesuai”. Detail tanggal hanya dibuka bila dokumen mencakup sebagian periode atau administrasinya tidak terpenuhi.
           </p>
         </div>
-        {queueState.status === "ready" ? (
-          <a
-            href="/app/hc/attendance-resolution"
-            className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
-          >
-            Penyelesaian Ketidakhadiran
-          </a>
-        ) : null}
       </section>
 
       {error ? (

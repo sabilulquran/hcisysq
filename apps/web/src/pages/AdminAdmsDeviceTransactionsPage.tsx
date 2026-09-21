@@ -164,7 +164,7 @@ export function AdminAdmsDeviceTransactionsPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari PIN, nama, nomor pegawai, atau timestamp mentah" className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
         </label>
-        <SavedFilterBar deviceId={deviceId} viewKey="transactions" criteria={{ query, pageSize }} onApply={applySavedFilter} />
+        <SavedFilterBar deviceId={deviceId} viewKey="transactions" criteria={{ query, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
 
         {sessionResolved && !canOperate ? <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">Mode baca saja. Permintaan sinkronisasi dan recovery memerlukan izin operasi perangkat.</div> : null}
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}

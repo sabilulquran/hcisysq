@@ -47,6 +47,7 @@ import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePage";
+import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
@@ -124,6 +125,13 @@ const employeeShiftSwapRoute = createRoute({
   path: "/app/attendance/shift-swap",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeShiftSwapPage,
+});
+
+const employeeNotificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/notifications",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeNotificationsPage,
 });
 
 const employeeLeaveRoute = createRoute({
@@ -457,6 +465,7 @@ const routeTree = rootRoute.addChildren([
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
   employeeShiftSwapRoute,
+  employeeNotificationsRoute,
   employeeLeaveRoute,
   employeePayslipsRoute,
   employeeSpecialLeaveRoute,

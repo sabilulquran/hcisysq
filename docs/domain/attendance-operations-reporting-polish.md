@@ -35,6 +35,20 @@ UX mengikuti kebutuhan operasional:
 
 Ekspor tidak memperkenalkan source of truth baru; ia memakai baris report yang sedang tampil.
 
+Applicability filter:
+
+| Family | Pegawai | Unit | Jadwal | Lokasi | Source | Device | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Detail Harian | ya | ya | ya | ya | ya | ya | ya |
+| Rekap Periode | ya | ya | ya | ya | ya | ya | tidak |
+| Per Unit | ya | ya | ya | ya | ya | ya | tidak |
+| Sesi Kerja | ya | ya | ya | ya | ya | ya | tidak |
+| Data Scan | ya | ya | tidak | tidak | ya | ya | tidak |
+| Jadwal Harian | ya | ya | ya | ya | tidak | tidak | tidak |
+| Lembur | ya | ya | tidak | tidak | tidak | tidak | tidak |
+
+UI wajib menyembunyikan dan membersihkan nilai filter yang tidak berlaku ketika family report berubah.
+
 ### 2. Dashboard harian
 
 Dashboard kehadiran hari berjalan melakukan refresh best-effort berkala selama halaman terbuka:

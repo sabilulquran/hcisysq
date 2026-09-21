@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
-import { canAccessAdminPath } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessEmployeeHcPath } from "@/lib/authorization";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
@@ -80,6 +80,13 @@ async function requireAdminPath(path: string) {
   const session = await getCurrentSession();
   if (!session) throw redirect({ to: "/" });
   if (!canAccessAdminPath(session, path)) throw notFound();
+  return session;
+}
+
+async function requireEmployeeHcPath(path: string) {
+  const session = await getCurrentSession();
+  if (!session) throw redirect({ to: "/" });
+  if (!canAccessEmployeeHcPath(session, path)) throw notFound();
   return session;
 }
 
@@ -193,21 +200,21 @@ const employeeComingSoonRoute = createRoute({
 const hcLeaveValidationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app/hc/leave",
-  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  beforeLoad: () => requireEmployeeHcPath("/app/hc/leave"),
   component: HcLeaveValidationPage,
 });
 
 const hcPlannedLeaveRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app/hc/planned-leave",
-  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  beforeLoad: () => requireEmployeeHcPath("/app/hc/planned-leave"),
   component: HcPlannedLeavePage,
 });
 
 const hcAttendanceResolutionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app/hc/attendance-resolution",
-  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  beforeLoad: () => requireEmployeeHcPath("/app/hc/attendance-resolution"),
   component: HcAttendanceResolutionPage,
 });
 

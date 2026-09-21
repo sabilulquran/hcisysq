@@ -132,5 +132,11 @@ describe.skipIf(!allowed)("NOTIF-004 recipient-owned notifications", () => {
       "attendance.devices.operate",
       "attendance.devices.read",
     ]);
+
+    const role = await client.query<{ description: string }>(
+      "SELECT description FROM roles WHERE role_key = 'human_capital_admin'",
+    );
+    expect(role.rows[0]?.description).toContain("standard non-destructive ADMS operations");
+    expect(role.rows[0]?.description).toContain("destructive, firmware, or biometric");
   });
 });

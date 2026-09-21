@@ -8,6 +8,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
+import { notifyEmployee } from "../notifications/service.js";
 import {
   jakartaWorkDate,
   materializeAttendanceResult,

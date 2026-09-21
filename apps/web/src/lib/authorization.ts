@@ -45,3 +45,15 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }
+
+
+export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
+  if (!session || session.principal.principalType !== "EMPLOYEE") return false;
+  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {
+    return hasPermission(session, "leave.validate");
+  }
+  if (path === "/app/hc/attendance-resolution") {
+    return hasPermission(session, "attendance.resolution.manage");
+  }
+  return false;
+}

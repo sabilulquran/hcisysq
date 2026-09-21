@@ -437,10 +437,10 @@ features:
     module: notification
     name: Recipient-owned in-app notification center
     legacy_evidence: product owner requested a real notification surface after confirming the prior bell was not an operational inbox
-    target_status: implementing
+    target_status: implemented
     priority: immediate-post-attendance
     risk: high
-    planning_note: Inbox/read-unread, account-scoped unread count, shift-swap lifecycle, overtime decision, and payslip publication notifications are implemented in repository scope. External adapters and scheduled reminders remain separate.
+    planning_note: Inbox/read-unread, account-scoped unread count, shift-swap lifecycle, overtime decision, and payslip publication notifications are repository-verified. Production deployment remains separate. External adapters and scheduled reminders remain separate.
     docs:
       - docs/domain/in-app-notification-center.md
 

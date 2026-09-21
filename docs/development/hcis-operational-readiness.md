@@ -1,9 +1,9 @@
 # HCIS Operational Readiness — One-Unit Pilot
 
 **Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED
-**Updated:** 2026-09-19
+**Updated:** 2026-09-21
 **Specifications:** ORG-004, AUTH-011, ATT-005
-**Repository baseline:** canonical `main`; **latest verified production application SHA:** `66da50cbd2a12f6099a59adbda28b657863e8e40`
+**Repository baseline:** canonical `main`; **latest verified production application SHA:** `6f41ad64ed486404e03dea3f58513472d134736e`
 
 This document is the current operational status note for the one-unit pilot. Historical MVP checkpoints remain valid evidence for what was verified at those checkpoints; they are not automatically proof of current production or pilot state.
 
@@ -20,7 +20,7 @@ Use these labels consistently:
 
 | Category | Current state | Evidence / closure requirement |
 | --- | --- | --- |
-| Selesai terverifikasi | MVP checkpoint remains historically verified; repository transfer to `sabilulquran/hcisysq` is observed; AUTH-011 has recorded synthetic verification from 2026-09-07; exact SHA `66da50c...` was published and deployed through the production workflow with preflight, deploy/verify, exact runtime images, and health/readiness PASS. | Keep historical and current evidence dated separately. Deployment/runtime acceptance is recorded independently from optional pilot/UAT work. |
+| Selesai terverifikasi | MVP checkpoint remains historically verified; repository transfer to `sabilulquran/hcisysq` is observed; AUTH-011 has recorded synthetic verification from 2026-09-07; exact SHA `6f41ad64...` was published and deployed through the production workflow with preflight, deploy/verify, exact runtime images, and health/readiness PASS. The deployed baseline includes the canonical attendance convergence and ATT-009 operations/reporting polish. | Keep historical and current evidence dated separately. Deployment/runtime acceptance is recorded independently from optional pilot/UAT work. |
 | Implemented but not yet operationally verified | ORG-004 code/schema are deployed; AUTH-011 production-style role model exists; ATT-005 software capabilities exist. | Real ORG-004 structure, SHADOW, STRUCTURE activation, real pilot UAT, and physical-device evidence remain separate gates. |
 | Belum aktif | ORG-004 resolver rollout for the pilot remains `LEGACY` according to Codex Local evidence because `organization_rollout_settings` had zero rows; real pilot users/unit are not selected; biometric collection remains OFF. | HC selection + reviewed configuration + SHADOW gates + explicit STRUCTURE activation approval. |
 | Bug / fix evidence | The Work Code export defect was repaired in merged PR #55 and the fix is an ancestor of the verified `66da50c...` production baseline. | Route-specific passive smoke may be run only when operationally useful; it is not required to consider the current application deployment healthy. |
@@ -67,14 +67,14 @@ The accepted AUTH-011 contract and its 2026-09-07 synthetic verification remain 
 
 GitHub inspection observed `sabilulquran/hcisysq` as canonical and the old `imadjinasi/hcisysq` endpoint redirecting.
 
-The latest verified production release checkpoint is the 2026-09-19 Asia/Jakarta deployment of exact-SHA organization images:
+The earlier 2026-09-19 organization release remains historical. The latest verified production release checkpoint is the 2026-09-21 Asia/Jakarta deployment of exact-SHA application images:
 
 ```text
-ghcr.io/sabilulquran/hcisysq-api:sha-66da50cbd2a12f6099a59adbda28b657863e8e40
-ghcr.io/sabilulquran/hcisysq-web:sha-66da50cbd2a12f6099a59adbda28b657863e8e40
+ghcr.io/sabilulquran/hcisysq-api:sha-6f41ad64ed486404e03dea3f58513472d134736e
+ghcr.io/sabilulquran/hcisysq-web:sha-6f41ad64ed486404e03dea3f58513472d134736e
 ```
 
-Publisher run `35381914922` completed successfully for API and Web. Production run `35382026318` completed Production preflight and Deploy and verify successfully. GitHub Actions logs record exact runtime images, PostgreSQL/API/Web healthy, health/readiness PASS, pre-deploy backup creation, retired USERINFO safety control present, and `DEPLOY SUCCESS`. See `production-release-verification-2026-09-19.md`.
+Publisher run `35563521663` completed successfully for API and Web. Production run `35568995536` completed Production preflight and Deploy and verify successfully. The production log records previous SHA `ab849405...`, a pre-migration PostgreSQL backup, exact target images, healthy PostgreSQL/API/Web, API readiness, and `DEPLOY SUCCESS`. GitHub Actions logs record exact runtime images, PostgreSQL/API/Web healthy, health/readiness PASS, pre-deploy backup creation, retired USERINFO safety control present, and `DEPLOY SUCCESS`. See `production-release-verification-2026-09-19.md`.
 
 The earlier `acd22b...` release remains a dated historical checkpoint in `production-release-verification-2026-09-18.md`.
 
@@ -95,9 +95,9 @@ The earlier `acd22b...` release remains a dated historical checkpoint in `produc
 
 ## Production release evidence
 
-Latest checkpoint: [`production-release-verification-2026-09-19.md`](production-release-verification-2026-09-19.md). Application SHA `66da50cbd2a12f6099a59adbda28b657863e8e40` is closed for deployment/runtime acceptance based on GitHub-observed exact-SHA publication, production preflight, deploy/verify, runtime image, health/readiness, and backup evidence.
+Latest checkpoint: [`production-release-verification-2026-09-21.md`](production-release-verification-2026-09-21.md). Application SHA `6f41ad64ed486404e03dea3f58513472d134736e` is closed for deployment/runtime acceptance based on GitHub-observed exact-SHA publication, production preflight, deploy/verify, runtime image, health/readiness, and backup evidence.
 
-Historical checkpoint: [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md) for `acd22b438a7468dc6ea53ae001980cd06f7343cd`, including the previously supplied browser acceptance evidence.
+Historical checkpoints: [`production-release-verification-2026-09-19.md`](production-release-verification-2026-09-19.md) and [`production-release-verification-2026-09-18.md`](production-release-verification-2026-09-18.md) for `acd22b438a7468dc6ea53ae001980cd06f7343cd`, including the previously supplied browser acceptance evidence.
 
 The `66da50c...` deployment includes the canonical migration-history recovery and source/schema reconciliation merged through PR #59/#60. Deployment does not by itself create or change ORG-004 rollout settings, account/role assignments, biometric gates, or device commands.
 

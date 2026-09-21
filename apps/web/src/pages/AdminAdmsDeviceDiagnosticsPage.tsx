@@ -2,6 +2,7 @@ import { AlertTriangle, Database, Fingerprint, Info, Loader2, RefreshCw, ShieldC
 import { useCallback, useEffect, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
+import { hasPermission } from "@/lib/authorization";
 import { commandStatusLabel } from "@/lib/admsAdmin";
 import {
   getAdmsBiometricInventory,
@@ -144,7 +145,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
             <div className="flex items-center gap-2 text-sm font-bold text-brand-heading"><Info className="h-4 w-4" /> Telemetry & INFO</div>
             <p className="mt-1 text-xs text-muted-foreground">Metadata transport dan INFO yang pernah teramati; tidak memuat template biometric.</p>
           </div>
-          <button type="button" disabled={busy !== null || device?.lifecycle !== "active"} onClick={() => void readInformation()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
+          <button type="button" disabled={busy !== null || device?.lifecycle !== "active" || !canOperate} onClick={() => void readInformation()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
             {busy === "info" ? "Mengirim…" : "Baca informasi mesin"}
           </button>
         </div>

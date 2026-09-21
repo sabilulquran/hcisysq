@@ -3,8 +3,10 @@ import { getCurrentSession } from "@/lib/auth";
 import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
+  ArrowLeftRight,
   Bell,
   CalendarDays,
+  Camera,
   ClipboardCheck,
   Clock3,
   Grid2X2,
@@ -15,6 +17,7 @@ import {
 
 import ysqMark from "@/assets/brand/ysq-mark.png";
 import { AccountMenu } from "@/components/hcis/AccountMenu";
+import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
 import { cn } from "@/lib/utils";
 
 interface AppShellUser {
@@ -37,6 +40,8 @@ interface AppShellProps {
 const employeeNavigation = [
   { label: "Beranda", href: "/app", icon: Home },
   { label: "Kehadiran", href: "/app/attendance", icon: Clock3 },
+  { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera },
+  { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2 },
@@ -102,12 +107,15 @@ export function AppShell({
     let active = true;
     void getCurrentSession().then((session) => {
       if (active) setCanAdminister(canAccessAdminPath(session, "/admin"));
-    });
-    return () => {
-      active = false;
-    };
+    }).catch(() => { if (active) setCanAdminister(false); });
+    return () => { active = false; };
   }, []);
 
+  const attendanceActive = ["Kehadiran", "Clock In/Out", "Tukar Shift"].includes(activeItem);
+  const fallbackPath = activeItem === "Tukar Shift" ? "/app/attendance/shift-swap"
+    : activeItem === "Clock In/Out" ? "/app/attendance/clock" : "/app/attendance";
+  const currentPath = typeof window !== "undefined" && window.location.pathname.startsWith("/app/attendance")
+    ? window.location.pathname : fallbackPath;
   const hasOrganizationHcAccess = capabilities?.humanCapitalOrganization === true;
   const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
 
@@ -117,12 +125,8 @@ export function AppShell({
         <div className="flex items-start gap-3 px-7 py-6">
           <img src={ysqMark} alt="" className="h-10 w-10 shrink-0 object-contain" />
           <div className="min-w-0 pt-0.5">
-            <p className="font-display text-sm font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">
-              HCIS
-            </p>
-            <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">
-              Yayasan Sabilul Qur&apos;an
-            </p>
+            <p className="font-display text-sm font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">HCIS</p>
+            <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
           </div>
         </div>
 
@@ -131,11 +135,10 @@ export function AppShell({
           <div className="space-y-1">
             {employeeNavigation.map((item) => (
               <NavigationLink
-                key={item.label}
-                label={item.label}
-                href={item.href}
-                icon={item.icon}
-                active={item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya")}
+                key={item.label} label={item.label} href={item.href} icon={item.icon}
+                active={attendanceActive && item.href.startsWith("/app/attendance")
+                  ? item.href === currentPath
+                  : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya")}
               />
             ))}
           </div>
@@ -148,13 +151,7 @@ export function AppShell({
               </div>
               <div className="space-y-1">
                 {managementNavigation.map((item) => (
-                  <NavigationLink
-                    key={item.label}
-                    label={item.label}
-                    href={item.href}
-                    icon={item.icon}
-                    active={item.label === activeItem}
-                  />
+                  <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} active={item.label === activeItem} />
                 ))}
                 {hasOrganizationHcAccess ? (
                   <>
@@ -168,9 +165,7 @@ export function AppShell({
           ) : null}
         </nav>
 
-        <div className="px-5 pb-5">
-          <AccountMenu user={user} variant="sidebar" />
-        </div>
+        <div className="px-5 pb-5"><AccountMenu user={user} variant="sidebar" /></div>
       </aside>
 
       <div className="lg:pl-72">
@@ -183,42 +178,37 @@ export function AppShell({
                 <p className="mt-0.5 truncate text-[9px] font-semibold text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
               </div>
             </div>
-
             <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
-
             <div className="flex items-center gap-2">
-              <a
-                href="/app/services/notifications"
-                aria-label="Pengumuman dan notifikasi"
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
+              <a href="/app/services/notifications" aria-label="Notifikasi dan pengingat — dalam perencanaan"
+                title="Notifikasi dan pengingat belum tersedia"
+                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
               </a>
-              {canAdminister ? <a href="/admin" className="hidden text-xs font-semibold text-brand-primary-deep sm:inline">Administrasi HCIS</a> : null}
+              {canAdminister ? (
+                <a href="/admin" aria-label="Administrasi HCIS" className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-brand-primary-deep">
+                  <ShieldCheck className="h-4 w-4 sm:hidden" aria-hidden="true" /><span className="hidden sm:inline">Administrasi HCIS</span>
+                </a>
+              ) : null}
               <AccountMenu user={user} variant="header" />
             </div>
           </div>
         </header>
-
-        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">
+          {attendanceActive ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
+          {children}
+        </main>
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/80 bg-white/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
         {mobileNavigation.map((item) => {
           const Icon = item.icon;
-          const active = item.activeLabel === activeItem;
+          const active = item.activeLabel === activeItem || (attendanceActive && item.activeLabel === "Kehadiran");
           return (
-            <a
-              href={item.href}
-              key={item.label}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground",
-              )}
-            >
-              <Icon className="h-[19px] w-[19px]" aria-hidden="true" />
-              <span>{item.label}</span>
+            <a href={item.href} key={item.label} aria-current={active ? "page" : undefined}
+              className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground")}>
+              <Icon className="h-[19px] w-[19px]" aria-hidden="true" /><span>{item.label}</span>
             </a>
           );
         })}

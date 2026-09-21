@@ -449,6 +449,117 @@ paths:
       responses:
         '200': { description: All active employees for the work date, including transient scheduled/pending/absent states without materializing evidence }
 
+
+  /attendance/shift-swaps/candidates:
+    get:
+      tags: [Attendance]
+      operationId: getShiftSwapCandidates
+      parameters:
+        - { name: workDate, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: Same-unit eligible counterpart candidates with resolved schedule snapshots }
+        '409': { description: Requester schedule, cutoff, or active-conflict prevents a new swap }
+
+  /attendance/shift-swaps/me:
+    get:
+      tags: [Attendance]
+      operationId: listMyShiftSwaps
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, active, awaiting_counterpart, awaiting_hc, approved, rejected_by_counterpart, rejected_by_hc, cancelled]
+      responses:
+        '200': { description: Shift swaps where current employee is requester or counterpart }
+
+  /attendance/shift-swaps:
+    post:
+      tags: [Attendance]
+      operationId: createShiftSwap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [counterpartEmployeeId, workDate]
+              properties:
+                counterpartEmployeeId: { type: string, format: uuid }
+                workDate: { type: string, format: date }
+                note: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '201': { description: Immutable requester/counterpart schedule snapshot created; waiting for counterpart }
+        '409': { description: Eligibility, cutoff, same-unit, schedule, or active-conflict failure }
+
+  /attendance/shift-swaps/{shiftSwapId}/counterpart-decision:
+    post:
+      tags: [Attendance]
+      operationId: decideShiftSwapAsCounterpart
+      parameters:
+        - { name: shiftSwapId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [accept, reject] }
+                note: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200': { description: Counterpart decision stored append-only }
+        '404': { description: Request is not owned by the current employee as counterpart }
+        '409': { description: State or cutoff changed }
+
+  /attendance/shift-swaps/{shiftSwapId}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelShiftSwap
+      parameters:
+        - { name: shiftSwapId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Active requester-owned shift swap cancelled }
+        '409': { description: Request is no longer cancellable }
+
+  /admin/attendance/shift-swaps:
+    get:
+      tags: [Attendance]
+      operationId: listShiftSwapsForHc
+      x-required-permission: attendance.shift_swap.manage
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, awaiting_counterpart, awaiting_hc, approved, rejected_by_counterpart, rejected_by_hc, cancelled]
+      responses:
+        '200': { description: Shift exchange operational queue and history }
+
+  /admin/attendance/shift-swaps/{shiftSwapId}/decision:
+    post:
+      tags: [Attendance]
+      operationId: decideShiftSwapAsHc
+      x-required-permission: attendance.shift_swap.manage
+      parameters:
+        - { name: shiftSwapId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200': { description: HC decision stored; approval atomically publishes a new roster version }
+        '409': { description: Stale schedule, draft roster, cutoff, state, or other conflict }
+
 components:
   schemas:
     AttendanceResult:

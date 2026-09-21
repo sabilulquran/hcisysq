@@ -590,7 +590,7 @@ export async function registerPayslipRoutes(
         }
         await writeAudit(client, principal.id, "payslip.import.previewed", {
           batchId,
-          payload: { rowCount: rows.length, validCount, errorCount },
+          payload: { rowCount: rows.length, validCount, errorCount, sourceFormat: parsedDocument.sourceFormat },
         });
         await client.query("COMMIT");
       } catch (error) {
@@ -625,7 +625,7 @@ export async function registerPayslipRoutes(
     }
 
     const batch = await pool.query(
-      `SELECT id, source_filename AS "sourceFilename", status,
+      `SELECT id, source_filename AS "sourceFilename", source_format AS "sourceFormat", status,
               row_count AS "rowCount", valid_count AS "validCount",
               error_count AS "errorCount", created_at AS "createdAt",
               committed_at AS "committedAt", published_at AS "publishedAt"

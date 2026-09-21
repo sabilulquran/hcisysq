@@ -250,20 +250,46 @@ paths:
         - { name: date, in: query, required: false, schema: { type: string, format: date } }
         - { name: from, in: query, required: false, schema: { type: string, format: date } }
         - { name: to, in: query, required: false, schema: { type: string, format: date } }
-        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: scheduleId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: locationId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: deviceId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual] } }
+        - name: employeeId
+          in: query
+          required: false
+          description: Applies to every report family except unit aggregation semantics still aggregate the filtered employee only.
+          schema: { type: string, format: uuid }
+        - name: unitId
+          in: query
+          required: false
+          description: Applies to all report families, including sessions, scans, and overtime.
+          schema: { type: string, format: uuid }
+        - name: scheduleId
+          in: query
+          required: false
+          description: Applies to detail, period, unit, sessions, and schedule reports.
+          schema: { type: string, format: uuid }
+        - name: locationId
+          in: query
+          required: false
+          description: Applies to detail, period, unit, sessions, and schedule reports.
+          schema: { type: string, format: uuid }
+        - name: deviceId
+          in: query
+          required: false
+          description: Applies to detail, period, unit, sessions, and scans where device-backed evidence exists.
+          schema: { type: string, format: uuid }
+        - name: source
+          in: query
+          required: false
+          description: Applies to detail, period, unit, sessions, and scans.
+          schema: { type: string, enum: [adms, mobile, manual] }
         - name: status
           in: query
           required: false
+          description: Applies to detail report only.
           schema:
             type: string
             enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
       responses:
-        '200': { description: Canonical detail, period, unit, session, scan, schedule, or overtime report }
+        '200':
+          description: Canonical detail, period, unit, session, scan, schedule, or overtime report; unsupported filter/type combinations are not exposed by the GUI.
 
 
   /admin/attendance/work-locations/{locationId}:

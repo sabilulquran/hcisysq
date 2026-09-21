@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
 import {
+  cancelAttendanceOvertime,
   getMyAttendanceScheduleRange,
   getMyWorkforceAttendance,
   submitAttendanceOvertime,
@@ -18,7 +19,7 @@ function shiftDate(value: string, days: number) { const d = new Date(value + "T0
 function formatDate(value: string) { return new Intl.DateTimeFormat("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(value+"T00:00:00Z")); }
 function formatTime(value: string | null | undefined) { return value ? new Intl.DateTimeFormat("id-ID",{hour:"2-digit",minute:"2-digit",hourCycle:"h23",timeZone:"Asia/Jakarta"}).format(new Date(value)) : "—"; }
 function statusLabel(value: string | undefined) {
-  const labels: Record<string,string> = { scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti / Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Jadwal perlu diperiksa" };
+  const labels: Record<string,string> = { scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti / Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Jadwal perlu diperiksa",submitted:"Menunggu",approved:"Disetujui",rejected:"Ditolak",cancelled:"Dibatalkan" };
   return value ? labels[value] ?? value : "Belum dievaluasi";
 }
 function ResultFacts({ result }: { result: WorkforceResult | null }) {
@@ -37,6 +38,7 @@ export function EmployeeAttendancePage() {
   const [history,setHistory]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"];result:WorkforceResult|null}>>([]);
   const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const [notice,setNotice]=useState<string|null>(null);
   const [overtime,setOvertime]=useState({workDate:today,requestedMinutes:"60",note:""}); const [submitting,setSubmitting]=useState(false);
+  const [cancellingOvertimeId,setCancellingOvertimeId]=useState<string|null>(null);
 
   const load = async () => {
     const [current, range] = await Promise.all([
@@ -58,6 +60,16 @@ export function EmployeeAttendancePage() {
 
   const user=useMemo(()=>({name:snapshot?.employee.fullName??"Pegawai",initials:initials(snapshot?.employee.fullName??"P"),position:"Pegawai",unit:"Yayasan Sabilul Qur'an"}),[snapshot?.employee.fullName]);
   const currentStatus=snapshot?.result?.status ?? snapshot?.schedule.state;
+
+  const cancelOvertime=async(overtimeId:string)=>{
+    setCancellingOvertimeId(overtimeId);setError(null);setNotice(null);
+    try{
+      await cancelAttendanceOvertime(overtimeId);
+      setNotice("Pengajuan lembur dibatalkan.");
+      await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Pengajuan lembur tidak dapat dibatalkan.");}
+    finally{setCancellingOvertimeId(null);}
+  };
 
   const submitOvertime=async()=>{
     setSubmitting(true);setError(null);setNotice(null);
@@ -94,7 +106,7 @@ export function EmployeeAttendancePage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><input className="h-10 rounded-xl border px-3 text-sm" type="date" value={overtime.workDate} onChange={e=>setOvertime({...overtime,workDate:e.target.value})}/><input className="h-10 rounded-xl border px-3 text-sm" type="number" min="1" max="1440" value={overtime.requestedMinutes} onChange={e=>setOvertime({...overtime,requestedMinutes:e.target.value})}/></div>
           <input className="mt-3 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Catatan (opsional)" value={overtime.note} onChange={e=>setOvertime({...overtime,note:e.target.value})}/>
           <button disabled={submitting||!overtime.workDate} onClick={()=>void submitOvertime()} className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4"/>{submitting?"Mengirim…":"Kirim pengajuan"}</button>
-          <div className="mt-5 border-t pt-4"><p className="text-xs font-bold text-brand-heading">Pengajuan terakhir</p><div className="mt-2 space-y-2">{snapshot.overtimeRequests?.slice(0,5).map(item=><div key={item.id} className="rounded-xl bg-surface p-3 text-xs"><p className="font-semibold">{item.workDate} · {item.requestedMinutes} mnt · {item.status}</p>{item.approvedMinutes!=null?<p className="mt-1 text-muted-foreground">Disetujui {item.approvedMinutes} mnt</p>:null}</div>)}{!snapshot.overtimeRequests?.length?<p className="text-xs text-muted-foreground">Belum ada pengajuan lembur.</p>:null}</div></div>
+          <div className="mt-5 border-t pt-4"><p className="text-xs font-bold text-brand-heading">Pengajuan terakhir</p><div className="mt-2 space-y-2">{snapshot.overtimeRequests?.slice(0,5).map(item=><div key={item.id} className="rounded-xl bg-surface p-3 text-xs"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.workDate} · {item.requestedMinutes} mnt · {statusLabel(item.status)}</p>{item.approvedMinutes!=null?<p className="mt-1 text-muted-foreground">Disetujui {item.approvedMinutes} mnt</p>:null}{item.decisionNote?<p className="mt-1 text-muted-foreground">{item.decisionNote}</p>:null}</div>{item.status==="submitted"?<button type="button" disabled={cancellingOvertimeId!==null} onClick={()=>void cancelOvertime(item.id)} className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-50">{cancellingOvertimeId===item.id?"Membatalkan…":"Batalkan"}</button>:null}</div></div>)}{!snapshot.overtimeRequests?.length?<p className="text-xs text-muted-foreground">Belum ada pengajuan lembur.</p>:null}</div></div>
         </article>
       </section>
       <section className="mt-5 overflow-hidden rounded-[2rem] border border-border/80 bg-white shadow-[var(--shadow-soft)]">

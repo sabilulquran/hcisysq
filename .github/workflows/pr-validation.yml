@@ -54,6 +54,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check operational shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n scripts/uat-account-hygiene.sh
+
       - name: Create synthetic API environment
         run: |
           cat > apps/api/.env.local <<'EOF'

@@ -1,0 +1,127 @@
+name: HCIS UAT Account Hygiene
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact current main SHA containing the reviewed hygiene script"
+        required: true
+        type: string
+      mode:
+        description: "scan = read-only synthetic hints; preview = exact IDs read-only; disable = exact IDs inactive + session/token revocation"
+        required: true
+        type: choice
+        options:
+          - scan
+          - preview
+          - disable
+      account_ids:
+        description: "Comma-separated exact account UUIDs. Required for preview/disable; empty for scan."
+        required: false
+        type: string
+      confirmation:
+        description: "SCAN_UAT_CANDIDATES, PREVIEW_UAT_ACCOUNTS, or DISABLE_UAT_ACCOUNTS"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hcis-production
+  cancel-in-progress: false
+
+jobs:
+  hygiene:
+    name: Review or disable exact UAT accounts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      TARGET_SHA: ${{ inputs.target_sha }}
+      MODE: ${{ inputs.mode }}
+      ACCOUNT_IDS: ${{ inputs.account_ids }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      PROD_HOST: ${{ secrets.HCIS_PROD_HOST }}
+      PROD_USER: ${{ secrets.HCIS_PROD_USER }}
+      PROD_REPO_PATH: ${{ secrets.HCIS_PROD_REPO_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate target and explicit intent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "target_sha must be a full lowercase SHA" >&2
+            exit 1
+          fi
+          git fetch origin main
+          main_sha="$(git rev-parse origin/main)"
+          checkout_sha="$(git rev-parse HEAD)"
+          if [[ "$TARGET_SHA" != "$main_sha" || "$checkout_sha" != "$TARGET_SHA" ]]; then
+            echo "STOP: run only from exact current main" >&2
+            echo "requested=$TARGET_SHA" >&2
+            echo "main=$main_sha" >&2
+            echo "checkout=$checkout_sha" >&2
+            exit 1
+          fi
+
+          case "$MODE" in
+            scan)
+              [[ "$CONFIRMATION" == "SCAN_UAT_CANDIDATES" ]] || {
+                echo "confirmation must be SCAN_UAT_CANDIDATES" >&2
+                exit 1
+              }
+              [[ -z "$ACCOUNT_IDS" ]] || {
+                echo "scan does not accept account_ids" >&2
+                exit 1
+              }
+              ;;
+            preview|disable)
+              expected="PREVIEW_UAT_ACCOUNTS"
+              [[ "$MODE" == "disable" ]] && expected="DISABLE_UAT_ACCOUNTS"
+              [[ "$CONFIRMATION" == "$expected" ]] || {
+                echo "confirmation must be exactly $expected" >&2
+                exit 1
+              }
+              [[ -n "$ACCOUNT_IDS" ]] || {
+                echo "account_ids is required for $MODE" >&2
+                exit 1
+              }
+              IFS=',' read -r -a ids <<< "$ACCOUNT_IDS"
+              [[ ${#ids[@]} -le 20 ]] || {
+                echo "at most 20 account IDs per run" >&2
+                exit 1
+              }
+              for raw in "${ids[@]}"; do
+                id="$(printf '%s' "$raw" | tr -d '[:space:]')"
+                [[ "$id" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || {
+                  echo "invalid account UUID" >&2
+                  exit 1
+                }
+              done
+              ;;
+          esac
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HCIS_PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HCIS_PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run production hygiene with exact target boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh "$PROD_USER@$PROD_HOST"             "cd '$PROD_REPO_PATH' && bash -s -- '$MODE' '$ACCOUNT_IDS' '$CONFIRMATION'"             < scripts/uat-account-hygiene.sh

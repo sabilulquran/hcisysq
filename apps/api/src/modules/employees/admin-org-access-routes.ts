@@ -644,8 +644,22 @@ export async function registerOrgAccessAdminRoutes(
         "UPDATE accounts SET status = $2, updated_at = now() WHERE id = $1",
         [row.id, body.data.status],
       );
+      if (body.data.status !== "active") {
+        await client.query(
+          "UPDATE auth_sessions SET revoked_at = coalesce(revoked_at, now()) WHERE account_id = $1 AND revoked_at IS NULL",
+          [row.id],
+        );
+        await client.query(
+          `UPDATE account_activation_tokens
+           SET revoked_at = coalesce(revoked_at, now())
+           WHERE account_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL`,
+          [row.id],
+        );
+      }
       await audit(client, principal, "account.status.updated", "account", row.id, {
         status: body.data.status,
+        sessionsRevoked: body.data.status !== "active",
+        activationTokensRevoked: body.data.status !== "active",
       });
       await client.query("COMMIT");
       committed = true;

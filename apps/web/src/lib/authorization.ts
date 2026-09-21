@@ -18,7 +18,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))
-      && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"));
+      && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"))
+      && (!path.endsWith("/operations") || hasPermission(session, "attendance.devices.operate"));
   }
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
   if (path === "/admin/attendance/workforce") return [

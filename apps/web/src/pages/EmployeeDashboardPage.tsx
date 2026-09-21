@@ -13,7 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
-import { getMyAttendance, type AttendanceRecord } from "@/lib/attendance";
+import { getMyWorkforceAttendance, type WorkforceSnapshot } from "@/lib/workforceAttendance";
 import {
   getMyAttendanceResolutions,
   type AttendanceResolutionItem,
@@ -76,6 +76,21 @@ function formatTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function attendanceStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    scheduled: "Terjadwal",
+    pending: "Belum check-in",
+    present: "Hadir",
+    late: "Terlambat",
+    incomplete: "Belum lengkap",
+    leave: "Cuti / Izin",
+    absent: "Tidak hadir",
+    off: "Libur",
+    configuration_error: "Jadwal perlu diperiksa",
+  };
+  return labels[status] ?? status;
+}
+
 function requestStatusLabel(status: string, specialTaskStatus?: string | null) {
   if (specialTaskStatus === "needs_correction") return "Perlu dilengkapi";
   if (specialTaskStatus === "pending") return "Validasi HC";
@@ -89,7 +104,7 @@ interface DashboardState {
   annual: EmployeeLeaveSummary;
   special: SpecialLeaveSummary;
   resolutions: AttendanceResolutionItem[];
-  attendance: AttendanceRecord | null;
+  attendance: WorkforceSnapshot;
 }
 
 export function EmployeeDashboardPage() {
@@ -105,13 +120,13 @@ export function EmployeeDashboardPage() {
           getEmployeeLeaveSummary(),
           getSpecialLeaveSummary(),
           getMyAttendanceResolutions(),
-          getMyAttendance({ from: today, to: today }),
+          getMyWorkforceAttendance(today),
         ]);
         setData({
           annual,
           special,
           resolutions: resolutions.items,
-          attendance: attendance.items.find((item) => item.attendanceDate === today) ?? null,
+          attendance,
         });
         setError(null);
       } catch (cause) {
@@ -215,21 +230,34 @@ export function EmployeeDashboardPage() {
                 </span>
               </div>
 
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">
+                  {attendanceStatusLabel(data.attendance.result?.status ?? data.attendance.schedule.state)}
+                </span>
+                {data.attendance.schedule.scheduledStartAt ? (
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    Jadwal {formatTime(data.attendance.schedule.scheduledStartAt)}–{formatTime(data.attendance.schedule.scheduledEndAt)}
+                  </span>
+                ) : null}
+              </div>
+
               <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5">
                 <div className="rounded-xl bg-surface p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-xs font-semibold text-muted-foreground">Masuk</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkInAt ?? null)}</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance.result?.firstCheckInAt ?? null)}</p>
                 </div>
                 <div className="rounded-xl bg-surface p-3 sm:rounded-2xl sm:p-4">
                   <p className="text-xs font-semibold text-muted-foreground">Pulang</p>
-                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance?.checkOutAt ?? null)}</p>
+                  <p className="mt-1 text-2xl font-bold text-brand-heading">{formatTime(data.attendance.result?.lastCheckOutAt ?? null)}</p>
                 </div>
               </div>
 
               <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                {data.attendance
-                  ? "Menampilkan rekaman faktual. HCIS belum menyimpulkan telat, absen, lembur, atau jam kerja."
-                  : "Belum ada rekaman kehadiran untuk hari ini."}
+                {data.attendance.result
+                  ? `Hasil canonical: kerja ${data.attendance.result.workedMinutes} menit · telat ${data.attendance.result.lateMinutes} menit · lembur disetujui ${data.attendance.result.overtimeMinutes} menit.`
+                  : data.attendance.schedule.state === "scheduled"
+                    ? "Jadwal hari ini sudah terbaca; belum ada hasil kehadiran yang dimaterialisasi."
+                    : "Tidak ada hasil kehadiran aktif untuk hari ini."}
               </p>
               <a href="/app/attendance" className="mt-4 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-primary-deep">
                 Lihat kehadiran <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -247,7 +275,7 @@ export function EmployeeDashboardPage() {
 
               <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3">
                 {[
-                  ["Kehadiran", "/app/attendance", Clock3],
+                  ["Clock In/Out", "/app/attendance/clock", Clock3],
                   ["Cuti & Izin", "/app/leave", CalendarDays],
                   ["Slip Gaji", "/app/payslips", WalletCards],
                   ["Lainnya", "/app/services", Grid2X2],

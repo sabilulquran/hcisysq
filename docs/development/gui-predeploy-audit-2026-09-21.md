@@ -1,6 +1,6 @@
 # GUI Pre-deployment Audit — 2026-09-21
 
-**Status:** IMPLEMENTATION  
+**Status:** REPOSITORY VERIFIED — PRODUCTION DEPLOYMENT PENDING  
 **Baseline:** `36196e3bedd85563669ee97d442ddf43cc36388d`  
 **Scope:** employee workspace, Human Capital workspace, Admin navigation, Attendance, ADMS, notification entry points, service catalogs, responsive discoverability.
 
@@ -82,3 +82,21 @@ Decision:
 - Device-detail navigation wraps instead of requiring horizontal scrolling.
 - Old admin service URLs for an available service forward to its real route.
 - Tests cover the above navigation/status contracts before merge.
+
+
+## Repository verification
+
+The functional head before this status-only source-of-truth update passed Pull Request Validation run #456:
+
+- clean migration and migration source-of-truth checks;
+- recovered-production migration rehearsal;
+- pre-ORG-004 -> ORG-004 rehearsal;
+- Wave 1 -> Wave 2 rehearsal;
+- USERINFO and user-correction rehearsals;
+- TypeScript typecheck;
+- lint;
+- API/web tests including GUI discoverability and permission regressions;
+- web/API build;
+- staging Compose validation.
+
+The final PR head must pass the same workflow again before merge. Production browser/device UAT is still a separate post-deployment gate and is not claimed by repository CI.

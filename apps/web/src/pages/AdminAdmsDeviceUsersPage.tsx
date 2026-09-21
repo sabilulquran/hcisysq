@@ -16,6 +16,7 @@ import {
   type AdmsUserCorrectionItem,
 } from "@/lib/admsAdmin";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { hasPermission } from "@/lib/authorization";
 import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
 import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
 
@@ -50,7 +51,9 @@ function candidateLabel(kind: string) {
 }
 
 export function AdminAdmsDeviceUsersPage() {
-  const { deviceId, detail, refresh: refreshDevice } = useDeviceAdmin();
+  const { deviceId, detail, refresh: refreshDevice, session, sessionResolved } = useDeviceAdmin();
+  const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canSearchEmployees = hasPermission(session, "employees.manage");
   const [roster, setRoster] = useState<AdmsRosterItem[]>([]);
   const [mappingLifecycle, setMappingLifecycle] = useState<AdmsMappingLifecycleItem[]>([]);
   const [assistantItems, setAssistantItems] = useState<AdmsMappingAssistantItem[]>([]);
@@ -390,6 +393,11 @@ export function AdminAdmsDeviceUsersPage() {
           </select>
         </div>
 
+        {sessionResolved && !canOperate ? (
+          <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">
+            Mode baca saja. Menghubungkan PIN, sinkronisasi nama, koreksi PIN, dan mengakhiri mapping memerlukan izin operasi perangkat.
+          </div>
+        ) : null}
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
       </section>
@@ -461,7 +469,7 @@ export function AdminAdmsDeviceUsersPage() {
                       <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(row.lastSeenAt)}</td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          {!mapped ? (
+                          {!mapped && canOperate ? (
                             <button
                               type="button"
                               disabled={busyKey !== null}
@@ -475,7 +483,7 @@ export function AdminAdmsDeviceUsersPage() {
                               <Link2 className="h-3.5 w-3.5" /> Hubungkan
                             </button>
                           ) : null}
-                          <details className="relative text-left">
+                          {mapped && canOperate ? <details className="relative text-left">
                             <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-border bg-white px-3 text-xs font-semibold hover:bg-surface">
                               Aksi
                             </summary>
@@ -517,7 +525,7 @@ export function AdminAdmsDeviceUsersPage() {
                                 </>
                               ) : null}
                             </div>
-                          </details>
+                          </details> : null}
                         </div>
                       </td>
                     </tr>
@@ -542,7 +550,7 @@ export function AdminAdmsDeviceUsersPage() {
         </div>
       </section>
 
-      {mappingTarget ? (
+      {canOperate && mappingTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="mapping-dialog-title">
           <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
@@ -598,7 +606,7 @@ export function AdminAdmsDeviceUsersPage() {
 
             <div className="mt-5 border-t border-border/70 pt-5">
               <div className="text-xs font-bold text-brand-heading">Cari pegawai manual</div>
-              <form
+              {canSearchEmployees ? <form
                 className="mt-2 flex gap-2"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -618,7 +626,11 @@ export function AdminAdmsDeviceUsersPage() {
                 >
                   {employeeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Cari
                 </button>
-              </form>
+              </form> : (
+                <div className="mt-2 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">
+                  Pencarian direktori pegawai memerlukan izin pengelolaan pegawai. Rekomendasi nama yang sudah dihitung tetap dapat dipakai bila tersedia.
+                </div>
+              )}
               <div className="mt-2 space-y-2">
                 {employeeResults.map((employee) => (
                   <button
@@ -641,7 +653,7 @@ export function AdminAdmsDeviceUsersPage() {
         </div>
       ) : null}
 
-      {correctionTarget ? (
+      {canOperate && correctionTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="correction-dialog-title">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">

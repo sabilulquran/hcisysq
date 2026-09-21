@@ -7,6 +7,7 @@ import type { AuthPrincipal, AuthSessionResult } from "../src/modules/auth/servi
 import {
   hasPayslipCapability,
   parsePayslipCsv,
+  parsePayslipCsvDocument,
   registerPayslipRoutes,
 } from "../src/modules/payslips/routes.js";
 
@@ -86,6 +87,77 @@ describe("payslip import contract", () => {
   it("rejects business-shape assumptions outside the generic line contract", () => {
     const csv = Buffer.from("employee_number,period,net_salary\nSYN-001,2026-08,100\n");
     expect(() => parsePayslipCsv(csv)).toThrow(/header CSV wajib/i);
+  });
+});
+
+describe("PAYSLIP-002 legacy-compatible import", () => {
+  it("detects fixed payroll and preserves imported display values", () => {
+    const csv = Buffer.from(
+      [
+        "NIP,TANGGAL,GAJI POKOK,TUNJANGAN KINERJA,TOTAL BRUTO GAJI,TOTAL POTONGAN,GAJI NETO",
+        "SYN-001,15/09/2026,Rp 5.000.000,Rp 500.000,Rp 5.500.000,Rp 250.000,Rp 5.250.000",
+      ].join("\n"),
+    );
+    const parsed = parsePayslipCsvDocument(csv);
+    expect(parsed.sourceFormat).toBe("tetap");
+    expect(parsed.rows[0]?.period).toBe("2026-09-01");
+    expect(parsed.rows[0]?.errors).toEqual([]);
+    expect(parsed.rows[0]?.lines).toContainEqual({
+      label: "Gaji Pokok",
+      value: "Rp 5.000.000",
+      section: "income",
+    });
+    expect(parsed.rows[0]?.lines).toContainEqual({
+      label: "Gaji Neto",
+      value: "Rp 5.250.000",
+      section: "summary",
+    });
+  });
+
+  it("detects semicolon honorer payroll and uses fallback period without calculating values", () => {
+    const csv = Buffer.from(
+      [
+        "NIP;VALUE TRANSPORT;JUMLAH KEHADIRAN;VALUE HONOR;JUMLAH JAM MENGAJAR;TOTAL PENGHASILAN;GAJI NETO",
+        "SYN-002;Rp 25.000;18;Rp 50.000;42;Rp 2.550.000;Rp 2.550.000",
+      ].join("\n"),
+    );
+    const parsed = parsePayslipCsvDocument(csv, "2026-09");
+    expect(parsed.sourceFormat).toBe("honorer");
+    expect(parsed.rows[0]?.period).toBe("2026-09-01");
+    expect(parsed.rows[0]?.errors).toEqual([]);
+    expect(parsed.rows[0]?.lines).toContainEqual({
+      label: "Value Honor",
+      value: "Rp 50.000",
+      section: "income",
+    });
+    expect(parsed.rows[0]?.lines).toContainEqual({
+      label: "Total Penghasilan",
+      value: "Rp 2.550.000",
+      section: "summary",
+    });
+  });
+
+  it("keeps legacy rows invalid when neither TANGGAL nor fallback period is available", () => {
+    const csv = Buffer.from(
+      [
+        "NIP;VALUE HONOR;JUMLAH JAM MENGAJAR;TOTAL PENGHASILAN;GAJI NETO",
+        "SYN-003;50000;10;500000;500000",
+      ].join("\n"),
+    );
+    const parsed = parsePayslipCsvDocument(csv);
+    expect(parsed.sourceFormat).toBe("honorer");
+    expect(parsed.rows[0]?.period).toBeNull();
+    expect(parsed.rows[0]?.errors).toContain("periode wajib tersedia dari TANGGAL atau fallback YYYY-MM");
+  });
+
+  it("rejects a fixed-payroll header missing the required net amount", () => {
+    const csv = Buffer.from(
+      [
+        "NIP,TANGGAL,GAJI POKOK,TOTAL BRUTO",
+        "SYN-004,01/09/2026,5000000,5000000",
+      ].join("\n"),
+    );
+    expect(() => parsePayslipCsvDocument(csv)).toThrow(/GAJI NETO/);
   });
 });
 

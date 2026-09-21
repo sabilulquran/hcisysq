@@ -58,7 +58,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-003"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce",
+    href: "/admin/attendance/workforce/schedules",
   },
   {
     key: "mobile-attendance",
@@ -67,8 +67,8 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-006"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce",
-    details: ["GPS", "Geotagging / geofence", "Foto kehadiran", "Face recognition"],
+    href: "/admin/attendance/workforce/mobile",
+    details: ["GPS", "Geotagging / geofence", "Foto kehadiran"],
   },
   {
     key: "attendance-evaluation",
@@ -82,11 +82,20 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "shift-exchange",
     label: "Tukar Shift",
-    description: "Atur kebijakan pertukaran shift dan alur persetujuannya.",
+    description: "Tinjau dan putuskan pertukaran shift yang sudah disetujui rekan.",
     featureIds: ["ATT-008"],
-    stage: "planned",
+    stage: "available",
     category: "attendance",
-    href: "/admin/services/shift-exchange",
+    href: "/admin/attendance/workforce/shift-swaps",
+  },
+  {
+    key: "adms",
+    label: "Back Office ADMS",
+    description: "Kelola fleet fingerprint, mapping pegawai, transaksi, perintah, dan pemulihan sesuai izin perangkat.",
+    featureIds: ["ATT-005"],
+    stage: "available",
+    category: "attendance",
+    href: "/admin/attendance/adms",
   },
   {
     key: "payroll",

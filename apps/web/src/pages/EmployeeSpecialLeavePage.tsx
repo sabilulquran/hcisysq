@@ -5,7 +5,6 @@ import {
   ChevronRight,
   FileUp,
   Loader2,
-  ShieldCheck,
   Stethoscope,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -258,7 +257,6 @@ export function EmployeeSpecialLeavePage() {
     <AppShell
       user={user}
       activeItem="Cuti & Izin"
-      capabilities={{ humanCapitalOrganization: summary?.hasHumanCapitalRole === true }}
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -272,11 +270,6 @@ export function EmployeeSpecialLeavePage() {
           <a href="/app/leave" className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Semua Cuti & Izin
           </a>
-          {summary?.hasHumanCapitalRole ? (
-            <a href="/app/hc/leave" className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">
-              <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Validasi HC
-            </a>
-          ) : null}
         </div>
       </section>
 

@@ -2,6 +2,7 @@ import { AlertTriangle, Database, Fingerprint, Info, Loader2, RefreshCw, ShieldC
 import { useCallback, useEffect, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
+import { hasPermission } from "@/lib/authorization";
 import { commandStatusLabel } from "@/lib/admsAdmin";
 import {
   getAdmsBiometricInventory,
@@ -43,8 +44,10 @@ function modalityLabel(value: string) {
 }
 
 export function AdminAdmsDeviceDiagnosticsPage() {
-  const { deviceId, detail } = useDeviceAdmin();
+  const { deviceId, detail, session, sessionResolved } = useDeviceAdmin();
   const device = detail?.item ?? null;
+  const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canBiometrics = hasPermission(session, "attendance.devices.biometrics");
   const [telemetry, setTelemetry] = useState<AdmsTelemetry | null>(null);
   const [reconciliation, setReconciliation] = useState<AdmsReconciliationResponse | null>(null);
   const [logs, setLogs] = useState<AdmsSafeLogs | null>(null);
@@ -57,21 +60,30 @@ export function AdminAdmsDeviceDiagnosticsPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [nextTelemetry, nextReconciliation, nextLogs, nextPolicy, nextCredentials, nextInventory] = await Promise.all([
+    const [nextTelemetry, nextReconciliation, nextLogs] = await Promise.all([
       getAdmsTelemetry(deviceId),
       getAdmsReconciliation(deviceId),
       getAdmsSafeLogs(deviceId),
-      getAdmsBiometricPolicy(deviceId),
-      listAdmsBiometricCredentials(deviceId),
-      getAdmsBiometricInventory(deviceId),
     ]);
     setTelemetry(nextTelemetry);
     setReconciliation(nextReconciliation);
     setLogs(nextLogs);
-    setBiometricPolicy(nextPolicy);
-    setCredentials(nextCredentials);
-    setInventory(nextInventory);
-  }, [deviceId]);
+
+    if (canBiometrics) {
+      const [nextPolicy, nextCredentials, nextInventory] = await Promise.all([
+        getAdmsBiometricPolicy(deviceId),
+        listAdmsBiometricCredentials(deviceId),
+        getAdmsBiometricInventory(deviceId),
+      ]);
+      setBiometricPolicy(nextPolicy);
+      setCredentials(nextCredentials);
+      setInventory(nextInventory);
+    } else {
+      setBiometricPolicy(null);
+      setCredentials(null);
+      setInventory(null);
+    }
+  }, [canBiometrics, deviceId]);
 
   useEffect(() => {
     setLoading(true);
@@ -123,10 +135,10 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       <section className="rounded-2xl border border-slate-300 bg-slate-950 p-5 text-slate-100 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Area teknis · Super Admin</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Area teknis · operator ADMS berizin</div>
             <h2 className="mt-1 text-base font-bold">Diagnostik mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-300">
-              Protocol evidence, canary, reconciliation, log aman, dan metadata biometric. Halaman ini terikat hanya ke mesin pada URL dan tidak memilih mesin lain secara internal.
+              Protocol evidence, canary, reconciliation, dan log aman untuk mesin pada URL. Metadata biometrik hanya dimuat bila account memiliki izin biometrik terpisah.
             </p>
           </div>
           <button type="button" disabled={busy !== null} onClick={() => void refresh()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-700 px-3 text-xs font-semibold hover:bg-slate-900 disabled:opacity-50">
@@ -144,7 +156,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
             <div className="flex items-center gap-2 text-sm font-bold text-brand-heading"><Info className="h-4 w-4" /> Telemetry & INFO</div>
             <p className="mt-1 text-xs text-muted-foreground">Metadata transport dan INFO yang pernah teramati; tidak memuat template biometric.</p>
           </div>
-          <button type="button" disabled={busy !== null || device?.lifecycle !== "active"} onClick={() => void readInformation()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
+          <button type="button" disabled={busy !== null || device?.lifecycle !== "active" || !canOperate} onClick={() => void readInformation()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
             {busy === "info" ? "Mengirim…" : "Baca informasi mesin"}
           </button>
         </div>
@@ -196,52 +208,61 @@ export function AdminAdmsDeviceDiagnosticsPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold text-brand-heading">Biometric control plane</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Hanya metadata credential/replica yang ditampilkan. Payload vendor, ciphertext, IV, auth tag, hash, password, dan key material tidak pernah dirender.</p>
-          </div>
-        </div>
-        <div className="mt-4 rounded-xl bg-amber-50 p-4">
-          <div className="text-xs">
-            <div className="font-bold text-amber-950">Gate koleksi · observasi saja pada tahap ini</div>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-amber-900">
-              <span>global <strong>{biometricPolicy?.globalCollectionEnabled ? "ON" : "OFF"}</strong></span>
-              <span>device <strong>{biometricPolicy?.deviceCollectionEnabled ? "ON" : "OFF"}</strong></span>
-              <span>effective <strong>{biometricPolicy?.effectiveCollectionEnabled ? "ON" : "OFF"}</strong></span>
-            </div>
-            <div className="mt-2 flex gap-2 text-[11px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> UI redesign ini tidak menyediakan tombol untuk menyalakan biometric collection. Aktivasi tetap menunggu approval hardware/privacy/key canary terpisah.</div>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <div className="rounded-xl border border-border/70 p-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-brand-heading"><Fingerprint className="h-4 w-4" /> Vault metadata</div>
-            <div className="mt-3 space-y-2">
-              {(credentials?.items ?? []).slice(0, 20).map((item) => (
-                <div key={item.id} className="rounded-lg bg-surface p-3 text-[11px]">
-                  <div className="font-semibold text-brand-heading">{item.employeeName} · {item.employeeNumber}</div>
-                  <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · {item.vendorFormat} · source PIN {item.sourcePin ?? "—"}</div>
-                </div>
-              ))}
-              {(credentials?.items.length ?? 0) === 0 ? <div className="text-xs text-muted-foreground">Belum ada metadata credential untuk origin device ini.</div> : null}
+      {canBiometrics ? (
+        <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold text-brand-heading">Biometric control plane</h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Hanya metadata credential/replica yang ditampilkan. Payload vendor, ciphertext, IV, auth tag, hash, password, dan key material tidak pernah dirender.</p>
             </div>
           </div>
-          <div className="rounded-xl border border-border/70 p-4">
-            <div className="text-xs font-bold text-brand-heading">Replica state</div>
-            <div className="mt-3 space-y-2">
-              {(inventory?.items ?? []).slice(0, 20).map((item) => (
-                <div key={item.credentialId} className="rounded-lg bg-surface p-3 text-[11px]">
-                  <div className="flex justify-between gap-2"><span className="font-semibold text-brand-heading">{item.employeeName}</span><span>{item.state}</span></div>
-                  <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · last sync {fmt(item.lastSyncedAt)}</div>
-                </div>
-              ))}
-              {(inventory?.items.length ?? 0) === 0 ? <div className="text-xs text-muted-foreground">Belum ada state replica credential untuk mesin ini.</div> : null}
+          <div className="mt-4 rounded-xl bg-amber-50 p-4">
+            <div className="text-xs">
+              <div className="font-bold text-amber-950">Gate koleksi · observasi saja pada tahap ini</div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-amber-900">
+                <span>global <strong>{biometricPolicy?.globalCollectionEnabled ? "ON" : "OFF"}</strong></span>
+                <span>device <strong>{biometricPolicy?.deviceCollectionEnabled ? "ON" : "OFF"}</strong></span>
+                <span>effective <strong>{biometricPolicy?.effectiveCollectionEnabled ? "ON" : "OFF"}</strong></span>
+              </div>
+              <div className="mt-2 flex gap-2 text-[11px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> UI redesign ini tidak menyediakan tombol untuk menyalakan biometric collection. Aktivasi tetap menunggu approval hardware/privacy/key canary terpisah.</div>
             </div>
           </div>
-        </div>
-      </section>
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-xl border border-border/70 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-brand-heading"><Fingerprint className="h-4 w-4" /> Vault metadata</div>
+              <div className="mt-3 space-y-2">
+                {(credentials?.items ?? []).slice(0, 20).map((item) => (
+                  <div key={item.id} className="rounded-lg bg-surface p-3 text-[11px]">
+                    <div className="font-semibold text-brand-heading">{item.employeeName} · {item.employeeNumber}</div>
+                    <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · {item.vendorFormat} · source PIN {item.sourcePin ?? "—"}</div>
+                  </div>
+                ))}
+                {(credentials?.items.length ?? 0) === 0 ? <div className="text-xs text-muted-foreground">Belum ada metadata credential untuk origin device ini.</div> : null}
+              </div>
+            </div>
+            <div className="rounded-xl border border-border/70 p-4">
+              <div className="text-xs font-bold text-brand-heading">Replica state</div>
+              <div className="mt-3 space-y-2">
+                {(inventory?.items ?? []).slice(0, 20).map((item) => (
+                  <div key={item.credentialId} className="rounded-lg bg-surface p-3 text-[11px]">
+                    <div className="flex justify-between gap-2"><span className="font-semibold text-brand-heading">{item.employeeName}</span><span>{item.state}</span></div>
+                    <div className="mt-1 text-muted-foreground">{modalityLabel(item.modality)} · slot {item.slotIndex ?? "—"} · last sync {fmt(item.lastSyncedAt)}</div>
+                  </div>
+                ))}
+                {(inventory?.items.length ?? 0) === 0 ? <div className="text-xs text-muted-foreground">Belum ada state replica credential untuk mesin ini.</div> : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : sessionResolved ? (
+        <section className="rounded-2xl border border-border/70 bg-surface p-5 text-xs leading-5 text-muted-foreground">
+          <div className="font-bold text-brand-heading">Biometric control plane tidak ditampilkan</div>
+          <p className="mt-1">
+            Metadata fingerprint/face/palm memerlukan izin biometrik terpisah. Akses ADMS standar tetap dapat memakai telemetry, rekonsiliasi, log aman, transaksi, mapping, dan operasi non-destruktif.
+          </p>
+        </section>
+      ) : null}
     </div>
   );
 }

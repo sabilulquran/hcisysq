@@ -100,7 +100,7 @@ export function EmployeeAttendancePage() {
           <div className="mt-3"><ResultFacts result={snapshot.result}/></div>
           {snapshot.result?.sessions?.length ? <div className="mt-4 rounded-2xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">Sesi kerja</p><div className="mt-2 space-y-1 text-xs text-muted-foreground">{snapshot.result.sessions.map(s=><p key={s.sequence}>Sesi {s.sequence}: {formatTime(s.checkInAt)} – {formatTime(s.checkOutAt)} · {s.workedMinutes??0} mnt{s.complete?"":" · belum lengkap"}</p>)}</div></div>:null}
         </article>
-        <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article id="overtime" className="scroll-mt-28 rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><TimerReset className="h-5 w-5 text-brand-primary-deep"/><h2 className="font-bold text-brand-heading">Ajukan lembur</h2></div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">Pulang lebih lambat tidak otomatis menjadi lembur. Hanya menit yang disetujui yang masuk hasil kehadiran.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><input className="h-10 rounded-xl border px-3 text-sm" type="date" value={overtime.workDate} onChange={e=>setOvertime({...overtime,workDate:e.target.value})}/><input className="h-10 rounded-xl border px-3 text-sm" type="number" min="1" max="1440" value={overtime.requestedMinutes} onChange={e=>setOvertime({...overtime,requestedMinutes:e.target.value})}/></div>

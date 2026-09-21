@@ -11,6 +11,7 @@ import {
   type AdmsTransactionItem,
 } from "@/lib/admsAdmin";
 import { admsTransactionExportUrl } from "@/lib/admsOperations";
+import { hasPermission } from "@/lib/authorization";
 
 function fmt(value: string) {
   return new Intl.DateTimeFormat("id-ID", {
@@ -21,7 +22,9 @@ function fmt(value: string) {
 }
 
 export function AdminAdmsDeviceTransactionsPage() {
-  const { deviceId, refresh: refreshDevice } = useDeviceAdmin();
+  const { deviceId, refresh: refreshDevice, session, sessionResolved } = useDeviceAdmin();
+  const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canExport = hasPermission(session, "attendance.devices.export");
   const [items, setItems] = useState<AdmsTransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -144,11 +147,15 @@ export function AdminAdmsDeviceTransactionsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <a href={admsTransactionExportUrl(deviceId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface"><Download className="h-3.5 w-3.5" /> Export CSV</a>
-            <button type="button" disabled={busy !== null} onClick={() => void requestLatest()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
-              {busy === "latest" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />} Minta transaksi terbaru
-            </button>
-            <button type="button" disabled={busy !== null} onClick={() => setRecoveryOpen(true)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Ambil ulang transaksi</button>
+            {canExport ? <a href={admsTransactionExportUrl(deviceId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface"><Download className="h-3.5 w-3.5" /> Export CSV</a> : null}
+            {canOperate ? (
+              <>
+                <button type="button" disabled={busy !== null} onClick={() => void requestLatest()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
+                  {busy === "latest" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />} Minta transaksi terbaru
+                </button>
+                <button type="button" disabled={busy !== null} onClick={() => setRecoveryOpen(true)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Ambil ulang transaksi</button>
+              </>
+            ) : null}
             <button type="button" onClick={() => void refreshAll()} disabled={refreshing || loading} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /> Muat ulang</button>
           </div>
         </div>
@@ -157,8 +164,9 @@ export function AdminAdmsDeviceTransactionsPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari PIN, nama, nomor pegawai, atau timestamp mentah" className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
         </label>
-        <SavedFilterBar deviceId={deviceId} viewKey="transactions" criteria={{ query, pageSize }} onApply={applySavedFilter} />
+        <SavedFilterBar deviceId={deviceId} viewKey="transactions" criteria={{ query, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
 
+        {sessionResolved && !canOperate ? <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">Mode baca saja. Permintaan sinkronisasi dan recovery memerlukan izin operasi perangkat.</div> : null}
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
       </section>
@@ -190,7 +198,7 @@ export function AdminAdmsDeviceTransactionsPage() {
         <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Sumber API tetap membatasi 200 transaksi terbaru yang tersimpan. Pagination hanya mengatur tampilan; export membaca fakta raw durable hingga batas server, dan pengambilan ulang tetap exact-deduped.</div>
       </section>
 
-      {recoveryOpen ? (
+      {canOperate && recoveryOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="recovery-dialog-title">
           <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4"><div><h3 id="recovery-dialog-title" className="text-base font-bold text-brand-heading">Ambil ulang transaksi</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">HCIS akan meminta mesin ini mengirim ulang transaksi tersimpan untuk rentang waktu yang dipilih. Maksimal 31 hari per permintaan.</p></div><button type="button" onClick={() => setRecoveryOpen(false)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button></div>

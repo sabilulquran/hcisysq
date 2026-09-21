@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { getAdmsDeviceHealth, type AdmsDeviceHealth } from "@/lib/admsAdmin";
+import { getCurrentSession } from "@/lib/auth";
+import type { AuthSession } from "@/types/hcis";
 import { getAdmsDevice, type AdmsDeviceDetailResponse } from "@/lib/attendance";
 
 type DeviceAdminContextValue = {
@@ -10,6 +12,8 @@ type DeviceAdminContextValue = {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  session: AuthSession | null;
+  sessionResolved: boolean;
   refresh: () => Promise<void>;
 };
 
@@ -21,6 +25,8 @@ export function DeviceAdminProvider({ deviceId, children }: { deviceId: string; 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
 
   const load = useCallback(async (initial: boolean) => {
     if (initial) setLoading(true);
@@ -43,13 +49,21 @@ export function DeviceAdminProvider({ deviceId, children }: { deviceId: string; 
   }, [deviceId]);
 
   useEffect(() => {
+    let active = true;
     setDetail(null);
     setHealth(null);
     setError(null);
     void load(true);
+    void getCurrentSession()
+      .then((value) => { if (active) setSession(value); })
+      .catch(() => { if (active) setSession(null); })
+      .finally(() => { if (active) setSessionResolved(true); });
 
     const timer = window.setInterval(() => void load(false), 30_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   const value = useMemo<DeviceAdminContextValue>(
@@ -60,9 +74,11 @@ export function DeviceAdminProvider({ deviceId, children }: { deviceId: string; 
       loading,
       refreshing,
       error,
+      session,
+      sessionResolved,
       refresh: () => load(false),
     }),
-    [deviceId, detail, error, health, load, loading, refreshing],
+    [deviceId, detail, error, health, load, loading, refreshing, session, sessionResolved],
   );
 
   return <DeviceAdminContext.Provider value={value}>{children}</DeviceAdminContext.Provider>;

@@ -1,7 +1,9 @@
 import { ArrowLeft, RefreshCw, Wrench } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { canAccessAdminPath } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import { connectivityLabel, type AdmsConnectivityStatus } from "@/lib/admsAdmin";
 import { cn } from "@/lib/utils";
 
@@ -53,8 +55,60 @@ function connectivityClass(status: AdmsConnectivityStatus | undefined) {
   return "bg-slate-100 text-slate-600 border-slate-200";
 }
 
+export function DeviceDetailNavigation({
+  baseHref,
+  section,
+  session,
+}: {
+  baseHref: string;
+  section: DeviceAdminSection;
+  session: AuthSession | null;
+}) {
+  const visibleTabs = tabs.filter((tab) => canAccessAdminPath(session, `${baseHref}${tab.suffix}`));
+  const canOpenDiagnostics = canAccessAdminPath(session, `${baseHref}/diagnostics`);
+
+  return (
+    <div className="mb-6 flex flex-col gap-3 border-b border-border/80 sm:flex-row sm:items-end sm:justify-between">
+      <nav className="flex flex-wrap gap-1" aria-label="Bagian mesin fingerprint">
+        {visibleTabs.map((tab) => {
+          const selected = section === tab.key;
+          return (
+            <a
+              key={tab.key}
+              href={`${baseHref}${tab.suffix}`}
+              aria-current={selected ? "page" : undefined}
+              className={cn(
+                "shrink-0 border-b-2 px-3 py-3 text-sm font-semibold transition-colors",
+                selected
+                  ? "border-brand-primary text-brand-primary-deep"
+                  : "border-transparent text-muted-foreground hover:text-brand-heading",
+              )}
+            >
+              {tab.label}
+            </a>
+          );
+        })}
+      </nav>
+      {canOpenDiagnostics ? (
+        <a
+          href={`${baseHref}/diagnostics`}
+          className={cn(
+            "mb-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold",
+            section === "diagnostics"
+              ? "bg-slate-900 text-white"
+              : "text-muted-foreground hover:bg-surface hover:text-brand-heading",
+          )}
+        >
+          <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+          Diagnostik teknis
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
 export function DeviceDetailShell({ section, children }: { section: DeviceAdminSection; children: ReactNode }) {
-  const { deviceId, detail, health, loading, refreshing, error, refresh } = useDeviceAdmin();
+  const { deviceId, detail, health, loading, refreshing, error, refresh, session } = useDeviceAdmin();
   const device = detail?.item ?? null;
   const baseHref = `/admin/attendance/devices/${deviceId}`;
   const title = device?.displayName?.trim() || device?.serialNumber || "Detail mesin fingerprint";
@@ -90,40 +144,7 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
         </div>
       </div>
 
-      <div className="mb-6 flex flex-col gap-3 border-b border-border/80 sm:flex-row sm:items-end sm:justify-between">
-        <nav className="flex gap-1 overflow-x-auto" aria-label="Bagian mesin fingerprint">
-          {tabs.map((tab) => {
-            const selected = section === tab.key;
-            return (
-              <a
-                key={tab.key}
-                href={`${baseHref}${tab.suffix}`}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  "shrink-0 border-b-2 px-3 py-3 text-sm font-semibold transition-colors",
-                  selected
-                    ? "border-brand-primary text-brand-primary-deep"
-                    : "border-transparent text-muted-foreground hover:text-brand-heading",
-                )}
-              >
-                {tab.label}
-              </a>
-            );
-          })}
-        </nav>
-        <a
-          href={`${baseHref}/diagnostics`}
-          className={cn(
-            "mb-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold",
-            section === "diagnostics"
-              ? "bg-slate-900 text-white"
-              : "text-muted-foreground hover:bg-surface hover:text-brand-heading",
-          )}
-        >
-          <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
-          Diagnostik teknis
-        </a>
-      </div>
+      <DeviceDetailNavigation baseHref={baseHref} section={section} session={session} />
 
       {error ? (
         <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">

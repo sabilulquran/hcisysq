@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminNavigation } from "@/layouts/AdminShell";
-import { canAccessAdminPath } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessEmployeeHcPath } from "@/lib/authorization";
 import { landingPath } from "@/lib/auth";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
@@ -9,8 +9,15 @@ function session(principalType: PrincipalType, permissions: string[]): AuthSessi
   return { principal: { id: "synthetic", email: "synthetic@example.invalid", principalType },
     expiresAt: "2099-01-01T00:00:00Z", authorization: { organizationPermissions: permissions } };
 }
-const hcAdmin = ["employees.manage", "organization.manage", "access.manage", "access.roles.assign",
-  "leave.configuration.manage", "attendance.records.manage", "payslips.import", "payslips.publish"];
+const hcAdmin = [
+  "employees.manage", "employees.read.all", "leave.validate", "leave.evidence.read",
+  "attendance.resolution.read", "attendance.resolution.manage", "payslips.import", "payslips.publish",
+  "organization.manage", "access.manage", "access.roles.assign", "leave.configuration.manage",
+  "attendance.records.manage", "attendance.schedule.manage", "attendance.policy.manage",
+  "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
+  "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
+  "attendance.devices.operate", "attendance.devices.export",
+];
 const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage"];
 
 describe("AUTH-011 backend-derived admin navigation", () => {
@@ -23,9 +30,16 @@ describe("AUTH-011 backend-derived admin navigation", () => {
         expect(html).toContain(`href="${path}"`);
         expect(canAccessAdminPath(actor, path)).toBe(true);
       }
-      expect(html).not.toContain('href="/admin/attendance/devices"');
+      expect(html).toContain('href="/admin/attendance/devices"');
+      expect(html).toContain('href="/admin/attendance/adms"');
     }
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/operations")).toBe(true);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/diagnostics")).toBe(true);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/settings")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);
+    expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
+    expect(canAccessEmployeeHcPath(actor, "/app/hc/planned-leave")).toBe(true);
+    expect(canAccessEmployeeHcPath(actor, "/app/hc/attendance-resolution")).toBe(true);
   });
 
   it("does not infer permissions from Employee, operational HC or legacy principal labels", () => {
@@ -34,6 +48,10 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       expect(canAccessAdminPath(actor, "/admin/access")).toBe(false);
       expect(renderToStaticMarkup(<AdminNavigation active="overview" session={actor} />)).not.toContain("href=");
     }
+    expect(canAccessEmployeeHcPath(session("EMPLOYEE", ["leave.validate"]), "/app/hc/leave")).toBe(true);
+    expect(canAccessEmployeeHcPath(session("EMPLOYEE", ["leave.validate"]), "/app/hc/attendance-resolution")).toBe(false);
+    expect(canAccessEmployeeHcPath(session("EMPLOYEE", []), "/app/hc/leave")).toBe(false);
+    expect(canAccessEmployeeHcPath(session("FOUNDATION_BOARD", ["leave.validate"]), "/app/hc/leave")).toBe(false);
     const missingContext: AuthSession = { principal: session("SUPER_ADMIN", []).principal, expiresAt: "2099-01-01T00:00:00Z" };
     expect(canAccessAdminPath(missingContext, "/admin")).toBe(false);
     expect(landingPath(session("EMPLOYEE", []))).toBe("/app");
@@ -61,6 +79,10 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms/transactions")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices")).toBe(true);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/operations")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/diagnostics")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/settings")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/biometrics")).toBe(false);
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);
     expect(html).toContain('href="/admin/attendance/adms"');
     expect(html).toContain('href="/admin/attendance/devices"');

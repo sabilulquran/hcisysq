@@ -107,8 +107,8 @@ const navGroups: AdminNavGroup[] = [
     items: [{ key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound }],
   },
   {
-    label: "Roadmap",
-    items: [{ key: "services", label: "Modul Mendatang", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
+    label: "Modul",
+    items: [{ key: "services", label: "Katalog Modul", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
   },
 ];
 
@@ -138,7 +138,7 @@ export function AdminNavigation({ active, session, compact = false }: { active: 
       {missingDeviceAccess ? (
         <div className="rounded-xl border border-border bg-surface p-3 text-xs leading-5 text-muted-foreground" role="note">
           <p className="font-bold text-brand-heading">ADMS sudah terpasang</p>
-          <p>Akun ini belum memiliki izin perangkat. Minta pengelola akses meninjau peran operator ADMS; izin HC tidak otomatis menjadi izin perangkat.</p>
+          <p>Akun ini belum memiliki permission perangkat yang dibutuhkan untuk membuka Back Office ADMS. Minta pengelola akses meninjau role/scope account ini.</p>
         </div>
       ) : null}
     </nav>

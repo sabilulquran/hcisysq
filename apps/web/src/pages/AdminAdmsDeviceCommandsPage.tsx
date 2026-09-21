@@ -2,6 +2,7 @@ import { Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
+import { hasPermission } from "@/lib/authorization";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import {
@@ -42,7 +43,8 @@ const COMMAND_STATUSES = new Set([
 ]);
 
 export function AdminAdmsDeviceCommandsPage() {
-  const { deviceId, refresh: refreshDevice } = useDeviceAdmin();
+  const { deviceId, refresh: refreshDevice, session } = useDeviceAdmin();
+  const canOperate = hasPermission(session, "attendance.devices.operate");
   const [items, setItems] = useState<AdmsCommandItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -156,7 +158,7 @@ export function AdminAdmsDeviceCommandsPage() {
             <option value="expired">Kedaluwarsa</option>
           </select>
         </div>
-        <SavedFilterBar deviceId={deviceId} viewKey="commands" criteria={{ query, status, pageSize }} onApply={applySavedFilter} />
+        <SavedFilterBar deviceId={deviceId} viewKey="commands" criteria={{ query, status, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
       </section>
@@ -180,7 +182,7 @@ export function AdminAdmsDeviceCommandsPage() {
                     <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(item.deliveredAt)}</td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(item.completedAt)}</td>
                     <td className="px-4 py-4 text-xs font-medium text-brand-heading">{outcomeLabel(item)}</td>
-                    <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === "pending" ? <button type="button" disabled={busyId !== null} onClick={() => void cancel(item)} className="h-8 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">{busyId === item.id ? "Membatalkan…" : "Batalkan"}</button> : null}<button type="button" onClick={() => setSelected(item)} className="h-8 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-surface">Detail</button></div></td>
+                    <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === "pending" && canOperate ? <button type="button" disabled={busyId !== null} onClick={() => void cancel(item)} className="h-8 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">{busyId === item.id ? "Membatalkan…" : "Batalkan"}</button> : null}<button type="button" onClick={() => setSelected(item)} className="h-8 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-surface">Detail</button></div></td>
                   </tr>
                 ))}
               </tbody>

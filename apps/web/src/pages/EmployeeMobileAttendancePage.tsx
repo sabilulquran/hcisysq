@@ -274,7 +274,7 @@ export function EmployeeMobileAttendancePage() {
               {!ready && !retryPending ? <p className="mt-2 text-xs text-muted-foreground">Tombol aktif setelah server siap, GPS terbaca, dan foto diambil.</p> : null}
             </article>
           </section>
-          <section className="mt-5 rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <section id="clarification" className="scroll-mt-28 mt-5 rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
             <h2 className="text-base font-bold text-brand-heading">Klarifikasi kehadiran</h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Justifikasi mempertahankan waktu aktual. Koreksi menambahkan usulan waktu baru tanpa mengubah bukti mentah.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">

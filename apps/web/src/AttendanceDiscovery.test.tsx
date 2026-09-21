@@ -1,10 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AppShell } from "@/layouts/AppShell";
+import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
 import { AdminNavigation } from "@/layouts/AdminShell";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
 import { AttendanceWorkforceNavigation } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
+import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import { getEmployeeService } from "@/lib/employeeServices";
+import { getAdminService } from "@/lib/adminServices";
+import { AdminServiceTile } from "@/pages/AdminServicesPage";
 import type { AuthSession } from "@/types/hcis";
 
 const employee = { name: "Synthetic Employee", initials: "SE", position: "Staff", unit: "Synthetic Unit" };
@@ -25,12 +29,27 @@ describe("employee attendance discoverability", () => {
   it("does not hide attendance actions beyond a horizontal scroll strip", () => {
     const html = renderToStaticMarkup(<EmployeeAttendanceNavigation currentPath="/app/attendance/shift-swap" />);
     expect(html).toContain('href="/app/attendance/shift-swap" aria-current="page"');
+    expect(html).toContain('href="/app/attendance#overtime"');
+    expect(html).toContain('href="/app/attendance/clock#clarification"');
     expect(html).not.toContain("overflow-x-auto");
     expect(html).toContain("min-h-11");
   });
+  it("keeps Human Capital tasks discoverable on mobile from backend-derived permissions", () => {
+    const actor = session(["leave.validate", "attendance.resolution.manage"]);
+    const html = renderToStaticMarkup(
+      <EmployeeHumanCapitalNavigation session={actor} activeItem="Validasi Cuti" mobile />,
+    );
+    expect(html).toContain('aria-label="Tugas Human Capital"');
+    expect(html).toContain('href="/app/hc/leave"');
+    expect(html).toContain('href="/app/hc/planned-leave"');
+    expect(html).toContain('href="/app/hc/attendance-resolution"');
+    expect(html).toContain("lg:hidden");
+  });
+
   it("links implemented services to real routes while reminders remain a proposal", () => {
     expect(getEmployeeService("overtime")?.stage).toBe("available");
-    expect(getEmployeeService("overtime")?.href).toBe("/app/attendance");
+    expect(getEmployeeService("overtime")?.href).toBe("/app/attendance#overtime");
+    expect(getEmployeeService("attendance-clarification")?.href).toBe("/app/attendance/clock#clarification");
     expect(getEmployeeService("work-schedule")?.href).toBe("/app/attendance");
     expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
     expect(getEmployeeService("notifications")?.stage).toBe("available");
@@ -41,6 +60,69 @@ describe("employee attendance discoverability", () => {
 });
 
 describe("HC and device-operator navigation", () => {
+  it("keeps implemented admin attendance modules out of Coming Soon", () => {
+    expect(getAdminService("shift-exchange")?.stage).toBe("available");
+    expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/workforce/shift-swaps");
+    expect(getAdminService("adms")?.stage).toBe("available");
+    expect(getAdminService("adms")?.href).toBe("/admin/attendance/adms");
+    expect(getAdminService("mobile-attendance")?.details ?? []).not.toContain("Face recognition");
+  });
+
+  it("wraps ADMS detail tabs and hides links that the session cannot open", () => {
+    const readOnly = renderToStaticMarkup(
+      <DeviceDetailNavigation
+        baseHref="/admin/attendance/devices/synthetic-device"
+        section="overview"
+        session={session(["attendance.devices.read"])}
+      />,
+    );
+    expect(readOnly).toContain("flex-wrap");
+    expect(readOnly).not.toContain("overflow-x-auto");
+    expect(readOnly).not.toContain("/biometrics");
+    expect(readOnly).not.toContain("/settings");
+    expect(readOnly).not.toContain("/operations");
+    expect(readOnly).not.toContain("/diagnostics");
+
+    const hcAdmin = renderToStaticMarkup(
+      <DeviceDetailNavigation
+        baseHref="/admin/attendance/devices/synthetic-device"
+        section="settings"
+        session={session([
+          "attendance.devices.read",
+          "attendance.devices.configure",
+          "attendance.devices.operate",
+          "attendance.devices.export",
+        ])}
+      />,
+    );
+    expect(hcAdmin).toContain("/settings");
+    expect(hcAdmin).toContain("/operations");
+    expect(hcAdmin).toContain("/diagnostics");
+    expect(hcAdmin).not.toContain("/biometrics");
+  });
+
+  it("keeps available admin modules linked to operational GUI and permission-aware", () => {
+    const shift = getAdminService("shift-exchange")!;
+    const open = renderToStaticMarkup(<AdminServiceTile service={shift} canOpen />);
+    expect(open).toContain('href="/admin/attendance/workforce/shift-swaps"');
+    expect(open).toContain("Tersedia");
+    expect(open).not.toContain("Belum tersedia");
+
+    const locked = renderToStaticMarkup(<AdminServiceTile service={getAdminService("adms")!} canOpen={false} />);
+    expect(locked).not.toContain('href="/admin/attendance/adms"');
+    expect(locked).toContain("akun ini belum memiliki akses");
+  });
+
+  it("keeps read-only ADMS saved filters non-mutating", () => {
+    const html = renderToStaticMarkup(
+      <SavedFilterBar deviceId="synthetic-device" viewKey="transactions" criteria={{ query: "" }} onApply={() => undefined} canManage={false} />,
+    );
+    expect(html).toContain("Mode baca saja");
+    expect(html).not.toContain(">Hapus<");
+    expect(html).not.toContain(">Simpan<");
+    expect(html).toContain(">Terapkan<");
+  });
+
   it.each([false, true])("shows HC shift approval in compact=%s without granting ADMS", (compact) => {
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-shift-swaps" session={session(["attendance.shift_swap.manage"])} compact={compact} />);
     expect(html).toContain('href="/admin/attendance/workforce/shift-swaps"');

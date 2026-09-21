@@ -58,7 +58,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "attendance-clarification", label: "Klarifikasi Kehadiran",
     description: "Klarifikasi dan izin terkait catatan kehadiran.",
-    featureIds: ["ATT-002"], stage: "available", category: "time-attendance", href: "/app/attendance/clock",
+    featureIds: ["ATT-002"], stage: "available", category: "time-attendance", href: "/app/attendance/clock#clarification",
   },
   {
     key: "lateness", label: "Keterlambatan",
@@ -68,7 +68,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "overtime", label: "Lembur",
     description: "Pengajuan, persetujuan, dan hasil lembur berbasis kebijakan.",
-    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance",
+    featureIds: ["ATT-007"], stage: "available", category: "time-attendance", href: "/app/attendance#overtime",
   },
   {
     key: "leave", label: "Cuti & Izin",

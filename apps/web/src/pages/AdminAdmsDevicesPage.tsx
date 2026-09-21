@@ -2,6 +2,9 @@ import { AlertTriangle, Fingerprint, Loader2, Plus, RefreshCw, Search, X } from 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { getCurrentSession } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import {
   connectivityLabel,
   getAdmsDeviceHealth,
@@ -67,6 +70,9 @@ export function AdminAdmsDevicesPage() {
   const [onboardingBusy, setOnboardingBusy] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [sessionResolved, setSessionResolved] = useState(false);
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
 
   const load = useCallback(async (initial: boolean) => {
     if (initial) setLoading(true);
@@ -106,6 +112,15 @@ export function AdminAdmsDevicesPage() {
     const timer = window.setInterval(() => void load(false), 30_000);
     return () => window.clearInterval(timer);
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentSession()
+      .then((value) => { if (active) setSession(value); })
+      .catch(() => { if (active) setSession(null); })
+      .finally(() => { if (active) setSessionResolved(true); });
+    return () => { active = false; };
+  }, []);
 
   const summary = useMemo(() => {
     let online = 0;
@@ -204,9 +219,13 @@ export function AdminAdmsDevicesPage() {
           <span aria-hidden="true">·</span>
           <span className={summary.attention > 0 ? "text-amber-700" : undefined}>{summary.attention} perlu perhatian</span>
         </div>
-        <button type="button" onClick={() => void openOnboarding()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white">
-          <Plus className="h-3.5 w-3.5" /> Tambah mesin
-        </button>
+        {canConfigure ? (
+          <button type="button" onClick={() => void openOnboarding()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white">
+            <Plus className="h-3.5 w-3.5" /> Tambah mesin
+          </button>
+        ) : sessionResolved ? (
+          <span className="rounded-xl bg-surface px-3 py-2 text-[11px] font-semibold text-muted-foreground">Mode baca saja · tambah/claim mesin memerlukan izin konfigurasi</span>
+        ) : null}
       </div>
 
       <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
@@ -332,7 +351,7 @@ export function AdminAdmsDevicesPage() {
         )}
       </section>
 
-      {addOpen ? (
+      {addOpen && canConfigure ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="add-device-title">
           <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">

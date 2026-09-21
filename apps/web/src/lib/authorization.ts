@@ -18,7 +18,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))
-      && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"));
+      && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"))
+      && (!path.endsWith("/operations") || hasPermission(session, "attendance.devices.operate"))
+      && (!path.endsWith("/diagnostics") || hasPermission(session, "attendance.devices.operate"));
   }
   if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
   if (path === "/admin/attendance/workforce") return [
@@ -43,5 +45,17 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   if (path === "/admin/access") return hasPermission(session, "access.manage");
+  return false;
+}
+
+
+export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
+  if (!session || session.principal.principalType !== "EMPLOYEE") return false;
+  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {
+    return hasPermission(session, "leave.validate");
+  }
+  if (path === "/app/hc/attendance-resolution") {
+    return hasPermission(session, "attendance.resolution.manage");
+  }
   return false;
 }

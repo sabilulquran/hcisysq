@@ -13,11 +13,13 @@ export function SavedFilterBar({
   viewKey,
   criteria,
   onApply,
+  canManage = true,
 }: {
   deviceId: string;
   viewKey: "transactions" | "commands" | "logs";
   criteria: Record<string, unknown>;
   onApply: (criteria: Record<string, unknown>) => void;
+  canManage?: boolean;
 }) {
   const [items, setItems] = useState<AdmsSavedFilter[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -77,11 +79,17 @@ export function SavedFilterBar({
           {items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
         <button type="button" disabled={!selected || busy} onClick={() => selected && onApply(selected.criteria)} className="h-8 rounded-lg border border-border bg-white px-2 text-[11px] font-semibold disabled:opacity-50">Terapkan</button>
-        <button type="button" disabled={!selected || busy} onClick={() => void remove()} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 text-[11px] font-semibold text-red-700 disabled:opacity-50"><Trash2 className="h-3 w-3" /> Hapus</button>
-        <div className="ml-auto flex min-w-64 flex-1 justify-end gap-2">
-          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder="Nama filter saat ini" className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-white px-2 text-xs" />
-          <button type="button" disabled={!name.trim() || busy} onClick={() => void save()} className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-primary px-2 text-[11px] font-semibold text-white disabled:opacity-50">{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Simpan</button>
-        </div>
+        {canManage ? (
+          <>
+            <button type="button" disabled={!selected || busy} onClick={() => void remove()} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-white px-2 text-[11px] font-semibold text-red-700 disabled:opacity-50"><Trash2 className="h-3 w-3" /> Hapus</button>
+            <div className="ml-auto flex min-w-64 flex-1 justify-end gap-2">
+              <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder="Nama filter saat ini" className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-white px-2 text-xs" />
+              <button type="button" disabled={!name.trim() || busy} onClick={() => void save()} className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-primary px-2 text-[11px] font-semibold text-white disabled:opacity-50">{busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Simpan</button>
+            </div>
+          </>
+        ) : (
+          <span className="ml-auto text-[11px] font-semibold text-muted-foreground">Mode baca saja</span>
+        )}
       </div>
       {error ? <div className="mt-2 text-[11px] text-red-700">{error}</div> : null}
     </div>

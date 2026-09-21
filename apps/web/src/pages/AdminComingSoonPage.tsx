@@ -1,5 +1,6 @@
 import { ArrowLeft, Check, Clock3 } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
 import { adminServiceStageLabel, getAdminService } from "@/lib/adminServices";
@@ -8,10 +9,30 @@ export function AdminComingSoonPage() {
   const { serviceKey } = useParams({ strict: false }) as { serviceKey?: string };
   const service = serviceKey ? getAdminService(serviceKey) : null;
 
+  useEffect(() => {
+    if (service?.stage === "available" && service.href.startsWith("/admin/") && service.href !== window.location.pathname) {
+      window.location.replace(service.href);
+    }
+  }, [service]);
+
   if (!service) {
     return (
       <AdminShell active="services" title="Modul tidak ditemukan">
-        <a href="/admin/services" className="text-sm font-bold text-brand-primary-deep">Kembali ke roadmap modul</a>
+        <a href="/admin/services" className="text-sm font-bold text-brand-primary-deep">Kembali ke katalog modul</a>
+      </AdminShell>
+    );
+  }
+
+  if (service.stage === "available") {
+    return (
+      <AdminShell active="services" title={service.label} description={service.description}>
+        <div className="max-w-xl rounded-3xl border border-border/70 bg-white p-6 shadow-[var(--shadow-soft)]">
+          <p className="text-sm font-bold text-brand-heading">{service.label} sudah tersedia</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Tautan lama ini akan diarahkan ke workspace operasional yang aktif.</p>
+          <a href={service.href} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">
+            Buka {service.label}
+          </a>
+        </div>
       </AdminShell>
     );
   }

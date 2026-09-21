@@ -360,11 +360,26 @@ export async function registerAttendanceWorkforceRoutes(
           [employee.id],
         ),
       ]);
+      const enabledByConfig = config.MOBILE_ATTENDANCE_ENABLED === "1";
+      const mediaReady = restrictedMediaReady(config);
+      const mobileEnabled = enabledByConfig && mediaReady;
       reply.header("Cache-Control", "no-store");
       return reply.send({
         employee,
         workDate,
-        mobileEnabled: config.MOBILE_ATTENDANCE_ENABLED === "1" && restrictedMediaReady(config),
+        mobileEnabled,
+        mobileReadiness: {
+          captureReady: mobileEnabled,
+          captureReason: !enabledByConfig
+            ? "runtime_disabled"
+            : !mediaReady
+              ? "restricted_media_not_ready"
+              : "ready",
+          scheduleState: schedule.state,
+          scheduleReason: schedule.reason ?? null,
+          hasWorkLocation: Boolean(schedule.workLocation),
+          workLocationId: schedule.workLocation?.id ?? null,
+        },
         schedule: scheduleResponse(schedule),
         result,
         clarifications: clarifications.rows,

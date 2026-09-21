@@ -102,7 +102,6 @@ export function HcAttendanceResolutionPage() {
     <AppShell
       user={user}
       activeItem="Penyelesaian Kehadiran"
-      capabilities={{ humanCapitalOrganization: queueState.status === "ready" }}
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>

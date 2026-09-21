@@ -1,8 +1,7 @@
 import { ArrowLeft, RefreshCw, Wrench } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
-import { getCurrentSession } from "@/lib/auth";
 import { canAccessAdminPath } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 import { connectivityLabel, type AdmsConnectivityStatus } from "@/lib/admsAdmin";
@@ -109,18 +108,7 @@ export function DeviceDetailNavigation({
 }
 
 export function DeviceDetailShell({ section, children }: { section: DeviceAdminSection; children: ReactNode }) {
-  const { deviceId, detail, health, loading, refreshing, error, refresh } = useDeviceAdmin();
-  const [session, setSession] = useState<AuthSession | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void getCurrentSession().then((value) => {
-      if (active) setSession(value);
-    }).catch(() => {
-      if (active) setSession(null);
-    });
-    return () => { active = false; };
-  }, []);
+  const { deviceId, detail, health, loading, refreshing, error, refresh, session } = useDeviceAdmin();
   const device = detail?.item ?? null;
   const baseHref = `/admin/attendance/devices/${deviceId}`;
   const title = device?.displayName?.trim() || device?.serialNumber || "Detail mesin fingerprint";

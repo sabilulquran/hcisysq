@@ -306,6 +306,7 @@ A stale frontend chart or client-side navigation state must never be an authoriz
 - Same role in another unit does not create cross-unit access.
 - Foundation Board remains read-only unless a future target specification explicitly grants a narrow operational capability.
 - Super Admin does not automatically receive employee self-service.
+- Organization-wide Human Capital Administrator may receive standard non-destructive ADMS device operations (read/configure/operate/export) as an explicit role bundle; destructive reset, firmware, and biometric capabilities remain separately privileged and are never implied by HC administration.
 - Role, scope, account-state, permission, structural authority-binding, acting assignment, and other sensitive changes produce audit events.
 - Free-text job titles never grant authority.
 - Numeric organization level never grants authority by itself.

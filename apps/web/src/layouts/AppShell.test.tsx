@@ -61,5 +61,6 @@ describe("AppShell employee service discovery", () => {
     expect(html).not.toContain('href="/app/services#employee-services"');
     expect(html).not.toContain(">Roadmap<");
     expect(html).not.toContain('href="#"');
+    expect(html).toContain('href="/app/notifications"');
   });
 });

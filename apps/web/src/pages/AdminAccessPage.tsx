@@ -47,6 +47,7 @@ export function AdminAccessPage() {
     expiresAt: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showInactiveAccounts, setShowInactiveAccounts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -84,8 +85,14 @@ export function AdminAccessPage() {
   }, []);
 
   const employeeAccounts = useMemo(
-    () => data?.accounts.filter((account) => account.principalType === "EMPLOYEE") ?? [],
-    [data],
+    () => data?.accounts.filter((account) =>
+      account.principalType === "EMPLOYEE" && (showInactiveAccounts || account.status !== "inactive")
+    ) ?? [],
+    [data, showInactiveAccounts],
+  );
+  const visibleAccounts = useMemo(
+    () => data?.accounts.filter((account) => showInactiveAccounts || account.status !== "inactive") ?? [],
+    [data, showInactiveAccounts],
   );
 
   const publishActivationLink = async (accountId: string) => {
@@ -334,7 +341,17 @@ export function AdminAccessPage() {
       </section>
 
       <section className="mt-5 space-y-3">
-        {data?.accounts.map((account) => (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+          <div>
+            <p className="text-sm font-bold text-brand-heading">Daftar account</p>
+            <p className="mt-1 text-xs text-muted-foreground">Account nonaktif disembunyikan secara default, tetapi histori tetap dipertahankan.</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <input type="checkbox" checked={showInactiveAccounts} onChange={(event) => setShowInactiveAccounts(event.target.checked)} />
+            Tampilkan nonaktif
+          </label>
+        </div>
+        {visibleAccounts.map((account) => (
           <article key={account.id} className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>

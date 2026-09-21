@@ -9,6 +9,7 @@ import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilter
 import { getEmployeeService } from "@/lib/employeeServices";
 import { getAdminService } from "@/lib/adminServices";
 import { AdminServiceTile } from "@/pages/AdminServicesPage";
+import { canOpenAvailableAdminService } from "@/pages/AdminComingSoonPage";
 import type { AuthSession } from "@/types/hcis";
 
 const employee = { name: "Synthetic Employee", initials: "SE", position: "Staff", unit: "Synthetic Unit" };
@@ -34,6 +35,14 @@ describe("employee attendance discoverability", () => {
     expect(html).not.toContain("overflow-x-auto");
     expect(html).toContain("min-h-11");
   });
+  it("keeps Persetujuan discoverable in the desktop shell without page-specific role hints", () => {
+    const html = renderToStaticMarkup(
+      <AppShell user={employee} activeItem="Beranda"><p>Synthetic content</p></AppShell>,
+    );
+    const desktop = html.split('aria-label="Navigasi mobile pegawai"')[0] ?? html;
+    expect(desktop).toContain('href="/app/approvals"');
+  });
+
   it("keeps Human Capital tasks discoverable on mobile from backend-derived permissions", () => {
     const actor = session(["leave.validate", "attendance.resolution.manage"]);
     const html = renderToStaticMarkup(
@@ -99,6 +108,16 @@ describe("HC and device-operator navigation", () => {
     expect(hcAdmin).toContain("/operations");
     expect(hcAdmin).toContain("/diagnostics");
     expect(hcAdmin).not.toContain("/biometrics");
+  });
+
+  it("keeps legacy available-service redirects permission-aware", () => {
+    const adms = getAdminService("adms")!;
+    expect(canOpenAvailableAdminService(adms, session(["employees.manage"]))).toBe(false);
+    expect(canOpenAvailableAdminService(adms, session(["attendance.devices.read"]))).toBe(true);
+
+    const shift = getAdminService("shift-exchange")!;
+    expect(canOpenAvailableAdminService(shift, session(["attendance.shift_swap.manage"]))).toBe(true);
+    expect(canOpenAvailableAdminService(shift, session(["attendance.schedule.manage"]))).toBe(false);
   });
 
   it("keeps available admin modules linked to operational GUI and permission-aware", () => {

@@ -29,7 +29,7 @@ Use synthetic accounts locally/CI. Real-user validation is a separate pilot step
 | UAT-A08 | Correct snapshotted approver acts | Accepted only inside effective scope; audit/state transition recorded | Yes | Yes |
 | UAT-A09 | HC admin validates/administers allowed HC function | Allowed according to AUTH-011 organization permission | Yes | Yes |
 | UAT-A10 | HC admin attempts `leave.approve`/`leave.hc.approve` without explicit permission | Denied; HC admin bundle does not imply actual workflow approval | Yes | Yes |
-| UAT-A11 | HC admin attempts device operate/export/destructive/biometric action without separately granted technical permission | Denied | Yes | Do not run active command in routine UAT |
+| UAT-A11 | Human Capital Administrator opens ADMS and standard non-destructive device operations; then attempts destructive/firmware/biometric capability without a separate grant | Read/configure/operate/export follow the HC Admin bundle; destructive/firmware/biometric remain denied. Do not send a real hardware command in routine UAT. | Yes | Read-only browser/API verification only unless a separately approved hardware canary exists |
 | UAT-A12 | Board attempts employee mutation, leave approval, role management, or payslip-personal access | Denied | Yes | Optional later |
 | UAT-A13 | Unit-scoped HC assignment attempts organization-wide administration | Denied | Yes | Yes |
 | UAT-A14 | Expired/future assignment attempts privileged route | Denied | Yes | Optional |
@@ -50,7 +50,7 @@ For each mutation/privileged case, record only safe identifiers and verify actor
 
 ## Negative-test stop conditions
 
-Stop pilot preparation and investigate on any cross-employee data disclosure, wrong-unit approval, privilege obtained from job-title text, HC admin obtaining technical/device privilege implicitly, Board mutation without explicit contract, self-elevation, stale/ineffective assignment being accepted, or submitted approval snapshot changing after structure edits.
+Stop pilot preparation and investigate on any cross-employee data disclosure, wrong-unit approval, privilege obtained from job-title text, Human Capital Administrator obtaining destructive/firmware/biometric device privilege implicitly, Board mutation without explicit contract, self-elevation, stale/ineffective assignment being accepted, or submitted approval snapshot changing after structure edits.
 
 ## Evidence form
 

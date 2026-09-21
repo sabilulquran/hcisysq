@@ -301,17 +301,38 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
        )`,
     ];
     if (filter.employeeId) { values.push(filter.employeeId); clauses.push(`session.employee_id = $${values.length}`); }
+    if (filter.unitId) { values.push(filter.unitId); clauses.push(`employee.organizational_unit_id = $${values.length}`); }
+    if (filter.scheduleId) { values.push(filter.scheduleId); clauses.push(`result.schedule_template_id = $${values.length}`); }
+    if (filter.locationId) { values.push(filter.locationId); clauses.push(`schedule_version.work_location_id = $${values.length}`); }
+    if (filter.source) {
+      values.push(filter.source);
+      clauses.push(`EXISTS (
+        SELECT 1 FROM attendance_events event
+        WHERE event.id::text IN (SELECT jsonb_array_elements_text(result.source_event_ids))
+          AND event.source = $${values.length}
+      )`);
+    }
+    if (filter.deviceId) {
+      values.push(filter.deviceId);
+      clauses.push(`EXISTS (
+        SELECT 1 FROM attendance_events event
+        WHERE event.id::text IN (SELECT jsonb_array_elements_text(result.source_event_ids))
+          AND event.safe_metadata->>'deviceId' = $${values.length}
+      )`);
+    }
     const result = await pool.query(
       `SELECT session.id, session.employee_id AS "employeeId", employee.employee_number AS "employeeNumber",
          employee.full_name AS "employeeName", unit.name AS "unitName",
          session.work_date::text AS "workDate", session.sequence,
          session.check_in_at AS "checkInAt", session.check_out_at AS "checkOutAt",
          session.worked_minutes AS "workedMinutes", session.complete, session.source_summary AS "sourceSummary",
-         result.version AS "resultVersion"
+         result.version AS "resultVersion", result.schedule_template_id AS "scheduleTemplateId",
+         schedule_version.work_location_id AS "workLocationId"
        FROM attendance_result_sessions session
        JOIN attendance_result_versions result ON result.id = session.attendance_result_version_id
        JOIN employees employee ON employee.id = session.employee_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       LEFT JOIN attendance_schedule_versions schedule_version ON schedule_version.id = result.schedule_version_id
        WHERE ${clauses.join(" AND ")}
        ORDER BY session.work_date, employee.full_name, session.sequence`,
       values,
@@ -325,6 +346,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
       "(event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN $1::date AND $2::date",
     ];
     if (filter.employeeId) { values.push(filter.employeeId); clauses.push(`event.employee_id = $${values.length}`); }
+    if (filter.unitId) { values.push(filter.unitId); clauses.push(`employee.organizational_unit_id = $${values.length}`); }
     if (filter.source) { values.push(filter.source); clauses.push(`event.source = $${values.length}`); }
     if (filter.deviceId) { values.push(filter.deviceId); clauses.push(`event.safe_metadata->>'deviceId' = $${values.length}`); }
     const result = await pool.query(
@@ -348,6 +370,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
     const values: unknown[] = [filter.from, filter.to];
     const clauses = ["request.work_date BETWEEN $1::date AND $2::date"];
     if (filter.employeeId) { values.push(filter.employeeId); clauses.push(`request.employee_id = $${values.length}`); }
+    if (filter.unitId) { values.push(filter.unitId); clauses.push(`employee.organizational_unit_id = $${values.length}`); }
     const result = await pool.query(
       `SELECT request.id, request.employee_id AS "employeeId", employee.employee_number AS "employeeNumber",
          employee.full_name AS "employeeName", unit.name AS "unitName",

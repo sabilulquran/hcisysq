@@ -1,7 +1,10 @@
 import { ArrowLeft, RefreshCw, Wrench } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { getCurrentSession } from "@/lib/auth";
+import { canAccessAdminPath } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import { connectivityLabel, type AdmsConnectivityStatus } from "@/lib/admsAdmin";
 import { cn } from "@/lib/utils";
 
@@ -55,8 +58,21 @@ function connectivityClass(status: AdmsConnectivityStatus | undefined) {
 
 export function DeviceDetailShell({ section, children }: { section: DeviceAdminSection; children: ReactNode }) {
   const { deviceId, detail, health, loading, refreshing, error, refresh } = useDeviceAdmin();
+  const [session, setSession] = useState<AuthSession | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getCurrentSession().then((value) => {
+      if (active) setSession(value);
+    }).catch(() => {
+      if (active) setSession(null);
+    });
+    return () => { active = false; };
+  }, []);
   const device = detail?.item ?? null;
   const baseHref = `/admin/attendance/devices/${deviceId}`;
+  const visibleTabs = tabs.filter((tab) => canAccessAdminPath(session, `${baseHref}${tab.suffix}`));
+  const canOpenDiagnostics = canAccessAdminPath(session, `${baseHref}/diagnostics`);
   const title = device?.displayName?.trim() || device?.serialNumber || "Detail mesin fingerprint";
   const description = device
     ? `${connectivityLabel(health?.connectivityStatus ?? "unknown")} · ${device.serialNumber} · Terakhir terhubung ${fmt(health?.lastSuccessfulRequestAt ?? device.lastSuccessfulRequestAt)}`
@@ -91,8 +107,8 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
       </div>
 
       <div className="mb-6 flex flex-col gap-3 border-b border-border/80 sm:flex-row sm:items-end sm:justify-between">
-        <nav className="flex gap-1 overflow-x-auto" aria-label="Bagian mesin fingerprint">
-          {tabs.map((tab) => {
+        <nav className="flex flex-wrap gap-1" aria-label="Bagian mesin fingerprint">
+          {visibleTabs.map((tab) => {
             const selected = section === tab.key;
             return (
               <a
@@ -111,18 +127,20 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
             );
           })}
         </nav>
-        <a
-          href={`${baseHref}/diagnostics`}
-          className={cn(
-            "mb-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold",
-            section === "diagnostics"
-              ? "bg-slate-900 text-white"
-              : "text-muted-foreground hover:bg-surface hover:text-brand-heading",
-          )}
-        >
-          <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
-          Diagnostik teknis
-        </a>
+        {canOpenDiagnostics ? (
+          <a
+            href={`${baseHref}/diagnostics`}
+            className={cn(
+              "mb-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold",
+              section === "diagnostics"
+                ? "bg-slate-900 text-white"
+                : "text-muted-foreground hover:bg-surface hover:text-brand-heading",
+            )}
+          >
+            <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+            Diagnostik teknis
+          </a>
+        ) : null}
       </div>
 
       {error ? (

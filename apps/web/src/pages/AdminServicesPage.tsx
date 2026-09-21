@@ -10,6 +10,7 @@ import {
   TrendingUp,
   UsersRound,
   WalletCards,
+  ServerCog,
 } from "lucide-react";
 
 import { AdminShell } from "@/layouts/AdminShell";
@@ -25,6 +26,7 @@ const icons = {
   "mobile-attendance": Clock3,
   "attendance-evaluation": Clock3,
   "shift-exchange": CalendarDays,
+  adms: ServerCog,
   payroll: WalletCards,
   reimbursement: HandCoins,
   loans: Landmark,
@@ -51,7 +53,9 @@ function ServiceTile({ service }: { service: AdminServiceDefinition }) {
         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground">
+        <span className={service.stage === "available"
+          ? "rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-800"
+          : "rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground"}>
           {adminServiceStageLabel(service.stage)}
         </span>
       </div>
@@ -70,8 +74,8 @@ export function AdminServicesPage() {
   return (
     <AdminShell
       active="services"
-      title="Roadmap Modul HCIS"
-      description="Capability yang sudah diterima sebagai arah produk tetapi belum aktif ditampilkan di sini sebagai Coming Soon. Halaman ini bukan bukti implementasi atau jadwal rilis."
+      title="Katalog Modul HCIS"
+      description="Lihat modul yang sudah tersedia dan arah pengembangan yang belum aktif. Status Tersedia selalu mengarah ke GUI operasional nyata; modul lain tetap ditandai sesuai tahapnya."
     >
       <div className="space-y-8">
         {adminServiceCategories.map((category) => {

@@ -1,6 +1,7 @@
 import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
+  ArrowLeftRight,
   Building2,
   CalendarDays,
   CalendarRange,
@@ -34,7 +35,9 @@ export type AdminNavKey =
   | "organization"
   | "attendance"
   | "attendance-adms"
+  | "attendance-adms-transactions"
   | "attendance-workforce"
+  | "attendance-shift-swaps"
   | "attendance-devices"
   | "leave"
   | "leave-calendar"
@@ -77,8 +80,15 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
       { key: "attendance-workforce", label: "Operasional Kehadiran", href: "/admin/attendance/workforce", icon: CalendarRange },
+      { key: "attendance-shift-swaps", label: "Persetujuan Tukar Shift", href: "/admin/attendance/workforce/shift-swaps", icon: ArrowLeftRight },
+    ],
+  },
+  {
+    label: "Perangkat ADMS",
+    items: [
       { key: "attendance-adms", label: "Back Office ADMS", href: "/admin/attendance/adms", icon: ServerCog },
       { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
+      { key: "attendance-adms-transactions", label: "Transaksi Lintas Mesin", href: "/admin/attendance/adms/transactions", icon: History },
     ],
   },
   {
@@ -98,60 +108,44 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Roadmap",
-    items: [
-      {
-        key: "services",
-        label: "Modul Mendatang",
-        href: "/admin/services",
-        authorizationPath: "/admin",
-        icon: Grid2X2,
-      },
-    ],
+    items: [{ key: "services", label: "Modul Mendatang", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
   },
 ];
 
 export function AdminNavigation({ active, session, compact = false }: { active: AdminNavKey; session: AuthSession | null; compact?: boolean }) {
+  const missingDeviceAccess = canAccessAdminPath(session, "/admin/attendance/workforce")
+    && !canAccessAdminPath(session, "/admin/attendance/adms");
   return (
     <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Administrator HCIS">
       {navGroups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.authorizationPath ?? item.href)) })).filter((group) => group.items.length).map((group, groupIndex) => (
         <div key={group.label ?? `root-${groupIndex}`}>
-          {group.label ? (
-            <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p>
-          ) : null}
+          {group.label ? <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p> : null}
           <div className="space-y-1">
             {group.items.map((item) => {
               const Icon = item.icon;
               const selected = item.key === active;
               return (
-                <a
-                  key={item.key}
-                  href={item.href}
-                  aria-current={selected ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
-                    selected
-                      ? "bg-brand-primary-pale text-brand-primary-deep"
-                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                  )}
-                >
-                  <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                  {item.label}
+                <a key={item.key} href={item.href} aria-current={selected ? "page" : undefined}
+                  className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
+                  <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />{item.label}
                 </a>
               );
             })}
           </div>
         </div>
       ))}
+      {missingDeviceAccess ? (
+        <div className="rounded-xl border border-border bg-surface p-3 text-xs leading-5 text-muted-foreground" role="note">
+          <p className="font-bold text-brand-heading">ADMS sudah terpasang</p>
+          <p>Akun ini belum memiliki izin perangkat. Minta pengelola akses meninjau peran operator ADMS; izin HC tidak otomatis menjadi izin perangkat.</p>
+        </div>
+      ) : null}
     </nav>
   );
 }
 
-export function AdminShell({
-  children,
-  active,
-  title,
-  description,
-}: {
+export function AdminShell({ children, active, title, description }: {
   children: ReactNode;
   active: AdminNavKey;
   title: string;
@@ -165,25 +159,15 @@ export function AdminShell({
     let mounted = true;
     void getCurrentSession().then((current) => {
       if (!mounted) return;
-      if (!canAccessAdminPath(current, "/admin")) {
-        void navigate({ to: "/" });
-        return;
-      }
+      if (!canAccessAdminPath(current, "/admin")) { void navigate({ to: "/" }); return; }
       setSession(current);
     });
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [navigate]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      await navigate({ to: "/" });
-      setLoggingOut(false);
-    }
+    try { await logout(); } finally { await navigate({ to: "/" }); setLoggingOut(false); }
   };
 
   return (
@@ -196,43 +180,24 @@ export function AdminShell({
             <p className="text-[11px] text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
           </div>
         </div>
-
         <details className="mx-4 mb-4 rounded-xl border border-border bg-surface lg:hidden">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm font-bold text-brand-heading">
-            <Menu className="h-4 w-4" aria-hidden="true" />
-            Menu administrasi
+            <Menu className="h-4 w-4" aria-hidden="true" />Menu administrasi
           </summary>
-          <div className="border-t border-border bg-white p-2">
-            <AdminNavigation session={session} active={active} compact />
-          </div>
+          <div className="border-t border-border bg-white p-2"><AdminNavigation session={session} active={active} compact /></div>
         </details>
-
-        <div className="hidden px-4 lg:block">
-          <AdminNavigation session={session} active={active} />
-        </div>
-
+        <div className="hidden px-4 lg:block"><AdminNavigation session={session} active={active} /></div>
         <div className="hidden px-4 pb-5 pt-8 lg:block">
           <div className="rounded-2xl border border-border/70 bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep">
-              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              Administrator HCIS
-            </div>
-            <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">
-              {session?.principal.email ?? "Memuat sesi..."}
-            </p>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              disabled={loggingOut}
-              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-white text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" />
-              {loggingOut ? "Keluar..." : "Keluar"}
+            <div className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep"><ShieldCheck className="h-4 w-4" aria-hidden="true" />Administrator HCIS</div>
+            <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">{session?.principal.email ?? "Memuat sesi..."}</p>
+            <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}
+              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-white text-xs font-semibold hover:bg-muted/60 disabled:opacity-60">
+              <LogOut className="h-4 w-4" aria-hidden="true" />{loggingOut ? "Keluar..." : "Keluar"}
             </button>
           </div>
         </div>
       </aside>
-
       <div className="min-w-0">
         <header className="border-b border-border/70 bg-white/90 px-5 py-5 sm:px-7 lg:px-10">
           <div className="mx-auto max-w-7xl">

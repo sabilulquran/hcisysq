@@ -682,6 +682,15 @@ export async function registerAttendanceShiftSwapRoutes(
           counterpartEmployeeId: counterpart.id,
           workDate: body.data.workDate,
         });
+        await notifyEmployee(client, counterpart.id, {
+          eventKey: `shift-swap:${id}:submitted`,
+          category: "attendance",
+          title: "Permintaan tukar shift",
+          body: `${requester.fullName} meminta tukar shift untuk ${body.data.workDate}.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: id, workDate: body.data.workDate },
+        });
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
@@ -767,6 +776,17 @@ export async function registerAttendanceShiftSwapRoutes(
           [randomUUID(), item.id, principal.id, eventType, JSON.stringify({ note: body.data.note ?? null })],
         );
         await insertAudit(client, principal.id, `attendance.shift_swap.${eventType}`, item.id, {});
+        await notifyEmployee(client, item.requesterEmployeeId, {
+          eventKey: `shift-swap:${item.id}:${eventType}`,
+          category: "attendance",
+          title: body.data.decision === "accept" ? "Rekan menyetujui tukar shift" : "Rekan menolak tukar shift",
+          body: body.data.decision === "accept"
+            ? `Rekan Anda menyetujui tukar shift ${item.workDate}. Menunggu keputusan Human Capital.`
+            : `Rekan Anda menolak tukar shift ${item.workDate}.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: item.id, workDate: item.workDate },
+        });
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
@@ -792,13 +812,13 @@ export async function registerAttendanceShiftSwapRoutes(
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const changed = await client.query<{ id: string }>(
+        const changed = await client.query<{ id: string; counterpartEmployeeId: string; workDate: string }>(
           `UPDATE attendance_shift_swap_requests
            SET status = 'cancelled', updated_at = now()
            WHERE id = $1
              AND requester_employee_id = $2
              AND status IN ${activeStatusesSql()}
-           RETURNING id`,
+           RETURNING id, counterpart_employee_id AS "counterpartEmployeeId", work_date::text AS "workDate"`,
           [params.data.shiftSwapId, employee.id],
         );
         if (!changed.rows[0]) {
@@ -811,6 +831,15 @@ export async function registerAttendanceShiftSwapRoutes(
           [randomUUID(), params.data.shiftSwapId, principal.id],
         );
         await insertAudit(client, principal.id, "attendance.shift_swap.cancelled", params.data.shiftSwapId, {});
+        await notifyEmployee(client, changed.rows[0]!.counterpartEmployeeId, {
+          eventKey: `shift-swap:${params.data.shiftSwapId}:cancelled`,
+          category: "attendance",
+          title: "Tukar shift dibatalkan",
+          body: `Pengajuan tukar shift ${changed.rows[0]!.workDate} dibatalkan oleh pemohon.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: params.data.shiftSwapId, workDate: changed.rows[0]!.workDate },
+        });
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
@@ -924,6 +953,26 @@ export async function registerAttendanceShiftSwapRoutes(
           [randomUUID(), item.id, principal.id, JSON.stringify({ note: body.data.note ?? null })],
         );
         await insertAudit(client, principal.id, "attendance.shift_swap.hc_rejected", item.id, {});
+        await Promise.all([
+          notifyEmployee(client, item.requesterEmployeeId, {
+            eventKey: `shift-swap:${item.id}:hc_rejected:requester`,
+            category: "attendance",
+            title: "Tukar shift ditolak Human Capital",
+            body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
+            href: "/app/attendance/shift-swap",
+            actorAccountId: principal.id,
+            metadata: { shiftSwapId: item.id, workDate: item.workDate },
+          }),
+          notifyEmployee(client, item.counterpartEmployeeId, {
+            eventKey: `shift-swap:${item.id}:hc_rejected:counterpart`,
+            category: "attendance",
+            title: "Tukar shift ditolak Human Capital",
+            body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
+            href: "/app/attendance/shift-swap",
+            actorAccountId: principal.id,
+            metadata: { shiftSwapId: item.id, workDate: item.workDate },
+          }),
+        ]);
         await client.query("COMMIT");
         return reply.send({ id: item.id, status: "rejected_by_hc" });
       }
@@ -986,6 +1035,26 @@ export async function registerAttendanceShiftSwapRoutes(
         rosterId: roster.rosterId,
         rosterVersion: roster.version,
       });
+      await Promise.all([
+        notifyEmployee(client, item.requesterEmployeeId, {
+          eventKey: `shift-swap:${item.id}:hc_approved:requester`,
+          category: "attendance",
+          title: "Tukar shift disetujui",
+          body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
+        }),
+        notifyEmployee(client, item.counterpartEmployeeId, {
+          eventKey: `shift-swap:${item.id}:hc_approved:counterpart`,
+          category: "attendance",
+          title: "Tukar shift disetujui",
+          body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
+        }),
+      ]);
       approvedRequest = item;
       await client.query("COMMIT");
     } catch (error) {

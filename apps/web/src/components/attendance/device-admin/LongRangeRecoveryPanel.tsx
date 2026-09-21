@@ -2,6 +2,7 @@ import { CalendarRange, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
+import { hasPermission } from "@/lib/authorization";
 import {
   cancelAdmsRecoveryJob,
   listAdmsRecoveryJobs,
@@ -29,7 +30,8 @@ function statusClass(status: AdmsRecoveryJob["status"]) {
 }
 
 export function LongRangeRecoveryPanel() {
-  const { deviceId } = useDeviceAdmin();
+  const { deviceId, session, sessionResolved } = useDeviceAdmin();
+  const canOperate = hasPermission(session, "attendance.devices.operate");
   const [items, setItems] = useState<AdmsRecoveryJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -154,7 +156,7 @@ export function LongRangeRecoveryPanel() {
         </button>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+      {canOperate ? <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
         <label className="text-xs font-semibold text-muted-foreground">
           Mulai
           <input
@@ -182,9 +184,13 @@ export function LongRangeRecoveryPanel() {
           {busy === "create" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Buat job
         </button>
-      </div>
+      </div> : sessionResolved ? (
+        <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">
+          Mode baca saja. Membuat atau membatalkan job pemulihan memerlukan izin operasi perangkat.
+        </div>
+      ) : null}
 
-      {rangePlan ? (
+      {canOperate && rangePlan ? (
         <div className={`mt-2 text-[11px] ${rangePlan.valid ? "text-sky-700" : "text-muted-foreground"}`}>
           {rangePlan.valid
             ? `Rencana: sekitar ${Math.ceil(rangePlan.days)} hari → ${rangePlan.chunks} chunk, maksimal 31 hari per chunk.`
@@ -230,7 +236,7 @@ export function LongRangeRecoveryPanel() {
                       <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(job.status)}`}>
                         {recoveryStatusLabel(job.status)}
                       </span>
-                      {job.status === "running" ? (
+                      {job.status === "running" && canOperate ? (
                         <button
                           type="button"
                           onClick={() => void cancelJob(job)}

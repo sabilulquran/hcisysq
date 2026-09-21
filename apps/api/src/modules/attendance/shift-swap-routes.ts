@@ -953,26 +953,24 @@ export async function registerAttendanceShiftSwapRoutes(
           [randomUUID(), item.id, principal.id, JSON.stringify({ note: body.data.note ?? null })],
         );
         await insertAudit(client, principal.id, "attendance.shift_swap.hc_rejected", item.id, {});
-        await Promise.all([
-          notifyEmployee(client, item.requesterEmployeeId, {
-            eventKey: `shift-swap:${item.id}:hc_rejected:requester`,
-            category: "attendance",
-            title: "Tukar shift ditolak Human Capital",
-            body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
-            href: "/app/attendance/shift-swap",
-            actorAccountId: principal.id,
-            metadata: { shiftSwapId: item.id, workDate: item.workDate },
-          }),
-          notifyEmployee(client, item.counterpartEmployeeId, {
-            eventKey: `shift-swap:${item.id}:hc_rejected:counterpart`,
-            category: "attendance",
-            title: "Tukar shift ditolak Human Capital",
-            body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
-            href: "/app/attendance/shift-swap",
-            actorAccountId: principal.id,
-            metadata: { shiftSwapId: item.id, workDate: item.workDate },
-          }),
-        ]);
+        await notifyEmployee(client, item.requesterEmployeeId, {
+          eventKey: `shift-swap:${item.id}:hc_rejected:requester`,
+          category: "attendance",
+          title: "Tukar shift ditolak Human Capital",
+          body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: item.id, workDate: item.workDate },
+        });
+        await notifyEmployee(client, item.counterpartEmployeeId, {
+          eventKey: `shift-swap:${item.id}:hc_rejected:counterpart`,
+          category: "attendance",
+          title: "Tukar shift ditolak Human Capital",
+          body: `Tukar shift ${item.workDate} tidak disetujui Human Capital.`,
+          href: "/app/attendance/shift-swap",
+          actorAccountId: principal.id,
+          metadata: { shiftSwapId: item.id, workDate: item.workDate },
+        });
         await client.query("COMMIT");
         return reply.send({ id: item.id, status: "rejected_by_hc" });
       }
@@ -1035,26 +1033,24 @@ export async function registerAttendanceShiftSwapRoutes(
         rosterId: roster.rosterId,
         rosterVersion: roster.version,
       });
-      await Promise.all([
-        notifyEmployee(client, item.requesterEmployeeId, {
-          eventKey: `shift-swap:${item.id}:hc_approved:requester`,
-          category: "attendance",
-          title: "Tukar shift disetujui",
-          body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
-          href: "/app/attendance/shift-swap",
-          actorAccountId: principal.id,
-          metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
-        }),
-        notifyEmployee(client, item.counterpartEmployeeId, {
-          eventKey: `shift-swap:${item.id}:hc_approved:counterpart`,
-          category: "attendance",
-          title: "Tukar shift disetujui",
-          body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
-          href: "/app/attendance/shift-swap",
-          actorAccountId: principal.id,
-          metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
-        }),
-      ]);
+      await notifyEmployee(client, item.requesterEmployeeId, {
+        eventKey: `shift-swap:${item.id}:hc_approved:requester`,
+        category: "attendance",
+        title: "Tukar shift disetujui",
+        body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
+        href: "/app/attendance/shift-swap",
+        actorAccountId: principal.id,
+        metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
+      });
+      await notifyEmployee(client, item.counterpartEmployeeId, {
+        eventKey: `shift-swap:${item.id}:hc_approved:counterpart`,
+        category: "attendance",
+        title: "Tukar shift disetujui",
+        body: `Tukar shift ${item.workDate} disetujui dan roster baru sudah dipublish.`,
+        href: "/app/attendance/shift-swap",
+        actorAccountId: principal.id,
+        metadata: { shiftSwapId: item.id, workDate: item.workDate, rosterId: roster.rosterId },
+      });
       approvedRequest = item;
       await client.query("COMMIT");
     } catch (error) {

@@ -23,9 +23,13 @@ const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 type QueryTarget = Pool | PoolClient;
 
+export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
+export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+
 interface ImportedLine {
   label: string;
   value: string;
+  section?: PayslipLineSection;
 }
 
 interface ParsedRow {
@@ -34,6 +38,11 @@ interface ParsedRow {
   period: string | null;
   lines: ImportedLine[] | null;
   errors: string[];
+}
+
+interface ParsedPayslipDocument {
+  sourceFormat: PayslipSourceFormat;
+  rows: ParsedRow[];
 }
 
 interface ImportRowRecord {
@@ -51,7 +60,7 @@ function decodeFilename(value: string | undefined): string {
   }
 }
 
-function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string, delimiter = ","): string[] {
   const values: string[] = [];
   let current = "";
   let quoted = false;
@@ -65,7 +74,7 @@ function parseCsvLine(line: string): string[] {
       } else {
         quoted = !quoted;
       }
-    } else if (char === "," && !quoted) {
+    } else if (char === delimiter && !quoted) {
       values.push(current);
       current = "";
     } else {
@@ -77,17 +86,116 @@ function parseCsvLine(line: string): string[] {
   return values;
 }
 
-export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
+function normalizeLegacyHeader(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function detectLegacyDelimiter(headerLine: string): "," | ";" {
+  const commaColumns = parseCsvLine(headerLine, ",").length;
+  const semicolonColumns = parseCsvLine(headerLine, ";").length;
+  return semicolonColumns > commaColumns ? ";" : ",";
+}
+
+function resolveLegacyPeriod(value: string | undefined, fallbackPeriod?: string | null): string | null {
+  const trimmed = value?.trim();
+  if (trimmed) {
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(trimmed);
+    if (!match) return null;
+    const [, day, month, year] = match;
+    const candidate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (
+      candidate.getUTCFullYear() !== Number(year) ||
+      candidate.getUTCMonth() + 1 !== Number(month) ||
+      candidate.getUTCDate() !== Number(day)
+    ) return null;
+    return `${year}-${month}-01`;
+  }
+  return fallbackPeriod && periodPattern.test(fallbackPeriod) ? `${fallbackPeriod}-01` : null;
+}
+
+type LegacyLineDefinition = {
+  label: string;
+  aliases: string[];
+  section: PayslipLineSection;
+};
+
+const fixedLineDefinitions: LegacyLineDefinition[] = [
+  { label: "Gaji Pokok", aliases: ["GAJI POKOK"], section: "income" },
+  { label: "Kelebihan Jam", aliases: ["KELEBIHAN JAM"], section: "income" },
+  { label: "Tunjangan Kinerja", aliases: ["TUNJANGAN KINERJA"], section: "income" },
+  { label: "Tunjangan Istri", aliases: ["TUNJANGAN ISTRI", "TUNJ. ISTRI", "TUNJ ISTRI"], section: "income" },
+  { label: "Tunjangan Anak", aliases: ["TUNJANGAN ANAK", "TUNJ. ANAK", "TUNJ ANAK"], section: "income" },
+  { label: "Tunjangan Fungsional", aliases: ["TUNJANGAN FUNGSIONAL", "TUNJ. FUNGSIONAL", "TUNJ FUNGSIONAL"], section: "income" },
+  { label: "Tunjangan Jabatan", aliases: ["TUNJANGAN JABATAN", "TUNJ. JABATAN", "TUNJ JABATAN"], section: "income" },
+  { label: "Tunjangan Kualifikasi Khusus", aliases: ["TUNJANGAN KUALIFIKASI KHUSUS"], section: "income" },
+  { label: "Tunjangan BPJS", aliases: ["TUNJANGAN BPJS", "TUNJ. BPJS", "TUNJ BPJS"], section: "income" },
+  { label: "Lembur", aliases: ["LEMBUR"], section: "income" },
+  { label: "Rapel Gaji", aliases: ["RAPEL GAJI"], section: "income" },
+  { label: "Potongan Kasbon", aliases: ["POTONGAN KASBON"], section: "deduction" },
+  { label: "BPJS", aliases: ["BPJS"], section: "deduction" },
+  { label: "Pendidikan Anak", aliases: ["PENDIDIKAN ANAK"], section: "deduction" },
+  { label: "Kekurangan Jam", aliases: ["KEKURANGAN JAM"], section: "deduction" },
+  { label: "Total Bruto Gaji", aliases: ["TOTAL BRUTO GAJI", "TOTAL BRUTO"], section: "summary" },
+  { label: "Total Potongan", aliases: ["TOTAL POTONGAN"], section: "summary" },
+  { label: "Gaji Neto", aliases: ["GAJI NETO", "GAJI NETTO"], section: "summary" },
+  { label: "Gaji Neto 80%", aliases: ["GAJI NETO 80%", "GAJI NETTO 80%"], section: "summary" },
+  { label: "Gaji Prorata", aliases: ["GAJI PRORATA"], section: "summary" },
+];
+
+const honorerLineDefinitions: LegacyLineDefinition[] = [
+  { label: "Value Transport", aliases: ["VALUE TRANSPORT"], section: "income" },
+  { label: "Jumlah Kehadiran", aliases: ["JUMLAH KEHADIRAN (TRANSPORT)", "JUMLAH KEHADIRAN"], section: "income" },
+  { label: "Value Honor", aliases: ["VALUE HONOR"], section: "income" },
+  { label: "Jumlah Jam Mengajar", aliases: ["JUMLAH JAM MENGAJAR"], section: "income" },
+  { label: "Total Transport", aliases: ["TOTAL TRANSPORT"], section: "income" },
+  { label: "Total Honor Mengajar", aliases: ["TOTAL HONOR MENGAJAR"], section: "income" },
+  { label: "Pemasukan Lainnya", aliases: ["PEMASUKAN LAINNYA", "PEMASUKAN LAINYA"], section: "income" },
+  { label: "Potongan Kasbon", aliases: ["POTONGAN KASBON"], section: "deduction" },
+  { label: "BPJS", aliases: ["BPJS"], section: "deduction" },
+  { label: "Pendidikan Anak", aliases: ["PENDIDIKAN ANAK"], section: "deduction" },
+  { label: "Total Penghasilan", aliases: ["TOTAL PENGHASILAN"], section: "summary" },
+  { label: "Total Potongan", aliases: ["TOTAL POTONGAN"], section: "summary" },
+  { label: "Gaji Neto", aliases: ["GAJI NETO", "GAJI NETTO"], section: "summary" },
+];
+
+function firstLegacyValue(row: Map<string, string>, aliases: string[]): string | null {
+  for (const alias of aliases) {
+    const value = row.get(normalizeLegacyHeader(alias));
+    if (value !== undefined) return value.trim();
+  }
+  return null;
+}
+
+function hasLegacyHeader(headers: string[], aliases: string[]): boolean {
+  const set = new Set(headers);
+  return aliases.some((alias) => set.has(normalizeLegacyHeader(alias)));
+}
+
+function assertLegacyRequiredHeaders(headers: string[], sourceFormat: Exclude<PayslipSourceFormat, "generic">) {
+  const groups = sourceFormat === "honorer"
+    ? [
+        { label: "TOTAL PENGHASILAN", aliases: ["TOTAL PENGHASILAN"] },
+        { label: "GAJI NETO", aliases: ["GAJI NETO", "GAJI NETTO"] },
+      ]
+    : [
+        { label: "GAJI POKOK", aliases: ["GAJI POKOK"] },
+        { label: "TOTAL BRUTO", aliases: ["TOTAL BRUTO GAJI", "TOTAL BRUTO"] },
+        { label: "GAJI NETO", aliases: ["GAJI NETO", "GAJI NETTO"] },
+      ];
+  const missing = groups.filter((group) => !hasLegacyHeader(headers, group.aliases)).map((group) => group.label);
+  if (missing.length) {
+    throw new Error(`Kolom wajib format ${sourceFormat} tidak ditemukan: ${missing.join(", ")}.`);
+  }
+}
+
+function parseCanonicalPayslipCsv(buffer: Buffer): ParsedRow[] {
   const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
   const rawLines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (rawLines.length === 0) throw new Error("File CSV kosong.");
 
   const headers = parseCsvLine(rawLines[0] ?? "").map((value) => value.trim().toLowerCase());
   const required = ["employee_number", "period", "lines_json"];
-  if (
-    headers.length !== required.length ||
-    required.some((header, index) => headers[index] !== header)
-  ) {
+  if (headers.length !== required.length || required.some((header, index) => headers[index] !== header)) {
     throw new Error("Header CSV wajib tepat: employee_number,period,lines_json.");
   }
 
@@ -133,7 +241,6 @@ export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
     }
 
     if (columns.length !== 3) errors.push("setiap baris wajib memiliki tepat tiga kolom");
-
     return {
       rowNumber,
       employeeNumber,
@@ -142,6 +249,82 @@ export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
       errors,
     };
   });
+}
+
+function parseLegacyPayslipCsv(
+  buffer: Buffer,
+  sourceFormat: Exclude<PayslipSourceFormat, "generic">,
+  fallbackPeriod?: string | null,
+): ParsedRow[] {
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  const rawLines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (rawLines.length === 0) throw new Error("File CSV kosong.");
+  const delimiter = detectLegacyDelimiter(rawLines[0] ?? "");
+  const headers = parseCsvLine(rawLines[0] ?? "", delimiter).map(normalizeLegacyHeader);
+  assertLegacyRequiredHeaders(headers, sourceFormat);
+  const definitions = sourceFormat === "honorer" ? honorerLineDefinitions : fixedLineDefinitions;
+
+  return rawLines.slice(1).map((line, index) => {
+    const rowNumber = index + 2;
+    const values = parseCsvLine(line, delimiter);
+    const row = new Map<string, string>();
+    headers.forEach((header, columnIndex) => row.set(header, values[columnIndex] ?? ""));
+    const employeeNumber = firstLegacyValue(row, ["NIP"]) ?? "";
+    const dateValue = firstLegacyValue(row, ["TANGGAL"]) ?? undefined;
+    const period = resolveLegacyPeriod(dateValue, fallbackPeriod);
+    const errors: string[] = [];
+    if (!employeeNumber) errors.push("NIP wajib diisi");
+    if (dateValue && !resolveLegacyPeriod(dateValue, null)) {
+      errors.push("TANGGAL wajib berformat DD/MM/YYYY");
+    } else if (!period) {
+      errors.push("periode wajib tersedia dari TANGGAL atau fallback YYYY-MM");
+    }
+    const lines = definitions.flatMap((definition) => {
+      const value = firstLegacyValue(row, definition.aliases);
+      return value === null || value === ""
+        ? []
+        : [{ label: definition.label, value, section: definition.section }];
+    });
+    if (lines.length === 0) errors.push("baris tidak memiliki komponen payslip yang dikenali");
+    return { rowNumber, employeeNumber, period, lines, errors };
+  });
+}
+
+export function parsePayslipCsvDocument(
+  buffer: Buffer,
+  fallbackPeriod?: string | null,
+): ParsedPayslipDocument {
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim().length > 0);
+  if (!firstLine) throw new Error("File CSV kosong.");
+
+  const canonicalHeaders = parseCsvLine(firstLine, ",").map((value) => value.trim().toLowerCase());
+  if (
+    canonicalHeaders.length === 3 &&
+    canonicalHeaders[0] === "employee_number" &&
+    canonicalHeaders[1] === "period" &&
+    canonicalHeaders[2] === "lines_json"
+  ) {
+    return { sourceFormat: "generic", rows: parseCanonicalPayslipCsv(buffer) };
+  }
+
+  const delimiter = detectLegacyDelimiter(firstLine);
+  const headers = parseCsvLine(firstLine, delimiter).map(normalizeLegacyHeader);
+  if (!headers.includes("NIP")) {
+    throw new Error("Format CSV tidak dikenali. Gunakan contract generic atau format legacy dengan kolom NIP.");
+  }
+  const sourceFormat: Exclude<PayslipSourceFormat, "generic"> =
+    ["VALUE TRANSPORT", "VALUE HONOR", "JUMLAH JAM MENGAJAR"].some((header) => headers.includes(header))
+      ? "honorer"
+      : ["GAJI POKOK", "TUNJANGAN KINERJA"].some((header) => headers.includes(header))
+        ? "tetap"
+        : (() => { throw new Error("Format payroll legacy tidak dapat dideteksi sebagai tetap atau honorer."); })();
+
+  return { sourceFormat, rows: parseLegacyPayslipCsv(buffer, sourceFormat, fallbackPeriod) };
+}
+
+export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
+  return parseCanonicalPayslipCsv(buffer);
 }
 
 async function writeAudit(

@@ -16,7 +16,8 @@ For an implemented capability, the audit checks:
 4. old service URLs do not regress to Coming Soon after the feature becomes available;
 5. navigation respects the same permission model as the route;
 6. later tabs do not disappear behind horizontal overflow where wrapping is viable;
-7. deliberately unavailable capability is not advertised as implemented.
+7. deliberately unavailable capability is not advertised as implemented;
+8. generic/legacy catalog URLs cannot bypass the permission-aware navigation contract.
 
 ## Confirmed gaps
 
@@ -72,6 +73,15 @@ Decision:
 - Device detail dynamic routes are reachable from fleet/device rows.
 - Foundation Board route is a separate principal workspace and not part of employee/admin navigation.
 
+## Follow-up findings after PR #74 merge
+
+A second route-state audit found two remaining discoverability issues:
+
+- `/admin/services/<available-service>` redirected unconditionally to the operational route even when the current admin lacked that module permission. The destination still failed closed, but the user experience degraded to a 404. Legacy redirects must therefore check the same permission contract as the real route.
+- `/app/approvals` was always discoverable from the five-item mobile bottom navigation, but desktop sidebar discoverability depended on page-specific `additionalRole` data. Because approver ownership is request-specific and is not represented as a stable session permission, Persetujuan is now a stable desktop task entry for every employee; the backend continues to return only tasks owned by that user.
+
+These changes do not broaden API authorization.
+
 ## Acceptance
 
 - No implemented ATT-008 tile says Coming Soon.
@@ -80,7 +90,8 @@ Decision:
 - Unauthorized employee sessions do not gain HC routes from GUI changes.
 - Device detail hides biometrics/settings links when route permission is absent.
 - Device-detail navigation wraps instead of requiring horizontal scrolling.
-- Old admin service URLs for an available service forward to its real route.
+- Old admin service URLs for an available service forward only when the current session may open the real route; otherwise they explain that access is unavailable without adding permission.
+- Persetujuan is discoverable on desktop and mobile without depending on page-local role hints.
 - Tests cover the above navigation/status contracts before merge.
 
 

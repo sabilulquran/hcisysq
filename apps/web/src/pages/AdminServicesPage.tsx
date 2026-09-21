@@ -114,7 +114,12 @@ export function AdminServicesPage() {
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">{category.description}</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {services.map((service) => <ServiceTile key={service.key} service={service} />)}
+                {services.map((service) => {
+                  const canOpen = service.stage !== "available"
+                    ? true
+                    : sessionResolved && canAccessAdminPath(session, service.href);
+                  return <AdminServiceTile key={service.key} service={service} canOpen={canOpen} />;
+                })}
               </div>
             </section>
           );

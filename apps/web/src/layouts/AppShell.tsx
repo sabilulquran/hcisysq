@@ -107,12 +107,23 @@ export function AppShell({
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   useEffect(() => {
     let active = true;
+    const refreshNotifications = () => {
+      void getMyNotifications("unread", 1).then((value) => {
+        if (active) setUnreadNotifications(value.unreadCount);
+      }).catch(() => {
+        if (active) setUnreadNotifications(0);
+      });
+    };
     void Promise.allSettled([getCurrentSession(), getMyNotifications("unread", 1)]).then(([sessionResult, notificationResult]) => {
       if (!active) return;
       setCanAdminister(sessionResult.status === "fulfilled" && canAccessAdminPath(sessionResult.value, "/admin"));
       setUnreadNotifications(notificationResult.status === "fulfilled" ? notificationResult.value.unreadCount : 0);
     });
-    return () => { active = false; };
+    window.addEventListener("hcis:notifications-changed", refreshNotifications);
+    return () => {
+      active = false;
+      window.removeEventListener("hcis:notifications-changed", refreshNotifications);
+    };
   }, []);
 
   const attendanceActive = ["Kehadiran", "Clock In/Out", "Tukar Shift"].includes(activeItem);

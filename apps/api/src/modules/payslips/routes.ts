@@ -455,7 +455,7 @@ export async function registerPayslipRoutes(
     const principal = await requireCapability(request, reply, "payslips.import");
     if (!principal) return;
     const result = await pool.query(
-      `SELECT id, source_filename AS "sourceFilename", status,
+      `SELECT id, source_filename AS "sourceFilename", source_format AS "sourceFormat", status,
               row_count AS "rowCount", valid_count AS "validCount",
               error_count AS "errorCount", created_at AS "createdAt",
               committed_at AS "committedAt", published_at AS "publishedAt"
@@ -491,16 +491,27 @@ export async function registerPayslipRoutes(
         });
       }
 
-      let parsed: ParsedRow[];
+      const periodHeader = request.headers["x-payslip-period"];
+      const fallbackPeriod = (
+        Array.isArray(periodHeader) ? periodHeader[0] : periodHeader
+      )?.trim() || null;
+      if (fallbackPeriod && !periodPattern.test(fallbackPeriod)) {
+        return reply.status(400).send({
+          code: "INVALID_FALLBACK_PERIOD",
+          message: "Fallback periode wajib berformat YYYY-MM.",
+        });
+      }
+
+      let parsedDocument: ParsedPayslipDocument;
       try {
-        parsed = parsePayslipCsv(request.body);
+        parsedDocument = parsePayslipCsvDocument(request.body, fallbackPeriod);
       } catch (error) {
         return reply.status(400).send({
           code: "IMPORT_PREVIEW_FAILED",
           message: error instanceof Error ? error.message : "CSV tidak dapat dipreview.",
         });
       }
-      if (parsed.length === 0) {
+      if (parsedDocument.rows.length === 0) {
         return reply.status(400).send({
           code: "IMPORT_PREVIEW_FAILED",
           message: "CSV tidak memiliki baris data.",
@@ -508,7 +519,7 @@ export async function registerPayslipRoutes(
       }
 
       const employeeNumbers = [
-        ...new Set(parsed.map((row) => row.employeeNumber).filter(Boolean)),
+        ...new Set(parsedDocument.rows.map((row) => row.employeeNumber).filter(Boolean)),
       ];
       const employees = employeeNumbers.length
         ? await pool.query<{ id: string; employeeNumber: string }>(
@@ -522,7 +533,7 @@ export async function registerPayslipRoutes(
         employees.rows.map((row) => [row.employeeNumber, row.id]),
       );
       const seen = new Set<string>();
-      const rows = parsed.map((row) => {
+      const rows = parsedDocument.rows.map((row) => {
         const errors = [...row.errors];
         const employeeId = employeeByNumber.get(row.employeeNumber) ?? null;
         if (row.employeeNumber && !employeeId) {
@@ -545,12 +556,13 @@ export async function registerPayslipRoutes(
         await client.query("BEGIN");
         await client.query(
           `INSERT INTO payslip_import_batches
-            (id, source_filename, checksum_sha256, status, row_count,
+            (id, source_filename, source_format, checksum_sha256, status, row_count,
              valid_count, error_count, created_by_account_id)
-           VALUES ($1, $2, $3, 'previewed', $4, $5, $6, $7)`,
+           VALUES ($1, $2, $3, $4, 'previewed', $5, $6, $7, $8)`,
           [
             batchId,
             filename,
+            parsedDocument.sourceFormat,
             createHash("sha256").update(request.body).digest("hex"),
             rows.length,
             validCount,
@@ -591,6 +603,7 @@ export async function registerPayslipRoutes(
       reply.header("Cache-Control", "private, no-store");
       return reply.status(201).send({
         batchId,
+        sourceFormat: parsedDocument.sourceFormat,
         status: "previewed",
         rowCount: rows.length,
         validCount,
@@ -658,8 +671,8 @@ export async function registerPayslipRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const batch = await client.query<{ status: string; errorCount: number }>(
-        `SELECT status, error_count AS "errorCount"
+      const batch = await client.query<{ status: string; errorCount: number; sourceFormat: PayslipSourceFormat }>(
+        `SELECT status, error_count AS "errorCount", source_format AS "sourceFormat"
            FROM payslip_import_batches
           WHERE id = $1
           FOR UPDATE`,
@@ -716,13 +729,14 @@ export async function registerPayslipRoutes(
 
       for (const row of importRows.rows) {
         await client.query(
-          `INSERT INTO payslips (id, employee_id, period, lines, source_batch_id)
-           VALUES ($1, $2, $3, $4::jsonb, $5)`,
+          `INSERT INTO payslips (id, employee_id, period, lines, source_format, source_batch_id)
+           VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
           [
             randomUUID(),
             row.employeeId,
             row.period,
             JSON.stringify(row.lines),
+            current.sourceFormat,
             parsed.data.batchId,
           ],
         );
@@ -827,7 +841,8 @@ export async function registerPayslipRoutes(
     const self = await requireEmployee(request, reply);
     if (!self) return;
     const result = await pool.query(
-      `SELECT id, to_char(period, 'YYYY-MM') AS period, published_at AS "publishedAt"
+      `SELECT id, to_char(period, 'YYYY-MM') AS period,
+              source_format AS "sourceFormat", published_at AS "publishedAt"
          FROM payslips
         WHERE employee_id = $1
           AND published_at IS NOT NULL
@@ -853,10 +868,11 @@ export async function registerPayslipRoutes(
       id: string;
       period: string;
       lines: ImportedLine[];
+      sourceFormat: PayslipSourceFormat;
       publishedAt: Date;
     }>(
       `SELECT id, to_char(period, 'YYYY-MM') AS period, lines,
-              published_at AS "publishedAt"
+              source_format AS "sourceFormat", published_at AS "publishedAt"
          FROM payslips
         WHERE id = $1
           AND employee_id = $2

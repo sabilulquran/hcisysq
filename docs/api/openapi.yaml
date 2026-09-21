@@ -1261,6 +1261,21 @@ paths:
   /admin/attendance/daily:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1daily'
 
+  /attendance/shift-swaps/candidates:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1shift-swaps~1candidates'
+  /attendance/shift-swaps/me:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1shift-swaps~1me'
+  /attendance/shift-swaps:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1shift-swaps'
+  /attendance/shift-swaps/{shiftSwapId}/counterpart-decision:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1shift-swaps~1{shiftSwapId}~1counterpart-decision'
+  /attendance/shift-swaps/{shiftSwapId}/cancel:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1attendance~1shift-swaps~1{shiftSwapId}~1cancel'
+  /admin/attendance/shift-swaps:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps'
+  /admin/attendance/shift-swaps/{shiftSwapId}/decision:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
+
 components:
   parameters:
     Cursor:

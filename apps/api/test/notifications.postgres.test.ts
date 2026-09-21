@@ -53,7 +53,7 @@ describe.skipIf(!allowed)("NOTIF-004 recipient-owned notifications", () => {
     await registerNotificationRoutes(app, transactionPool, config, {
       getSession: async () => ({
         principal: { id: primaryAccountId, email: "primary@example.invalid", principalType: "EMPLOYEE" as const },
-        expiresAt: new Date("2099-01-01T00:00:00Z"),
+        expiresAt: "2099-01-01T00:00:00Z",
       }),
     });
   });

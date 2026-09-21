@@ -214,20 +214,20 @@ export function AppShell({
             ))}
           </div>
 
-          {managementLabel ? (
-            <div className="pt-6">
-              <div className="mb-2 flex items-center justify-between px-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Tugas</p>
+          <div className="pt-6">
+            <div className="mb-2 flex items-center justify-between px-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Tugas</p>
+              {managementLabel ? (
                 <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-amber-900">{managementLabel}</span>
-              </div>
-              <div className="space-y-1">
-                {user.additionalRole ? managementNavigation.map((item) => (
-                  <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} active={item.label === activeItem} />
-                )) : null}
-                <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} />
-              </div>
+              ) : null}
             </div>
-          ) : null}
+            <div className="space-y-1">
+              {managementNavigation.map((item) => (
+                <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} active={item.label === activeItem} />
+              ))}
+              <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} />
+            </div>
+          </div>
         </nav>
 
         <div className="px-5 pb-5"><AccountMenu user={user} variant="sidebar" /></div>

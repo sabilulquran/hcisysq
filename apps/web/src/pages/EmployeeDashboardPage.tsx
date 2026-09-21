@@ -186,7 +186,6 @@ export function EmployeeDashboardPage() {
     <AppShell
       user={user}
       activeItem="Beranda"
-      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
     >
       <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>

@@ -31,6 +31,7 @@ const icons = {
   "attendance-evaluation": Clock3,
   "shift-exchange": CalendarDays,
   adms: ServerCog,
+  payslips: WalletCards,
   payroll: WalletCards,
   reimbursement: HandCoins,
   loans: Landmark,

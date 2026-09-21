@@ -25,22 +25,30 @@ export async function getMyNotifications(state: "all" | "unread" = "all", limit 
   );
 }
 
+function emitNotificationStateChanged() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("hcis:notifications-changed"));
+}
+
 export async function markNotificationRead(notificationId: string) {
-  return readJson<{ id: string; readAt: string }>(
+  const result = await readJson<{ id: string; readAt: string }>(
     await fetch(`/api/notifications/${notificationId}/read`, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
     }),
   );
+  emitNotificationStateChanged();
+  return result;
 }
 
 export async function markAllNotificationsRead() {
-  return readJson<{ updated: number }>(
+  const result = await readJson<{ updated: number }>(
     await fetch("/api/notifications/read-all", {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json" },
     }),
   );
+  emitNotificationStateChanged();
+  return result;
 }

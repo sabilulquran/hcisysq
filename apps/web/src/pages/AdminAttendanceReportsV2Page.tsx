@@ -60,7 +60,7 @@ function statusLabel(value: unknown) {
   };
   return labels[String(value)] ?? String(value ?? "—");
 }
-function sourceLabel(value: unknown) {
+function sourceLabel(value: unknown): string {
   if (Array.isArray(value)) return value.map(sourceLabel).join(", ");
   const labels: Record<string, string> = { adms: "Fingerprint/ADMS", mobile: "Mobile", manual: "Manual" };
   return labels[String(value)] ?? String(value ?? "—");

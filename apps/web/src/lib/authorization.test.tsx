@@ -11,7 +11,7 @@ function session(principalType: PrincipalType, permissions: string[]): AuthSessi
 }
 const hcAdmin = ["employees.manage", "organization.manage", "access.manage", "access.roles.assign",
   "leave.configuration.manage", "attendance.records.manage", "payslips.import", "payslips.publish"];
-const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage"];
+const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage"];
 
 describe("AUTH-011 backend-derived admin navigation", () => {
   it("shows intended HC admin surfaces in both desktop and compact menus", () => {
@@ -50,6 +50,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       "/admin/attendance/workforce/clarifications",
       "/admin/attendance/workforce/mobile",
       "/admin/attendance/workforce/overtime",
+      "/admin/attendance/workforce/shift-swaps",
       "/admin/attendance/workforce/reports",
     ]) {
       expect(canAccessAdminPath(workforce, path)).toBe(true);

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { getCurrentSession } from "@/lib/auth";
-import { canAccessAdminPath } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessEmployeeHcPath } from "@/lib/authorization";
 import { getMyNotifications } from "@/lib/notifications";
 import type { ReactNode } from "react";
+import type { AuthSession } from "@/types/hcis";
 import {
   ArrowLeftRight,
   Bell,
@@ -52,6 +53,12 @@ const managementNavigation = [
   { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
 ];
 
+const humanCapitalNavigation = [
+  { label: "Validasi Cuti", href: "/app/hc/leave", icon: ShieldCheck },
+  { label: "Cuti Terencana", href: "/app/hc/planned-leave", icon: CalendarDays },
+  { label: "Penyelesaian Kehadiran", href: "/app/hc/attendance-resolution", icon: Clock3 },
+] as const;
+
 const mobileNavigation = [
   { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
   { label: "Hadir", activeLabel: "Kehadiran", href: "/app/attendance", icon: Clock3 },
@@ -97,12 +104,62 @@ function NavigationLink({
   );
 }
 
+export function EmployeeHumanCapitalNavigation({
+  session,
+  activeItem,
+  mobile = false,
+}: {
+  session: AuthSession | null;
+  activeItem: string;
+  mobile?: boolean;
+}) {
+  const items = humanCapitalNavigation.filter((item) => canAccessEmployeeHcPath(session, item.href));
+  if (!items.length) return null;
+
+  if (mobile) {
+    return (
+      <nav aria-label="Tugas Human Capital" className="mb-5 rounded-2xl border border-border/80 bg-white p-3 shadow-[var(--shadow-soft)] lg:hidden">
+        <div className="mb-2 flex items-center gap-2 px-1">
+          <ShieldCheck className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-heading">Human Capital</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {items.map(({ label, href, icon: Icon }) => (
+            <a
+              key={href}
+              href={href}
+              aria-current={activeItem === label ? "page" : undefined}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                activeItem === label
+                  ? "border-brand-primary/40 bg-brand-primary-pale text-brand-primary-deep"
+                  : "border-border bg-surface text-muted-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {label}
+            </a>
+          ))}
+        </div>
+      </nav>
+    );
+  }
+
+  return (
+    <>
+      {items.map(({ label, href, icon }) => (
+        <NavigationLink key={href} label={label} href={href} icon={icon} active={activeItem === label} />
+      ))}
+    </>
+  );
+}
+
 export function AppShell({
   children,
   user,
   activeItem = "Beranda",
-  capabilities,
 }: AppShellProps) {
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [canAdminister, setCanAdminister] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   useEffect(() => {
@@ -116,7 +173,9 @@ export function AppShell({
     };
     void Promise.allSettled([getCurrentSession(), getMyNotifications("unread", 1)]).then(([sessionResult, notificationResult]) => {
       if (!active) return;
-      setCanAdminister(sessionResult.status === "fulfilled" && canAccessAdminPath(sessionResult.value, "/admin"));
+      const currentSession = sessionResult.status === "fulfilled" ? sessionResult.value : null;
+      setSession(currentSession);
+      setCanAdminister(canAccessAdminPath(currentSession, "/admin"));
       setUnreadNotifications(notificationResult.status === "fulfilled" ? notificationResult.value.unreadCount : 0);
     });
     window.addEventListener("hcis:notifications-changed", refreshNotifications);
@@ -131,7 +190,7 @@ export function AppShell({
     : activeItem === "Clock In/Out" ? "/app/attendance/clock" : "/app/attendance";
   const currentPath = typeof window !== "undefined" && window.location.pathname.startsWith("/app/attendance")
     ? window.location.pathname : fallbackPath;
-  const hasOrganizationHcAccess = capabilities?.humanCapitalOrganization === true;
+  const hasOrganizationHcAccess = humanCapitalNavigation.some((item) => canAccessEmployeeHcPath(session, item.href));
   const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
 
   return (
@@ -165,16 +224,10 @@ export function AppShell({
                 <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-amber-900">{managementLabel}</span>
               </div>
               <div className="space-y-1">
-                {managementNavigation.map((item) => (
+                {user.additionalRole ? managementNavigation.map((item) => (
                   <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} active={item.label === activeItem} />
-                ))}
-                {hasOrganizationHcAccess ? (
-                  <>
-                    <NavigationLink label="Validasi Cuti" href="/app/hc/leave" icon={ShieldCheck} active={activeItem === "Validasi Cuti"} />
-                    <NavigationLink label="Cuti Terencana" href="/app/hc/planned-leave" icon={CalendarDays} active={activeItem === "Cuti Terencana"} />
-                    <NavigationLink label="Penyelesaian Kehadiran" href="/app/hc/attendance-resolution" icon={Clock3} active={activeItem === "Penyelesaian Kehadiran"} />
-                  </>
-                ) : null}
+                )) : null}
+                <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} />
               </div>
             </div>
           ) : null}
@@ -215,6 +268,7 @@ export function AppShell({
           </div>
         </header>
         <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">
+          <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} mobile />
           {attendanceActive ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
           {children}
         </main>

@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
+import { notifyEmployee } from "../notifications/service.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import {
   haversineDistanceMeters,
@@ -1542,6 +1543,17 @@ export async function registerAttendanceWorkforceRoutes(
          ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
         [randomUUID(), params.data.overtimeId, principal.id, status, JSON.stringify({ approvedMinutes, note: body.data.note ?? null })],
       );
+      await notifyEmployee(client, item.employeeId, {
+        eventKey: `overtime:${params.data.overtimeId}:${status}`,
+        category: "attendance",
+        title: status === "approved" ? "Lembur disetujui" : "Lembur ditolak",
+        body: status === "approved"
+          ? `Pengajuan lembur ${item.workDate} disetujui ${approvedMinutes ?? 0} menit.`
+          : `Pengajuan lembur ${item.workDate} ditolak.`,
+        href: "/app/attendance",
+        actorAccountId: principal.id,
+        metadata: { overtimeId: params.data.overtimeId, workDate: item.workDate, status },
+      });
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");

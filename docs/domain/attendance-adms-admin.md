@@ -1,6 +1,6 @@
 # ATT-004 — ADMS Admin UI & Live Readiness
 
-**Status:** IMPLEMENTATION
+**Status:** IMPLEMENTED — ACCESS MODEL UPDATED 2026-09-21
 
 ## Tujuan
 
@@ -10,7 +10,17 @@ ATT-004 memakai ATT-002 sebagai raw transport foundation dan ATT-003 sebagai map
 
 ## Actor
 
-Hanya `SUPER_ADMIN` HCIS yang dapat mengakses endpoint dan UI ADMS Admin.
+Akses perangkat memakai permission backend, bukan label jabatan di UI.
+
+- `SUPER_ADMIN` compatibility tetap memiliki capability ADMS yang tercantum pada `ADMIN_PERMISSIONS`.
+- `human_capital_admin` organization-wide menerima capability operasional non-destruktif:
+  - `attendance.devices.read`;
+  - `attendance.devices.configure`;
+  - `attendance.devices.operate`;
+  - `attendance.devices.export`.
+- `attendance.devices.destructive`, `attendance.devices.firmware`, dan `attendance.devices.biometrics` **tidak** otomatis diberikan ke Human Capital Admin dan tetap memerlukan grant terpisah.
+
+Human Capital operasional biasa tidak otomatis menjadi operator perangkat.
 
 ## Device registry
 
@@ -100,7 +110,7 @@ Urutannya:
 
 ## Acceptance criteria
 
-1. Hanya Super Admin dapat membaca/mengubah registry dan mapping ADMS.
+1. Hanya principal dengan permission perangkat yang sesuai dapat membaca/mengubah registry dan mapping ADMS; Human Capital Admin mendapat bundle non-destruktif, sedangkan destructive/firmware/biometric tetap terpisah.
 2. Unknown traffic tidak membuat device otomatis.
 3. Device register/update dan mapping create/end mempunyai immutable audit.
 4. Leading-zero PIN tetap utuh pada API/UI.

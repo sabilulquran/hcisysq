@@ -18,7 +18,7 @@ export function AdminComingSoonPage() {
   if (!service) {
     return (
       <AdminShell active="services" title="Modul tidak ditemukan">
-        <a href="/admin/services" className="text-sm font-bold text-brand-primary-deep">Kembali ke roadmap modul</a>
+        <a href="/admin/services" className="text-sm font-bold text-brand-primary-deep">Kembali ke katalog modul</a>
       </AdminShell>
     );
   }

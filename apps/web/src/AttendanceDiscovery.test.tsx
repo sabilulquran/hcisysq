@@ -5,8 +5,10 @@ import { AdminNavigation } from "@/layouts/AdminShell";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
 import { AttendanceWorkforceNavigation } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
+import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import { getEmployeeService } from "@/lib/employeeServices";
 import { getAdminService } from "@/lib/adminServices";
+import { AdminServiceTile } from "@/pages/AdminServicesPage";
 import type { AuthSession } from "@/types/hcis";
 
 const employee = { name: "Synthetic Employee", initials: "SE", position: "Staff", unit: "Synthetic Unit" };
@@ -79,6 +81,7 @@ describe("HC and device-operator navigation", () => {
     expect(readOnly).not.toContain("/biometrics");
     expect(readOnly).not.toContain("/settings");
     expect(readOnly).not.toContain("/operations");
+    expect(readOnly).not.toContain("/diagnostics");
 
     const hcAdmin = renderToStaticMarkup(
       <DeviceDetailNavigation
@@ -94,7 +97,30 @@ describe("HC and device-operator navigation", () => {
     );
     expect(hcAdmin).toContain("/settings");
     expect(hcAdmin).toContain("/operations");
+    expect(hcAdmin).toContain("/diagnostics");
     expect(hcAdmin).not.toContain("/biometrics");
+  });
+
+  it("keeps available admin modules linked to operational GUI and permission-aware", () => {
+    const shift = getAdminService("shift-exchange")!;
+    const open = renderToStaticMarkup(<AdminServiceTile service={shift} canOpen />);
+    expect(open).toContain('href="/admin/attendance/workforce/shift-swaps"');
+    expect(open).toContain("Tersedia");
+    expect(open).not.toContain("Belum tersedia");
+
+    const locked = renderToStaticMarkup(<AdminServiceTile service={getAdminService("adms")!} canOpen={false} />);
+    expect(locked).not.toContain('href="/admin/attendance/adms"');
+    expect(locked).toContain("akun ini belum memiliki akses");
+  });
+
+  it("keeps read-only ADMS saved filters non-mutating", () => {
+    const html = renderToStaticMarkup(
+      <SavedFilterBar deviceId="synthetic-device" viewKey="transactions" criteria={{ query: "" }} onApply={() => undefined} canManage={false} />,
+    );
+    expect(html).toContain("Mode baca saja");
+    expect(html).not.toContain(">Hapus<");
+    expect(html).not.toContain(">Simpan<");
+    expect(html).toContain(">Terapkan<");
   });
 
   it.each([false, true])("shows HC shift approval in compact=%s without granting ADMS", (compact) => {

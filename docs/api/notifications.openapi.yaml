@@ -1,0 +1,40 @@
+openapi: 3.1.0
+info:
+  title: HCIS In-App Notifications
+  version: 1.0.0
+paths:
+  /notifications/me:
+    get:
+      tags: [Notifications]
+      summary: List current account notifications
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema: { type: string, enum: [all, unread], default: all }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Recipient-scoped notification list and unread count
+        '401': { description: Authentication required }
+  /notifications/{notificationId}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark one owned notification as read
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Read timestamp }
+        '404': { description: Notification does not exist for the current account }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark every unread notification for the current account as read
+      responses:
+        '200': { description: Number of rows updated }

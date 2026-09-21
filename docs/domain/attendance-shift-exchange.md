@@ -1,6 +1,6 @@
 # ATT-008 — Shift Exchange Workflow
 
-**Status:** IMPLEMENTATION  
+**Status:** IMPLEMENTED — REPOSITORY VERIFIED; PRODUCTION DEPLOYMENT PENDING  
 **Decision date:** 2026-09-21  
 **Related:** ATT-003, ATT-010, APR-001
 

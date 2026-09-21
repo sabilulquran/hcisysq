@@ -7,6 +7,7 @@ import {
   Radio,
   Smartphone,
   TimerReset,
+  ArrowLeftRight,
   UserCog,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -26,6 +27,7 @@ export type AttendanceWorkforceSection =
   | "clarifications"
   | "mobile"
   | "overtime"
+  | "shift-swaps"
   | "reports";
 
 const tabs: Array<{
@@ -42,6 +44,7 @@ const tabs: Array<{
   { key: "clarifications", label: "Klarifikasi", href: "/admin/attendance/workforce/clarifications", icon: ClipboardCheck },
   { key: "mobile", label: "Evidence Mobile", href: "/admin/attendance/workforce/mobile", icon: Smartphone },
   { key: "overtime", label: "Lembur", href: "/admin/attendance/workforce/overtime", icon: TimerReset },
+  { key: "shift-swaps", label: "Tukar Shift", href: "/admin/attendance/workforce/shift-swaps", icon: ArrowLeftRight },
   { key: "reports", label: "Laporan", href: "/admin/attendance/workforce/reports", icon: BarChart3 },
 ];
 

@@ -426,10 +426,23 @@ features:
     module: notification
     name: Email, WhatsApp, and in-app notification adapters
     legacy_evidence: SMTP and Starsender integrations exist
-    target_status: discovery
+    target_status: implementing
     priority: foundation
     risk: high
-    mvp_note: Transactional notification intents/outbox exist where needed, but production delivery adapters remain outside the completed MVP.
+    mvp_note: The in-app recipient-owned adapter is implemented through NOTIF-004. Email and WhatsApp delivery adapters remain outside this implementation and are not implied by the bell/inbox.
+    docs:
+      - docs/domain/in-app-notification-center.md
+
+  - id: NOTIF-004
+    module: notification
+    name: Recipient-owned in-app notification center
+    legacy_evidence: product owner requested a real notification surface after confirming the prior bell was not an operational inbox
+    target_status: implementing
+    priority: immediate-post-attendance
+    risk: high
+    planning_note: Inbox/read-unread, account-scoped unread count, shift-swap lifecycle, overtime decision, and payslip publication notifications are implemented in repository scope. External adapters and scheduled reminders remain separate.
+    docs:
+      - docs/domain/in-app-notification-center.md
 
   - id: NOTIF-002
     module: notification

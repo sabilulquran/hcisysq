@@ -161,7 +161,6 @@ export function HcPlannedLeavePage() {
     <AppShell
       user={user}
       activeItem="Cuti Terencana"
-      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
     >
       <section>
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>

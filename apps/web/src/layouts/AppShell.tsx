@@ -34,9 +34,6 @@ interface AppShellProps {
   children: ReactNode;
   user: AppShellUser;
   activeItem?: string;
-  capabilities?: {
-    humanCapitalOrganization?: boolean;
-  };
 }
 
 const employeeNavigation = [

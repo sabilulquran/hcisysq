@@ -52,6 +52,7 @@ const icons = {
   "desk-booking": CalendarDays,
   announcements: Megaphone,
   notifications: BellRing,
+  reminders: BellRing,
 } as const;
 
 function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {

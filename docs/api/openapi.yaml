@@ -1276,6 +1276,12 @@ paths:
   /admin/attendance/shift-swaps/{shiftSwapId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
 
+  /notifications/me:
+    $ref: './notifications.openapi.yaml#/paths/~1notifications~1me'
+  /notifications/{notificationId}/read:
+    $ref: './notifications.openapi.yaml#/paths/~1notifications~1{notificationId}~1read'
+  /notifications/read-all:
+    $ref: './notifications.openapi.yaml#/paths/~1notifications~1read-all'
 components:
   parameters:
     Cursor:

@@ -21,6 +21,12 @@ function statusLabel(value: string | undefined) {
   return value ? labels[value] ?? value : "Belum dievaluasi";
 }
 
+function mobileReadinessMessage(reason: WorkforceSnapshot["mobileReadiness"]["captureReason"]) {
+  if (reason === "runtime_disabled") return "Runtime mobile attendance belum diaktifkan. Pengelola perlu menjalankan activation/deployment production yang benar.";
+  if (reason === "restricted_media_not_ready") return "Penyimpanan foto terenkripsi belum siap. Pengelola perlu memeriksa keyring restricted media di runtime.";
+  return "Server siap menerima presensi HP.";
+}
+
 export function EmployeeMobileAttendancePage() {
   const [snapshot, setSnapshot] = useState<WorkforceSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,8 +237,16 @@ export function EmployeeMobileAttendancePage() {
             </article>
             <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
               <h2 className="font-bold text-brand-heading">Persiapan presensi</h2>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">Server: {snapshot.mobileEnabled ? "siap" : "belum siap / belum diizinkan"} · GPS: {location ? "siap" : "belum dibaca"} · Foto: {photoBase64 ? "siap" : "belum diambil"}</p>
-              {!snapshot.mobileEnabled ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">Presensi HP belum siap atau belum diizinkan oleh server. Pengelola perlu memeriksa aktivasi dan penyimpanan foto aman; ini bukan penilaian lokasi Anda.</p> : null}
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Server: {snapshot.mobileEnabled ? "siap" : "belum siap"} · GPS: {location ? "siap" : "belum dibaca"} · Foto: {photoBase64 ? "siap" : "belum diambil"}</p>
+              <p className={snapshot.mobileEnabled ? "mt-3 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900" : "mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900"}>
+                {mobileReadinessMessage(snapshot.mobileReadiness.captureReason)}
+              </p>
+              <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                Evaluasi jadwal: {statusLabel(snapshot.mobileReadiness.scheduleState)}
+                {snapshot.mobileReadiness.scheduleReason ? ` · ${snapshot.mobileReadiness.scheduleReason}` : ""}
+                {" · "}Lokasi jadwal: {snapshot.mobileReadiness.hasWorkLocation ? "terhubung" : "belum terhubung"}.
+                Jadwal/lokasi tidak mematikan tombol capture, tetapi menentukan hasil evaluasi dan geofence.
+              </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <button type="button" disabled={captureLocked || locating || !snapshot.mobileEnabled} onClick={readLocation} className="min-h-12 rounded-2xl border border-border px-4 text-sm font-bold disabled:opacity-50">
                   {locating ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <LocateFixed className="mr-2 inline h-4 w-4" />}{locating ? "Membaca GPS..." : location ? "GPS ±" + Math.round(location.coords.accuracy) + " m · baca ulang" : "1. Baca GPS"}

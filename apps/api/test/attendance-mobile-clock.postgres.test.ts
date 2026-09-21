@@ -114,6 +114,12 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
     const snapshot = await app.inject({ method: "GET", url: "/attendance/me/workforce", headers: { cookie } });
     expect(snapshot.statusCode, snapshot.body).toBe(200);
     expect(snapshot.json().mobileEnabled).toBe(true);
+    expect(snapshot.json().mobileReadiness).toMatchObject({
+      captureReady: true,
+      captureReason: "ready",
+      scheduleState: "scheduled",
+      hasWorkLocation: true,
+    });
     expect(snapshot.json().schedule.state).toBe("scheduled");
     const response = await app.inject({ method: "POST", url: "/attendance/mobile/clock", headers: { cookie, "idempotency-key": key }, payload });
     expect(response.statusCode, response.body).toBe(201);

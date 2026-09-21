@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentSession } from "@/lib/auth";
 import { canAccessAdminPath } from "@/lib/authorization";
+import { getMyNotifications } from "@/lib/notifications";
 import type { ReactNode } from "react";
 import {
   ArrowLeftRight,
@@ -103,12 +104,26 @@ export function AppShell({
   capabilities,
 }: AppShellProps) {
   const [canAdminister, setCanAdminister] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   useEffect(() => {
     let active = true;
-    void getCurrentSession().then((session) => {
-      if (active) setCanAdminister(canAccessAdminPath(session, "/admin"));
-    }).catch(() => { if (active) setCanAdminister(false); });
-    return () => { active = false; };
+    const refreshNotifications = () => {
+      void getMyNotifications("unread", 1).then((value) => {
+        if (active) setUnreadNotifications(value.unreadCount);
+      }).catch(() => {
+        if (active) setUnreadNotifications(0);
+      });
+    };
+    void Promise.allSettled([getCurrentSession(), getMyNotifications("unread", 1)]).then(([sessionResult, notificationResult]) => {
+      if (!active) return;
+      setCanAdminister(sessionResult.status === "fulfilled" && canAccessAdminPath(sessionResult.value, "/admin"));
+      setUnreadNotifications(notificationResult.status === "fulfilled" ? notificationResult.value.unreadCount : 0);
+    });
+    window.addEventListener("hcis:notifications-changed", refreshNotifications);
+    return () => {
+      active = false;
+      window.removeEventListener("hcis:notifications-changed", refreshNotifications);
+    };
   }, []);
 
   const attendanceActive = ["Kehadiran", "Clock In/Out", "Tukar Shift"].includes(activeItem);
@@ -180,10 +195,15 @@ export function AppShell({
             </div>
             <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
             <div className="flex items-center gap-2">
-              <a href="/app/services/notifications" aria-label="Notifikasi dan pengingat — dalam perencanaan"
-                title="Notifikasi dan pengingat belum tersedia"
+              <a href="/app/notifications" aria-label={unreadNotifications > 0 ? `Notifikasi, ${unreadNotifications} belum dibaca` : "Notifikasi"}
+                title="Buka pusat notifikasi"
                 className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
+                {unreadNotifications > 0 ? (
+                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white">
+                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                  </span>
+                ) : null}
               </a>
               {canAdminister ? (
                 <a href="/admin" aria-label="Administrasi HCIS" className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-brand-primary-deep">

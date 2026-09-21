@@ -141,9 +141,14 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["NOTIF-002"], stage: "discovery", category: "information", href: "/app/services/announcements",
   },
   {
-    key: "notifications", label: "Notifikasi & Pengingat",
-    description: "Pengingat dan notifikasi transaksi atau agenda yang relevan.",
-    featureIds: ["NOTIF-001", "NOTIF-003"], stage: "discovery", category: "information", href: "/app/services/notifications",
+    key: "notifications", label: "Notifikasi",
+    description: "Pusat pemberitahuan transaksi HCIS yang ditujukan khusus untuk akun Anda.",
+    featureIds: ["NOTIF-004"], stage: "available", category: "information", href: "/app/notifications",
+  },
+  {
+    key: "reminders", label: "Pengingat",
+    description: "Pengingat terjadwal berbasis agenda, shift, dan workflow.",
+    featureIds: ["NOTIF-003"], stage: "discovery", category: "information", href: "/app/services/reminders",
   },
 ];
 

@@ -63,7 +63,8 @@ PAY-003 is a future domain expansion and must not reinterpret the verified PAY-0
 
 ### 6. Communication
 
-- Delivery adapters for transactional notifications — NOTIF-001.
+- Delivery adapters for transactional notifications — NOTIF-001. The in-app adapter is implemented through NOTIF-004; external email/WhatsApp adapters remain separate.
+- Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002.
 - Reminders and scheduled notifications — NOTIF-003.
 
@@ -93,7 +94,7 @@ Employee-facing services are grouped by user intent rather than implementation p
 3. **Keuangan Saya** — Slip Gaji, Reimbursement, Pinjaman.
 4. **Kinerja & Pengembangan** — Kinerja/KPI, Training/LMS.
 5. **Layanan Pegawai** — Data Saya, Dokumen, Perjalanan Dinas, Asset Saya, Desk Booking.
-6. **Informasi** — Pengumuman, Notifikasi & Pengingat.
+6. **Informasi** — Pengumuman, Notifikasi, dan Pengingat. Notifikasi in-app may be available before reminder scheduling or external delivery adapters.
 
 Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
 

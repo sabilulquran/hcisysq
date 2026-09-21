@@ -599,11 +599,21 @@ components:
 
     AttendanceWorkforceSnapshot:
       type: object
-      required: [employee, workDate, mobileEnabled, schedule, result, clarifications, mobileEvidence]
+      required: [employee, workDate, mobileEnabled, mobileReadiness, schedule, result, clarifications, mobileEvidence]
       properties:
         employee: { type: object }
         workDate: { type: string, format: date }
         mobileEnabled: { type: boolean }
+        mobileReadiness:
+          type: object
+          required: [captureReady, captureReason, scheduleState, scheduleReason, hasWorkLocation, workLocationId]
+          properties:
+            captureReady: { type: boolean }
+            captureReason: { type: string, enum: [runtime_disabled, restricted_media_not_ready, ready] }
+            scheduleState: { type: string, enum: [scheduled, off, configuration_error] }
+            scheduleReason: { type: [string, 'null'] }
+            hasWorkLocation: { type: boolean }
+            workLocationId: { type: [string, 'null'], format: uuid }
         schedule:
           type: object
           required: [state]

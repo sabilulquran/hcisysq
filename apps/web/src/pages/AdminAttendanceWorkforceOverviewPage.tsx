@@ -20,15 +20,31 @@ export function AdminAttendanceWorkforceOverviewPage(){
  const [schedules,setSchedules]=useState(0); const [locations,setLocations]=useState(0); const [clarifications,setClarifications]=useState(0); const [mobileReview,setMobileReview]=useState(0);
  const [q,setQ]=useState(""); const [status,setStatus]=useState(""); const [error,setError]=useState<string|null>(null);
 
- useEffect(()=>{void Promise.allSettled([
-  getAttendanceDaily(date),listAttendanceSchedules(),listAttendanceWorkLocations(),listAttendanceClarificationsForHcByStatus("submitted"),listAttendanceMobileEvidence({date,reviewState:"needs_review"})
- ]).then(([daily,sch,loc,clar,mob])=>{
-  if(daily.status==="fulfilled"){setItems(daily.value.items);setSummary(daily.value.summary);} else setError(daily.reason instanceof Error?daily.reason.message:"Dashboard harian tidak dapat dimuat.");
-  if(sch.status==="fulfilled")setSchedules(sch.value.items.filter(i=>i.active).length);
-  if(loc.status==="fulfilled")setLocations(loc.value.items.filter(i=>i.active).length);
-  if(clar.status==="fulfilled")setClarifications(clar.value.items.length);
-  if(mob.status==="fulfilled")setMobileReview(mob.value.items.length);
- });},[date]);
+ useEffect(()=>{
+  let active=true;
+  const refresh=async()=>{
+    const [daily,sch,loc,clar,mob]=await Promise.allSettled([
+      getAttendanceDaily(date),listAttendanceSchedules(),listAttendanceWorkLocations(),
+      listAttendanceClarificationsForHcByStatus("submitted"),
+      listAttendanceMobileEvidence({date,reviewState:"needs_review"}),
+    ]);
+    if(!active)return;
+    if(daily.status==="fulfilled"){
+      setItems(daily.value.items);
+      setSummary(daily.value.summary);
+      setError(null);
+    }else{
+      setError(daily.reason instanceof Error?daily.reason.message:"Dashboard harian tidak dapat dimuat.");
+    }
+    if(sch.status==="fulfilled")setSchedules(sch.value.items.filter(i=>i.active).length);
+    if(loc.status==="fulfilled")setLocations(loc.value.items.filter(i=>i.active).length);
+    if(clar.status==="fulfilled")setClarifications(clar.value.items.length);
+    if(mob.status==="fulfilled")setMobileReview(mob.value.items.length);
+  };
+  void refresh();
+  const interval=date===todayJakarta()?window.setInterval(()=>{void refresh();},30000):null;
+  return()=>{active=false;if(interval!==null)window.clearInterval(interval);};
+ },[date]);
 
  const filtered=useMemo(()=>{const needle=q.trim().toLowerCase();return items.filter(i=>(!status||i.status===status)&&(!needle||[i.employeeName,i.employeeNumber,i.unitName??""].join(" ").toLowerCase().includes(needle)));},[items,q,status]);
  const cards=[

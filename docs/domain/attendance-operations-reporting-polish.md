@@ -1,12 +1,12 @@
 # ATT-009 — Attendance Operations & Reporting Polish
 
-**Status:** IMPLEMENTATION  
+**Status:** IMPLEMENTED — DEPLOYED TO PRODUCTION 2026-09-21  
 **Decision date:** 2026-09-21  
-**Related:** ATT-008, ATT-007, ATT-005
+**Related:** ATT-010, ATT-007, ATT-005
 
 ## Tujuan
 
-Menutup sisa gap operasional/UX setelah ATT-008 canonical convergence. ATT-009 tidak mengubah source of truth atau aturan engine; fokusnya membuat capability canonical yang sudah ada dapat dipakai sehari-hari oleh Human Capital dan pegawai tanpa harus mengetahui detail internal.
+Menutup sisa gap operasional/UX setelah ATT-010 canonical convergence. ATT-009 tidak mengubah source of truth atau aturan engine; fokusnya membuat capability canonical yang sudah ada dapat dipakai sehari-hari oleh Human Capital dan pegawai tanpa harus mengetahui detail internal.
 
 ## Scope
 

@@ -1,5 +1,7 @@
 # Production Release Verification — 2026-09-19
 
+**Historical checkpoint:** superseded as the latest production baseline by [`production-release-verification-2026-09-21.md`](production-release-verification-2026-09-21.md), which records deployment of `6f41ad64ed486404e03dea3f58513472d134736e`. This file remains the dated record for the earlier `66da50c...` release.
+
 **Status:** VERIFIED — DEPLOYMENT/RUNTIME ACCEPTANCE CLOSED  
 **Deployed application SHA:** `66da50cbd2a12f6099a59adbda28b657863e8e40`  
 **Previous production SHA:** `acd22b438a7468dc6ea53ae001980cd06f7343cd`  

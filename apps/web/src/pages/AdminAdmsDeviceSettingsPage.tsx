@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, Save } from "lucide-react";
+import { AlertTriangle, Loader2, Save, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
@@ -8,12 +8,15 @@ import {
   updateAdmsReconciliationPolicy,
   type AdmsTelemetry,
 } from "@/lib/admsDiagnostics";
-import { updateAdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
+import { listAdmsDevices, updateAdmsDevice, type AdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
+import { retireAdmsDevice } from "@/lib/admsManagement";
+import { hasPermission } from "@/lib/authorization";
 
 function lifecycleLabel(value: AdmsDeviceLifecycle) {
   if (value === "active") return "Aktif";
   if (value === "disabled") return "Dinonaktifkan";
-  return "Karantina";
+  if (value === "quarantined") return "Karantina";
+  return "Dipensiunkan";
 }
 
 async function getConnectivityOverride(deviceId: string) {
@@ -30,7 +33,7 @@ async function getConnectivityOverride(deviceId: string) {
 }
 
 export function AdminAdmsDeviceSettingsPage() {
-  const { deviceId, detail, health, refresh } = useDeviceAdmin();
+  const { deviceId, detail, health, refresh, session } = useDeviceAdmin();
   const device = detail?.item ?? null;
   const [telemetry, setTelemetry] = useState<AdmsTelemetry | null>(null);
   const [displayName, setDisplayName] = useState("");
@@ -43,6 +46,11 @@ export function AdminAdmsDeviceSettingsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [retireOpen, setRetireOpen] = useState(false);
+  const [retirementNote, setRetirementNote] = useState("");
+  const [replacementDeviceId, setReplacementDeviceId] = useState("");
+  const [replacementDevices, setReplacementDevices] = useState<AdmsDevice[]>([]);
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
 
   const loadPolicies = useCallback(async () => {
     const [result, timeoutOverride] = await Promise.all([
@@ -82,7 +90,7 @@ export function AdminAdmsDeviceSettingsPage() {
       await updateAdmsDevice(deviceId, {
         displayName: displayName.trim() || null,
         timezone: timezone.trim(),
-        lifecycle,
+        ...(device.lifecycle === "retired" ? {} : { lifecycle }),
       });
       await refresh();
       setNotice("Identitas dan lifecycle mesin sudah disimpan.");
@@ -141,6 +149,41 @@ export function AdminAdmsDeviceSettingsPage() {
     }
   }, [deviceId, loadPolicies, reconciliationEnabled, reconciliationInterval, reconciliationLookback]);
 
+
+  const openRetirement = useCallback(async () => {
+    setRetirementNote("");
+    setReplacementDeviceId("");
+    setRetireOpen(true);
+    try {
+      const result = await listAdmsDevices();
+      setReplacementDevices(result.items.filter((item) => item.id !== deviceId && item.lifecycle !== "retired"));
+    } catch {
+      setReplacementDevices([]);
+    }
+  }, [deviceId]);
+
+  const retireDevice = useCallback(async () => {
+    if (!device || retirementNote.trim().length < 5) {
+      setError("Alasan pensiun mesin minimal 5 karakter.");
+      return;
+    }
+    setBusy("retire");
+    try {
+      await retireAdmsDevice(deviceId, {
+        note: retirementNote.trim(),
+        replacementDeviceId: replacementDeviceId || null,
+      });
+      setRetireOpen(false);
+      await refresh();
+      setNotice("Mesin sudah dipensiunkan. Riwayat dan evidence lama tetap tersimpan.");
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Mesin tidak dapat dipensiunkan.");
+    } finally {
+      setBusy(null);
+    }
+  }, [device, deviceId, refresh, replacementDeviceId, retirementNote]);
+
   return (
     <div className="space-y-4">
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
@@ -153,7 +196,7 @@ export function AdminAdmsDeviceSettingsPage() {
           <label className="text-xs font-semibold text-muted-foreground">Nama mesin<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading outline-none focus:border-brand-primary" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Serial<input value={device?.serialNumber ?? ""} disabled className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 font-mono text-sm text-muted-foreground" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Timezone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading outline-none focus:border-brand-primary" /></label>
-          <label className="text-xs font-semibold text-muted-foreground">Lifecycle<select value={lifecycle} onChange={(event) => setLifecycle(event.target.value as AdmsDeviceLifecycle)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-brand-heading"><option value="active">Aktif</option><option value="disabled">Dinonaktifkan</option><option value="quarantined">Karantina</option></select></label>
+          <label className="text-xs font-semibold text-muted-foreground">Lifecycle<select value={lifecycle} disabled={device?.lifecycle === "retired"} onChange={(event) => setLifecycle(event.target.value as AdmsDeviceLifecycle)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-brand-heading disabled:bg-surface"><option value="active">Aktif</option><option value="disabled">Dinonaktifkan</option><option value="quarantined">Karantina</option>{device?.lifecycle === "retired" ? <option value="retired">Dipensiunkan</option> : null}</select></label>
         </div>
         <div className="mt-4 flex justify-end"><button type="button" disabled={busy !== null || !device} onClick={() => void saveIdentity()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "identity" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Simpan pengaturan</button></div>
       </section>
@@ -180,6 +223,26 @@ export function AdminAdmsDeviceSettingsPage() {
       </section>
 
       <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Operasi destruktif, perubahan PIN aktual, reset mesin, serta pengelolaan payload biometrik tidak tersedia di Pengaturan biasa.</span></div>
+      {canConfigure && device?.lifecycle !== "retired" ? (
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div><h2 className="text-base font-bold text-red-900">Pensiunkan mesin</h2><p className="mt-1 text-xs leading-5 text-red-800">Gunakan saat mesin sudah tidak dipakai atau diganti. Riwayat transaksi, mapping, audit, dan evidence tidak dihapus.</p></div>
+            <button type="button" onClick={() => void openRetirement()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-xs font-bold text-red-800"><Trash2 className="h-3.5 w-3.5" />Pensiunkan</button>
+          </div>
+        </section>
+      ) : null}
+
+      {retireOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="retire-device-title">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
+            <h2 id="retire-device-title" className="font-bold text-brand-heading">Pensiunkan {device?.displayName || device?.serialNumber}</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Status ini final untuk alur biasa. Capability fisik mesin pengganti tidak diwariskan.</p>
+            <label className="mt-4 block text-xs font-semibold text-muted-foreground">Alasan<textarea value={retirementNote} onChange={(event) => setRetirementNote(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-border p-3 text-sm text-brand-heading" placeholder="Contoh: mesin rusak dan diganti unit baru" /></label>
+            <label className="mt-4 block text-xs font-semibold text-muted-foreground">Mesin pengganti (opsional)<select value={replacementDeviceId} onChange={(event) => setReplacementDeviceId(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-brand-heading"><option value="">Tidak ada / belum ditentukan</option>{replacementDevices.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.serialNumber} · {item.serialNumber}</option>)}</select></label>
+            <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setRetireOpen(false)} disabled={busy === "retire"} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold">Batal</button><button type="button" onClick={() => void retireDevice()} disabled={busy === "retire" || retirementNote.trim().length < 5} className="inline-flex h-9 items-center gap-2 rounded-xl bg-red-700 px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "retire" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Pensiunkan mesin</button></div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

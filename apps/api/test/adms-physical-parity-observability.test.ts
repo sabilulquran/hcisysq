@@ -59,7 +59,7 @@ describe("WDMS physical parity observability", () => {
   it("keeps Work Code export permission and CSV safety unchanged", async () => {
     const source = await readFile(sourceUrl, "utf8");
     const route = workCodeExportRoute(source);
-    expect(route).toContain('authenticate(auth, request, reply, "attendance.devices.export")');
+    expect(route).toContain('authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.export"])');
     expect(route).toContain('sendCsv(reply, `adms-work-codes-${params.data.deviceId}.csv`');
     expect(source).toContain('reply.header("Cache-Control", "no-store")');
     expect(source).toContain('reply.header("Pragma", "no-cache")');

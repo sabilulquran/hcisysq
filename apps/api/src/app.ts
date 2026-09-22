@@ -11,6 +11,7 @@ import { registerAdmsPhysicalParityObservabilityRoutes } from "./modules/attenda
 import { registerAdmsPhysicalParityRegistryUserRoutes } from "./modules/attendance/adms/physical-parity-registry-user-routes.js";
 import { registerAdmsPhysicalParityRoutes } from "./modules/attendance/adms/physical-parity-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
+import { registerAdmsManagementRoutes } from "./modules/attendance/adms/management-routes.js";
 import { registerAdmsWave1AdminRoutes } from "./modules/attendance/adms/wave1-admin-routes.js";
 import { registerAdmsWave1OpsRoutes } from "./modules/attendance/adms/wave1-ops-routes.js";
 import { registerAdmsWave1RecoveryRoutes } from "./modules/attendance/adms/wave1-recovery-routes.js";
@@ -72,6 +73,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAttendanceWorkforceRoutes(app, pool, config);
   await registerAttendanceShiftSwapRoutes(app, pool, config);
   await registerAdmsAdminRoutes(app, pool, config);
+  await registerAdmsManagementRoutes(app, pool, config);
   await registerAdmsWave1AdminRoutes(app, pool, config);
   await registerAdmsWave1OpsRoutes(app, pool, config);
   await registerAdmsWave1RecoveryRoutes(app, pool, config);

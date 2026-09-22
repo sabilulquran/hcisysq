@@ -37,7 +37,7 @@ export interface AdminAttendanceListResponse
   items: AdminAttendanceRecord[];
 }
 
-export type AdmsDeviceLifecycle = "active" | "disabled" | "quarantined";
+export type AdmsDeviceLifecycle = "active" | "disabled" | "quarantined" | "retired";
 
 export interface AdmsDevice {
   id: string;

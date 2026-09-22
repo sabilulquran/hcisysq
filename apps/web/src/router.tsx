@@ -24,6 +24,10 @@ import {
 import { AdminAdmsBackOfficePage } from "@/pages/AdminAdmsBackOfficePage";
 import { AdminAdmsGlobalTransactionsPage } from "@/pages/AdminAdmsGlobalTransactionsPage";
 import { AdminAdmsDevicesPage } from "@/pages/AdminAdmsDevicesPage";
+import { AdminAdmsAuditPage } from "@/pages/AdminAdmsAuditPage";
+import { AdminAdmsHealthPage } from "@/pages/AdminAdmsHealthPage";
+import { AdminAdmsJobsPage } from "@/pages/AdminAdmsJobsPage";
+import { AdminAdmsUsersManagementPage } from "@/pages/AdminAdmsUsersManagementPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
@@ -353,6 +357,34 @@ const adminAdmsGlobalTransactionsRoute = createRoute({
   component: AdminAdmsGlobalTransactionsPage,
 });
 
+const adminAdmsUsersManagementRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms/users",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms/users"),
+  component: AdminAdmsUsersManagementPage,
+});
+
+const adminAdmsJobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms/jobs",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms/jobs"),
+  component: AdminAdmsJobsPage,
+});
+
+const adminAdmsHealthRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms/health",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms/health"),
+  component: AdminAdmsHealthPage,
+});
+
+const adminAdmsAuditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/adms/audit",
+  beforeLoad: () => requireAdminPath("/admin/attendance/adms/audit"),
+  component: AdminAdmsAuditPage,
+});
+
 const adminAdmsDevicesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices",
@@ -503,6 +535,10 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceReportsRoute,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,
+  adminAdmsUsersManagementRoute,
+  adminAdmsJobsRoute,
+  adminAdmsHealthRoute,
+  adminAdmsAuditRoute,
   adminAdmsDevicesRoute,
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,

@@ -237,6 +237,70 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
 
+  /admin/attendance/adms/management/summary:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsManagementSummary
+      summary: Read fleet-level ADMS operational summary
+      responses:
+        '200': { description: Fleet, unmapped PIN, review, and command counters }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/management/user-sync:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsUserSynchronization
+      summary: List desired-versus-observed ADMS user state across devices
+      parameters:
+        - { name: deviceId, in: query, schema: { type: string, format: uuid } }
+        - { name: state, in: query, schema: { type: string, enum: [synced, unmapped, missing_on_device, name_drift, review_required] } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 250, default: 100 } }
+      responses:
+        '200': { description: Safe fleet-level user synchronization rows; no biometric payload }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/management/jobs:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsManagementJobs
+      summary: List human-readable ADMS command lifecycle across devices
+      parameters:
+        - { name: deviceId, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, delivered, acknowledged, succeeded, failed, expired, cancelled] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 250, default: 100 } }
+      responses:
+        '200': { description: Command/job summaries without wire commands }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/management/health:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsManagementHealth
+      summary: List evidence-based ADMS device health and alerts
+      responses:
+        '200': { description: Connectivity, reconciliation, failed-job, unmapped-PIN, and source-IP evidence }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/management/audit:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsManagementAudit
+      summary: List safe append-only ADMS administration audit summaries
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 250, default: 100 } }
+      responses:
+        '200': { description: Audit summaries without raw request or biometric payloads }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/attendance/adms/devices:
     get:
       tags: [Attendance]
@@ -318,7 +382,7 @@ paths:
               minProperties: 1
               properties:
                 displayName: { type: [string, 'null'], maxLength: 160 }
-                lifecycle: { type: string, enum: [active, disabled, quarantined] }
+                lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
                 timezone: { type: string, maxLength: 100 }
                 model: { type: [string, 'null'], maxLength: 160 }
                 firmwareVersion: { type: [string, 'null'], maxLength: 160 }
@@ -336,6 +400,34 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/retire:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Attendance]
+      operationId: retireAdmsDevice
+      summary: Retire an ADMS device while preserving historical evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: { type: string, minLength: 5, maxLength: 500 }
+                replacementDeviceId: { type: [string, 'null'], format: uuid }
+      responses:
+        '200': { description: Retired device with optional replacement reference }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Device already retired or replacement invalid }
 
   /admin/attendance/adms/detected-devices:
     get:
@@ -422,7 +514,7 @@ paths:
                     required: [deviceId, lifecycle, connectivityStatus]
                     properties:
                       deviceId: { type: string, format: uuid }
-                      lifecycle: { type: string, enum: [active, disabled, quarantined] }
+                      lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
                       connectivityStatus: { type: string, enum: [online, offline, unknown] }
                       lastSeenAt: { type: [string, 'null'], format: date-time }
                       lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
@@ -1367,7 +1459,7 @@ components:
         id: { type: string, format: uuid }
         serialNumber: { type: string }
         displayName: { type: [string, 'null'] }
-        lifecycle: { type: string, enum: [active, disabled, quarantined] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
         timezone: { type: string }
         model: { type: [string, 'null'] }
         firmwareVersion: { type: [string, 'null'] }

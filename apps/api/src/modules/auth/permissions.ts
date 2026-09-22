@@ -23,6 +23,7 @@ export const ADMIN_PERMISSIONS = [
   "payslips.import", "payslips.publish", "attendance.devices.read",
   "attendance.devices.configure", "attendance.devices.operate", "attendance.devices.export",
   "attendance.devices.destructive", "attendance.devices.firmware", "attendance.devices.biometrics",
+  "attendance.devices.technical",
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage",

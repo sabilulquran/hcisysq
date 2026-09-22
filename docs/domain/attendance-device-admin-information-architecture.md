@@ -1,6 +1,6 @@
-# ATT-006 — Fingerprint Device Admin Information Architecture
+# Historical Fingerprint Device Admin Information Architecture\n\n> This document used ATT-006 before the canonical capability map reserved ATT-006 for Mobile Attendance. It is retained as historical design evidence only. The accepted operational source of truth is `attendance-adms-operational-management.md` (ATT-012).
 
-**Status:** PROPOSED  
+**Status:** SUPERSEDED by ATT-012  
 **Parent:** `ATT-005 — WDMS-Compatible Fingerprint Device Operations`  
 **Updated:** 2026-08-30
 
@@ -759,7 +759,7 @@ This specification does not approve:
 
 ## Acceptance criteria
 
-ATT-006 may move from PROPOSED to ACCEPTED when product review agrees on the IA and vocabulary.
+This historical IA no longer advances status. ATT-012 is the accepted successor and owns current ADMS operational IA.
 
 Implementation is complete only when all of the following are true:
 

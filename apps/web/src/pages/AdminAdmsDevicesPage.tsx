@@ -1,6 +1,7 @@
 import { AlertTriangle, Fingerprint, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AdmsManagementNav } from "@/components/attendance/adms/AdmsManagementNav";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -45,12 +46,14 @@ function connectivityClass(status: AdmsConnectivityStatus) {
 function lifecycleLabel(value: AdmsDevice["lifecycle"]) {
   if (value === "active") return "Aktif";
   if (value === "disabled") return "Dinonaktifkan";
-  return "Karantina";
+  if (value === "quarantined") return "Karantina";
+  return "Dipensiunkan";
 }
 
 function lifecycleClass(value: AdmsDevice["lifecycle"]) {
   if (value === "active") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (value === "disabled") return "border-slate-200 bg-slate-100 text-slate-700";
+  if (value === "retired") return "border-slate-300 bg-slate-100 text-slate-500";
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
@@ -204,10 +207,11 @@ export function AdminAdmsDevicesPage() {
 
   return (
     <AdminShell
-      active="attendance-devices"
+      active="attendance-adms"
       title="Mesin Fingerprint"
       description="Pantau kondisi mesin, lalu buka satu mesin untuk mengelola pengguna, transaksi, perintah, dan pengaturan dalam konteks yang sama."
     >
+      <AdmsManagementNav active="devices" />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
           <span>{devices.length} mesin</span>

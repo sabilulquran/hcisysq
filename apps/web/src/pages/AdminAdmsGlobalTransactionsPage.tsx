@@ -1,6 +1,7 @@
 import { AlertTriangle, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { AdmsManagementNav } from "@/components/attendance/adms/AdmsManagementNav";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   listAdmsDevices,
@@ -85,9 +86,9 @@ export function AdminAdmsGlobalTransactionsPage() {
   }, [items, q]);
 
   return (
-    <AdminShell active="attendance-adms" title="Transaksi ADMS Global" description="Cari scan fingerprint lintas seluruh mesin tanpa membuka perangkat satu per satu.">
+    <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Cari scan fingerprint lintas seluruh mesin tanpa membuka perangkat satu per satu.">
+      <AdmsManagementNav active="transactions" />
       <div className="mb-4 flex flex-wrap items-end gap-2">
-        <a className="h-10 rounded-xl border px-3 py-2 text-xs font-bold" href="/admin/attendance/adms">← Back Office ADMS</a>
         <label className="text-xs font-semibold text-muted-foreground">Dari
           <input className="mt-1 block h-10 rounded-xl border px-3 text-sm" type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>

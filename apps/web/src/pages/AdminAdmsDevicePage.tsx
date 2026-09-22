@@ -35,17 +35,18 @@ function sectionContent(section: DeviceAdminSection) {
     );
   }
   if (section === "commands") return <AdminAdmsDeviceCommandsPage />;
-  if (section === "operations") {
+  if (section === "settings") return <AdminAdmsDeviceSettingsPage />;
+  if (section === "operations" || section === "diagnostics") {
     return (
       <>
+        <AdminAdmsDeviceDiagnosticsPage />
         <AdminAdmsDeviceOperationsPage />
         <AdminAdmsDevicePhysicalParityPage />
         <AdminAdmsDevicePhysicalDeliveryPanel />
       </>
     );
   }
-  if (section === "settings") return <AdminAdmsDeviceSettingsPage />;
-  return <AdminAdmsDeviceDiagnosticsPage />;
+  return null;
 }
 
 export function AdminAdmsDevicePage({ deviceId, section }: { deviceId: string; section: DeviceAdminSection }) {

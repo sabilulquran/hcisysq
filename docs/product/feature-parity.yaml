@@ -330,23 +330,27 @@ features:
   - id: PAY-001
     module: payroll
     name: Payslip data import and validation
-    legacy_evidence: CSV payroll import exists
+    legacy_evidence: CSV payroll import exists; legacy discovery confirms separate fixed-pay and honorer source shapes
     target_status: verified
     priority: mvp
     risk: critical
+    planning_note: PAYSLIP-002 extends the verified generic import with fixed/honorer operational compatibility while preserving opaque imported values and preview -> commit -> publish.
     docs:
       - docs/domain/payslip-mvp.md
+      - docs/domain/payslip-operational-compatibility.md
       - docs/product/mvp.md
 
   - id: PAY-002
     module: payroll
     name: Employee read-only payslip access
-    legacy_evidence: PDF payslip and availability notification exist
+    legacy_evidence: PDF payslip and availability notification exist; legacy slip layout provides fixed/honorer presentation reference
     target_status: verified
     priority: mvp
     risk: critical
+    planning_note: PAYSLIP-002 adds printable employee presentation and source-format metadata without changing owner-only published visibility.
     docs:
       - docs/domain/payslip-mvp.md
+      - docs/domain/payslip-operational-compatibility.md
       - docs/product/mvp.md
 
   - id: LOAN-001

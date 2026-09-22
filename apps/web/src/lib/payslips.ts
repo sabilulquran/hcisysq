@@ -1,12 +1,17 @@
+export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
+export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+
 export interface PayslipSummary {
   id: string;
   period: string;
+  sourceFormat: PayslipSourceFormat;
   publishedAt: string;
 }
 
 export interface PayslipLine {
   label: string;
   value: string;
+  section?: PayslipLineSection;
 }
 
 export interface PayslipDetail extends PayslipSummary {
@@ -16,6 +21,7 @@ export interface PayslipDetail extends PayslipSummary {
 export interface PayslipImportBatch {
   id: string;
   sourceFilename: string;
+  sourceFormat: PayslipSourceFormat;
   status: "previewed" | "committed" | "published";
   rowCount: number;
   validCount: number;
@@ -64,15 +70,24 @@ export function getPayslipImport(batchId: string) {
   return request<PayslipImportDetail>(`/api/admin/payslip-imports/${encodeURIComponent(batchId)}`);
 }
 
-export function previewPayslipImport(file: File) {
-  return request<{ batchId: string; status: string; rowCount: number; validCount: number; errorCount: number }>(
-    "/api/admin/payslip-imports/preview",
-    {
-      method: "POST",
-      headers: { "Content-Type": "text/csv", "X-File-Name": encodeURIComponent(file.name) },
-      body: file,
-    },
-  );
+export function previewPayslipImport(file: File, fallbackPeriod?: string) {
+  const headers: Record<string, string> = {
+    "Content-Type": "text/csv",
+    "X-File-Name": encodeURIComponent(file.name),
+  };
+  if (fallbackPeriod) headers["X-Payslip-Period"] = fallbackPeriod;
+  return request<{
+    batchId: string;
+    sourceFormat: PayslipSourceFormat;
+    status: string;
+    rowCount: number;
+    validCount: number;
+    errorCount: number;
+  }>("/api/admin/payslip-imports/preview", {
+    method: "POST",
+    headers,
+    body: file,
+  });
 }
 
 export function commitPayslipImport(batchId: string) {

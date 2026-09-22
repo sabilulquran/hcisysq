@@ -98,6 +98,15 @@ export const adminServices: AdminServiceDefinition[] = [
     href: "/admin/attendance/adms",
   },
   {
+    key: "payslips",
+    label: "Slip Gaji",
+    description: "Import, review, dan publikasi slip gaji tetap/honorer tanpa menghitung ulang payroll.",
+    featureIds: ["PAY-001", "PAY-002"],
+    stage: "available",
+    category: "payroll-benefits",
+    href: "/admin/payslips",
+  },
+  {
     key: "payroll",
     label: "Payroll",
     description: "Perhitungan, review, rekonsiliasi, finalisasi, dan publikasi payroll.",

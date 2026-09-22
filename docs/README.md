@@ -19,7 +19,9 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk Organization Directory publishing, baca `domain/organization-directory-publishing.md` (ORG-006) setelah ORG-002/ORG-004.
    - untuk simplifikasi operasi attendance, baca `domain/attendance-operational-simplification.md` (ATT-011).
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-009).
+   - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
+   - untuk evidence benchmarking SemartHRIS dan guardrail yang tidak boleh dicopy, baca `product/semarthris-benchmark-2026-09-22.md`.
 11. `architecture/system-context.md`
 12. ADR yang relevan
 13. `api/openapi.yaml`

@@ -890,6 +890,227 @@ export async function registerPayslipRoutes(
     return reply.send({ ...batch.rows[0], rows: rows.rows });
   });
 
+  app.patch("/admin/payslip-imports/:batchId/rows", async (request, reply) => {
+    const principal = await requireCapability(request, reply, "payslips.import");
+    if (!principal) return;
+    const params = batchIdSchema.safeParse(request.params);
+    const body = bulkImportRowCorrectionSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_BULK_IMPORT_ROW_CORRECTION",
+        message: "Bulk correction membutuhkan maksimal 500 row unik dengan NIP/nomor pegawai dan periode YYYY-MM.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string }>(
+        `SELECT status
+           FROM payslip_import_batches
+          WHERE id = $1
+          FOR UPDATE`,
+        [params.data.batchId],
+      );
+      if (!batch.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "BATCH_NOT_FOUND",
+          message: "Batch payslip tidak ditemukan.",
+        });
+      }
+      if (batch.rows[0].status === "published") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_ALREADY_PUBLISHED",
+          message: "Batch yang sudah dipublish tidak dapat dikoreksi.",
+        });
+      }
+
+      const rowNumbers = body.data.rows.map((row) => row.rowNumber);
+      const locked = await client.query<{
+        rowNumber: number;
+        resolutionStatus: PayslipRowResolutionStatus;
+        lines: ImportedLine[] | null;
+        errors: string[];
+      }>(
+        `SELECT row_number AS "rowNumber",
+                resolution_status AS "resolutionStatus",
+                lines,
+                validation_errors AS errors
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+            AND row_number = ANY($2::int[])
+          FOR UPDATE`,
+        [params.data.batchId, rowNumbers],
+      );
+      if (locked.rows.length !== rowNumbers.length) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "IMPORT_ROW_NOT_FOUND",
+          message: "Satu atau lebih baris import tidak ditemukan.",
+        });
+      }
+      if (locked.rows.some((row) => row.resolutionStatus !== "pending")) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "IMPORT_ROW_NOT_EDITABLE",
+          message: "Bulk correction hanya menerima baris yang masih pending.",
+        });
+      }
+
+      const currentByNumber = new Map(locked.rows.map((row) => [row.rowNumber, row]));
+      const updatedRows: unknown[] = [];
+      let validAfterCorrection = 0;
+
+      for (const correction of body.data.rows) {
+        const current = currentByNumber.get(correction.rowNumber)!;
+        const validated = await revalidateImportRow(client, {
+          batchId: params.data.batchId,
+          rowNumber: correction.rowNumber,
+          employeeNumber: correction.employeeNumber,
+          period: correction.period,
+          lines: current.lines,
+          previousErrors: current.errors,
+        });
+        if (validated.errors.length === 0) validAfterCorrection += 1;
+
+        const updated = await client.query(
+          `UPDATE payslip_import_rows
+              SET employee_number = $3,
+                  employee_id = $4,
+                  period = $5::date,
+                  validation_errors = $6::jsonb
+            WHERE batch_id = $1
+              AND row_number = $2
+              AND resolution_status = 'pending'
+          RETURNING row_number AS "rowNumber", employee_number AS "employeeNumber",
+                    to_char(period, 'YYYY-MM') AS period, lines,
+                    validation_errors AS errors,
+                    resolution_status AS "resolutionStatus",
+                    draft_payslip_id AS "draftPayslipId",
+                    excluded_at AS "excludedAt"`,
+          [
+            params.data.batchId,
+            correction.rowNumber,
+            correction.employeeNumber,
+            validated.employeeId,
+            validated.period,
+            JSON.stringify(validated.errors),
+          ],
+        );
+        updatedRows.push(updated.rows[0]);
+      }
+
+      await refreshBatchValidationCounts(client, params.data.batchId);
+      await writeAudit(client, principal.id, "payslip.import.rows_bulk_corrected", {
+        batchId: params.data.batchId,
+        payload: {
+          rowCount: body.data.rows.length,
+          validAfterCorrection,
+        },
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "private, no-store");
+      return reply.send({
+        updatedCount: body.data.rows.length,
+        rows: updatedRows,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/payslip-imports/:batchId/rows/exclude", async (request, reply) => {
+    const principal = await requireCapability(request, reply, "payslips.import");
+    if (!principal) return;
+    const params = batchIdSchema.safeParse(request.params);
+    const body = bulkImportRowExcludeSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_BULK_IMPORT_ROW_EXCLUSION",
+        message: "Pilih 1 sampai 500 nomor baris unik untuk dihapus dari batch.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string }>(
+        `SELECT status
+           FROM payslip_import_batches
+          WHERE id = $1
+          FOR UPDATE`,
+        [params.data.batchId],
+      );
+      if (!batch.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "BATCH_NOT_FOUND",
+          message: "Batch payslip tidak ditemukan.",
+        });
+      }
+      if (batch.rows[0].status === "published") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_ALREADY_PUBLISHED",
+          message: "Batch yang sudah dipublish tidak dapat diubah.",
+        });
+      }
+
+      const locked = await client.query<{ rowNumber: number; resolutionStatus: PayslipRowResolutionStatus }>(
+        `SELECT row_number AS "rowNumber", resolution_status AS "resolutionStatus"
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+            AND row_number = ANY($2::int[])
+          FOR UPDATE`,
+        [params.data.batchId, body.data.rowNumbers],
+      );
+      if (locked.rows.length !== body.data.rowNumbers.length) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "IMPORT_ROW_NOT_FOUND",
+          message: "Satu atau lebih baris import tidak ditemukan.",
+        });
+      }
+      if (locked.rows.some((row) => row.resolutionStatus !== "pending")) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "IMPORT_ROW_NOT_EXCLUDABLE",
+          message: "Hanya baris pending yang dapat dihapus dari batch.",
+        });
+      }
+
+      const excluded = await client.query(
+        `UPDATE payslip_import_rows
+            SET resolution_status = 'excluded',
+                excluded_by_account_id = $3,
+                excluded_at = now()
+          WHERE batch_id = $1
+            AND row_number = ANY($2::int[])
+            AND resolution_status = 'pending'
+        RETURNING row_number`,
+        [params.data.batchId, body.data.rowNumbers, principal.id],
+      );
+      await refreshBatchValidationCounts(client, params.data.batchId);
+      await writeAudit(client, principal.id, "payslip.import.rows_bulk_excluded", {
+        batchId: params.data.batchId,
+        payload: { rowCount: excluded.rowCount ?? excluded.rows.length },
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "private, no-store");
+      return reply.send({ excludedCount: excluded.rowCount ?? excluded.rows.length });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
   app.patch("/admin/payslip-imports/:batchId/rows/:rowNumber", async (request, reply) => {
     const principal = await requireCapability(request, reply, "payslips.import");
     if (!principal) return;

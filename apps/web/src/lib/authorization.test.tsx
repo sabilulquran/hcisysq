@@ -87,7 +87,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/biometrics")).toBe(false);
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);
     expect(html).toContain('href="/admin/attendance/adms"');
-    expect(html).toContain('href="/admin/attendance/devices"');
+    expect(html).not.toContain('href="/admin/attendance/devices"');
   });
 
   it("keeps Board governance-only and honors trusted legacy compatibility context", () => {
@@ -96,7 +96,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(board, "/admin/payslips")).toBe(false);
     const legacy = session("SUPER_ADMIN", [...hcAdmin, "attendance.devices.read", "attendance.devices.configure", "attendance.devices.biometrics", "attendance.devices.technical"]);
     expect(landingPath(legacy)).toBe("/admin");
-    expect(renderToStaticMarkup(<AdminNavigation active="overview" session={legacy} />)).toContain('href="/admin/attendance/devices"');
+    expect(renderToStaticMarkup(<AdminNavigation active="overview" session={legacy} />)).toContain('href="/admin/attendance/adms"');
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/biometrics")).toBe(true);
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/operations")).toBe(true);
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/diagnostics")).toBe(true);

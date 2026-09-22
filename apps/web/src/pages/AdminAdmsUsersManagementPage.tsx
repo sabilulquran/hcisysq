@@ -28,7 +28,7 @@ function stateClass(state: AdmsUserSyncState) {
 export function AdminAdmsUsersManagementPage() {
   const [items, setItems] = useState<AdmsUserSyncItem[]>([]);
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [state, setState] = useState<AdmsUserSyncState | "">("unmapped");
+  const [state, setState] = useState<AdmsUserSyncState | "">("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function AdminAdmsUsersManagementPage() {
   const [employeeLoading, setEmployeeLoading] = useState(false);
   const [mappingBusy, setMappingBusy] = useState<string | null>(null);
 
-  const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canMap = hasPermission(session, "attendance.devices.operate") && hasPermission(session, "employees.manage");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -177,7 +177,7 @@ export function AdminAdmsUsersManagementPage() {
                       ) : <span className="text-muted-foreground">Belum dihubungkan</span>}
                     </td>
                     <td className="px-4 py-3">
-                      {item.state === "unmapped" && canOperate ? (
+                      {item.state === "unmapped" && canMap ? (
                         <button type="button" onClick={() => setMappingItem(item)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white">
                           <Link2 className="h-3.5 w-3.5" /> Hubungkan
                         </button>

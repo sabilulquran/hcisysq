@@ -28,6 +28,8 @@ General chat, CRM, accounting/general ledger, generic project management, and ge
 
 Implementation packages that support the attendance capability family are ATT-009 (operations/reporting polish) and ATT-010 (canonical attendance convergence). These package IDs do not replace ATT-008; ATT-008 remains uniquely reserved for shift exchange.
 
+- Operational simplification of the admin/employee experience — ATT-011 (PROPOSED). Target operator mental model: **Shift -> Jadwal -> Kehadiran -> Lembur**, while backend versioning/evidence/audit remains intact.
+
 ATT-006 may use approved evidence mechanisms such as GPS, geotagging/geofence, photo evidence, and face recognition. Those are capture/evidence mechanisms, not separate authorization domains. Privacy, retention, spoofing resistance, fallback, device trust, and biometric policy must be specified before activation.
 
 ATT-007 must not be inferred from raw punches alone. Schedule, holiday, tolerance, leave/permission, and approved policy inputs are prerequisites for lateness/overtime conclusions.
@@ -46,14 +48,24 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 - Reimbursement — REIMB-001.
 - Employee loans and installments — LOAN-001.
 
-PAY-003 is a future domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
+PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine. The calculation model is intentionally still discovery/TBD; BPJS Kesehatan, BPJS Ketenagakerjaan, PPh21, reconciliation, finalization, payment handoff, and historical payroll results must be specified before implementation.
 
 ### 4. Performance and development
 
 - Performance review and KPI — PERF-001.
 - Training / LMS and learning records — TRAIN-001.
 
-### 5. Employee services
+### 5. Employment administration and employee services
+
+Classic employment administration is an explicit HCIS direction, using effective-dated history rather than overwriting current employee fields:
+
+- Employment relationship and contracts — EMP-005.
+- Placement and career movement (promotion, demotion, mutation) — EMP-006.
+- Education and qualification — EMP-007.
+- Skills and competencies — EMP-008.
+- Family, dependents, and employee relations — EMP-009.
+
+Employee services continue with:
 
 - Employee data change request — EMP-003.
 - Employment and HR documents — DOC-001 / DOC-002.
@@ -80,10 +92,13 @@ Recruitment belongs to HCIS but is an HC/admin workspace capability rather than 
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005.
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (DISCOVERY).
+- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY).
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
 `ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is planned as a read-only projection/distribution layer. It is discovery only: external identifiers, privacy, versioning, transport, freshness, replay, and bootstrap remain undecided, and no runtime publication path exists yet.
+
+`ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented.
 
 ## UX presentation
 
@@ -96,7 +111,7 @@ Employee-facing services are grouped by user intent rather than implementation p
 5. **Layanan Pegawai** — Data Saya, Dokumen, Perjalanan Dinas, Asset Saya, Desk Booking.
 6. **Informasi** — Pengumuman, Notifikasi, dan Pengingat. Notifikasi in-app may be available before reminder scheduling or external delivery adapters.
 
-Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
+Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher. Attendance administration should prefer the operational language **Shift, Jadwal, Kehadiran, Lembur** instead of exposing internal roster/versioning concepts as primary navigation.
 
 ## Coming-soon rule
 

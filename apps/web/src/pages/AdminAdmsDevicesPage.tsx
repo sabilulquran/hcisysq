@@ -1,6 +1,7 @@
 import { AlertTriangle, Fingerprint, Loader2, Plus, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AdmsManagementNav } from "@/components/attendance/adms/AdmsManagementNav";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -204,7 +205,7 @@ export function AdminAdmsDevicesPage() {
 
   return (
     <AdminShell
-      active="attendance-devices"
+      active="attendance-adms"
       title="Mesin Fingerprint"
       description="Pantau kondisi mesin, lalu buka satu mesin untuk mengelola pengguna, transaksi, perintah, dan pengaturan dalam konteks yang sama."
     >

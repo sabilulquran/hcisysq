@@ -17,6 +17,10 @@ export interface PayslipLine {
 
 export interface PayslipDetail extends PayslipSummary {
   lines: PayslipLine[];
+  signer: {
+    title: "Ketua Yayasan";
+    name: string | null;
+  };
 }
 
 export interface PayslipImportBatch {
@@ -117,6 +121,31 @@ export function excludePayslipImportRow(batchId: string, rowNumber: number) {
   return request<PayslipImportRow>(
     `/api/admin/payslip-imports/${encodeURIComponent(batchId)}/rows/${rowNumber}`,
     { method: "DELETE" },
+  );
+}
+
+export function bulkCorrectPayslipImportRows(
+  batchId: string,
+  rows: Array<{ rowNumber: number; employeeNumber: string; period: string }>,
+) {
+  return request<{ updatedCount: number; rows: PayslipImportRow[] }>(
+    `/api/admin/payslip-imports/${encodeURIComponent(batchId)}/rows`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows }),
+    },
+  );
+}
+
+export function bulkExcludePayslipImportRows(batchId: string, rowNumbers: number[]) {
+  return request<{ excludedCount: number }>(
+    `/api/admin/payslip-imports/${encodeURIComponent(batchId)}/rows/exclude`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rowNumbers }),
+    },
   );
 }
 

@@ -341,6 +341,7 @@ features:
       - docs/domain/payslip-partial-draft-resolution.md
       - docs/domain/payslip-ux-print-polish.md
       - docs/domain/payslip-a4-signer-authority.md
+      - docs/domain/payslip-render-print-parity.md
       - docs/product/mvp.md
 
   - id: PAY-002

@@ -486,27 +486,103 @@ describe("payslip transaction boundaries", () => {
     await app.close();
   });
 
-  it("rolls back a partially inserted commit and never marks the batch committed", async () => {
-    let payslipInsertCount = 0;
+  it("allows valid rows to enter draft while invalid rows remain unresolved", async () => {
     const clientQuery = vi.fn(async (sql: string) => {
       const normalized = compactSql(sql);
       if (normalized.includes("FROM payslip_import_batches") && normalized.includes("FOR UPDATE")) {
-        return result([{ status: "previewed", errorCount: 0 }]);
+        return result([{ status: "previewed", sourceFormat: "tetap" }]);
       }
-      if (normalized.includes("FROM payslip_import_rows") && normalized.includes("validation_errors")) {
+      if (normalized.startsWith("WITH conflict_rows AS")) return result([]);
+      if (
+        normalized.startsWith("SELECT id, row_number AS") &&
+        normalized.includes("resolution_status = 'pending'")
+      ) {
         return result([
-          { employeeId, period: "2026-08-01", lines: [{ label: "A", value: "one" }] },
           {
+            id: "70000000-0000-4000-8000-000000000007",
+            rowNumber: 2,
+            employeeId,
+            period: "2026-08-01",
+            lines: [{ label: "Imported", value: "opaque" }],
+          },
+        ]);
+      }
+      if (normalized.startsWith("SELECT count(*) FILTER")) {
+        return result([
+          {
+            draftedCount: 1,
+            pendingValidCount: 0,
+            unresolvedCount: 1,
+            excludedCount: 0,
+          },
+        ]);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/payslip-imports/${batchId}/commit`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "committed",
+      draftedNow: 1,
+      draftedCount: 1,
+      unresolvedCount: 1,
+    });
+    const statements = clientQuery.mock.calls.map(([sql]) => compactSql(String(sql)));
+    expect(statements.some((sql) => sql.startsWith("INSERT INTO payslips"))).toBe(true);
+    expect(
+      statements.some(
+        (sql) =>
+          sql.startsWith("UPDATE payslip_import_rows imported") &&
+          sql.includes("resolution_status = 'drafted'"),
+      ),
+    ).toBe(true);
+    expect(statements.at(-1)).toBe("COMMIT");
+    await app.close();
+  });
+
+  it("rolls back a failed bulk draft insert and never marks the batch committed", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM payslip_import_batches") && normalized.includes("FOR UPDATE")) {
+        return result([{ status: "previewed", sourceFormat: "generic" }]);
+      }
+      if (normalized.startsWith("WITH conflict_rows AS")) return result([]);
+      if (
+        normalized.startsWith("SELECT id, row_number AS") &&
+        normalized.includes("resolution_status = 'pending'")
+      ) {
+        return result([
+          {
+            id: "70000000-0000-4000-8000-000000000007",
+            rowNumber: 2,
+            employeeId,
+            period: "2026-08-01",
+            lines: [{ label: "A", value: "one" }],
+          },
+          {
+            id: "80000000-0000-4000-8000-000000000008",
+            rowNumber: 3,
             employeeId: "10000000-0000-4000-8000-000000000009",
             period: "2026-08-01",
             lines: [{ label: "B", value: "two" }],
           },
         ]);
       }
-      if (normalized.startsWith("SELECT 1 FROM payslips payslip")) return result([]);
       if (normalized.startsWith("INSERT INTO payslips")) {
-        payslipInsertCount += 1;
-        if (payslipInsertCount === 2) throw new Error("synthetic second insert failure");
+        throw new Error("synthetic bulk insert failure");
       }
       return result();
     });
@@ -528,9 +604,174 @@ describe("payslip transaction boundaries", () => {
     const statements = clientQuery.mock.calls.map(([sql]) => compactSql(String(sql)));
     expect(statements).toContain("ROLLBACK");
     expect(statements).not.toContain("COMMIT");
-    expect(statements.some((sql) => sql.startsWith("UPDATE payslip_import_batches"))).toBe(false);
+    expect(
+      statements.some(
+        (sql) =>
+          sql.startsWith("UPDATE payslip_import_batches") &&
+          sql.includes("status = 'committed'"),
+      ),
+    ).toBe(false);
     expect(statements.some((sql) => sql.startsWith("INSERT INTO payslip_audit_events"))).toBe(false);
     expect(client.release).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("revalidates a corrected pending row and keeps payroll lines opaque", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
+        return result([{ status: "previewed" }]);
+      }
+      if (
+        normalized.startsWith("SELECT resolution_status AS") &&
+        normalized.includes("FROM payslip_import_rows")
+      ) {
+        return result([
+          {
+            resolutionStatus: "pending",
+            lines: [{ label: "Gaji Neto", value: "Rp 1.234.567", section: "summary" }],
+            errors: ["employee reference tidak ditemukan"],
+          },
+        ]);
+      }
+      if (normalized.startsWith("SELECT id FROM employees")) return result([{ id: employeeId }]);
+      if (
+        normalized.startsWith("SELECT 1 FROM payslip_import_rows") ||
+        normalized.startsWith("SELECT 1 FROM payslips")
+      ) {
+        return result([]);
+      }
+      if (
+        normalized.startsWith("UPDATE payslip_import_rows") &&
+        normalized.includes('RETURNING row_number AS "rowNumber"')
+      ) {
+        return result([
+          {
+            rowNumber: 2,
+            employeeNumber: "SYN-001",
+            period: "2026-09",
+            lines: [{ label: "Gaji Neto", value: "Rp 1.234.567", section: "summary" }],
+            errors: [],
+            resolutionStatus: "pending",
+            draftPayslipId: null,
+            excludedAt: null,
+          },
+        ]);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/admin/payslip-imports/${batchId}/rows/2`,
+      headers: {
+        cookie: "hcis_session=synthetic",
+        "content-type": "application/json",
+      },
+      payload: { employeeNumber: "SYN-001", period: "2026-09" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      employeeNumber: "SYN-001",
+      period: "2026-09",
+      errors: [],
+      resolutionStatus: "pending",
+    });
+    const auditCall = clientQuery.mock.calls.find(([sql]) =>
+      compactSql(String(sql)).startsWith("INSERT INTO payslip_audit_events"),
+    );
+    expect(auditCall).toBeDefined();
+    expect(JSON.stringify(auditCall?.[1] ?? [])).not.toContain("1.234.567");
+    await app.close();
+  });
+
+  it("soft-excludes a pending row and retains an audit event", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
+        return result([{ status: "committed" }]);
+      }
+      if (
+        normalized.startsWith("UPDATE payslip_import_rows") &&
+        normalized.includes("resolution_status = 'excluded'")
+      ) {
+        return result([
+          {
+            rowNumber: 97,
+            employeeNumber: "SYN-MISSING",
+            period: "2026-09",
+            lines: [{ label: "Synthetic", value: "opaque" }],
+            errors: ["employee reference tidak ditemukan"],
+            resolutionStatus: "excluded",
+            draftPayslipId: null,
+            excludedAt: "2026-09-22T00:00:00.000Z",
+          },
+        ]);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/admin/payslip-imports/${batchId}/rows/97`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().resolutionStatus).toBe("excluded");
+    const statements = clientQuery.mock.calls.map(([sql]) => compactSql(String(sql)));
+    expect(
+      statements.some((sql) => sql.startsWith("INSERT INTO payslip_audit_events")),
+    ).toBe(true);
+    expect(statements.at(-1)).toBe("COMMIT");
+    await app.close();
+  });
+
+  it("blocks publish while any row remains pending", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
+        return result([{ status: "committed" }]);
+      }
+      if (normalized.startsWith("SELECT count(*)::int AS total")) {
+        return result([{ total: 1, unresolved: 1, ready: 0 }]);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/payslip-imports/${batchId}/publish`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("BATCH_HAS_PENDING_ROWS");
+    const statements = clientQuery.mock.calls.map(([sql]) => compactSql(String(sql)));
+    expect(statements.some((sql) => sql.startsWith("UPDATE payslips"))).toBe(false);
+    expect(statements).toContain("ROLLBACK");
     await app.close();
   });
 
@@ -539,6 +780,12 @@ describe("payslip transaction boundaries", () => {
       const normalized = compactSql(sql);
       if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
         return result([{ status: "committed" }]);
+      }
+      if (normalized.startsWith("SELECT count(*)::int AS total") && normalized.includes("payslip_import_rows")) {
+        return result([{ total: 0, unresolved: 0, ready: 0 }]);
+      }
+      if (normalized.startsWith("SELECT count(*)::int AS total") && normalized.includes("FROM payslips")) {
+        return result([{ total: 1 }]);
       }
       if (normalized.startsWith("UPDATE payslips")) return result([{ id: payslipId }]);
       if (normalized.startsWith("UPDATE payslip_import_batches")) {

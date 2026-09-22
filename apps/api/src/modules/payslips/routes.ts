@@ -20,11 +20,20 @@ export type PayslipPermission = "payslips.import" | "payslips.publish";
 const idSchema = z.object({ id: z.string().uuid() });
 const batchIdSchema = z.object({ batchId: z.string().uuid() });
 const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const importRowParamsSchema = z.object({
+  batchId: z.string().uuid(),
+  rowNumber: z.coerce.number().int().positive(),
+});
+const importRowCorrectionSchema = z.object({
+  employeeNumber: z.string().trim().min(1).max(120),
+  period: z.string().regex(periodPattern),
+});
 
 type QueryTarget = Pool | PoolClient;
 
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
 export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 interface ImportedLine {
   label: string;
@@ -46,9 +55,111 @@ interface ParsedPayslipDocument {
 }
 
 interface ImportRowRecord {
+  id: string;
+  rowNumber: number;
   employeeId: string;
   period: string;
   lines: ImportedLine[];
+}
+
+interface RowValidationResult {
+  employeeId: string | null;
+  period: string | null;
+  errors: string[];
+}
+
+const correctableRowErrorPrefixes = [
+  "employee_number wajib diisi",
+  "NIP wajib diisi",
+  "period wajib berformat YYYY-MM",
+  "TANGGAL wajib berformat DD/MM/YYYY",
+  "periode wajib tersedia dari TANGGAL atau fallback YYYY-MM",
+  "employee reference tidak ditemukan",
+  "employee dan period duplikat dalam batch",
+  "payslip untuk employee dan period sudah ada",
+];
+
+function structuralRowErrors(errors: string[]): string[] {
+  return errors.filter(
+    (error) => !correctableRowErrorPrefixes.some((prefix) => error.startsWith(prefix)),
+  );
+}
+
+async function revalidateImportRow(
+  database: QueryTarget,
+  options: {
+    batchId: string;
+    rowNumber: number;
+    employeeNumber: string;
+    period: string;
+    lines: ImportedLine[] | null;
+    previousErrors: string[];
+  },
+): Promise<RowValidationResult> {
+  const errors = structuralRowErrors(options.previousErrors);
+  const period = periodPattern.test(options.period) ? `${options.period}-01` : null;
+  if (!period) errors.push("period wajib berformat YYYY-MM");
+  if (!options.lines || options.lines.length === 0) {
+    errors.push("baris tidak memiliki komponen payslip yang dikenali");
+  }
+
+  const employee = await database.query<{ id: string }>(
+    `SELECT id FROM employees WHERE employee_number = $1 LIMIT 1`,
+    [options.employeeNumber],
+  );
+  const employeeId = employee.rows[0]?.id ?? null;
+  if (!employeeId) errors.push("employee reference tidak ditemukan");
+
+  if (employeeId && period) {
+    const duplicate = await database.query(
+      `SELECT 1
+         FROM payslip_import_rows
+        WHERE batch_id = $1
+          AND row_number <> $2
+          AND resolution_status <> 'excluded'
+          AND employee_id = $3
+          AND period = $4::date
+        LIMIT 1`,
+      [options.batchId, options.rowNumber, employeeId, period],
+    );
+    if (duplicate.rowCount) errors.push("employee dan period duplikat dalam batch");
+
+    const existing = await database.query(
+      `SELECT 1
+         FROM payslips
+        WHERE employee_id = $1
+          AND period = $2::date
+        LIMIT 1`,
+      [employeeId, period],
+    );
+    if (existing.rowCount) errors.push("payslip untuk employee dan period sudah ada");
+  }
+
+  return { employeeId, period, errors: [...new Set(errors)] };
+}
+
+async function refreshBatchValidationCounts(database: QueryTarget, batchId: string) {
+  await database.query(
+    `UPDATE payslip_import_batches batch
+        SET valid_count = stats.valid_count,
+            error_count = stats.error_count
+       FROM (
+         SELECT batch_id,
+                count(*) FILTER (
+                  WHERE resolution_status IN ('pending', 'drafted')
+                    AND jsonb_array_length(validation_errors) = 0
+                )::int AS valid_count,
+                count(*) FILTER (
+                  WHERE resolution_status = 'pending'
+                    AND jsonb_array_length(validation_errors) > 0
+                )::int AS error_count
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+          GROUP BY batch_id
+       ) stats
+      WHERE batch.id = stats.batch_id`,
+    [batchId],
+  );
 }
 
 function decodeFilename(value: string | undefined): string {
@@ -455,12 +566,31 @@ export async function registerPayslipRoutes(
     const principal = await requireCapability(request, reply, "payslips.import");
     if (!principal) return;
     const result = await pool.query(
-      `SELECT id, source_filename AS "sourceFilename", source_format AS "sourceFormat", status,
-              row_count AS "rowCount", valid_count AS "validCount",
-              error_count AS "errorCount", created_at AS "createdAt",
-              committed_at AS "committedAt", published_at AS "publishedAt"
-         FROM payslip_import_batches
-        ORDER BY created_at DESC
+      `SELECT batch.id, batch.source_filename AS "sourceFilename",
+              batch.source_format AS "sourceFormat", batch.status,
+              batch.row_count AS "rowCount", batch.valid_count AS "validCount",
+              batch.error_count AS "errorCount", batch.created_at AS "createdAt",
+              batch.committed_at AS "committedAt", batch.published_at AS "publishedAt",
+              COALESCE(stats.drafted_count, 0)::int AS "draftedCount",
+              COALESCE(stats.pending_valid_count, 0)::int AS "pendingValidCount",
+              COALESCE(stats.unresolved_count, 0)::int AS "unresolvedCount",
+              COALESCE(stats.excluded_count, 0)::int AS "excludedCount"
+         FROM payslip_import_batches batch
+         LEFT JOIN LATERAL (
+           SELECT count(*) FILTER (WHERE resolution_status = 'drafted') AS drafted_count,
+                  count(*) FILTER (
+                    WHERE resolution_status = 'pending'
+                      AND jsonb_array_length(validation_errors) = 0
+                  ) AS pending_valid_count,
+                  count(*) FILTER (
+                    WHERE resolution_status = 'pending'
+                      AND jsonb_array_length(validation_errors) > 0
+                  ) AS unresolved_count,
+                  count(*) FILTER (WHERE resolution_status = 'excluded') AS excluded_count
+             FROM payslip_import_rows
+            WHERE batch_id = batch.id
+         ) stats ON true
+        ORDER BY batch.created_at DESC
         LIMIT 50`,
     );
     reply.header("Cache-Control", "private, no-store");
@@ -625,12 +755,31 @@ export async function registerPayslipRoutes(
     }
 
     const batch = await pool.query(
-      `SELECT id, source_filename AS "sourceFilename", source_format AS "sourceFormat", status,
-              row_count AS "rowCount", valid_count AS "validCount",
-              error_count AS "errorCount", created_at AS "createdAt",
-              committed_at AS "committedAt", published_at AS "publishedAt"
-         FROM payslip_import_batches
-        WHERE id = $1`,
+      `SELECT batch.id, batch.source_filename AS "sourceFilename",
+              batch.source_format AS "sourceFormat", batch.status,
+              batch.row_count AS "rowCount", batch.valid_count AS "validCount",
+              batch.error_count AS "errorCount", batch.created_at AS "createdAt",
+              batch.committed_at AS "committedAt", batch.published_at AS "publishedAt",
+              COALESCE(stats.drafted_count, 0)::int AS "draftedCount",
+              COALESCE(stats.pending_valid_count, 0)::int AS "pendingValidCount",
+              COALESCE(stats.unresolved_count, 0)::int AS "unresolvedCount",
+              COALESCE(stats.excluded_count, 0)::int AS "excludedCount"
+         FROM payslip_import_batches batch
+         LEFT JOIN LATERAL (
+           SELECT count(*) FILTER (WHERE resolution_status = 'drafted') AS drafted_count,
+                  count(*) FILTER (
+                    WHERE resolution_status = 'pending'
+                      AND jsonb_array_length(validation_errors) = 0
+                  ) AS pending_valid_count,
+                  count(*) FILTER (
+                    WHERE resolution_status = 'pending'
+                      AND jsonb_array_length(validation_errors) > 0
+                  ) AS unresolved_count,
+                  count(*) FILTER (WHERE resolution_status = 'excluded') AS excluded_count
+             FROM payslip_import_rows
+            WHERE batch_id = batch.id
+         ) stats ON true
+        WHERE batch.id = $1`,
       [parsed.data.batchId],
     );
     if (!batch.rows[0]) {
@@ -643,7 +792,10 @@ export async function registerPayslipRoutes(
     const rows = await pool.query(
       `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
               to_char(period, 'YYYY-MM') AS period, lines,
-              validation_errors AS errors
+              validation_errors AS errors,
+              resolution_status AS "resolutionStatus",
+              draft_payslip_id AS "draftPayslipId",
+              excluded_at AS "excludedAt"
          FROM payslip_import_rows
         WHERE batch_id = $1
         ORDER BY row_number`,
@@ -655,6 +807,199 @@ export async function registerPayslipRoutes(
     });
     reply.header("Cache-Control", "private, no-store");
     return reply.send({ ...batch.rows[0], rows: rows.rows });
+  });
+
+  app.patch("/admin/payslip-imports/:batchId/rows/:rowNumber", async (request, reply) => {
+    const principal = await requireCapability(request, reply, "payslips.import");
+    if (!principal) return;
+    const params = importRowParamsSchema.safeParse(request.params);
+    const body = importRowCorrectionSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_IMPORT_ROW_CORRECTION",
+        message: "NIP/nomor pegawai dan periode YYYY-MM wajib diisi dengan format yang valid.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string }>(
+        `SELECT status
+           FROM payslip_import_batches
+          WHERE id = $1
+          FOR UPDATE`,
+        [params.data.batchId],
+      );
+      if (!batch.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "BATCH_NOT_FOUND",
+          message: "Batch payslip tidak ditemukan.",
+        });
+      }
+      if (batch.rows[0].status === "published") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_ALREADY_PUBLISHED",
+          message: "Batch yang sudah dipublish tidak dapat dikoreksi.",
+        });
+      }
+
+      const row = await client.query<{
+        resolutionStatus: PayslipRowResolutionStatus;
+        lines: ImportedLine[] | null;
+        errors: string[];
+      }>(
+        `SELECT resolution_status AS "resolutionStatus", lines,
+                validation_errors AS errors
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+            AND row_number = $2
+          FOR UPDATE`,
+        [params.data.batchId, params.data.rowNumber],
+      );
+      const current = row.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "IMPORT_ROW_NOT_FOUND",
+          message: "Baris import tidak ditemukan.",
+        });
+      }
+      if (current.resolutionStatus !== "pending") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "IMPORT_ROW_NOT_EDITABLE",
+          message: "Hanya baris yang masih Perlu tindakan/Siap draft yang dapat diperbaiki.",
+        });
+      }
+
+      const validated = await revalidateImportRow(client, {
+        batchId: params.data.batchId,
+        rowNumber: params.data.rowNumber,
+        employeeNumber: body.data.employeeNumber,
+        period: body.data.period,
+        lines: current.lines,
+        previousErrors: current.errors,
+      });
+
+      const updated = await client.query(
+        `UPDATE payslip_import_rows
+            SET employee_number = $3,
+                employee_id = $4,
+                period = $5::date,
+                validation_errors = $6::jsonb
+          WHERE batch_id = $1
+            AND row_number = $2
+        RETURNING row_number AS "rowNumber", employee_number AS "employeeNumber",
+                  to_char(period, 'YYYY-MM') AS period, lines,
+                  validation_errors AS errors,
+                  resolution_status AS "resolutionStatus",
+                  draft_payslip_id AS "draftPayslipId",
+                  excluded_at AS "excludedAt"`,
+        [
+          params.data.batchId,
+          params.data.rowNumber,
+          body.data.employeeNumber,
+          validated.employeeId,
+          validated.period,
+          JSON.stringify(validated.errors),
+        ],
+      );
+      await refreshBatchValidationCounts(client, params.data.batchId);
+      await writeAudit(client, principal.id, "payslip.import.row_corrected", {
+        batchId: params.data.batchId,
+        employeeId: validated.employeeId,
+        payload: {
+          rowNumber: params.data.rowNumber,
+          validAfterCorrection: validated.errors.length === 0,
+        },
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "private, no-store");
+      return reply.send(updated.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/admin/payslip-imports/:batchId/rows/:rowNumber", async (request, reply) => {
+    const principal = await requireCapability(request, reply, "payslips.import");
+    if (!principal) return;
+    const params = importRowParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({
+        code: "INVALID_IMPORT_ROW",
+        message: "Batch ID atau nomor baris tidak valid.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string }>(
+        `SELECT status
+           FROM payslip_import_batches
+          WHERE id = $1
+          FOR UPDATE`,
+        [params.data.batchId],
+      );
+      if (!batch.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({
+          code: "BATCH_NOT_FOUND",
+          message: "Batch payslip tidak ditemukan.",
+        });
+      }
+      if (batch.rows[0].status === "published") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_ALREADY_PUBLISHED",
+          message: "Batch yang sudah dipublish tidak dapat diubah.",
+        });
+      }
+
+      const updated = await client.query(
+        `UPDATE payslip_import_rows
+            SET resolution_status = 'excluded',
+                excluded_by_account_id = $3,
+                excluded_at = now()
+          WHERE batch_id = $1
+            AND row_number = $2
+            AND resolution_status = 'pending'
+        RETURNING row_number AS "rowNumber", employee_number AS "employeeNumber",
+                  to_char(period, 'YYYY-MM') AS period, lines,
+                  validation_errors AS errors,
+                  resolution_status AS "resolutionStatus",
+                  draft_payslip_id AS "draftPayslipId",
+                  excluded_at AS "excludedAt"`,
+        [params.data.batchId, params.data.rowNumber, principal.id],
+      );
+      if (!updated.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "IMPORT_ROW_NOT_EXCLUDABLE",
+          message: "Baris tidak ditemukan atau sudah masuk draft/dihapus dari batch.",
+        });
+      }
+      await refreshBatchValidationCounts(client, params.data.batchId);
+      await writeAudit(client, principal.id, "payslip.import.row_excluded", {
+        batchId: params.data.batchId,
+        payload: { rowNumber: params.data.rowNumber },
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "private, no-store");
+      return reply.send(updated.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   });
 
   app.post("/admin/payslip-imports/:batchId/commit", async (request, reply) => {
@@ -671,8 +1016,8 @@ export async function registerPayslipRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const batch = await client.query<{ status: string; errorCount: number; sourceFormat: PayslipSourceFormat }>(
-        `SELECT status, error_count AS "errorCount", source_format AS "sourceFormat"
+      const batch = await client.query<{ status: string; sourceFormat: PayslipSourceFormat }>(
+        `SELECT status, source_format AS "sourceFormat"
            FROM payslip_import_batches
           WHERE id = $1
           FOR UPDATE`,
@@ -686,81 +1031,153 @@ export async function registerPayslipRoutes(
           message: "Batch payslip tidak ditemukan.",
         });
       }
-      if (current.status !== "previewed") {
+      if (!["previewed", "committed"].includes(current.status)) {
         await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "INVALID_BATCH_STATE",
-          message: "Hanya batch previewed yang dapat di-commit.",
+          message: "Batch yang sudah dipublish tidak dapat di-commit lagi.",
         });
       }
-      if (current.errorCount > 0) {
-        await client.query("ROLLBACK");
-        return reply.status(409).send({
-          code: "BATCH_HAS_ERRORS",
-          message: "Perbaiki seluruh validation error sebelum commit.",
-        });
-      }
+
+      await client.query(
+        `WITH conflict_rows AS (
+           SELECT imported.id
+             FROM payslip_import_rows imported
+             JOIN payslips payslip
+               ON payslip.employee_id = imported.employee_id
+              AND payslip.period = imported.period
+            WHERE imported.batch_id = $1
+              AND imported.resolution_status = 'pending'
+              AND jsonb_array_length(imported.validation_errors) = 0
+         )
+         UPDATE payslip_import_rows imported
+            SET validation_errors =
+                CASE
+                  WHEN imported.validation_errors ? 'payslip untuk employee dan period sudah ada'
+                    THEN imported.validation_errors
+                  ELSE imported.validation_errors || to_jsonb('payslip untuk employee dan period sudah ada'::text)
+                END
+           FROM conflict_rows conflict
+          WHERE imported.id = conflict.id`,
+        [parsed.data.batchId],
+      );
+      await refreshBatchValidationCounts(client, parsed.data.batchId);
 
       const importRows = await client.query<ImportRowRecord>(
-        `SELECT employee_id AS "employeeId", period::text AS period, lines
+        `SELECT id, row_number AS "rowNumber", employee_id AS "employeeId",
+                period::text AS period, lines
            FROM payslip_import_rows
           WHERE batch_id = $1
+            AND resolution_status = 'pending'
             AND jsonb_array_length(validation_errors) = 0
-          ORDER BY row_number`,
+          ORDER BY row_number
+          FOR UPDATE`,
         [parsed.data.batchId],
       );
-      const conflict = await client.query(
-        `SELECT 1
-           FROM payslips payslip
-           JOIN payslip_import_rows imported
-             ON imported.employee_id = payslip.employee_id
-            AND imported.period = payslip.period
-          WHERE imported.batch_id = $1
-          LIMIT 1`,
-        [parsed.data.batchId],
-      );
-      if (conflict.rowCount) {
-        await client.query("ROLLBACK");
+      if (importRows.rows.length === 0) {
+        await client.query("COMMIT");
         return reply.status(409).send({
-          code: "PAYSLIP_ALREADY_EXISTS",
-          message: "Payslip untuk employee dan period tersebut sudah ada.",
+          code: "NO_READY_PAYSLIP_ROWS",
+          message: "Tidak ada baris valid yang siap dimasukkan ke draft.",
         });
       }
 
-      for (const row of importRows.rows) {
-        await client.query(
-          `INSERT INTO payslips (id, employee_id, period, lines, source_format, source_batch_id)
-           VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
-          [
-            randomUUID(),
+      const chunkSize = 300;
+      for (let offset = 0; offset < importRows.rows.length; offset += chunkSize) {
+        const chunk = importRows.rows.slice(offset, offset + chunkSize);
+        const values: unknown[] = [];
+        const tuples: string[] = [];
+        const rowIds: string[] = [];
+        const payslipIds: string[] = [];
+
+        chunk.forEach((row, index) => {
+          const base = index * 6;
+          const payslipId = randomUUID();
+          payslipIds.push(payslipId);
+          rowIds.push(row.id);
+          values.push(
+            payslipId,
             row.employeeId,
             row.period,
             JSON.stringify(row.lines),
             current.sourceFormat,
             parsed.data.batchId,
-          ],
+          );
+          tuples.push(
+            `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}::jsonb, $${base + 5}, $${base + 6})`,
+          );
+        });
+
+        await client.query(
+          `INSERT INTO payslips
+            (id, employee_id, period, lines, source_format, source_batch_id)
+           VALUES ${tuples.join(", ")}`,
+          values,
+        );
+        await client.query(
+          `UPDATE payslip_import_rows imported
+              SET resolution_status = 'drafted',
+                  draft_payslip_id = mapping.payslip_id
+             FROM unnest($1::uuid[], $2::uuid[]) AS mapping(row_id, payslip_id)
+            WHERE imported.id = mapping.row_id
+              AND imported.resolution_status = 'pending'`,
+          [rowIds, payslipIds],
         );
       }
+
       await client.query(
         `UPDATE payslip_import_batches
-            SET status = 'committed', committed_by_account_id = $2, committed_at = now()
+            SET status = 'committed',
+                committed_by_account_id = COALESCE(committed_by_account_id, $2),
+                committed_at = COALESCE(committed_at, now())
           WHERE id = $1`,
         [parsed.data.batchId, principal.id],
       );
+      await refreshBatchValidationCounts(client, parsed.data.batchId);
+      const stats = await client.query<{
+        draftedCount: number;
+        pendingValidCount: number;
+        unresolvedCount: number;
+        excludedCount: number;
+      }>(
+        `SELECT count(*) FILTER (WHERE resolution_status = 'drafted')::int AS "draftedCount",
+                count(*) FILTER (
+                  WHERE resolution_status = 'pending'
+                    AND jsonb_array_length(validation_errors) = 0
+                )::int AS "pendingValidCount",
+                count(*) FILTER (
+                  WHERE resolution_status = 'pending'
+                    AND jsonb_array_length(validation_errors) > 0
+                )::int AS "unresolvedCount",
+                count(*) FILTER (WHERE resolution_status = 'excluded')::int AS "excludedCount"
+           FROM payslip_import_rows
+          WHERE batch_id = $1`,
+        [parsed.data.batchId],
+      );
       await writeAudit(client, principal.id, "payslip.import.committed", {
         batchId: parsed.data.batchId,
-        payload: { payslipCount: importRows.rows.length },
+        payload: {
+          draftedNow: importRows.rows.length,
+          draftedCount: stats.rows[0]?.draftedCount ?? importRows.rows.length,
+          unresolvedCount: stats.rows[0]?.unresolvedCount ?? 0,
+          excludedCount: stats.rows[0]?.excludedCount ?? 0,
+        },
       });
       await client.query("COMMIT");
+
+      reply.header("Cache-Control", "no-store");
+      return reply.send({
+        batchId: parsed.data.batchId,
+        status: "committed",
+        draftedNow: importRows.rows.length,
+        ...(stats.rows[0] ?? {}),
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
-
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ batchId: parsed.data.batchId, status: "committed" });
   });
 
   app.post("/admin/payslip-imports/:batchId/publish", async (request, reply) => {
@@ -793,6 +1210,41 @@ export async function registerPayslipRoutes(
         return reply.status(409).send({
           code: "INVALID_BATCH_STATE",
           message: "Hanya batch committed yang dapat dipublish.",
+        });
+      }
+
+      const pending = await client.query<{ total: number; unresolved: number; ready: number }>(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE jsonb_array_length(validation_errors) > 0)::int AS unresolved,
+                count(*) FILTER (WHERE jsonb_array_length(validation_errors) = 0)::int AS ready
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+            AND resolution_status = 'pending'`,
+        [parsed.data.batchId],
+      );
+      if ((pending.rows[0]?.total ?? 0) > 0) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_HAS_PENDING_ROWS",
+          message:
+            (pending.rows[0]?.unresolved ?? 0) > 0
+              ? "Masih ada baris Perlu tindakan. Perbaiki atau Hapus dari batch sebelum publish."
+              : "Masih ada baris valid yang belum masuk draft. Masukkan ke draft sebelum publish.",
+        });
+      }
+
+      const draftCount = await client.query<{ total: number }>(
+        `SELECT count(*)::int AS total
+           FROM payslips
+          WHERE source_batch_id = $1
+            AND published_at IS NULL`,
+        [parsed.data.batchId],
+      );
+      if ((draftCount.rows[0]?.total ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BATCH_HAS_NO_DRAFTS",
+          message: "Batch tidak memiliki slip draft untuk dipublish.",
         });
       }
 

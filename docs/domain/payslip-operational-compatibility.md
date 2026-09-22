@@ -107,7 +107,8 @@ Authorized Human Capital importer
   -> validate employee + period + required headers + duplicate
   -> persist preview
   -> review rows/errors
-  -> commit valid batch as draft
+  -> commit valid rows as draft (PAYSLIP-003 permits partial draft)
+  -> resolve or explicitly exclude remaining error rows
   -> authorized publisher publishes
   -> employee receives in-app notification
   -> employee reads/prints own published payslip
@@ -162,8 +163,8 @@ PAYSLIP-001 privacy rules tetap berlaku.
 - period tidak dapat di-resolve -> row invalid;
 - duplicate employee + period dalam batch -> row invalid;
 - existing payslip employee + period -> commit conflict seperti PAYSLIP-001;
-- batch dengan validation error tidak dapat di-commit;
-- publish selain state `committed` ditolak.
+- PAYSLIP-003 supersedes the earlier all-or-nothing commit rule: validation error rows remain pending while valid rows may enter draft;
+- publish selain state `committed` ditolak, dan PAYSLIP-003 juga menolak publish selama masih ada row pending.
 
 ## Migration and recovery
 

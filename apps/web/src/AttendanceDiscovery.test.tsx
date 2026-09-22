@@ -105,8 +105,8 @@ describe("HC and device-operator navigation", () => {
       />,
     );
     expect(hcAdmin).toContain("/settings");
-    expect(hcAdmin).toContain("/operations");
-    expect(hcAdmin).toContain("/diagnostics");
+    expect(hcAdmin).not.toContain("/operations");
+    expect(hcAdmin).not.toContain("/diagnostics");
     expect(hcAdmin).not.toContain("/biometrics");
   });
 
@@ -149,9 +149,12 @@ describe("HC and device-operator navigation", () => {
     expect(html).not.toContain('href="/admin/attendance/devices"');
     expect(html).not.toContain('href="/admin/attendance/adms"');
   });
-  it("offers ADMS fleet, registry and global transactions only to a device reader", () => {
+  it("offers one ADMS management entry to a device reader", () => {
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={session(["attendance.devices.read"])} />);
-    for (const path of ["/admin/attendance/adms", "/admin/attendance/devices", "/admin/attendance/adms/transactions"]) expect(html).toContain(`href="${path}"`);
+    expect(html).toContain('href="/admin/attendance/adms"');
+    expect(html).toContain("Manajemen ADMS");
+    expect(html).not.toContain('href="/admin/attendance/devices"');
+    expect(html).not.toContain('href="/admin/attendance/adms/transactions"');
     expect(html).not.toContain('href="/admin/attendance/workforce/shift-swaps"');
   });
   it("wraps permitted workspace links and fails closed before session resolution", () => {

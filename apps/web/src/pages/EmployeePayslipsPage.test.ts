@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import {
+  filterPayslipOptions,
   formatPayslipPeriod,
   groupPayslipLines,
   payslipConfidentialityNotes,
@@ -71,5 +72,33 @@ describe("PAYSLIP-004 employee navigation and document copy", () => {
       "Dilarang menyebarluaskan atau menunjukkan isi dokumen ini kepada pihak yang tidak berwenang.",
       "Segala risiko finansial atau hukum akibat penyalahgunaan dokumen menjadi tanggung jawab pribadi pegawai.",
     ]);
+  });
+});
+
+
+describe("PAYSLIP-005 visible period picker", () => {
+  const options = [
+    {
+      id: "00000000-0000-4000-8000-000000000301",
+      period: "2026-08",
+      sourceFormat: "tetap" as const,
+      publishedAt: "2026-09-22T00:00:00.000Z",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000302",
+      period: "2026-07",
+      sourceFormat: "honorer" as const,
+      publishedAt: "2026-09-22T00:00:00.000Z",
+    },
+  ];
+
+  it("shows all options before the employee types a filter", () => {
+    expect(filterPayslipOptions(options, "")).toHaveLength(2);
+  });
+
+  it("filters visible options by month, year, or source label", () => {
+    expect(filterPayslipOptions(options, "Agustus")).toEqual([options[0]]);
+    expect(filterPayslipOptions(options, "2026")).toHaveLength(2);
+    expect(filterPayslipOptions(options, "Honorer")).toEqual([options[1]]);
   });
 });

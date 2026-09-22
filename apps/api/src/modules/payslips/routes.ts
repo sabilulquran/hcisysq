@@ -28,6 +28,36 @@ const importRowCorrectionSchema = z.object({
   employeeNumber: z.string().trim().min(1).max(120),
   period: z.string().regex(periodPattern),
 });
+const bulkImportRowCorrectionSchema = z.object({
+  rows: z.array(z.object({
+    rowNumber: z.number().int().positive(),
+    employeeNumber: z.string().trim().min(1).max(120),
+    period: z.string().regex(periodPattern),
+  })).min(1).max(500),
+}).superRefine((value, context) => {
+  const seen = new Set<number>();
+  value.rows.forEach((row, index) => {
+    if (seen.has(row.rowNumber)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["rows", index, "rowNumber"],
+        message: "rowNumber duplikat dalam bulk correction",
+      });
+    }
+    seen.add(row.rowNumber);
+  });
+});
+const bulkImportRowExcludeSchema = z.object({
+  rowNumbers: z.array(z.number().int().positive()).min(1).max(500),
+}).superRefine((value, context) => {
+  if (new Set(value.rowNumbers).size !== value.rowNumbers.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["rowNumbers"],
+      message: "rowNumbers harus unik",
+    });
+  }
+});
 
 type QueryTarget = Pool | PoolClient;
 
@@ -160,6 +190,57 @@ async function refreshBatchValidationCounts(database: QueryTarget, batchId: stri
       WHERE batch.id = stats.batch_id`,
     [batchId],
   );
+}
+
+async function resolvePayslipSigner(database: QueryTarget): Promise<{ title: "Ketua Yayasan"; name: string | null }> {
+  const dynamic = await database.query<{ name: string }>(
+    `WITH latest AS (
+       SELECT id
+         FROM organization_change_sets
+        WHERE status = 'PUBLISHED'
+          AND effective_on <= current_date
+        ORDER BY effective_on DESC, published_at DESC NULLS LAST, created_at DESC, id DESC
+        LIMIT 1
+     )
+     SELECT employee.full_name AS name
+       FROM latest
+       JOIN organization_positions position
+         ON position.change_set_id = latest.id
+       JOIN organization_incumbencies incumbent
+         ON incumbent.change_set_id = position.change_set_id
+        AND incumbent.position_key = position.stable_key
+       JOIN employees employee
+         ON employee.id = incumbent.employee_id
+      WHERE lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'ketua yayasan'
+        AND position.active = true
+        AND position.effective_from <= current_date
+        AND (position.effective_to IS NULL OR position.effective_to >= current_date)
+        AND incumbent.effective_from <= current_date
+        AND (incumbent.effective_to IS NULL OR incumbent.effective_to >= current_date)
+        AND incumbent.employee_id IS NOT NULL
+        AND employee.status = 'active'
+      ORDER BY CASE incumbent.kind WHEN 'PRIMARY' THEN 0 ELSE 1 END,
+               incumbent.effective_from DESC,
+               employee.full_name ASC
+      LIMIT 1`,
+  );
+  if (dynamic.rows[0]?.name) {
+    return { title: "Ketua Yayasan", name: dynamic.rows[0].name };
+  }
+
+  const legacy = await database.query<{ name: string }>(
+    `SELECT employee.full_name AS name
+       FROM employees employee
+       LEFT JOIN positions position ON position.id = employee.position_id
+      WHERE employee.status = 'active'
+        AND (
+          lower(regexp_replace(btrim(coalesce(position.name, '')), '\\s+', ' ', 'g')) = 'ketua yayasan'
+          OR lower(regexp_replace(btrim(coalesce(employee.structural_position, '')), '\\s+', ' ', 'g')) = 'ketua yayasan'
+        )
+      ORDER BY employee.full_name ASC
+      LIMIT 1`,
+  );
+  return { title: "Ketua Yayasan", name: legacy.rows[0]?.name ?? null };
 }
 
 function decodeFilename(value: string | undefined): string {

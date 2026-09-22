@@ -2,7 +2,9 @@
 
 **Status:** ACCEPTED PRODUCT DIRECTION  
 **Decision date:** 2026-09-18  
-**Related:** UX-001 and `docs/product/feature-parity.yaml`
+**Updated:** 2026-09-22  
+**Related:** UX-001 and `docs/product/feature-parity.yaml`  
+**Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
 
 ## Product boundary
 
@@ -30,6 +32,8 @@ Implementation packages that support the attendance capability family are ATT-00
 
 - Operational simplification of the admin/employee experience — ATT-011 (PROPOSED). Target operator mental model: **Shift -> Jadwal -> Kehadiran -> Lembur**, while backend versioning/evidence/audit remains intact.
 
+ATT-011 should prefer bulk schedule-range operations, explicit schedule replacement/conflict preview, and one human-readable daily attendance outcome with drill-down evidence. Missing punch remains missing/incomplete; schedule time is not evidence.
+
 ATT-006 may use approved evidence mechanisms such as GPS, geotagging/geofence, photo evidence, and face recognition. Those are capture/evidence mechanisms, not separate authorization domains. Privacy, retention, spoofing resistance, fallback, device trust, and biometric policy must be specified before activation.
 
 ATT-007 must not be inferred from raw punches alone. Schedule, holiday, tolerance, leave/permission, and approved policy inputs are prerequisites for lateness/overtime conclusions.
@@ -40,15 +44,34 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 - Leave balance and working-day calculation — LEAVE-002.
 - Reusable approval engine — APR-001.
 
+Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
+
 ### 3. Compensation and employee financial services
 
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
-- Payroll calculation, review, reconciliation, finalization, and publication — PAY-003.
+- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003.
 - Reimbursement — REIMB-001.
 - Employee loans and installments — LOAN-001.
 
-PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine. The calculation model is intentionally still discovery/TBD; BPJS Kesehatan, BPJS Ketenagakerjaan, PPh21, reconciliation, finalization, payment handoff, and historical payroll results must be specified before implementation.
+PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
+
+Current discovery direction requires:
+
+- component catalog;
+- recurring/effective-dated compensation;
+- period adjustments;
+- resolved attendance/overtime/leave inputs;
+- composable calculation processors;
+- exact monetary arithmetic;
+- effective-dated/versioned statutory rules;
+- employee earnings/deductions separated from employer contributions/company cost;
+- review/reconciliation/finalization;
+- controlled reopen/revision;
+- payment handoff;
+- historical calculation evidence.
+
+See `docs/domain/payroll-engine-discovery.md`.
 
 ### 4. Performance and development
 
@@ -64,6 +87,10 @@ Classic employment administration is an explicit HCIS direction, using effective
 - Education and qualification — EMP-007.
 - Skills and competencies — EMP-008.
 - Family, dependents, and employee relations — EMP-009.
+
+EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
+
+Job classification/grade is a separate discovery concern from ORG-004 hierarchy/authority. A grade may later influence compensation, but must not grant approval authority implicitly. Final specification ID is TBD.
 
 Employee services continue with:
 
@@ -85,6 +112,20 @@ Employee services continue with:
 - Recruitment/candidate workflow — REC-001.
 
 Recruitment belongs to HCIS but is an HC/admin workspace capability rather than an employee self-service launcher.
+
+Target integration direction:
+
+```text
+ORG-004 vacant position
+-> requisition/vacancy
+-> candidate
+-> screening/interview/decision
+-> hire
+-> EMP-005 employment
+-> EMP-006 placement
+```
+
+Candidate remains distinct from Employee until the accepted hire/activation boundary.
 
 ### 8. Organization and work locations
 
@@ -111,7 +152,11 @@ Employee-facing services are grouped by user intent rather than implementation p
 5. **Layanan Pegawai** — Data Saya, Dokumen, Perjalanan Dinas, Asset Saya, Desk Booking.
 6. **Informasi** — Pengumuman, Notifikasi, dan Pengingat. Notifikasi in-app may be available before reminder scheduling or external delivery adapters.
 
-Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher. Attendance administration should prefer the operational language **Shift, Jadwal, Kehadiran, Lembur** instead of exposing internal roster/versioning concepts as primary navigation.
+Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
+
+Attendance administration should prefer the operational language **Shift, Jadwal, Kehadiran, Lembur** instead of exposing internal roster/versioning concepts as primary navigation.
+
+Employment administration should prefer explicit actions such as **Penempatan, Promosi, Demosi, Mutasi, Perpanjang kontrak** rather than using generic employee edit for historically meaningful changes.
 
 ## Coming-soon rule
 

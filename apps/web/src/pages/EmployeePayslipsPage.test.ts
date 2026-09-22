@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { employeeShellUser } from "@/lib/employeeIdentity";
-import { groupPayslipLines, payslipSourceLabel } from "@/pages/EmployeePayslipsPage";
+import {
+  formatPayslipPeriod,
+  groupPayslipLines,
+  payslipConfidentialityNotes,
+  payslipOptionLabel,
+  payslipSourceLabel,
+} from "@/pages/EmployeePayslipsPage";
 
 describe("payslip employee identity", () => {
   it("uses the linked employee identity instead of a raw account fallback", () => {
@@ -43,5 +49,27 @@ describe("payslip operational presentation", () => {
     expect(payslipSourceLabel("tetap")).toBe("Pegawai Tetap");
     expect(payslipSourceLabel("honorer")).toBe("Honorer");
     expect(payslipSourceLabel("generic")).toBe("Imported");
+  });
+});
+
+
+describe("PAYSLIP-004 employee navigation and document copy", () => {
+  it("builds a searchable period label without a vertical history card dependency", () => {
+    const item = {
+      id: "00000000-0000-4000-8000-000000000201",
+      period: "2026-07",
+      sourceFormat: "tetap" as const,
+      publishedAt: "2026-09-22T00:00:00.000Z",
+    };
+    expect(formatPayslipPeriod(item.period)).toBe("Juli 2026");
+    expect(payslipOptionLabel(item)).toBe("Juli 2026 · Pegawai Tetap");
+  });
+
+  it("retains the three legacy confidentiality notes verbatim", () => {
+    expect(payslipConfidentialityNotes).toEqual([
+      "Dokumen ini bersifat RAHASIA dan PRIBADI.",
+      "Dilarang menyebarluaskan atau menunjukkan isi dokumen ini kepada pihak yang tidak berwenang.",
+      "Segala risiko finansial atau hukum akibat penyalahgunaan dokumen menjadi tanggung jawab pribadi pegawai.",
+    ]);
   });
 });

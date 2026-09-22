@@ -821,3 +821,183 @@ describe("payslip transaction boundaries", () => {
     await app.close();
   });
 });
+
+
+describe("PAYSLIP-004 bulk review and signer", () => {
+  it("bulk-corrects pending rows in one transaction without payroll values in audit", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
+        return result([{ status: "committed" }]);
+      }
+      if (
+        normalized.startsWith('SELECT row_number AS "rowNumber"') &&
+        normalized.includes("resolution_status AS")
+      ) {
+        return result([
+          {
+            rowNumber: 2,
+            resolutionStatus: "pending",
+            lines: [{ label: "Gaji Neto", value: "Rp 1.000.000", section: "summary" }],
+            errors: ["employee reference tidak ditemukan"],
+          },
+          {
+            rowNumber: 3,
+            resolutionStatus: "pending",
+            lines: [{ label: "Gaji Neto", value: "Rp 2.000.000", section: "summary" }],
+            errors: ["periode wajib tersedia dari TANGGAL atau fallback YYYY-MM"],
+          },
+        ]);
+      }
+      if (normalized.startsWith("SELECT id FROM employees")) {
+        return result([{ id: employeeId }]);
+      }
+      if (
+        normalized.startsWith("SELECT 1 FROM payslip_import_rows") ||
+        normalized.startsWith("SELECT 1 FROM payslips")
+      ) {
+        return result([]);
+      }
+      if (
+        normalized.startsWith("UPDATE payslip_import_rows") &&
+        normalized.includes('RETURNING row_number AS "rowNumber"')
+      ) {
+        return result([
+          {
+            rowNumber: 2,
+            employeeNumber: "SYN-001",
+            period: "2026-09",
+            lines: [{ label: "Gaji Neto", value: "Rp 1.000.000", section: "summary" }],
+            errors: [],
+            resolutionStatus: "pending",
+            draftPayslipId: null,
+            excludedAt: null,
+          },
+        ]);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/admin/payslip-imports/${batchId}/rows`,
+      headers: {
+        cookie: "hcis_session=synthetic",
+        "content-type": "application/json",
+      },
+      payload: {
+        rows: [
+          { rowNumber: 2, employeeNumber: "SYN-001", period: "2026-09" },
+          { rowNumber: 3, employeeNumber: "SYN-002", period: "2026-09" },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().updatedCount).toBe(2);
+    const auditCall = clientQuery.mock.calls.find(([sql]) =>
+      compactSql(String(sql)).startsWith("INSERT INTO payslip_audit_events"),
+    );
+    expect(auditCall).toBeDefined();
+    expect(JSON.stringify(auditCall?.[1] ?? [])).not.toContain("1.000.000");
+    expect(JSON.stringify(auditCall?.[1] ?? [])).not.toContain("2.000.000");
+    expect(clientQuery.mock.calls.map(([sql]) => compactSql(String(sql))).at(-1)).toBe("COMMIT");
+    await app.close();
+  });
+
+  it("bulk-excludes only pending rows and commits one audited transaction", async () => {
+    const clientQuery = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.startsWith("SELECT status FROM payslip_import_batches")) {
+        return result([{ status: "committed" }]);
+      }
+      if (
+        normalized.startsWith('SELECT row_number AS "rowNumber"') &&
+        normalized.includes("resolution_status AS")
+      ) {
+        return result([
+          { rowNumber: 20, resolutionStatus: "pending" },
+          { rowNumber: 21, resolutionStatus: "pending" },
+        ]);
+      }
+      if (
+        normalized.startsWith("UPDATE payslip_import_rows") &&
+        normalized.includes("resolution_status = 'excluded'")
+      ) {
+        return result([{ rowNumber: 20 }, { rowNumber: 21 }], 2);
+      }
+      return result();
+    });
+    const client = syntheticClient(clientQuery);
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+    const app = Fastify();
+    await registerPayslipRoutes(app, pool, config, auth(adminPrincipal));
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/payslip-imports/${batchId}/rows/exclude`,
+      headers: {
+        cookie: "hcis_session=synthetic",
+        "content-type": "application/json",
+      },
+      payload: { rowNumbers: [20, 21] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ excludedCount: 2 });
+    const statements = clientQuery.mock.calls.map(([sql]) => compactSql(String(sql)));
+    expect(statements.some((sql) => sql.startsWith("INSERT INTO payslip_audit_events"))).toBe(true);
+    expect(statements.at(-1)).toBe("COMMIT");
+    await app.close();
+  });
+
+  it("returns Ketua Yayasan signer from the current organization snapshot", async () => {
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM accounts account JOIN employees employee")) {
+        expect(values).toEqual([employeePrincipal.id]);
+        return result([{ employeeId }]);
+      }
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+        expect(values).toEqual([payslipId, employeeId]);
+        return result([{
+          id: payslipId,
+          period: "2026-09",
+          lines: [{ label: "Gaji Neto", value: "opaque", section: "summary" }],
+          sourceFormat: "tetap",
+          publishedAt: new Date("2026-09-22T00:00:00Z"),
+        }]);
+      }
+      if (normalized.startsWith("WITH latest AS")) {
+        return result([{ name: "Ketua Sintetis" }]);
+      }
+      if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(employeePrincipal));
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/payslips/${payslipId}`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().signer).toEqual({
+      title: "Ketua Yayasan",
+      name: "Ketua Sintetis",
+    });
+    await app.close();
+  });
+});

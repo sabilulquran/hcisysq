@@ -1283,6 +1283,10 @@ paths:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1preview'
   /admin/payslip-imports/{batchId}:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}'
+  /admin/payslip-imports/{batchId}/rows:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}~1rows'
+  /admin/payslip-imports/{batchId}/rows/exclude:
+    $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}~1rows~1exclude'
   /admin/payslip-imports/{batchId}/rows/{rowNumber}:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports~1{batchId}~1rows~1{rowNumber}'
   /admin/payslip-imports/{batchId}/commit:

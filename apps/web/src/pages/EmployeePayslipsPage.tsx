@@ -18,6 +18,9 @@ import {
   type PayslipSummary,
 } from "@/lib/payslips";
 
+export const payslipInitialSelectorValue = "";
+export const payslipAutomaticNote = "Dibuat otomatis oleh HCIS Sabilul Qur'an.";
+
 export const payslipConfidentialityNotes = [
   "Dokumen ini bersifat RAHASIA dan PRIBADI.",
   "Dilarang menyebarluaskan atau menunjukkan isi dokumen ini kepada pihak yang tidak berwenang.",
@@ -106,12 +109,12 @@ function PayslipPaper({
     : payslip.lines;
 
   return (
-    <article className="payslip-print-paper mx-auto aspect-[210/297] w-full max-w-[210mm] overflow-hidden rounded-sm border border-border bg-white shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
+    <article className="payslip-print-paper mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-hidden rounded-sm border border-border bg-white shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
       <header className="payslip-document-header bg-brand-primary-deep px-6 py-5 text-center text-white">
         <img
           src={ysqLogoHorizontal}
           alt="Yayasan Sabilul Qur'an"
-          className="mx-auto h-11 w-auto max-w-[13rem] object-contain"
+          className="mx-auto h-[5.5rem] w-auto max-w-[26rem] object-contain"
         />
         <h2 className="mt-3 text-xl font-extrabold tracking-[0.12em]">SLIP GAJI</h2>
         <p className="mt-1 text-xs text-white/85">Periode {formatPayslipPeriod(payslip.period)}</p>
@@ -161,7 +164,7 @@ function PayslipPaper({
           </section>
         ) : null}
 
-        <footer className="payslip-footer mt-5 flex justify-end border-t border-border pt-4">
+        <footer className="payslip-footer mt-5 flex justify-start border-t border-border pt-4">
           <div className="payslip-signature w-56 text-center text-xs text-brand-heading">
             <p className="font-semibold">{payslip.signer.title},</p>
             <div className="payslip-sign-space h-14" aria-hidden="true" />
@@ -172,7 +175,7 @@ function PayslipPaper({
         </footer>
 
         <p className="payslip-system-note mt-2 text-[9px] leading-4 text-muted-foreground">
-          Dibuat otomatis oleh HCIS Sabilul Qur&apos;an. Nilai ditampilkan dari data payroll yang dipublikasikan dan tidak dihitung ulang oleh HCIS.
+          {payslipAutomaticNote}
         </p>
       </div>
     </article>
@@ -182,7 +185,7 @@ function PayslipPaper({
 export function EmployeePayslipsPage() {
   const [items, setItems] = useState<PayslipSummary[] | null>(null);
   const [selected, setSelected] = useState<PayslipDetail | null>(null);
-  const [selectorValue, setSelectorValue] = useState("");
+  const [selectorValue, setSelectorValue] = useState(payslipInitialSelectorValue);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
@@ -192,23 +195,9 @@ export function EmployeePayslipsPage() {
   useEffect(() => {
     let mounted = true;
     void getMyPayslips()
-      .then(async (result) => {
+      .then((result) => {
         if (!mounted) return;
         setItems(result.items);
-        const latest = result.items[0];
-        if (latest) {
-          setSelectorValue(payslipOptionLabel(latest));
-          setSelectedId(latest.id);
-          setLoadingDetail(true);
-          try {
-            const detail = await getMyPayslip(latest.id);
-            if (mounted) setSelected(detail);
-          } catch (cause) {
-            if (mounted) setError(cause instanceof Error ? cause.message : "Payslip tidak dapat dibuka.");
-          } finally {
-            if (mounted) setLoadingDetail(false);
-          }
-        }
       })
       .catch((cause: unknown) => {
         if (!mounted) return;
@@ -270,44 +259,30 @@ export function EmployeePayslipsPage() {
     <AppShell user={user} activeItem="Slip Gaji">
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 5mm; }
-          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          @page { size: A4 portrait; margin: 0; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
           body * { visibility: hidden !important; }
-          .payslip-print-paper, .payslip-print-paper * { visibility: visible !important; }
+          .payslip-print-paper, .payslip-print-paper * {
+            visibility: visible !important;
+          }
           .payslip-print-paper {
             position: absolute !important;
             inset: 0 auto auto 0 !important;
-            width: 200mm !important;
-            max-width: 200mm !important;
-            min-height: 0 !important;
-            aspect-ratio: auto !important;
+            width: 210mm !important;
+            max-width: 210mm !important;
+            min-height: 297mm !important;
             border: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
-            font-size: 8pt !important;
-            line-height: 1.12 !important;
           }
           .payslip-document-header {
-            padding: 3mm 4mm !important;
             print-color-adjust: exact !important;
             -webkit-print-color-adjust: exact !important;
           }
-          .payslip-document-header img { height: 9mm !important; max-width: 44mm !important; }
-          .payslip-document-header h2 { margin-top: 1mm !important; font-size: 13pt !important; }
-          .payslip-document-header p, .payslip-document-header span { font-size: 7pt !important; }
-          .payslip-print-inner { padding: 3mm 4mm !important; }
-          .payslip-section { margin-top: 2mm !important; break-inside: avoid !important; }
-          .payslip-section h3 { margin-bottom: .8mm !important; font-size: 7pt !important; }
-          .payslip-identity-grid { padding: 1.8mm 3mm !important; gap: .8mm 6mm !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
-          .payslip-identity-grid > div { font-size: 7.5pt !important; }
-          .payslip-summary-grid { gap: 1.3mm !important; grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
-          .payslip-summary-grid > div { padding: 1.3mm 2mm !important; }
-          .payslip-summary-grid p { margin: 0 !important; font-size: 7pt !important; line-height: 1.1 !important; }
-          .payslip-detail-row { padding: .9mm 0 !important; gap: 4mm !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; font-size: 7pt !important; break-inside: avoid !important; }
-          .payslip-footer { margin-top: 2mm !important; padding-top: 1.8mm !important; break-inside: avoid !important; }
-          .payslip-signature { width: 42mm !important; font-size: 7pt !important; }
-          .payslip-sign-space { height: 9mm !important; }
-          .payslip-system-note { margin-top: .8mm !important; font-size: 6pt !important; line-height: 1.05 !important; }
         }
       `}</style>
 

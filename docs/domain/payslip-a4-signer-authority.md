@@ -139,6 +139,10 @@ Print tetap A4 portrait satu lembar untuk operational `tetap`/`honorer` normal:
 
 Generic payslip dengan line ekstrem tetap tidak boleh kehilangan data demi memaksa satu halaman.
 
+## PAYSLIP-006 supersession
+
+PAYSLIP-006 supersedes the PAYSLIP-005 initial-selection behavior and print-specific visual shrinking. Signer authority, A4 document intent, confidentiality placement, and owner-only access remain unchanged.
+
 ## Acceptance criteria
 
 - PAYSLIP-005-A: screen document centered dengan silhouette A4 portrait.

@@ -442,6 +442,8 @@ components:
               properties:
                 title:
                   type: string
-                  const: Ketua Yayasan
+                  enum:
+                    - Kepala Human Capital Management
+                    - Direktur
                 name:
                   type: [string, 'null']

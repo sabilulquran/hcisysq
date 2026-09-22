@@ -1679,12 +1679,15 @@ export async function registerPayslipRoutes(
     const self = await requireEmployee(request, reply);
     if (!self) return;
     const result = await pool.query(
-      `SELECT id, to_char(period, 'YYYY-MM') AS period,
-              source_format AS "sourceFormat", published_at AS "publishedAt"
-         FROM payslips
-        WHERE employee_id = $1
-          AND published_at IS NOT NULL
-        ORDER BY period DESC`,
+      `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
+              payslip.source_format AS "sourceFormat",
+              employee.employment_status AS "employmentStatus",
+              payslip.published_at AS "publishedAt"
+         FROM payslips payslip
+         JOIN employees employee ON employee.id = payslip.employee_id
+        WHERE payslip.employee_id = $1
+          AND payslip.published_at IS NOT NULL
+        ORDER BY payslip.period DESC`,
       [self.employeeId],
     );
     reply.header("Cache-Control", "private, no-store");
@@ -1707,14 +1710,19 @@ export async function registerPayslipRoutes(
       period: string;
       lines: ImportedLine[];
       sourceFormat: PayslipSourceFormat;
+      employmentStatus: string | null;
       publishedAt: Date;
     }>(
-      `SELECT id, to_char(period, 'YYYY-MM') AS period, lines,
-              source_format AS "sourceFormat", published_at AS "publishedAt"
-         FROM payslips
-        WHERE id = $1
-          AND employee_id = $2
-          AND published_at IS NOT NULL
+      `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
+              payslip.lines,
+              payslip.source_format AS "sourceFormat",
+              employee.employment_status AS "employmentStatus",
+              payslip.published_at AS "publishedAt"
+         FROM payslips payslip
+         JOIN employees employee ON employee.id = payslip.employee_id
+        WHERE payslip.id = $1
+          AND payslip.employee_id = $2
+          AND payslip.published_at IS NOT NULL
         LIMIT 1`,
       [parsed.data.id, self.employeeId],
     );

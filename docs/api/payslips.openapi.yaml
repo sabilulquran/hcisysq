@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: HCIS Payslip API
   version: 0.0.1
-  description: PAYSLIP-001 / PAYSLIP-002 import, publish, and employee self-read contracts.
+  description: PAYSLIP-001 / PAYSLIP-002 / PAYSLIP-003 import, resolution, publish, and employee self-read contracts.
 tags:
   - name: Payslips
 
@@ -98,7 +98,42 @@ paths:
                   minLength: 1
                 period:
                   type: string
-                  pattern: '^\\d{4}-(0[1-9]|1[0-2])    post:
+                  pattern: '^\\d{4}-(0[1-9]|1[0-2])$'
+      responses:
+        '200':
+          description: Row corrected and revalidated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayslipImportRow' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Row or batch state is not editable
+
+    delete:
+      tags: [Payslips]
+      operationId: excludePayslipImportRow
+      summary: Soft-exclude a pending row from this batch
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/RowNumber'
+      responses:
+        '200':
+          description: Row explicitly excluded and audit trail retained
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayslipImportRow' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Row or batch state is not excludable
+
+  /admin/payslip-imports/{batchId}/commit:
+    post:
       tags: [Payslips]
       operationId: commitPayslipImport
       parameters:
@@ -106,10 +141,26 @@ paths:
       responses:
         '200':
           description: All currently pending-valid rows are committed as employee-invisible drafts; invalid rows remain pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batchId, status, draftedNow, draftedCount, pendingValidCount, unresolvedCount, excludedCount]
+                properties:
+                  batchId: { type: string, format: uuid }
+                  status:
+                    type: string
+                    const: committed
+                  draftedNow: { type: integer, minimum: 1 }
+                  draftedCount: { type: integer, minimum: 1 }
+                  pendingValidCount: { type: integer, minimum: 0 }
+                  unresolvedCount: { type: integer, minimum: 0 }
+                  excludedCount: { type: integer, minimum: 0 }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Batch state, no ready rows, or employee-period conflict
+          description: Batch state or no valid pending row is ready for draft
 
   /admin/payslip-imports/{batchId}/publish:
     post:
@@ -122,6 +173,7 @@ paths:
           description: Batch published and employee notifications created
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Batch is not committed, still has pending rows, or has no draft payslips
 
@@ -170,6 +222,7 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+
     RowNumber:
       name: rowNumber
       in: path
@@ -186,7 +239,7 @@ components:
     NotFound:
       description: Resource not found or intentionally concealed
     ValidationError:
-      description: Import shape or fallback period is invalid
+      description: Import shape or row correction is invalid
 
   schemas:
     PayslipSourceFormat:
@@ -207,7 +260,19 @@ components:
 
     PayslipImportBatch:
       type: object
-      required: [id, sourceFilename, sourceFormat, status, rowCount, validCount, errorCount, createdAt]
+      required:
+        - id
+        - sourceFilename
+        - sourceFormat
+        - status
+        - rowCount
+        - validCount
+        - errorCount
+        - draftedCount
+        - pendingValidCount
+        - unresolvedCount
+        - excludedCount
+        - createdAt
       properties:
         id: { type: string, format: uuid }
         sourceFilename: { type: string }
@@ -250,212 +315,6 @@ components:
         excludedAt:
           type: [string, 'null']
           format: date-time
-
-    PayslipImportPreview:
-      allOf:
-        - $ref: '#/components/schemas/PayslipImportBatch'
-        - type: object
-          required: [rows]
-          properties:
-            rows:
-              type: array
-              items: { $ref: '#/components/schemas/PayslipImportRow' }
-
-    PayslipImportDetail:
-      allOf:
-        - $ref: '#/components/schemas/PayslipImportBatch'
-        - type: object
-          required: [rows]
-          properties:
-            rows:
-              type: array
-              items: { $ref: '#/components/schemas/PayslipImportRow' }
-
-    PayslipSummary:
-      type: object
-      required: [id, period, sourceFormat, publishedAt]
-      properties:
-        id: { type: string, format: uuid }
-        period:
-          type: string
-          pattern: '^\\d{4}-(0[1-9]|1[0-2])$'
-        sourceFormat: { $ref: '#/components/schemas/PayslipSourceFormat' }
-        publishedAt: { type: string, format: date-time }
-
-    PayslipDetail:
-      allOf:
-        - $ref: '#/components/schemas/PayslipSummary'
-        - type: object
-          required: [lines]
-          properties:
-            lines:
-              type: array
-              items: { $ref: '#/components/schemas/PayslipLine' }
-
-      responses:
-        '200':
-          description: Row corrected and revalidated
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PayslipImportRow' }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: Row or batch state is not editable
-    delete:
-      tags: [Payslips]
-      operationId: excludePayslipImportRow
-      summary: Soft-exclude a pending row from this batch
-      parameters:
-        - $ref: '#/components/parameters/BatchId'
-        - $ref: '#/components/parameters/RowNumber'
-      responses:
-        '200':
-          description: Row explicitly excluded and audit trail retained
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PayslipImportRow' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409':
-          description: Row or batch state is not excludable
-
-  /admin/payslip-imports/{batchId}/commit:
-    post:
-      tags: [Payslips]
-      operationId: commitPayslipImport
-      parameters:
-        - $ref: '#/components/parameters/BatchId'
-      responses:
-        '200':
-          description: Batch committed as employee-invisible draft
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409':
-          description: Batch state, validation, or existing employee-period conflict
-
-  /admin/payslip-imports/{batchId}/publish:
-    post:
-      tags: [Payslips]
-      operationId: publishPayslipImport
-      parameters:
-        - $ref: '#/components/parameters/BatchId'
-      responses:
-        '200':
-          description: Batch published and employee notifications created
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409':
-          description: Batch is not committed
-
-  /payslips:
-    get:
-      tags: [Payslips]
-      operationId: listMyPayslips
-      responses:
-        '200':
-          description: Published payslips owned by current active employee
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/PayslipSummary' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /payslips/{id}:
-    get:
-      tags: [Payslips]
-      operationId: getMyPayslip
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      responses:
-        '200':
-          description: Published payslip owned by current employee
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PayslipDetail' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-components:
-  parameters:
-    BatchId:
-      name: batchId
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
-
-  responses:
-    Unauthenticated:
-      description: Authentication required
-    Forbidden:
-      description: Actor lacks the required effective organization permission
-    NotFound:
-      description: Resource not found or intentionally concealed
-    ValidationError:
-      description: Import shape or fallback period is invalid
-
-  schemas:
-    PayslipSourceFormat:
-      type: string
-      enum: [generic, tetap, honorer]
-
-    PayslipLine:
-      type: object
-      required: [label, value]
-      properties:
-        label: { type: string }
-        value:
-          type: string
-          description: Opaque imported display value. HCIS does not parse or calculate it.
-        section:
-          type: string
-          enum: [identity, income, deduction, summary, other]
-
-    PayslipImportBatch:
-      type: object
-      required: [id, sourceFilename, sourceFormat, status, rowCount, validCount, errorCount, createdAt]
-      properties:
-        id: { type: string, format: uuid }
-        sourceFilename: { type: string }
-        sourceFormat: { $ref: '#/components/schemas/PayslipSourceFormat' }
-        status: { type: string, enum: [previewed, committed, published] }
-        rowCount: { type: integer, minimum: 0 }
-        validCount: { type: integer, minimum: 0 }
-        errorCount: { type: integer, minimum: 0 }
-        createdAt: { type: string, format: date-time }
-        committedAt: { type: [string, 'null'], format: date-time }
-        publishedAt: { type: [string, 'null'], format: date-time }
-
-    PayslipImportRow:
-      type: object
-      required: [rowNumber, employeeNumber, errors]
-      properties:
-        rowNumber: { type: integer, minimum: 1 }
-        employeeNumber: { type: string }
-        period:
-          type: [string, 'null']
-          pattern: '^\\d{4}-(0[1-9]|1[0-2])$'
-        lines:
-          oneOf:
-            - type: array
-              items: { $ref: '#/components/schemas/PayslipLine' }
-            - type: 'null'
-        errors:
-          type: array
-          items: { type: string }
 
     PayslipImportPreview:
       allOf:

@@ -299,7 +299,7 @@ describe("payslip endpoint authorization", () => {
         expect(values).toEqual([employeePrincipal.id]);
         return result([{ employeeId }]);
       }
-      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE payslip.id = $1")) {
         expect(values).toEqual([payslipId, employeeId]);
         return result([]);
       }
@@ -969,7 +969,7 @@ describe("PAYSLIP-004 bulk review and signer", () => {
         expect(values).toEqual([employeePrincipal.id]);
         return result([{ employeeId }]);
       }
-      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE payslip.id = $1")) {
         return result([{
           id: payslipId,
           period: "2026-09",
@@ -1008,7 +1008,7 @@ describe("PAYSLIP-004 bulk review and signer", () => {
       if (normalized.includes("FROM accounts account JOIN employees employee")) {
         return result([{ employeeId }]);
       }
-      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE payslip.id = $1")) {
         return result([{
           id: payslipId,
           period: "2026-09",
@@ -1049,7 +1049,7 @@ describe("PAYSLIP-004 bulk review and signer", () => {
       if (normalized.includes("FROM accounts account JOIN employees employee")) {
         return result([{ employeeId }]);
       }
-      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE payslip.id = $1")) {
         return result([{
           id: payslipId,
           period: "2026-09",

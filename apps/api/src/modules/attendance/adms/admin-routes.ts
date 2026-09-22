@@ -132,7 +132,7 @@ async function loadDevice(db: Pool | PoolClient, deviceId: string) {
     id: string;
     serialNumber: string;
     displayName: string | null;
-    lifecycle: "active" | "disabled" | "quarantined";
+    lifecycle: "active" | "disabled" | "quarantined" | "retired";
     timezone: string;
     model: string | null;
     firmwareVersion: string | null;
@@ -258,7 +258,7 @@ export async function registerAdmsAdminRoutes(
       id: string;
       serialNumber: string;
       displayName: string | null;
-      lifecycle: "active" | "disabled" | "quarantined";
+      lifecycle: "active" | "disabled" | "quarantined" | "retired";
       timezone: string;
       model: string | null;
       firmwareVersion: string | null;
@@ -480,6 +480,13 @@ export async function registerAdmsAdminRoutes(
         await client.query("BEGIN");
         const before = await loadDevice(client, params.data.deviceId);
         if (!before) throw new AdmsAdminError(404, "ADMS_DEVICE_NOT_FOUND", "Mesin tidak ditemukan.");
+        if (before.lifecycle === "retired" && body.data.lifecycle !== undefined) {
+          throw new AdmsAdminError(
+            409,
+            "ADMS_DEVICE_RETIRED_IMMUTABLE",
+            "Mesin retired tidak dapat diaktifkan kembali melalui pengaturan biasa.",
+          );
+        }
         await client.query(
           `UPDATE attendance_adms_devices
            SET display_name = CASE WHEN $2::boolean THEN $3 ELSE display_name END,

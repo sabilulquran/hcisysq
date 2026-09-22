@@ -1,5 +1,6 @@
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
 export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 export interface PayslipSummary {
   id: string;
@@ -26,6 +27,10 @@ export interface PayslipImportBatch {
   rowCount: number;
   validCount: number;
   errorCount: number;
+  draftedCount: number;
+  pendingValidCount: number;
+  unresolvedCount: number;
+  excludedCount: number;
   createdAt: string;
   committedAt: string | null;
   publishedAt: string | null;
@@ -37,6 +42,9 @@ export interface PayslipImportRow {
   period: string | null;
   lines: PayslipLine[] | null;
   errors: string[];
+  resolutionStatus: PayslipRowResolutionStatus;
+  draftPayslipId: string | null;
+  excludedAt: string | null;
 }
 
 export interface PayslipImportDetail extends PayslipImportBatch {
@@ -90,8 +98,38 @@ export function previewPayslipImport(file: File, fallbackPeriod?: string) {
   });
 }
 
+export function correctPayslipImportRow(
+  batchId: string,
+  rowNumber: number,
+  input: { employeeNumber: string; period: string },
+) {
+  return request<PayslipImportRow>(
+    `/api/admin/payslip-imports/${encodeURIComponent(batchId)}/rows/${rowNumber}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function excludePayslipImportRow(batchId: string, rowNumber: number) {
+  return request<PayslipImportRow>(
+    `/api/admin/payslip-imports/${encodeURIComponent(batchId)}/rows/${rowNumber}`,
+    { method: "DELETE" },
+  );
+}
+
 export function commitPayslipImport(batchId: string) {
-  return request<{ batchId: string; status: string }>(`/api/admin/payslip-imports/${batchId}/commit`, { method: "POST" });
+  return request<{
+    batchId: string;
+    status: string;
+    draftedNow: number;
+    draftedCount: number;
+    pendingValidCount: number;
+    unresolvedCount: number;
+    excludedCount: number;
+  }>(`/api/admin/payslip-imports/${batchId}/commit`, { method: "POST" });
 }
 
 export function publishPayslipImport(batchId: string) {

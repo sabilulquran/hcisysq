@@ -2,7 +2,9 @@
 
 **Status:** ACCEPTED PRODUCT DIRECTION  
 **Decision date:** 2026-09-18  
-**Related:** UX-001 and `docs/product/feature-parity.yaml`
+**Updated:** 2026-09-22  
+**Related:** UX-001 and `docs/product/feature-parity.yaml`  
+**Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
 
 ## Product boundary
 
@@ -28,6 +30,10 @@ General chat, CRM, accounting/general ledger, generic project management, and ge
 
 Implementation packages that support the attendance capability family are ATT-009 (operations/reporting polish) and ATT-010 (canonical attendance convergence). These package IDs do not replace ATT-008; ATT-008 remains uniquely reserved for shift exchange.
 
+- Operational simplification of the admin/employee experience — ATT-011 (PROPOSED). Target operator mental model: **Shift -> Jadwal -> Kehadiran -> Lembur**, while backend versioning/evidence/audit remains intact.
+
+ATT-011 should prefer bulk schedule-range operations, explicit schedule replacement/conflict preview, and one human-readable daily attendance outcome with drill-down evidence. Missing punch remains missing/incomplete; schedule time is not evidence.
+
 ATT-006 may use approved evidence mechanisms such as GPS, geotagging/geofence, photo evidence, and face recognition. Those are capture/evidence mechanisms, not separate authorization domains. Privacy, retention, spoofing resistance, fallback, device trust, and biometric policy must be specified before activation.
 
 ATT-007 must not be inferred from raw punches alone. Schedule, holiday, tolerance, leave/permission, and approved policy inputs are prerequisites for lateness/overtime conclusions.
@@ -38,22 +44,55 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 - Leave balance and working-day calculation — LEAVE-002.
 - Reusable approval engine — APR-001.
 
+Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
+
 ### 3. Compensation and employee financial services
 
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
-- Payroll calculation, review, reconciliation, finalization, and publication — PAY-003.
+- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003.
 - Reimbursement — REIMB-001.
 - Employee loans and installments — LOAN-001.
 
-PAY-003 is a future domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
+PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
+
+Current discovery direction requires:
+
+- component catalog;
+- recurring/effective-dated compensation;
+- period adjustments;
+- resolved attendance/overtime/leave inputs;
+- composable calculation processors;
+- exact monetary arithmetic;
+- effective-dated/versioned statutory rules;
+- employee earnings/deductions separated from employer contributions/company cost;
+- review/reconciliation/finalization;
+- controlled reopen/revision;
+- payment handoff;
+- historical calculation evidence.
+
+See `docs/domain/payroll-engine-discovery.md`.
 
 ### 4. Performance and development
 
 - Performance review and KPI — PERF-001.
 - Training / LMS and learning records — TRAIN-001.
 
-### 5. Employee services
+### 5. Employment administration and employee services
+
+Classic employment administration is an explicit HCIS direction, using effective-dated history rather than overwriting current employee fields:
+
+- Employment relationship and contracts — EMP-005.
+- Placement and career movement (promotion, demotion, mutation) — EMP-006.
+- Education and qualification — EMP-007.
+- Skills and competencies — EMP-008.
+- Family, dependents, and employee relations — EMP-009.
+
+EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
+
+Job classification/grade is a separate discovery concern from ORG-004 hierarchy/authority. A grade may later influence compensation, but must not grant approval authority implicitly. Final specification ID is TBD.
+
+Employee services continue with:
 
 - Employee data change request — EMP-003.
 - Employment and HR documents — DOC-001 / DOC-002.
@@ -74,16 +113,33 @@ PAY-003 is a future domain expansion and must not reinterpret the verified PAY-0
 
 Recruitment belongs to HCIS but is an HC/admin workspace capability rather than an employee self-service launcher.
 
+Target integration direction:
+
+```text
+ORG-004 vacant position
+-> requisition/vacancy
+-> candidate
+-> screening/interview/decision
+-> hire
+-> EMP-005 employment
+-> EMP-006 placement
+```
+
+Candidate remains distinct from Employee until the accepted hire/activation boundary.
+
 ### 8. Organization and work locations
 
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005.
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (DISCOVERY).
+- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY).
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
 `ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is planned as a read-only projection/distribution layer. It is discovery only: external identifiers, privacy, versioning, transport, freshness, replay, and bootstrap remain undecided, and no runtime publication path exists yet.
+
+`ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented.
 
 ## UX presentation
 
@@ -97,6 +153,10 @@ Employee-facing services are grouped by user intent rather than implementation p
 6. **Informasi** — Pengumuman, Notifikasi, dan Pengingat. Notifikasi in-app may be available before reminder scheduling or external delivery adapters.
 
 Administrative/HC workspaces expose capabilities such as payroll processing, recruitment, device management, site/branch configuration, attendance policy, and organization operations separately from the employee launcher.
+
+Attendance administration should prefer the operational language **Shift, Jadwal, Kehadiran, Lembur** instead of exposing internal roster/versioning concepts as primary navigation.
+
+Employment administration should prefer explicit actions such as **Penempatan, Promosi, Demosi, Mutasi, Perpanjang kontrak** rather than using generic employee edit for historically meaningful changes.
 
 ## Coming-soon rule
 

@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-09-21
+updated_at: 2026-09-22
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -129,6 +129,19 @@ features:
     docs:
       - docs/product/hcis-capability-map.md
 
+  - id: ORG-007
+    module: organization
+    name: Multi-company / multi-legal-entity organization boundary
+    legacy_evidence: SemartHRIS benchmark supports multi-company; product owner requested evaluation for HCIS on 2026-09-22
+    target_status: discovery
+    priority: later
+    risk: critical
+    planning_note: Proposed as a legal-entity boundary above ORG-004, not SaaS tenancy. Existing YSQ would become the first/default legal entity. Authorization, employment, payroll, leave, attendance, and reporting must be explicitly entity-scoped before activation.
+    docs:
+      - docs/domain/multi-company-organization.md
+      - docs/product/roadmap.md
+      - docs/product/semarthris-benchmark-2026-09-22.md
+
   - id: ORG-006
     module: organization
     name: Organization Directory publishing to SQ Hub
@@ -141,6 +154,59 @@ features:
       - docs/domain/organization-directory-publishing.md
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
+
+  - id: EMP-005
+    module: employee
+    name: Employment relationship and contracts
+    legacy_evidence: benchmark HRIS includes contract and employment administration; product owner requested adoption on 2026-09-22
+    target_status: planned
+    priority: post-attendance-simplification
+    risk: high
+    docs:
+      - docs/domain/employment-administration.md
+      - docs/product/roadmap.md
+      - docs/product/semarthris-benchmark-2026-09-22.md
+
+  - id: EMP-006
+    module: employee
+    name: Placement and career movement
+    legacy_evidence: benchmark HRIS includes placement, promotion, demotion, mutation, and career history
+    target_status: planned
+    priority: post-attendance-simplification
+    risk: high
+    docs:
+      - docs/domain/employment-administration.md
+
+  - id: EMP-007
+    module: employee
+    name: Education and qualification
+    legacy_evidence: benchmark HRIS includes education management
+    target_status: planned
+    priority: later
+    risk: medium
+    docs:
+      - docs/domain/employment-administration.md
+
+  - id: EMP-008
+    module: employee
+    name: Skills and competencies
+    legacy_evidence: benchmark HRIS includes skill management
+    target_status: planned
+    priority: later
+    risk: medium
+    docs:
+      - docs/domain/employment-administration.md
+
+  - id: EMP-009
+    module: employee
+    name: Family, dependents, and employee relations
+    legacy_evidence: benchmark HRIS roadmap includes employee relations/family data
+    target_status: planned
+    priority: later
+    risk: high
+    planning_note: Privacy-by-purpose applies; do not collect family attributes without a documented HR purpose.
+    docs:
+      - docs/domain/employment-administration.md
 
   - id: AUTH-010
     module: authorization
@@ -279,6 +345,19 @@ features:
       - docs/product/hcis-capability-map.md
       - docs/domain/attendance-shift-exchange.md
 
+  - id: ATT-011
+    module: attendance
+    name: Attendance operational simplification
+    legacy_evidence: product owner reports current HCIS schedule/attendance administration is more complex operationally than classic Shift -> Schedule -> Attendance -> Overtime flows
+    target_status: specified
+    priority: immediate-product-ux
+    risk: high
+    planning_note: Simplify operator and employee information architecture without deleting backend versioning, immutable evidence, provenance, or audit. Primary HC mental model is Shift -> Jadwal -> Kehadiran -> Lembur. Prefer bulk schedule-range/pattern operations with explicit replacement/conflict preview. Human Capital sees one explainable daily result; missing punches remain incomplete and schedule time is never synthesized as attendance evidence.
+    docs:
+      - docs/domain/attendance-operational-simplification.md
+      - docs/product/roadmap.md
+      - docs/product/semarthris-benchmark-2026-09-22.md
+
   - id: LEAVE-001
     module: leave
     name: Submit leave request
@@ -308,14 +387,17 @@ features:
 
   - id: PAY-003
     module: payroll
-    name: Payroll calculation, review, reconciliation, and finalization
+    name: Payroll calculation, review, reconciliation, payment handoff, and publication
     legacy_evidence: none recorded for the new engine; product owner accepted payroll calculation in HCIS scope on 2026-09-18
     target_status: planned
     priority: later
     risk: critical
-    planning_note: This is a future payroll engine/domain and does not change the verified PAY-001/PAY-002 imported-payslip boundary until separately specified and implemented.
+    planning_note: Payroll is an explicit HCIS roadmap item but remains discovery. Direction now requires component catalog, effective-dated recurring compensation, period adjustments, resolved attendance/overtime/leave inputs, composable processors, exact-money arithmetic, versioned statutory policies/profiles, employee deductions separated from employer/company cost, review/reconciliation/finalization, controlled reopen/revision, payment handoff, publication, history, and cutover from PAY-001/PAY-002. PAY-001/PAY-002 remain authoritative until PAY-003 is separately implemented and accepted.
     docs:
+      - docs/domain/payroll-engine-discovery.md
       - docs/product/hcis-capability-map.md
+      - docs/product/roadmap.md
+      - docs/product/semarthris-benchmark-2026-09-22.md
 
   - id: REIMB-001
     module: reimbursement
@@ -476,6 +558,11 @@ features:
     target_status: discovery
     priority: validate-product-scope
     risk: high
+    planning_note: Preserve Candidate != Employee. Target future integration is ORG-004 vacant position -> requisition/vacancy -> candidate -> selection -> hire -> EMP-005 employment -> EMP-006 placement. SemartHRIS call-screen is benchmark evidence for screening/evidence/masking only, not proof of a complete ATS.
+    docs:
+      - docs/domain/employment-administration.md
+      - docs/product/hcis-capability-map.md
+      - docs/product/semarthris-benchmark-2026-09-22.md
 
   - id: MIG-001
     module: migration

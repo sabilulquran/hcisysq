@@ -1642,12 +1642,13 @@ export async function registerPayslipRoutes(
       });
     }
 
+    const signer = await resolvePayslipSigner(pool);
     await writeAudit(pool, self.principal.id, "payslip.read", {
       payslipId: payslip.id,
       employeeId: self.employeeId,
       payload: { period: payslip.period },
     });
     reply.header("Cache-Control", "private, no-store");
-    return reply.send(payslip);
+    return reply.send({ ...payslip, signer });
   });
 }

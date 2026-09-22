@@ -14,7 +14,6 @@ import {
   type PayslipDetail,
   type PayslipLine,
   type PayslipLineSection,
-  type PayslipSourceFormat,
   type PayslipSummary,
 } from "@/lib/payslips";
 
@@ -37,14 +36,16 @@ export function formatPayslipPeriod(value: string) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-export function payslipSourceLabel(value: PayslipSourceFormat) {
-  if (value === "tetap") return "Pegawai Tetap";
-  if (value === "honorer") return "Honorer";
-  return "Imported";
+export function payslipEmploymentStatusLabel(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 }
 
 export function payslipOptionLabel(item: PayslipSummary) {
-  return `${formatPayslipPeriod(item.period)} · ${payslipSourceLabel(item.sourceFormat)}`;
+  const status = payslipEmploymentStatusLabel(item.employmentStatus);
+  return status
+    ? `${formatPayslipPeriod(item.period)} · ${status}`
+    : formatPayslipPeriod(item.period);
 }
 
 export function filterPayslipOptions(items: PayslipSummary[], query: string) {
@@ -67,30 +68,59 @@ export function groupPayslipLines(lines: PayslipLine[]) {
   return grouped;
 }
 
-function PairLines({ lines }: { lines: PayslipLine[] }) {
+function GenericPairLines({ lines }: { lines: PayslipLine[] }) {
   const rows: Array<[PayslipLine, PayslipLine | null]> = [];
   for (let index = 0; index < lines.length; index += 2) {
     rows.push([lines[index]!, lines[index + 1] ?? null]);
   }
   return (
-    <div className="payslip-pair-table divide-y divide-border/70 border-y border-border/70">
+    <div className="payslip-generic-table divide-y divide-slate-200 border-y border-slate-300">
       {rows.map(([left, right], index) => (
         <div
           key={`${left.label}-${index}`}
           className="payslip-detail-row grid gap-x-5 py-1.5 sm:grid-cols-2"
         >
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
-            <span className="text-muted-foreground">{left.label}</span>
-            <strong className="max-w-48 break-words text-right text-brand-heading">{left.value}</strong>
+            <span className="text-slate-600">{left.label}</span>
+            <strong className="max-w-48 break-words text-right text-slate-950">{left.value}</strong>
           </div>
           {right ? (
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
-              <span className="text-muted-foreground">{right.label}</span>
-              <strong className="max-w-48 break-words text-right text-brand-heading">{right.value}</strong>
+              <span className="text-slate-600">{right.label}</span>
+              <strong className="max-w-48 break-words text-right text-slate-950">{right.value}</strong>
             </div>
           ) : <span />}
         </div>
       ))}
+    </div>
+  );
+}
+
+function PayrollColumn({
+  title,
+  lines,
+}: {
+  title: "PENGHASILAN" | "POTONGAN";
+  lines: PayslipLine[];
+}) {
+  return (
+    <div className="payslip-payroll-column overflow-hidden border border-slate-300">
+      <div className="border-b border-slate-300 bg-slate-50 px-3 py-2 text-[8.5pt] font-extrabold tracking-[0.08em] text-slate-700">
+        {title}
+      </div>
+      <div className="divide-y divide-slate-200">
+        {lines.length > 0 ? lines.map((line) => (
+          <div
+            key={line.label}
+            className="payslip-payroll-row grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-1.5 text-[9pt]"
+          >
+            <span className="text-slate-600">{line.label}</span>
+            <strong className="max-w-44 break-words text-right text-slate-950">{line.value}</strong>
+          </div>
+        )) : (
+          <div className="px-3 py-2 text-[8.5pt] text-slate-400">Tidak ada komponen.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -104,77 +134,82 @@ function PayslipPaper({
 }) {
   const grouped = groupPayslipLines(payslip.lines);
   const structured = payslip.sourceFormat !== "generic";
-  const detailLines = structured
-    ? [...grouped.income, ...grouped.deduction]
-    : payslip.lines;
+  const employmentStatus = payslipEmploymentStatusLabel(payslip.employmentStatus);
 
   return (
-    <article className="payslip-print-paper mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-hidden rounded-sm border border-border bg-white shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
+    <article className="payslip-print-paper mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-hidden rounded-sm border border-slate-300 bg-white text-[9.5pt] text-slate-900 shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
       <header className="payslip-document-header bg-brand-primary-deep px-6 py-5 text-center text-white">
         <img
           src={ysqLogoHorizontal}
           alt="Yayasan Sabilul Qur'an"
           className="mx-auto h-[5.5rem] w-auto max-w-[26rem] object-contain"
         />
-        <h2 className="mt-3 text-xl font-extrabold tracking-[0.12em]">SLIP GAJI</h2>
-        <p className="mt-1 text-xs text-white/85">Periode {formatPayslipPeriod(payslip.period)}</p>
-        <span className="mt-2 inline-flex rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold">
-          {payslipSourceLabel(payslip.sourceFormat)}
-        </span>
+        <h2 className="mt-3 text-[12pt] font-extrabold tracking-[0.12em]">SLIP GAJI</h2>
+        <p className="mt-1 text-[9pt] text-white/85">Periode {formatPayslipPeriod(payslip.period)}</p>
+        {employmentStatus ? (
+          <span className="mt-2 inline-flex rounded-full bg-white/15 px-2.5 py-0.5 text-[8pt] font-bold">
+            {employmentStatus}
+          </span>
+        ) : null}
       </header>
 
       <div className="payslip-print-inner p-5 sm:p-6">
         <section className="payslip-section">
-          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Identitas Pegawai</h3>
-          <div className="payslip-identity-grid grid gap-x-8 gap-y-1.5 rounded-lg bg-surface px-4 py-3 sm:grid-cols-2">
-            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-sm"><span className="text-muted-foreground">Nama</span><strong>{employee?.fullName ?? "—"}</strong></div>
-            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-sm"><span className="text-muted-foreground">NIP</span><strong>{employee?.employeeNumber ?? "—"}</strong></div>
-            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-sm"><span className="text-muted-foreground">Unit</span><strong>{employee?.unitName ?? "—"}</strong></div>
-            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-sm"><span className="text-muted-foreground">Jabatan</span><strong>{employee?.positionName ?? "—"}</strong></div>
+          <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-slate-600">Identitas Pegawai</h3>
+          <div className="payslip-identity-grid grid gap-x-8 gap-y-1.5 border border-slate-300 bg-slate-50 px-4 py-3 sm:grid-cols-2">
+            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-[9.5pt]"><span className="text-slate-600">Nama</span><strong>{employee?.fullName ?? "—"}</strong></div>
+            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-[9.5pt]"><span className="text-slate-600">NIP</span><strong>{employee?.employeeNumber ?? "—"}</strong></div>
+            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-[9.5pt]"><span className="text-slate-600">Unit</span><strong>{employee?.unitName ?? "—"}</strong></div>
+            <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 text-[9.5pt]"><span className="text-slate-600">Jabatan</span><strong>{employee?.positionName ?? "—"}</strong></div>
           </div>
         </section>
 
         {structured && grouped.summary.length > 0 ? (
           <section className="payslip-section mt-4">
-            <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-brand-primary-deep">Ringkasan Gaji</h3>
+            <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-brand-primary-deep">Ringkasan Gaji</h3>
             <div className="payslip-summary-grid grid gap-2 sm:grid-cols-3">
               {grouped.summary.map((line) => (
-                <div key={line.label} className="rounded-lg border border-brand-primary/20 bg-brand-primary-pale/25 px-3 py-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground">{line.label}</p>
-                  <p className="mt-0.5 text-sm font-extrabold text-brand-heading">{line.value}</p>
+                <div key={line.label} className="border border-slate-300 bg-brand-primary-pale/20 px-3 py-2">
+                  <p className="text-[8pt] font-semibold text-slate-600">{line.label}</p>
+                  <p className="mt-0.5 text-[10.5pt] font-extrabold text-slate-950">{line.value}</p>
                 </div>
               ))}
             </div>
           </section>
         ) : null}
 
-        {detailLines.length > 0 ? (
+        {structured ? (
           <section className="payslip-section mt-4">
-            <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-              {structured ? "Rincian Penghasilan & Potongan" : "Rincian Slip"}
-            </h3>
-            <PairLines lines={detailLines} />
+            <div className="payslip-income-deduction-grid grid gap-4 sm:grid-cols-2">
+              <PayrollColumn title="PENGHASILAN" lines={grouped.income} />
+              <PayrollColumn title="POTONGAN" lines={grouped.deduction} />
+            </div>
+          </section>
+        ) : payslip.lines.length > 0 ? (
+          <section className="payslip-section mt-4">
+            <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-slate-600">Rincian Slip</h3>
+            <GenericPairLines lines={payslip.lines} />
           </section>
         ) : null}
 
         {structured && grouped.other.length > 0 ? (
           <section className="payslip-section mt-3">
-            <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Informasi Lain</h3>
-            <PairLines lines={grouped.other} />
+            <h3 className="mb-2 text-[8.5pt] font-bold uppercase tracking-[0.12em] text-slate-600">Informasi Lain</h3>
+            <GenericPairLines lines={grouped.other} />
           </section>
         ) : null}
 
-        <footer className="payslip-footer mt-5 flex justify-start border-t border-border pt-4">
-          <div className="payslip-signature w-56 text-center text-xs text-brand-heading">
+        <footer className="payslip-footer mt-5 flex justify-start border-t border-slate-300 pt-4">
+          <div className="payslip-signature w-56 text-center text-[8.5pt] text-slate-900">
             <p className="font-semibold">{payslip.signer.title},</p>
             <div className="payslip-sign-space h-14" aria-hidden="true" />
-            <p className="border-t border-brand-heading/60 pt-1 font-bold">
+            <p className="border-t border-slate-500 pt-1 font-bold">
               {payslip.signer.name ?? "Pejabat penandatangan belum ditetapkan"}
             </p>
           </div>
         </footer>
 
-        <p className="payslip-system-note mt-2 text-[9px] leading-4 text-muted-foreground">
+        <p className="payslip-system-note mt-2 text-[7.5pt] leading-4 text-slate-500">
           {payslipAutomaticNote}
         </p>
       </div>
@@ -272,10 +307,11 @@ export function EmployeePayslipsPage() {
           .payslip-print-paper {
             position: absolute !important;
             inset: 0 auto auto 0 !important;
+            box-sizing: border-box !important;
             width: 210mm !important;
             max-width: 210mm !important;
             min-height: 297mm !important;
-            border: 0 !important;
+            border: 1px solid #cbd5e1 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
           }
@@ -332,29 +368,32 @@ export function EmployeePayslipsPage() {
                         setSelectorOpen(true);
                       }}
                       onKeyDown={(event) => event.key === "Enter" && void showSelectedPayslip()}
-                      placeholder="Ketik bulan atau tahun, mis. Juli 2026"
+                      placeholder="Ketik bulan, tahun, atau status kepegawaian"
                       className="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-3 text-sm font-normal"
                       autoComplete="off"
                     />
                     {selectorOpen ? (
                       <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-xl">
-                        {filteredOptions.length > 0 ? filteredOptions.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              setSelectorValue(payslipOptionLabel(item));
-                              setSelectedId(item.id);
-                              setSelectorOpen(false);
-                              setError(null);
-                            }}
-                            className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-normal hover:bg-surface"
-                          >
-                            <span className="font-semibold text-brand-heading">{formatPayslipPeriod(item.period)}</span>
-                            <span className="text-xs text-muted-foreground">{payslipSourceLabel(item.sourceFormat)}</span>
-                          </button>
-                        )) : (
+                        {filteredOptions.length > 0 ? filteredOptions.map((item) => {
+                          const status = payslipEmploymentStatusLabel(item.employmentStatus);
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setSelectorValue(payslipOptionLabel(item));
+                                setSelectedId(item.id);
+                                setSelectorOpen(false);
+                                setError(null);
+                              }}
+                              className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-normal hover:bg-surface"
+                            >
+                              <span className="font-semibold text-brand-heading">{formatPayslipPeriod(item.period)}</span>
+                              {status ? <span className="text-xs text-muted-foreground">{status}</span> : null}
+                            </button>
+                          );
+                        }) : (
                           <div className="px-3 py-4 text-center text-xs text-muted-foreground">Tidak ada periode yang cocok.</div>
                         )}
                       </div>

@@ -46,12 +46,14 @@ function connectivityClass(status: AdmsConnectivityStatus) {
 function lifecycleLabel(value: AdmsDevice["lifecycle"]) {
   if (value === "active") return "Aktif";
   if (value === "disabled") return "Dinonaktifkan";
-  return "Karantina";
+  if (value === "quarantined") return "Karantina";
+  return "Dipensiunkan";
 }
 
 function lifecycleClass(value: AdmsDevice["lifecycle"]) {
   if (value === "active") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (value === "disabled") return "border-slate-200 bg-slate-100 text-slate-700";
+  if (value === "retired") return "border-slate-300 bg-slate-100 text-slate-500";
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 

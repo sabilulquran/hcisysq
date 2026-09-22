@@ -6,6 +6,7 @@ export interface PayslipSummary {
   id: string;
   period: string;
   sourceFormat: PayslipSourceFormat;
+  employmentStatus: string | null;
   publishedAt: string;
 }
 

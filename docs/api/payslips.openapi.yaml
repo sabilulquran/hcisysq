@@ -418,7 +418,7 @@ components:
 
     PayslipSummary:
       type: object
-      required: [id, period, sourceFormat, publishedAt]
+      required: [id, period, sourceFormat, employmentStatus, publishedAt]
       properties:
         id: { type: string, format: uuid }
         period:

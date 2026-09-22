@@ -6,9 +6,9 @@ async function readJson<T>(response: Response): Promise<T> {
   throw new Error((body as { message?: string } | null)?.message ?? "Manajemen ADMS tidak dapat diproses.");
 }
 
-function params(input: Record<string, string | number | undefined>) {
+function params<T extends object>(input: T) {
   const value = new URLSearchParams();
-  for (const [key, item] of Object.entries(input)) {
+  for (const [key, item] of Object.entries(input as Record<string, string | number | undefined>)) {
     if (item !== undefined && item !== "") value.set(key, String(item));
   }
   const query = value.toString();

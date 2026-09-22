@@ -4,6 +4,8 @@ import { employeeShellUser } from "@/lib/employeeIdentity";
 import {
   filterPayslipOptions,
   formatPayslipPeriod,
+  payslipAutomaticNote,
+  payslipInitialSelectorValue,
   groupPayslipLines,
   payslipConfidentialityNotes,
   payslipOptionLabel,
@@ -100,5 +102,16 @@ describe("PAYSLIP-005 visible period picker", () => {
     expect(filterPayslipOptions(options, "Agustus")).toEqual([options[0]]);
     expect(filterPayslipOptions(options, "2026")).toHaveLength(2);
     expect(filterPayslipOptions(options, "Honorer")).toEqual([options[1]]);
+  });
+});
+
+
+describe("PAYSLIP-006 render and print parity", () => {
+  it("starts the period selector empty so the employee chooses from the dropdown", () => {
+    expect(payslipInitialSelectorValue).toBe("");
+  });
+
+  it("uses the shortened automatic document footer copy", () => {
+    expect(payslipAutomaticNote).toBe("Dibuat otomatis oleh HCIS Sabilul Qur'an.");
   });
 });

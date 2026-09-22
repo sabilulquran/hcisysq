@@ -211,6 +211,7 @@ export function AdminAdmsDevicesPage() {
       title="Mesin Fingerprint"
       description="Pantau kondisi mesin, lalu buka satu mesin untuk mengelola pengguna, transaksi, perintah, dan pengaturan dalam konteks yang sama."
     >
+      <AdmsManagementNav active="devices" />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
           <span>{devices.length} mesin</span>

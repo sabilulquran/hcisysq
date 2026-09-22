@@ -20,11 +20,20 @@ export type PayslipPermission = "payslips.import" | "payslips.publish";
 const idSchema = z.object({ id: z.string().uuid() });
 const batchIdSchema = z.object({ batchId: z.string().uuid() });
 const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+const importRowParamsSchema = z.object({
+  batchId: z.string().uuid(),
+  rowNumber: z.coerce.number().int().positive(),
+});
+const importRowCorrectionSchema = z.object({
+  employeeNumber: z.string().trim().min(1).max(120),
+  period: z.string().regex(periodPattern),
+});
 
 type QueryTarget = Pool | PoolClient;
 
 export type PayslipSourceFormat = "generic" | "tetap" | "honorer";
 export type PayslipLineSection = "identity" | "income" | "deduction" | "summary" | "other";
+export type PayslipRowResolutionStatus = "pending" | "drafted" | "excluded";
 
 interface ImportedLine {
   label: string;
@@ -46,9 +55,111 @@ interface ParsedPayslipDocument {
 }
 
 interface ImportRowRecord {
+  id: string;
+  rowNumber: number;
   employeeId: string;
   period: string;
   lines: ImportedLine[];
+}
+
+interface RowValidationResult {
+  employeeId: string | null;
+  period: string | null;
+  errors: string[];
+}
+
+const correctableRowErrorPrefixes = [
+  "employee_number wajib diisi",
+  "NIP wajib diisi",
+  "period wajib berformat YYYY-MM",
+  "TANGGAL wajib berformat DD/MM/YYYY",
+  "periode wajib tersedia dari TANGGAL atau fallback YYYY-MM",
+  "employee reference tidak ditemukan",
+  "employee dan period duplikat dalam batch",
+  "payslip untuk employee dan period sudah ada",
+];
+
+function structuralRowErrors(errors: string[]): string[] {
+  return errors.filter(
+    (error) => !correctableRowErrorPrefixes.some((prefix) => error.startsWith(prefix)),
+  );
+}
+
+async function revalidateImportRow(
+  database: QueryTarget,
+  options: {
+    batchId: string;
+    rowNumber: number;
+    employeeNumber: string;
+    period: string;
+    lines: ImportedLine[] | null;
+    previousErrors: string[];
+  },
+): Promise<RowValidationResult> {
+  const errors = structuralRowErrors(options.previousErrors);
+  const period = periodPattern.test(options.period) ? `${options.period}-01` : null;
+  if (!period) errors.push("period wajib berformat YYYY-MM");
+  if (!options.lines || options.lines.length === 0) {
+    errors.push("baris tidak memiliki komponen payslip yang dikenali");
+  }
+
+  const employee = await database.query<{ id: string }>(
+    `SELECT id FROM employees WHERE employee_number = $1 LIMIT 1`,
+    [options.employeeNumber],
+  );
+  const employeeId = employee.rows[0]?.id ?? null;
+  if (!employeeId) errors.push("employee reference tidak ditemukan");
+
+  if (employeeId && period) {
+    const duplicate = await database.query(
+      `SELECT 1
+         FROM payslip_import_rows
+        WHERE batch_id = $1
+          AND row_number <> $2
+          AND resolution_status <> 'excluded'
+          AND employee_id = $3
+          AND period = $4::date
+        LIMIT 1`,
+      [options.batchId, options.rowNumber, employeeId, period],
+    );
+    if (duplicate.rowCount) errors.push("employee dan period duplikat dalam batch");
+
+    const existing = await database.query(
+      `SELECT 1
+         FROM payslips
+        WHERE employee_id = $1
+          AND period = $2::date
+        LIMIT 1`,
+      [employeeId, period],
+    );
+    if (existing.rowCount) errors.push("payslip untuk employee dan period sudah ada");
+  }
+
+  return { employeeId, period, errors: [...new Set(errors)] };
+}
+
+async function refreshBatchValidationCounts(database: QueryTarget, batchId: string) {
+  await database.query(
+    `UPDATE payslip_import_batches batch
+        SET valid_count = stats.valid_count,
+            error_count = stats.error_count
+       FROM (
+         SELECT batch_id,
+                count(*) FILTER (
+                  WHERE resolution_status IN ('pending', 'drafted')
+                    AND jsonb_array_length(validation_errors) = 0
+                )::int AS valid_count,
+                count(*) FILTER (
+                  WHERE resolution_status = 'pending'
+                    AND jsonb_array_length(validation_errors) > 0
+                )::int AS error_count
+           FROM payslip_import_rows
+          WHERE batch_id = $1
+          GROUP BY batch_id
+       ) stats
+      WHERE batch.id = stats.batch_id`,
+    [batchId],
+  );
 }
 
 function decodeFilename(value: string | undefined): string {

@@ -85,6 +85,10 @@ Print-specific CSS tidak boleh lagi mengecilkan:
 
 Dengan demikian print preview harus secara visual menyerupai A4 render di web.
 
+## PAYSLIP-007 supersession
+
+PAYSLIP-007 supersedes employee-facing source-format labels and refines the internal document detail layout into explicit Penghasilan/Potongan columns. PAYSLIP-006 print parity and selector behavior otherwise remain unchanged.
+
 ## Acceptance criteria
 
 - PAYSLIP-006-A: horizontal logo terlihat kira-kira 2x lebih besar dibanding PAYSLIP-005.

@@ -470,7 +470,24 @@ export function AdminPayslipsPage() {
                     return (
                       <tr key={row.rowNumber} className={row.errors.length > 0 && row.resolutionStatus === "pending" ? "bg-amber-50/30" : undefined}>
                         <td className="px-3 py-2.5 align-top">
-                          {editable ? <input type="checkbox" checked={selectedRows.has(row.rowNumber)} aria-label={`Pilih row ${row.rowNumber}`} onChange={(event) => setSelectedRows((current) => { const next = new Set(current); event.target.checked ? next.add(row.rowNumber) : next.delete(row.rowNumber); return next; })} /> : null}
+                          {editable ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedRows.has(row.rowNumber)}
+                              aria-label={`Pilih row ${row.rowNumber}`}
+                              onChange={(event) =>
+                                setSelectedRows((current) => {
+                                  const next = new Set(current);
+                                  if (event.target.checked) {
+                                    next.add(row.rowNumber);
+                                  } else {
+                                    next.delete(row.rowNumber);
+                                  }
+                                  return next;
+                                })
+                              }
+                            />
+                          ) : null}
                         </td>
                         <td className="px-3 py-2.5 align-top font-semibold">{row.rowNumber}</td>
                         <td className="px-3 py-2.5 align-top"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${rowStatusClass(row)}`}>{rowStatusLabel(row)}</span></td>

@@ -9,17 +9,21 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
 1. `product/mvp-release-checkpoint.md`
 2. `product/mvp.md`
 3. `product/scope.md`
-4. `product/feature-parity.yaml`
-5. `product/vision.md`
-6. `domain/glossary.md`
-7. `domain/access-model.md`
-8. `domain/roles-permissions.md`
-9. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
+4. `product/roadmap.md`
+5. `product/feature-parity.yaml`
+6. `product/vision.md`
+7. `domain/glossary.md`
+8. `domain/access-model.md`
+9. `domain/roles-permissions.md`
+10. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
    - untuk Organization Directory publishing, baca `domain/organization-directory-publishing.md` (ORG-006) setelah ORG-002/ORG-004.
-10. `architecture/system-context.md`
-11. ADR yang relevan
-12. `api/openapi.yaml`
-13. security dan testing guidance
+   - untuk simplifikasi operasi attendance, baca `domain/attendance-operational-simplification.md` (ATT-011).
+   - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-009).
+   - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
+11. `architecture/system-context.md`
+12. ADR yang relevan
+13. `api/openapi.yaml`
+14. security dan testing guidance
 
 `product/mvp-release-checkpoint.md` adalah durable evidence anchor untuk MVP yang diverifikasi pada 2026-08-22. Jangan menganggap docs-only commit setelah verified application SHA sebagai aplikasi baru yang sudah diuji/deploy. Jika runtime code berubah setelah checkpoint, lakukan targeted verification untuk area yang terdampak dan buat checkpoint baru bila perlu.
 

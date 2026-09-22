@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CalendarRange,
   Clock3,
-  Fingerprint,
   Grid2X2,
   History,
   KeyRound,
@@ -35,10 +34,8 @@ export type AdminNavKey =
   | "organization"
   | "attendance"
   | "attendance-adms"
-  | "attendance-adms-transactions"
   | "attendance-workforce"
   | "attendance-shift-swaps"
-  | "attendance-devices"
   | "leave"
   | "leave-calendar"
   | "payslips"
@@ -86,9 +83,7 @@ const navGroups: AdminNavGroup[] = [
   {
     label: "Perangkat ADMS",
     items: [
-      { key: "attendance-adms", label: "Back Office ADMS", href: "/admin/attendance/adms", icon: ServerCog },
-      { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
-      { key: "attendance-adms-transactions", label: "Transaksi Lintas Mesin", href: "/admin/attendance/adms/transactions", icon: History },
+      { key: "attendance-adms", label: "Manajemen ADMS", href: "/admin/attendance/adms", icon: ServerCog },
     ],
   },
   {

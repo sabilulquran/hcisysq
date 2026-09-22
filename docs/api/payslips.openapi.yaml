@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: HCIS Payslip API
   version: 0.0.1
-  description: PAYSLIP-001 through PAYSLIP-004 import, resolution, publish, print metadata, and employee self-read contracts.
+  description: PAYSLIP-001 through PAYSLIP-005 import, resolution, publish, print metadata, and employee self-read contracts.
 tags:
   - name: Payslips
 

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: HCIS Payslip API
   version: 0.0.1
-  description: PAYSLIP-001 through PAYSLIP-005 import, resolution, publish, print metadata, and employee self-read contracts.
+  description: PAYSLIP-001 through PAYSLIP-007 import, resolution, publish, print metadata, and employee self-read contracts.
 tags:
   - name: Payslips
 
@@ -425,6 +425,9 @@ components:
           type: string
           pattern: '^\d{4}-(0[1-9]|1[0-2])$'
         sourceFormat: { $ref: '#/components/schemas/PayslipSourceFormat' }
+        employmentStatus:
+          type: [string, 'null']
+          description: Current employee-master STATUS KEPEGAWAIAN; never derived from sourceFormat.
         publishedAt: { type: string, format: date-time }
 
     PayslipDetail:

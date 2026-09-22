@@ -1084,3 +1084,43 @@ describe("PAYSLIP-004 bulk review and signer", () => {
     await app.close();
   });
 });
+
+
+describe("PAYSLIP-007 employment status contract", () => {
+  it("reads employee-facing status from employee master instead of payroll source format", async () => {
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM accounts account JOIN employees employee")) {
+        expect(values).toEqual([employeePrincipal.id]);
+        return result([{ employeeId }]);
+      }
+      if (normalized.includes("FROM payslips payslip") && normalized.includes("employment_status")) {
+        expect(values).toEqual([employeeId]);
+        expect(normalized).toContain('employee.employment_status AS "employmentStatus"');
+        return result([{
+          id: payslipId,
+          period: "2026-09",
+          sourceFormat: "tetap",
+          employmentStatus: "Kontrak",
+          publishedAt: new Date("2026-09-22T00:00:00Z"),
+        }]);
+      }
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(employeePrincipal));
+    const response = await app.inject({
+      method: "GET",
+      url: "/payslips",
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items[0]).toMatchObject({
+      sourceFormat: "tetap",
+      employmentStatus: "Kontrak",
+    });
+    await app.close();
+  });
+});

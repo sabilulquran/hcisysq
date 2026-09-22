@@ -961,7 +961,8 @@ describe("PAYSLIP-004 bulk review and signer", () => {
     await app.close();
   });
 
-  it("returns Ketua Yayasan signer from the current organization snapshot", async () => {
+  it("uses Kepala Human Capital Management as the primary signer", async () => {
+    const signerEmployeeId = "50000000-0000-4000-8000-000000000005";
     const query = vi.fn(async (sql: string, values?: unknown[]) => {
       const normalized = compactSql(sql);
       if (normalized.includes("FROM accounts account JOIN employees employee")) {
@@ -969,7 +970,6 @@ describe("PAYSLIP-004 bulk review and signer", () => {
         return result([{ employeeId }]);
       }
       if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
-        expect(values).toEqual([payslipId, employeeId]);
         return result([{
           id: payslipId,
           period: "2026-09",
@@ -978,8 +978,8 @@ describe("PAYSLIP-004 bulk review and signer", () => {
           publishedAt: new Date("2026-09-22T00:00:00Z"),
         }]);
       }
-      if (normalized.startsWith("WITH latest AS")) {
-        return result([{ name: "Ketua Sintetis" }]);
+      if (normalized.startsWith("WITH latest AS") && values?.[0] === "hcm") {
+        return result([{ employeeId: signerEmployeeId, name: "Kepala HCM Sintetis" }]);
       }
       if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
       throw new Error(`Unexpected query in synthetic test: ${normalized}`);
@@ -995,8 +995,91 @@ describe("PAYSLIP-004 bulk review and signer", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().signer).toEqual({
-      title: "Ketua Yayasan",
-      name: "Ketua Sintetis",
+      title: "Kepala Human Capital Management",
+      name: "Kepala HCM Sintetis",
+    });
+    await app.close();
+  });
+
+  it("falls back to Direktur when the payslip belongs to the HCM head", async () => {
+    const directorEmployeeId = "60000000-0000-4000-8000-000000000006";
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM accounts account JOIN employees employee")) {
+        return result([{ employeeId }]);
+      }
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+        return result([{
+          id: payslipId,
+          period: "2026-09",
+          lines: [{ label: "Gaji Neto", value: "opaque", section: "summary" }],
+          sourceFormat: "tetap",
+          publishedAt: new Date("2026-09-22T00:00:00Z"),
+        }]);
+      }
+      if (normalized.startsWith("WITH latest AS") && values?.[0] === "hcm") {
+        return result([{ employeeId, name: "Kepala HCM Pemilik Slip" }]);
+      }
+      if (normalized.startsWith("WITH latest AS") && values?.[0] === "director") {
+        return result([{ employeeId: directorEmployeeId, name: "Direktur Sintetis" }]);
+      }
+      if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(employeePrincipal));
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/payslips/${payslipId}`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().signer).toEqual({
+      title: "Direktur",
+      name: "Direktur Sintetis",
+    });
+    await app.close();
+  });
+
+  it("does not allow the Director fallback to self-sign either", async () => {
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM accounts account JOIN employees employee")) {
+        return result([{ employeeId }]);
+      }
+      if (normalized.includes("FROM payslips") && normalized.includes("WHERE id = $1")) {
+        return result([{
+          id: payslipId,
+          period: "2026-09",
+          lines: [{ label: "Gaji Neto", value: "opaque", section: "summary" }],
+          sourceFormat: "tetap",
+          publishedAt: new Date("2026-09-22T00:00:00Z"),
+        }]);
+      }
+      if (normalized.startsWith("WITH latest AS") && values?.[0] === "hcm") {
+        return result([{ employeeId, name: "Kepala HCM Pemilik Slip" }]);
+      }
+      if (normalized.startsWith("WITH latest AS") && values?.[0] === "director") {
+        return result([{ employeeId, name: "Direktur Pemilik Slip" }]);
+      }
+      if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(employeePrincipal));
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/payslips/${payslipId}`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().signer).toEqual({
+      title: "Direktur",
+      name: null,
     });
     await app.close();
   });

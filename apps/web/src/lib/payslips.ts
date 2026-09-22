@@ -18,7 +18,7 @@ export interface PayslipLine {
 export interface PayslipDetail extends PayslipSummary {
   lines: PayslipLine[];
   signer: {
-    title: "Ketua Yayasan";
+    title: "Kepala Human Capital Management" | "Direktur";
     name: string | null;
   };
 }

@@ -125,34 +125,11 @@ Employee tetap hanya dapat memilih ID yang berasal dari owner-scoped `GET /paysl
 
 ## Payslip document header
 
-Gunakan horizontal brand asset existing:
-
-`apps/web/src/assets/brand/ysq-logo-white.png`
-
-Jangan gunakan square `ysq-mark.png` sebagai kop slip.
-
-Header dokumen menggunakan brand strip yang compact sehingga logo horizontal terbaca pada screen dan print.
+PAYSLIP-005 supersedes the PAYSLIP-004 split/full-width presentation. Horizontal brand asset existing tetap digunakan, tetapi dokumen kembali dirender sebagai A4 portrait dan header disusun centered: logo -> SLIP GAJI -> periode.
 
 ## Signer
 
-Payslip detail response menyertakan:
-
-```text
-signer:
-  title: "Ketua Yayasan"
-  name: string | null
-```
-
-Name resolution:
-
-1. current effective published dynamic organization snapshot, posisi dengan title normalized `Ketua Yayasan`, active/effective, incumbent PRIMARY/ACTING effective;
-2. bila holder employee, gunakan `employees.full_name`;
-3. fallback legacy employee master position name `Ketua Yayasan`;
-4. bila tidak dapat di-resolve, `name = null`.
-
-Jangan menebak nama. Jangan expose account email sebagai signer name.
-
-Area tanda tangan tetap dirender meskipun name belum ter-resolve.
+PAYSLIP-005 supersedes keputusan signer PAYSLIP-004. Signer utama menjadi **Kepala Human Capital Management**, fallback **Direktur**, dengan self-sign guard terhadap employee pemilik slip. Lihat `docs/domain/payslip-a4-signer-authority.md`.
 
 ## One-page print contract
 
@@ -171,7 +148,7 @@ Generic imported payslip tetap menampilkan seluruh lines; bila source mempunyai 
 
 ## Confidentiality notes
 
-Tiga note legacy ditampilkan pada dokumen screen dan print dalam compact block:
+PAYSLIP-005 memindahkan tiga note berikut ke luar lembar A4 sebagai guidance UI dan tidak mencetaknya di dokumen:
 
 1. Dokumen ini bersifat **RAHASIA dan PRIBADI**.
 2. Dilarang menyebarluaskan atau menunjukkan isi dokumen ini kepada pihak yang tidak berwenang.

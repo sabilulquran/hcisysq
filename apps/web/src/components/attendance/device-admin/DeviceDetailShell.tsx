@@ -19,13 +19,12 @@ export type DeviceAdminSection =
   | "settings"
   | "diagnostics";
 
-const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics">; label: string; suffix: string }> = [
+const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics" | "operations">; label: string; suffix: string }> = [
   { key: "overview", label: "Ringkasan", suffix: "" },
   { key: "users", label: "Pengguna", suffix: "/users" },
   { key: "biometrics", label: "Biometrik", suffix: "/biometrics" },
   { key: "transactions", label: "Transaksi", suffix: "/transactions" },
-  { key: "commands", label: "Perintah", suffix: "/commands" },
-  { key: "operations", label: "Operasional", suffix: "/operations" },
+  { key: "commands", label: "Sinkronisasi", suffix: "/commands" },
   { key: "settings", label: "Pengaturan", suffix: "/settings" },
 ];
 
@@ -46,6 +45,7 @@ function lifecycleLabel(value: string | undefined) {
   if (value === "active") return "Aktif";
   if (value === "disabled") return "Dinonaktifkan";
   if (value === "quarantined") return "Karantina";
+  if (value === "retired") return "Dipensiunkan";
   return value ?? "Belum diketahui";
 }
 
@@ -117,7 +117,7 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
     : "Memuat informasi mesin fingerprint.";
 
   return (
-    <AdminShell active="attendance-devices" title={title} description={description}>
+    <AdminShell active="attendance-adms" title={title} description={description}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <a
           href="/admin/attendance/devices"

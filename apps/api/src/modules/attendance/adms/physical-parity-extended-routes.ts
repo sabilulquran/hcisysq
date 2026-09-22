@@ -171,7 +171,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.get("/admin/attendance/adms/firmware-packages", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
+    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.firmware"]);
     if (!principal) return;
     const result = await pool.query<{
       id: string;
@@ -195,7 +195,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
     "/admin/attendance/adms/firmware-packages",
     { bodyLimit: 128 * 1024 * 1024 },
     async (request, reply) => {
-      const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
+      const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.firmware"]);
       if (!principal) return;
       const query = packageQuerySchema.safeParse(request.query);
       if (!query.success || !Buffer.isBuffer(request.body) || request.body.length === 0) {
@@ -256,7 +256,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/time-sync", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
+    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.operate"]);
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = timeSyncBodySchema.safeParse(request.body);
@@ -302,7 +302,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/firmware", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.firmware");
+    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.firmware"]);
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = firmwareBodySchema.safeParse(request.body);

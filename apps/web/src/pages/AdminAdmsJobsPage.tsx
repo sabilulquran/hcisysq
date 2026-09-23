@@ -48,7 +48,7 @@ export function AdminAdmsJobsPage() {
       const [employeeResult, deviceResult, syncResult, jobs] = await Promise.all([
         listEmployees({ page: 1, pageSize: 100, status: "active", unitId: unitId || undefined, q: query.trim() || undefined }),
         listAdmsDevices(),
-        listAdmsUserSync({ limit: 1000 }),
+        listAdmsUserSync({ limit: 250 }),
         listAdmsManagementJobs({ limit: 100 }),
       ]);
       const activeDevices = deviceResult.items.filter((item) => item.lifecycle === "active");
@@ -145,7 +145,7 @@ export function AdminAdmsJobsPage() {
   }
 
   return (
-    <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Sinkronkan data pegawai dari HCIS ke mesin secara terarah, dengan preview dan pengujian capability per perangkat.">
+    <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Sinkronkan data pegawai dari HCIS ke mesin secara terarah, dengan preview dan pengujian kesiapan per perangkat.">
       <AdmsManagementNav active="jobs" />
 
       {notice ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}

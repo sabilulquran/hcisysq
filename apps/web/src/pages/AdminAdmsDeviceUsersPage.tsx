@@ -17,6 +17,9 @@ import {
 } from "@/lib/admsAdmin";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
 import { hasPermission } from "@/lib/authorization";
+import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
+import { capabilityByKey, operatorCapabilityLabel } from "@/lib/admsOperator";
+import { pushUserProfile, setUserEnabled } from "@/lib/admsPhysicalParity";
 import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
 import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
 
@@ -53,11 +56,13 @@ function candidateLabel(kind: string) {
 export function AdminAdmsDeviceUsersPage() {
   const { deviceId, detail, refresh: refreshDevice, session, sessionResolved } = useDeviceAdmin();
   const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
   const canSearchEmployees = hasPermission(session, "employees.manage");
   const [roster, setRoster] = useState<AdmsRosterItem[]>([]);
   const [mappingLifecycle, setMappingLifecycle] = useState<AdmsMappingLifecycleItem[]>([]);
   const [assistantItems, setAssistantItems] = useState<AdmsMappingAssistantItem[]>([]);
   const [corrections, setCorrections] = useState<AdmsUserCorrectionItem[]>([]);
+  const [capabilities, setCapabilities] = useState<OperationsCapability[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -75,15 +80,17 @@ export function AdminAdmsDeviceUsersPage() {
   const [intendedPin, setIntendedPin] = useState("");
 
   const load = useCallback(async () => {
-    const [rosterResult, assistantResult, correctionResult] = await Promise.all([
+    const [rosterResult, assistantResult, correctionResult, operations] = await Promise.all([
       getAdmsDeviceRoster(deviceId),
       getAdmsMappingAssistant(deviceId),
       listAdmsUserCorrections(deviceId),
+      getAdmsOperations(deviceId),
     ]);
     setRoster(rosterResult.items);
     setMappingLifecycle(rosterResult.mappingLifecycle.items);
     setAssistantItems(assistantResult.items);
     setCorrections(correctionResult.items);
+    setCapabilities(operations.capabilities);
   }, [deviceId]);
 
   useEffect(() => {
@@ -207,6 +214,9 @@ export function AdminAdmsDeviceUsersPage() {
     [filteredRows, page, pageSize],
   );
 
+  const profileCapability = useMemo(() => capabilityByKey(capabilities, "user_profile_upsert"), [capabilities]);
+  const enabledCapability = useMemo(() => capabilityByKey(capabilities, "user_enable_disable"), [capabilities]);
+
   const plannedByPin = useMemo(
     () => new Map(corrections.filter((item) => item.status === "planned").map((item) => [item.legacyPin, item])),
     [corrections],
@@ -270,7 +280,7 @@ export function AdminAdmsDeviceUsersPage() {
     setBusyKey(`sync:${row.pin}`);
     try {
       const result = await syncAdmsUserName(deviceId, row.pin);
-      setNotice(`Perintah C:${result.item.commandNumber} untuk menyinkronkan nama PIN ${row.pin} sudah dibuat. Pantau hasilnya di tab Perintah.`);
+      setNotice(`Sinkronisasi nama untuk PIN ${row.pin} sudah dijadwalkan. Pantau hasilnya di halaman Sinkronisasi.`);
       setError(null);
       await load();
     } catch (cause) {
@@ -279,6 +289,44 @@ export function AdminAdmsDeviceUsersPage() {
       setBusyKey(null);
     }
   }, [deviceId, load]);
+
+  const syncEmployeeToDevice = useCallback(async (row: UserRow) => {
+    if (!row.employeeId || !row.employeeName || !detail?.item || profileCapability?.state !== "available") return;
+    if (!window.confirm(`Perbarui data ${row.employeeName} pada mesin ini dari data master HCIS?`)) return;
+    setBusyKey(`profile:${row.pin}`);
+    try {
+      await pushUserProfile(deviceId, row.employeeId, 1, `UPSERT USER ${detail.item.serialNumber} ${row.employeeId}`, "execute");
+      setNotice(`Data ${row.employeeName} dijadwalkan untuk diperbarui pada mesin.`);
+      setError(null);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Data pegawai tidak dapat dikirim ke mesin.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [detail?.item, deviceId, load, profileCapability?.state]);
+
+  const changeEmployeeState = useCallback(async (row: UserRow, enabled: boolean) => {
+    if (!row.employeeId || !row.employeeName || !detail?.item || enabledCapability?.state !== "available") return;
+    if (!window.confirm(`${enabled ? "Aktifkan" : "Nonaktifkan"} ${row.employeeName} pada mesin ini? Data pegawai HCIS tidak dihapus.`)) return;
+    setBusyKey(`enabled:${row.pin}`);
+    try {
+      await setUserEnabled(
+        deviceId,
+        row.employeeId,
+        enabled,
+        `${enabled ? "ENABLE" : "DISABLE"} USER ${detail.item.serialNumber} ${row.employeeId}`,
+        "execute",
+      );
+      setNotice(`${row.employeeName} dijadwalkan untuk ${enabled ? "diaktifkan" : "dinonaktifkan"} pada mesin.`);
+      setError(null);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Status pegawai pada mesin tidak dapat diubah.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [detail?.item, deviceId, enabledCapability?.state, load]);
 
   const disconnectMapping = useCallback(async (row: UserRow) => {
     if (!row.mappingId || !row.employeeName) return;
@@ -503,6 +551,35 @@ export function AdminAdmsDeviceUsersPage() {
                                   >
                                     Sinkronkan nama
                                   </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || profileCapability?.state !== "available"}
+                                    onClick={() => void syncEmployeeToDevice(row)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Kirim / perbarui pegawai
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || enabledCapability?.state !== "available"}
+                                    onClick={() => void changeEmployeeState(row, true)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Aktifkan di mesin
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || enabledCapability?.state !== "available"}
+                                    onClick={() => void changeEmployeeState(row, false)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Nonaktifkan di mesin
+                                  </button>
+                                  {(profileCapability?.state !== "available" || enabledCapability?.state !== "available") ? (
+                                    <div className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                                      {operatorCapabilityLabel(profileCapability?.state !== "available" ? profileCapability : enabledCapability)}
+                                    </div>
+                                  ) : null}
                                   <button
                                     type="button"
                                     disabled={busyKey !== null || mappingReview || !row.rosterObserved}

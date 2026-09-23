@@ -279,7 +279,7 @@ export function AdminAdmsDeviceUsersPage() {
     if (!confirmed) return;
     setBusyKey(`sync:${row.pin}`);
     try {
-      const result = await syncAdmsUserName(deviceId, row.pin);
+      await syncAdmsUserName(deviceId, row.pin);
       setNotice(`Sinkronisasi nama untuk PIN ${row.pin} sudah dijadwalkan. Pantau hasilnya di halaman Sinkronisasi.`);
       setError(null);
       await load();

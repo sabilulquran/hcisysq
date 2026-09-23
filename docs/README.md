@@ -34,7 +34,7 @@ Untuk frontend, baca juga:
 - `design/brand-guideline.md`
 - `design/ui-guidelines.md`
 - `design/ui-foundation.md`
-- `domain/attendance-adms-operational-management.md` untuk arsitektur operasional final Manajemen ADMS (ATT-012)\n- `domain/attendance-device-admin-information-architecture.md` hanya sebagai historical IA yang disupersede ATT-012
+- `domain/attendance-adms-operational-management.md` untuk arsitektur operasional Manajemen ADMS (ATT-012)\n- `domain/attendance-adms-capability-matrix.md` untuk master capability matrix ADMS yang disepakati\n- `domain/attendance-adms-user-experience.md` untuk baseline GUI/UX ADMS dan kamus bahasa user\n- `domain/attendance-device-admin-information-architecture.md` hanya sebagai historical IA yang disupersede ATT-012
 - `domain/attendance-device-admin-verification.md` untuk bukti implementasi/deployment ATT-006 dan physical safe-name canary yang sudah terverifikasi
 
 Untuk ATT-005 fingerprint/WDMS, baca juga:

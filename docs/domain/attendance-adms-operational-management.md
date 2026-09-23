@@ -275,3 +275,72 @@ Rollback:
 - menjadikan source IP sebagai authentication credential;
 - otomatis menyebarkan biometric ke semua mesin;
 - production deployment dalam PR implementasi ini.
+
+
+## 2026-09-23 capability and UX baseline
+
+Product owner accepted the post-deployment ADMS capability/GUI direction after review of:
+
+- the legacy `ADMS(v3.1-168)` package;
+- ZKTeco WDMS/PUSH capability references;
+- current HCIS production repository behavior;
+- ATT-005 physical parity status.
+
+The following documents now refine ATT-012 and are authoritative for future ADMS capability exposure and GUI work:
+
+- `attendance-adms-capability-matrix.md`
+- `attendance-adms-user-experience.md`
+
+### Clarification to the original ATT-012 UI boundary
+
+The original ATT-012 implementation correctly removed engineering-oriented controls from ordinary Human Capital navigation. However, **ordinary business actions must not be hidden merely because their backend implementation uses the physical device operation plane**.
+
+Examples of actions that may belong in ordinary operator UX after their capability/readiness gates are satisfied:
+
+- Perbarui informasi mesin;
+- Ambil transaksi terbaru;
+- Ambil ulang transaksi;
+- Sinkronkan waktu;
+- Sinkronkan pegawai;
+- Kirim/perbarui pegawai di mesin;
+- Aktifkan/nonaktifkan pegawai di mesin;
+- Kode kegiatan dan pesan perangkat;
+- Mulai ulang mesin.
+
+Technical mechanics remain hidden:
+
+- physical parity terminology;
+- canary mechanics;
+- capability keys;
+- wire command;
+- protocol-specific command grammar;
+- raw return codes;
+- raw shell/filesystem access.
+
+Destructive, firmware, server-target, biometric, and other sensitive operations remain subject to their specific permissions and safety gates.
+
+### Target detail-device IA
+
+The future operator-facing detail IA is:
+
+```text
+Ringkasan
+Pengguna
+Biometrik
+Data Mesin
+Transaksi
+Konfigurasi
+Maintenance
+```
+
+This replaces the earlier narrower list in this document **for future UX work**. Current production may still use the earlier route structure until a separate implementation PR is accepted and deployed.
+
+### Implementation rule
+
+Before future ADMS coding, implementation must:
+
+1. use the Master Capability Matrix to determine product exposure;
+2. use the UX Baseline for naming and placement;
+3. keep ATT-005 ledger as the physical-verification authority;
+4. never convert protocol/vendor support into a verified-device claim;
+5. keep raw/engineering controls out of the normal HC GUI.

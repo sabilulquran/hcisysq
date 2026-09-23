@@ -17,7 +17,8 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
 9. `domain/roles-permissions.md`
 10. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
    - untuk Organization Directory publishing, baca `domain/organization-directory-publishing.md` (ORG-006) setelah ORG-002/ORG-004.
-   - untuk simplifikasi operasi attendance, baca `domain/attendance-operational-simplification.md` (ATT-011).\n   - untuk finalisasi Manajemen ADMS, baca `domain/attendance-adms-operational-management.md` (ATT-012).
+   - untuk simplifikasi operasi attendance, baca `domain/attendance-operational-simplification.md` (ATT-011).
+   - untuk finalisasi Manajemen ADMS, baca `domain/attendance-adms-operational-management.md` (ATT-012).
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-009).
    - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
@@ -34,7 +35,10 @@ Untuk frontend, baca juga:
 - `design/brand-guideline.md`
 - `design/ui-guidelines.md`
 - `design/ui-foundation.md`
-- `domain/attendance-adms-operational-management.md` untuk arsitektur operasional final Manajemen ADMS (ATT-012)\n- `domain/attendance-device-admin-information-architecture.md` hanya sebagai historical IA yang disupersede ATT-012
+- `domain/attendance-adms-operational-management.md` untuk arsitektur operasional Manajemen ADMS (ATT-012)
+- `domain/attendance-adms-capability-matrix.md` untuk master capability matrix ADMS yang disepakati
+- `domain/attendance-adms-user-experience.md` untuk baseline GUI/UX ADMS dan kamus bahasa user
+- `domain/attendance-device-admin-information-architecture.md` hanya sebagai historical IA yang disupersede ATT-012
 - `domain/attendance-device-admin-verification.md` untuk bukti implementasi/deployment ATT-006 dan physical safe-name canary yang sudah terverifikasi
 
 Untuk ATT-005 fingerprint/WDMS, baca juga:

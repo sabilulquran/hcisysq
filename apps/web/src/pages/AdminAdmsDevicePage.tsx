@@ -3,7 +3,6 @@ import { DeviceDetailShell, type DeviceAdminSection } from "@/components/attenda
 import { LongRangeRecoveryPanel } from "@/components/attendance/device-admin/LongRangeRecoveryPanel";
 import { MappingReviewPanel } from "@/components/attendance/device-admin/MappingReviewPanel";
 import { AdminAdmsDeviceBiometricsPage } from "@/pages/AdminAdmsDeviceBiometricsPage";
-import { AdminAdmsDeviceCommandsPage } from "@/pages/AdminAdmsDeviceCommandsPage";
 import { AdminAdmsDeviceDataPage } from "@/pages/AdminAdmsDeviceDataPage";
 import { AdminAdmsDeviceDiagnosticsPage } from "@/pages/AdminAdmsDeviceDiagnosticsPage";
 import { AdminAdmsDeviceOperationsPage } from "@/pages/AdminAdmsDeviceOperationsPage";

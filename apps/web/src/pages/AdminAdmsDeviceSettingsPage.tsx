@@ -1,67 +1,42 @@
-import { AlertTriangle, Loader2, Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Clock3, Loader2, Save } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
-import {
-  getAdmsTelemetry,
-  updateAdmsConnectivityPolicy,
-  updateAdmsReconciliationPolicy,
-  type AdmsTelemetry,
-} from "@/lib/admsDiagnostics";
-import { listAdmsDevices, updateAdmsDevice, type AdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
-import { retireAdmsDevice } from "@/lib/admsManagement";
+import { listEmployees, type ReferenceOption } from "@/lib/adminEmployees";
+import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
+import { capabilityByKey, getAdmsDeviceProfile, operatorCapabilityLabel, updateAdmsDeviceProfile, type AdmsDeviceProfile } from "@/lib/admsOperator";
+import { activeTimeSync, setDuplicatePunch, setNtp } from "@/lib/admsPhysicalParity";
 import { hasPermission } from "@/lib/authorization";
-
-function lifecycleLabel(value: AdmsDeviceLifecycle) {
-  if (value === "active") return "Aktif";
-  if (value === "disabled") return "Dinonaktifkan";
-  if (value === "quarantined") return "Karantina";
-  return "Dipensiunkan";
-}
-
-async function getConnectivityOverride(deviceId: string) {
-  const response = await fetch(`/api/admin/attendance/adms/devices/${deviceId}/health`, {
-    credentials: "include",
-    headers: { Accept: "application/json" },
-  });
-  const body = await response.json().catch(() => null) as {
-    item?: { connectivityTimeoutOverrideSeconds?: number | null };
-    message?: string;
-  } | null;
-  if (!response.ok) throw new Error(body?.message ?? "Pengaturan koneksi tidak dapat dimuat.");
-  return body?.item?.connectivityTimeoutOverrideSeconds ?? null;
-}
+import { updateAdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
 
 export function AdminAdmsDeviceSettingsPage() {
-  const { deviceId, detail, health, refresh, session } = useDeviceAdmin();
+  const { deviceId, detail, session, refresh } = useDeviceAdmin();
   const device = detail?.item ?? null;
-  const [telemetry, setTelemetry] = useState<AdmsTelemetry | null>(null);
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
+  const [profile, setProfile] = useState<AdmsDeviceProfile | null>(null);
+  const [capabilities, setCapabilities] = useState<OperationsCapability[]>([]);
+  const [units, setUnits] = useState<ReferenceOption[]>([]);
   const [displayName, setDisplayName] = useState("");
   const [timezone, setTimezone] = useState("Asia/Jakarta");
   const [lifecycle, setLifecycle] = useState<AdmsDeviceLifecycle>("active");
-  const [timeout, setTimeout] = useState("");
-  const [reconciliationEnabled, setReconciliationEnabled] = useState(false);
-  const [reconciliationInterval, setReconciliationInterval] = useState("1440");
-  const [reconciliationLookback, setReconciliationLookback] = useState("48");
+  const [organizationalUnitId, setOrganizationalUnitId] = useState("");
+  const [worksiteLabel, setWorksiteLabel] = useState("");
+  const [areaContext, setAreaContext] = useState("");
+  const [duplicateSeconds, setDuplicateSeconds] = useState("");
+  const [ntpHost, setNtpHost] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [retireOpen, setRetireOpen] = useState(false);
-  const [retirementNote, setRetirementNote] = useState("");
-  const [replacementDeviceId, setReplacementDeviceId] = useState("");
-  const [replacementDevices, setReplacementDevices] = useState<AdmsDevice[]>([]);
-  const canConfigure = hasPermission(session, "attendance.devices.configure");
+  const [error, setError] = useState<string | null>(null);
 
-  const loadPolicies = useCallback(async () => {
-    const [result, timeoutOverride] = await Promise.all([
-      getAdmsTelemetry(deviceId),
-      getConnectivityOverride(deviceId),
+  const load = useCallback(async () => {
+    const [profileResult, operations, employees] = await Promise.all([
+      getAdmsDeviceProfile(deviceId),
+      getAdmsOperations(deviceId),
+      listEmployees({ page: 1, pageSize: 1 }),
     ]);
-    setTelemetry(result);
-    setTimeout(timeoutOverride === null ? "" : String(timeoutOverride));
-    setReconciliationEnabled(result.reconciliationEnabled);
-    setReconciliationInterval(String(result.reconciliationIntervalMinutes));
-    setReconciliationLookback(String(result.reconciliationLookbackHours));
+    setProfile(profileResult);
+    setCapabilities(operations.capabilities);
+    setUnits(employees.filters.units);
   }, [deviceId]);
 
   useEffect(() => {
@@ -72,177 +47,129 @@ export function AdminAdmsDeviceSettingsPage() {
   }, [device]);
 
   useEffect(() => {
-    void loadPolicies().catch((cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : "Pengaturan mesin tidak dapat dimuat.");
+    void load().then(() => setError(null)).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : "Konfigurasi mesin tidak dapat dimuat.");
     });
-  }, [loadPolicies]);
+  }, [load]);
 
-  const saveIdentity = useCallback(async () => {
-    if (!device) return;
-    if (lifecycle !== device.lifecycle) {
-      const message = lifecycle === "active"
-        ? `Aktifkan kembali mesin ${device.serialNumber}?`
-        : `Ubah lifecycle mesin ${device.serialNumber} menjadi ${lifecycleLabel(lifecycle)}? Perintah operasional dapat dibatasi oleh lifecycle ini.`;
-      if (!window.confirm(message)) return;
-    }
+  useEffect(() => {
+    if (!profile) return;
+    setOrganizationalUnitId(profile.organizationalUnitId ?? "");
+    setWorksiteLabel(profile.worksiteLabel ?? "");
+    setAreaContext(profile.areaContext ?? "");
+  }, [profile]);
+
+  const timeCapability = useMemo(() => capabilityByKey(capabilities, "time_sync"), [capabilities]);
+  const duplicateCapability = useMemo(() => capabilityByKey(capabilities, "duplicate_punch_period"), [capabilities]);
+  const ntpCapability = useMemo(() => capabilityByKey(capabilities, "ntp_config"), [capabilities]);
+
+  async function saveIdentity() {
+    if (!device || !canConfigure) return;
     setBusy("identity");
     try {
-      await updateAdmsDevice(deviceId, {
-        displayName: displayName.trim() || null,
-        timezone: timezone.trim(),
-        ...(device.lifecycle === "retired" ? {} : { lifecycle }),
-      });
-      await refresh();
-      setNotice("Identitas dan lifecycle mesin sudah disimpan.");
+      await Promise.all([
+        updateAdmsDevice(deviceId, {
+          displayName: displayName.trim() || null,
+          timezone: timezone.trim(),
+          lifecycle,
+        }),
+        updateAdmsDeviceProfile(deviceId, {
+          organizationalUnitId: organizationalUnitId || null,
+          worksiteLabel: worksiteLabel.trim() || null,
+          areaContext: areaContext.trim() || null,
+        }),
+      ]);
+      setNotice("Identitas dan lokasi mesin sudah disimpan.");
       setError(null);
+      await Promise.all([refresh(), load()]);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pengaturan mesin tidak dapat disimpan.");
+      setError(cause instanceof Error ? cause.message : "Konfigurasi mesin tidak dapat disimpan.");
     } finally {
       setBusy(null);
     }
-  }, [device, deviceId, displayName, lifecycle, refresh, timezone]);
+  }
 
-  const saveConnectivity = useCallback(async () => {
-    const parsed = timeout.trim() === "" ? null : Number(timeout);
-    if (parsed !== null && (!Number.isInteger(parsed) || parsed < 30 || parsed > 3600)) {
-      setError("Timeout koneksi harus 30–3600 detik, atau kosong untuk mode adaptif.");
-      return;
-    }
-    setBusy("connectivity");
+  async function syncTime() {
+    if (!device || timeCapability?.state !== "available") return;
+    setBusy("time");
     try {
-      await updateAdmsConnectivityPolicy(deviceId, parsed);
-      await Promise.all([refresh(), loadPolicies()]);
-      setNotice(parsed === null ? "Timeout koneksi kembali ke mode adaptif." : `Timeout koneksi disimpan ${parsed} detik.`);
+      await activeTimeSync(deviceId, `SYNC TIME ${device.serialNumber}`, "execute");
+      setNotice("Sinkronisasi waktu sudah dijadwalkan.");
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Timeout koneksi tidak dapat disimpan.");
+      setError(cause instanceof Error ? cause.message : "Waktu mesin tidak dapat disinkronkan.");
     } finally {
       setBusy(null);
     }
-  }, [deviceId, loadPolicies, refresh, timeout]);
+  }
 
-  const saveReconciliation = useCallback(async () => {
-    const intervalMinutes = Number(reconciliationInterval);
-    const lookbackHours = Number(reconciliationLookback);
-    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 60 || intervalMinutes > 10080) {
-      setError("Interval pemeriksaan harus 60–10080 menit.");
+  async function saveDuplicatePeriod() {
+    if (!device || duplicateCapability?.state !== "available") return;
+    const seconds = Number(duplicateSeconds);
+    if (!Number.isSafeInteger(seconds) || seconds < 0 || seconds > 86400) {
+      setError("Jeda absensi ganda harus 0–86400 detik.");
       return;
     }
-    if (!Number.isInteger(lookbackHours) || lookbackHours < 1 || lookbackHours > 744) {
-      setError("Rentang pemeriksaan ke belakang harus 1–744 jam.");
-      return;
-    }
-    setBusy("reconciliation");
+    setBusy("duplicate");
     try {
-      await updateAdmsReconciliationPolicy(deviceId, {
-        enabled: reconciliationEnabled,
-        intervalMinutes,
-        lookbackHours,
-      });
-      await loadPolicies();
-      setNotice("Pengaturan rekonsiliasi transaksi sudah disimpan.");
+      await setDuplicatePunch(deviceId, seconds, `SET DUPLICATE ${device.serialNumber} ${seconds}`, "execute");
+      setNotice("Jeda absensi ganda sudah dijadwalkan untuk diterapkan.");
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pengaturan rekonsiliasi tidak dapat disimpan.");
+      setError(cause instanceof Error ? cause.message : "Jeda absensi ganda tidak dapat disimpan.");
     } finally {
       setBusy(null);
     }
-  }, [deviceId, loadPolicies, reconciliationEnabled, reconciliationInterval, reconciliationLookback]);
+  }
 
-
-  const openRetirement = useCallback(async () => {
-    setRetirementNote("");
-    setReplacementDeviceId("");
-    setRetireOpen(true);
+  async function saveTimeSource() {
+    if (!device || ntpCapability?.state !== "available" || !ntpHost.trim()) return;
+    setBusy("ntp");
     try {
-      const result = await listAdmsDevices();
-      setReplacementDevices(result.items.filter((item) => item.id !== deviceId && item.lifecycle !== "retired"));
-    } catch {
-      setReplacementDevices([]);
-    }
-  }, [deviceId]);
-
-  const retireDevice = useCallback(async () => {
-    if (!device || retirementNote.trim().length < 5) {
-      setError("Alasan pensiun mesin minimal 5 karakter.");
-      return;
-    }
-    setBusy("retire");
-    try {
-      await retireAdmsDevice(deviceId, {
-        note: retirementNote.trim(),
-        replacementDeviceId: replacementDeviceId || null,
-      });
-      setRetireOpen(false);
-      await refresh();
-      setNotice("Mesin sudah dipensiunkan. Riwayat dan evidence lama tetap tersimpan.");
+      await setNtp(deviceId, ntpHost.trim(), `SET NTP ${device.serialNumber} ${ntpHost.trim()}`, "execute");
+      setNotice("Sumber waktu otomatis sudah dijadwalkan untuk diterapkan.");
       setError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Mesin tidak dapat dipensiunkan.");
+      setError(cause instanceof Error ? cause.message : "Sumber waktu otomatis tidak dapat disimpan.");
     } finally {
       setBusy(null);
     }
-  }, [device, deviceId, refresh, replacementDeviceId, retirementNote]);
+  }
 
   return (
-    <div className="space-y-4">
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
+    <div className="space-y-5">
+      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Identitas mesin</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Pengaturan registry HCIS. Serial mesin tidak dapat diubah dari halaman ini.</p>
+        <h2 className="text-base font-bold text-brand-heading">Identitas & lokasi</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Informasi operasional yang membantu Human Capital mengenali penempatan mesin.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="text-xs font-semibold text-muted-foreground">Nama mesin<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading outline-none focus:border-brand-primary" /></label>
-          <label className="text-xs font-semibold text-muted-foreground">Serial<input value={device?.serialNumber ?? ""} disabled className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 font-mono text-sm text-muted-foreground" /></label>
-          <label className="text-xs font-semibold text-muted-foreground">Timezone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading outline-none focus:border-brand-primary" /></label>
-          <label className="text-xs font-semibold text-muted-foreground">Lifecycle<select value={lifecycle} disabled={device?.lifecycle === "retired"} onChange={(event) => setLifecycle(event.target.value as AdmsDeviceLifecycle)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-brand-heading disabled:bg-surface"><option value="active">Aktif</option><option value="disabled">Dinonaktifkan</option><option value="quarantined">Karantina</option>{device?.lifecycle === "retired" ? <option value="retired">Dipensiunkan</option> : null}</select></label>
+          <label className="text-xs font-semibold text-muted-foreground">Nama mesin<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Serial<input value={device?.serialNumber ?? ""} disabled className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Unit<select value={organizationalUnitId} onChange={(e) => setOrganizationalUnitId(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm disabled:bg-surface"><option value="">Belum ditentukan</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
+          <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja<input value={worksiteLabel} onChange={(e) => setWorksiteLabel(e.target.value)} disabled={!canConfigure} placeholder="Contoh: Gedung Utama Lt. 1" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Konteks area<input value={areaContext} onChange={(e) => setAreaContext(e.target.value)} disabled={!canConfigure} placeholder="Opsional" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Zona waktu<input value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Status<select value={lifecycle} onChange={(e) => setLifecycle(e.target.value as AdmsDeviceLifecycle)} disabled={!canConfigure || device?.lifecycle === "retired"} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm disabled:bg-surface"><option value="active">Aktif</option><option value="disabled">Dinonaktifkan</option><option value="quarantined">Karantina</option>{device?.lifecycle === "retired" ? <option value="retired">Dipensiunkan</option> : null}</select></label>
         </div>
-        <div className="mt-4 flex justify-end"><button type="button" disabled={busy !== null || !device} onClick={() => void saveIdentity()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "identity" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Simpan pengaturan</button></div>
+        <div className="mt-4 flex justify-end"><button type="button" disabled={busy !== null || !canConfigure || !device} onClick={() => void saveIdentity()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "identity" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Simpan konfigurasi</button></div>
       </section>
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Deteksi koneksi</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Kosongkan override agar HCIS menyesuaikan batas offline dari pola request mesin yang teramati.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-          <div className="rounded-xl bg-surface p-3 text-xs"><div className="text-muted-foreground">Timeout efektif saat ini</div><div className="mt-1 font-bold text-brand-heading">{health?.effectiveConnectivityTimeoutSeconds ? `${health.effectiveConnectivityTimeoutSeconds} detik` : "Belum cukup data"}</div></div>
-          <label className="text-xs font-semibold text-muted-foreground">Override timeout (detik)<input inputMode="numeric" value={timeout} onChange={(event) => setTimeout(event.target.value.replace(/\D/g, ""))} placeholder="Kosong = adaptif" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading" /></label>
-          <button type="button" disabled={busy !== null} onClick={() => void saveConnectivity()} className="h-10 rounded-xl border border-border bg-white px-4 text-xs font-semibold hover:bg-surface disabled:opacity-50">Simpan</button>
+        <div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-brand-primary" /><h2 className="text-base font-bold text-brand-heading">Waktu & absensi</h2></div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-border/70 p-4"><div className="text-sm font-bold text-brand-heading">Sinkronkan waktu</div><div className="mt-1 text-xs text-muted-foreground">{operatorCapabilityLabel(timeCapability)}</div><button type="button" disabled={busy !== null || !canConfigure || timeCapability?.state !== "available"} onClick={() => void syncTime()} className="mt-3 h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Sinkronkan sekarang</button></div>
+          <div className="rounded-xl border border-border/70 p-4"><div className="text-sm font-bold text-brand-heading">Jeda absensi ganda</div><div className="mt-1 text-xs text-muted-foreground">{operatorCapabilityLabel(duplicateCapability)}</div><div className="mt-3 flex gap-2"><input inputMode="numeric" value={duplicateSeconds} onChange={(e) => setDuplicateSeconds(e.target.value.replace(/\D/g, ""))} placeholder="Detik" className="h-9 min-w-0 flex-1 rounded-xl border border-border px-3 text-xs" /><button type="button" disabled={busy !== null || !canConfigure || duplicateCapability?.state !== "available"} onClick={() => void saveDuplicatePeriod()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Terapkan</button></div></div>
+          <div className="rounded-xl border border-border/70 p-4"><div className="text-sm font-bold text-brand-heading">Sumber waktu otomatis</div><div className="mt-1 text-xs text-muted-foreground">{operatorCapabilityLabel(ntpCapability)}</div><div className="mt-3 flex gap-2"><input value={ntpHost} onChange={(e) => setNtpHost(e.target.value)} placeholder="Server waktu" className="h-9 min-w-0 flex-1 rounded-xl border border-border px-3 text-xs" /><button type="button" disabled={busy !== null || !canConfigure || ntpCapability?.state !== "available" || !ntpHost.trim()} onClick={() => void saveTimeSource()} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Terapkan</button></div></div>
         </div>
       </section>
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Rekonsiliasi transaksi</h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Pemeriksaan berkala meminta ulang rentang transaksi untuk mengurangi risiko gap. Ini tidak membuat expected count atau menyimpulkan status kehadiran.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <label className="flex items-center gap-2 text-xs font-semibold text-brand-heading"><input type="checkbox" checked={reconciliationEnabled} onChange={(event) => setReconciliationEnabled(event.target.checked)} /> Aktifkan rekonsiliasi</label>
-          <label className="text-xs font-semibold text-muted-foreground">Interval (menit)<input inputMode="numeric" value={reconciliationInterval} onChange={(event) => setReconciliationInterval(event.target.value.replace(/\D/g, ""))} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading" /></label>
-          <label className="text-xs font-semibold text-muted-foreground">Lihat ke belakang (jam)<input inputMode="numeric" value={reconciliationLookback} onChange={(event) => setReconciliationLookback(event.target.value.replace(/\D/g, ""))} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm text-brand-heading" /></label>
-        </div>
-        <div className="mt-4 flex items-center justify-between gap-4"><div className="text-[11px] text-muted-foreground">Terakhir diminta: {telemetry?.reconciliationLastRequestedAt ? new Date(telemetry.reconciliationLastRequestedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "belum pernah"}</div><button type="button" disabled={busy !== null || !telemetry} onClick={() => void saveReconciliation()} className="h-9 rounded-xl border border-border bg-white px-4 text-xs font-semibold hover:bg-surface disabled:opacity-50">Simpan rekonsiliasi</button></div>
+        <h2 className="text-base font-bold text-brand-heading">Pengiriman data</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Mesin ini dikelola untuk presensi dengan pengiriman data ke HCIS. Pengaturan alamat server dan detail protokol tidak ditampilkan pada konfigurasi harian.</p>
+        <div className="mt-3 rounded-xl bg-surface p-3 text-xs text-brand-heading">Mode operasional: <strong>Presensi · pengiriman otomatis</strong></div>
       </section>
-
-      <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>Operasi destruktif, perubahan PIN aktual, reset mesin, serta pengelolaan payload biometrik tidak tersedia di Pengaturan biasa.</span></div>
-      {canConfigure && device?.lifecycle !== "retired" ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div><h2 className="text-base font-bold text-red-900">Pensiunkan mesin</h2><p className="mt-1 text-xs leading-5 text-red-800">Gunakan saat mesin sudah tidak dipakai atau diganti. Riwayat transaksi, mapping, audit, dan evidence tidak dihapus.</p></div>
-            <button type="button" onClick={() => void openRetirement()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-xs font-bold text-red-800"><Trash2 className="h-3.5 w-3.5" />Pensiunkan</button>
-          </div>
-        </section>
-      ) : null}
-
-      {retireOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="retire-device-title">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-xl">
-            <h2 id="retire-device-title" className="font-bold text-brand-heading">Pensiunkan {device?.displayName || device?.serialNumber}</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Status ini final untuk alur biasa. Capability fisik mesin pengganti tidak diwariskan.</p>
-            <label className="mt-4 block text-xs font-semibold text-muted-foreground">Alasan<textarea value={retirementNote} onChange={(event) => setRetirementNote(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-border p-3 text-sm text-brand-heading" placeholder="Contoh: mesin rusak dan diganti unit baru" /></label>
-            <label className="mt-4 block text-xs font-semibold text-muted-foreground">Mesin pengganti (opsional)<select value={replacementDeviceId} onChange={(event) => setReplacementDeviceId(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-brand-heading"><option value="">Tidak ada / belum ditentukan</option>{replacementDevices.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.serialNumber} · {item.serialNumber}</option>)}</select></label>
-            <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setRetireOpen(false)} disabled={busy === "retire"} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold">Batal</button><button type="button" onClick={() => void retireDevice()} disabled={busy === "retire" || retirementNote.trim().length < 5} className="inline-flex h-9 items-center gap-2 rounded-xl bg-red-700 px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "retire" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Pensiunkan mesin</button></div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import { requestAdmsReadInformation } from "@/lib/admsDiagnostics";
-import { listAdmsManagementJobs, type AdmsManagementJob } from "@/lib/admsManagement";
+import { listAdmsManagementJobs, retireAdmsDevice, type AdmsManagementJob } from "@/lib/admsManagement";
 import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
 import { capabilityByKey, operatorCapabilityHint, operatorCapabilityLabel } from "@/lib/admsOperator";
 import { clearPhysicalData, rebootDevice } from "@/lib/admsPhysicalParity";
 import { hasPermission } from "@/lib/authorization";
 import { commandStatusLabel } from "@/lib/admsAdmin";
+import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
 
 function fmt(value: string | null) {
   if (!value) return "—";
@@ -19,23 +20,29 @@ export function AdminAdmsDeviceMaintenancePage() {
   const { deviceId, detail, session, refresh } = useDeviceAdmin();
   const device = detail?.item;
   const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
   const canDestructive = hasPermission(session, "attendance.devices.destructive");
   const canTechnical = hasPermission(session, "attendance.devices.technical");
   const canFirmware = hasPermission(session, "attendance.devices.firmware");
   const [capabilities, setCapabilities] = useState<OperationsCapability[]>([]);
   const [history, setHistory] = useState<AdmsManagementJob[]>([]);
+  const [replacementDevices, setReplacementDevices] = useState<AdmsDevice[]>([]);
+  const [retirementNote, setRetirementNote] = useState("");
+  const [replacementDeviceId, setReplacementDeviceId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [operations, jobs] = await Promise.all([
+    const [operations, jobs, fleet] = await Promise.all([
       getAdmsOperations(deviceId),
       listAdmsManagementJobs({ deviceId, limit: 20 }),
+      listAdmsDevices(),
     ]);
     setCapabilities(operations.capabilities);
     setHistory(jobs.items);
+    setReplacementDevices(fleet.items.filter((item) => item.id !== deviceId && item.lifecycle === "active"));
   }, [deviceId]);
 
   useEffect(() => {
@@ -99,6 +106,27 @@ export function AdminAdmsDeviceMaintenancePage() {
     }
   }
 
+  async function retireDevice() {
+    if (!device || !canConfigure || retirementNote.trim().length < 5) return;
+    if (!window.confirm(`Pensiunkan ${device.displayName || device.serialNumber}? Status ini tidak dapat dibatalkan melalui alur biasa.`)) return;
+    setBusy("retire");
+    try {
+      await retireAdmsDevice(deviceId, {
+        note: retirementNote.trim(),
+        replacementDeviceId: replacementDeviceId || null,
+      });
+      setNotice("Mesin sudah dipensiunkan. Riwayat transaksi, mapping, dan audit tetap dipertahankan.");
+      setError(null);
+      setRetirementNote("");
+      setReplacementDeviceId("");
+      await Promise.all([load(), refresh()]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Mesin tidak dapat dipensiunkan.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading && capabilities.length === 0) {
     return <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat perawatan mesin…</div>;
   }
@@ -132,6 +160,18 @@ export function AdminAdmsDeviceMaintenancePage() {
           ))}
         </div>
       </section>
+
+      {canConfigure && device?.lifecycle !== "retired" ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="font-bold text-amber-950">Pensiunkan mesin</h2>
+          <p className="mt-1 text-xs leading-5 text-amber-900/80">Gunakan bila mesin sudah tidak dipakai atau diganti. Riwayat tetap disimpan dan mesin pengganti tidak mewarisi hasil pengujian perangkat lama.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <label className="text-xs font-semibold text-amber-950">Alasan<textarea value={retirementNote} onChange={(e) => setRetirementNote(e.target.value)} rows={2} placeholder="Contoh: mesin rusak dan diganti unit baru" className="mt-1 w-full rounded-xl border border-amber-200 bg-white p-3 text-sm text-brand-heading" /></label>
+            <label className="text-xs font-semibold text-amber-950">Mesin pengganti (opsional)<select value={replacementDeviceId} onChange={(e) => setReplacementDeviceId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm"><option value="">Belum ditentukan</option>{replacementDevices.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.serialNumber}</option>)}</select></label>
+            <button type="button" disabled={busy !== null || retirementNote.trim().length < 5} onClick={() => void retireDevice()} className="h-10 rounded-xl border border-amber-300 bg-white px-4 text-xs font-bold text-amber-950 disabled:opacity-50">Pensiunkan</button>
+          </div>
+        </section>
+      ) : null}
 
       {(canFirmware || canTechnical) ? (
         <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">

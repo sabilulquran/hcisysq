@@ -358,6 +358,20 @@ features:
       - docs/product/roadmap.md
       - docs/product/semarthris-benchmark-2026-09-22.md
 
+  - id: ATT-012
+    module: attendance
+    name: ADMS operational management and operator UX
+    legacy_evidence: legacy ADMS(v3.1-168), ZKTeco WDMS/PUSH reference, current HCIS ATT-005 device plane, and product-owner review on 2026-09-23
+    target_status: implementing
+    priority: immediate-product-ux
+    risk: critical
+    planning_note: The initial ATT-012 operational workspace is deployed. The accepted 2026-09-23 next baseline restores safe machine actions to operator-facing UX using human language while keeping engineering mechanics, firmware, destructive work, biometrics, and other sensitive controls appropriately gated. Use the master capability matrix to distinguish protocol/reference support, HCIS implementation, physical verification, and GUI exposure. ATT-005 remains authoritative for physical verification; no vendor/legacy capability is treated as physically supported until evidenced.
+    docs:
+      - docs/domain/attendance-adms-operational-management.md
+      - docs/domain/attendance-adms-capability-matrix.md
+      - docs/domain/attendance-adms-user-experience.md
+      - docs/domain/attendance-wdms-full-physical-parity-ledger.md
+
   - id: LEAVE-001
     module: leave
     name: Submit leave request

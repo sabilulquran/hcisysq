@@ -28,6 +28,11 @@ const envSchema = z
     SQ_HUB_APPLICATION_ACCESS_URL: z.string().url().optional(),
     SQ_HUB_MACHINE_CLIENT_ID: z.string().trim().min(1).optional(),
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
+    ORG_DIRECTORY_EXPORT_ENABLED: z.enum(["0", "1"]).default("0"),
+    ORG_DIRECTORY_TOKEN_ISSUER: z.string().url().optional(),
+    ORG_DIRECTORY_TOKEN_AUDIENCE: z.string().trim().min(1).optional(),
+    ORG_DIRECTORY_ALLOWED_CLIENTS: z.string().trim().min(1).optional(),
+    ORG_DIRECTORY_REQUIRED_SCOPE: z.string().trim().min(1).default("organization-directory.read"),
   })
   .superRefine((value, ctx) => {
     const biometricKeyringRequested =
@@ -70,6 +75,22 @@ const envSchema = z
             message: "BIOMETRIC_ENCRYPTION_KEYS must be a non-empty JSON keyring containing the active 32-byte hex key",
           });
         }
+      }
+    }
+
+    if (value.ORG_DIRECTORY_EXPORT_ENABLED === "1") {
+      const directoryRequired = [
+        "ORG_DIRECTORY_TOKEN_ISSUER",
+        "ORG_DIRECTORY_TOKEN_AUDIENCE",
+        "ORG_DIRECTORY_ALLOWED_CLIENTS",
+      ] as const;
+      for (const key of directoryRequired) {
+        if (value[key]) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when ORG_DIRECTORY_EXPORT_ENABLED=1`,
+        });
       }
     }
 

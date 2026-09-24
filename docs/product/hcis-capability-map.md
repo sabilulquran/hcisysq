@@ -1,9 +1,9 @@
 # HCIS Capability Map
 
-**Status:** ACCEPTED PRODUCT DIRECTION  
-**Decision date:** 2026-09-18  
-**Updated:** 2026-09-22  
-**Related:** UX-001 and `docs/product/feature-parity.yaml`  
+**Status:** ACCEPTED PRODUCT DIRECTION
+**Decision date:** 2026-09-18
+**Updated:** 2026-09-22
+**Related:** UX-001 and `docs/product/feature-parity.yaml`
 **Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
 
 ## Product boundary

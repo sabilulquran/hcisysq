@@ -26,6 +26,8 @@ No client secret is required by HCIS for verification. The caller obtains its ow
 
 The production Compose file passes these variables from `infra/.env.vps` to the API container. Recreate only the API after changing them, then verify the effective container environment by key/presence without printing secrets. The public HCIS reverse proxy must route `/internal/v1/organization-directory/*` to the API unchanged; the ordinary SPA fallback returns HTML 200 and cannot serve the snapshot contract. Confirm the disabled route returns JSON 503 before enabling export, and confirm an unauthenticated request returns 401 after enabling it.
 
+When the export gate is `0`, blank Compose values for issuer, audience, and allowed clients are treated as absent. All three remain required and validated when the gate is `1`. Operators should set the explicit production values before activation.
+
 ## Pre-activation checklist
 
 Do not enable production export until all are true:

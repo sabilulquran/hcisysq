@@ -42,6 +42,17 @@ function config(enabled = true) {
 }
 
 describe("ORG-006 route", () => {
+  it("accepts empty optional Compose variables only while export is disabled", () => {
+    const emptyVariables = {
+      DATABASE_URL: "postgresql://example.invalid/test",
+      ORG_DIRECTORY_TOKEN_ISSUER: "",
+      ORG_DIRECTORY_TOKEN_AUDIENCE: "",
+      ORG_DIRECTORY_ALLOWED_CLIENTS: "",
+    };
+    expect(loadConfig({ ...emptyVariables, ORG_DIRECTORY_EXPORT_ENABLED: "0" }).ORG_DIRECTORY_EXPORT_ENABLED).toBe("0");
+    expect(() => loadConfig({ ...emptyVariables, ORG_DIRECTORY_EXPORT_ENABLED: "1" })).toThrow();
+  });
+
   it("fails closed while export is disabled", async () => {
     const app = Fastify();
     const verify = vi.fn(async () => ({ clientId: "sq-hub-organization-directory" }));

@@ -29,9 +29,18 @@ const envSchema = z
     SQ_HUB_MACHINE_CLIENT_ID: z.string().trim().min(1).optional(),
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
     ORG_DIRECTORY_EXPORT_ENABLED: z.enum(["0", "1"]).default("0"),
-    ORG_DIRECTORY_TOKEN_ISSUER: z.string().url().optional(),
-    ORG_DIRECTORY_TOKEN_AUDIENCE: z.string().trim().min(1).optional(),
-    ORG_DIRECTORY_ALLOWED_CLIENTS: z.string().trim().min(1).optional(),
+    ORG_DIRECTORY_TOKEN_ISSUER: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().optional(),
+    ),
+    ORG_DIRECTORY_TOKEN_AUDIENCE: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().trim().min(1).optional(),
+    ),
+    ORG_DIRECTORY_ALLOWED_CLIENTS: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().trim().min(1).optional(),
+    ),
     ORG_DIRECTORY_REQUIRED_SCOPE: z.string().trim().min(1).default("organization-directory.read"),
   })
   .superRefine((value, ctx) => {

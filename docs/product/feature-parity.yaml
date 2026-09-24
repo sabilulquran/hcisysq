@@ -145,11 +145,11 @@ features:
   - id: ORG-006
     module: organization
     name: Organization Directory publishing to SQ Hub
-    legacy_evidence: none; cross-repository projection boundary is a new discovery contract
-    target_status: discovery
+    legacy_evidence: none; cross-repository projection boundary is a new integration contract
+    target_status: accepted
     priority: post-org004-integration
     risk: high
-    planning_note: HCIS remains the organization authoring/system-of-authority side. SQ Hub is planned as a read-only local projection/distribution layer. Transport, external identifiers, ordered versioning, privacy, freshness, replay, and bootstrap remain TBD; no runtime publication path is implemented by ORG-006 discovery.
+    planning_note: HCIS remains the organization authoring/system-of-authority side. ORG-006 v1 accepts authenticated full-snapshot pull to SQ Hub, stable namespaced identifiers, content-addressed versioning, minimum privacy projection, and explicit recovery/staleness boundaries. Runtime export remains default OFF until real ORG-004 structure acceptance and deployment evidence.
     docs:
       - docs/domain/organization-directory-publishing.md
       - docs/domain/dynamic-organization-structure.md

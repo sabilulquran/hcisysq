@@ -19,10 +19,46 @@ tags:
   - name: Leave
   - name: Approvals
   - name: Organization
+  - name: Organization Directory
   - name: Attendance
   - name: Payslips
 
 paths:
+  /internal/v1/organization-directory/snapshot:
+    get:
+      tags: [Organization Directory]
+      operationId: getOrganizationDirectorySnapshot
+      summary: Pull the accepted HCIS organization-directory full snapshot
+      security:
+        - OrganizationDirectoryBearer: []
+      parameters:
+        - name: asOf
+          in: query
+          required: true
+          description: Asia/Jakarta business date for effective snapshot selection.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Validated, privacy-minimized full snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDirectorySnapshot'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Export is disabled or no effective accepted published snapshot is available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
   /health:
     get:
       tags: [System]
@@ -1397,6 +1433,15 @@ paths:
   /notifications/read-all:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1read-all'
 components:
+  securitySchemes:
+    OrganizationDirectoryBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Dedicated Keycloak client-credentials token. HCIS verifies issuer, audience,
+        allowlisted client_id/azp, and organization-directory.read scope.
+
   parameters:
     Cursor:
       name: cursor
@@ -1452,6 +1497,1998 @@ components:
             $ref: '#/components/schemas/ValidationProblem'
 
   schemas:
+    OrganizationDirectorySnapshot:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, source, asOf, version, generatedAt, counts, units, positions, people]
+      properties:
+        schemaVersion:
+          type: string
+          const: hcis-organization-directory.v1
+        source:
+          type: object
+          additionalProperties: false
+          required: [system, snapshotId, effectiveOn, publishedAt, createdAt]
+          properties:
+            system: { type: string, const: hcis }
+            snapshotId: { type: string, format: uuid }
+            effectiveOn: { type: string, format: date }
+            publishedAt: { type: string, format: date-time }
+            createdAt: { type: string, format: date-time }
+        asOf: { type: string, format: date }
+        version:
+          type: string
+          pattern: '^sha256:[a-f0-9]{64}
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
+    Session:
+      type: object
+      required: [principal, expiresAt, authorization]
+      properties:
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+
+        generatedAt: { type: string, format: date-time }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [units, positions, people]
+          properties:
+            units: { type: integer, minimum: 0 }
+            positions: { type: integer, minimum: 0 }
+            people: { type: integer, minimum: 0 }
+        units:
+          type: array
+          items: { $ref: '#/components/schemas/OrganizationDirectoryUnit' }
+        positions:
+          type: array
+          items: { $ref: '#/components/schemas/OrganizationDirectoryPosition' }
+        people:
+          type: array
+          items: { $ref: '#/components/schemas/OrganizationDirectoryPerson' }
+
+    OrganizationDirectoryUnit:
+      type: object
+      additionalProperties: false
+      required: [id, name, nodeType, parentUnitId, active, effectiveFrom, effectiveTo]
+      properties:
+        id: { type: string, pattern: '^hcis:org-node:[0-9a-f-]{36}
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
+    Session:
+      type: object
+      required: [principal, expiresAt, authorization]
+      properties:
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+ }
+        name: { type: string, minLength: 1 }
+        nodeType: { type: string, minLength: 1 }
+        parentUnitId: { type: [string, 'null'] }
+        active: { type: boolean }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationDirectoryPosition:
+      type: object
+      additionalProperties: false
+      required: [id, unitId, title, parentPositionId, active, effectiveFrom, effectiveTo]
+      properties:
+        id: { type: string, pattern: '^hcis:org-position:[0-9a-f-]{36}
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
+    Session:
+      type: object
+      required: [principal, expiresAt, authorization]
+      properties:
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+ }
+        unitId: { type: string, pattern: '^hcis:org-node:[0-9a-f-]{36}
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
+    Session:
+      type: object
+      required: [principal, expiresAt, authorization]
+      properties:
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+ }
+        title: { type: string, minLength: 1 }
+        parentPositionId: { type: [string, 'null'] }
+        active: { type: boolean }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationDirectoryPerson:
+      type: object
+      additionalProperties: false
+      required:
+        [id, employeeNumber, displayName, active, employmentStatus, startedOn, endedOn,
+         currentPrimaryUnitId, structuralPositionIds, primaryStructuralPositionId, identityRefs]
+      properties:
+        id: { type: string, pattern: '^hcis:employee:[0-9a-f-]{36}
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined, retired] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
+    Session:
+      type: object
+      required: [principal, expiresAt, authorization]
+      properties:
+        principal:
+          type: object
+          required: [id, email, principalType]
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string, format: email }
+            principalType: { type: string, enum: [EMPLOYEE, FOUNDATION_BOARD, SUPER_ADMIN] }
+        expiresAt: { type: string, format: date-time }
+        authorization:
+          type: object
+          description: AUTH-011 effective HCIS-local organization permissions; never platform authority.
+          required: [organizationPermissions]
+          properties:
+            organizationPermissions:
+              type: array
+              uniqueItems: true
+              items: { type: string }
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+ }
+        employeeNumber: { type: string, minLength: 1 }
+        displayName: { type: string, minLength: 1 }
+        active: { type: boolean }
+        employmentStatus: { type: [string, 'null'] }
+        startedOn: { type: [string, 'null'], format: date }
+        endedOn: { type: [string, 'null'], format: date }
+        currentPrimaryUnitId: { type: [string, 'null'] }
+        structuralPositionIds:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+        primaryStructuralPositionId: { type: [string, 'null'] }
+        identityRefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [issuer, subject]
+            properties:
+              issuer: { type: string, format: uri }
+              subject: { type: string, minLength: 1 }
+
     AdmsDevice:
       type: object
       required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]

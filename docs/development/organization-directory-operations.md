@@ -1,7 +1,7 @@
 # ORG-006 Organization Directory producer operations
 
-**Status:** Implementation runbook  
-**Contract:** ORG-006 / SQ Hub HUB-IMPL-018  
+**Status:** Implementation runbook
+**Contract:** ORG-006 / SQ Hub HUB-IMPL-018
 **Production activation:** Separate human/operator gate
 
 ## Purpose

@@ -24,6 +24,8 @@ Only the issuer is a URL. Allowed clients is a comma-separated allowlist when mo
 
 No client secret is required by HCIS for verification. The caller obtains its own client-credentials token from Keycloak; HCIS verifies the signed JWT using public JWKS.
 
+The production Compose file passes these variables from `infra/.env.vps` to the API container. Recreate only the API after changing them, then verify the effective container environment by key/presence without printing secrets. The public HCIS reverse proxy must route `/internal/v1/organization-directory/*` to the API unchanged; the ordinary SPA fallback returns HTML 200 and cannot serve the snapshot contract. Confirm the disabled route returns JSON 503 before enabling export, and confirm an unauthenticated request returns 401 after enabling it.
+
 ## Pre-activation checklist
 
 Do not enable production export until all are true:

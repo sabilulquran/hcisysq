@@ -467,11 +467,18 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/work-code", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.operate"]);
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = workCodeBodySchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_WORK_CODE_SYNC", message: "Permintaan Work Code tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.operate"]
+        : "attendance.devices.operate",
+    );
+    if (!principal) return;
     try {
       const result = await withTransaction(pool, async (client) => {
         const device = await requireDevice(client, params.data.deviceId, true);
@@ -512,11 +519,18 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/message", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.operate"]);
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = messageBodySchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_MESSAGE_SYNC", message: "Permintaan pesan perangkat tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.operate"]
+        : "attendance.devices.operate",
+    );
+    if (!principal) return;
     try {
       const result = await withTransaction(pool, async (client) => {
         const device = await requireDevice(client, params.data.deviceId, true);
@@ -619,11 +633,18 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/duplicate-punch", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.configure"]);
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = duplicatePunchBodySchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_DUPLICATE_PUNCH", message: "Konfigurasi duplicate-punch tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.configure"]
+        : "attendance.devices.configure",
+    );
+    if (!principal) return;
     try {
       const result = await withTransaction(pool, async (client) => {
         const device = await requireDevice(client, params.data.deviceId, true);
@@ -650,11 +671,18 @@ export async function registerAdmsPhysicalParityRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/reboot", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.destructive"]);
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = rebootBodySchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_REBOOT", message: "Permintaan reboot tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.operate"]
+        : "attendance.devices.operate",
+    );
+    if (!principal) return;
     try {
       const result = await withTransaction(pool, async (client) => {
         const device = await requireDevice(client, params.data.deviceId, true);
@@ -824,11 +852,18 @@ export async function registerAdmsPhysicalParityRoutes(
     { path: "clear-all", capabilityKey: "clear_all_data" as const, phrase: "CLEAR ALL DATA", wire: clearAllDataWireCommand() },
   ]) {
     app.post(`/admin/attendance/adms/devices/:deviceId/physical/${spec.path}`, async (request, reply) => {
-      const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.destructive"]);
-      if (!principal) return;
       const params = deviceParamsSchema.safeParse(request.params);
       const body = destructiveBodySchema.safeParse(request.body);
-      if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_DESTRUCTIVE_OPERATION", message: "Permintaan destructive operation tidak valid." });
+      if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_DESTRUCTIVE_OPERATION", message: "Permintaan tindakan berisiko tinggi tidak valid." });
+      const principal = await authenticate(
+        auth,
+        request,
+        reply,
+        body.data.mode === "canary"
+          ? ["attendance.devices.technical", "attendance.devices.destructive"]
+          : "attendance.devices.destructive",
+      );
+      if (!principal) return;
       try {
         const result = await withTransaction(pool, async (client) => {
           const device = await requireDevice(client, params.data.deviceId, true);

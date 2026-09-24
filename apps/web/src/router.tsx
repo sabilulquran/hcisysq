@@ -14,8 +14,10 @@ import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
   AdminAdmsDeviceBiometricsRoutePage,
   AdminAdmsDeviceCommandsRoutePage,
+  AdminAdmsDeviceDataRoutePage,
   AdminAdmsDeviceDiagnosticsRoutePage,
   AdminAdmsDeviceOperationsRoutePage,
+  AdminAdmsDeviceMaintenanceRoutePage,
   AdminAdmsDeviceOverviewRoutePage,
   AdminAdmsDeviceSettingsRoutePage,
   AdminAdmsDeviceTransactionsRoutePage,
@@ -413,6 +415,13 @@ const adminAdmsDeviceBiometricsRoute = createRoute({
   component: AdminAdmsDeviceBiometricsRoutePage,
 });
 
+const adminAdmsDeviceDataRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices/$deviceId/data",
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/data"),
+  component: AdminAdmsDeviceDataRoutePage,
+});
+
 const adminAdmsDeviceTransactionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/transactions",
@@ -439,6 +448,13 @@ const adminAdmsDeviceSettingsRoute = createRoute({
   path: "/admin/attendance/devices/$deviceId/settings",
   beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/settings"),
   component: AdminAdmsDeviceSettingsRoutePage,
+});
+
+const adminAdmsDeviceMaintenanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices/$deviceId/maintenance",
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/maintenance"),
+  component: AdminAdmsDeviceMaintenanceRoutePage,
 });
 
 const adminAdmsDeviceDiagnosticsRoute = createRoute({
@@ -543,10 +559,12 @@ const routeTree = rootRoute.addChildren([
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,
   adminAdmsDeviceBiometricsRoute,
+  adminAdmsDeviceDataRoute,
   adminAdmsDeviceTransactionsRoute,
   adminAdmsDeviceCommandsRoute,
   adminAdmsDeviceOperationsRoute,
   adminAdmsDeviceSettingsRoute,
+  adminAdmsDeviceMaintenanceRoute,
   adminAdmsDeviceDiagnosticsRoute,
   adminLeaveRoute,
   adminLeaveCalendarRoute,

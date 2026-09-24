@@ -24,6 +24,11 @@ describe("full WDMS route safety", () => {
     expect(source).not.toMatch(/["'`]DATA DELETE user(?:["'`]|\\|$)/);
     expect(source).toContain('mode: z.enum(["canary", "execute"]).default("canary")');
     expect(source).not.toContain("rawCommand");
+    expect(source).toContain('body.data.mode === "canary"');
+    expect(source).toContain('["attendance.devices.technical", "attendance.devices.operate"]');
+    expect(source).toContain(': "attendance.devices.operate"');
+    expect(source).toContain(': "attendance.devices.configure"');
+    expect(source).toContain(': "attendance.devices.destructive"');
   });
 
   it("keeps attendance-photo canary encrypted and exposes only an approved server target", async () => {

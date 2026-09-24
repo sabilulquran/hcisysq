@@ -130,6 +130,27 @@ describe("ORG-006 route", () => {
     await app.close();
   });
 
+  it("returns a generic 500 without leaking unexpected source errors", async () => {
+    const app = Fastify();
+    await registerOrganizationDirectoryRoutes(app, {} as Pool, config(), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-organization-directory" }),
+      loadSnapshot: async () => {
+        throw new Error("synthetic internal detail that must not be returned");
+      },
+    });
+
+    const result = await app.inject({
+      method: "GET",
+      url: "/internal/v1/organization-directory/snapshot?asOf=2026-09-24",
+      headers: { authorization: "Bearer synthetic-token" },
+    });
+
+    expect(result.statusCode).toBe(500);
+    expect(result.json()).toMatchObject({ code: "ORGANIZATION_DIRECTORY_INTERNAL_ERROR" });
+    expect(result.body).not.toContain("synthetic internal detail");
+    await app.close();
+  });
+
   it("returns 503 without fabricating data when HCIS has no effective published snapshot", async () => {
     const app = Fastify();
     await registerOrganizationDirectoryRoutes(app, {} as Pool, config(), {

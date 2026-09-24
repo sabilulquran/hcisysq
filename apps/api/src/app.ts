@@ -39,6 +39,7 @@ import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes
 import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
+import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
@@ -68,6 +69,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeAdminRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);
   await registerOrganizationAdminRoutes(app, pool, config);
+  await registerOrganizationDirectoryRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
   await registerAttendanceWorkforceRoutes(app, pool, config);

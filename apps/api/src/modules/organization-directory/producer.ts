@@ -235,7 +235,7 @@ export function buildOrganizationDirectorySnapshot(input: {
     positions: positions.length,
     people: people.length,
   };
-  const versionInput = {
+  const versionInput: Omit<OrganizationDirectorySnapshot, "version" | "generatedAt"> = {
     schemaVersion: ORGANIZATION_DIRECTORY_SCHEMA_VERSION,
     source,
     asOf,

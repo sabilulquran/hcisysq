@@ -145,7 +145,15 @@ export async function registerOrganizationDirectoryRoutes(
           message: "Organization Directory snapshot could not be generated safely.",
         });
       }
-      throw error;
+      request.log.error({
+        clientId: principal.clientId,
+        asOf: parsed.data.asOf,
+        category: "unexpected",
+      }, "organization directory snapshot generation failed");
+      return reply.status(500).send({
+        code: "ORGANIZATION_DIRECTORY_INTERNAL_ERROR",
+        message: "Organization Directory snapshot could not be generated safely.",
+      });
     }
   });
 }

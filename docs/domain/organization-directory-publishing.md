@@ -1,10 +1,10 @@
 # ORG-006 — Organization Directory publishing to SQ Hub
 
-**Status:** ACCEPTED  
-**Owner/domain:** Human Capital / HCIS  
-**Decision date:** 2026-09-24  
-**First consumer:** SQ Hub Organization Directory  
-**Cross-repository contract:** SQ Hub ADR-0007 and HUB-IMPL-018  
+**Status:** ACCEPTED
+**Owner/domain:** Human Capital / HCIS
+**Decision date:** 2026-09-24
+**First consumer:** SQ Hub Organization Directory
+**Cross-repository contract:** SQ Hub ADR-0007 and HUB-IMPL-018
 **Runtime deployment:** Not implied by specification acceptance
 
 ## Purpose

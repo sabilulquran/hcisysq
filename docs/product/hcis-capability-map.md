@@ -132,12 +132,12 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005.
-- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (DISCOVERY).
+- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY).
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
-`ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is planned as a read-only projection/distribution layer. It is discovery only: external identifiers, privacy, versioning, transport, freshness, replay, and bootstrap remain undecided, and no runtime publication path exists yet.
+`ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is a read-only projection/distribution layer. The accepted v1 contract uses authenticated full-snapshot pull, stable namespaced HCIS identifiers, content-addressed versions, explicit effective/deactivation semantics, privacy minimization, and a default-OFF production export gate. Contract acceptance does not itself claim deployment or runtime activation.
 
 `ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented.
 

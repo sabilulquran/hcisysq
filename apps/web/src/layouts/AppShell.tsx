@@ -194,10 +194,10 @@ export function AppShell({
     <div className="min-h-screen bg-surface text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border/80 bg-sidebar/95 lg:flex lg:flex-col">
         <div className="flex items-start gap-3 px-7 py-6">
-          <img src={ysqMark} alt="" className="h-10 w-10 shrink-0 object-contain" />
+          <img src={ysqMark} alt="" className="h-12 w-12 shrink-0 object-contain" />
           <div className="min-w-0 pt-0.5">
-            <p className="font-display text-sm font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">HCIS</p>
-            <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
+            <p className="font-display text-base font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">HCIS</p>
+            <p className="mt-1 text-[11px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
           </div>
         </div>
 
@@ -237,10 +237,10 @@ export function AppShell({
         <header className="sticky top-0 z-20 border-b border-border/70 bg-surface/95 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
-              <img src={ysqMark} alt="" className="h-9 w-9 shrink-0 object-contain" />
+              <img src={ysqMark} alt="" className="h-10 w-10 shrink-0 object-contain" />
               <div className="min-w-0">
                 <p className="font-display text-sm font-bold leading-tight text-brand-heading">HCIS</p>
-                <p className="mt-0.5 truncate text-[9px] font-semibold text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
+                <p className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
               </div>
             </div>
             <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>

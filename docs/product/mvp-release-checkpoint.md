@@ -1,3 +1,5 @@
+> **RETIRED / ARCHIVED — DO NOT DEPLOY — DO NOT RECREATE.** Staging references and staging commands in this document are historical evidence. The production VPS is production-only by owner decision of 2 October 2026. See the permanent-retirement runbook; historical staging instructions do not authorize deployment.
+
 # HCIS YSQ MVP Release Checkpoint
 
 **Status:** MVP VERIFIED COMPLETE  

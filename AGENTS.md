@@ -1,5 +1,11 @@
 # HCIS YSQ Engineering Rules
 
+## Permanent production-VPS staging retirement
+
+HCIS/SQ Hub staging on the production VPS was permanently retired by owner decision on 2 October 2026. Production-only is the intended topology. Do not recreate, deploy, enable, or infer a requirement for staging from historical files, backups, Docker resources, workflows, or documentation. Reintroduction requires a new explicit owner decision and a new deployment plan.
+
+Operational source of truth: `docs/operations/permanent-staging-retirement-2026-10-02.md`.
+
 Dokumen ini berlaku untuk manusia, ChatGPT, Codex, dan automation lain yang mengubah repository.
 
 ## 1. Source of truth

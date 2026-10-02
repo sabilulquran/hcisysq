@@ -104,5 +104,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Validate staging compose
-        run: docker compose --env-file infra/staging.env.example -f infra/docker-compose.staging.yml config -q
+      - name: Validate retired staging entry point
+        run: |
+          grep -Fq "services: {}" infra/docker-compose.staging.yml
+          grep -Fq "DO NOT DEPLOY" infra/docker-compose.staging.yml

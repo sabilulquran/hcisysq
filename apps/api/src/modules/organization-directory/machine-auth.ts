@@ -89,6 +89,9 @@ export function createOrganizationDirectoryMachineTokenVerifier(input: {
         throw deadlineError;
       }
 
+      if (typeof payload.azp === "string" && typeof payload.client_id === "string" && payload.azp !== payload.client_id) {
+        throw new OrganizationDirectoryMachineAuthError("FORBIDDEN_CLIENT", "machine client claims conflict");
+      }
       const clientId =
         typeof payload.azp === "string"
           ? payload.azp

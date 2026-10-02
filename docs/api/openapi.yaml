@@ -20,10 +20,61 @@ tags:
   - name: Approvals
   - name: Organization
   - name: Organization Directory
+  - name: Staff Identity Verification
   - name: Attendance
   - name: Payslips
 
 paths:
+  /internal/v1/staff-identity/verify-employee:
+    post:
+      tags: [Staff Identity Verification]
+      operationId: verifyEmployeeForAkunSq
+      summary: Verify one exact HCIS employee before Akun SQ provisioning
+      description: Dedicated machine identity only; disabled by default; no employee mutation.
+      security:
+        - StaffIdentityBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [employeeNumber]
+              properties:
+                employeeNumber:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+      responses:
+        '200':
+          description: Exact current employee reference; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [employeeId, employeeNumber, displayName, email, status, verifiedAt]
+                properties:
+                  employeeId: { type: string, pattern: '^hcis:employee:[0-9a-f-]{36}$' }
+                  employeeNumber: { type: string }
+                  displayName: { type: string }
+                  email: { type: [string, 'null'], format: email }
+                  status: { type: string, enum: [active, inactive, resigned] }
+                  verifiedAt: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Employee does not exist or was removed
+        '409':
+          description: Ambiguous employee number
+        '503':
+          description: Verification contract disabled
+
   /internal/v1/organization-directory/snapshot:
     get:
       tags: [Organization Directory]
@@ -1434,6 +1485,11 @@ paths:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1read-all'
 components:
   securitySchemes:
+    StaffIdentityBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Dedicated client credentials with audience hcis-staff-identity and scope staff-identity.verify.
     OrganizationDirectoryBearer:
       type: http
       scheme: bearer

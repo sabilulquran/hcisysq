@@ -353,11 +353,18 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-profile", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userProfileSchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_USER_PROFILE_SYNC", message: "Permintaan user profile tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.configure"]
+        : "attendance.devices.configure",
+    );
+    if (!principal) return;
     try {
       const result = await transaction(pool, async (client) => {
         const device = await deviceForUpdate(client, params.data.deviceId);
@@ -384,11 +391,18 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-enabled", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userEnabledSchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_USER_ENABLED_STATE", message: "Permintaan enable/disable user tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.configure"]
+        : "attendance.devices.configure",
+    );
+    if (!principal) return;
     try {
       const result = await transaction(pool, async (client) => {
         const device = await deviceForUpdate(client, params.data.deviceId);
@@ -425,11 +439,18 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/ntp", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = ntpSchema.safeParse(request.body);
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_NTP_CONFIG", message: "Konfigurasi NTP tidak valid." });
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.configure"]
+        : "attendance.devices.configure",
+    );
+    if (!principal) return;
     try {
       const result = await transaction(pool, async (client) => {
         const device = await deviceForUpdate(client, params.data.deviceId);

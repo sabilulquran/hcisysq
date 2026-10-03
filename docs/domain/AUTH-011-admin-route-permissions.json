@@ -317,7 +317,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/reboot",
     "permissions": [
-      "attendance.devices.destructive"
+      "attendance.devices.operate"
     ]
   },
   {

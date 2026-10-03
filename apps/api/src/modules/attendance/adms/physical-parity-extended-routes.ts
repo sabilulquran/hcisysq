@@ -256,13 +256,20 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/time-sync", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.operate"]);
-    if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = timeSyncBodySchema.safeParse(request.body);
     if (!params.success || !body.success) {
       return reply.status(400).send({ code: "INVALID_TIME_SYNC", message: "Permintaan sinkron waktu tidak valid." });
     }
+    const principal = await authenticate(
+      auth,
+      request,
+      reply,
+      body.data.mode === "canary"
+        ? ["attendance.devices.technical", "attendance.devices.operate"]
+        : "attendance.devices.operate",
+    );
+    if (!principal) return;
     try {
       const queued = await withTransaction(pool, async (client) => {
         const device = await client.query<{ serialNumber: string; lifecycle: string; timezone: string }>(

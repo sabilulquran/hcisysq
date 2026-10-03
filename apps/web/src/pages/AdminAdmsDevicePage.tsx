@@ -3,9 +3,10 @@ import { DeviceDetailShell, type DeviceAdminSection } from "@/components/attenda
 import { LongRangeRecoveryPanel } from "@/components/attendance/device-admin/LongRangeRecoveryPanel";
 import { MappingReviewPanel } from "@/components/attendance/device-admin/MappingReviewPanel";
 import { AdminAdmsDeviceBiometricsPage } from "@/pages/AdminAdmsDeviceBiometricsPage";
-import { AdminAdmsDeviceCommandsPage } from "@/pages/AdminAdmsDeviceCommandsPage";
+import { AdminAdmsDeviceDataPage } from "@/pages/AdminAdmsDeviceDataPage";
 import { AdminAdmsDeviceDiagnosticsPage } from "@/pages/AdminAdmsDeviceDiagnosticsPage";
 import { AdminAdmsDeviceOperationsPage } from "@/pages/AdminAdmsDeviceOperationsPage";
+import { AdminAdmsDeviceMaintenancePage } from "@/pages/AdminAdmsDeviceMaintenancePage";
 import { AdminAdmsDeviceOverviewPage } from "@/pages/AdminAdmsDeviceOverviewPage";
 import { AdminAdmsDevicePhysicalDeliveryPanel } from "@/pages/AdminAdmsDevicePhysicalDeliveryPanel";
 import { AdminAdmsDevicePhysicalParityPage } from "@/pages/AdminAdmsDevicePhysicalParityPage";
@@ -26,6 +27,7 @@ function sectionContent(section: DeviceAdminSection) {
     );
   }
   if (section === "biometrics") return <AdminAdmsDeviceBiometricsPage />;
+  if (section === "data") return <AdminAdmsDeviceDataPage />;
   if (section === "transactions") {
     return (
       <>
@@ -34,9 +36,10 @@ function sectionContent(section: DeviceAdminSection) {
       </>
     );
   }
-  if (section === "commands") return <AdminAdmsDeviceCommandsPage />;
+  if (section === "commands") return <AdminAdmsDeviceMaintenancePage />;
   if (section === "settings") return <AdminAdmsDeviceSettingsPage />;
-  if (section === "operations" || section === "diagnostics") {
+  if (section === "maintenance" || section === "operations") return <AdminAdmsDeviceMaintenancePage />;
+  if (section === "diagnostics") {
     return (
       <>
         <AdminAdmsDeviceDiagnosticsPage />

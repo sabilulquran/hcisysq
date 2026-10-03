@@ -23,6 +23,12 @@ describe("ATT-005 operations capability state projection", () => {
       state: "not_verified",
       execution: "blocked",
     });
+    for (const key of ["user_profile_upsert", "user_enable_disable", "ntp_config"]) {
+      expect(items.find((item) => item.key === key)).toMatchObject({
+        state: "not_verified",
+        execution: "blocked",
+      });
+    }
   });
 
   it("makes only verified physical evidence device-executable", () => {

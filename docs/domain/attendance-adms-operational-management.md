@@ -74,7 +74,7 @@ Di dalam workspace:
 Dashboard
 Perangkat
 Pegawai & Mapping
-Sinkronisasi & Perintah
+Sinkronisasi
 Transaksi
 Kesehatan & Alert
 Audit
@@ -114,9 +114,11 @@ Unmapped row harus dapat:
 
 Similarity/name suggestion boleh membantu tetapi tidak boleh membuat mapping otomatis.
 
-### Sinkronisasi & Perintah
+### Sinkronisasi
 
-Satu daftar lintas mesin untuk command/job lifecycle:
+Workspace ini memprioritaskan desired-vs-observed employee synchronization lintas mesin. Operator memilih pegawai atau scope unit, memilih mesin target, melihat preview perbedaan dalam bahasa manusia, lalu hanya perubahan eligible yang dapat dikirim setelah capability perangkat berstatus verified.
+
+Riwayat proses tetap tersedia di bagian yang sama dengan status manusia:
 - menunggu;
 - dikirim;
 - diterima mesin;
@@ -125,7 +127,7 @@ Satu daftar lintas mesin untuk command/job lifecycle:
 - kedaluwarsa;
 - dibatalkan.
 
-Ordinary UI menampilkan action label manusia, device, target/range aman, timestamps, attempts, dan result summary aman. Raw command tetap technical detail.
+Ordinary UI tidak menampilkan command number, return code, operation ID, capability key, wire command, atau enum internal. Detail tersebut hanya boleh berada pada surface teknis berizin.
 
 ### Transaksi
 
@@ -159,13 +161,16 @@ Ordinary tabs:
 1. Ringkasan
 2. Pengguna
 3. Biometrik — hanya bila principal memiliki permission biometrik
-4. Transaksi
-5. Sinkronisasi
-6. Pengaturan
+4. Data Mesin
+5. Transaksi
+6. Konfigurasi
+7. Maintenance
 
-`Operasional` tidak lagi menjadi primary tab.
+`Data Mesin` memuat Kode kegiatan dan Pesan untuk mesin. `Maintenance` memuat perawatan aman, riwayat tindakan, firmware bila actor memiliki izin terkait, akses ke diagnostik teknis, dan tindakan berisiko tinggi yang dipisahkan secara visual.
 
-`Diagnostik teknis` adalah secondary route dan memerlukan `attendance.devices.technical`. Physical parity, canary, evidence classification, firmware tooling, break-glass tooling, dan protocol-oriented controls hidup di sini.
+`Diagnostik teknis` tetap secondary route dan memerlukan `attendance.devices.technical`. Physical parity, canary, evidence classification, protocol-oriented controls, dan support tooling hanya hidup di sini.
+
+Aksi bisnis yang diklasifikasikan **Operator after verification** tidak memerlukan permission teknis untuk mode execute. Mode canary/physical verification tetap memerlukan `attendance.devices.technical`. Tindakan break-glass tetap memerlukan `attendance.devices.destructive`; firmware tetap memerlukan `attendance.devices.firmware`; biometrik tetap memerlukan `attendance.devices.biometrics`. Semua execute tetap fail-closed bila capability per-device belum verified.
 
 Legacy `/operations` deep link tidak boleh menjadi jalur biasa menuju physical-canary cockpit.
 

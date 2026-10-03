@@ -19,7 +19,7 @@ const items: Array<{
   { key: "dashboard", label: "Dashboard", href: "/admin/attendance/adms", icon: ServerCog },
   { key: "devices", label: "Perangkat", href: "/admin/attendance/devices", icon: Fingerprint },
   { key: "users", label: "Pegawai & Mapping", href: "/admin/attendance/adms/users", icon: Link2 },
-  { key: "jobs", label: "Sinkronisasi & Perintah", href: "/admin/attendance/adms/jobs", icon: ClipboardList },
+  { key: "jobs", label: "Sinkronisasi", href: "/admin/attendance/adms/jobs", icon: ClipboardList },
   { key: "transactions", label: "Transaksi", href: "/admin/attendance/adms/transactions", icon: History },
   { key: "health", label: "Kesehatan & Alert", href: "/admin/attendance/adms/health", icon: HeartPulse },
   { key: "audit", label: "Audit", href: "/admin/attendance/adms/audit", icon: Activity },

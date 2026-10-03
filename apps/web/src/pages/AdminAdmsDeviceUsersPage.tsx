@@ -16,7 +16,11 @@ import {
   type AdmsUserCorrectionItem,
 } from "@/lib/admsAdmin";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { listBiometricReplicaInventory, type BiometricReplicaItem } from "@/lib/admsBiometrics";
 import { hasPermission } from "@/lib/authorization";
+import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
+import { capabilityByKey, operatorCapabilityLabel } from "@/lib/admsOperator";
+import { pushUserProfile, setUserEnabled } from "@/lib/admsPhysicalParity";
 import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
 import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
 
@@ -53,11 +57,15 @@ function candidateLabel(kind: string) {
 export function AdminAdmsDeviceUsersPage() {
   const { deviceId, detail, refresh: refreshDevice, session, sessionResolved } = useDeviceAdmin();
   const canOperate = hasPermission(session, "attendance.devices.operate");
+  const canConfigure = hasPermission(session, "attendance.devices.configure");
   const canSearchEmployees = hasPermission(session, "employees.manage");
+  const canViewBiometrics = hasPermission(session, "attendance.devices.biometrics");
   const [roster, setRoster] = useState<AdmsRosterItem[]>([]);
   const [mappingLifecycle, setMappingLifecycle] = useState<AdmsMappingLifecycleItem[]>([]);
   const [assistantItems, setAssistantItems] = useState<AdmsMappingAssistantItem[]>([]);
   const [corrections, setCorrections] = useState<AdmsUserCorrectionItem[]>([]);
+  const [capabilities, setCapabilities] = useState<OperationsCapability[]>([]);
+  const [biometricReplicas, setBiometricReplicas] = useState<BiometricReplicaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -75,16 +83,20 @@ export function AdminAdmsDeviceUsersPage() {
   const [intendedPin, setIntendedPin] = useState("");
 
   const load = useCallback(async () => {
-    const [rosterResult, assistantResult, correctionResult] = await Promise.all([
+    const [rosterResult, assistantResult, correctionResult, operations, biometricInventory] = await Promise.all([
       getAdmsDeviceRoster(deviceId),
       getAdmsMappingAssistant(deviceId),
       listAdmsUserCorrections(deviceId),
+      getAdmsOperations(deviceId),
+      canViewBiometrics ? listBiometricReplicaInventory(deviceId) : Promise.resolve({ items: [] as BiometricReplicaItem[] }),
     ]);
     setRoster(rosterResult.items);
     setMappingLifecycle(rosterResult.mappingLifecycle.items);
     setAssistantItems(assistantResult.items);
     setCorrections(correctionResult.items);
-  }, [deviceId]);
+    setCapabilities(operations.capabilities);
+    setBiometricReplicas(biometricInventory.items);
+  }, [canViewBiometrics, deviceId]);
 
   useEffect(() => {
     setLoading(true);
@@ -207,6 +219,27 @@ export function AdminAdmsDeviceUsersPage() {
     [filteredRows, page, pageSize],
   );
 
+  const biometricByEmployee = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of biometricReplicas) {
+      const label = item.state === "present" || item.state === "succeeded"
+        ? "Tersimpan"
+        : item.state === "pending"
+          ? "Sedang disinkronkan"
+          : item.state === "missing"
+            ? "Belum ada"
+            : item.state === "failed" || item.state === "conflict"
+              ? "Perlu ditinjau"
+              : "Belum diketahui";
+      const existing = map.get(item.employeeId);
+      if (!existing || existing === "Belum diketahui") map.set(item.employeeId, label);
+    }
+    return map;
+  }, [biometricReplicas]);
+
+  const profileCapability = useMemo(() => capabilityByKey(capabilities, "user_profile_upsert"), [capabilities]);
+  const enabledCapability = useMemo(() => capabilityByKey(capabilities, "user_enable_disable"), [capabilities]);
+
   const plannedByPin = useMemo(
     () => new Map(corrections.filter((item) => item.status === "planned").map((item) => [item.legacyPin, item])),
     [corrections],
@@ -269,8 +302,8 @@ export function AdminAdmsDeviceUsersPage() {
     if (!confirmed) return;
     setBusyKey(`sync:${row.pin}`);
     try {
-      const result = await syncAdmsUserName(deviceId, row.pin);
-      setNotice(`Perintah C:${result.item.commandNumber} untuk menyinkronkan nama PIN ${row.pin} sudah dibuat. Pantau hasilnya di tab Perintah.`);
+      await syncAdmsUserName(deviceId, row.pin);
+      setNotice(`Sinkronisasi nama untuk PIN ${row.pin} sudah dijadwalkan. Pantau hasilnya di halaman Sinkronisasi.`);
       setError(null);
       await load();
     } catch (cause) {
@@ -279,6 +312,44 @@ export function AdminAdmsDeviceUsersPage() {
       setBusyKey(null);
     }
   }, [deviceId, load]);
+
+  const syncEmployeeToDevice = useCallback(async (row: UserRow) => {
+    if (!row.employeeId || !row.employeeName || !detail?.item || profileCapability?.state !== "available") return;
+    if (!window.confirm(`Perbarui data ${row.employeeName} pada mesin ini dari data master HCIS?`)) return;
+    setBusyKey(`profile:${row.pin}`);
+    try {
+      await pushUserProfile(deviceId, row.employeeId, 1, `UPSERT USER ${detail.item.serialNumber} ${row.employeeId}`, "execute");
+      setNotice(`Data ${row.employeeName} dijadwalkan untuk diperbarui pada mesin.`);
+      setError(null);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Data pegawai tidak dapat dikirim ke mesin.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [detail?.item, deviceId, load, profileCapability?.state]);
+
+  const changeEmployeeState = useCallback(async (row: UserRow, enabled: boolean) => {
+    if (!row.employeeId || !row.employeeName || !detail?.item || enabledCapability?.state !== "available") return;
+    if (!window.confirm(`${enabled ? "Aktifkan" : "Nonaktifkan"} ${row.employeeName} pada mesin ini? Data pegawai HCIS tidak dihapus.`)) return;
+    setBusyKey(`enabled:${row.pin}`);
+    try {
+      await setUserEnabled(
+        deviceId,
+        row.employeeId,
+        enabled,
+        `${enabled ? "ENABLE" : "DISABLE"} USER ${detail.item.serialNumber} ${row.employeeId}`,
+        "execute",
+      );
+      setNotice(`${row.employeeName} dijadwalkan untuk ${enabled ? "diaktifkan" : "dinonaktifkan"} pada mesin.`);
+      setError(null);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Status pegawai pada mesin tidak dapat diubah.");
+    } finally {
+      setBusyKey(null);
+    }
+  }, [detail?.item, deviceId, enabledCapability?.state, load]);
 
   const disconnectMapping = useCallback(async (row: UserRow) => {
     if (!row.mappingId || !row.employeeName) return;
@@ -411,15 +482,15 @@ export function AdminAdmsDeviceUsersPage() {
           <div className="p-8 text-center text-sm text-muted-foreground">Tidak ada pengguna yang cocok dengan filter.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="border-b border-border/70 bg-surface/70 text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-bold">PIN</th>
-                  <th className="px-4 py-3 font-bold">Data di mesin</th>
                   <th className="px-4 py-3 font-bold">Pegawai HCIS</th>
-                  <th className="px-4 py-3 font-bold">Status</th>
-                  <th className="px-4 py-3 font-bold">Terakhir teramati</th>
-                  <th className="px-4 py-3 text-right font-bold">Aksi</th>
+                  <th className="px-4 py-3 font-bold">PIN</th>
+                  <th className="px-4 py-3 font-bold">Status di mesin</th>
+                  <th className="px-4 py-3 font-bold">Biometrik</th>
+                  <th className="px-4 py-3 font-bold">Data di mesin</th>
+                  <th className="px-4 py-3 text-right font-bold">Tindakan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -430,43 +501,39 @@ export function AdminAdmsDeviceUsersPage() {
                   return (
                     <tr key={row.pin} className="align-top hover:bg-surface/40">
                       <td className="px-4 py-4">
-                        <div className="font-mono text-xs font-bold text-brand-heading">{row.pin}</div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">{row.eventCount} punch tersimpan</div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum teramati"}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">Kartu {row.cardNumber ?? "—"}</div>
-                        {!row.rosterObserved ? <div className="mt-1 text-[11px] font-medium text-amber-700">Metadata pengguna belum teramati</div> : null}
-                      </td>
-                      <td className="px-4 py-4">
                         {mapped ? (
                           <>
                             <div className="font-semibold text-brand-heading">{row.employeeName ?? "Pegawai terhubung"}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{row.employeeNumber ?? "—"}</div>
-                            {mappingReview ? (
-                              <div className="mt-1 text-[11px] font-semibold text-orange-800">{employeeLifecycleLabel(row.employeeStatus)} · tinjau hubungan ini</div>
-                            ) : null}
+                            {mappingReview ? <div className="mt-1 text-[11px] font-semibold text-orange-800">{employeeLifecycleLabel(row.employeeStatus)}</div> : null}
                           </>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Belum terhubung</span>
-                        )}
+                        ) : <span className="text-xs text-muted-foreground">Belum terhubung</span>}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-mono text-xs font-bold text-brand-heading">{row.pin}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">{row.eventCount} transaksi tersimpan</div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1.5">
                           <span className={mappingReview
                             ? "inline-flex rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-800"
-                            : mapped
-                              ? "inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
-                              : "inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"}
+                            : !mapped || !row.rosterObserved || (row.employeeName && row.displayName !== row.employeeName)
+                              ? "inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"
+                              : "inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"}
                           >
-                            {mappingReview ? "Perlu ditinjau" : mapped ? "Terhubung" : "Belum terhubung"}
+                            {mappingReview ? "Perlu ditinjau" : !mapped ? "Belum terhubung" : !row.rosterObserved ? "Belum ada di mesin" : row.employeeName && row.displayName !== row.employeeName ? "Data berbeda" : "Sinkron"}
                           </span>
-                          {plan ? (
-                            <div className="text-[11px] font-medium text-sky-700">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div>
-                          ) : null}
+                          {plan ? <div className="text-[11px] font-medium text-sky-700">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div> : null}
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(row.lastSeenAt)}</td>
+                      <td className="px-4 py-4 text-xs text-muted-foreground">
+                        {row.employeeId && canViewBiometrics ? biometricByEmployee.get(row.employeeId) ?? "Belum ada" : canViewBiometrics ? "Belum terhubung" : "Tidak ditampilkan"}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum teramati"}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">Kartu {row.cardNumber ?? "—"}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">Terakhir {fmt(row.lastSeenAt)}</div>
+                      </td>
                       <td className="px-4 py-4 text-right">
                         <div className="flex justify-end gap-2">
                           {!mapped && canOperate ? (
@@ -503,6 +570,35 @@ export function AdminAdmsDeviceUsersPage() {
                                   >
                                     Sinkronkan nama
                                   </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || profileCapability?.state !== "available"}
+                                    onClick={() => void syncEmployeeToDevice(row)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Kirim / perbarui pegawai
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || enabledCapability?.state !== "available"}
+                                    onClick={() => void changeEmployeeState(row, true)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Aktifkan di mesin
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey !== null || mappingReview || !canConfigure || enabledCapability?.state !== "available"}
+                                    onClick={() => void changeEmployeeState(row, false)}
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
+                                  >
+                                    Nonaktifkan di mesin
+                                  </button>
+                                  {(profileCapability?.state !== "available" || enabledCapability?.state !== "available") ? (
+                                    <div className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+                                      {operatorCapabilityLabel(profileCapability?.state !== "available" ? profileCapability : enabledCapability)}
+                                    </div>
+                                  ) : null}
                                   <button
                                     type="button"
                                     disabled={busyKey !== null || mappingReview || !row.rosterObserved}

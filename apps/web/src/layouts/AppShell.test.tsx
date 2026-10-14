@@ -84,3 +84,14 @@ describe("AppShell employee service discovery", () => {
     expect(mobile.match(/href=/g)).toHaveLength(5);
   });
 });
+
+describe("AppShell SQ brand lockup sizing", () => {
+  it("keeps the official mark and organization name readable in desktop and compact headers", () => {
+    const html = renderShell();
+
+    expect(html).toContain('class="h-12 w-12 shrink-0 object-contain"');
+    expect(html).toContain('class="h-10 w-10 shrink-0 object-contain"');
+    expect(html).toContain('text-[11px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur');
+    expect(html).toContain('text-[10px] font-semibold text-muted-foreground">Yayasan Sabilul Qur');
+  });
+});

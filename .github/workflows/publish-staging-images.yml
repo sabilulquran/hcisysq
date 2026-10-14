@@ -1,10 +1,11 @@
-name: Publish HCIS Staging Images
+# Legacy filename retained for production-publisher compatibility. No VPS staging deployment.
+name: Publish HCIS Immutable Production Images
 
 on:
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "Optional 40-character commit SHA to backfill. Leave blank to publish current ref and staging tag."
+        description: "Optional 40-character commit SHA to backfill. Leave blank to publish immutable images for the current ref."
         required: false
         type: string
   push:
@@ -80,9 +81,6 @@ jobs:
           {
             echo 'value<<EOF'
             echo '${{ matrix.image }}:sha-${{ steps.target.outputs.sha }}'
-            if [[ '${{ steps.target.outputs.include_staging }}' == '1' ]]; then
-              echo '${{ matrix.image }}:staging'
-            fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
 

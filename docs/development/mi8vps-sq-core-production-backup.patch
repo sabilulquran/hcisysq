@@ -1,0 +1,363 @@
+--- a/data/local/mi8vps/sq-core-backup.sh
++++ b/data/local/mi8vps/sq-core-backup.sh
+@@ -1,11 +1,15 @@
+ #!/system/bin/sh
+-# Root-owned, private backup set for the explicitly non-production SQ Core candidates.
++# Root-owned, private daily backup set for the SQ Core production databases
++# (OPS-MI8-BAK-001). Database names match DATABASE_URL / KC_DB_URL in each
++# app's /srv/<app>/shared/final.env, which the launchers source.
+ set -eu
+ umask 077
+ 
+ ROOT=/data/local/ubuntu26
+ STATE=/data/local/mi8vps
+-SETS="$ROOT/srv/keycloak/backups/sq-core-host-sets"
++SETS="$ROOT/srv/sq-core-backups/production-sets"
++KEEP=${SQ_CORE_BACKUP_KEEP:-14}
++SCOPE=production
+ STAMP=$(/system/bin/date -u +%Y%m%dT%H%M%SZ)
+ SET="$SETS/set-$STAMP"
+ TMPBASE=/data/data/com.termux/files/home
+@@ -13,22 +17,27 @@
+ TUID=$(stat -c %u /data/data/com.termux)
+ TGID=$(stat -c %g /data/data/com.termux)
+ TENV="HOME=$TMPBASE PREFIX=/data/data/com.termux/files/usr TMPDIR=/data/data/com.termux/files/usr/tmp PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
++TBIN=/data/data/com.termux/files/usr/bin
+ 
+ mkdir -p "$SETS" "$SET"
+-/system/bin/chmod 0700 "$SETS" "$SET"
++/system/bin/chmod 0700 "$ROOT/srv/sq-core-backups" "$SETS" "$SET"
+ 
+ finish() {
+   rc=$?
+   if [ "$rc" -eq 0 ]; then
+-    printf '%s result=OK scope=non-production-rehearsal\n' "$STAMP" >>"$STATUS"
++    printf '%s result=OK scope=%s\n' "$STAMP" "$SCOPE" >>"$STATUS"
+   else
+-    printf '%s result=FAIL exit=%s scope=non-production-rehearsal\n' "$STAMP" "$rc" >>"$STATUS"
++    printf '%s result=FAIL exit=%s scope=%s\n' "$STAMP" "$rc" "$SCOPE" >>"$STATUS"
+   fi
+   /system/bin/chmod 0600 "$STATUS"
+   exit "$rc"
+ }
+ trap finish EXIT
+ 
++as_termux() {
++  su -g "$TGID" -G 3003 "$TUID" -c "$TENV $*"
++}
++
+ dump_db() {
+   app=$1
+   db=$2
+@@ -36,23 +45,33 @@
+   dest="$SET/$app/database.dump"
+   mkdir -p "$SET/$app"
+   /system/bin/chmod 0700 "$SET/$app"
+-  su -g "$TGID" -G 3003 "$TUID" -c "$TENV /data/data/com.termux/files/usr/bin/pg_dump -U postgres -Fc -f $tmp $db"
++  as_termux "$TBIN/pg_dump -U postgres -Fc -f $tmp $db"
++  # A readable table of contents proves the custom-format archive is complete.
++  as_termux "$TBIN/pg_restore --list $tmp" >/dev/null
+   /system/bin/chmod 0600 "$tmp"
+   cp "$tmp" "$dest"
+   /system/bin/chmod 0600 "$dest"
+   rm -f "$tmp"
+-  printf '%s database=%s result=OK\n' "$app" "$db" >>"$STATUS"
++  printf '%s database=%s bytes=%s result=OK\n' "$app" "$db" "$(stat -c %s "$dest")" >>"$STATUS"
++  printf 'database\t%s\t%s\n' "$app" "$db" >>"$SET/manifest.tsv"
+ }
+ 
+-dump_db keycloak sqcore_phase3_cutf8_20261004_keycloak
+-dump_db hcis sqcore_phase3_cutf8_20261004_hcis
+-dump_db hub sqcore_phase3_cutf8_20261004_hub
+-dump_db aset sqcore_phase3_cutf8_20261004_aset
++{
++  printf 'scope\t%s\n' "$SCOPE"
++  printf 'created_utc\t%s\n' "$STAMP"
++  printf 'pg_dump\t%s\n' "$(as_termux "$TBIN/pg_dump --version")"
++} >"$SET/manifest.tsv"
++/system/bin/chmod 0600 "$SET/manifest.tsv"
++
++dump_db keycloak sqcore_keycloak
++dump_db hcis sqcore_hcis
++dump_db hub sqcore_hub
++dump_db aset sqcore_aset
+ 
+ # Configuration values stay in their protected shared files. This records only
+-# paths, modes, and release provenance; HCIS secret values are never copied.
++# paths, modes, and release provenance; secret values are never copied.
+ {
+-  printf 'scope\tnon-production-rehearsal\n'
++  printf 'scope\t%s\n' "$SCOPE"
+   for app in keycloak hcis sq-hub aset-sq; do
+     printf 'app\t%s\n' "$app"
+     /system/bin/stat -c 'shared_file\t%a\t%U:%G\t%n' "$ROOT/srv/$app/shared"/* 2>/dev/null || true
+@@ -61,23 +80,25 @@
+ } >"$SET/config-metadata.tsv"
+ /system/bin/chmod 0600 "$SET/config-metadata.tsv"
+ 
+-chroot "$ROOT" /usr/bin/tar -C /srv/keycloak/releases/keycloak-26.7.2-3a2238fc-20261004 \
+-  -cf "/srv/keycloak/backups/sq-core-host-sets/set-$STAMP/keycloak-customization.tar" providers themes
++KC_RELEASE=$(/system/bin/readlink "$ROOT/srv/keycloak/current")
++case "$KC_RELEASE" in releases/keycloak-*) ;; *) echo "unexpected keycloak current: $KC_RELEASE" >&2; exit 3 ;; esac
++chroot "$ROOT" /usr/bin/tar -C "/srv/keycloak/$KC_RELEASE" \
++  -cf "/srv/sq-core-backups/production-sets/set-$STAMP/keycloak-customization.tar" providers themes
+ /system/bin/chmod 0600 "$SET/keycloak-customization.tar"
+ chroot "$ROOT" /usr/bin/tar -C /srv/aset-sq/shared \
+-  -cf "/srv/keycloak/backups/sq-core-host-sets/set-$STAMP/aset-attachments.tar" attachments
++  -cf "/srv/sq-core-backups/production-sets/set-$STAMP/aset-attachments.tar" attachments
+ /system/bin/chmod 0600 "$SET/aset-attachments.tar"
+ 
+-(cd "$SET" && /system/bin/sha256sum keycloak/database.dump hcis/database.dump hub/database.dump aset/database.dump keycloak-customization.tar aset-attachments.tar config-metadata.tsv > SHA256SUMS)
++(cd "$SET" && /system/bin/sha256sum keycloak/database.dump hcis/database.dump hub/database.dump aset/database.dump keycloak-customization.tar aset-attachments.tar config-metadata.tsv manifest.tsv > SHA256SUMS)
+ /system/bin/chmod 0600 "$SET/SHA256SUMS"
+ (cd "$SET" && /system/bin/sha256sum -c SHA256SUMS >/dev/null)
+ 
+-# Keep seven completed daily sets. A failed set is retained for evidence and
+-# never displaces the newest known-good set.
+-ok_sets=$(/system/bin/grep -l 'result=OK' "$SETS"/set-*/backup.log 2>/dev/null | /system/bin/sed 's#/backup.log##' | /system/bin/sort || true)
++# Keep $KEEP completed daily sets besides this one. A failed set is retained
++# for evidence and never displaces the newest known-good set.
++ok_sets=$(/system/bin/grep -l "result=OK scope=$SCOPE" "$SETS"/set-*/backup.log 2>/dev/null | /system/bin/sed 's#/backup.log##' | /system/bin/sort || true)
+ count=$(printf '%s\n' "$ok_sets" | /system/bin/sed '/^$/d' | /system/bin/wc -l)
+-if [ "$count" -gt 7 ]; then
+-  printf '%s\n' "$ok_sets" | /system/bin/head -n $((count - 7)) | while IFS= read -r old; do
++if [ "$count" -gt "$KEEP" ]; then
++  printf '%s\n' "$ok_sets" | /system/bin/head -n $((count - KEEP)) | while IFS= read -r old; do
+     case "$old" in "$SETS"/set-*) [ -n "$old" ] && rm -r -- "$old" ;; esac
+   done
+ fi
+--- a/data/local/mi8vps/sq-core-worker.sh
++++ b/data/local/mi8vps/sq-core-worker.sh
+@@ -9,6 +9,12 @@
+ LAUNCH="$STATE/sq-core-launch.sh"
+ ROTATE="$STATE/sq-core-logrotate.sh"
+ BACKUP="$STATE/sq-core-backup.sh"
++RESTORE_CHECK="$STATE/sq-core-restore-check.sh"
++# OPS-MI8-BAK-001: 19 UTC = 02:00 WIB, outside working hours.
++BACKUP_HOUR_UTC=19
++# Sunday 20 UTC = Monday 03:00 WIB, after that night's set exists.
++RESTORE_CHECK_DOW_UTC=7
++RESTORE_CHECK_HOUR_UTC=20
+ PIDDIR="$STATE/sq-core-pids"
+ mkdir -p "$PIDDIR"
+ 
+@@ -107,6 +113,15 @@
+ 
+ last_rotate=0
+ last_backup_day=
++last_restore_check_day=
++offhost_copy() {
++  # Encrypted Drive copy of the newest production set; it runs in the chroot,
++  # where rclone, flock and the 15 GB quota guard live.
++  chroot "$ROOT" /usr/bin/env -i HOME=/root \
++    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
++    /usr/bin/timeout 1800 /usr/local/sbin/sq-core-offhost-daily \
++    >>"$STATE/sq-core-offhost.log" 2>&1
++}
+ while :; do
+   now=$(date +%s)
+   if [ $((now - last_rotate)) -ge 900 ]; then
+@@ -115,10 +130,28 @@
+   fi
+   day=$(date -u +%F)
+   hour=$(date -u +%H)
+-  if [ "$hour" = 02 ] && [ "$day" != "$last_backup_day" ]; then
+-    "$BACKUP" && log "scheduled backup completed" || log "scheduled backup failed"
++  if [ "$hour" = "$BACKUP_HOUR_UTC" ] && [ "$day" != "$last_backup_day" ]; then
++    if "$BACKUP"; then
++      log "scheduled backup completed"
++      if offhost_copy; then
++        log "scheduled off-host copy completed"
++      else
++        log "scheduled off-host copy FAILED exit=$?"
++      fi
++    else
++      log "scheduled backup FAILED exit=$?"
++    fi
+     last_backup_day=$day
+   fi
++  if [ "$(date -u +%u)" = "$RESTORE_CHECK_DOW_UTC" ] && [ "$hour" = "$RESTORE_CHECK_HOUR_UTC" ] \
++    && [ "$day" != "$last_restore_check_day" ]; then
++    if "$RESTORE_CHECK" >>"$STATE/sq-core-restore-check.log" 2>&1; then
++      log "weekly restore check passed"
++    else
++      log "weekly restore check FAILED exit=$?"
++    fi
++    last_restore_check_day=$day
++  fi
+   if ! pg_ready; then
+     log 'PostgreSQL not ready; SQ Core waits without touching host PostgreSQL'
+     sleep 15
+--- a/data/local/mi8vps/sq-core-logrotate.sh
++++ b/data/local/mi8vps/sq-core-logrotate.sh
+@@ -34,3 +34,5 @@
+   done
+ done
+ rotate_one "$STATE/sq-core-worker.log"
++rotate_one "$STATE/sq-core-offhost.log"
++rotate_one "$STATE/sq-core-restore-check.log"
+--- /dev/null
++++ b/data/local/mi8vps/sq-core-restore-check.sh
+@@ -0,0 +1,74 @@
++#!/system/bin/sh
++# OPS-MI8-BAK-001 weekly restore check. Restores each dump of the newest
++# production set into a disposable sqcore_restorecheck_<app> database, compares
++# table counts with the live database, then drops the disposable copy.
++# It never writes to a live database and prints no row data.
++set -eu
++umask 077
++
++ROOT=/data/local/ubuntu26
++SETS="$ROOT/srv/sq-core-backups/production-sets"
++TMPBASE=/data/data/com.termux/files/home
++TBIN=/data/data/com.termux/files/usr/bin
++TUID=$(stat -c %u /data/data/com.termux)
++TGID=$(stat -c %g /data/data/com.termux)
++TENV="HOME=$TMPBASE PREFIX=/data/data/com.termux/files/usr TMPDIR=/data/data/com.termux/files/usr/tmp PATH=$TBIN:/system/bin:/system/xbin"
++STAMP=$(/system/bin/date -u +%Y%m%dT%H%M%SZ)
++TABLES_SQL="select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')"
++
++as_termux() {
++  su -g "$TGID" -G 3003 "$TUID" -c "$TENV $*"
++}
++psql_value() {
++  as_termux "$TBIN/psql -U postgres -d $1 -XAtq -v ON_ERROR_STOP=1 -c \"$TABLES_SQL\""
++}
++drop_scratch() {
++  case "$1" in sqcore_restorecheck_keycloak|sqcore_restorecheck_hcis|sqcore_restorecheck_hub|sqcore_restorecheck_aset) ;; *) return 1 ;; esac
++  as_termux "$TBIN/dropdb -U postgres --if-exists $1"
++}
++cleanup() {
++  rc=$?
++  for app in keycloak hcis hub aset; do drop_scratch "sqcore_restorecheck_$app" || rc=1; done
++  rm -f "$TMPBASE"/sq-core-restorecheck-*.dump
++  printf '%s SQ_CORE_RESTORE_CHECK result=%s exit=%s\n' "$STAMP" "$([ "$rc" -eq 0 ] && echo PASS || echo FAIL)" "$rc"
++  exit "$rc"
++}
++trap cleanup EXIT
++
++set_dir=
++for d in $(ls -1d "$SETS"/set-* 2>/dev/null | /system/bin/sort -r); do
++  if /system/bin/grep -q 'result=OK scope=production$' "$d/backup.log" 2>/dev/null; then set_dir=$d; break; fi
++done
++[ -n "$set_dir" ] || { echo "no completed production set" >&2; exit 2; }
++(cd "$set_dir" && /system/bin/sha256sum -c SHA256SUMS >/dev/null)
++echo "$STAMP set=$(basename "$set_dir")"
++
++check_app() {
++  app=$1
++  live=$2
++  scratch="sqcore_restorecheck_$app"
++  tmp="$TMPBASE/sq-core-restorecheck-$app.dump"
++  cp "$set_dir/$app/database.dump" "$tmp"
++  chown "$TUID:$TGID" "$tmp"
++  /system/bin/chmod 0600 "$tmp"
++  drop_scratch "$scratch"
++  as_termux "$TBIN/createdb -U postgres $scratch"
++  as_termux "$TBIN/pg_restore -U postgres -d $scratch --no-owner --no-acl --exit-on-error $tmp"
++  rm -f "$tmp"
++  restored=$(psql_value "$scratch")
++  current=$(psql_value "$live")
++  drop_scratch "$scratch"
++  echo "$app live_db=$live restored_tables=$restored live_tables=$current"
++  [ "$restored" -gt 0 ] || { echo "$app restored no tables" >&2; return 1; }
++  # The check runs an hour after the dump, so counts must match. A release
++  # migration in that hour also fails it; rerun the check after the next set.
++  [ "$restored" -eq "$current" ] || {
++    echo "$app table count differs from live (restored=$restored live=$current)" >&2
++    return 1
++  }
++}
++
++check_app keycloak sqcore_keycloak
++check_app hcis sqcore_hcis
++check_app hub sqcore_hub
++check_app aset sqcore_aset
+--- /dev/null
++++ b/data/local/ubuntu26/usr/local/sbin/sq-core-offhost-daily
+@@ -0,0 +1,85 @@
++#!/usr/bin/env bash
++# OPS-MI8-BAK-001 scheduled encrypted off-host copy of the newest SQ Core
++# production set. Called by /data/local/mi8vps/sq-core-worker.sh after a
++# successful daily backup. Scope is fixed by owner approval: production sets
++# written by sq-core-backup.sh only, never rehearsal sets or shared/*.env.
++set -Eeuo pipefail
++umask 077
++export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
++fail(){ printf '%s SQ_CORE_OFFHOST_BLOCKED: %s\n' "$(date -u +%FT%TZ)" "$*" >&2; exit 42; }
++
++CFG=/root/.config/rclone/rclone.conf
++GUARD=/usr/local/sbin/check-drive-effective-quota
++BASE=/srv/sq-core-backups
++SETS=$BASE/production-sets
++MARKS=$BASE/offhost-state
++REMOTE=mi8_crypt:production/sq-core-daily
++KEEP_REMOTE=${SQ_CORE_OFFHOST_KEEP:-14}
++NET=(--retries 2 --low-level-retries 2 --contimeout 12s --timeout 60s)
++XFER=(--transfers 1 --checkers 1 --bwlimit 4M --tpslimit 3)
++
++[[ "$(id -u)" == 0 ]] || fail "root execution required"
++[[ "$KEEP_REMOTE" =~ ^[0-9]+$ && "$KEEP_REMOTE" -ge 3 ]] || fail "remote retention below 3 sets"
++[[ -f "$CFG" && ! -L "$CFG" && "$(stat -c %a "$CFG")" == 600 ]] || fail "rclone config"
++[[ -x "$GUARD" && ! -L "$GUARD" ]] || fail "quota guard"
++[[ -x /usr/local/bin/rclone ]] || fail "rclone binary missing"
++[[ -d "$SETS" && ! -L "$SETS" && "$(stat -c %a "$SETS")" == 700 ]] || fail "private set root"
++mkdir -p "$MARKS"
++chmod 0700 "$MARKS"
++# Serialize with every other Mi8 Drive producer; the guard is not a reservation.
++exec 9>"$MARKS/.offhost.lock"
++flock -n -x 9 || fail "parallel upload"
++
++set_dir=
++while IFS= read -r d; do
++  if grep -q 'result=OK scope=production$' "$d/backup.log" 2>/dev/null; then set_dir=$d; break; fi
++done < <(find "$SETS" -mindepth 1 -maxdepth 1 -type d -name 'set-*' | sort -r)
++[[ -n "$set_dir" ]] || fail "no completed production set"
++run=$(basename "$set_dir")
++[[ "$run" =~ ^set-[0-9]{8}T[0-9]{6}Z$ ]] || fail "invalid set name"
++if [[ -f "$MARKS/$run.ok" ]]; then
++  printf '%s SQ_CORE_OFFHOST_ALREADY_DONE SET=%s\n' "$(date -u +%FT%TZ)" "$run"
++  exit 0
++fi
++[[ "$(stat -c %a "$set_dir")" == 700 && "$(stat -c %u "$set_dir")" == 0 ]] || fail "set owner/mode"
++grep -Fqx "$(printf 'scope\tproduction')" "$set_dir/manifest.tsv" || fail "manifest scope is not production"
++if find "$set_dir" -type l -print -quit | grep -q .; then fail "symlink in set"; fi
++(cd "$set_dir" && sha256sum -c --status SHA256SUMS) || fail "source checksum"
++
++mapfile -d '' -t entries < <(find "$set_dir" -type f -print0)
++[[ "${#entries[@]}" -eq 10 ]] || fail "unexpected file count ${#entries[@]}"
++for member in "${entries[@]}"; do
++  case "${member#"$set_dir"/}" in
++    keycloak/database.dump|hcis/database.dump|hub/database.dump|aset/database.dump) ;;
++    keycloak-customization.tar|aset-attachments.tar|config-metadata.tsv) ;;
++    manifest.tsv|SHA256SUMS|backup.log) ;;
++    *) fail "unexpected file in set" ;;
++  esac
++done
++python3 "$GUARD" "${entries[@]}" || fail "effective 15GB guard failed"
++
++DEST="$REMOTE/$run"
++TMP=$(mktemp -d "$MARKS/.verify.XXXXXXXX")
++cleanup(){ if [[ -n "${TMP:-}" && -d "$TMP" ]]; then rm -rf -- "$TMP"; fi; }
++trap cleanup EXIT
++rclone --config "$CFG" copy "$set_dir" "$DEST" --immutable "${XFER[@]}" "${NET[@]}" || fail "upload failed"
++rclone --config "$CFG" cryptcheck "$set_dir" "$DEST" --one-way --checkers 1 "${NET[@]}" || fail "cryptcheck failed"
++rclone --config "$CFG" copy "$DEST" "$TMP" "${XFER[@]}" "${NET[@]}" || fail "download failed"
++(cd "$TMP" && sha256sum -c --status SHA256SUMS) || fail "recovered checksum failed"
++diff -qr "$set_dir" "$TMP" >/dev/null || fail "decrypted bytes differ"
++: >"$MARKS/$run.ok"
++
++# Retention only after the new copy is proven. Purge bypasses Drive trash,
++# because trashed bytes still count toward the 15 GB budget.
++mapfile -t remote_sets < <(rclone --config "$CFG" lsf --dirs-only "$REMOTE" "${NET[@]}" \
++  | sed 's#/$##' | grep -E '^set-[0-9]{8}T[0-9]{6}Z$' | sort)
++excess=$(( ${#remote_sets[@]} - KEEP_REMOTE ))
++for (( i = 0; i < excess; i++ )); do
++  old=${remote_sets[i]}
++  [[ "$old" != "$run" ]] || fail "refusing to purge the set just uploaded"
++  rclone --config "$CFG" purge "$REMOTE/$old" --drive-use-trash=false "${NET[@]}" || fail "purge failed for $old"
++  rm -f -- "$MARKS/$old.ok"
++done
++
++printf '%s SQ_CORE_ENCRYPTED_OFFHOST_PASS SET=%s DESTINATION=%s REMOTE_SETS=%s PURGED=%s\n' \
++  "$(date -u +%FT%TZ)" "$run" "$DEST" "$(( ${#remote_sets[@]} - (excess > 0 ? excess : 0) ))" "$(( excess > 0 ? excess : 0 ))"

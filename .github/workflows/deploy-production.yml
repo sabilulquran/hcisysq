@@ -1,166 +1,25 @@
-name: Deploy HCIS Production
+# RETIRED 2026-10-15 (OPS-MI8-REL-001).
+# This workflow deployed Docker/GHCR images to the old paid VPS, which is terminated.
+# HCIS production runs on Mi8VPS and is released with scripts/mi8/release-mi8.sh from an
+# operator workstation; see docs/development/mi8vps-hcis-release.md.
+# The job always fails so a run can never be mistaken for a production deployment.
+name: Deploy HCIS Production (RETIRED - old VPS)
 
 on:
   workflow_dispatch:
-    inputs:
-      target_sha:
-        description: "Exact 40-character main SHA to deploy"
-        required: true
-        type: string
-      confirmation:
-        description: "Type DEPLOY_PRODUCTION to continue"
-        required: true
-        type: string
-permissions:
-  contents: read
-  packages: read
 
-concurrency:
-  group: hcis-production
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
-  deploy:
-    name: Deploy exact SHA to production VPS
+  retired:
+    name: Retired - does not deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    env:
-      TARGET_SHA: ${{ inputs.target_sha }}
-      CONFIRMATION: ${{ inputs.confirmation }}
-      PROD_HOST: ${{ secrets.HCIS_PROD_HOST }}
-      PROD_USER: ${{ secrets.HCIS_PROD_USER }}
-      PROD_REPO_PATH: ${{ secrets.HCIS_PROD_REPO_PATH }}
-      GHCR_USER: ${{ github.actor }}
-      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GHCR_API_REPO: ghcr.io/${{ github.repository_owner }}/hcisysq-api
-      GHCR_WEB_REPO: ghcr.io/${{ github.repository_owner }}/hcisysq-web
-
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate requested SHA
+      - name: Refuse
         shell: bash
         run: |
-          set -euo pipefail
-          if [[ "$CONFIRMATION" != "DEPLOY_PRODUCTION" ]]; then
-            echo "confirmation must be exactly DEPLOY_PRODUCTION" >&2
-            exit 1
-          fi
-          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "target_sha must be a full 40-character lowercase commit SHA" >&2
-            exit 1
-          fi
-          git fetch origin main
-          main_sha="$(git rev-parse origin/main)"
-          if [[ "$TARGET_SHA" != "$main_sha" ]]; then
-            echo "Refusing deploy: target SHA is not current origin/main" >&2
-            echo "target=$TARGET_SHA" >&2
-            echo "main=$main_sha" >&2
-            exit 1
-          fi
-
-      - name: Configure SSH
-        shell: bash
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.HCIS_PROD_SSH_PRIVATE_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.HCIS_PROD_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Authenticate VPS to GHCR temporarily
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | ssh "$PROD_USER@$PROD_HOST" \
-            "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
-
-      - name: Production preflight
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh "$PROD_USER@$PROD_HOST" bash -s -- \
-            "$PROD_REPO_PATH" "$TARGET_SHA" "$GHCR_API_REPO" "$GHCR_WEB_REPO" <<'REMOTE'
-          set -euo pipefail
-          repo_path=$1
-          target_sha=$2
-          api_repo=$3
-          web_repo=$4
-
-          cd "$repo_path"
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "STOP: production working tree is not clean" >&2
-            git status --short
-            exit 1
-          fi
-
-          previous_sha="$(git rev-parse HEAD)"
-          echo "previous_sha=$previous_sha"
-          echo "target_sha=$target_sha"
-
-          git remote set-url origin https://github.com/sabilulquran/hcisysq.git
-          git fetch origin main
-          remote_sha="$(git rev-parse origin/main)"
-          if [[ "$remote_sha" != "$target_sha" ]]; then
-            echo "STOP: origin/main does not match requested target" >&2
-            exit 1
-          fi
-
-          grep -Eq '^BIOMETRIC_COLLECTION_ENABLED=0[[:space:]]*$' infra/.env.vps || {
-            echo "STOP: BIOMETRIC_COLLECTION_ENABLED must remain 0" >&2
-            exit 1
-          }
-
-          echo "Checking target exact-SHA images..."
-          docker pull "$api_repo:sha-$target_sha" >/dev/null
-          docker pull "$web_repo:sha-$target_sha" >/dev/null
-
-          echo "Checking rollback exact-SHA images..."
-          docker pull "$api_repo:sha-$previous_sha" >/dev/null
-          docker pull "$web_repo:sha-$previous_sha" >/dev/null
-
-          echo "PRECHECK_STATUS=OK"
-          REMOTE
-
-      - name: Deploy and verify
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh "$PROD_USER@$PROD_HOST" bash -s -- \
-            "$PROD_REPO_PATH" "$TARGET_SHA" "$GHCR_API_REPO" "$GHCR_WEB_REPO" <<'REMOTE'
-          set -euo pipefail
-          repo_path=$1
-          target_sha=$2
-          api_repo=$3
-          web_repo=$4
-          cd "$repo_path"
-          export HCIS_DEPLOY_IMAGE_MODE=ghcr
-          export HCIS_GHCR_API_REPO="$api_repo"
-          export HCIS_GHCR_WEB_REPO="$web_repo"
-          ./scripts/deploy-vps.sh "$target_sha"
-          ./scripts/verify-vps.sh "$target_sha" | awk '
-            /^=== PASSIVE DEVICE SUMMARY SQL SMOKE ===$/ {
-              redact=1
-              print
-              print "device_summary=redacted_for_github_actions"
-              next
-            }
-            /^=== VERIFY PASS ===$/ {
-              redact=0
-            }
-            !redact { print }
-          '
-          REMOTE
-
-      - name: Logout VPS from GHCR
-        if: always()
-        shell: bash
-        run: |
-          ssh "$PROD_USER@$PROD_HOST" 'docker logout ghcr.io >/dev/null 2>&1 || true'
+          echo "::error::deploy-production.yml is retired. The old VPS is terminated; nothing was deployed."
+          echo "HCIS production runs on Mi8VPS. Build the bundle with 'Build HCIS Mi8VPS Release Bundle'"
+          echo "and release with scripts/mi8/release-mi8.sh (docs/development/mi8vps-hcis-release.md)."
+          exit 1

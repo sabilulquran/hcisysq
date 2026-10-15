@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# RETIRED 2026-10-15 (OPS-MI8-REL-001): this script targets the terminated Docker/GHCR VPS.
+# HCIS production runs on Mi8VPS; use scripts/mi8/release-mi8.sh
+# (docs/development/mi8vps-hcis-release.md). Kept for history and for its tests only.
+if [[ "${HCIS_ALLOW_RETIRED_DOCKER_VPS:-0}" != "1" ]]; then
+  echo "STOP: $(basename "$0") is retired with the old Docker VPS; see docs/development/mi8vps-hcis-release.md" >&2
+  exit 3
+fi
+
 EXPECTED_SHA=${1:-}
 if [[ -z "$EXPECTED_SHA" ]]; then
   echo "usage: $0 <expected-main-sha>" >&2

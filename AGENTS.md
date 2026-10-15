@@ -32,9 +32,14 @@ Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification
 
 `imadjinasi/hcis-ysq-foundation` adalah design/reference archive. Jangan membuat fitur baru di sana dan jangan merge history repository tersebut ke canonical repo.
 
-Repository ownership, GHCR package source, script defaults, dan runtime production adalah bukti yang berbeda. Codex Local verification 2026-09-16 mencatat production API/Web pada SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` menggunakan exact-SHA images `ghcr.io/sabilulquran/hcisysq-api` dan `ghcr.io/sabilulquran/hcisysq-web`. `scripts/deploy-vps.sh` masih memiliki legacy personal-namespace defaults, sedangkan production workflow memasok organization-GHCR overrides. Jangan menyimpulkan current runtime dari default script saja, dan jangan mengubah deployment defaults sebagai efek samping perubahan dokumentasi.
+Production runtime: **Mi8VPS** (Android phone, Ubuntu chroot `/data/local/ubuntu26`, tanpa Docker/systemd). VPS berbayar lama (Docker Compose + GHCR) sudah dihentikan. Release HCIS adalah direktori `/srv/hcis/releases/hcis-<sha8>-<yyyymmdd>` yang dijalankan oleh `/data/local/mi8vps/sq-core-launch.sh` dan diawasi `sq-core-worker.sh`; release yang berjalan dibuktikan dari `cwd` proses `hcis`/`hcis-web`, bukan dari repository, GHCR, atau hasil workflow.
 
-Untuk batas repository-transfer vs runtime/GHCR, lihat `docs/development/github-org-transfer-readiness.md`, `docs/development/vps-deployment.md`, dan `docs/development/github-vps-production-deployment.md`.
+- Release flow: `docs/development/mi8vps-hcis-release.md` (OPS-MI8-REL-001). CI hanya membangun bundle linux/arm64 (`build-mi8-release.yml`); operator merilis dengan `scripts/mi8/release-mi8.sh` (dry-run default, `--apply` hanya dengan persetujuan owner).
+- `.github/workflows/deploy-production.yml`, `scripts/deploy-vps.sh`, dan `scripts/verify-vps.sh` sudah **RETIRED** dan selalu gagal. Jangan menganggap run apa pun dari workflow tersebut sebagai deploy production, dan jangan menghidupkannya kembali.
+- Setiap perubahan production di Mi8VPS (launcher, worker, release, database, env) membutuhkan persetujuan owner yang eksplisit. Inspeksi read-only via `ssh mi8vps` / `ssh mi8vps-root` diperbolehkan.
+- Runbook operasional of record: Google Doc "Mi8VPS Platform Runbook".
+
+Dokumen `docs/development/vps-deployment.md`, `github-vps-production-deployment.md`, dan `github-org-transfer-readiness.md` adalah catatan historis VPS lama (Docker/GHCR).
 
 ## 3. Documentation first
 

@@ -8,15 +8,24 @@ const composeUrl = new URL("../../../infra/docker-compose.vps.yml", import.meta.
 const productionWorkflowUrl = new URL("../../../.github/workflows/deploy-production.yml", import.meta.url);
 
 describe("VPS full parity deployment safety", () => {
-  it("keeps production deployment behind an explicit human dispatch", async () => {
+  it("keeps the retired old-VPS production workflow from ever reporting success", async () => {
     const source = await readFile(productionWorkflowUrl, "utf8");
+    expect(source).toContain("RETIRED");
     expect(source).toContain("workflow_dispatch:");
-    expect(source).toContain("confirmation:");
-    expect(source).toContain('description: "Type DEPLOY_PRODUCTION to continue"');
-    expect(source).toContain("TARGET_SHA: ${{ inputs.target_sha }}");
-    expect(source).toContain("CONFIRMATION: ${{ inputs.confirmation }}");
+    expect(source).toContain("exit 1");
+    expect(source).not.toContain("ssh ");
+    expect(source).not.toContain("deploy-vps.sh\"");
+    expect(source).not.toContain("secrets.");
+    expect(source).not.toContain("push:");
     expect(source).not.toContain("workflow_run:");
-    expect(source).not.toContain("github.event.workflow_run");
+  });
+
+  it("refuses to run the retired Docker VPS scripts without an explicit override", async () => {
+    for (const url of [deployUrl, verifyUrl]) {
+      const source = await readFile(url, "utf8");
+      expect(source).toContain('if [[ "${HCIS_ALLOW_RETIRED_DOCKER_VPS:-0}" != "1" ]]; then');
+      expect(source.indexOf("HCIS_ALLOW_RETIRED_DOCKER_VPS")).toBeLessThan(source.indexOf("EXPECTED_SHA="));
+    }
   });
 
   it("prefers exact-SHA GHCR application images and never recreates postgres volume", async () => {

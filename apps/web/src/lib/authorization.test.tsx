@@ -35,9 +35,11 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       expect(html).not.toContain('href="/admin/attendance/devices"');
       expect(html).not.toContain("Transaksi Lintas Mesin");
     }
-    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/operations")).toBe(false);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/operations")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/diagnostics")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/settings")).toBe(true);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/data")).toBe(true);
+    expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/maintenance")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/planned-leave")).toBe(true);
@@ -81,7 +83,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms/transactions")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices")).toBe(true);
-    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/operations")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/operations")).toBe(true);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/diagnostics")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/settings")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/biometrics")).toBe(false);

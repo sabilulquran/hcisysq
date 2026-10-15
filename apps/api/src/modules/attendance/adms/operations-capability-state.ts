@@ -45,6 +45,18 @@ const BASE_CAPABILITIES: OperationsCapability[] = [
 
 const PHYSICAL_SUMMARY: PhysicalSummarySpec[] = [
   {
+    key: "user_profile_upsert",
+    physicalKey: "user_profile_upsert",
+    label: "Kirim atau perbarui pegawai di mesin",
+    unverifiedReason: "Pengiriman data pegawai belum lolos pengujian perangkat pada mesin ini.",
+  },
+  {
+    key: "user_enable_disable",
+    physicalKey: "user_enable_disable",
+    label: "Aktifkan atau nonaktifkan pegawai di mesin",
+    unverifiedReason: "Perubahan status pegawai belum lolos pengujian perangkat pada mesin ini.",
+  },
+  {
     key: "work_code_delivery",
     physicalKey: "work_code_delivery",
     label: "Distribusi Work Code ke mesin",
@@ -73,6 +85,12 @@ const PHYSICAL_SUMMARY: PhysicalSummarySpec[] = [
     physicalKey: "reboot",
     label: "Reboot mesin",
     unverifiedReason: "Typed reboot tersedia, tetapi belum mempunyai bukti physical canary yang verified pada mesin ini.",
+  },
+  {
+    key: "ntp_config",
+    physicalKey: "ntp_config",
+    label: "Sumber waktu otomatis",
+    unverifiedReason: "Pengaturan sumber waktu otomatis belum lolos pengujian perangkat pada mesin ini.",
   },
   {
     key: "firmware_upgrade",
@@ -137,7 +155,7 @@ export function projectPhysicalCapability(
       label: spec.label,
       state: "available",
       execution: "device",
-      reason: "Physical canary verified pada mesin ini. Eksekusi tetap typed, explicit-target, dan tercatat di audit ledger.",
+      reason: "Sudah lolos pengujian pada mesin ini dan dapat digunakan sesuai izin operator.",
     };
   }
   if (state === "unsupported") {
@@ -146,7 +164,7 @@ export function projectPhysicalCapability(
       label: spec.label,
       state: "blocked",
       execution: "blocked",
-      reason: "Capability diklasifikasikan unsupported berdasarkan evidence per mesin; tidak executable.",
+      reason: "Fitur ini tidak didukung mesin ini berdasarkan hasil pengujian yang tersimpan.",
     };
   }
   if (state === "blocked") {
@@ -155,7 +173,7 @@ export function projectPhysicalCapability(
       label: spec.label,
       state: "blocked",
       execution: "blocked",
-      reason: "Capability diblokir eksplisit pada mesin ini; tidak executable.",
+      reason: "Fitur ini dinonaktifkan untuk mesin ini.",
     };
   }
   if (state === "canary_pending") {
@@ -164,7 +182,7 @@ export function projectPhysicalCapability(
       label: spec.label,
       state: "not_verified",
       execution: "blocked",
-      reason: "Physical canary sedang berjalan atau menunggu result; execute normal tetap ditahan.",
+      reason: "Pengujian perangkat masih berlangsung. Fitur belum dapat digunakan.",
     };
   }
   if (state === "failed" && snapshot) {

@@ -24,6 +24,11 @@ describe("full WDMS route safety", () => {
     expect(source).not.toMatch(/["'`]DATA DELETE user(?:["'`]|\\|$)/);
     expect(source).toContain('mode: z.enum(["canary", "execute"]).default("canary")');
     expect(source).not.toContain("rawCommand");
+    // Behavior is covered by adms-physical-mode-permissions.test.ts; this guards
+    // that mode-dependent routes keep authorizing before body validation.
+    expect(source).not.toContain('body.data.mode === "canary"');
+    expect(source).toContain("physicalModePermissions(request.body,");
+    expect(source).toContain('physicalModePermissions(request.body, ["attendance.devices.technical", "attendance.devices.destructive"])');
   });
 
   it("keeps attendance-photo canary encrypted and exposes only an approved server target", async () => {

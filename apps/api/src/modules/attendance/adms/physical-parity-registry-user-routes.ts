@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { ApiConfig } from "../../../config/env.js";
 import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
+import { physicalModePermissions } from "./physical-mode-permissions.js";
 import type { PhysicalCapabilityKey } from "./physical-parity-protocol.js";
 import { queuePhysicalOperation } from "./physical-parity-service.js";
 import {
@@ -353,7 +354,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-profile", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
+    const principal = await authenticate(auth, request, reply, physicalModePermissions(request.body, "attendance.devices.configure"));
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userProfileSchema.safeParse(request.body);
@@ -384,7 +385,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/user-enabled", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
+    const principal = await authenticate(auth, request, reply, physicalModePermissions(request.body, "attendance.devices.configure"));
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = userEnabledSchema.safeParse(request.body);
@@ -425,7 +426,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
   });
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/ntp", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.devices.configure");
+    const principal = await authenticate(auth, request, reply, physicalModePermissions(request.body, "attendance.devices.configure"));
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = ntpSchema.safeParse(request.body);

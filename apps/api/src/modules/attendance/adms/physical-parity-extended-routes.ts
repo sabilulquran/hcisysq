@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { ApiConfig } from "../../../config/env.js";
 import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
+import { physicalModePermissions } from "./physical-mode-permissions.js";
 import {
   activeTimeSyncWireCommand,
   firmwareUpgradeWireCommand,
@@ -256,7 +257,7 @@ export async function registerAdmsPhysicalParityExtendedRoutes(
   );
 
   app.post("/admin/attendance/adms/devices/:deviceId/physical/time-sync", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, ["attendance.devices.technical", "attendance.devices.operate"]);
+    const principal = await authenticate(auth, request, reply, physicalModePermissions(request.body, "attendance.devices.operate"));
     if (!principal) return;
     const params = deviceParamsSchema.safeParse(request.params);
     const body = timeSyncBodySchema.safeParse(request.body);

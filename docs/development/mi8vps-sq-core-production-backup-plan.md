@@ -1,7 +1,7 @@
 # Mi8VPS SQ Core production database backup — change plan
 
 **Spec ID:** OPS-MI8-BAK-001  
-**Status:** PROPOSED — NOT APPLIED. Every step on the device waits for explicit owner approval.  
+**Status:** APPLIED 2026-10-15 23:11–23:16 WIB. The owner approved all six items in §5, including permanent deletion of off-host sets beyond the newest 14. The first scheduled run is pending (see §10).  
 **Updated:** 2026-10-15  
 **Related:** OPS-MI8-REL-001 (Mi8VPS HCIS release flow), `docs/operations/permanent-staging-retirement-2026-10-02.md`  
 **Ready-to-apply diff:** [`mi8vps-sq-core-production-backup.patch`](mi8vps-sq-core-production-backup.patch)
@@ -186,3 +186,19 @@ Pushing these lines to an alert channel is a follow-up (`TBD`).
 - **HCIS file storage:** no upload or attachment directory was found under `/srv/hcis`, and `final.env` has no storage-path key. Whether HCIS stores employee documents outside PostgreSQL is `DISCOVERY` and must be confirmed before calling HCIS fully backed up.
 - **Rehearsal leftovers:** the old rehearsal sets under `/srv/keycloak/backups/sq-core-host-sets` (155 MB), the rehearsal set on Drive under `h1-20261012/sq-core/` (about 23 MB) and about 1.1 GB of rehearsal databases are no longer produced. Their deletion is a separate owner decision.
 - The worker's `service_pid` patterns and launcher paths still name the 2026-10-04 releases. That belongs to OPS-MI8-REL-001 and is not changed here.
+
+## 10. Applied evidence (2026-10-15, via `ssh mi8vps-root`)
+
+| Step | Result |
+| --- | --- |
+| 1. Drift check | PASS. The three device scripts matched the §2 hashes. Backups were created as `*.pre-ops-mi8-bak-001` with their original modes. |
+| 2–3. Install | PASS. The patch applied cleanly to byte copies of the live scripts, with no CRLF. Files were installed root-owned through a temp file and `mv`, so the running worker kept its old inode. `sh -n` / `bash -n` passed on the device. Installed sha256: backup `71aafc8e…3988`, logrotate `6e961a3e…21ff`, worker `a4e2adb0…a2b` (mode 0755 kept), restore-check `a0f6a306…a47`, offhost-daily `0340ab1a…153df`. |
+| 4. Manual backup | PASS in 17 s. Set `set-20261015T161121Z` has `result=OK scope=production` with `sqcore_keycloak` 266 513 B, `sqcore_hcis` 27 801 896 B, `sqcore_hub` 251 864 B and `sqcore_aset` 66 155 B. It contains 10 files, all `0600 root`. The set and its roots are `0700 root`. `SHA256SUMS` verified; total size 28 MB. |
+| 5. Manual restore check | PASS in 41 s. Table counts restored/live: keycloak 100/100, hcis 92/92, hub 10/10, aset 18/18. No `sqcore_restorecheck_*` database and no temp dump remained. |
+| 6. Manual off-host copy | PASS in 90 s. `EFFECTIVE_QUOTA_15GB_PREFLIGHT_PASS` was printed (vault 203 MB → about 233 MB; account headroom after upload 2.30 GB). `cryptcheck` found 0 differences across 10 matching files, then `SQ_CORE_ENCRYPTED_OFFHOST_PASS` with `REMOTE_SETS=1 PURGED=0`. The second run printed `ALREADY_DONE`. |
+| 7. Worker restart | PASS. TERM was sent to pid 31376 at 23:14:26. `start-services.sh` relaunched the worker as pid 31701 at 23:16:12, and only one worker is running. All SQ Core local health endpoints and public hcis/hub/aset/login returned 200/302. |
+| 8. First scheduled run | Pending, expected at 19 UTC (02:00 WIB 16 Oct). |
+
+Observation, not caused by this change: before the install, the worker restarted Keycloak 6× on 9 Oct, 5× on 14 Oct and 3× on 15 Oct after its readiness check failed. That needs separate investigation.
+
+The Aset attachments archive is 10 KB, which matches an almost empty `shared/attachments`. Confirm this is expected before relying on the set for Aset file recovery.

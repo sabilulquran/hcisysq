@@ -1,0 +1,224 @@
+# Mi8VPS HCIS release flow (OPS-MI8-REL-001)
+
+**Status:** ACTIVE DESIGN / DRAFT TOOLING — the scripts are dry-run by default. Read-only `preflight` and a full dry
+run were exercised against production on 2026-10-15 (current release `hcis-1f482549-20261004`, 55
+migrations applied, none pending). No release has been cut with this flow yet; the first `--apply` run needs explicit owner approval and its evidence must
+be recorded here or in a dated verification note.
+**Prepared:** 2026-10-15
+**Supersedes for production:** `vps-deployment.md`, `github-vps-production-deployment.md`,
+`.github/workflows/deploy-production.yml` (all old-VPS Docker/GHCR, now retired).
+**Operational runbook of record:** Google Doc "Mi8VPS Platform Runbook". This file is the repository
+specification for the HCIS part of it.
+
+## 1. Context
+
+The old paid VPS (Docker Compose, GHCR images, `scripts/deploy-vps.sh`) is terminated. HCIS
+production runs on Mi8VPS: an Android phone with an Ubuntu chroot at `/data/local/ubuntu26`, no
+Docker and no systemd. Observed read-only on 2026-10-15:
+
+| Item | Value |
+|---|---|
+| Release root | `/srv/hcis/releases/hcis-<sha8>-<yyyymmdd>` (inside the chroot), owned by `sqhcis` (uid 989), read-only modes (`0550` dirs, `0440` files) |
+| Current release | `hcis-1f482549-20261004` (main `1f48254`); `/srv/hcis/current` symlink points at it but nothing reads the symlink |
+| Release layout | `package.json`, `package-lock.json`, `node_modules/` (production deps only), `apps/api/{package.json,dist,migrations}`, `apps/web/dist` |
+| Runtime | `/usr/bin/node` v22.22.1, `/usr/bin/python3` 3.14, chroot arch `aarch64` |
+| Secrets | `/srv/hcis/shared/final.env` (`root:sqhcis 0640`); never copied, printed or shipped |
+| API | `hcis` service, `node dist/server.js`, `127.0.0.1:3301`, health `GET /health` |
+| Web | `hcis-web` service, `/srv/hcis/shared/spa_static_server.py` on `127.0.0.1:3201` (see `mi8vps-hcis-web-spa-fallback.md`) |
+| Edge | `/srv/sq-hub/shared/directory-proxy.mjs` on 3180 → Cloudflare Tunnel; unchanged by releases |
+| Database | Termux PostgreSQL on `127.0.0.1:5432`, database `sqcore_hcis` (from `DATABASE_URL`, ~330 MB); `pg_dump`/`psql` run as the Termux user over the local socket |
+| Launcher | `/data/local/mi8vps/sq-core-launch.sh` — the `hcis` and `hcis-web` entries hardcode the release path in `workdir` and `command` (4 lines) |
+| Supervisor | `/data/local/mi8vps/sq-core-worker.sh` — a long-running loop; `service_pid` hardcodes the release path for `hcis` and `hcis-web` (2 lines) and finds a process by `cwd` prefix |
+| Control | `/data/local/mi8vps/sq-corectl.sh restart <svc>` sends TERM to the PID in `sq-core-pids/<svc>.pid`; the worker relaunches through the launcher within its 15 s loop |
+| Migrations | Not run at API start on Mi8 (the Docker image ran `migrate.js` first; the launcher does not) |
+| Access | `ssh mi8vps` (Ubuntu, non-root, Tailscale) and `ssh mi8vps-root` (Android root). GitHub-hosted runners cannot reach the device |
+
+Two consequences drive the design:
+
+1. **GitHub Actions cannot deploy.** The device is reachable only from the operator's machine. CI
+   builds the release bundle; an operator runs the release from a workstation.
+2. **The worker keeps the old `service_pid` patterns in memory.** Editing `sq-core-worker.sh` does
+   not change the running loop. Unless the worker is restarted, it cannot find the new process when
+   it becomes unhealthy and would launch a second copy that fails to bind. The worker must be
+   restarted (which leaves the services running) after its file changes.
+
+## 2. Actors and permissions
+
+| Actor | May do |
+|---|---|
+| Owner | Approves each production release (SHA, window, whether migrations are pending) |
+| Operator (workstation with `ssh mi8vps`/`mi8vps-root`) | Runs `scripts/mi8/release-mi8.sh`; `--apply` only after owner approval |
+| GitHub Actions | Builds and checksums the bundle (`build-mi8-release.yml`). No SSH, no secrets, no production access |
+| `sqhcis` (uid 989) | Owns release files; runs API, web, candidates and migrations |
+| root on Mi8 | Installs releases, edits launcher/worker, restarts services, takes database backups |
+
+## 3. Preconditions
+
+- Target is the exact current `origin/main` SHA and PR validation is green for it.
+- The bundle came from `build-mi8-release.yml` for that SHA (or `scripts/mi8/build-release.sh` on
+  an arm64/Docker host) and its `RELEASE.json` names the same SHA.
+- Owner approval for the release, including the migration list printed by `preflight`.
+- `sq-core-launch.sh` and `sq-core-worker.sh` reference exactly one HCIS release — the one the
+  running `hcis` process uses — on exactly 4 and 2 lines. Anything else is drift: stop.
+- `BIOMETRIC_COLLECTION_ENABLED` in `final.env` is absent or `0`.
+- Ports 3391 (candidate API) and 3291 (candidate web) are free; at least 1 GiB free on `/data`.
+- Pending migrations are additive/backward compatible with the running release (the old release
+  runs on the new schema between `migrate` and `cutover`, and again after a rollback). A
+  non-additive migration needs its own reviewed recovery plan before this flow is used.
+
+## 4. Flow
+
+```text
+build (CI, linux/arm64) → preflight → upload → backup → migrate → candidate → cutover → verify
+                                                                      └─ on failure: rollback
+```
+
+`scripts/mi8/release-mi8.sh <phase> --bundle <tar.gz> --sha <40-hex> [--apply --confirm RELEASE_<sha8>]`.
+Without `--apply` every phase is a dry run: read-only checks still run against the device and
+each mutating command is printed, not executed. `all` runs the phases in order and stops at the
+first failure.
+
+### 4.1 build (off-device)
+
+`.github/workflows/build-mi8-release.yml` (manual dispatch, `target_sha` must equal `origin/main`):
+
+1. checks out the exact SHA; runs `npm ci`, `npm run build:api`, `npm run build:web` on the amd64
+   runner (TypeScript/Vite output is architecture-independent);
+2. installs production `node_modules` inside `node:22.22.1-bookworm` with `--platform linux/arm64`
+   (QEMU), matching the device's Node 22 and aarch64;
+3. refuses the bundle if any native `*.node` addon is present (the current dependency set is pure
+   JavaScript; a native addon needs an explicit review of its ABI against the chroot);
+4. writes `RELEASE.json` (sha, release name, build time, node/npm versions, platform, migration
+   files) and packs `hcis-<sha8>-<yyyymmdd>.tar.gz` plus `.sha256`;
+5. uploads both as a workflow artifact (30-day retention). It never contacts production, so a green
+   run means only "bundle built".
+
+The release date is the UTC build date. The operator downloads the artifact with
+`gh run download <run-id> -n hcis-mi8-<sha8>`.
+
+### 4.2 preflight (read-only)
+
+Local: SHA format, `origin/main` equality, bundle checksum, `RELEASE.json` sha and name.
+Remote: the running `hcis` process's release (from its `cwd`), that the launcher and worker
+reference only that release on 4 and 2 lines, the target release directory does not exist yet,
+free space, candidate ports free, biometric gate, the database name in `DATABASE_URL` equals the
+configured one, and the list of **pending migrations** (bundle files not in `schema_migrations`).
+
+### 4.3 upload
+
+`scp` the bundle to `mi8vps:/tmp/`, then as root: verify sha256, extract into
+`releases/<name>.partial`, check `RELEASE.json`, `chown -R 989:989`, set read-only modes, rename to
+`releases/<name>`. Refuses to overwrite an existing release directory. Upload does not affect the
+running services.
+
+### 4.4 backup (always, before migrate)
+
+`pg_dump -Fc` of the HCIS database as the Termux user, copied to
+`/srv/hcis/backups/pre-release/<name>-<stamp>.dump` (`root:root 0600`) with a `.sha256` file, then
+`pg_restore --list` to prove the archive is readable. A marker records the dump for the release;
+`migrate` refuses to run without a marker younger than 6 hours. The daily SQ Core backup set
+(`sq-core-backup.sh`, 7 sets) is not relied on: it may rotate away, and on 2026-10-15 it dumped
+`sqcore_phase3_cutf8_20261004_hcis` (a rehearsal copy), **not** the production `sqcore_hcis`.
+
+### 4.5 migrate
+
+If `preflight` found pending migrations, runs `node dist/db/migrate.js` from the **new** release
+as `sqhcis` with `final.env`, then re-lists `schema_migrations`. Each migration file runs in its own
+transaction (`apps/api/src/db/migrate.ts`); a failure stops the flow with the earlier files
+committed. With nothing pending the phase is a no-op.
+
+### 4.6 candidate gate
+
+Starts the new release next to production, as `sqhcis`:
+
+- API on `127.0.0.1:3391` (`final.env` with `PORT=3391`): `/health` and `/ready` must return 200
+  within 90 s. The API has no background timers, so a candidate serves only gate requests.
+- Web on `127.0.0.1:3291` with `spa_static_server.py`: `/` and `/login` 200 with `no-store`, the
+  hashed entry script from `index.html` 200 with `immutable`, `/assets/does-not-exist.js` 404.
+
+Both candidates are stopped and the ports must be closed again before the phase passes.
+Logs go to `/srv/hcis/logs/candidate-<name>.log`.
+
+### 4.7 cutover (HCIS API + web interruption, typically 15–45 s)
+
+1. Back up `sq-core-launch.sh` and `sq-core-worker.sh` to `*.pre-<name>` (`cp -p`).
+2. Generate new files by replacing the previous release name with the new one **only** in lines
+   containing `/srv/hcis/releases/`. Check with `diff` that exactly 4 launcher lines and 2 worker
+   lines changed, that the new files contain no other HCIS release, `sh -n` both, then install them
+   atomically (`mv` of a new file, so the running worker keeps its open copy intact).
+3. Point `/srv/hcis/current` at the new release (bookkeeping; the backup set records it).
+4. Restart the worker: TERM the PID in `sq-core-worker.pid`, wait for it to exit, start
+   `nohup /system/bin/sh sq-core-worker.sh` exactly as `start-services.sh` does. Services keep
+   running; the new worker sees them healthy.
+5. `sq-corectl.sh restart hcis` and `sq-corectl.sh restart hcis-web`. The worker finds them
+   unhealthy, cannot find a process under the new path, and launches the new release.
+6. Wait up to 180 s for `:3301/health` and `:3201/` and for both processes' `cwd` to be inside the
+   new release.
+
+If step 6 fails, run `rollback`.
+
+### 4.8 verify
+
+Local: `:3301/health`, `:3301/ready`, `:3201/` no-store, process `cwd` inside the new release,
+one `launch service=hcis*` per restart in `sq-core-worker.log`. Public
+(`https://hcis.sabilulquran.or.id`): `/api/health` → `{"status":"ok"}`, `/login` 200 shell,
+`/assets/does-not-exist.js` 404. Then a 10-minute watch of `sq-corectl.sh status` with no repeated
+launches, and a browser login + deep-link refresh by the operator. Hub and Aset are not restarted;
+confirm `hub.sabilulquran.or.id` and `aset` still answer, since Hub's worker gate depends on HCIS.
+
+### 4.9 rollback (application only, ≤ 2 minutes)
+
+`release-mi8.sh rollback --sha <target> --bundle <tar.gz>` restores `*.pre-<name>` launcher and
+worker files, points `current` back, restarts the worker and `hcis`/`hcis-web`, and checks that the
+processes run from the previous release. The previous release directory is never modified, so it is
+always available. **The database is not rolled back.** Restoring the pre-release dump is a
+separate owner decision (it discards data written since the backup) and follows the Mi8VPS
+runbook's PostgreSQL restore procedure.
+
+## 5. Retention
+
+Keep the current release and at least the previous one. Older release directories (~135 MB each)
+may be deleted by hand once the new release has run for 7 days without rollback. Keep
+`pre-release` dumps for 30 days. The `.pre-<name>` launcher/worker copies stay as audit evidence.
+
+## 6. Failure behaviour
+
+| Phase | On failure | Production impact |
+|---|---|---|
+| preflight | stop | none |
+| upload | remove `<name>.partial`; stop | none |
+| backup | stop; no migration | none |
+| migrate | stop; old release keeps running on the partly migrated schema; decide restore vs fix-forward | depends on migration |
+| candidate | stop candidates; stop | none |
+| cutover | `rollback` | HCIS down until rollback (≤ 2 min) |
+| verify | `rollback` unless the owner accepts | as observed |
+
+## 7. Audit and evidence
+
+Each `--apply` run writes a local log `mi8-release-<name>-<stamp>.log` (in the current directory,
+not committed). Record in a dated note under `docs/development/` (as with
+`production-release-verification-*.md`): SHA, release name, bundle sha256, workflow run id,
+migration names applied, backup path and sha256, launcher/worker before/after sha256, timestamps,
+health results. Never record `final.env` values, tokens, cookies or employee data.
+
+## 8. Known limits and follow-ups
+
+- **Production HCIS (`sqcore_hcis`) is not covered by any scheduled backup, on the device or on Google
+  Drive.** `sq-core-backup.sh` dumps the `sqcore_phase3_cutf8_20261004_*` rehearsal databases and labels
+  its sets `scope=non-production-rehearsal`. Encrypted Google Drive copies exist (rclone remote
+  `mi8_crypt:production/`, scripts in `/usr/local/sbin`), but they are one-shot, approval-gated uploads
+  from 12–13 October with no schedule. The only SQ Core set uploaded there (`set-20261012T020012Z`)
+  holds the same rehearsal dumps. Fixing the daily set and its off-host copy is a separate
+  owner-approved change; until then the `backup` phase here is the only release-time dump of
+  `sqcore_hcis`, and it stays on the device.
+
+- A one-time change could make the launcher and worker read `/srv/hcis/current` (launcher `cd`
+  through the symlink, worker pattern from `readlink`), so a release would flip a symlink instead of
+  editing two root scripts. That is an owner-approved supervisor change of its own; until then this
+  flow edits the paths.
+- `sq-core-logrotate.sh` moves logs while the process keeps writing to the moved file (see the SPA
+  fallback note). Restarting `hcis` during cutover reopens `api.log`, which temporarily hides this.
+- `activate-mobile-attendance.yml` and `uat-account-hygiene.yml` still SSH to the terminated VPS.
+  They fail at SSH rather than reporting success, but need their own Mi8 replacement or retirement.
+- `publish-staging-images.yml` still publishes amd64 GHCR images on every `main` push. Nothing
+  consumes them on Mi8.

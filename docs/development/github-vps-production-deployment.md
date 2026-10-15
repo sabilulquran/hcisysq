@@ -1,6 +1,13 @@
 # GitHub to HCIS Production VPS Deployment
 
-**Status:** ACTIVE MANUAL PRODUCTION WORKFLOW — ORGANIZATION GHCR RUNTIME OBSERVED; EACH DEPLOY STILL REQUIRES APPROVAL
+**Status:** RETIRED (historical, old Docker VPS) — the workflow now always fails
+
+> **RETIRED 2026-10-15.** The old paid VPS (Docker Compose + GHCR) is terminated. HCIS production
+> runs on Mi8VPS and is released with [`mi8vps-hcis-release.md`](mi8vps-hcis-release.md)
+> (OPS-MI8-REL-001). `scripts/deploy-vps.sh`, `scripts/verify-vps.sh` and
+> `.github/workflows/deploy-production.yml` now refuse to run. This page is kept as history; do not
+> follow it for production.
+
 
 ## Goal
 

@@ -6,7 +6,7 @@ Repository ini adalah **source of truth canonical** untuk dokumentasi dan implem
 
 ## Status
 
-**Active implementation and controlled production delivery.** Production releases dari repository ini menggunakan reviewed `main` SHA, exact-SHA GHCR images, `scripts/deploy-vps.sh`, dan `scripts/verify-vps.sh`; release image tidak dibangun sebagai langkah normal di VPS.
+**Active implementation and controlled production delivery.** Production berjalan di Mi8VPS. Release memakai reviewed `main` SHA yang dibangun off-device menjadi bundle linux/arm64 lalu dirilis dengan `scripts/mi8/release-mi8.sh`; lihat [`docs/development/mi8vps-hcis-release.md`](docs/development/mi8vps-hcis-release.md). Jalur Docker/GHCR VPS lama (`deploy-production.yml`, `scripts/deploy-vps.sh`, `scripts/verify-vps.sh`) sudah retired; paragraf GHCR di bawah adalah catatan historis.
 
 Repository canonical saat ini adalah `sabilulquran/hcisysq`. Repository historis `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut. Transfer repository sudah terjadi; jangan membaca dokumen checkpoint lama sebagai bukti bahwa transfer masih menunggu.
 

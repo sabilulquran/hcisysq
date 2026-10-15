@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import { listEmployees, type ReferenceOption } from "@/lib/adminEmployees";
 import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
-import { capabilityByKey, getAdmsDeviceProfile, operatorCapabilityLabel, updateAdmsDeviceProfile, type AdmsDeviceProfile } from "@/lib/admsOperator";
+import { capabilityByKey, confirmTypedPhrase, getAdmsDeviceProfile, operatorCapabilityLabel, updateAdmsDeviceProfile, type AdmsDeviceProfile } from "@/lib/admsOperator";
 import { activeTimeSync, setDuplicatePunch, setNtp } from "@/lib/admsPhysicalParity";
 import { hasPermission } from "@/lib/authorization";
 import { updateAdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
@@ -91,9 +91,11 @@ export function AdminAdmsDeviceSettingsPage() {
 
   async function syncTime() {
     if (!device || timeCapability?.state !== "available") return;
+    const phrase = `SYNC TIME ${device.serialNumber}`;
+    if (!confirmTypedPhrase("Sinkronkan waktu mesin dengan waktu server?", phrase)) return;
     setBusy("time");
     try {
-      await activeTimeSync(deviceId, `SYNC TIME ${device.serialNumber}`, "execute");
+      await activeTimeSync(deviceId, phrase, "execute");
       setNotice("Sinkronisasi waktu sudah dijadwalkan.");
       setError(null);
     } catch (cause) {

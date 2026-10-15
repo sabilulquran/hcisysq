@@ -5,7 +5,7 @@ import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdmin
 import { requestAdmsReadInformation } from "@/lib/admsDiagnostics";
 import { listAdmsManagementJobs, retireAdmsDevice, type AdmsManagementJob } from "@/lib/admsManagement";
 import { getAdmsOperations, type OperationsCapability } from "@/lib/admsOperations";
-import { capabilityByKey, operatorCapabilityHint, operatorCapabilityLabel } from "@/lib/admsOperator";
+import { capabilityByKey, confirmTypedPhrase, operatorCapabilityHint, operatorCapabilityLabel } from "@/lib/admsOperator";
 import { clearPhysicalData, rebootDevice } from "@/lib/admsPhysicalParity";
 import { hasPermission } from "@/lib/authorization";
 import { commandStatusLabel } from "@/lib/admsAdmin";
@@ -70,10 +70,11 @@ export function AdminAdmsDeviceMaintenancePage() {
 
   async function reboot() {
     if (!device || rebootCapability?.state !== "available" || !canOperate) return;
-    if (!window.confirm(`Mulai ulang ${device.displayName || device.serialNumber}? Mesin akan tidak dapat dipakai beberapa saat.`)) return;
+    const phrase = `REBOOT ${device.serialNumber}`;
+    if (!confirmTypedPhrase(`Mulai ulang ${device.displayName || device.serialNumber}? Mesin tidak dapat dipakai beberapa saat.`, phrase)) return;
     setBusy("reboot");
     try {
-      await rebootDevice(deviceId, `REBOOT ${device.serialNumber}`, "execute");
+      await rebootDevice(deviceId, phrase, "execute");
       setNotice("Mulai ulang mesin sudah dijadwalkan.");
       setError(null);
       await load();

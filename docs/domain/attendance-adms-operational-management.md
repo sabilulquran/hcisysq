@@ -170,7 +170,7 @@ Ordinary tabs:
 
 `Diagnostik teknis` tetap secondary route dan memerlukan `attendance.devices.technical`. Physical parity, canary, evidence classification, protocol-oriented controls, dan support tooling hanya hidup di sini.
 
-Aksi bisnis yang diklasifikasikan **Operator after verification** tidak memerlukan permission teknis untuk mode execute. Mode canary/physical verification tetap memerlukan `attendance.devices.technical`. Tindakan break-glass tetap memerlukan `attendance.devices.destructive`; firmware tetap memerlukan `attendance.devices.firmware`; biometrik tetap memerlukan `attendance.devices.biometrics`. Semua execute tetap fail-closed bila capability per-device belum verified.
+Aksi bisnis yang diklasifikasikan **Operator after verification** tidak memerlukan permission teknis untuk mode execute. Mode canary/physical verification tetap memerlukan `attendance.devices.technical`. Tindakan break-glass (bersihkan transaksi, bersihkan cache foto, hapus seluruh data mesin) memerlukan `attendance.devices.technical` **dan** `attendance.devices.destructive` pada mode execute maupun canary (keputusan owner 2026-10-16). Mulai ulang mesin adalah aksi operator: execute memerlukan `attendance.devices.operate` dan frasa konfirmasi yang diketik operator, tidak diisi otomatis oleh UI; firmware tetap memerlukan `attendance.devices.firmware`; biometrik tetap memerlukan `attendance.devices.biometrics`. Semua execute tetap fail-closed bila capability per-device belum verified. Server memeriksa sesi dan permission sebelum memvalidasi body; mode yang tidak eksplisit `execute` diperlakukan sebagai canary.
 
 Legacy `/operations` deep link tidak boleh menjadi jalur biasa menuju physical-canary cockpit.
 

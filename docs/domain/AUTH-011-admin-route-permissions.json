@@ -244,6 +244,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/${spec.path}",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.destructive"
     ]
   },

@@ -43,6 +43,18 @@ export async function updateAdmsDeviceProfile(
   return result.item;
 }
 
+/**
+ * Asks the operator to type the server's confirmation phrase. The phrase is
+ * never filled in automatically, so a stray click cannot reach the device.
+ */
+export function confirmTypedPhrase(message: string, phrase: string) {
+  const typed = window.prompt(`${message}
+
+Ketik persis:
+${phrase}`);
+  return typed !== null && typed.trim() === phrase;
+}
+
 export function capabilityByKey(items: OperationsCapability[], key: string) {
   return items.find((item) => item.key === key) ?? null;
 }

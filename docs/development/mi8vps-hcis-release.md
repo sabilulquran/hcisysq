@@ -203,10 +203,14 @@ health results. Never record `final.env` values, tokens, cookies or employee dat
 
 ## 8. Known limits and follow-ups
 
-- **Production HCIS has no scheduled database backup on the device.** `sq-core-backup.sh` dumps the
-  `sqcore_phase3_cutf8_20261004_*` rehearsal databases and labels its sets
-  `scope=non-production-rehearsal`; no script references `sqcore_hcis`. Fixing the daily set is a
-  separate owner-approved change; until then the `backup` phase here is the only release-time dump.
+- **Production HCIS (`sqcore_hcis`) is not covered by any scheduled backup, on the device or on Google
+  Drive.** `sq-core-backup.sh` dumps the `sqcore_phase3_cutf8_20261004_*` rehearsal databases and labels
+  its sets `scope=non-production-rehearsal`. Encrypted Google Drive copies exist (rclone remote
+  `mi8_crypt:production/`, scripts in `/usr/local/sbin`), but they are one-shot, approval-gated uploads
+  from 12–13 October with no schedule. The only SQ Core set uploaded there (`set-20261012T020012Z`)
+  holds the same rehearsal dumps. Fixing the daily set and its off-host copy is a separate
+  owner-approved change; until then the `backup` phase here is the only release-time dump of
+  `sqcore_hcis`, and it stays on the device.
 
 - A one-time change could make the launcher and worker read `/srv/hcis/current` (launcher `cd`
   through the symlink, worker pattern from `readlink`), so a release would flip a symlink instead of

@@ -1,7 +1,7 @@
 # Mi8VPS SQ Core production database backup — change plan
 
 **Spec ID:** OPS-MI8-BAK-001  
-**Status:** APPLIED 2026-10-15 23:11–23:16 WIB. The owner approved all six items in §5, including permanent deletion of off-host sets beyond the newest 14. The first scheduled run is pending (see §10).  
+**Status:** APPLIED 2026-10-15 23:11–23:16 WIB. The owner approved all six items in §5, including permanent deletion of off-host sets beyond the newest 14. The first scheduled run passed on 2026-10-16 02:00 WIB (see §10).  
 **Updated:** 2026-10-15  
 **Related:** OPS-MI8-REL-001 (Mi8VPS HCIS release flow), `docs/operations/permanent-staging-retirement-2026-10-02.md`  
 **Ready-to-apply diff:** [`mi8vps-sq-core-production-backup.patch`](mi8vps-sq-core-production-backup.patch)
@@ -197,7 +197,7 @@ Pushing these lines to an alert channel is a follow-up (`TBD`).
 | 5. Manual restore check | PASS in 41 s. Table counts restored/live: keycloak 100/100, hcis 92/92, hub 10/10, aset 18/18. No `sqcore_restorecheck_*` database and no temp dump remained. |
 | 6. Manual off-host copy | PASS in 90 s. `EFFECTIVE_QUOTA_15GB_PREFLIGHT_PASS` was printed (vault 203 MB → about 233 MB; account headroom after upload 2.30 GB). `cryptcheck` found 0 differences across 10 matching files, then `SQ_CORE_ENCRYPTED_OFFHOST_PASS` with `REMOTE_SETS=1 PURGED=0`. The second run printed `ALREADY_DONE`. |
 | 7. Worker restart | PASS. TERM was sent to pid 31376 at 23:14:26. `start-services.sh` relaunched the worker as pid 31701 at 23:16:12, and only one worker is running. All SQ Core local health endpoints and public hcis/hub/aset/login returned 200/302. |
-| 8. First scheduled run | Pending, expected at 19 UTC (02:00 WIB 16 Oct). |
+| 8. First scheduled run | PASS. `2026-10-16 02:00:18 scheduled backup completed` (set `set-20261015T190001Z`, `result=OK scope=production`), then `02:01:50 scheduled off-host copy completed`. `cryptcheck` found 0 differences across 10 files; `SQ_CORE_ENCRYPTED_OFFHOST_PASS` with `REMOTE_SETS=2 PURGED=0`. The weekly restore check is first due Sunday 18 Oct 20 UTC (Mon 03:00 WIB). |
 
 Observation, not caused by this change: before the install, the worker restarted Keycloak 6× on 9 Oct, 5× on 14 Oct and 3× on 15 Oct after its readiness check failed. That needs separate investigation.
 

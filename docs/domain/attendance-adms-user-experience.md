@@ -504,3 +504,14 @@ Before code changes:
 6. run quality gates;
 7. physical device testing remains separately gated.
 
+
+## Implementation status — device detail navigation (web)
+
+**Status:** IMPLEMENTED IN WEB, NOT PHYSICALLY VERIFIED. No API, permission, or database change.
+
+- Device detail tabs follow the target order: Ringkasan, Pengguna, Biometrik, Data Mesin, Transaksi, Konfigurasi, Maintenance. Diagnostik teknis stays a separate link gated by `attendance.devices.technical`.
+- Routes: `/admin/attendance/devices/$deviceId/data-machine` and `/maintenance` are new and require only `attendance.devices.read` (same as Ringkasan/Transaksi); every write remains enforced server-side. Legacy `/commands` renders Maintenance; legacy `/operations` renders Diagnostik teknis and keeps its technical gate.
+- Data Mesin shows only Kode kegiatan and Pesan in user language. Offline ATTLOG import, pending-queue cleanup, and capability evidence remain in Diagnostik teknis.
+- Maintenance currently contains Riwayat tindakan (command history, return codes hidden). Perawatan aman, firmware, and break-glass subsections are `TBD`.
+- Ringkasan shows Aksi cepat with all six actions visible but disabled (“Perlu pengujian perangkat”), because no quick-action capability is physically verified yet. Enabling each action is a separate gated change.
+- Manajemen ADMS workspace label "Sinkronisasi & Perintah" renamed to "Sinkronisasi".

@@ -85,6 +85,9 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/diagnostics")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/settings")).toBe(false);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/biometrics")).toBe(false);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/data-machine")).toBe(true);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/maintenance")).toBe(true);
+    expect(canAccessAdminPath(deviceOperator, "/admin/attendance/devices/id/commands")).toBe(true);
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={deviceOperator} />);
     expect(html).toContain('href="/admin/attendance/adms"');
     expect(html).not.toContain('href="/admin/attendance/devices"');

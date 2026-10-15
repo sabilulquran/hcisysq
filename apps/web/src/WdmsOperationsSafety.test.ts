@@ -16,7 +16,7 @@ describe("ATT-005 Wave 3 web safety", () => {
     expect(page).toContain("Capability matrix");
     expect(page).toContain("physical capability evidence per mesin");
     expect(page).toContain("Import ATTLOG offline");
-    expect(page).toContain("Work Code");
+    expect(page).toContain("Kode kegiatan");
     expect(page).toContain("Pesan perangkat");
     expect(page).toContain("Device command: 0");
     expect(page).toContain("<PaginationBar");
@@ -25,6 +25,20 @@ describe("ATT-005 Wave 3 web safety", () => {
     expect(combined).not.toContain("DATA UPDATE USERINFO");
     expect(combined).not.toContain("DATA DELETE USERINFO");
     expect(combined).not.toMatch(/fetch\([^\n]*(reboot|firmware|clear-all|clear-attendance|biometric-delete|time-sync)/i);
+  });
+
+  it("keeps the operator Data Mesin tab in user language and technical tooling behind diagnostics (ATT-012)", async () => {
+    const page = await source("./pages/AdminAdmsDeviceOperationsPage.tsx");
+    const devicePage = await source("./pages/AdminAdmsDevicePage.tsx");
+    const shell = await source("./components/attendance/device-admin/DeviceDetailShell.tsx");
+
+    expect(devicePage).toContain('<AdminAdmsDeviceOperationsPage mode="data" />');
+    expect(page).toContain("{technical ? (");
+    expect(page).not.toContain("Desired:");
+    expect(page).not.toContain("HCIS only");
+    expect(shell).toContain('label: "Data Mesin"');
+    expect(shell).toContain('label: "Maintenance"');
+    expect(shell).not.toContain('suffix: "/commands"');
   });
 
   it("keeps raw ADMS command protocol payloads out of browser admin surfaces", async () => {

@@ -13,19 +13,22 @@ export type DeviceAdminSection =
   | "overview"
   | "users"
   | "biometrics"
+  | "data-machine"
   | "transactions"
+  | "maintenance"
   | "commands"
   | "operations"
   | "settings"
   | "diagnostics";
 
-const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics" | "operations">; label: string; suffix: string }> = [
+const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics" | "operations" | "commands">; label: string; suffix: string }> = [
   { key: "overview", label: "Ringkasan", suffix: "" },
   { key: "users", label: "Pengguna", suffix: "/users" },
   { key: "biometrics", label: "Biometrik", suffix: "/biometrics" },
+  { key: "data-machine", label: "Data Mesin", suffix: "/data-machine" },
   { key: "transactions", label: "Transaksi", suffix: "/transactions" },
-  { key: "commands", label: "Sinkronisasi", suffix: "/commands" },
-  { key: "settings", label: "Pengaturan", suffix: "/settings" },
+  { key: "settings", label: "Konfigurasi", suffix: "/settings" },
+  { key: "maintenance", label: "Maintenance", suffix: "/maintenance" },
 ];
 
 function fmt(value: string | null) {

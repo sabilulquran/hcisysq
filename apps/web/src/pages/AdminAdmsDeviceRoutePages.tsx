@@ -17,6 +17,11 @@ export function AdminAdmsDeviceBiometricsRoutePage() {
   return <AdminAdmsDevicePage deviceId={deviceId} section="biometrics" />;
 }
 
+export function AdminAdmsDeviceDataMachineRoutePage() {
+  const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/data-machine" });
+  return <AdminAdmsDevicePage deviceId={deviceId} section="data-machine" />;
+}
+
 export function AdminAdmsDeviceTransactionsRoutePage() {
   const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/transactions" });
   return <AdminAdmsDevicePage deviceId={deviceId} section="transactions" />;
@@ -24,12 +29,17 @@ export function AdminAdmsDeviceTransactionsRoutePage() {
 
 export function AdminAdmsDeviceCommandsRoutePage() {
   const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/commands" });
-  return <AdminAdmsDevicePage deviceId={deviceId} section="commands" />;
+  return <AdminAdmsDevicePage deviceId={deviceId} section="maintenance" />;
+}
+
+export function AdminAdmsDeviceMaintenanceRoutePage() {
+  const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/maintenance" });
+  return <AdminAdmsDevicePage deviceId={deviceId} section="maintenance" />;
 }
 
 export function AdminAdmsDeviceOperationsRoutePage() {
   const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/operations" });
-  return <AdminAdmsDevicePage deviceId={deviceId} section="operations" />;
+  return <AdminAdmsDevicePage deviceId={deviceId} section="diagnostics" />;
 }
 
 export function AdminAdmsDeviceSettingsRoutePage() {

@@ -14,7 +14,9 @@ import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
   AdminAdmsDeviceBiometricsRoutePage,
   AdminAdmsDeviceCommandsRoutePage,
+  AdminAdmsDeviceDataMachineRoutePage,
   AdminAdmsDeviceDiagnosticsRoutePage,
+  AdminAdmsDeviceMaintenanceRoutePage,
   AdminAdmsDeviceOperationsRoutePage,
   AdminAdmsDeviceOverviewRoutePage,
   AdminAdmsDeviceSettingsRoutePage,
@@ -413,6 +415,13 @@ const adminAdmsDeviceBiometricsRoute = createRoute({
   component: AdminAdmsDeviceBiometricsRoutePage,
 });
 
+const adminAdmsDeviceDataMachineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices/$deviceId/data-machine",
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/data-machine"),
+  component: AdminAdmsDeviceDataMachineRoutePage,
+});
+
 const adminAdmsDeviceTransactionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/transactions",
@@ -425,6 +434,13 @@ const adminAdmsDeviceCommandsRoute = createRoute({
   path: "/admin/attendance/devices/$deviceId/commands",
   beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/commands"),
   component: AdminAdmsDeviceCommandsRoutePage,
+});
+
+const adminAdmsDeviceMaintenanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices/$deviceId/maintenance",
+  beforeLoad: () => requireAdminPath("/admin/attendance/devices/$deviceId/maintenance"),
+  component: AdminAdmsDeviceMaintenanceRoutePage,
 });
 
 const adminAdmsDeviceOperationsRoute = createRoute({
@@ -543,8 +559,10 @@ const routeTree = rootRoute.addChildren([
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,
   adminAdmsDeviceBiometricsRoute,
+  adminAdmsDeviceDataMachineRoute,
   adminAdmsDeviceTransactionsRoute,
   adminAdmsDeviceCommandsRoute,
+  adminAdmsDeviceMaintenanceRoute,
   adminAdmsDeviceOperationsRoute,
   adminAdmsDeviceSettingsRoute,
   adminAdmsDeviceDiagnosticsRoute,

@@ -34,7 +34,8 @@ function sectionContent(section: DeviceAdminSection) {
       </>
     );
   }
-  if (section === "commands") return <AdminAdmsDeviceCommandsPage />;
+  if (section === "data-machine") return <AdminAdmsDeviceOperationsPage mode="data" />;
+  if (section === "maintenance" || section === "commands") return <AdminAdmsDeviceCommandsPage />;
   if (section === "settings") return <AdminAdmsDeviceSettingsPage />;
   if (section === "operations" || section === "diagnostics") {
     return (

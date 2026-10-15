@@ -39,15 +39,22 @@ import {
 const PAGE_SIZE = 8;
 
 function stateLabel(state: string) {
-  if (state === "available") return "Tersedia";
-  if (state === "not_verified") return "Belum terverifikasi";
-  return "Diblokir";
+  if (state === "available") return "Siap digunakan";
+  if (state === "not_verified") return "Perlu pengujian perangkat";
+  return "Belum dapat digunakan";
 }
 
 function stateClass(state: string) {
   if (state === "available") return "bg-emerald-50 text-emerald-700";
   if (state === "not_verified") return "bg-slate-100 text-slate-700";
   return "bg-amber-50 text-amber-800";
+}
+
+function deliveryLabel(state: AdmsWorkCodeItem["deliveryState"]) {
+  if (state === "pending") return "Menunggu dikirim ke mesin";
+  if (state === "succeeded") return "Sudah ada di mesin";
+  if (state === "failed") return "Gagal dikirim";
+  return "Belum dikirim ke mesin";
 }
 
 function fmt(value: string | null) {
@@ -59,7 +66,13 @@ function fmt(value: string | null) {
   }).format(new Date(value));
 }
 
-export function AdminAdmsDeviceOperationsPage() {
+/**
+ * `data` is the operator-facing Data Mesin tab (ATT-012 §4): only Kode kegiatan and Pesan,
+ * in user language. `technical` adds offline import, pending-queue cleanup, and the
+ * capability evidence used by Diagnostik teknis.
+ */
+export function AdminAdmsDeviceOperationsPage({ mode = "technical" }: { mode?: "data" | "technical" }) {
+  const technical = mode === "technical";
   const { deviceId } = useDeviceAdmin();
   const [summary, setSummary] = useState<AdmsOperationsSummary | null>(null);
   const [workCodes, setWorkCodes] = useState<AdmsWorkCodeItem[]>([]);
@@ -145,11 +158,11 @@ export function AdminAdmsDeviceOperationsPage() {
       await saveAdmsWorkCode({ code: workCode.trim(), name: workCodeName.trim() });
       setWorkCode("");
       setWorkCodeName("");
-      setNotice("Work Code tersimpan di katalog HCIS. Belum ada command yang dikirim ke mesin.");
+      setNotice("Kode kegiatan tersimpan di HCIS. Belum ada perubahan yang dikirim ke mesin.");
       setError(null);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Work Code tidak dapat disimpan.");
+      setError(cause instanceof Error ? cause.message : "Kode kegiatan tidak dapat disimpan.");
     } finally {
       setBusy(null);
     }
@@ -159,11 +172,11 @@ export function AdminAdmsDeviceOperationsPage() {
     setBusy(`work-target:${item.id}`);
     try {
       await setAdmsWorkCodeTarget(deviceId, item.id, desiredState);
-      setNotice(`Desired state ${item.code} diperbarui. Aksi ini tidak mengirim command ke mesin; gunakan physical delivery control secara terpisah.`);
+      setNotice(`Status rencana ${item.code} diperbarui. Perubahan belum dikirim ke mesin karena fitur perangkat belum siap digunakan.`);
       setError(null);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Target Work Code tidak dapat diperbarui.");
+      setError(cause instanceof Error ? cause.message : "Status rencana kode kegiatan tidak dapat diperbarui.");
     } finally {
       setBusy(null);
     }
@@ -202,7 +215,7 @@ export function AdminAdmsDeviceOperationsPage() {
       setSelectedEmployee(null);
       setEmployeeQuery("");
       setEmployeeResults([]);
-      setNotice("Pesan tersimpan di HCIS. Belum ada command yang dikirim ke mesin.");
+      setNotice("Pesan tersimpan di HCIS. Belum ada perubahan yang dikirim ke mesin.");
       setError(null);
       await load();
     } catch (cause) {
@@ -216,7 +229,7 @@ export function AdminAdmsDeviceOperationsPage() {
     setBusy(`message-target:${item.id}`);
     try {
       await setAdmsDeviceMessageTarget(deviceId, item.id, desiredState);
-      setNotice(`Desired state pesan "${item.title}" diperbarui. Aksi ini tidak mengirim command ke mesin; gunakan physical delivery control secara terpisah.`);
+      setNotice(`Status rencana pesan "${item.title}" diperbarui. Perubahan belum dikirim ke mesin karena fitur perangkat belum siap digunakan.`);
       setError(null);
       await load();
     } catch (cause) {
@@ -259,7 +272,7 @@ export function AdminAdmsDeviceOperationsPage() {
   }, [deviceId, load, offlineFile]);
 
   if (loading) {
-    return <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat operasional WDMS…</div>;
+    return <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat data mesin…</div>;
   }
 
   const blockedHardware = summary?.capabilities.filter((item) => item.execution === "blocked") ?? [];
@@ -271,10 +284,12 @@ export function AdminAdmsDeviceOperationsPage() {
           <div>
             <div className="flex items-center gap-2">
               <Wrench className="h-5 w-5 text-brand-primary" />
-              <h2 className="text-base font-bold text-brand-heading">Operasional WDMS</h2>
+              <h2 className="text-base font-bold text-brand-heading">{technical ? "Operasional WDMS" : "Data Mesin"}</h2>
             </div>
             <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">
-              Operasi HCIS-side dan device-side tetap typed tanpa arbitrary command. Status hardware berasal dari physical capability evidence per mesin; capability yang belum verified tetap fail-closed.
+              {technical
+                ? "Operasi HCIS-side dan device-side tetap typed tanpa arbitrary command. Status hardware berasal dari physical capability evidence per mesin; capability yang belum verified tetap fail-closed."
+                : "Kelola kode kegiatan dan pesan yang direncanakan untuk mesin. Perubahan hanya dikirim saat mesin sudah siap digunakan; HCIS tetap menyimpan status pengiriman secara aman."}
             </p>
           </div>
           <button type="button" onClick={() => void refresh()} disabled={refreshing} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">
@@ -282,10 +297,12 @@ export function AdminAdmsDeviceOperationsPage() {
           </button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Command pending</div><div className="mt-1 text-xl font-bold text-brand-heading">{summary?.pendingCommandCount ?? 0}</div></div>
-          <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Import offline</div><div className="mt-1 text-xl font-bold text-brand-heading">{imports.length}</div></div>
-          <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Katalog Work Code</div><div className="mt-1 text-xl font-bold text-brand-heading">{workCodes.length}</div></div>
-          <div className="rounded-xl bg-amber-50 p-3"><div className="text-[11px] text-amber-800">Hardware gated</div><div className="mt-1 text-xl font-bold text-amber-950">{blockedHardware.length}</div></div>
+          <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Tindakan menunggu</div><div className="mt-1 text-xl font-bold text-brand-heading">{summary?.pendingCommandCount ?? 0}</div></div>
+          {technical
+            ? <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Import offline</div><div className="mt-1 text-xl font-bold text-brand-heading">{imports.length}</div></div>
+            : <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Pesan</div><div className="mt-1 text-xl font-bold text-brand-heading">{messages.length}</div></div>}
+          <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Kode kegiatan</div><div className="mt-1 text-xl font-bold text-brand-heading">{workCodes.length}</div></div>
+          <div className="rounded-xl bg-amber-50 p-3"><div className="text-[11px] text-amber-800">Perlu pengujian perangkat</div><div className="mt-1 text-xl font-bold text-amber-950">{blockedHardware.length}</div></div>
         </div>
         {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
@@ -293,24 +310,24 @@ export function AdminAdmsDeviceOperationsPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-          <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Work Code</h3></div>
+          <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Kode kegiatan</h3></div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{workDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(workDeliveryCapability)}`}>{stateLabel(workDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
             <input value={workCode} onChange={(event) => setWorkCode(event.target.value.replace(/[^0-9A-Za-z._-]/g, ""))} placeholder="Kode" className="h-9 rounded-xl border border-border px-3 text-sm" />
-            <input value={workCodeName} onChange={(event) => setWorkCodeName(event.target.value)} placeholder="Nama Work Code" className="h-9 rounded-xl border border-border px-3 text-sm" />
+            <input value={workCodeName} onChange={(event) => setWorkCodeName(event.target.value)} placeholder="Nama kegiatan" className="h-9 rounded-xl border border-border px-3 text-sm" />
             <button type="button" onClick={() => void submitWorkCode()} disabled={busy !== null || !workCode || !workCodeName.trim()} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Simpan</button>
           </div>
           <div className="mt-4 space-y-2">
             {visibleWorkCodes.map((item) => (
               <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3">
-                <div><div className="font-mono text-xs font-bold text-brand-heading">{item.code}</div><div className="mt-1 text-xs text-muted-foreground">{item.name} · {item.deliveryState === "not_verified" ? "belum dikirim" : item.deliveryState}</div></div>
+                <div><div className="font-mono text-xs font-bold text-brand-heading">{item.code}</div><div className="mt-1 text-xs text-muted-foreground">{item.name} · {deliveryLabel(item.deliveryState)}</div></div>
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy !== null} onClick={() => void updateWorkTarget(item, "present")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold disabled:opacity-50">Desired: ada</button>
-                  <button type="button" disabled={busy !== null} onClick={() => void updateWorkTarget(item, "absent")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold disabled:opacity-50">Desired: hapus</button>
+                  <button type="button" disabled={busy !== null} onClick={() => void updateWorkTarget(item, "present")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold disabled:opacity-50">Pasang di mesin</button>
+                  <button type="button" disabled={busy !== null} onClick={() => void updateWorkTarget(item, "absent")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold disabled:opacity-50">Hapus dari mesin</button>
                 </div>
               </div>
             ))}
-            {workCodes.length === 0 ? <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada Work Code HCIS.</div> : null}
+            {workCodes.length === 0 ? <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada kode kegiatan.</div> : null}
           </div>
           {workCodes.length > PAGE_SIZE ? <PaginationBar page={workPage} pageSize={PAGE_SIZE} total={workCodes.length} onPageChange={setWorkPage} /> : null}
         </section>
@@ -319,7 +336,7 @@ export function AdminAdmsDeviceOperationsPage() {
           <div className="flex items-center gap-2"><MessageSquareText className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Pesan perangkat</h3></div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{messageDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(messageDeliveryCapability)}`}>{stateLabel(messageDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <select value={messageAudience} onChange={(event) => { setMessageAudience(event.target.value as "public" | "private"); setSelectedEmployee(null); }} className="h-9 rounded-xl border border-border px-3 text-sm"><option value="public">Public</option><option value="private">Private</option></select>
+            <select value={messageAudience} onChange={(event) => { setMessageAudience(event.target.value as "public" | "private"); setSelectedEmployee(null); }} className="h-9 rounded-xl border border-border px-3 text-sm"><option value="public">Untuk semua pengguna</option><option value="private">Untuk pegawai tertentu</option></select>
             <input value={messageTitle} onChange={(event) => setMessageTitle(event.target.value)} placeholder="Judul" className="h-9 rounded-xl border border-border px-3 text-sm" />
           </div>
           {messageAudience === "private" ? (
@@ -339,9 +356,9 @@ export function AdminAdmsDeviceOperationsPage() {
           <div className="mt-4 space-y-2">
             {visibleMessages.map((item) => (
               <div key={item.id} className="rounded-xl border border-border/70 p-3">
-                <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold text-brand-heading">{item.title}</div><div className="mt-1 text-[11px] text-muted-foreground">{item.audience === "private" ? `Private · ${item.employeeName ?? "pegawai"}` : "Public"} · delivery {item.deliveryState}</div></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">HCIS only</span></div>
+                <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold text-brand-heading">{item.title}</div><div className="mt-1 text-[11px] text-muted-foreground">{item.audience === "private" ? `Untuk ${item.employeeName ?? "pegawai tertentu"}` : "Untuk semua pengguna"} · {deliveryLabel(item.deliveryState)}</div></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">Tersimpan di HCIS</span></div>
                 <p className="mt-2 text-xs leading-5 text-brand-body">{item.messageText}</p>
-                <div className="mt-2 flex gap-2"><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "present")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Desired: tampil</button><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "absent")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Desired: hapus</button></div>
+                <div className="mt-2 flex gap-2"><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "present")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Tampilkan di mesin</button><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "absent")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Hapus dari mesin</button></div>
               </div>
             ))}
             {messages.length === 0 ? <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada pesan perangkat.</div> : null}
@@ -350,6 +367,8 @@ export function AdminAdmsDeviceOperationsPage() {
         </section>
       </div>
 
+      {technical ? (
+      <>
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <h3 className="text-sm font-bold text-brand-heading">Transfer data & maintenance aman</h3>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -373,6 +392,8 @@ export function AdminAdmsDeviceOperationsPage() {
         </div>
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Retention operasional tetap policy-gated dan raw ADMS facts tidak dibersihkan otomatis. Status verified hanya berlaku untuk capability dan mesin tersebut; biometric/destructive/firmware tetap mengikuti gate, confirmation, rate-limit, dan physical UAT masing-masing.</div>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

@@ -32,7 +32,7 @@ function statusClass(status: string) {
 
 function outcomeLabel(command: AdmsCommandItem) {
   if (command.status === "succeeded") return "Berhasil";
-  if (command.status === "failed") return command.returnCode === null ? "Gagal" : `Gagal · kode ${command.returnCode}`;
+  if (command.status === "failed") return "Gagal";
   if (command.status === "cancelled") return "Dibatalkan";
   if (command.status === "expired") return "Kedaluwarsa";
   return "Belum selesai";
@@ -133,8 +133,8 @@ export function AdminAdmsDeviceCommandsPage() {
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-bold text-brand-heading">Perintah mesin</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Satu tempat untuk melihat apakah operasi ke mesin masih menunggu, sudah dikirim, selesai, gagal, atau dibatalkan.</p>
+            <h2 className="text-base font-bold text-brand-heading">Maintenance</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Riwayat tindakan pada mesin: menunggu, dikirim, diterima, berhasil, gagal, atau dibatalkan.</p>
           </div>
           <button type="button" onClick={() => void refreshAll()} disabled={refreshing || loading} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /> {refreshing ? "Memuat…" : "Muat ulang"}
@@ -144,7 +144,7 @@ export function AdminAdmsDeviceCommandsPage() {
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nomor atau jenis perintah" className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari tindakan pada mesin" className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
           </label>
           <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-border bg-white px-3 text-sm text-brand-heading" aria-label="Filter status perintah">
             <option value="all">Semua status</option>

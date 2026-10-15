@@ -1,4 +1,4 @@
-import { Activity, Fingerprint, Link2, MapPin, Network, Radio, UserRoundCheck, UsersRound } from "lucide-react";
+import { Activity, DownloadCloud, Fingerprint, Link2, MapPin, Network, Radio, RefreshCw, RotateCw, UserRoundCheck, UsersRound, type LucideIcon } from "lucide-react";
 
 import { connectivityLabel } from "@/lib/admsAdmin";
 
@@ -22,8 +22,19 @@ function SummaryCard({ label, value, helper }: { label: string; value: string | 
   );
 }
 
+// ATT-012 §1 Aksi cepat. Every action stays disabled until its device capability is proven;
+// dangerous actions never belong here.
+const quickActions: Array<{ label: string; icon: LucideIcon; reason: string }> = [
+  { label: "Perbarui informasi mesin", icon: RefreshCw, reason: "Perlu pengujian perangkat" },
+  { label: "Ambil transaksi terbaru", icon: DownloadCloud, reason: "Perlu pengujian perangkat" },
+  { label: "Ambil ulang transaksi", icon: DownloadCloud, reason: "Gunakan tab Transaksi" },
+  { label: "Sinkronkan waktu", icon: RefreshCw, reason: "Perlu pengujian perangkat" },
+  { label: "Sinkronkan pegawai", icon: UsersRound, reason: "Perlu pengujian perangkat" },
+  { label: "Mulai ulang mesin", icon: RotateCw, reason: "Perlu pengujian perangkat" },
+];
+
 export function AdminAdmsDeviceOverviewPage() {
-  const { detail, health } = useDeviceAdmin();
+  const { detail, health, deviceId } = useDeviceAdmin();
   if (!detail) return null;
 
   const device = detail.item;
@@ -33,6 +44,23 @@ export function AdminAdmsDeviceOverviewPage() {
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]" aria-label="Aksi cepat">
+        <h2 className="text-base font-bold text-brand-heading">Aksi cepat</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Tindakan yang sering diperlukan tersedia di sini. Tindakan yang belum siap pada mesin ini tetap dinonaktifkan untuk menjaga data perangkat.</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {quickActions.map(({ label, icon: ActionIcon, reason }) => (
+            <button key={label} type="button" disabled title={reason} className="flex min-h-16 items-center gap-3 rounded-xl border border-border bg-surface/50 px-3 text-left text-sm font-semibold text-muted-foreground disabled:cursor-not-allowed disabled:opacity-80">
+              <ActionIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span><span className="block">{label}</span><span className="mt-0.5 block text-[11px] font-normal">{reason}</span></span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-brand-primary-deep">
+          <a href={`/admin/attendance/devices/${deviceId}/transactions`} className="hover:underline">Buka transaksi</a>
+          <a href={`/admin/attendance/devices/${deviceId}/users`} className="hover:underline">Buka pengguna</a>
+          <a href={`/admin/attendance/devices/${deviceId}/maintenance`} className="hover:underline">Buka maintenance</a>
+        </div>
+      </section>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Ringkasan kondisi mesin">
         <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">

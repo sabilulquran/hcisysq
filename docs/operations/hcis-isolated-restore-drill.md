@@ -1,7 +1,7 @@
 # HCIS isolated restore drill — runbook
 
 **Spec ID:** OPS-MI8-DRILL-001
-**Status:** DRAFT — READY FOR OWNER APPROVAL; NOT EXECUTED
+**Status:** ACTIVE — first run PASS 2026-10-16 (`hcis-restore-drill-2026-10-16.md`). Each run needs owner approval.
 **Prepared:** 2026-10-16
 **Closes (when executed and PASS):** the "isolated restore drill" item in `docs/product/scope.md` → *Pilot ready* and *Production ready*.
 **Related:** OPS-MI8-BAK-001 (`docs/development/mi8vps-sq-core-production-backup-plan.md`), OPS-MI8-REL-001 (`docs/development/mi8vps-hcis-release.md`), `docs/development/hcis-pilot-recovery-and-handoff.md` (generic drill rules this runbook makes concrete).
@@ -53,7 +53,7 @@ Side-effect review (repository fact, 2026-10-16): the HCIS API has **no backgrou
 
 ## 4. Procedure
 
-Every block below is pasted into **one** `ssh mi8vps-root` session (Termux shell as root). Blocks share variables, so keep the same session. Record the start time before step 4.1.
+Every block below is pasted into **one** `ssh mi8vps-root` session (Termux shell as root). Blocks share variables, so keep the same session. The 2026-10-16 run concatenated §4.0–4.6 into one script piped to `ssh mi8vps-root '/system/bin/sh -s'`, with §4.7 registered as an `EXIT` trap so teardown runs even after a failure; that is the recommended way to run it. Record the start time before step 4.1.
 
 ### 4.0 Prelude (read-only)
 
@@ -94,8 +94,10 @@ PASS criteria: no `STOP`, a set name and a release path are printed.
 ### 4.1 Verify the set (read-only)
 
 ```sh
-(cd "$SET" && sha256sum -c SHA256SUMS) | grep -v ': OK$' && { echo "STOP: checksum"; exit 1; } || echo "checksums=OK"
-DUMP=$(ls "$SET"/*hcis*.dump | head -1); ls -la "$DUMP"
+bad=$(cd "$SET" && sha256sum -c SHA256SUMS 2>&1 | grep -v ': OK$' || true)
+[ -z "$bad" ] || { echo "STOP: checksum $bad"; exit 1; }
+echo "checksums=OK"
+DUMP=$(ls "$SET"/hcis/*.dump | head -1); [ -f "$DUMP" ] || { echo "STOP: no hcis dump"; exit 1; }; ls -la "$DUMP"
 ```
 
 ### 4.2 Create the disposable database (WRITE — approval required)

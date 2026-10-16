@@ -176,7 +176,7 @@ Detail proposal ada di `docs/domain/multi-company-organization.md`.
 
 ### F. Recruitment linked to organization and employment
 
-REC-001 tetap discovery, tetapi arah integrasinya diperjelas:
+REC-001 tetap discovery. Sejak keputusan Product Owner 2026-10-16, Recruitment adalah aplikasi SQ Core terpisah di luar HCIS, dan kandidat login melalui realm eksternal Akun SQ (SQ Hub ADR-0008, PROPOSED). HCIS hanya memiliki kontrak hand-off di kedua ujung alur berikut:
 
 ```text
 ORG-004 vacant position

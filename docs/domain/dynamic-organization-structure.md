@@ -660,7 +660,7 @@ Implemented/accepted actions include:
 
 Real production use of these actions remains subject to access control and operational approval.
 
-**UX review 2026-10-16 (ORG-008, PROPOSED):** the owner reported that the designer is still uncomfortable for HC operators. `organization-designer-ux-gap-analysis.md` records the operator-facing gaps found in code (including a publish risk where a draft built on an older base can silently replace another published snapshot), and `organization-designer-ux-spec.md` proposes a simplified, screen-by-screen experience and separately mergeable packages. ORG-008 does not change the resolver, effective dating, snapshot or rollout rules in this document.
+**UX review 2026-10-16 (ORG-008, ACCEPTED PRODUCT DIRECTION; owner decisions O-1..O-10 accepted, O-11 pilot unit open):** the owner reported that the designer is still uncomfortable for HC operators. `organization-designer-ux-gap-analysis.md` records the operator-facing gaps found in code (including a publish risk where a draft built on an older base can silently replace another published snapshot), and `organization-designer-ux-spec.md` proposes a simplified, screen-by-screen experience and separately mergeable packages. ORG-008 does not change the resolver, effective dating, snapshot or rollout rules in this document.
 
 ## Visual ranking is not authority
 

@@ -162,7 +162,7 @@ features:
     target_status: specified
     priority: immediate-product-ux
     risk: high
-    planning_note: UX and workflow layer over ORG-004 only. Does not change resolver semantics, effective dating, approval snapshots or rollout; does not activate SHADOW/STRUCTURE. Packages ORG-008-1..7 await owner decisions O-1..O-11. Includes a publish safety fix for stale-base drafts silently overwriting other published snapshots.
+    planning_note: UX and workflow layer over ORG-004 only. Does not change resolver semantics, effective dating, approval snapshots or rollout; does not activate SHADOW/STRUCTURE. Owner accepted recommendations O-1..O-10 on 2026-10-16 (HC Admin drafts everything, publish stays with approvals.policy.manage holder; seed from legacy data; one open draft; Direktur picked in overtime rules; structure units linked to legacy units for HC scope; view-only on phone); O-11 pilot unit remains open. Packages ORG-008-1..8 still require their own PRs and owner-approved releases. Includes a publish safety fix for stale-base drafts silently overwriting other published snapshots.
     docs:
       - docs/domain/organization-designer-ux-spec.md
       - docs/domain/organization-designer-ux-gap-analysis.md

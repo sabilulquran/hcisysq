@@ -1,6 +1,6 @@
 # ORG-008 — Penyederhanaan Designer Struktur Organisasi: Spesifikasi UX
 
-**Status:** PROPOSED — menunggu keputusan owner O-1..O-11 (§10). Belum ada implementasi. Asumsi teknis bertanda DRAFT/TBD diverifikasi di masing-masing paket; setiap paket tetap membutuhkan PR, test, dan persetujuan rilis owner sendiri (OPS-MI8-REL-001).  
+**Status:** ACCEPTED PRODUCT DIRECTION — keputusan owner O-1..O-10 dicatat 2026-10-16 (§10: "Setuju semua rekomendasi O-1 sampai O-10"); O-11 (unit pilot) tetap terbuka untuk owner. Belum ada implementasi. Asumsi teknis bertanda DRAFT/TBD diverifikasi di masing-masing paket; setiap paket tetap membutuhkan PR, test, dan persetujuan rilis owner sendiri (OPS-MI8-REL-001).  
 **Specification:** ORG-008  
 **Drafted:** 2026-10-16  
 **Gap analysis:** `organization-designer-ux-gap-analysis.md`  
@@ -39,13 +39,13 @@ Non-goal: aktivasi `SHADOW`/`STRUCTURE`, pemilihan unit pilot, pemetaan akun Dew
 
 | Actor | Permission saat ini | Peran di ORG-008 |
 |---|---|---|
-| HC Admin | `human_capital_admin`: `organization.manage` (tanpa `approvals.policy.manage`) | Menyusun perubahan struktur, menempatkan pegawai, melihat semua tab. Bagian yang menyentuh kewenangan mengikuti O-1. |
-| Pemegang kewenangan approval | `approvals.policy.manage` (saat ini hanya kompatibilitas Super Admin) | Pejabat, Plt, atasan khusus, kewenangan khusus, **Terbitkan** (mengikuti O-1). |
-| HC Operator | `human_capital` (tanpa `organization.manage`) | Tidak berubah; tidak melihat menu struktur kecuali O-1 memutuskan akses baca. |
+| HC Admin | `human_capital_admin`: `organization.manage` (tanpa `approvals.policy.manage`) | **O-1:** menyusun seluruh isi perubahan — unit, jabatan, anggota, pejabat, Plt, pemimpin/penyetuju unit, atasan khusus, kewenangan khusus — memeriksa, dan membuang. Tidak menerbitkan. |
+| Penerbit (Kepala HC / owner) | `approvals.policy.manage` (saat ini hanya kompatibilitas Super Admin) | **O-1:** pemeriksa kedua; satu-satunya yang dapat **Terbitkan**. Siapa yang menerima izin ini (role/akun Kepala HC) = penugasan akses operasional terpisah, TBD. |
+| HC Operator | `human_capital` (tanpa `organization.manage`) | Tidak berubah; tidak melihat menu struktur. |
 | Pegawai | own data | Tidak berubah di ORG-008. Kartu "Atasan saya" di aplikasi pegawai = usulan lanjutan (bukan paket ini). |
-| Owner | — | Memutuskan O-1..O-11 dan aktivasi rollout (di luar ORG-008). |
+| Owner | — | Telah memutuskan O-1..O-10; memutuskan O-11 (unit pilot) dan aktivasi rollout (di luar ORG-008). |
 
-Tidak ada permission baru di paket ORG-008-1 s.d. ORG-008-3. Bila O-1 memilih permission baru atau perubahan grant role, itu menjadi paket tersendiri dengan test otorisasi lengkap (AGENTS.md §7, §8).
+Tidak ada permission baru. Keputusan O-1 mengubah **permission yang diwajibkan endpoint penyusunan draft** (pejabat, Plt, kewenangan, atasan khusus: `approvals.policy.manage` → `organization.manage`), sementara **Terbitkan** tetap `approvals.policy.manage`. Perubahan ini menjadi paket tersendiri ORG-008-8 dengan test otorisasi lengkap dan review tambahan (AGENTS.md §7, §8).
 
 ## 3. Navigasi target dan kamus istilah
 
@@ -310,7 +310,7 @@ Read model menghitung per pegawai secara batch (satu snapshot dimuat sekali). Ba
 - **Penjaga dasar usang:** `publish` menolak `409 ORGANIZATION_DRAFT_BASE_STALE` bila ada terbitan lain yang `published_at` lebih baru dari `created_at` draft **dan** efektif ≤ `effective_on` draft (sehingga draft tidak memuatnya), atau bila draft berlaku lebih awal dari terbitan terjadwal yang dibuat dari dasar lama (draft terjadwal itu kemudian ditandai usang di layar Kesiapan). Aturan persis = DRAFT, difinalkan dengan test property di ORG-008-3.
 - `POST /drafts/:id/rebase` — membuat ulang isi draft dari struktur terbaru lalu menerapkan ulang daftar perubahan draft (dari jurnal perubahan, §5.3); konflik ditampilkan per baris, tidak diselesaikan diam-diam.
 - **Konkurensi edit:** setiap mutasi draft membawa `If-Match: <draft revision>`; revisi naik per mutasi; mismatch → `409 ORGANIZATION_DRAFT_CHANGED`.
-- Satu perubahan terbuka (DRAFT/VALIDATED) sekaligus untuk seluruh organisasi bila O-7 diterima; pembuatan kedua → `409 ORGANIZATION_DRAFT_ALREADY_OPEN` dengan tautan.
+- Satu perubahan terbuka (DRAFT/VALIDATED) sekaligus untuk seluruh organisasi (O-7, diterima); pembuatan kedua → `409 ORGANIZATION_DRAFT_ALREADY_OPEN` dengan tautan.
 
 ### 5.3 Perintah gabungan dan koreksi
 
@@ -338,15 +338,15 @@ Read model menghitung per pegawai secara batch (satu snapshot dimuat sekali). Ba
                       └── perbarui dari struktur terbaru (dasar usang)
 ```
 
-| Transisi | Actor (menurut O-1) | Audit |
+| Transisi | Actor (O-1) | Audit |
 |---|---|---|
 | buat | HC Admin | `organization.draft.created` (ada) |
-| ubah (perintah/primitif) | HC Admin; bagian kewenangan menurut O-1 | event primitif (ada) + `organization.command.applied` |
+| ubah (perintah/primitif) | HC Admin (termasuk pejabat, Plt, kewenangan) | event primitif (ada) + `organization.command.applied` |
 | periksa | HC Admin | `organization.draft.validated` (ada) |
 | kembali ubah | HC Admin | `organization.draft.reopened` (baru) |
 | buang | HC Admin | `organization.draft.discarded` (baru) |
 | perbarui dari terbaru | HC Admin | `organization.draft.rebased` (baru) |
-| terbitkan | pemegang `approvals.policy.manage` (O-1) | `organization.draft.published` (ada) |
+| terbitkan | pemegang `approvals.policy.manage` (Kepala HC/owner) | `organization.draft.published` (ada) |
 
 ## 7. Pesan masalah (pengganti kode)
 
@@ -375,12 +375,12 @@ API mengembalikan `code` + `details` (nama/ID item); web menyusun kalimat. Pesan
 
 ## 8. Ringkasan permission
 
-| Aksi | Hari ini | Usulan (menunggu O-1) |
+| Aksi | Hari ini | Keputusan O-1 (2026-10-16) |
 |---|---|---|
 | Lihat semua tab | `organization.manage` | sama |
 | Susun unit/jabatan/anggota, periksa, buang | `organization.manage` | sama |
-| Pejabat, Plt, atasan khusus, kewenangan | `approvals.policy.manage` | O-1 |
-| Terbitkan | `approvals.policy.manage` | O-1 (rekomendasi: tetap `approvals.policy.manage`, diberikan ke peran Kepala HC/owner — "empat mata") |
+| Pejabat, Plt, atasan khusus, kewenangan (di dalam perubahan yang belum terbit) | `approvals.policy.manage` | `organization.manage` (ORG-008-8) — aman karena tidak ada yang berlaku sebelum diterbitkan |
+| Terbitkan | `approvals.policy.manage` | tetap `approvals.policy.manage`, dipegang Kepala HC/owner ("empat mata") |
 | Ubah rollout | `approvals.policy.manage` | tidak ada UI di ORG-008 |
 
 Setiap endpoint baru masuk manifest AUTH-011 (`AUTH-011-admin-route-permissions.json`) dengan test cakupan rute (PR #107).
@@ -397,27 +397,44 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 | **ORG-008-4** Perintah gabungan dan koreksi | §5.3: Tambah unit, Tempatkan/pindahkan, Tunjuk Plt beralasan, Melapor ke, pemimpin/penyetuju unit, atasan khusus (UI baru untuk API yang ada), hapus/akhiri binding di draft, nonaktif dengan cek pemakaian, jurnal "Yang berubah", alur jabatan utama. | Baru: `POST /drafts/:id/commands`, `DELETE/PATCH /drafts/:id/authority-bindings/:id`, `DELETE /drafts/:id/{nodes,positions}/:id` (hanya item belum terbit). Endpoint primitif lama tetap. OpenAPI. | Tabel `organization_change_set_journal` (additive). Rollback: rilis lama mengabaikan jurnal; isi draft tetap konsisten karena perintah menulis catatan primitif biasa. | Perintah atomik (gagal di tengah = nol perubahan); audit per primitif; pindah anggota tanpa overlap; Plt tanpa alasan → 400; hapus item terbit → 409; nonaktif dipakai → 409 dengan daftar; binding ganda tidak bisa dibuat via perintah; resolver menghasilkan atasan yang sama dengan preview (property test); permission per perintah (O-1). **Review tambahan: authority/permission.** |
 | **ORG-008-5** Pengaturan lanjutan | Penyetuju khusus & diberi tahu sebagai kalimat; tampilan rank dipindah ke "Tampilan"; bagan cari/fokus/ciutkan; daftar bertingkat mobile. | Memakai ORG-008-4. | Tidak ada. | Aturan Direktur → Sekretaris, Ketua diberi tahu tersusun dari kalimat dan lolos Cek persetujuan (sintetis, dengan akun Dewan tetap read-only); rank tidak mengubah dampak routing; mobile. |
 | **ORG-008-6** Tautan ATT-011 | §5.4: `legacy_unit_id` pada node + layar tautan unit; panel "Staf HC unit ini"; pemilih jabatan untuk aturan lembur ATT-011 (dipakai ATT-011-6b); peringatan restrukturisasi saat jabatan bertanda aturan berubah. | `PATCH /drafts/:id/nodes/:id` menerima `legacyUnitId`; `GET /admin/organization/positions/search?q&asOf`. OpenAPI. | Kolom nullable `organization_nodes.legacy_unit_id` (FK, ikut di-clone ke draft). Rollback: kolom diabaikan; ATT-011 kembali ke fallback organisasi untuk notifikasi (dicatat di release note). | Unit induk dihitung dari struktur; scope unit HC cocok; tanpa tautan → fallback; aturan Direktur tetap menunjuk stable key setelah restrukturisasi; peringatan nonaktif. **Review tambahan: migration + notifikasi.** |
-| **ORG-008-7** Usulan awal dari data lama (bila O-3 diterima) | "Mulai dari data yang sudah ada": membuat perubahan **Sedang disusun** dari `organizational_units` (unit), Unit Approver ORG-002 (jabatan penyetuju unit), dan `direct_manager_employee_id` (atasan khusus atau pemimpin unit bila semua anggota unit punya atasan yang sama). Tidak memakai teks jabatan. Semua hasil ditandai "usulan — tinjau". | `POST /drafts/from-legacy`. | Tidak ada (menulis draft biasa). Rollback: buang draft. | Tidak ada inferensi dari teks jabatan; hasil Cek persetujuan draft = data lama untuk ≥ semua pegawai yang data lamanya lengkap (dibuktikan laporan perbandingan); tidak menyentuh rollout; audit. |
+| **ORG-008-8** Izin penyusunan (O-1) | HC Admin dapat menyusun seluruh isi perubahan; **Terbitkan** tetap untuk pemegang `approvals.policy.manage`. Layar menampilkan "Siap diterbitkan — menunggu Kepala HC" untuk HC Admin. | Endpoint `PUT /drafts/:id/incumbencies`, `POST /drafts/:id/authority-bindings`, `POST /drafts/:id/reporting-overrides` (dan perintah ORG-008-4 yang setara) mewajibkan `organization.manage`; `POST /drafts/:id/publish` dan `PATCH /rollout` tetap `approvals.policy.manage`. Manifest AUTH-011 + OpenAPI diperbarui. | Tidak ada migration. Rollback: rilis lama kembali mewajibkan `approvals.policy.manage` untuk penyusunan (HC Admin kembali terkena 403; tidak ada data berubah). | HC Admin: susun pejabat/Plt/kewenangan → 2xx, terbitkan → 403; pemegang `approvals.policy.manage`: terbitkan → 2xx; tanpa `organization.manage` → 403 di semua; HC Operator 403; grant ber-scope unit tidak memberi akses organisasi; rollout tetap 403 untuk HC Admin; tes cakupan rute AUTH-011 lulus. **Review tambahan: permission.** |
+| **ORG-008-7** Usulan awal dari data lama (O-3 diterima) | "Mulai dari data yang sudah ada": membuat perubahan **Sedang disusun** dari `organizational_units` (unit), Unit Approver ORG-002 (jabatan penyetuju unit), dan `direct_manager_employee_id` (atasan khusus atau pemimpin unit bila semua anggota unit punya atasan yang sama). Tidak memakai teks jabatan. Semua hasil ditandai "usulan — tinjau". | `POST /drafts/from-legacy`. | Tidak ada (menulis draft biasa). Rollback: buang draft. | Tidak ada inferensi dari teks jabatan; hasil Cek persetujuan draft = data lama untuk ≥ semua pegawai yang data lamanya lengkap (dibuktikan laporan perbandingan); tidak menyentuh rollout; audit. |
 
-Area dengan review tambahan (AGENTS.md §8): ORG-008-3 (migration + publish), ORG-008-4 (authority/permission), ORG-008-6 (migration + notifikasi), dan paket permission bila O-1 memilih grant/permission baru.
+Area dengan review tambahan (AGENTS.md §8): ORG-008-3 (migration + publish), ORG-008-4 (authority/permission), ORG-008-6 (migration + notifikasi), ORG-008-8 (permission).
 
-Urutan usulan: **ORG-008-1 → ORG-008-2 → ORG-008-3 → ORG-008-4 → (ORG-008-6 ∥ ORG-008-5) → ORG-008-7 bila diterima**. Sebelum ATT-011-6b dirilis, minimal ORG-008-2 (agar HC tahu siapa yang akan gagal mengajukan lembur) dan ORG-008-6 (notifikasi HC per unit) harus sudah ada. ORG-008-3 sebaiknya mendahului pengisian struktur YSQ yang sebenarnya karena memperbaiki risiko perubahan hilang (gap D-2).
+Urutan: **ORG-008-1 → ORG-008-8 → ORG-008-2 → ORG-008-3 → ORG-008-4 → (ORG-008-6 ∥ ORG-008-5) → ORG-008-7**. ORG-008-8 maju karena tanpa itu HC Admin tidak dapat mengisi pejabat/Plt sama sekali. Sebelum ATT-011-6b dirilis, minimal ORG-008-2 (agar HC tahu siapa yang akan gagal mengajukan lembur) dan ORG-008-6 (notifikasi HC per unit) harus sudah ada. ORG-008-3 sebaiknya mendahului pengisian struktur YSQ yang sebenarnya karena memperbaiki risiko perubahan hilang (gap D-2).
 
-## 10. Keputusan owner (terbuka)
+## 10. Keputusan owner
 
-| ID | Pertanyaan | Pilihan | Rekomendasi |
+Dicatat 2026-10-16. Kata owner: "Setuju semua rekomendasi O-1 sampai O-10. Untuk O-11 (unit pilot) saya tentukan nanti."
+
+| ID | Pertanyaan | Pilihan | Keputusan |
 |---|---|---|---|
-| O-1 | Siapa boleh mengubah bagian kewenangan (pejabat, Plt, pemimpin unit, atasan khusus) dan siapa boleh **Terbitkan**? Hari ini HC Admin tidak bisa sama sekali. | (a) HC Admin boleh semuanya; (b) HC Admin menyusun semuanya, **Terbitkan** oleh pemegang izin approval (Kepala HC/owner); (c) izin baru khusus kewenangan. | **(b)** — HC bekerja lancar, tetap ada pemeriksa kedua sebelum berlaku. |
-| O-2 | Selama masih `LEGACY`, di mana HC mengatur atasan? | (a) tetap tiga tempat lama; (b) struktur menjadi tempat utama, data lama ditampilkan berdampingan untuk dibandingkan, lalu dikunci saat `STRUCTURE` aktif per unit. | **(b)**. |
-| O-3 | Boleh membuat **usulan awal** struktur dari data atasan/Unit Approver yang sudah ada (bukan dari judul jabatan), untuk ditinjau HC? | Ya / Tidak (mulai dari kosong). | **Ya** — menghemat pengetikan ulang ratusan pegawai. |
-| O-4 | Penempatan pegawai ke unit/jabatan dilakukan di mana: Struktur Organisasi atau administrasi kepegawaian EMP-006 (PR #102)? | (a) Struktur sekarang, EMP-006 nanti menulis ke catatan yang sama; (b) hanya EMP-006. | **(a)** — satu catatan ORG-004, dua pintu masuk yang konsisten; diselaraskan di EMP-006. |
-| O-5 | Plt: alasan wajib? nomor surat tugas? | Alasan wajib + nomor surat opsional (teks, tanpa upload) / keduanya wajib. | **Alasan wajib, nomor surat opsional**. |
-| O-6 | Bila jabatan pimpinan unit kosong tanpa Plt, default pengajuan: naik ke atasan berikutnya atau ditahan? | Naik / Wajib Plt / Ditahan. | **Naik ke atasan berikutnya** untuk pimpinan unit; "wajib Plt" hanya untuk jabatan yang owner tetapkan. |
-| O-7 | Boleh lebih dari satu perubahan disusun bersamaan? | Satu untuk seluruh yayasan / banyak dengan penjaga dasar usang. | **Satu** — paling sederhana; penjaga dasar usang tetap dipasang. |
-| O-8 | Jabatan Direktur untuk aturan "lembur tidak berlaku" (ATT-011 D-10) ditandai di mana? | Dipilih di Pengaturan → Aturan lembur / ditandai di struktur. | **Aturan lembur** memilih jabatan; struktur hanya menampilkan dan memperingatkan. |
-| O-9 | Unit di struktur dihubungkan dengan "unit" lama (dipakai scope staf HC) agar notifikasi lembur tepat sasaran (D-11)? | Tautkan setiap unit struktur ke unit lama / pindahkan scope role ke unit struktur (lebih besar). | **Tautkan** dulu. |
-| O-10 | Mengubah struktur dari HP? | Hanya lihat di HP / boleh ubah. | **Hanya lihat** (sejalan dengan ATT-011 D-8). |
-| O-11 | Unit pilot pertama untuk uji banding dan aktivasi. | — | Pilih unit kecil dengan atasan lengkap; **ditetapkan owner** (tetap pending di `org004-pilot-unit-validation.md`). |
+| O-1 | Siapa boleh mengubah bagian kewenangan (pejabat, Plt, pemimpin unit, atasan khusus) dan siapa boleh **Terbitkan**? Hari ini HC Admin tidak bisa sama sekali. | (a) HC Admin boleh semuanya; (b) HC Admin menyusun semuanya, **Terbitkan** oleh pemegang izin approval (Kepala HC/owner); (c) izin baru khusus kewenangan. | **Diterima (rekomendasi):** **(b)** — HC bekerja lancar, tetap ada pemeriksa kedua sebelum berlaku. |
+| O-2 | Selama masih `LEGACY`, di mana HC mengatur atasan? | (a) tetap tiga tempat lama; (b) struktur menjadi tempat utama, data lama ditampilkan berdampingan untuk dibandingkan, lalu dikunci saat `STRUCTURE` aktif per unit. | **Diterima (rekomendasi):** **(b)**. |
+| O-3 | Boleh membuat **usulan awal** struktur dari data atasan/Unit Approver yang sudah ada (bukan dari judul jabatan), untuk ditinjau HC? | Ya / Tidak (mulai dari kosong). | **Diterima (rekomendasi):** **Ya** — menghemat pengetikan ulang ratusan pegawai. |
+| O-4 | Penempatan pegawai ke unit/jabatan dilakukan di mana: Struktur Organisasi atau administrasi kepegawaian EMP-006 (PR #102)? | (a) Struktur sekarang, EMP-006 nanti menulis ke catatan yang sama; (b) hanya EMP-006. | **Diterima (rekomendasi):** **(a)** — satu catatan ORG-004, dua pintu masuk yang konsisten; diselaraskan di EMP-006. |
+| O-5 | Plt: alasan wajib? nomor surat tugas? | Alasan wajib + nomor surat opsional (teks, tanpa upload) / keduanya wajib. | **Diterima (rekomendasi):** **Alasan wajib, nomor surat opsional**. |
+| O-6 | Bila jabatan pimpinan unit kosong tanpa Plt, default pengajuan: naik ke atasan berikutnya atau ditahan? | Naik / Wajib Plt / Ditahan. | **Diterima (rekomendasi):** **Naik ke atasan berikutnya** untuk pimpinan unit; "wajib Plt" hanya untuk jabatan yang owner tetapkan. |
+| O-7 | Boleh lebih dari satu perubahan disusun bersamaan? | Satu untuk seluruh yayasan / banyak dengan penjaga dasar usang. | **Diterima (rekomendasi):** **Satu** — paling sederhana; penjaga dasar usang tetap dipasang. |
+| O-8 | Jabatan Direktur untuk aturan "lembur tidak berlaku" (ATT-011 D-10) ditandai di mana? | Dipilih di Pengaturan → Aturan lembur / ditandai di struktur. | **Diterima (rekomendasi):** **Aturan lembur** memilih jabatan; struktur hanya menampilkan dan memperingatkan. |
+| O-9 | Unit di struktur dihubungkan dengan "unit" lama (dipakai scope staf HC) agar notifikasi lembur tepat sasaran (D-11)? | Tautkan setiap unit struktur ke unit lama / pindahkan scope role ke unit struktur (lebih besar). | **Diterima (rekomendasi):** **Tautkan** dulu. |
+| O-10 | Mengubah struktur dari HP? | Hanya lihat di HP / boleh ubah. | **Diterima (rekomendasi):** **Hanya lihat** (sejalan dengan ATT-011 D-8). |
+| O-11 | Unit pilot pertama untuk uji banding dan aktivasi. | — | **Terbuka** — owner menentukan kemudian; saran: unit kecil dengan atasan lengkap (tetap pending di `org004-pilot-unit-validation.md`). |
+
+Konsekuensi keputusan untuk implementasi:
+
+- **O-1** → paket ORG-008-8 (§8, §9); Terbitkan tetap pemeriksa kedua. Penugasan izin `approvals.policy.manage` ke akun Kepala HC adalah tindakan akses operasional terpisah dengan persetujuan owner, bukan bagian PR kode.
+- **O-2** → tab Pegawai dan Cek persetujuan menampilkan data lama berdampingan (ORG-008-2). Saat `STRUCTURE` diaktifkan untuk satu unit, isian atasan langsung di Detail Pegawai dan Unit Approver di Konfigurasi Cuti untuk unit itu menjadi read-only dengan tautan ke Struktur Organisasi — paket lanjutan yang dirilis bersama/setelah aktivasi, bukan sebelum.
+- **O-3** → ORG-008-7 masuk rencana (tanpa inferensi dari teks jabatan).
+- **O-4** → penempatan dilakukan di Struktur Organisasi; EMP-006 (PR #102) wajib menulis ke catatan keanggotaan/penjabat ORG-004 yang sama, bukan salinan terpisah (diselaraskan di spesifikasi EMP-006).
+- **O-5** → `APPOINT_ACTING` mewajibkan alasan; nomor surat tugas opsional (teks, tanpa upload).
+- **O-6** → wizard Tambah unit / Tambah jabatan memakai default "Bila kosong: naik ke atasan berikutnya"; "wajib Plt" hanya dipilih eksplisit untuk jabatan yang owner tetapkan.
+- **O-7** → satu perubahan terbuka untuk seluruh yayasan + penjaga dasar usang (ORG-008-3).
+- **O-8** → jabatan Direktur dipilih di Pengaturan → Aturan lembur (ATT-011-6b) dengan pencarian jabatan ORG-008-6.
+- **O-9** → kolom `legacy_unit_id` (ORG-008-6); scope role HC tetap pada unit lama.
+- **O-10** → edit hanya di laptop/tablet; HP untuk melihat.
+- **O-11** → tetap terbuka; tidak menghambat paket ORG-008 mana pun, tetapi menghambat uji banding/aktivasi.
 
 Asumsi DRAFT yang belum diverifikasi: jumlah jabatan production dengan penanda jabatan utama lama atau dipegang akun Dewan (cek read-only Mi8VPS, tanpa data pribadi di repository); target waktu §4.8 di Mi8VPS; capability approver lembur (ATT-011-6b); aturan persis penjaga dasar usang (§5.2); kelayakan jurnal perubahan v1.
 

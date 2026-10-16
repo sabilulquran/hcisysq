@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
+import { greetingName } from "@/lib/greetingName";
 import { getMyWorkforceAttendance, type WorkforceSnapshot } from "@/lib/workforceAttendance";
 import {
   getMyAttendanceResolutions,
@@ -157,7 +158,7 @@ export function EmployeeDashboardPage() {
     ...(additionalRole ? { additionalRole } : {}),
   };
 
-  const firstName = employee?.fullName.split(/\s+/).filter(Boolean)[0] ?? "Pegawai";
+  const firstName = greetingName(employee?.fullName);
   const annualView = data?.annual.annualLeave;
   const currentPeriod = annualView?.periods.find((period) => period.status === "current") ?? null;
 
@@ -191,7 +192,7 @@ export function EmployeeDashboardPage() {
         <div>
           <p className="text-xs font-semibold capitalize tracking-wide text-muted-foreground">{getDateLabel()}</p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">
-            Assalamu&apos;alaikum, {firstName}.
+            Assalamu&apos;alaikum, {firstName}{firstName.endsWith(".") ? "" : "."}
           </h1>
         </div>
         {accessLabel ? (

@@ -1,47 +1,39 @@
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
+import { ThemeToggle } from "@/components/shell/ThemeToggle";
+import { useDismiss } from "@/components/shell/useDismiss";
 import { logoutFromAccountMenu } from "@/lib/auth";
+import { SQ_HUB_URL } from "@/lib/sqCore";
 import { cn } from "@/lib/utils";
 
 export interface AccountMenuUser {
   name: string;
   initials: string;
-  position: string;
-  unit: string;
+  /** Second line of the identity block, e.g. "Staf · Unit". */
+  detail: string;
+  /** Role badges; the first one also shows under the name in the header. */
+  roles: string[];
 }
 
 interface AccountMenuProps {
   user: AccountMenuUser;
-  variant: "header" | "sidebar";
+  previewOpen?: boolean;
 }
 
-export function AccountMenu({ user, variant }: AccountMenuProps) {
-  const [open, setOpen] = useState(false);
+/**
+ * The only place for account, role and sign-out in HCIS
+ * (sabilulquran/SQ-Hub docs/design/sq-core-app-shell.md, item 5).
+ * Dropdown from 768 px, bottom sheet on phones.
+ */
+export function AccountMenu({ user, previewOpen = false }: AccountMenuProps) {
+  const [open, setOpen] = useState(previewOpen);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      triggerRef.current?.focus();
-    };
-
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, rootRef, triggerRef);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -55,99 +47,109 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
   };
 
   return (
-    <div ref={rootRef} className={cn("relative", variant === "sidebar" && "w-full")}>
+    <div ref={rootRef} className="relative">
       <button
         ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={variant === "header" ? `Menu akun ${user.name}` : undefined}
+        aria-label={`Menu akun ${user.name}`}
         onClick={() => {
           setLogoutError(false);
           setOpen((value) => !value);
         }}
-        className={cn(
-          "group flex items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          variant === "header"
-            ? "gap-2 rounded-2xl border border-border/70 bg-surface-raised p-1.5 shadow-[var(--shadow-soft)] sm:pr-3"
-            : "w-full gap-3 rounded-3xl border border-border/70 bg-surface-raised p-3.5 shadow-[var(--shadow-soft)]",
-        )}
+        className="group flex min-h-11 items-center gap-2.5 rounded-full p-1 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:pr-2"
       >
-        <span
-          className={cn(
-            "flex shrink-0 items-center justify-center bg-brand-primary font-bold text-brand-foreground shadow-[var(--shadow-button)]",
-            variant === "header" ? "h-8 w-8 rounded-xl text-xs" : "h-11 w-11 rounded-2xl text-sm",
-          )}
-        >
-          {user.initials}
-        </span>
-        <span className={cn("min-w-0", variant === "header" && "hidden max-w-40 sm:block")}>
-          <span className={cn("block truncate font-bold", variant === "header" ? "text-xs" : "text-sm")}>
-            {user.name}
-          </span>
-          <span className={cn("block truncate text-muted-foreground", variant === "header" ? "text-[10px]" : "text-[11px]")}>
-            {variant === "header" ? user.unit : `${user.position} · ${user.unit}`}
-          </span>
+        <Avatar initials={user.initials} />
+        <span className="hidden min-w-0 flex-col md:flex">
+          <span className="max-w-40 truncate text-xs font-bold leading-tight text-foreground">{user.name}</span>
+          <span className="max-w-40 truncate text-[11px] leading-tight text-muted-foreground">{user.roles[0] ?? user.detail}</span>
         </span>
         <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-            variant === "header" && "hidden sm:block",
-          )}
+          className={cn("hidden h-4 w-4 text-muted-foreground transition-transform md:block", open && "rotate-180")}
           aria-hidden="true"
         />
       </button>
 
       {open ? (
-        <div
-          role="menu"
-          aria-label="Menu akun"
-          className={cn(
-            "absolute z-50 w-[min(18.5rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-surface-raised p-2 shadow-[var(--shadow-raised)]",
-            variant === "header" ? "right-0 top-full mt-2" : "bottom-full left-0 mb-2",
-          )}
-        >
-          <div className="px-3 pb-2 pt-1.5">
-            <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.position} · {user.unit}</p>
-          </div>
-
-          <div className="my-1 h-px bg-border/70" aria-hidden="true" />
-
-          <div
-            role="menuitem"
-            aria-disabled="true"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"
-          >
-            <UserRound className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold text-foreground/70">Akun Saya</span>
-              <span className="block text-[11px] leading-4">SQ Account Center</span>
-            </span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-              Segera
-            </span>
-          </div>
-
+        <>
           <button
             type="button"
-            role="menuitem"
-            disabled={loggingOut}
-            onClick={() => void handleLogout()}
-            className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition-colors hover:bg-destructive/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+            tabIndex={-1}
+            aria-hidden="true"
+            onClick={close}
+            className="fixed inset-0 z-50 cursor-default bg-black/35 md:hidden"
+          />
+          <div
+            role="menu"
+            aria-label="Menu akun"
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-border/80 bg-surface-raised p-2 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[var(--shadow-raised)] md:absolute md:inset-x-auto md:bottom-auto md:right-0 md:top-[calc(100%+0.5rem)] md:w-[19rem] md:rounded-2xl md:pb-2"
           >
-            <LogOut className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-            {loggingOut ? "Keluar..." : "Keluar"}
-          </button>
-
-          {logoutError ? (
-            <p className="px-3 pb-1 pt-2 text-xs leading-5 text-destructive" role="alert">
-              Belum dapat keluar. Silakan coba lagi.
-            </p>
-          ) : null}
-        </div>
+            <span className="mx-auto mb-1 mt-1 block h-1 w-10 rounded-full bg-border md:hidden" aria-hidden="true" />
+            <div className="flex items-center gap-3 px-3 pb-3 pt-2">
+              <Avatar initials={user.initials} large />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.detail}</p>
+                {user.roles.length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {user.roles.map((role) => (
+                      <span key={role} className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-bold text-brand-primary-deep">
+                        {role}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="my-1 h-px bg-border/70" aria-hidden="true" />
+            <a
+              href={`${SQ_HUB_URL}/account`}
+              role="menuitem"
+              className="flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <UserRound className="h-[18px] w-[18px] text-muted-foreground" aria-hidden="true" />
+              <span className="flex min-w-0 flex-col">
+                Akun SQ
+                <span className="text-xs font-normal text-muted-foreground">Profil, keamanan, dan sesi</span>
+              </span>
+            </a>
+            <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-1.5">
+              <span className="text-sm font-semibold text-foreground">Tampilan</span>
+              <ThemeToggle />
+            </div>
+            <div className="my-1 h-px bg-border/70" aria-hidden="true" />
+            <button
+              type="button"
+              role="menuitem"
+              disabled={loggingOut}
+              onClick={() => void handleLogout()}
+              className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-destructive transition hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60"
+            >
+              <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
+              {loggingOut ? "Keluar..." : "Keluar"}
+            </button>
+            {logoutError ? (
+              <p className="px-3 pb-1 pt-2 text-xs leading-5 text-destructive" role="alert">
+                Belum dapat keluar. Silakan coba lagi.
+              </p>
+            ) : null}
+          </div>
+        </>
       ) : null}
     </div>
+  );
+}
+
+function Avatar({ initials, large = false }: { initials: string; large?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-brand-primary font-bold text-brand-foreground shadow-[var(--shadow-button)]",
+        large ? "h-11 w-11 text-sm" : "h-9 w-9 text-xs",
+      )}
+    >
+      {initials}
+    </span>
   );
 }

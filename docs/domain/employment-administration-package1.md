@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Status, Contract, Placement, Career Movement, and SK
 
-**Status:** DRAFT — PENDING OWNER APPROVAL (no runtime implementation yet)  
+**Status:** DRAFT — owner decisions recorded 2026-10-16 (§15); D-01, D-04, D-18 still TBD; no runtime implementation yet  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Prepared:** 2026-10-16  
 **Parent direction:** `docs/domain/employment-administration.md` (ACCEPTED PRODUCT DIRECTION, 2026-09-22)  
@@ -32,8 +32,9 @@ Package 1 sengaja kecil tetapi bernilai tinggi: **status/hubungan kerja + kontra
 | Perubahan kompensasi | Bergantung PAY-003. | Bersama PAY-003 |
 | Upload file SK (PDF/foto) | Storage boundary dokumen pegawai belum diterima; Package 1 hanya menyimpan metadata/referensi SK. | DOC/storage package |
 | Penugasan sementara/Plt dengan authority | Authority acting tetap milik ORG-004 `ACTING` incumbency. | Tetap ORG-004 |
-| Approval workflow in-app (APR-001) untuk tindakan kepegawaian | Keputusan diambil di luar sistem dan dibuktikan oleh SK; lihat keputusan D-07. | Setelah pilot |
+| Approval workflow in-app (APR-001) untuk tindakan kepegawaian | Keputusan diambil di luar sistem dan dibuktikan oleh Perjanjian Kerja/SK; D-07 diterima (opsi A). | Setelah pilot |
 | Perpindahan lintas legal entity | ORG-007 masih discovery; ditolak fail-closed. | ORG-007 |
+| Staf BUMY (Badan Usaha Milik Yayasan) | Owner 2026-10-16: staf BUMY **tidak** dikelola di HCIS. Package 1 tidak membuat employment untuk mereka (§8.2). Pembersihan baris BUMY yang sudah ada di `employees` adalah keputusan EMP-001 terpisah (TBD). | — |
 
 ## 2. Specification IDs
 
@@ -108,12 +109,12 @@ Account, role, permission, and login facts remain in AUTH-* tables. No Package 1
 | `legal_entity_key` | Nullable until ORG-007; all Package 1 rows belong to the implicit YSQ default entity. Cross-entity moves are rejected. |
 | `staff_type` | `JENIS KEPEGAWAIAN` vocabulary (DISCOVERY: list from owner; e.g. Guru, Tenaga Kependidikan, Karyawan). |
 | `started_on` | TMT of the relationship. Required except for baseline rows where the master has no TMT (`start_basis = UNKNOWN`). |
-| `service_start_on` | Optional "tanggal mulai masa kerja" when it differs from `started_on` (e.g. rehire with recognized prior service). DRAFT; see D-05. Defaults to `started_on`. |
+| `service_start_on` | "Tanggal mulai masa kerja". Owner D-05: masa kerja **berlanjut** selama kontrak diperpanjang tanpa putus dengan NIP yang sama (extensions and category changes stay inside one employment, so `service_start_on = started_on`). A **new NIP** means a new employee record and a new masa kerja; nothing is carried over automatically. |
 | `ended_on`, `end_reason` | Set only by a Termination action (or baseline). |
 | `end_precision` | `DAY` or `MONTH` (baseline from `TAHUN KELUAR (TTTT-BB)` is month precision). |
 | `source` | `BASELINE_FROM_MASTER`, `BASELINE_FROM_IMPORT`, or `ACTION`. |
 
-Rule: at most one employment per employee is effective on any date (until ORG-007 allows one per legal entity). Rehire after an ended employment creates a **new** employment; the old one is never reopened by editing.
+Rule: at most one employment per employee is effective on any date (until ORG-007 allows one per legal entity). Rehire after an ended employment creates a **new** employment; the old one is never reopened by editing. Under D-05 a rehire normally gets a new NIP; a rehire under the same NIP (TBD whether YSQ does this) starts a new employment and a new `service_start_on` unless the owner later decides otherwise.
 
 ### 4.2 Employment Term (Masa/Status Kepegawaian & Kontrak)
 
@@ -122,24 +123,56 @@ A term states under which arrangement the employee works for a date range.
 | Attribute | Notes |
 |---|---|
 | `employment_id` | Parent. |
-| `category` | Normalized employment category (DISCOVERY vocabulary, D-02). Working proposal: `TETAP`, `KONTRAK`, `HONORER`, `MAGANG`, `PERCOBAAN`. Free-text `employment_status` values are mapped during baseline with an explicit mapping table approved by HC; unmapped values stay `BELUM_DIKLASIFIKASIKAN`. |
+| `category` | Normalized status kepegawaian (owner list, D-02, §4.2.1). Free-text `employment_status` values are mapped during baseline with the explicit mapping table in §4.2.1; unmapped values stay `BELUM_DIKLASIFIKASIKAN`. |
 | `effective_from`, `effective_to` | Inclusive Asia/Jakarta dates. `effective_to` null = open-ended (e.g. tetap). Fixed-term categories require `effective_to` (configurable per category, D-03). |
 | `contract_reference` | Optional contract number (not an SK). |
 | `sequence` | 1, 2, 3 … within the employment; used to show "Kontrak ke-2". |
 | `opened_by_action_id` | The action that created it. |
 
+#### 4.2.1 Status kepegawaian vocabulary and mapping (D-02)
+
+Owner's intended list (2026-10-16):
+
+| Code | Label | End date required (D-03) | Basis document (D-08) |
+|---|---|---|---|
+| `TETAP` | Guru/Pegawai Tetap | No | SK Pengangkatan |
+| `KONTRAK` | Pegawai Kontrak | Yes | Perjanjian Kerja |
+| `KONTRAK_HONORER` | Pegawai Kontrak Honorer | Yes (honorer staff are on a contract) | Perjanjian Kerja |
+| `MAGANG` | Magang | Yes | Perjanjian Kerja (TBD: or a separate internship agreement) |
+| `PERCOBAAN` | Masa Percobaan | Yes | Perjanjian Kerja (TBD) |
+
+Values currently found in the active sheet `Master Data SDM YSQ` (column values only, no personal data read) and their baseline mapping:
+
+| Column | Source value | Baseline mapping |
+|---|---|---|
+| STATUS KEPEGAWAIAN | Pegawai Tetap | `TETAP` |
+| STATUS KEPEGAWAIAN | Pegawai Kontrak | `KONTRAK` |
+| STATUS KEPEGAWAIAN | Calon Pegawai Tetap | TBD — probably `PERCOBAAN`; owner confirming |
+| STATUS KEPEGAWAIAN | Pengurus Yayasan | TBD — may not be an employment at all (foundation organ); owner confirming |
+| STATUS KEPEGAWAIAN | Tenaga Pengabdian | TBD; owner confirming |
+| STATUS KEPEGAWAIAN | Pegawai Lepas | TBD; owner confirming |
+| STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. Issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
+| STATUS AKTIF | Aktif | employment effective |
+| STATUS AKTIF | Aktif PKWT | employment effective; issue `BASELINE_CATEGORY_HINT_CONTRACT` when the category is not a contract type |
+| STATUS AKTIF | Aktif BUMY | **Excluded** — no employment created; issue `BASELINE_EXCLUDED_BUMY` |
+| STATUS AKTIF | Tidak Aktif | employment ended (see §8.2) |
+| JENIS KEPEGAWAIAN | Tenaga Pendidik / Tenaga Kependidikan | `staff_type` `PENDIDIK` / `KEPENDIDIKAN` |
+| JENIS KEPEGAWAIAN | "#", "-", blank (stray) | `staff_type` null; issue `BASELINE_STAFF_TYPE_MISSING` |
+
+Note: today's EMP-004 import normalizes every `Aktif …` value (including `Aktif BUMY` and `Aktif PKWT`) to `employees.status = active`, so the distinction survives only in `employee_import_source_snapshots.source_data`. Baseline must read the latest source snapshot for STATUS AKTIF, not only `employees.status`.
+
 Rules:
 
 - Terms inside one employment must not overlap (database exclusion constraint, same `btree_gist` approach as migration 0021).
 - Gaps between terms are allowed but shown as a data-quality warning ("Ada jeda antara kontrak ke-1 dan ke-2").
-- Legal limits (e.g. maximum PKWT duration, probation only for permanent staff) are **warnings only** until the owner confirms the applicable YSQ/legal rule (D-04). The system must not silently block or silently accept; it shows the warning in preview and records that the actor acknowledged it.
+- Legal limits (e.g. maximum PKWT duration, probation only for permanent staff) are **warnings only** in Package 1 (D-04 TBD, being clarified with the owner: "blokir" would mean the system refuses to save; "peringatan" means it shows a warning HC must acknowledge before saving). The system must not silently block or silently accept; it shows the warning in preview and records that the actor acknowledged it.
 
 ### 4.3 Placement (Penempatan)
 
 | Attribute | Notes |
 |---|---|
 | `employment_id` | Parent. |
-| `kind` | `PRIMARY` (penempatan utama, exactly one effective per date while employment is active) or `ADDITIONAL` (jabatan/tugas tambahan, zero or more). See D-06. |
+| `kind` | `PRIMARY` (penempatan utama, exactly one effective per date while employment is active) or `ADDITIONAL` (jabatan/tugas tambahan, zero or more). Accepted (D-06). |
 | `unit_ref` | One of: ORG-004 node `stable_key` **or** legacy `organizational_units.id` (pre-ORG-004 acceptance). Exactly one is set. |
 | `position_ref` | One of: ORG-004 position `stable_key` **or** legacy `positions.id`, or null if the employee is a member without a named seat. |
 | `job_title_label` | Human label shown to users ("Guru Kelas", "Wakasek Kurikulum"). Required. |
@@ -173,11 +206,55 @@ The action is the unit HC works with. It is append-only. Recording an action ope
 | `recorded_by_account_id`, `recorded_at` | Actor metadata. |
 | `version` | Optimistic concurrency token per employment. |
 
-### 4.5 Decision Document (Surat Keputusan — EMP-010)
+### 4.5 Basis documents: Perjanjian Kerja and Surat Keputusan (EMP-010)
+
+Owner D-01/D-08: the two primary documents are the **Perjanjian Kerja (PK)** and the **Surat Keputusan (SK)**, and they are strictly different:
+
+- **Perjanjian Kerja** — the employment contract between YSQ and the employee. Basis for contract hire and contract extension.
+- **Surat Keputusan** — a decision issued by the foundation's authority. Basis for permanent appointment (SK Pengangkatan), transfer, promotion, demotion, and termination.
+
+They are separate document kinds with their own numbering and fields, kept in one register (EMP-010) with `document_kind = PERJANJIAN_KERJA | SURAT_KEPUTUSAN`.
+
+#### 4.5.1 Common fields
 
 | Attribute | Notes |
 |---|---|
-| `document_type` | `SK_PENGANGKATAN`, `SK_PENEMPATAN`, `SK_MUTASI`, `SK_PROMOSI`, `SK_DEMOSI`, `SK_PEMBERHENTIAN`, `PERJANJIAN_KERJA`, `ADENDUM_PERJANJIAN`, `LAINNYA` (DRAFT vocabulary, D-08). |
+| `document_kind` | `PERJANJIAN_KERJA` or `SURAT_KEPUTUSAN`. |
+| `document_number` | Required. PK numbers and SK numbers are separate series. DRAFT rule: unique per kind + number + signing year. |
+| `signed_on` | Required. |
+| `external_reference` | Optional pointer to where the signed original is kept. No file upload in Package 1. |
+| `notes` | Optional. |
+
+#### 4.5.2 Perjanjian Kerja fields
+
+| Attribute | Notes |
+|---|---|
+| `pk_type` | `PK_BARU` (contract hire) or `PK_PERPANJANGAN` (extension); addendum TBD. |
+| `employee_id` | A PK belongs to exactly one employee. |
+| `contract_from`, `contract_to` | Contract period stated in the PK; `contract_to` required (all PK categories are fixed-term, D-03). |
+| `category` | Status kepegawaian the PK establishes (`KONTRAK`, `KONTRAK_HONORER`, `MAGANG`, `PERCOBAAN`). |
+| `signatory_employer_label` | Who signed for YSQ (text; optional ORG-004 position stable key). Does not grant authority. |
+| `previous_pk_id` | For `PK_PERPANJANGAN`: the PK being extended. |
+
+Rule: the term opened by `HIRE`/`CONTRACT_EXTENSION` must match the PK period and category; a mismatch is rejected (`PK_TERM_MISMATCH`), not silently adjusted.
+
+#### 4.5.3 Surat Keputusan fields
+
+| Attribute | Notes |
+|---|---|
+| `sk_type` | `SK_PENGANGKATAN`, `SK_MUTASI`, `SK_PROMOSI`, `SK_DEMOSI`, `SK_PEMBERHENTIAN`, `SK_PENEMPATAN` (optional use), `SK_LAINNYA`. |
+| `subject` | Short subject ("Penempatan guru semester ganjil 2027/2028"). |
+| `issuing_authority_label` | Text (e.g. "Ketua Yayasan"); optional ORG-004 position stable key. Does **not** grant or prove authority. |
+| `effective_on`, `effective_to` | Dates stated in the SK; `effective_to` optional. |
+| covered employees | An SK may cover one or many employees (collective SK); each link to an action is explicit. |
+
+#### 4.5.4 First-draft field list (superseded by D-08)
+
+Kept for review traceability only.
+
+| Attribute | Notes |
+|---|---|
+| `document_type` | Superseded by `document_kind` + `pk_type`/`sk_type` (§4.5.2–4.5.3). |
 | `document_number` | Required, unique per `document_type` + `issuing_authority_label` + `signed_on` year (DRAFT uniqueness rule). |
 | `subject` | Short subject ("Penempatan guru semester ganjil 2027/2028"). |
 | `issuing_authority_label` | Text (e.g. "Ketua Yayasan"); optional link to an ORG-004 position stable key. Does **not** grant or prove authority. |
@@ -187,25 +264,25 @@ The action is the unit HC works with. It is append-only. Recording an action ope
 
 Rules:
 
-- One SK may be linked to many actions (e.g. one collective SK Mutasi for 12 teachers); each link is explicit per action.
-- Once an SK is linked to a recorded action, its number/type/dates are immutable; mistakes are fixed by creating a corrected SK and reversing/re-recording the action, or by an audited `document correction` that keeps the previous values (D-09).
-- The SK is evidence. The structured action, terms, and placements remain domain truth.
+- One SK may be linked to many actions (e.g. one collective SK Mutasi for 12 teachers); each link is explicit per action. A PK links only to actions of its own employee.
+- Once a PK/SK is linked to a recorded action, its number/type/dates are immutable; mistakes are fixed by an audited correction that keeps the previous values (D-09, accepted).
+- PK and SK are evidence. The structured action, terms, and placements remain domain truth.
 
 ## 5. Action taxonomy (Package 1)
 
 Operator labels are in Indonesian; codes are stable API values.
 
-| Code | Label (UI) | Effect | SK | Notes |
+| Code | Label (UI) | Effect | Basis document (D-08) | Notes |
 |---|---|---|---|---|
 | `BASELINE` | Data awal | Creates employment + first term + current placement from the existing master. System/backfill only. | No | Marked `source = BASELINE_*`; shown as "Data awal dari master pegawai". |
-| `HIRE` | Mulai hubungan kerja | New employment, term #1, primary placement. | Policy (D-08); proposal: required | Rehire uses this too (new employment). |
-| `CONTRACT_EXTENSION` | Perpanjang kontrak | New term of the same fixed-term category starting the day after the current term ends (or a chosen date). | Proposal: required (`PERJANJIAN_KERJA`/`ADENDUM`) | Previous term unchanged. |
-| `CATEGORY_CHANGE` | Ubah status kepegawaian | Closes current term on `effective_on - 1`, opens a new term with another category (e.g. Kontrak → Tetap = pengangkatan pegawai tetap). | Proposal: required | |
-| `PLACEMENT` | Penempatan | Opens a primary placement when none is effective, or adds/ends an `ADDITIONAL` placement. | Optional | Not a career move; used for first placement or added tasks. |
-| `TRANSFER` | Mutasi | Closes current primary placement, opens a new one (different unit and/or position) at the same declared level. | Proposal: required | |
-| `PROMOTION` | Promosi | Same mechanics as Transfer; HC declares it a promotion. | Required | Without a grade model, "naik/turun" is declared by HC with the SK, not computed. |
-| `DEMOTION` | Demosi | Same mechanics; reason code required. | Required | Reason note visibility restricted. |
-| `TERMINATION` | Akhiri hubungan kerja | Sets employment `ended_on` to the last working day entered by HC (§7.1), closes open term(s) and placement(s). Reason: `RESIGN`, `KONTRAK_BERAKHIR`, `PENSIUN`, `PEMBERHENTIAN`, `MENINGGAL_DUNIA`, `LAINNYA` (DRAFT, D-10). | Proposal: required except `MENINGGAL_DUNIA`/`RESIGN` (D-08) | Does **not** remove the employee (EMP-001 removal stays separate) and does not change any account directly (§8.5). |
+| `HIRE` | Mulai hubungan kerja | New employment, term #1, primary placement. | Contract categories: **PK** (`PK_BARU`) required. Direct hire as `TETAP`: **SK Pengangkatan** required. | Rehire uses this too (new employment). |
+| `CONTRACT_EXTENSION` | Perpanjang kontrak | New term of the same fixed-term category starting the day after the current term ends (or a chosen date). | **PK** (`PK_PERPANJANGAN`) required | Previous term unchanged; masa kerja continues (D-05). |
+| `CATEGORY_CHANGE` | Ubah status kepegawaian | Closes current term on `effective_on - 1`, opens a new term with another category (e.g. Kontrak → Tetap = pengangkatan pegawai tetap). | To `TETAP`: **SK Pengangkatan** required. To a contract category (e.g. Percobaan → Kontrak): **PK** required. | Same employment; masa kerja continues. |
+| `PLACEMENT` | Penempatan | Opens a primary placement when none is effective, or adds/ends an `ADDITIONAL` placement. | Optional (SK if one exists) | Not a career move; used for first placement or added tasks. |
+| `TRANSFER` | Mutasi | Closes current primary placement, opens a new one (different unit and/or position) at the same declared level. | **SK Mutasi** required | |
+| `PROMOTION` | Promosi | Same mechanics as Transfer; HC declares it a promotion. | **SK Promosi** required | Without a grade model, "naik/turun" is declared by HC with the SK, not computed. |
+| `DEMOTION` | Demosi | Same mechanics; reason code required. | **SK Demosi** required | Reason note visibility restricted. |
+| `TERMINATION` | Akhiri hubungan kerja | Sets employment `ended_on` to the last working day entered by HC (§7.1), closes open term(s) and placement(s). Reason: `RESIGN`, `KONTRAK_BERAKHIR`, `PENSIUN`, `PEMBERHENTIAN`, `MENINGGAL_DUNIA`, `LAINNYA` (D-10 accepted). | **SK Pemberhentian** required, except reasons `MENINGGAL_DUNIA` and `RESIGN` (optional) | Does **not** remove the employee (EMP-001 removal stays separate). The linked HCIS login account is deactivated **automatically** when the employment ends (D-15, §8.5). |
 | `REVERSAL` | Batalkan tindakan | Reverses one earlier recorded action (§6). | No (reason required) | Requires `employment.correct`. |
 
 Not in Package 1: compensation change, grade change, acting authority, cross-entity move, suspension/skorsing (DISCOVERY whether YSQ needs it).
@@ -219,7 +296,7 @@ Not in Package 1: compensation change, grade change, acting authority, cross-ent
 ```
 
 - `preview` is not persisted: `POST …/employment-actions/preview` validates and returns the "dari → menjadi" result without writing.
-- There is no saved DRAFT state in Package 1 (keeps the model small). If the owner wants maker-checker (D-07), add `SUBMITTED -> RECORDED/REJECTED` before pilot; the record/terms/placements are created only on `RECORDED`.
+- There is no saved DRAFT state in Package 1 (keeps the model small). D-07 accepted option A (single recorder), so there is no maker-checker state. If maker-checker is wanted later, add `SUBMITTED -> RECORDED/REJECTED`; the record/terms/placements are created only on `RECORDED`.
 - `REVERSED` is terminal. A reversed action stays visible in history with a strike-through and the reversal reason.
 
 Reversal rules:
@@ -267,7 +344,7 @@ A resolver in the domain layer computes these from rows; nothing writes "current
 ### 7.3 Ordering rules
 
 - **Future-dated** actions are allowed (scheduled change, e.g. SK signed in June, effective 1 July). They appear as "Terjadwal" in the timeline. The projection changes on the effective date (§8.4).
-- **Backdated** actions are allowed with a mandatory reason when `effective_on` is before today; beyond a backdating window (proposal 31 days, D-13) they require `employment.correct`.
+- **Backdated** actions are allowed with a mandatory reason when `effective_on` is before today; beyond a backdating window (31 days, D-13 accepted) they require `employment.correct`.
 - **Out-of-order** actions are rejected: a new action whose `effective_on` is on or before the `effective_on` of an existing non-reversed later action for the same employment fails with `EMPLOYMENT_ACTION_OUT_OF_ORDER`. HC must reverse the later action first. This prevents silently re-cutting history.
 - **Same-day multiple actions** (e.g. category change and transfer on the same date) are allowed if they touch different record kinds; they are ordered by `recorded_at`.
 - Backdating never rewrites approval snapshots, leave requests, attendance results, or payslips already created. Those modules read the projection/resolver for **new** work only.
@@ -298,14 +375,16 @@ Mode changes require `access.governance.manage` (Super Admin governance) and an 
 
 ### 8.2 Baseline backfill (idempotent command, not a SQL data migration)
 
-For each employee with `removed_at IS NULL` (removed employees are backfilled too, read-only, so history is complete; D-14):
+For each employee, including EMP-001-removed employees (`removed_at` set), which are backfilled read-only so history is complete (D-14, accepted):
+
+0. Read STATUS AKTIF / STATUS KEPEGAWAIAN / JENIS KEPEGAWAIAN from the latest `employee_import_source_snapshots.source_data` (because `employees.status` has already collapsed `Aktif BUMY`/`Aktif PKWT` into `active`). If STATUS AKTIF is `Aktif BUMY` → **skip** the employee (no employment), issue `BASELINE_EXCLUDED_BUMY`. If no snapshot exists, use `employees` columns and raise issue `BASELINE_NO_SOURCE_SNAPSHOT`.
 
 1. Create one employment:
    - `started_on = employees.started_on`; if null → `start_basis = UNKNOWN`, `started_on = NULL`, data-quality issue `BASELINE_START_UNKNOWN`.
    - If `status IN ('inactive','resigned')` and `ended_on` present → `ended_on` = last day of that month, `end_precision = MONTH`, `end_reason = RESIGN` when status `resigned`, else `LAINNYA_DARI_MASTER`.
    - If ended status but no `ended_on` → issue `BASELINE_END_UNKNOWN`; employment ended with `ended_on = NULL`, `end_basis = UNKNOWN` (explicitly not "active").
    - If status `active` but `ended_on` present → issue `BASELINE_STATUS_CONFLICT`; employment left active; HC must resolve.
-2. Create term #1: `category` = mapped `employment_status` (HC-approved mapping table, D-02), `effective_from = started_on`, `effective_to = ended_on` or NULL. Contract end dates are **not** known from the master; fixed-term categories get issue `BASELINE_CONTRACT_END_UNKNOWN` instead of an invented date.
+2. Create term #1: `category` = mapped `employment_status` (mapping table §4.2.1, D-02), `effective_from = started_on`, `effective_to = ended_on` or NULL. Contract end dates are **not** known from the master; fixed-term categories get issue `BASELINE_CONTRACT_END_UNKNOWN` instead of an invented date.
 3. Create one PRIMARY placement from `organizational_unit_id`, `position_id`, labels; `effective_from = baseline cutoff date`, `effective_from_basis = BASELINE_ASSUMED`. The placement does **not** claim the employee has held the position since TMT.
 4. Create one `BASELINE` action referencing the source import job (`source_last_import_job_id`) and its source snapshot id.
 
@@ -314,7 +393,8 @@ The command:
 - runs `--dry-run` by default and prints counts and issue codes only (no names, no NIP) to stdout; detailed per-employee issues go to the consistency report behind `employment.read`;
 - is idempotent: an employee that already has an employment is skipped;
 - writes `employment.baseline.created` audit per employee and one summary audit event per run;
-- requires mode `OFF` or `SHADOW`; refuses in `AUTHORITATIVE`.
+- requires mode `OFF` or `SHADOW`; refuses in `AUTHORITATIVE`;
+- **never** deactivates accounts: baseline employments that are already ended do not trigger the D-15 automatic deactivation (their account state is whatever access administration set before). Only a `TERMINATION` action recorded in `AUTHORITATIVE` does.
 
 ### 8.3 Data-quality review before AUTHORITATIVE
 
@@ -331,10 +411,32 @@ Exit criteria for AUTHORITATIVE are listed in the implementation plan.
 - A daily job (and a manual "refresh" command) at 00:05 Asia/Jakarta re-projects employees whose state changes on that date (scheduled future actions, contract end flags). The job is idempotent and writes one summary audit event. DISCOVERY: Mi8VPS has no systemd/cron for the API; the job must run under the existing `sq-core-worker.sh` supervision or as an in-process scheduler — decide in step S5 with ops review.
 - If the projection job has not run, the resolver-based screens are still correct; only legacy consumers are stale. The consistency report shows "Proyeksi tertinggal" when any employee's projection differs from the resolver.
 
-### 8.5 Account and access boundary
+### 8.5 Account and access boundary (D-15: automatic deactivation, time-boxed reactivation)
 
-- No action changes an account, role assignment, password, MFA, or Keycloak/OIDC state.
-- Ending an employment changes `employees.status` through the projection exactly as an import changing `STATUS AKTIF` does today; whatever access consequence the existing auth rules attach to `employees.status` therefore stays the same. After a termination the UI shows a follow-up hint: "Periksa akses akun pegawai ini di menu Akses" (link only, no automatic deactivation). D-15 asks whether this should become automatic later.
+Account facts stay in AUTH tables; employment records never store account status. D-15 (owner, 2026-10-16) adds one **explicit, audited cross-boundary effect**: when an employment ends, the employee's HCIS login account is deactivated automatically. This is an auth change and needs the extra review AGENTS.md §8 requires, plus permission tests.
+
+No other action (hire, extension, category change, placement, transfer, promotion, demotion) changes an account, role assignment, password, MFA, or Keycloak/OIDC state.
+
+#### 8.5.1 Automatic deactivation on termination
+
+- **Trigger:** a recorded `TERMINATION` action in mode `AUTHORITATIVE`. Not baseline, not import, not mode changes.
+- **When:** at the start of the day after `ended_on` (Asia/Jakarta). If `ended_on` is already in the past when HC records the action, deactivation happens in the same transaction. If it is in the future, the daily job (§8.4) performs it; the preview tells HC: "Akun login pegawai akan dinonaktifkan otomatis mulai 1 Agu 2027."
+- **What:** every `principal_type = EMPLOYEE` account linked to that employee with status `invited` or `active` becomes `inactive`; all sessions and activation tokens are revoked (the same effects as today's `PATCH /admin/access/accounts/:accountId/status`). `suspended` accounts stay `suspended`. Role assignments are not deleted (their effect already depends on an active account and active employee).
+- **Fail closed if the job is late:** session validation and login additionally deny an EMPLOYEE principal whose latest employment has `ended_on < today` and who has no valid temporary reactivation (§8.5.2), even before the job has run.
+- **Scope:** only the HCIS account. The shared Akun SQ (Keycloak/SQ Hub identity) and other applications are not changed; OIDC sign-in to HCIS is still refused because the HCIS account is inactive. Whether Akun SQ itself should be disabled is an SQ Hub decision outside this package.
+- **Reversal of a termination** does **not** reactivate the account automatically (fail closed). HC reactivates it through the normal access flow; the reversal preview says so.
+- **Audit:** `account.status.updated` (existing event) with `actor = system`, `cause = employment_termination`, `employmentActionId`, plus `employment.account.deactivated`.
+
+#### 8.5.2 Time-boxed temporary reactivation
+
+Purpose: a former employee may briefly need access (e.g. to download own payslips or finish a handover).
+
+- An authorized admin grants a **temporary reactivation** with a mandatory reason and a mandatory expiry (`expires_at`). Proposal: default 7 days, maximum 30 days (TBD by owner). No open-ended reactivation exists for an ended employment.
+- The grant is a separate record (`account_temporary_reactivations`: account, granted by, reason, starts at, expires at, revoked at/by), never a plain status flip without expiry.
+- While valid, the account can sign in. **What it may access** is an explicit allowlist of own read-only self-service (proposal: own payslips, own leave history, own employment history). Every other permission check keeps requiring an active employee, so no HC/admin/approver capability returns. TBD: owner confirms the allowlist.
+- On expiry, the account returns to `inactive` automatically and its sessions are revoked; login/session checks also enforce `expires_at` directly, so a late job cannot extend access.
+- The admin can revoke early. Granting to one's own account is forbidden. Extending means a new grant with a new reason (audited), within the maximum.
+- Audit: `account.temporary_reactivation.granted`, `.revoked`, `.expired` (ids, dates, reason length — not the reason text).
 
 ### 8.6 Rollback plan
 
@@ -342,7 +444,7 @@ Exit criteria for AUTHORITATIVE are listed in the implementation plan.
 |---|---|
 | Schema deployed, mode `OFF` | Additive tables only; no consumer reads them. Leave in place, or run the documented down script (drop new tables/permissions) before any baseline is loaded. Restore not required. |
 | Baseline loaded, mode `SHADOW` | Set mode `OFF`. Optionally purge baseline rows with the backfill command's `--purge-baseline` (only rows whose sole action is `BASELINE`). `employees` columns were never written by the new code, so nothing to restore. |
-| Mode `AUTHORITATIVE` with real actions | Set mode `OFF`: import becomes the writer again and projection stops; `employees` keeps the last projected values. History tables are **kept** (never dropped once real actions exist) so no administrative fact is lost; re-enabling `AUTHORITATIVE` later requires re-running the consistency report because imports may have changed columns meanwhile. A verified database backup is taken before switching to `AUTHORITATIVE` (OPS-MI8 backup procedure). |
+| Mode `AUTHORITATIVE` with real actions | Set mode `OFF`: automatic deactivation stops (accounts already deactivated stay inactive; HC reactivates manually if needed); import becomes the writer again and projection stops; `employees` keeps the last projected values. History tables are **kept** (never dropped once real actions exist) so no administrative fact is lost; re-enabling `AUTHORITATIVE` later requires re-running the consistency report because imports may have changed columns meanwhile. A verified database backup is taken before switching to `AUTHORITATIVE` (OPS-MI8 backup procedure). |
 
 ## 9. Permissions and visibility
 
@@ -352,12 +454,13 @@ New permission keys (additive migration, assigned explicitly — never inferred 
 |---|---|---|
 | `employment.read` | Read employment, terms, placements, actions, SK metadata, consistency report for employees within the actor's existing employee-admin scope. | `human_capital_admin` |
 | `employment.manage` | Preview/record actions types `HIRE` … `TERMINATION`; create/edit unlinked SK records. | `human_capital_admin` |
-| `employment.correct` | `REVERSAL`, backdating beyond the window, SK correction after link, baseline re-run per employee. | Owner decision D-16 (proposal: `human_capital_admin` with a second-person rule, or a separate HC lead role). |
+| `employment.correct` | `REVERSAL`, backdating beyond the window, PK/SK correction after link, baseline re-run per employee. | D-16 (accepted): senior HC officer only, granted as a separate explicit assignment — not part of the default `human_capital_admin` bundle. |
+| `access.accounts.temporary_reactivate` | Grant/revoke a time-boxed reactivation of an ended employee's HCIS account (§8.5.2). | Proposal: `human_capital_admin` and Super Admin access administration; TBD owner confirmation. Requires an active account different from the target. |
 
 - Scope follows AUTH-011 role-assignment scope already used for `employees.manage`/`employees.read.all`; an organization-scoped HC admin acts on all employees, a unit-scoped holder only on employees whose **current primary placement unit** is in scope (TBD: verify exact AUTH-011 scope semantics during implementation step S2).
 - Self-approval guard: an actor cannot record an action on their **own** employee record (`EMPLOYMENT_SELF_ACTION_FORBIDDEN`).
 - Super Admin (technical) does not receive `employment.manage` by default (least privilege; MVP keeps Super Admin out of HR decisions). Mode switching uses `access.governance.manage`.
-- Employee self-service (`employees.read.own`): proposal (D-17) — employee sees own current status, current placement, contract end date, and a timeline of action type + date + unit/position + SK number. Employee does **not** see `reason_note`, demotion reason code, or internal notes.
+- Employee self-service (`employees.read.own`), D-17 accepted — employee sees own current status, current placement, contract end date, and a timeline of action type + date + unit/position + PK/SK number. Employee does **not** see `reason_note`, demotion reason code, or internal notes.
 - Foundation Board: aggregates only (unchanged; counts by category keep working through the projection).
 - Every new permission has positive and negative automated tests (AGENTS.md §7).
 
@@ -371,18 +474,20 @@ Stored in a new `employment_audit_events` table written in the same transaction 
 | `employment.baseline.run` | Backfill summary | counts per issue code, mode, dry-run flag |
 | `employment.action.recorded` | Any action recorded | action id, type, employment id, effective_on, opened/closed row ids, SK ids, acknowledged warning codes |
 | `employment.action.reversed` | Reversal | reversal action id, reversed action id, reason code |
-| `employment.decision_document.created` / `.updated` / `.corrected` | SK register | document id, type, changed field names |
+| `employment.decision_document.created` / `.updated` / `.corrected` | PK/SK register | document id, kind, type, changed field names |
 | `employment.decision_document.linked` | Link to action | document id, action id |
 | `employment.projection.refreshed` | Daily/manual job | date, number of employees re-projected, number of mismatches |
 | `employment.mode.changed` | Rollout mode | from, to, reason length, actor |
 | `employment.import.fields_ignored` | Import commit in AUTHORITATIVE | import job id, count of employees with ignored fields |
+| `employment.account.deactivated` | Automatic deactivation (D-15) | employee id, account id(s), employment action id, effective date, sessions revoked count |
+| `account.temporary_reactivation.granted` / `.revoked` / `.expired` | Time-boxed reactivation (D-15) | account id, grant id, actor, starts/expires at, reason length |
 
 ## 11. Approval needs
 
-- Package 1 records decisions already taken outside HCIS; the SK (or signed contract) is the approval evidence. HCIS does not route an approval request for these actions (D-07).
-- Required SK per action type is configurable policy, proposal in §5 (D-08). When required and missing → `DECISION_DOCUMENT_REQUIRED`.
-- If maker-checker is chosen (D-07 option B), the recorder and the confirmer must be different accounts and both events are audited; recording becomes effective only on confirmation.
-- No action changes ORG-004 authority. If an action places someone into an ORG-004 authority-bearing position, the preview says: "Penempatan ini tidak mengubah kewenangan approval. Perbarui juga Struktur Organisasi (draft perubahan) bila pegawai ini menjadi pemegang jabatan." The consistency report lists placement vs incumbency mismatches. Auto-creating ORG-004 drafts is a later option (D-18).
+- Package 1 records decisions already taken outside HCIS; the PK or SK is the approval evidence. HCIS does not route an approval request for these actions. D-07 accepted option A: one HC officer records with the PK/SK as evidence.
+- Required basis document per action type is configurable policy with the accepted defaults in §5 (D-08). When required and missing → `DECISION_DOCUMENT_REQUIRED`; when the wrong kind is linked (e.g. an SK for a contract extension) → `DECISION_DOCUMENT_KIND_INVALID`.
+- Maker-checker (D-07 option B) is not used in Package 1; it remains a possible later option.
+- No action changes ORG-004 authority. If an action places someone into an ORG-004 authority-bearing position, the preview says: "Penempatan ini tidak mengubah kewenangan approval. Perbarui juga Struktur Organisasi (draft perubahan) bila pegawai ini menjadi pemegang jabatan." The consistency report lists placement vs incumbency mismatches. Whether a placement into a head seat should also update ORG-004 incumbency automatically is D-18 (TBD, being clarified with the owner; leave approval already follows ORG-004 where rolled out). Package 1 baseline: mismatch report only.
 
 ## 12. Failure behaviour
 
@@ -401,11 +506,17 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_BACKDATE_NOT_ALLOWED` | 403 | Beyond window without `employment.correct`. | "Tanggal terlalu jauh ke belakang; butuh kewenangan koreksi." |
 | `EMPLOYMENT_REFERENCE_INVALID` | 422 | Unit/position key not found in effective structure. | "Unit atau jabatan tujuan tidak ditemukan pada struktur yang berlaku." |
 | `EMPLOYMENT_CROSS_ENTITY_UNSUPPORTED` | 422 | Legal entity change. | "Perpindahan antar badan hukum belum didukung." |
-| `DECISION_DOCUMENT_REQUIRED` | 422 | SK required by policy. | "Tindakan ini membutuhkan SK/dokumen dasar." |
-| `DECISION_DOCUMENT_LOCKED` | 409 | Editing an SK already linked. | "SK sudah dipakai pada tindakan; gunakan koreksi." |
+| `DECISION_DOCUMENT_REQUIRED` | 422 | PK/SK required by policy. | "Tindakan ini membutuhkan dokumen dasar (Perjanjian Kerja atau SK)." |
+| `DECISION_DOCUMENT_KIND_INVALID` | 422 | Wrong kind/type for the action (e.g. SK for an extension). | "Jenis dokumen tidak sesuai. Perpanjangan kontrak memakai Perjanjian Kerja; mutasi/promosi/demosi/pengangkatan/pemberhentian memakai SK." |
+| `PK_TERM_MISMATCH` | 422 | Contract period/category differs from the linked PK. | "Masa kontrak tidak sama dengan yang tertulis di Perjanjian Kerja." |
+| `DECISION_DOCUMENT_LOCKED` | 409 | Editing a PK/SK already linked. | "Dokumen sudah dipakai pada tindakan; gunakan koreksi." |
 | `EMPLOYMENT_ACTION_NOT_REVERSIBLE` | 409 | Not the latest action, already reversed, or baseline. | "Tindakan ini tidak dapat dibatalkan." |
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
+| `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
+| `REACTIVATION_EXPIRY_REQUIRED` | 400 | Temporary reactivation without expiry or beyond maximum. | "Tentukan tanggal berakhir akses (maksimal 30 hari)." |
+| `REACTIVATION_SELF_FORBIDDEN` | 403 | Admin targets own account. | "Anda tidak dapat mengaktifkan kembali akun Anda sendiri." |
+| `REACTIVATION_NOT_APPLICABLE` | 409 | Employment still active or account suspended. | "Akun ini tidak memerlukan aktivasi sementara." |
 
 `POST` requests that record actions require an `Idempotency-Key`; a replay returns the original result.
 
@@ -417,7 +528,7 @@ All screens follow the existing admin shell, with loading, empty, error, forbidd
 
 - Kartu ringkas: **Status**: Aktif / Akan mulai / Berakhir · **Status kepegawaian**: Kontrak (ke-2) · **Masa kontrak**: 1 Jul 2027 – 30 Jun 2028 · **TMT**: 1 Jul 2026 · **Masa kerja**: 1 tahun 3 bulan.
 - Badge peringatan: "Kontrak berakhir dalam 45 hari", "Kontrak sudah lewat dan belum ditindaklanjuti", "Tanggal mulai belum diketahui (data awal)".
-- Tabel **Riwayat kontrak**: Ke-, Status kepegawaian, Mulai, Selesai, No. perjanjian, Dasar (SK).
+- Tabel **Riwayat kontrak**: Ke-, Status kepegawaian, Mulai, Selesai, No. Perjanjian Kerja, SK Pengangkatan (bila tetap).
 - Tombol tindakan (sesuai izin): **Perpanjang kontrak**, **Ubah status kepegawaian**, **Akhiri hubungan kerja**, **Mulai hubungan kerja baru** (hanya bila tidak ada yang aktif).
 - Kosong: "Belum ada data kepegawaian. Data awal akan dibuat oleh petugas HC saat fitur diaktifkan."
 
@@ -433,9 +544,11 @@ All screens follow the existing admin shell, with loading, empty, error, forbidd
 
 1. **Tindakan** — sudah terpilih dari tombol; dapat diganti.
 2. **Isi data** — Tanggal berlaku (atau "Tanggal terakhir bekerja" untuk pengakhiran), Unit tujuan, Jabatan tujuan, Label jabatan, Status kepegawaian & masa kontrak (untuk tindakan kontrak), Alasan.
-3. **Dasar** — pilih SK yang sudah ada atau **+ Catat SK baru** (nomor, jenis, perihal, pejabat penanda tangan, tanggal tanda tangan, tanggal berlaku, lokasi arsip).
+3. **Dasar** — sistem menunjukkan dokumen yang diperlukan: **Perjanjian Kerja** (mulai kontrak, perpanjangan) atau **SK** (pengangkatan tetap, mutasi, promosi, demosi, pemberhentian). Pilih yang sudah ada atau **+ Catat Perjanjian Kerja baru** (nomor PK, jenis: baru/perpanjangan, masa kontrak, status kepegawaian, penanda tangan, tanggal tanda tangan, lokasi arsip) / **+ Catat SK baru** (nomor SK, jenis SK, perihal, pejabat penerbit, tanggal tanda tangan, tanggal berlaku, lokasi arsip).
 4. **Periksa** — ringkasan "Dari → Menjadi", daftar peringatan (mis. "Total masa kontrak melebihi batas yang biasa dipakai; pastikan sesuai kebijakan") dengan centang "Saya sudah memeriksa".
 5. **Simpan** — pesan sukses: "Promosi dicatat dan berlaku mulai 1 Jul 2027."
+
+Khusus **Akhiri hubungan kerja**, langkah Periksa menampilkan: "Akun login HCIS pegawai ini akan dinonaktifkan otomatis mulai {tanggal sesudah hari terakhir bekerja}. Akses sementara hanya dapat diberikan oleh admin dengan batas waktu."
 
 Mobile: langkah tampil satu per layar dengan tombol Lanjut/Kembali.
 
@@ -443,17 +556,21 @@ Mobile: langkah tampil satu per layar dengan tombol Lanjut/Kembali.
 
 Daftar pegawai dengan masa kontrak berakhir dalam 30/60/90 hari, plus "Sudah lewat, belum ditindaklanjuti". Kolom: Pegawai, Unit, Status kepegawaian, Berakhir, Sisa hari, Aksi (Perpanjang / Akhiri). Filter unit dan rentang.
 
-### 13.5 Menu **Kepegawaian → Surat Keputusan**
+### 13.5 Menu **Kepegawaian → Perjanjian Kerja & SK**
 
-Register SK: cari nomor/perihal, filter jenis dan tahun; detail SK memperlihatkan daftar tindakan yang memakai SK tersebut. SK yang sudah dipakai ditandai "Terkunci".
+Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis baru/perpanjangan, tahun, status kepegawaian) dan **Surat Keputusan** (cari nomor/perihal, filter jenis SK dan tahun). Detail dokumen memperlihatkan tindakan yang memakainya. Dokumen yang sudah dipakai ditandai "Terkunci".
 
 ### 13.6 Menu **Kepegawaian → Periksa kecocokan data** (SHADOW dan sesudahnya)
 
-Kelompok masalah dengan jumlah: "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
+Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
 
-### 13.7 Pegawai — **Profil saya → Kepegawaian** (bila D-17 disetujui)
+### 13.7 Pegawai — **Profil saya → Kepegawaian** (D-17 disetujui)
 
-Read-only: status, status kepegawaian, masa kontrak, unit/jabatan saat ini, riwayat singkat (jenis tindakan, tanggal, unit/jabatan, nomor SK).
+Read-only: status, status kepegawaian, masa kontrak, unit/jabatan saat ini, riwayat singkat (jenis tindakan, tanggal, unit/jabatan, nomor PK/SK).
+
+### 13.8 Menu **Akses → Akun** — **Aktifkan sementara** (D-15)
+
+Untuk akun pegawai yang hubungan kerjanya sudah berakhir: tombol **Aktifkan sementara** membuka form *Alasan* (wajib) dan *Akses berakhir pada* (wajib, maksimal 30 hari). Daftar akun menampilkan badge "Aktif sementara s.d. 14 Agu 2027" dan tombol **Hentikan sekarang**. Pesan setelah kedaluwarsa: "Akses sementara berakhir; akun kembali nonaktif."
 
 ## 14. Acceptance criteria
 
@@ -466,7 +583,10 @@ EMP-005:
 - EMP-005-E: Baseline backfill is idempotent, dry-run by default, never invents contract end or start dates, and records issue codes.
 - EMP-005-F: In `AUTHORITATIVE`, EMP-004 import does not overwrite employment fields for baselined employees and reports ignored fields; in `OFF`/`SHADOW` import behaviour is unchanged.
 - EMP-005-G: The `employees` projection equals the resolver result after every action and after the daily refresh; annual-leave eligibility, Board, and ORG-006 outputs are unchanged for unchanged data.
-- EMP-005-H: No action changes any account, role, or permission.
+- EMP-005-H: No action other than `TERMINATION` changes any account; no action changes roles or permissions.
+- EMP-005-I (D-15): A recorded `TERMINATION` deactivates the linked EMPLOYEE account(s) and revokes sessions/activation tokens from the day after `ended_on`; login and session checks deny the account even if the daily job has not run; baseline and reversal never reactivate or deactivate accounts.
+- EMP-005-J (D-15): Temporary reactivation requires reason and expiry within the maximum, cannot target one's own account, grants only the self-service allowlist, ends automatically at expiry (enforced at login/session time), and every grant/revoke/expiry is audited. Positive and negative auth tests are mandatory.
+- EMP-005-K (D-02): Baseline excludes `Aktif BUMY` employees and maps the §4.2.1 values; unmapped values remain `BELUM_DIKLASIFIKASIKAN`.
 
 EMP-006:
 
@@ -478,43 +598,47 @@ EMP-006:
 
 EMP-010:
 
-- EMP-010-A: SK metadata can be created, searched, and linked to one or many actions.
+- EMP-010-A: Perjanjian Kerja and SK are separate document kinds with their own numbering and fields; both can be created, searched, and linked to actions (SK to many employees, PK to one).
 - EMP-010-B: An SK linked to a recorded action cannot be silently edited; corrections keep prior values and are audited.
-- EMP-010-C: Policy-required SK is enforced per action type.
+- EMP-010-C: The required document kind is enforced per action type (§5); a wrong kind and a PK/term mismatch are rejected.
 
 Cross-cutting:
 
-- EMP-PKG1-X1: `employment.read`, `employment.manage`, `employment.correct` each have positive/negative backend tests, including self-action denial and unit-scope denial.
+- EMP-PKG1-X1: `employment.read`, `employment.manage`, `employment.correct`, `access.accounts.temporary_reactivate` each have positive/negative backend tests, including self-action denial and unit-scope denial.
 - EMP-PKG1-X2: All screens have loading, empty, error, forbidden, and mobile states verified in a browser with synthetic data.
 - EMP-PKG1-X3: Audit payloads contain no reason notes, contact data, or identity numbers.
 
-## 15. Owner decisions needed
+## 15. Owner decisions (recorded 2026-10-16)
 
-| ID | Decision | Proposal |
-|---|---|---|
-| D-01 | Approve Package 1 scope (status/contract, placement, promotion/demotion/transfer, SK reference) and defer education/family/statutory/grade/compensation. | Approve. |
-| D-02 | Official list of **status kepegawaian** and **jenis kepegawaian** values, and the mapping from today's free-text values. | HC provides the list; mapping reviewed in SHADOW. |
-| D-03 | Which categories must have an end date (kontrak, honorer, magang, percobaan?). | Kontrak, Magang, Percobaan: wajib; Tetap: tidak; Honorer: TBD. |
-| D-04 | Contract length/extension rules and probation rules to warn about (legal review). | Warnings only in Package 1. |
-| D-05 | Rehire: does prior service count for masa kerja/leave eligibility? | Separate `service_start_on`, default = new TMT. |
-| D-06 | Support jabatan/tugas tambahan (ADDITIONAL placements) in Package 1? | Yes (data already has structural + functional labels). |
-| D-07 | Recording model: A) one HC officer records with SK as evidence; B) maker-checker (second HC officer confirms). | A for pilot; B if HC prefers four-eyes for promotion/demotion/termination. |
-| D-08 | For which actions is an SK/contract mandatory? | Mandatory: Hire, Extension, Category change, Transfer, Promotion, Demotion, Termination (except resign/death). |
-| D-09 | How to fix a mistyped SK already used. | Audited correction keeping old values. |
-| D-10 | Termination reason list. | Resign, Kontrak berakhir, Pensiun, Pemberhentian, Meninggal dunia, Lainnya. |
-| D-11 | Contract reminder window. | 60 days (list also shows 30/90). |
-| D-12 | Expired contract without follow-up: flag only, or auto-end? | Flag only. |
-| D-13 | Backdating window before extra permission. | 31 days. |
-| D-14 | Backfill removed (EMP-001 `removed_at`) employees too? | Yes, read-only. |
-| D-15 | After termination, should account deactivation stay manual? | Manual + hint in Package 1. |
-| D-16 | Who holds `employment.correct`? | Senior HC officer only (separate assignment). |
-| D-17 | Employee sees own employment history (without reasons)? | Yes. |
-| D-18 | Should a placement into an authority seat auto-create an ORG-004 draft? | Not in Package 1; mismatch report only. |
-| D-19 | After AUTHORITATIVE, is the workbook still used for new hires? | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only. Transitional: import may create baseline for new NIPs. |
+Status: **Accepted** = owner accepted (as proposed or as amended); **TBD** = still being clarified with the owner.
+
+| ID | Decision | Status | Outcome |
+|---|---|---|---|
+| D-01 | Package 1 scope (status/contract, placement, promotion/demotion/transfer, basis document) and deferral of education/family/statutory/grade/compensation. | TBD | Owner stated the primary documents are the **Perjanjian Kerja** and the **SK Pengangkatan**; both are now first-class document kinds (§4.5). Scope kept as proposed pending clarification. |
+| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted (partially TBD) | Owner list: Guru/Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan. BUMY staff excluded from HCIS. Mapping of Calon Pegawai Tetap, Pengurus Yayasan, Tenaga Pengabdian, Pegawai Lepas TBD (§4.2.1). |
+| D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan: required. Tetap: not required. |
+| D-04 | Contract length/probation rules: block or warn. | TBD | Package 1 default: warnings only, acknowledged by HC. |
+| D-05 | Masa kerja on extension and rehire. | Accepted (amended) | Masa kerja continues while the contract is extended continuously under the same NIP; a new NIP means a new masa kerja start. |
+| D-06 | ADDITIONAL placements (jabatan/tugas tambahan). | Accepted | Yes. |
+| D-07 | Recording model. | Accepted | A: one HC officer records with PK/SK as evidence. |
+| D-08 | Mandatory basis document per action. | Accepted (amended) | PK and SK strictly separate. **PK**: contract hire, contract extension. **SK**: permanent appointment (SK Pengangkatan), transfer, promotion, demotion, termination (optional for resign/death). Separate kinds, numbers, and fields. |
+| D-09 | Fixing a mistyped document already used. | Accepted | Audited correction keeping old values. |
+| D-10 | Termination reasons. | Accepted | Resign, Kontrak berakhir, Pensiun, Pemberhentian, Meninggal dunia, Lainnya. |
+| D-11 | Contract reminder window. | Accepted | 60 days (list also shows 30/90). |
+| D-12 | Expired contract without follow-up. | Accepted | Flag only, no auto-end. |
+| D-13 | Backdating window before extra permission. | Accepted | 31 days. |
+| D-14 | Backfill EMP-001-removed employees. | Accepted | Yes, read-only. |
+| D-15 | Account on termination. | Accepted (changed) | **Automatic** deactivation of the HCIS login account when the employment ends; an admin may grant a time-boxed, audited temporary reactivation with a mandatory reason and expiry (§8.5). Auth change → extra review. Open sub-items: max duration (proposal 30 days), self-service allowlist, who holds the reactivation permission. |
+| D-16 | Holder of `employment.correct`. | Accepted | Senior HC officer only, separate assignment. |
+| D-17 | Employee sees own employment history. | Accepted | Yes, without reasons/internal notes. |
+| D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | TBD | Package 1 default: no automatic ORG-004 change; mismatch report only. |
+| D-19 | Workbook role after AUTHORITATIVE. | Accepted | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only; transitional baseline for new NIPs allowed. |
 
 ## 16. Open questions / DISCOVERY
 
-- DISCOVERY: actual distribution of `employment_status`/`employment_type` values and data quality (counts only, gathered read-only on production with owner approval; never exported).
+- Done 2026-10-16: distinct values of STATUS KEPEGAWAIAN / STATUS AKTIF / JENIS KEPEGAWAIAN collected from the active master sheet (values only, §4.2.1). Counts per value remain DISCOVERY for the SHADOW review.
+- TBD: what to do with existing BUMY rows already in `employees` (EMP-001 removal or keep read-only).
+- TBD: whether YSQ ever rehires under the same NIP.
 - DISCOVERY: whether YSQ uses skorsing/suspension or cuti di luar tanggungan as an employment state (the latter is currently handled as Cuti Tanpa Gaji in the leave module).
 - TBD: exact AUTH-011 unit-scope semantics for employee admin permissions.
 - TBD: scheduler host for the daily projection refresh on Mi8VPS.

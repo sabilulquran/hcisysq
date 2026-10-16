@@ -87,7 +87,7 @@ Classic employment administration is an explicit HCIS direction, using effective
 - Education and qualification — EMP-007.
 - Skills and competencies — EMP-008.
 - Family, dependents, and employee relations — EMP-009.
-- Employment decision document reference (Surat Keputusan) — EMP-010.
+- Employment basis documents: Perjanjian Kerja and Surat Keputusan — EMP-010.
 
 Package 1 (EMP-005, EMP-006, EMP-010) is specified as DRAFT pending owner approval in `docs/domain/employment-administration-package1.md`.
 

@@ -113,7 +113,7 @@ Dasar: SK Ketua Yayasan No. ...
 
 Riwayat karier harus dapat menjelaskan perubahan tersebut tanpa membaca dokumen secara manual.
 
-Specification ID untuk decision document reference: **EMP-010** (ditetapkan 2026-10-16 bersama Package 1). Package 1 hanya menyimpan metadata/referensi SK; upload file menunggu storage boundary dokumen pegawai.
+Specification ID untuk decision document reference: **EMP-010** (ditetapkan 2026-10-16 bersama Package 1). Owner 2026-10-16 (D-08): Perjanjian Kerja (kontrak) dan Surat Keputusan adalah jenis dokumen terpisah dengan nomor dan field masing-masing. Package 1 hanya menyimpan metadata/referensi dokumen; upload file menunggu storage boundary dokumen pegawai.
 
 ## EMP-006 — Placement and career movement
 

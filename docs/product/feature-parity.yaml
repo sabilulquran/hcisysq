@@ -185,7 +185,7 @@ features:
 
   - id: EMP-010
     module: employee
-    name: Employment decision document reference (Surat Keputusan)
+    name: "Employment basis documents: Perjanjian Kerja and Surat Keputusan"
     legacy_evidence: benchmark HRIS links contracts/career actions to SK; parent direction accepted 2026-09-22 without an ID
     target_status: planned
     priority: post-attendance-simplification

@@ -26,7 +26,7 @@ type ManifestEntry = {
   file: string;
   method: string;
   url: string;
-  access?: "hc-operational" | "self-service";
+  access?: "hc-operational" | "self-service" | "super-admin";
   principals?: string[];
   permissions: string[];
   executePermissions?: string[];
@@ -126,7 +126,9 @@ describe("AUTH-011 route manifest coverage", () => {
           expect(entry.executePermissions.every((key) => entry.permissions.includes(key)), label).toBe(true);
         }
       }
-      if (entry.url.startsWith("/admin/")) expect(entry.access, label).toBeUndefined();
+      // Admin routes use permission guards; role grants additionally require a Super Admin principal.
+      if (entry.url.startsWith("/admin/")) expect([undefined, "super-admin"], label).toContain(entry.access);
+      if (entry.access === "super-admin") expect(entry.url.startsWith("/admin/access/"), label).toBe(true);
     }
   });
 });

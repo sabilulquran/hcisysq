@@ -27,6 +27,14 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean): boole
     && role.permissions.every((key) => (HC_OPERATIONAL_PERMISSIONS as readonly string[]).includes(key)));
 }
 
+// Owner decision 2026-10-16 (AUTH-011): only Super Admin grants or removes roles. Human Capital and
+// Human Capital Administrator (or any other permission holder) cannot delegate roles or permissions.
+export function assertRoleGrantor(actor: AuthPrincipal): void {
+  if (actor.principalType !== "SUPER_ADMIN") {
+    throw new AuthError(403, "ROLE_GRANT_SUPER_ADMIN_ONLY", "Hanya Super Admin yang dapat memberikan atau mencabut role.");
+  }
+}
+
 function forbidden(): never {
   throw new AuthError(403, "ROLE_DELEGATION_FORBIDDEN", "Assignment di luar mandat administrasi akun ini.");
 }
@@ -35,6 +43,7 @@ async function requireDelegation(
   db: PoolClient, actor: AuthPrincipal, targetId: string, roleId: string,
 ): Promise<AssignableRole> {
   if (actor.id === targetId) forbidden();
+  assertRoleGrantor(actor);
   if (!(await hasEffectiveOrganizationPermission(db, actor, "access.roles.assign"))) forbidden();
   const result = await db.query<AssignableRole>(
     `SELECT role.role_key AS "roleKey", coalesce(array_agg(permission.permission_key)
@@ -75,6 +84,7 @@ async function atomic<T>(pool: Pool, operation: (db: PoolClient) => Promise<T>):
 export async function createRoleAssignment(
   pool: Pool, actor: AuthPrincipal, accountId: string, input: RoleAssignmentInput,
 ): Promise<string> {
+  assertRoleGrantor(actor);
   if (actor.id === accountId) forbidden();
   assertAssignmentScope(input.scopeType, input.organizationalUnitId ?? null);
   assertAssignmentDates(input.startsOn ?? null, input.endsOn ?? null);
@@ -108,6 +118,7 @@ export async function createRoleAssignment(
 }
 
 export async function removeRoleAssignment(pool: Pool, actor: AuthPrincipal, assignmentId: string): Promise<void> {
+  assertRoleGrantor(actor);
   await atomic(pool, async (db) => {
     const result = await db.query<{ accountId: string; roleId: string }>(
       `SELECT account_id AS "accountId", role_id AS "roleId" FROM account_role_assignments WHERE id = $1`, [assignmentId]);

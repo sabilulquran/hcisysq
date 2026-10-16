@@ -44,7 +44,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     unitId = randomUUID();
     await pool.query("INSERT INTO organizational_units(id, name, normalized_name) VALUES ($1,'Synthetic Unit','synthetic-unit')", [unitId]);
     auth = new AuthService(pool, "11".repeat(32), 8, true);
-    for (const name of ["employee", "unit_hc", "admin", "board", "legacy", "target", "unit_admin", "delegate", "governance"]) {
+    for (const name of ["employee", "hc", "unit_hc", "admin", "board", "legacy", "target", "unit_admin", "delegate", "governance"]) {
       const principalType = name === "board" ? "FOUNDATION_BOARD" : name === "legacy" ? "SUPER_ADMIN" : "EMPLOYEE";
       const id = randomUUID();
       const employeeId = principalType === "EMPLOYEE" ? randomUUID() : null;
@@ -57,7 +57,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       const result = await auth.createSessionForAccountId(id, context);
       actors.set(name, { principal: result.session.principal, cookie: result.setCookie.split(";")[0]!, employeeId });
     }
-    for (const [name, roleId, scope, unit] of [["unit_hc", hcRoleId, "unit", unitId], ["admin", adminRoleId, "organization", null], ["unit_admin", adminRoleId, "unit", unitId]] as const) {
+    for (const [name, roleId, scope, unit] of [["hc", hcRoleId, "organization", null], ["unit_hc", hcRoleId, "unit", unitId], ["admin", adminRoleId, "organization", null], ["unit_admin", adminRoleId, "unit", unitId]] as const) {
       await pool.query(`INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,organizational_unit_id)
         VALUES($1,$2,$3,$4,$5)`, [randomUUID(), actors.get(name)!.principal.id, roleId, scope, unit]);
     }
@@ -125,32 +125,54 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows).toEqual(before.rows);
   });
 
-  it("fails closed when the human_capital role exceeds the operational delegation bundle", async () => {
-    // ATT-002/ATT-007 (0046-0047) and ATT-008 (0048) granted these to human_capital, outside
-    // HC_OPERATIONAL_PERMISSIONS, so ordinary role administrators may no longer delegate it.
-    const extra = (await pool.query<{ key: string }>(
-      `SELECT permission_key AS key FROM role_permissions WHERE role_id=$1 AND NOT permission_key = ANY($2::text[])
-       ORDER BY permission_key`, [hcRoleId, [...HC_OPERATIONAL_PERMISSIONS]],
-    )).rows.map((row) => row.key);
-    expect(extra).toEqual(["attendance.clarification.manage", "attendance.overtime.manage",
-      "attendance.reports.read", "attendance.shift_swap.manage"]);
+  it("lets only Super Admin grant or remove roles; HC and HC admins get 403 and commit nothing", async () => {
+    // Owner decision 2026-10-16 (AUTH-011): Human Capital may not delegate its role or permissions.
     const target = actors.get("target")!.principal.id;
-    const response = await request("admin", "POST", `/admin/access/accounts/${target}/role-assignments`,
-      { roleId: hcRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic operation" });
-    expect(response.statusCode).toBe(403);
-    // Only in this isolated schema: restore the accepted bundle so later tests exercise the delegation path.
-    await pool.query("DELETE FROM role_permissions WHERE role_id=$1 AND permission_key = ANY($2::text[])", [hcRoleId, extra]);
-  });
+    const roles = (await pool.query<{ id: string }>("SELECT id FROM roles ORDER BY role_key")).rows;
+    const existing = await createRoleAssignment(pool, actors.get("legacy")!.principal, target,
+      { roleId: hcRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic Super Admin grant" });
+    const snapshot = async () => (await pool.query(
+      `SELECT (SELECT count(*)::int FROM account_role_assignments) AS assignments,
+        (SELECT count(*)::int FROM access_audit_events WHERE action LIKE 'role.assignment.%') AS audits`,
+    )).rows[0];
+    const before = await snapshot();
+    for (const name of ["hc", "unit_hc", "admin", "unit_admin", "delegate", "governance", "employee"]) {
+      const actor = actors.get(name)!.principal;
+      for (const role of roles) {
+        for (const body of [
+          { roleId: role.id, scopeType: "organization", reason: "Synthetic delegation attempt" },
+          { roleId: role.id, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic delegation attempt" },
+          { roleId: role.id, scopeType: "own" },
+        ]) {
+          for (const account of [target, actor.id]) {
+            const response = await request(name, "POST", `/admin/access/accounts/${account}/role-assignments`, body);
+            expect.soft(response.statusCode, `${name} grant ${JSON.stringify(body)}`).toBe(403);
+          }
+        }
+      }
+      // Denial precedes input validation and resource lookup.
+      expect.soft((await request(name, "POST", `/admin/access/accounts/${target}/role-assignments`, {})).statusCode, name).toBe(403);
+      expect.soft((await request(name, "DELETE", `/admin/access/role-assignments/${existing}`)).statusCode, name).toBe(403);
+      await expect(createRoleAssignment(pool, actor, target, { roleId: hcRoleId, scopeType: "organization" }))
+        .rejects.toMatchObject({ statusCode: 403, code: "ROLE_GRANT_SUPER_ADMIN_ONLY" });
+      await expect(removeRoleAssignment(pool, actor, existing))
+        .rejects.toMatchObject({ statusCode: 403, code: "ROLE_GRANT_SUPER_ADMIN_ONLY" });
+    }
+    expect(await snapshot()).toEqual(before);
+    expect((await pool.query("SELECT 1 FROM account_role_assignments WHERE id=$1", [existing])).rowCount).toBe(1);
+    expect((await request("legacy", "DELETE", `/admin/access/role-assignments/${existing}`)).statusCode).toBe(204);
+  }, 120000);
 
   it("server-authorizes every manifest route per persona independently of navigation", async () => {
     const manifest = JSON.parse(await readFile(new URL("../../../docs/domain/AUTH-011-admin-route-permissions.json", import.meta.url), "utf8")) as
-      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string; access?: "hc-operational" | "self-service";
+      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string; access?: "hc-operational" | "self-service" | "super-admin";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(176);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(174);
+    expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(2);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(40);
-    const personas = ["employee", "unit_hc", "unit_admin", "board", "admin", "legacy"];
+    const personas = ["employee", "hc", "unit_hc", "unit_admin", "board", "admin", "legacy"];
     const granted = new Map<string, string[]>();
     for (const name of personas) {
       granted.set(name, (await auth.getAuthorizationContext(actors.get(name)!.principal)).organizationPermissions);
@@ -185,6 +207,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
             ? route.principals!.includes(principalType)
             // HC operational routes require an EMPLOYEE principal; legacy compatibility applies only to admin routes.
             : (route.access !== "hc-operational" || principalType === "EMPLOYEE")
+              && (route.access !== "super-admin" || principalType === "SUPER_ADMIN")
               && variant.permissions.every((key) => granted.get(name)!.includes(key));
           const response = await request(name, route.method, url, variant.payload);
           const label = `${name} ${route.method} ${url} ${JSON.stringify(variant.payload ?? {})}: ${response.body.slice(0, 160)}`;
@@ -243,26 +266,28 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
 
   it("blocks self-elevation, admin delegation, changed role bundles and invalid scopes", async () => {
     const admin = actors.get("admin")!.principal;
+    const legacy = actors.get("legacy")!.principal;
     const target = actors.get("target")!.principal.id;
     const api = `/admin/access/accounts/${target}/role-assignments`;
     expect((await request("admin", "POST", `/admin/access/accounts/${admin.id}/role-assignments`, { roleId: hcRoleId, scopeType: "organization" })).statusCode).toBe(403);
     expect((await request("admin", "POST", api, { roleId: adminRoleId, scopeType: "organization", reason: "Synthetic mandate" })).statusCode).toBe(403);
-    const special = await pool.query("SELECT id FROM roles WHERE role_key='special_approver'");
-    expect((await request("admin", "POST", api, { roleId: special.rows[0].id, scopeType: "organization" })).statusCode).toBe(403);
-    expect((await request("admin", "POST", api, { roleId: hcRoleId, scopeType: "unit" })).statusCode).toBe(400);
-    expect((await request("admin", "POST", api, { roleId: hcRoleId, scopeType: "organization", organizationalUnitId: unitId })).statusCode).toBe(400);
-    await pool.query("INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'attendance.devices.destructive')", [hcRoleId]);
-    expect((await request("admin", "POST", api, { roleId: hcRoleId, scopeType: "organization" })).statusCode).toBe(403);
-    await pool.query("DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='attendance.devices.destructive'", [hcRoleId]);
-    const created = await request("admin", "POST", api, { roleId: hcRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic operation" });
+    expect((await request("legacy", "POST", `/admin/access/accounts/${legacy.id}/role-assignments`, { roleId: hcRoleId, scopeType: "organization" })).statusCode).toBe(403);
+    expect((await request("legacy", "POST", api, { roleId: hcRoleId, scopeType: "unit" })).statusCode).toBe(400);
+    expect((await request("legacy", "POST", api, { roleId: hcRoleId, scopeType: "organization", organizationalUnitId: unitId })).statusCode).toBe(400);
+    // A role carrying a permission outside the HCIS allowlist cannot be granted, even by Super Admin.
+    await pool.query("INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'leave.governance.approve')", [hcRoleId]);
+    expect((await request("legacy", "POST", api, { roleId: hcRoleId, scopeType: "organization" })).statusCode).toBe(403);
+    await pool.query("DELETE FROM role_permissions WHERE role_id=$1 AND permission_key='leave.governance.approve'", [hcRoleId]);
+    const created = await request("legacy", "POST", api, { roleId: hcRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic operation" });
     expect(created.statusCode).toBe(201);
-    expect((await request("admin", "DELETE", `/admin/access/role-assignments/${created.json().id}`)).statusCode).toBe(204);
+    expect((await request("admin", "DELETE", `/admin/access/role-assignments/${created.json().id}`)).statusCode).toBe(403);
+    expect((await request("legacy", "DELETE", `/admin/access/role-assignments/${created.json().id}`)).statusCode).toBe(204);
     expect((await request("legacy", "POST", api, { roleId: adminRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic mandate" })).statusCode).toBe(400);
     const promoted = await request("legacy", "POST", api, { roleId: adminRoleId, scopeType: "organization", reason: "Reviewed synthetic mandate" });
     expect(promoted.statusCode).toBe(201);
     expect((await request("target", "GET", "/auth/me")).json().authorization.organizationPermissions).toContain("access.manage");
     expect((await request("admin", "DELETE", `/admin/access/role-assignments/${promoted.json().id}`)).statusCode).toBe(403);
-    await removeRoleAssignment(pool, actors.get("legacy")!.principal, promoted.json().id);
+    await removeRoleAssignment(pool, legacy, promoted.json().id);
   });
 
   it("does not allow account administration to take over privileged invitations", async () => {
@@ -341,7 +366,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$;
       CREATE TRIGGER fail_auth011_audit BEFORE INSERT ON access_audit_events FOR EACH ROW EXECUTE FUNCTION fail_auth011_audit()`);
     const before = (await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows;
-    await expect(createRoleAssignment(pool, actors.get("admin")!.principal, actors.get("target")!.principal.id,
+    await expect(createRoleAssignment(pool, actors.get("legacy")!.principal, actors.get("target")!.principal.id,
       { roleId: hcRoleId, scopeType: "organization" })).rejects.toThrow("synthetic audit failure");
     expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows).toEqual(before);
     await pool.query("DROP TRIGGER fail_auth011_audit ON access_audit_events");

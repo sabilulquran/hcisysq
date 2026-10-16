@@ -5,8 +5,8 @@
 ## Update 2026-10-16: route coverage and CI enforcement (SEC-02, SEC-03)
 
 Follow-up to the 2026-10-16 HCIS security review (redacted summary in
-`docs/operations/hcis-security-review-2026-10-16.md`). No production code or permission changed; only the
-inventory, tests and CI changed.
+`docs/operations/hcis-security-review-2026-10-16.md`). The inventory, tests and CI changed. The only production
+change enforces the owner decision of 2026-10-16 that only Super Admin grants roles (see below).
 
 **Manifest completeness (SEC-02).** [The route inventory](../domain/AUTH-011-admin-route-permissions.json) now
 lists every route that `createApp` registers, except an explicit public allowlist: `/health`, `/ready`, `/auth/*`,
@@ -14,8 +14,9 @@ lists every route that `createApp` registers, except an explicit public allowlis
 
 | `access` | Count | Guard | Persona expectation |
 | --- | --- | --- | --- |
-| absent (admin) | 176 | `requirePermissionsFromCookie` with every listed `permissions` key; legacy Super Admin compatibility applies | Allowed only when the persona's effective organization permissions include all keys |
+| absent (admin) | 174 | `requirePermissionsFromCookie` with every listed `permissions` key; legacy Super Admin compatibility applies | Allowed only when the persona's effective organization permissions include all keys |
 | `hc-operational` | 12 | EMPLOYEE principal, then an organization-scoped permission (`leave.validate`, `leave.hc.approve`, `attendance.resolution.manage`) | Same, but legacy Super Admin and Foundation Board are always 403 |
+| `super-admin` | 2 | Role-assignment create/remove: `access.roles.assign` **and** a Super Admin principal | Every other persona is 403, including HC and HC admins |
 | `self-service` | 40 | Principal type only (`principals`) | Anonymous 401/403; principals not listed are 403 |
 
 Earlier the inventory had 135 entries; 51 admin and HC routes plus 40 self-service routes were missing. Every
@@ -55,19 +56,32 @@ security regression:
    longer seeds that role itself. It now asserts that the migration seeded it.
 3. The 0045 compatibility test now pins the bundle that 0045 grants. Migrations 0046–0050 extend it to
    `HC_ADMIN_PERMISSIONS`, which the main suite asserts.
-4. See open item 4 below. The rollback test then failed and left its synthetic trigger behind, which caused the
+4. HC admins could no longer delegate `human_capital` after migrations 0046–0048 widened that role (see the
+   owner decision below). The rollback test then failed and left its synthetic trigger behind, which caused the
    invitation-revocation failure.
 
-**Open item for owner decision.**
+**Owner decision 2026-10-16: only Super Admin grants roles.** The owner ruled: "the Human Capital role may NOT
+delegate its role or permissions to others; only Super Admin can grant roles." This is recorded in
+[AUTH-011](../domain/hcis-authorization-modernization.md#delegation-and-account-management) and
+[roles and permissions](../domain/roles-permissions.md).
 
-4. Migrations 0046–0048 (ATT-002/007/008) granted four permissions to `human_capital` that are outside
-   `HC_OPERATIONAL_PERMISSIONS`: `attendance.clarification.manage`, `attendance.overtime.manage`,
-   `attendance.reports.read` and `attendance.shift_swap.manage`. Under
-   [the delegation rule](../domain/hcis-authorization-modernization.md#delegation-and-account-management),
-   ordinary HC admins therefore can no longer assign `human_capital`; the system fails closed. A test now pins
-   this behavior. The test then restores the accepted bundle inside its isolated schema so it can still exercise
-   the delegation path. Restoring production delegation means either widening the operational bundle or
-   narrowing the role. That is a product and authorization decision, and this change does not make it.
+- **Enforcement:** `assertRoleGrantor` runs in both role-assignment routes before input validation, and again in
+  `createRoleAssignment` and `removeRoleAssignment`.
+- **Denied actors:** all of the following get `403 ROLE_GRANT_SUPER_ADMIN_ONLY`:
+  - organization-scoped and unit-scoped `human_capital`;
+  - organization-scoped and unit-scoped `human_capital_admin`;
+  - `access.roles.delegate` and `access.governance.manage` holders;
+  - plain employees.
+- **Test coverage:** the test tries every role, three scopes, and both a third-party and a self target. It also
+  tries an empty body, removing an existing assignment, and direct service calls. It then asserts that the
+  assignment count and the `role.assignment.*` audit count are unchanged.
+- **Super Admin path:** Super Admin can still grant and remove roles, within the HCIS role/permission allowlist and
+  scope rules.
+- **Earlier open item:** the `human_capital` bundle drift from migrations 0046–0048 no longer decides who can
+  delegate, so it is closed by this decision.
+- **Follow-up, not done here:** `human_capital_admin` still holds `access.roles.assign`, which now grants nothing
+  on its own. Removing it, and hiding the assignment controls in the web UI for non-Super-Admin users, needs a
+  migration and a UI change.
 
 Reproduce: run `apps/api/test/auth011-*.test.ts` with `HCIS_AUTH011_TEST_DATABASE_URL` pointing to an empty
 loopback `hcis_auth011_permissions_test` database, as described below.
@@ -89,7 +103,7 @@ See [the accepted specification](../domain/hcis-authorization-modernization.md) 
 - Operational HC remains separate. Global permissions require organization scope, inclusive effective dates, active account and active linked employee.
 - Board governance APIs and employee self-service principal boundaries remain unchanged.
 - Technical/device, biometric, destructive, firmware, policy/approval assignment and delegation permissions are separated from normal HC administration.
-- Role assignments cannot target the actor. Normal role administrators can delegate only the accepted operational HC bundle; role IDs and permission contents are checked in the database. The admin bundle requires an explicit delegation operator and organization scope.
+- Role assignments cannot target the actor. Normal role administrators can delegate only the accepted operational HC bundle; role IDs and permission contents are checked in the database. The admin bundle requires an explicit delegation operator and organization scope. *(Superseded 2026-10-16: only Super Admin grants roles; see the update above.)*
 - Role changes and audit writes are atomic. Elevated role assignment revokes preexisting invitation tokens inside the same transaction. Account state and invitation authorization checks run while holding the target account lock; privileged invitations cannot be taken over through normal HC access management.
 - Frontend routes, menus and landing use backend authorization context. Missing context fails closed. Desktop and compact admin menus have render tests.
 - OIDC protocol, exact issuer/subject matching, original account ID, Application Access gate, cookie behavior and auth mode remain intact.

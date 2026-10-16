@@ -6,9 +6,10 @@ export const HC_OPERATIONAL_PERMISSIONS = [
   "attendance.resolution.read", "attendance.resolution.manage", "payslips.import", "payslips.publish",
 ] as const;
 
+// Owner decision 2026-10-16 (AUTH-011): no access.roles.assign; only Super Admin grants roles (migration 0057).
 export const HC_ADMIN_PERMISSIONS = [
   ...HC_OPERATIONAL_PERMISSIONS, "organization.manage", "access.manage",
-  "access.roles.assign", "leave.configuration.manage", "attendance.records.manage",
+  "leave.configuration.manage", "attendance.records.manage",
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
@@ -16,6 +17,7 @@ export const HC_ADMIN_PERMISSIONS = [
 ] as const;
 
 // Only capabilities of the existing administrative APIs are eligible for legacy access.
+// access.roles.assign stays here: legacy Super Admin compatibility is the only remaining role grantor.
 export const ADMIN_PERMISSIONS = [
   "employees.manage", "employees.read.all", "organization.manage", "access.manage",
   "access.roles.assign", "access.roles.delegate", "access.governance.manage",

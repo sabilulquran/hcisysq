@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminNavigation } from "@/layouts/AdminShell";
-import { canAccessAdminPath, canAccessEmployeeHcPath } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessEmployeeHcPath, canManageRoleAssignments } from "@/lib/authorization";
 import { landingPath } from "@/lib/auth";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
@@ -12,7 +12,7 @@ function session(principalType: PrincipalType, permissions: string[]): AuthSessi
 const hcAdmin = [
   "employees.manage", "employees.read.all", "leave.validate", "leave.evidence.read",
   "attendance.resolution.read", "attendance.resolution.manage", "payslips.import", "payslips.publish",
-  "organization.manage", "access.manage", "access.roles.assign", "leave.configuration.manage",
+  "organization.manage", "access.manage", "leave.configuration.manage",
   "attendance.records.manage", "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
@@ -44,6 +44,9 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/planned-leave")).toBe(true);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/attendance-resolution")).toBe(true);
+    // Owner decision 2026-10-16: HC admins reach /admin/access but cannot grant or remove roles.
+    expect(hcAdmin).not.toContain("access.roles.assign");
+    expect(canManageRoleAssignments(actor)).toBe(false);
   });
 
   it("does not infer permissions from Employee, operational HC or legacy principal labels", () => {
@@ -103,6 +106,8 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/operations")).toBe(true);
     expect(canAccessAdminPath(legacy, "/admin/attendance/devices/id/diagnostics")).toBe(true);
     expect(canAccessAdminPath(legacy, "/admin/unknown")).toBe(false);
+    expect(canManageRoleAssignments(legacy)).toBe(false);
+    expect(canManageRoleAssignments(session("SUPER_ADMIN", [...hcAdmin, "access.roles.assign"]))).toBe(true);
   });
 });
 

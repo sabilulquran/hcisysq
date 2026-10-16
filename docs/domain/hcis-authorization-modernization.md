@@ -31,7 +31,10 @@ The new role contains the eight current operational HC permissions:
 `attendance.resolution.read`, `attendance.resolution.manage`, `payslips.import`,
 `payslips.publish`. Payroll import/publication is retained from explicit HC intent.
 It additionally contains `organization.manage`, `access.manage`,
-`access.roles.assign`, `leave.configuration.manage`, `attendance.records.manage`.
+`leave.configuration.manage`, `attendance.records.manage`. Migration 0045 also
+granted `access.roles.assign`; migration 0057 removes it under the 2026-10-16 owner
+decision below. The permission stays in the catalog and in the legacy Super Admin
+compatibility set, which is now its only holder.
 
 Separately grantable, excluded permissions are:
 
@@ -68,6 +71,17 @@ event. `createRoleAssignment` and `removeRoleAssignment` repeat the check for
 non-HTTP callers. This supersedes the earlier rule that let ordinary role
 administrators assign `human_capital`. As a result, the bundle drift from
 migrations 0046–0048 no longer affects who can delegate.
+
+Stored grants match the decision. Migration
+`0057_hc_admin_revoke_role_assign.sql` removes `access.roles.assign` from
+`human_capital_admin`, so no seeded HCIS role holds it. Re-adding the grant is a
+recovery step only; the migration header records it. Re-adding it would not let
+HC grant roles, because the Super Admin check is independent of the permission.
+The admin access page shows the role-assignment form and the per-assignment
+"Cabut" control only when the backend authorization context reports a
+`SUPER_ADMIN` principal that holds `access.roles.assign`. Other users see the
+current assignments and a read-only notice. Hiding controls is not authorization:
+the API still returns 403 to everyone else.
 
 Super Admin grants are still bounded. Actors cannot create/delete their own role
 assignments. Only known HCIS system roles whose permissions are within the HCIS

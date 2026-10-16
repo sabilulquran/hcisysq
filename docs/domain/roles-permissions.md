@@ -73,6 +73,8 @@ Keputusan owner 2026-10-16 (AUTH-011): hanya Super Admin yang dapat memberikan a
 Role Human Capital dan Human Capital Administrator, atau pemegang permission apa pun termasuk
 `access.roles.assign` dan `access.roles.delegate`, tidak boleh mendelegasikan role atau permission kepada akun lain.
 Percobaan tersebut mendapat 403 sebelum validasi input dan tidak menulis assignment maupun audit event.
+Migration 0057 menghapus `access.roles.assign` dari role `human_capital_admin`; halaman admin akses hanya
+menampilkan kontrol tambah/cabut role untuk principal Super Admin menurut authorization context dari backend.
 Lihat [AUTH-011](hcis-authorization-modernization.md#delegation-and-account-management).
 
 ## Permission naming

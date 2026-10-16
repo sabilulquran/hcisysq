@@ -118,10 +118,28 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
   it("seeds exactly the intended bundle without any identity assignments or implicit approval", async () => {
     const permissions = await auth.getAuthorizationContext(actors.get("admin")!.principal);
     expect(permissions.organizationPermissions.sort()).toEqual([...HC_ADMIN_PERMISSIONS].sort());
+    // Owner decision 2026-10-16: only Super Admin grants roles. 0057 removes the HC admin grant;
+    // legacy Super Admin compatibility keeps it.
+    expect(HC_ADMIN_PERMISSIONS).not.toContain("access.roles.assign");
+    expect(ADMIN_PERMISSIONS).toContain("access.roles.assign");
+    expect((await auth.getAuthorizationContext(actors.get("legacy")!.principal)).organizationPermissions)
+      .toContain("access.roles.assign");
+    expect((await pool.query(
+      `SELECT role.role_key FROM role_permissions permission JOIN roles role ON role.id = permission.role_id
+       WHERE permission.permission_key = 'access.roles.assign'`,
+    )).rows).toEqual([]);
+    expect((await pool.query("SELECT 1 FROM permissions WHERE permission_key='access.roles.assign'")).rowCount).toBe(1);
     expect((await auth.getAuthorizationContext(actors.get("unit_hc")!.principal)).organizationPermissions).toEqual([]);
     expect((await auth.getAuthorizationContext(actors.get("unit_admin")!.principal)).organizationPermissions).toEqual([]);
     const before = await pool.query("SELECT count(*)::int AS count FROM account_role_assignments");
     await pool.query(await readFile(new URL("../migrations/0045_hcis_human_capital_admin.sql", import.meta.url), "utf8"));
+    expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows).toEqual(before.rows);
+    // Replaying 0045 re-adds the grant; 0057 removes it again, idempotently, without touching assignments.
+    const revoke = await readFile(new URL("../migrations/0057_hc_admin_revoke_role_assign.sql", import.meta.url), "utf8");
+    await pool.query(revoke);
+    await pool.query(revoke);
+    expect((await auth.getAuthorizationContext(actors.get("admin")!.principal)).organizationPermissions.sort())
+      .toEqual([...HC_ADMIN_PERMISSIONS].sort());
     expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows).toEqual(before.rows);
   });
 

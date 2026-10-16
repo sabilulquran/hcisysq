@@ -1,5 +1,5 @@
 import { getCurrentSession } from "@/lib/auth";
-import { hasPermission } from "@/lib/authorization";
+import { canManageRoleAssignments, hasPermission } from "@/lib/authorization";
 import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
@@ -17,6 +17,7 @@ import {
   updateAccountStatus,
   type AccessAdminResponse,
 } from "@/lib/adminOrgAccess";
+import type { AuthSession } from "@/types/hcis";
 
 function statusLabel(status: string) {
   if (status === "active") return "Aktif";
@@ -26,17 +27,56 @@ function statusLabel(status: string) {
 }
 
 export function AdminAccessPage() {
-  const [canPrepareBoard, setCanPrepareBoard] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void getCurrentSession().then((session) => { if (active) setCanPrepareBoard(hasPermission(session, "access.governance.manage")); });
-    return () => { active = false; };
-  }, []);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [data, setData] = useState<AccessAdminResponse | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [roleId, setRoleId] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void getCurrentSession().then((current) => { if (mounted) setSession(current); });
+    void getAccessAdmin()
+      .then((result) => { if (mounted) setData(result); })
+      .catch((cause: unknown) => {
+        if (!mounted) return;
+        setLoadError(cause instanceof AdminApiError ? cause.message : "Data akses tidak dapat dimuat.");
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return (
+    <AdminShell
+      active="access"
+      title="Account, Role & Scope"
+      description="Account type tetap terpisah dari role. Employee aktif memperoleh base self-service setelah account aktif; assignment di bawah hanya untuk akses tambahan."
+    >
+      {loadError ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{loadError}</div> : null}
+      {data ? (
+        <AdminAccessWorkspace session={session} data={data} onDataChange={setData} />
+      ) : loadError ? null : (
+        <p className="rounded-2xl border border-border/70 bg-surface-raised p-4 text-sm text-muted-foreground">Memuat data akses...</p>
+      )}
+    </AdminShell>
+  );
+}
+
+function firstEmployeeAccountId(data: AccessAdminResponse) {
+  return data.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "";
+}
+
+// UI eligibility only: controls follow the backend authorization context; the API stays authoritative.
+export function AdminAccessWorkspace({ session, data, onDataChange }: {
+  session: AuthSession | null;
+  data: AccessAdminResponse;
+  onDataChange: (data: AccessAdminResponse) => void;
+}) {
+  const canPrepareBoard = hasPermission(session, "access.governance.manage");
+  const canManageRoles = canManageRoleAssignments(session);
+  const [selectedAccountId, setSelectedAccountId] = useState(() => firstEmployeeAccountId(data));
+  const [roleId, setRoleId] = useState(() => data.roles[0]?.id ?? "");
   const [scopeType, setScopeType] = useState<"own" | "unit" | "organization">("unit");
-  const [unitId, setUnitId] = useState("");
+  const [unitId, setUnitId] = useState(() => data.units[0]?.id ?? "");
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
   const [reason, setReason] = useState("");
@@ -53,45 +93,20 @@ export function AdminAccessPage() {
 
   const reload = async () => {
     const result = await getAccessAdmin();
-    setData(result);
-    if (!selectedAccountId) {
-      setSelectedAccountId(
-        result.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "",
-      );
-    }
+    onDataChange(result);
+    if (!selectedAccountId) setSelectedAccountId(firstEmployeeAccountId(result));
     if (!roleId) setRoleId(result.roles[0]?.id ?? "");
     if (!unitId) setUnitId(result.units[0]?.id ?? "");
   };
 
-  useEffect(() => {
-    let mounted = true;
-    void getAccessAdmin()
-      .then((result) => {
-        if (!mounted) return;
-        setData(result);
-        setSelectedAccountId(
-          result.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "",
-        );
-        setRoleId(result.roles[0]?.id ?? "");
-        setUnitId(result.units[0]?.id ?? "");
-      })
-      .catch((cause: unknown) => {
-        if (!mounted) return;
-        setError(cause instanceof AdminApiError ? cause.message : "Data akses tidak dapat dimuat.");
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const employeeAccounts = useMemo(
-    () => data?.accounts.filter((account) =>
+    () => data.accounts.filter((account) =>
       account.principalType === "EMPLOYEE" && (showInactiveAccounts || account.status !== "inactive")
-    ) ?? [],
+    ),
     [data, showInactiveAccounts],
   );
   const visibleAccounts = useMemo(
-    () => data?.accounts.filter((account) => showInactiveAccounts || account.status !== "inactive") ?? [],
+    () => data.accounts.filter((account) => showInactiveAccounts || account.status !== "inactive"),
     [data, showInactiveAccounts],
   );
 
@@ -214,12 +229,7 @@ export function AdminAccessPage() {
     }
   };
 
-  const summary = data?.summary ?? {
-    accounts: 0,
-    active: 0,
-    invited: 0,
-    unaccountedActiveEmployees: 0,
-  };
+  const summary = data.summary;
   const summaryCards = [
     { label: "Semua account", value: summary.accounts, icon: UsersRound },
     { label: "Account aktif", value: summary.active, icon: ShieldCheck },
@@ -232,11 +242,7 @@ export function AdminAccessPage() {
   ];
 
   return (
-    <AdminShell
-      active="access"
-      title="Account, Role & Scope"
-      description="Account type tetap terpisah dari role. Employee aktif memperoleh base self-service setelah account aktif; assignment di bawah hanya untuk akses tambahan."
-    >
+    <>
       {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{notice}</div> : null}
 
@@ -301,6 +307,7 @@ export function AdminAccessPage() {
       </section>
       ) : null}
 
+      {canManageRoles ? (
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>
         <p className="mt-1 text-xs text-muted-foreground">Scope unit wajib menunjuk satu unit; scope organization berlaku lintas organisasi sesuai permission role.</p>
@@ -318,7 +325,7 @@ export function AdminAccessPage() {
             ))}
           </select>
           <select value={roleId} onChange={(event) => setRoleId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
-            {data?.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+            {data.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
           </select>
           <select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
             <option value="unit">Scope unit</option>
@@ -328,7 +335,7 @@ export function AdminAccessPage() {
           {scopeType === "unit" ? (
             <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
               <option value="">Pilih unit</option>
-              {data?.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+              {data.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
             </select>
           ) : <div />}
           <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal mulai assignment" />
@@ -339,6 +346,11 @@ export function AdminAccessPage() {
           </button>
         </form>
       </section>
+      ) : (
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 text-xs leading-5 text-muted-foreground shadow-[var(--shadow-soft)]">
+        Role tambahan hanya dapat diberikan atau dicabut oleh Super Admin. Daftar di bawah menampilkan assignment yang berlaku.
+      </section>
+      )}
 
       <section className="mt-5 space-y-3">
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
@@ -395,7 +407,9 @@ export function AdminAccessPage() {
                   <div key={assignment.id} className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2 text-xs">
                     <span className="font-bold">{assignment.roleName}</span>
                     <span className="text-muted-foreground">· {assignment.scopeType === "unit" ? assignment.organizationalUnitName : assignment.scopeType}</span>
-                    <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-danger-ink disabled:opacity-50">Cabut</button>
+                    {canManageRoles ? (
+                      <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-danger-ink disabled:opacity-50">Cabut</button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -409,7 +423,7 @@ export function AdminAccessPage() {
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Role system</h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {data?.roles.map((role) => (
+          {data.roles.map((role) => (
             <div key={role.id} className="rounded-xl bg-surface p-4">
               <p className="text-sm font-bold">{role.name}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{role.description ?? "—"}</p>
@@ -418,6 +432,6 @@ export function AdminAccessPage() {
           ))}
         </div>
       </section>
-    </AdminShell>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 # ATT-011 — Penyederhanaan Operasional Kehadiran: Spesifikasi
 
-**Status:** DRAFT — MENUNGGU KEPUTUSAN OWNER (lihat §11). Tidak boleh diimplementasikan sebelum §11 dijawab dan status diubah menjadi ACCEPTED.  
+**Status:** DRAFT — KEPUTUSAN OWNER D-1..D-8 DICATAT 2026-10-16; interpretasi hukum persetujuan lembur (D-5a) dan butir terbuka §11.2 masih menunggu konfirmasi owner. Paket ATT-011-1 s.d. ATT-011-5, ATT-011-6a, ATT-011-7, dan ATT-011-8 tidak bergantung pada D-5a; ATT-011-6b tidak boleh diimplementasikan sebelum D-5a, D-5c, D-9, dan D-10 dijawab.  
 **Specification:** ATT-011  
 **Drafted:** 2026-10-16  
 **Direction:** `attendance-operational-simplification.md` (PROPOSED 2026-09-22)  
@@ -35,13 +35,13 @@ Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention f
 | Actor | Role/permission saat ini | Peran di ATT-011 |
 |---|---|---|
 | HC Admin | `human_capital_admin`: `attendance.schedule.manage`, `.policy.manage`, `.clarification.manage`, `.reports.read`, `.overtime.manage`, `.records.manage`, `.shift_swap.manage` | Mengelola Shift dan Jadwal, memproses Kehadiran dan Lembur. |
-| HC Operator | `human_capital`: `.clarification.manage`, `.reports.read`, `.overtime.manage` (menurut ATT-010; role grant diverifikasi ulang saat implementasi — TBD) | Memproses Kehadiran dan Lembur; **tidak** mengubah jadwal (kecuali keputusan D-1 berubah). |
+| HC Operator | `human_capital`: `.clarification.manage`, `.reports.read`, `.overtime.manage` (menurut ATT-010; role grant diverifikasi ulang saat implementasi — TBD) | Memproses Kehadiran; melihat Shift/Jadwal **read-only** (D-1); memantau Lembur (bukan approver, kecuali sebagai atasan di unit HC — D-5). |
 | Pegawai | own data | Melihat jadwal dan kehadiran sendiri, clock-in mobile, klarifikasi, lembur, tukar shift. |
-| Kepala unit / atasan | belum ada permission attendance | **TBD (D-1, D-5)**. Tidak mendapat akses baru di ATT-011 v1 kecuali owner memutuskan. |
+| Atasan langsung | tidak ada role permission; otoritas diturunkan dari struktur organisasi (ORG-002 `LEGACY` / ORG-004 `STRUCTURE`) seperti approval cuti APR-001 | **Lembur saja (D-5):** memerintahkan lembur untuk bawahan dan menyetujui/menolak pengajuan lembur bawahan. **Tidak** mengubah jadwal (D-1). |
 | Sistem (worker hitung ulang) | internal | Menghitung ulang hasil harian setelah bukti/jadwal/cuti berubah. |
 | Foundation Board | tidak ada akses individual | Tidak berubah. |
 
-Tidak ada permission baru di paket ATT-011-1 s.d. ATT-011-5. Permission baru hanya bila D-1 atau D-5 memutuskan peran kepala unit/atasan; itu menjadi paket terpisah dengan test permission (AGENTS.md §7).
+Tidak ada permission baru di paket ATT-011-1 s.d. ATT-011-5. Peran atasan pada lembur (D-5) masuk paket terpisah ATT-011-6b dengan test otorisasi lengkap (AGENTS.md §7, §8). Otoritas atasan **bukan** role permission baru, melainkan snapshot approver hasil resolver struktur (§7.3).
 
 ## 3. Navigasi target
 
@@ -161,11 +161,10 @@ Ketiganya menghasilkan satu **Perubahan Jadwal** (backend: *schedule change set*
 ↻  9 pegawai  menggantikan jadwal lama
      Ahmad: Shift Siang (1 Sep – tanpa akhir) → diakhiri 30 Sep
      ... (lihat semua)
-⚑ 3 tanggal libur nasional (17 Okt, ...) → tetap Libur  [ubah]
+⚑ 3 tanggal libur nasional (17 Okt, ...) → tetap Libur  [ubah: tetap masuk pada libur]
 ⚠ 2 pegawai bermasalah — tidak bisa diterapkan
      Budi: tidak aktif mulai 1 Nov  → dikecualikan otomatis setelah 31 Okt
      Citra: sedang mengajukan Tukar Shift 15 Okt → selesaikan dulu / kecualikan
-⏪ 12 hari kerja sudah lewat akan dihitung ulang  (hanya bila D-3 mengizinkan)
 
 [Kembali]  [Terapkan]
 ```
@@ -210,7 +209,7 @@ Kolom tambahan nullable: `attendance_schedule_assignments.change_set_id`, `atten
 | Hari yang tidak dicentang = "Libur" | Tidak ada assignment untuk weekday tersebut (resolver → `off`). |
 | Ganti jadwal tanggal/rentang pendek | Entry roster (shift/OFF) pada minggu terdampak, langsung dipublish sebagai versi roster baru per minggu (copy dari versi published terakhir + perubahan) — pola yang sama dengan ATT-008. |
 | Salin jadwal | Entry roster untuk tanggal tujuan, nilai = jadwal **ter-resolve** pada tanggal sumber. |
-| Libur nasional dalam rentang | Default: assignment tidak menimpa libur (resolver sudah memprioritaskan libur di atas assignment). Untuk roster entry, tanggal libur **dilewati** kecuali operator memilih "tetap masuk pada libur" (D-2). |
+| Libur nasional dalam rentang | **D-2 (diterima):** default Libur — assignment tidak menimpa libur (resolver sudah memprioritaskan libur di atas assignment) dan roster entry melewati tanggal libur. Bila operator mencentang **"tetap masuk pada libur"** untuk perubahan itu, sistem menulis roster entry shift pada tanggal libur dalam rentang sehingga hari itu menjadi **hari kerja normal terjadwal** (lihat §5.6). |
 
 **Publish atomik:**
 
@@ -222,7 +221,7 @@ Kolom tambahan nullable: `attendance_schedule_assignments.change_set_id`, `atten
 
 **Batas (DRAFT, dapat disesuaikan setelah uji beban di Mi8VPS):** maks 500 pegawai × 400 hari per change set; preview mengembalikan maks 200 baris detail + hitungan total.
 
-**Tanggal lampau:** ditolak `422 SCHEDULE_CHANGE_IN_PAST` kecuali D-3 mengizinkan; bila diizinkan: hanya HC Admin, keterangan wajib, batas N hari, dan hasil terdampak dihitung ulang dengan provenance change set.
+**Tanggal lampau (D-3, diterima):** selalu ditolak `422 SCHEDULE_CHANGE_IN_PAST` untuk work date < hari ini (Asia/Jakarta). Hari ini boleh diubah hanya sebelum jam mulai shift yang berlaku; setelah itu ditolak `422 SCHEDULE_CHANGE_STARTED`. Hari yang sudah lewat diselesaikan lewat Perbaiki jam / Terima alasan di Kehadiran, bukan dengan mengubah jadwal.
 
 ### 5.4 State dan transisi
 
@@ -233,7 +232,7 @@ preview --Terapkan, base berubah--> 409, kembali ke input (tidak ada perubahan)
 applied --(tidak bisa diedit/dihapus)--> dikoreksi oleh change set baru (kind=revert/replacement)
 ```
 
-Bila D-4 memilih alur persetujuan: `draft → submitted → applied | rejected`, dengan approver HC Admin lain; ini menambah satu paket.
+**D-4 (diterima):** tidak ada tahap persetujuan kedua. Perubahan langsung berlaku setelah Lihat dampak → Terapkan; pengamannya adalah preview wajib, Riwayat perubahan, audit, dan Kembalikan seperti sebelumnya.
 
 ### 5.5 Kegagalan, empty, forbidden, mobile
 
@@ -245,11 +244,27 @@ Bila D-4 memilih alur persetujuan: `draft → submitted → applied | rejected`,
 | Overlap/ambiguitas | Tidak bisa diterapkan; preview menjelaskan per pegawai. Data lama yang sudah `configuration_error` tampil `!` + link "Perbaiki". |
 | Shift nonaktif dipilih | Tidak muncul di pilihan. |
 | Tukar shift aktif pada tanggal terdampak | ⚠ di preview; harus dikecualikan atau diselesaikan. |
-| 403 | HC Operator melihat kalender **read-only** bila punya `attendance.reports.read`; tombol ubah tidak tampil. Tanpa permission: halaman forbidden. |
+| 403 | **D-1 (diterima):** hanya HC Admin (`attendance.schedule.manage`) yang dapat mengubah. HC Operator melihat kalender **read-only** bila punya `attendance.reports.read`; tombol ubah tidak tampil dan API mutasi mengembalikan 403. Tanpa permission: halaman forbidden. |
 | Jaringan gagal saat Terapkan | Tidak ada perubahan parsial (transaksi). Pesan "Belum diterapkan. Coba lagi." Terapkan ulang memakai fingerprint yang sama (idempotent by `Idempotency-Key`). |
-| Mobile < 768px | Kalender menjadi daftar per pegawai per minggu; aksi **Ganti jadwal** tersedia; **Atur/Salin jadwal massal hanya di tablet/desktop** dengan pesan "Gunakan layar lebih besar untuk perubahan massal" (D-8). |
+| Mobile < 768px | Kalender menjadi daftar per pegawai per minggu; aksi **Ganti jadwal** tersedia; **Atur/Salin jadwal massal hanya di tablet/desktop** dengan pesan "Gunakan layar lebih besar untuk perubahan massal" (D-8, diterima). Batas ini hanya UI; API tidak membedakan perangkat. |
 
 Audit: `attendance.schedule_change.applied` (actor, kind, jumlah pegawai/tanggal, rentang, change set id), `attendance.schedule_change.reverted`. Konflik 409 tidak mengubah data dan tidak perlu audit mutasi, tetapi dicatat di log aplikasi tanpa data pribadi. Gap audit lama (J-7) tertutup karena perubahan berlaku hanya lewat change set.
+
+### 5.6 Hari libur: tugas normal vs lembur (D-2)
+
+Owner menetapkan dua situasi yang harus dibedakan dengan jelas:
+
+| Situasi | Contoh | Cara di HCIS | Hasil kehadiran |
+|---|---|---|---|
+| **Masuk pada libur sebagai tugas normal** | Satpam, petugas asrama yang memang bergiliran pada libur | HC Admin menjadwalkan shift pada tanggal libur dengan opsi **"tetap masuk pada libur"** (Atur jadwal atau Ganti jadwal). | Hari kerja biasa: Hadir/Terlambat/Tidak lengkap/Tidak hadir dihitung dari jadwal itu. Label kecil "Libur nasional — dijadwalkan masuk". Bukan lembur. |
+| **Lembur pada libur** | Guru diminta membantu acara pada hari libur | Tidak ada perubahan jadwal (hari tetap Libur). Lembur diajukan/diperintahkan lewat alur Lembur §7. | Status **Libur** + "Lembur N jam" setelah lembur disetujui. Scan pada hari itu ditampilkan sebagai fakta, tidak mengubah status menjadi Hadir. |
+| Tugas normal pada libur **dan** bekerja melebihi shift | Satpam shift 8 jam lalu diminta tambah 3 jam | Jadwal libur-masuk + lembur 3 jam lewat alur §7. | Hari kerja biasa + "Lembur 3 jam". |
+
+Aturan:
+
+- Kedua jalur tidak saling menggantikan: jadwal tidak pernah membuat lembur, dan lembur tidak pernah membuat jadwal.
+- Result version menyimpan `day_type` turunan (`working_day | rest_day | public_holiday`) dan penanda bahwa libur itu dijadwalkan masuk, agar PAY-003 kelak dapat membedakan tanpa menebak (paket ATT-011-6a).
+- **Libur ditambahkan belakangan** ke kalender setelah jadwal diterapkan: pegawai berpola otomatis menjadi Libur (perilaku resolver saat ini). Jadwal menampilkan banner "Libur baru 25 Des memengaruhi N pegawai yang biasanya masuk" dengan aksi **Tetap masuk pada libur** yang membuat Perubahan Jadwal biasa (preview + audit). Tidak ada perubahan otomatis diam-diam.
 
 ## 6. Kehadiran
 
@@ -305,7 +320,7 @@ Lembur: —
 
 ### 6.3 Status dan label
 
-Status backend ATT-007 tidak berubah. Label pengecualian (bukan status): Terlambat N mnt, Pulang cepat N mnt (D-6), Di luar lokasi, Belum scan pulang, Alasan diterima, Lembur N jam, Dikoreksi HC.
+Status backend ATT-007 tidak berubah. Label pengecualian (bukan status): Terlambat N mnt, Pulang cepat N mnt (D-6 diterima: hanya label, bukan status), Di luar lokasi, Belum scan pulang, Alasan diterima, Lembur N jam, Dikoreksi HC.
 
 ### 6.4 Hitung ulang otomatis (baru, backend)
 
@@ -329,24 +344,99 @@ Masalah K-1/K-2/J-8: hasil tidak mengikuti scan mesin, publish jadwal, dan keput
 
 ## 7. Lembur
 
-### 7.1 Layar "Lembur" (HC)
+### 7.1 Keputusan owner D-5 (2026-10-16)
 
-- Tab: **Menunggu** · Disetujui · Ditolak/Dibatalkan.
-- Baris: `Pegawai | Tanggal | Shift | Diajukan | Fakta scan di luar jadwal | Disetujui | Status`.
-  Contoh: `Ahmad | 15 Okt | Pagi 07:00–15:00 | 2 jam | scan pulang 17:10 (+2j 10m) | – | Menunggu`.
-- "Fakta scan di luar jadwal" = selisih scan pertama/terakhir terhadap jadwal, **hanya informasi**; tidak mengisi menit disetujui otomatis (I-7). Bila tidak ada scan: "Tidak ada scan di luar jadwal".
-- Aksi: Setujui (menit ≤ diajukan, default = diajukan) / Tolak (catatan wajib). Massal: centang beberapa → Setujui sesuai pengajuan.
-- HC dapat "Ajukan atas nama pegawai" (sudah ada).
-- Pencarian pegawai penuh (bukan 100 pertama). Mobile: kartu.
+| Butir | Keputusan |
+|---|---|
+| Siapa memulai | **Atasan** (perintah lembur untuk bawahan) **atau pegawai** (pengajuan lembur). |
+| Persetujuan | "Sesuai UU" selalu ada persetujuan, termasuk saat atasan yang memulai. **Interpretasi kerja (D-5a, menunggu konfirmasi owner):** pengajuan pegawai wajib disetujui atasan; perintah atasan wajib disetujui pegawai. Rujukan yang disebut: UU Ketenagakerjaan / PP 35/2021 (perintah lembur + persetujuan pekerja, tertulis/digital). HCIS tidak memberi nasihat hukum; rujukan pasal dan bentuk persetujuan dikonfirmasi owner/penasihat hukum YSQ. |
+| Peran HC | **Hanya menerima notifikasi**, bukan approver — kecuali lembur pegawai di unit HC sendiri, ketika HC bertindak sebagai atasan (§7.3, D-5c). |
+| Lebih dari satu per hari | Boleh; menit yang disetujui **dijumlahkan**. |
+| Lembur pada hari libur | Boleh (lihat §5.6). |
+| Batas maksimal per hari | **Tidak ada batas kebijakan di sistem untuk sekarang.** Risiko kepatuhan dicatat (D-5b): PP 35/2021 mengatur batas jam lembur. Sistem tetap menolak total teknis tidak masuk akal (> 24 jam per pegawai per hari). Batas/peringatan kebijakan dapat ditambahkan kemudian lewat konfigurasi tanpa migration. |
 
-### 7.2 Aturan yang harus ditetapkan (D-5)
+### 7.2 Alur dan state
 
-- Beberapa pengajuan approved pada tanggal yang sama: **dijumlahkan** atau **ditolak saat pengajuan kedua**. Implementasi saat ini diam-diam memakai yang terbaru (L-2) — harus diganti setelah keputusan.
-- Lembur pada hari Libur/Tidak hadir: diizinkan atau ditolak.
-- Batas maksimum per hari (saat ini teknis 1.440 menit).
-- Tahap atasan langsung sebelum HC: ya/tidak. Bila ya, memakai snapshot-on-submit APR-001 dan menjadi paket terpisah dengan permission + test.
+**A. Pegawai mengajukan**
 
-Audit: keputusan lembur tetap di `attendance_overtime_events`, **ditambah** `attendance.overtime.decided` di `access_audit_events` (konsisten dengan domain lain).
+```text
+Pegawai mengajukan (tanggal, jam mulai–selesai atau menit, alasan)
+  -> menunggu_atasan        [snapshot approver = atasan langsung saat submit]
+       -> disetujui          (atasan; menit disetujui <= diajukan)
+       -> ditolak            (atasan; catatan wajib)
+       -> dibatalkan         (pegawai, selama menunggu_atasan)
+disetujui -> notifikasi ke HC
+```
+
+**B. Atasan memerintahkan**
+
+```text
+Atasan membuat perintah lembur untuk 1..N bawahan (satu record per pegawai)
+  -> menunggu_pegawai       [snapshot: pemberi perintah tervalidasi sebagai atasan saat submit]
+       -> disetujui          (pegawai setuju; menit = menit perintah)
+       -> ditolak_pegawai    (pegawai menolak; alasan opsional)
+       -> dibatalkan         (atasan, selama menunggu_pegawai)
+disetujui -> notifikasi ke HC
+```
+
+Pemetaan backend: request tetap memakai status `submitted | approved | rejected | cancelled` agar laporan lama terbaca; ATT-011-6b menambah `initiated_by (employee | supervisor | hc_legacy)` dan langkah persetujuan bergaya APR-001 (pihak yang harus memutuskan disnapshot). Nama final TBD saat implementasi.
+
+**Setelah disetujui:** tidak ada pembatalan sepihak. Koreksi oleh atasan = **pembatalan lembur** beralasan yang juga perlu persetujuan pegawai (simetris dengan perintah); salah input = **pembatalan administratif** oleh HC dengan alasan wajib dan audit. Hasil kehadiran dihitung ulang otomatis (§6.4).
+
+**Pengajuan lama:** request `submitted` yang dibuat sebelum ATT-011-6b dirilis tidak punya snapshot atasan; tetap diputuskan HC dengan alur lama (`initiated_by = hc_legacy`). Tidak ada rewrite rantai (aturan snapshot APR-001).
+
+**Batas waktu (D-9, terbuka):** usulan — rencana lembur boleh sebelum tanggalnya; pengajuan/perintah untuk tanggal lampau maks 7 hari (sejajar D-7).
+
+### 7.3 Siapa "atasan" — resolver
+
+- Memakai resolver approval yang sama dengan cuti (APR-001; implementasi saat ini di `apps/api/src/modules/leave/domain/approval-chain.ts` dan `apps/api/src/modules/leave/organization-authority.ts`) dengan satu langkah `DIRECT_MANAGER` (`STRUCTURAL_DIRECT_MANAGER` bila ORG-004 `STRUCTURE` aktif; ORG-002 bila `LEGACY`). Rollout mode ikut disnapshot.
+- Approver disnapshot saat submit; perubahan struktur setelahnya tidak memindahkan approval. Approver yang tidak dapat bertindak → dialihkan oleh HC dengan `approvals.reassign` (prosedur APR-001), tercatat.
+- Perintah atasan: server memverifikasi pemberi perintah adalah atasan langsung hasil resolver untuk setiap pegawai yang dipilih saat submit; bila tidak → 403. Atasan tidak bisa memerintahkan dirinya sendiri.
+- Tidak ada self-approval: bila resolver menghasilkan pegawai itu sendiri, pakai fallback vacancy/acting ORG-004; tanpa fallback valid → submit gagal `422 OVERTIME_APPROVER_UNRESOLVED` ("Atasan Anda belum tercatat. Hubungi HC."). Tidak ada fallback diam-diam ke HC.
+- **Unit HC (D-5c):** tidak ada aturan khusus di kode. Untuk pegawai unit HC, resolver struktur dengan sendirinya menghasilkan atasan di HC (misalnya Kepala HC); orang itu bertindak sebagai atasan, dan notifikasi HC ke orang yang sama dideduplikasi.
+- Pucuk struktur (mis. Direktur) tanpa atasan dalam organisasi: D-10 (terbuka) — usulan memakai governance approver ORG-004 seperti cuti Direktur.
+
+### 7.4 Layar
+
+**Lembur Tim — atasan, aplikasi pegawai (`/app/attendance/team-overtime`).** Menu muncul hanya bila server menyatakan user adalah atasan langsung minimal satu pegawai aktif.
+
+- Tab **Perlu persetujuan**: `Pegawai | Tanggal | Jam/menit diajukan | Fakta scan di luar jadwal | Alasan` → Setujui (boleh kurangi menit) / Tolak (catatan wajib). Massal: centang → Setujui sesuai pengajuan.
+- Tab **Perintah lembur**: **Perintahkan lembur** → pilih bawahan (hanya bawahan langsung yang valid), tanggal, jam mulai–selesai, keterangan → kirim. Status per pegawai: Menunggu persetujuan pegawai / Disetujui / Ditolak pegawai / Dibatalkan.
+- Tab **Riwayat**.
+- Mobile-first (atasan sering memakai HP): kartu, bukan tabel lebar.
+
+**Lembur Saya — pegawai.** Ajukan; daftar dengan status; kartu **Perintah lembur dari atasan**: "Pak Budi meminta Anda lembur Sabtu 18 Okt, 08:00–12:00 (4 jam) untuk Persiapan wisuda. [Setuju] [Tolak]"; batalkan pengajuan sendiri selama menunggu.
+
+**Lembur — HC admin (pemantauan, bukan antrean keputusan).**
+
+- Tab: **Menunggu** (menunggu siapa, sejak kapan) · Disetujui · Ditolak/Dibatalkan.
+- Baris: `Pegawai | Unit | Tanggal | Jenis hari | Dimulai oleh | Menit | Fakta scan di luar jadwal | Status | Menunggu siapa`.
+- Aksi HC: **Alihkan approver** (APR-001 reassign), **Batalkan administratif** (alasan wajib), **Putuskan** hanya untuk request lama `hc_legacy`, **Ajukan atas nama pegawai** (masuk alur A dengan approver atasan; HC tidak menjadi approver karenanya).
+- Notifikasi in-app ke HC saat lembur disetujui (ringkas, tanpa alasan rinci). Penerima: D-11.
+- Pencarian pegawai penuh (bukan 100 pertama). Mobile < 768px: kartu.
+
+"Fakta scan di luar jadwal" = selisih scan terhadap jadwal (atau seluruh scan bila hari Libur), **hanya informasi**; tidak mengisi menit otomatis (I-7). Tanpa scan: "Tidak ada scan".
+
+### 7.5 Engine dan hasil
+
+- `overtime_minutes` result = **jumlah** `approved_minutes` semua request `approved` pada work date (menggantikan perilaku "terbaru saja", gap L-2).
+- Lembur pada hari Libur tetap tercatat; status hari tetap Libur kecuali dijadwalkan masuk (§5.6).
+- Tidak ada kalkulasi upah/pengali (PAY-003). `day_type` disimpan agar PAY-003 dapat membedakan hari kerja, hari istirahat, dan libur resmi.
+
+### 7.6 Kegagalan, empty, forbidden
+
+| Kondisi | Respons |
+|---|---|
+| Atasan tidak ter-resolve / self-approval tanpa fallback | 422 `OVERTIME_APPROVER_UNRESOLVED`; tidak ada request setengah jadi. |
+| Atasan memerintahkan pegawai yang bukan bawahannya | 403; default seluruh batch ditolak dan daftar pegawai tidak valid ditampilkan (perilaku "kirim yang valid saja" TBD saat UX review). |
+| Keputusan ganda / langkah sudah diputuskan | 409 `OVERTIME_STEP_ALREADY_DECIDED`. |
+| Bukan pihak yang harus memutuskan (termasuk HC biasa) | 403. |
+| Pegawai nonaktif | 403/422 mengikuti pola ATT-007. |
+| Total menit hari itu > 24 jam | 422 `OVERTIME_DAY_TOTAL_INVALID`. |
+| Kosong | Pegawai: "Belum ada pengajuan lembur." Atasan: "Tidak ada yang perlu disetujui." |
+| Mobile | Lembur Tim dan Lembur Saya berupa kartu; HC admin kartu di < 768px. |
+
+Audit (`access_audit_events`, selain `attendance_overtime_events`): `attendance.overtime.submitted`, `attendance.overtime.ordered`, `attendance.overtime.supervisor_approved`, `attendance.overtime.supervisor_rejected`, `attendance.overtime.employee_agreed`, `attendance.overtime.employee_declined`, `attendance.overtime.cancelled`, `attendance.overtime.admin_voided`, `attendance.overtime.reassigned`, dan event rantai APR-001 (chain created, step decided).
 
 ## 8. Pengalaman pegawai
 
@@ -354,9 +444,10 @@ Halaman **Kehadiran Saya** (`/app/attendance`):
 
 1. **Hari ini**: shift, status, jam masuk/pulang, tombol Absen Masuk/Pulang bila absen HP aktif.
 2. **Jadwal saya**: minggu ini + minggu depan (baru); tanggal yang diganti ditandai "Jadwal diganti: Shift Siang". Aksi "Tukar shift" dari tanggal (ATT-008, aturan tetap).
-3. **Riwayat**: 30 hari; baris Tidak lengkap/Terlambat/Tidak hadir punya tombol **Ajukan klarifikasi** (baru untuk tanggal lalu, batas D-7).
+3. **Riwayat**: 30 hari; baris Tidak lengkap/Terlambat/Tidak hadir punya tombol **Ajukan klarifikasi** (baru untuk tanggal lalu, maks 7 hari ke belakang — D-7 diterima).
 4. **Klarifikasi saya**: status + batalkan bila masih Menunggu (baru di UI; API sudah ada). Notifikasi in-app saat diputuskan (baru, memakai NOTIF in-app yang sudah ada).
-5. **Lembur saya**: ajukan, status, batalkan (sudah ada).
+5. **Lembur saya**: ajukan (disetujui atasan, D-5), status, batalkan selama menunggu; **Perintah lembur dari atasan** dengan Setuju/Tolak (§7.4).
+6. **Lembur Tim** (hanya untuk atasan): persetujuan dan perintah lembur bawahan (§7.4).
 
 Link anchor mati (`#`) diganti tab nyata. Semua bagian dirancang mobile-first (pegawai kebanyakan memakai HP).
 
@@ -364,12 +455,15 @@ Link anchor mati (`#`) diganti tab nyata. Semua bagian dirancang mobile-first (p
 
 | Aksi | Permission | Perubahan |
 |---|---|---|
-| Lihat Shift/Jadwal | `attendance.schedule.manage` **atau** `attendance.reports.read` (read-only) | Read-only untuk reports.read: baru, test wajib |
+| Lihat Shift/Jadwal | `attendance.schedule.manage` **atau** `attendance.reports.read` (read-only, D-1) | Read-only untuk reports.read: baru, test wajib |
 | Ubah Shift, Atur/Ganti/Salin Jadwal | `attendance.schedule.manage` | — |
 | Lihat Kehadiran/detail | `attendance.reports.read` | — |
 | Perbaiki jam | `attendance.records.manage` | — |
 | Klarifikasi, tinjau absen HP, foto | `attendance.clarification.manage` | — |
-| Lembur | `attendance.overtime.manage` | — |
+| Ajukan/batalkan lembur sendiri; setuju/tolak perintah atasan | pegawai aktif (data sendiri) | Setuju/tolak perintah: baru |
+| Setujui/tolak lembur bawahan; perintahkan lembur | **atasan hasil resolver** yang disnapshot (bukan role permission) | Baru (ATT-011-6b), test otorisasi wajib |
+| Pantau lembur, batalkan administratif, putuskan request `hc_legacy` | `attendance.overtime.manage` | HC tidak lagi memutuskan request baru |
+| Alihkan approver lembur | `approvals.reassign` | Baru untuk domain lembur |
 | Tukar shift (HC) | `attendance.shift_swap.manage` | — |
 | Hitung ulang rentang | `attendance.policy.manage` | — |
 | Penyelesaian cuti | `attendance.resolution.manage` | — |
@@ -378,7 +472,7 @@ Backend tetap authoritative; UI menyembunyikan aksi, bukan mengamankannya.
 
 ## 10. Paket implementasi
 
-Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-001 dengan persetujuan owner. Urutan: P0 → P1 → P2 → (P3 ∥ P4) → P5 → P6 → P7 → P8.
+Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-001 dengan persetujuan owner. Urutan terbaru ada di bawah tabel.
 
 | Paket | Isi | API/kontrak | Migration + rollback | Test minimum |
 |---|---|---|---|---|
@@ -386,28 +480,44 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 | **ATT-011-1** Bahasa & navigasi | Menu "Waktu & Kehadiran", kamus istilah §3, label status/enum Indonesia, hapus UUID dari layar, redirect route lama, gating menu berdasar permission data, pencarian pegawai lembur penuh, hapus halaman mati. | Tidak berubah. | Tidak ada. Rollback = rilis sebelumnya. | Route auth test tiap route baru/redirect; test label (tidak ada enum mentah); forbidden state; typecheck/lint/build. |
 | **ATT-011-2** Hitung ulang otomatis | §6.4: antrean + worker + pemicu ADMS/jadwal/cuti; status "Sedang diperbarui"; Finalisasi → Hitung ulang rentang. | `POST /admin/attendance/recompute` (rentang) menggantikan `POST /finalize/:date` (yang lama tetap alias 1 rilis); field `recomputePending` pada daily read. OpenAPI diperbarui. | Tabel `attendance_recompute_requests` (additive). Rollback: rilis lama mengabaikan tabel; `DROP TABLE` aman karena data turunan; result versions yang sudah dibuat tetap valid. | Scan ADMS → result tanpa finalisasi; cuti approved/validated → `leave`; cuti belum final → tidak berubah; publish jadwal → hitung ulang; missing punch tetap `incomplete`; idempotent (tidak ada versi duplikat); bukti tidak berubah; ACK ADMS tidak menunggu engine; worker retry/backoff. |
 | **ATT-011-3** Kehadiran workspace | §6.1-6.3: tab Hari ini/Perlu tindakan/Laporan, panel detail, aksi dari panel, kartu mobile. | `GET /admin/attendance/daily/{employeeId}/{workDate}` (detail/provenance, tanpa ciphertext); `GET /admin/attendance/action-queue`. | Tidak ada. | 403 per permission; detail tidak membocorkan foto/kunci; incomplete tampil "– ?"; antrean menggabungkan jenis yang benar; mobile layout smoke. |
-| **ATT-011-4** Perubahan Jadwal (backend) | §4.2 shift berlaku mulai tanggal + tolak nonaktif dipakai; §5.3 change set preview/apply/revert. | `POST /admin/attendance/schedule-changes/preview`, `POST /admin/attendance/schedule-changes` (Idempotency-Key, fingerprint), `GET …/schedule-changes`, `GET …/schedule-changes/{id}`, `GET /admin/attendance/schedule-calendar?unitId&from&to`. OpenAPI `attendance-workforce.openapi.yaml`. | Tabel change set + items; kolom nullable `change_set_id` di assignments/rosters; `effective_from` versi shift boleh masa depan. Rollback: rilis lama tetap membaca assignment/roster biasa (hasil change set adalah baris normal) → tetap benar; kolom/tabel baru diabaikan; tidak ada data lama dihapus. Recovery: change set dapat di-revert dengan change set baru. | Pola baru di atas pola lama → split benar, nol overlap; ganti 1 tanggal → versi roster baru, minggu lain tidak tersentuh; libur nasional default dilewati; draft roster → 409; base berubah → 409; idempotent retry; transaksi atomik (gagal di tengah = nol perubahan); tanggal lampau sesuai D-3; nonaktif shift dipakai → 409; versi shift masa depan tidak mengubah hasil hari ini; permission 403; audit tercatat; resolver ATT-007 menghasilkan jadwal yang sama dengan preview (property test). |
+| **ATT-011-4** Perubahan Jadwal (backend) | §4.2 shift berlaku mulai tanggal + tolak nonaktif dipakai; §5.3 change set preview/apply/revert; opsi "tetap masuk pada libur" dan banner libur baru (§5.6). | `POST /admin/attendance/schedule-changes/preview`, `POST /admin/attendance/schedule-changes` (Idempotency-Key, fingerprint), `GET …/schedule-changes`, `GET …/schedule-changes/{id}`, `GET /admin/attendance/schedule-calendar?unitId&from&to`. OpenAPI `attendance-workforce.openapi.yaml`. | Tabel change set + items; kolom nullable `change_set_id` di assignments/rosters; `effective_from` versi shift boleh masa depan. Rollback: rilis lama tetap membaca assignment/roster biasa (hasil change set adalah baris normal) → tetap benar; kolom/tabel baru diabaikan; tidak ada data lama dihapus. Recovery: change set dapat di-revert dengan change set baru. | Pola baru di atas pola lama → split benar, nol overlap; ganti 1 tanggal → versi roster baru, minggu lain tidak tersentuh; libur nasional default dilewati; draft roster → 409; base berubah → 409; idempotent retry; transaksi atomik (gagal di tengah = nol perubahan); tanggal lampau selalu 422 dan hari ini setelah shift mulai 422 (D-3); "tetap masuk pada libur" menulis roster entry pada tanggal libur, tanpa opsi tidak; nonaktif shift dipakai → 409; versi shift masa depan tidak mengubah hasil hari ini; permission 403; audit tercatat; resolver ATT-007 menghasilkan jadwal yang sama dengan preview (property test). |
 | **ATT-011-5** Jadwal planner UI | §5.2 kalender, wizard, Lihat dampak, Ganti/Salin, Riwayat; Shift UI §4.1. Assignment/Roster lama → Tampilan lanjutan read-only. | Memakai P4. | Tidak ada. | UI test wizard + preview + 409 handling; empty/forbidden/mobile; UAT sintetis 10 skenario §12. |
-| **ATT-011-6** Lembur | §7 sesuai D-5. | Bila D-5 = jumlahkan: perubahan perhitungan `overtime_minutes` (engine). Bila tolak duplikat: `409 OVERTIME_ALREADY_APPROVED`. Tambah fakta scan pada list. | Mungkin tidak ada; bila perlu partial unique index untuk satu approved per hari → rollback `DROP INDEX`. | Aturan D-5; fakta scan tidak mengisi menit; audit `attendance.overtime.decided`; permission. |
+| **ATT-011-6a** Lembur: aturan & layar HC | §7.5 jumlahkan menit approved; `day_type` + penanda libur-dijadwalkan pada result (§5.6); fakta scan di daftar; layar pemantauan HC §7.4 (siapa yang memutuskan belum berubah); audit `access_audit_events`. | `GET /admin/attendance/overtime` menambah `dayType`, `scanOutsideScheduleMinutes`; result read menambah `dayType`. OpenAPI diperbarui. | Kolom nullable `day_type`, `holiday_scheduled_work` pada `attendance_result_versions` (versi lama `NULL` = tidak diketahui; tidak di-backfill diam-diam; hitung ulang menghasilkan versi baru). Rollback: rilis lama mengabaikan kolom; engine lama kembali ke "terbaru saja" — dicatat di release note. | Dua lembur approved dijumlahkan; lembur pada Libur tetap Libur + menit; libur-dijadwalkan → hari kerja biasa + `public_holiday`; fakta scan tidak mengisi menit; total > 24 jam → 422; result lama tidak berubah tanpa hitung ulang. |
+| **ATT-011-6b** Lembur: atasan & persetujuan dua pihak | §7.1-7.4, §7.6 setelah D-5a, D-5c, D-9, D-10 dijawab. Ekstrak resolver approval cuti ke modul bersama tanpa mengubah perilaku cuti. Lembur Tim, perintah lembur, persetujuan pegawai, notifikasi HC, alihkan approver, pembatalan administratif, alur `hc_legacy`. | Baru: `GET /attendance/overtime/team`, `POST /attendance/overtime/orders` (batch, satu record per pegawai), `POST /attendance/overtime/{id}/supervisor-decision`, `POST /attendance/overtime/{id}/employee-decision`, `POST /admin/attendance/overtime/{id}/reassign`, `POST /admin/attendance/overtime/{id}/void`. Berubah: `POST /attendance/overtime` membuat snapshot atasan; `POST /admin/attendance/overtime` masuk alur A; `POST /admin/attendance/overtime/{id}/decision` hanya untuk `hc_legacy` (409 untuk request baru). OpenAPI. | Kolom `initiated_by`, `ordered_by_employee_id` pada `attendance_overtime_requests`; tabel langkah persetujuan lembur (atau tabel approval step bersama bila sudah generik) dengan principal snapshot + rollout mode. Data lama: `initiated_by = 'hc_legacy'`. Rollback: rilis lama mengabaikan kolom/tabel dan kembali ke HC memutuskan semua; request yang sedang menunggu atasan/pegawai tetap `submitted` sehingga dapat diputuskan HC — **risiko perilaku yang harus diberitahukan ke owner sebelum rollback**. | Otorisasi: atasan hanya untuk bawahan hasil resolver (403 lainnya); pegawai tidak bisa menyetujui pengajuannya sendiri; hanya pegawai tujuan yang bisa setuju/tolak perintah; HC biasa 403 untuk keputusan request baru; unit HC → atasan di HC menyetujui; snapshot tetap setelah struktur berubah; LEGACY vs STRUCTURE; vacancy/acting; resolver gagal → 422 tanpa record; double decision 409; reassign tercatat; notifikasi HC setelah commit; regresi seluruh test cuti lulus. Review tambahan: auth/permission. |
 | **ATT-011-7** Pegawai | §8. | Jadwal ke depan memakai `GET /attendance/me/schedule?from&to` yang sudah ada (≤ 31 hari); `POST /attendance/clarifications` mendapat batas server-side yang sekarang belum ada: tanggal depan ditolak dan tanggal lampau maks D-7 hari (`422 CLARIFICATION_DATE_OUT_OF_RANGE`). | Tidak ada. | Pegawai hanya melihat jadwal sendiri; batas tanggal klarifikasi; cancel klarifikasi; notifikasi keputusan; mobile. |
 | **ATT-011-8** Pensiun UI lama | Hapus Assignment/Roster lama dari navigasi setelah UAT P5 diterima owner; endpoint lama tetap (dipakai ATT-008 dan kompatibilitas) tetapi pembuatan draft manual dinonaktifkan di UI. | Endpoint draft roster: deprecate di OpenAPI. | Tidak ada. | Route test; ATT-008 tetap lulus. |
 
-Area dengan review tambahan (AGENTS.md §8): P2 dan P4 (migration + engine trigger), P6 bila mengubah perhitungan lembur, paket permission bila D-1/D-5 menambah peran.
+Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-## 11. Keputusan owner (wajib sebelum ACCEPTED)
+Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b (setelah keputusan terbuka dijawab) → ATT-011-8.
 
-| ID | Pertanyaan | Usulan default |
+## 11. Keputusan owner
+
+### 11.1 Dicatat 2026-10-16
+
+| ID | Pertanyaan | Keputusan |
 |---|---|---|
-| D-1 | Siapa yang boleh mengubah jadwal: hanya HC Admin, atau juga kepala unit/sekolah untuk unitnya sendiri? | v1 hanya HC Admin; HC Operator lihat saja. |
-| D-2 | Hari libur nasional/kalender di dalam rentang jadwal massal: otomatis Libur untuk semua, atau ada shift (misal satpam) yang tetap masuk? | Otomatis Libur; HC bisa memilih "tetap masuk pada libur" per perubahan. |
-| D-3 | Boleh mengubah jadwal untuk tanggal yang sudah lewat? Jika ya, maksimal berapa hari ke belakang? | Tidak boleh; tanggal lampau diselesaikan lewat Perbaiki jam/Terima alasan. |
-| D-4 | Perubahan jadwal langsung berlaku setelah "Lihat dampak", atau perlu persetujuan HC Admin kedua? | Langsung berlaku (dengan riwayat + bisa dikembalikan). |
-| D-5 | Lembur: siapa mengajukan, perlu persetujuan atasan dulu atau cukup HC, boleh lebih dari satu per hari (dijumlahkan), boleh di hari libur, batas maksimal per hari? | Pegawai/HC mengajukan; cukup HC; dijumlahkan; boleh di hari libur; maks 8 jam/hari (TBD). |
-| D-6 | Pulang cepat: cukup ditandai, atau menjadi status tersendiri? | Cukup ditandai. |
-| D-7 | Pegawai boleh mengajukan klarifikasi untuk tanggal yang sudah lewat? Maksimal berapa hari? | Ya, maks 7 hari. |
-| D-8 | Apakah HC perlu mengatur jadwal massal dari HP, atau cukup dari laptop? | Massal dari laptop/tablet; HP untuk lihat dan ganti satu jadwal. |
+| D-1 | Siapa yang boleh mengubah jadwal? | **Diterima:** v1 hanya HC Admin; HC Operator lihat saja. |
+| D-2 | Hari libur dalam rentang jadwal massal? | **Diterima + tambahan:** otomatis Libur, dengan opsi "tetap masuk pada libur" per perubahan. Owner menambahkan: sebagian pegawai masuk pada libur sebagai **tugas normal**, sebagian lain sebagai **lembur** — keduanya didukung dan dibedakan (§5.6). |
+| D-3 | Ubah jadwal tanggal lampau? | **Diterima:** tidak boleh. |
+| D-4 | Perlu persetujuan kedua untuk perubahan jadwal? | **Diterima:** langsung berlaku, dengan riwayat dan Kembalikan. |
+| D-5 | Aturan lembur | **Diubah dari usulan:** atasan atau pegawai dapat memulai; selalu perlu persetujuan; HC hanya diberi notifikasi kecuali unit HC sendiri; boleh lebih dari satu per hari (dijumlahkan); boleh pada hari libur; tidak ada batas maksimal per hari untuk sekarang (§7.1). |
+| D-6 | Pulang cepat | **Diterima:** hanya label. |
+| D-7 | Klarifikasi tanggal lampau | **Diterima:** boleh, maks 7 hari ke belakang. |
+| D-8 | Jadwal massal dari HP? | **Diterima:** massal hanya laptop/tablet; HP untuk lihat dan ganti satu jadwal. |
 
-Asumsi DRAFT yang belum diverifikasi: kapasitas worker hitung ulang di Mi8VPS (interval/batch), batas ukuran change set, dan apakah unit-tree (sub-unit) tersedia lengkap dari ORG-004 untuk filter.
+### 11.2 Masih terbuka
+
+| ID | Pertanyaan | Usulan | Memblokir |
+|---|---|---|---|
+| D-5a | Konfirmasi interpretasi "sesuai UU": pengajuan pegawai wajib disetujui atasan; perintah atasan wajib disetujui pegawai; persetujuan digital di HCIS dianggap memenuhi syarat tertulis. Rujukan pasal dikonfirmasi owner/penasihat hukum. | Seperti tertulis. | ATT-011-6b |
+| D-5b | Tanpa batas jam lembur di sistem dapat bertentangan dengan batas jam lembur PP 35/2021. Tetap tanpa batas, atau tampilkan peringatan (tidak memblokir) di atas angka tertentu? | Peringatan non-blokir; angka dikonfirmasi owner. | Tidak |
+| D-5c | Untuk unit HC: yang menyetujui adalah atasan langsung di HC hasil struktur (bukan semua staf HC)? | Ya. | ATT-011-6b |
+| D-9 | Batas waktu pengajuan/perintah lembur untuk tanggal yang sudah lewat. | Maks 7 hari, sejajar D-7. | ATT-011-6b |
+| D-10 | Approver lembur untuk pucuk struktur (mis. Direktur). | Governance approver ORG-004, seperti cuti Direktur. | ATT-011-6b |
+| D-11 | Penerima notifikasi lembur yang disetujui di HC: semua pemegang `attendance.overtime.manage` atau hanya HC terkait unit? | Semua (YSQ satu tim HC). | Tidak |
+
+Asumsi DRAFT yang belum diverifikasi: kapasitas worker hitung ulang di Mi8VPS (interval/batch), batas ukuran change set, ketersediaan unit-tree (sub-unit) dari ORG-004 untuk filter, dan kelengkapan data atasan langsung (ORG-002 `LEGACY`) untuk seluruh pegawai sebelum ATT-011-6b diaktifkan — bila belum lengkap, pengajuan lembur pegawai tanpa atasan gagal tertutup (422) dan HC harus melengkapi data struktur lebih dulu.
 
 ## 12. Acceptance (setelah ACCEPTED, per paket)
 
@@ -419,7 +529,8 @@ Asumsi DRAFT yang belum diverifikasi: kapasitas worker hitung ulang di Mi8VPS (i
 - ATT-011-F: Pegawai yang scan di mesin tidak pernah tampil "Tidak hadir" hanya karena belum difinalisasi.
 - ATT-011-G: HC melihat siapa terlambat/tidak hadir/tidak lengkap hari ini dan membuka detail bukti satu hasil.
 - ATT-011-H: HC menyelesaikan klarifikasi dari antrean "Perlu tindakan".
-- ATT-011-I: HC memproses lembur sesuai D-5 dengan fakta scan terlihat.
+- ATT-011-I: Lembur dari pegawai disetujui atasan dan lembur perintah atasan disetujui pegawai; HC menerima notifikasi dan memantau, tidak menjadi approver kecuali sebagai atasan di unit HC; beberapa lembur sehari dijumlahkan; lembur pada libur tercatat tanpa mengubah status Libur; fakta scan terlihat tetapi tidak mengisi menit.
+- ATT-011-N: Pegawai yang dijadwalkan masuk pada libur dinilai sebagai hari kerja biasa (bukan lembur) dan hari itu ditandai libur resmi untuk PAY-003.
 - ATT-011-J: Pegawai melihat jadwal minggu ini dan depan, serta mengajukan klarifikasi dari riwayat.
 - ATT-011-K: Missing punch tetap Tidak lengkap; tidak ada jalur yang menjadikan jam jadwal sebagai bukti.
 - ATT-011-L: Cuti yang belum final tidak mengubah status; setelah final, hasil berubah tanpa tindakan manual.

@@ -81,10 +81,10 @@ Legenda dampak: **K** = kritis (hasil salah/menyesatkan), **T** = tinggi (banyak
 | # | Yang ada | Yang harus dilakukan HC hari ini | Target | Dampak |
 |---|---|---|---|---|
 | L-1 | Pengajuan eksplisit (`submitted → approved/rejected/cancelled`); pegawai atau HC dapat mengajukan; HC memutuskan; menit disetujui ≤ diajukan; notifikasi ke pegawai; result dihitung ulang. | Bekerja. | Dipertahankan. | — |
-| L-2 | "Jam diakui" = menit disetujui dari **satu** pengajuan approved terbaru pada tanggal itu; beberapa pengajuan approved **tidak dijumlahkan**. | Pengajuan kedua menimpa yang pertama secara diam-diam. | Aturan eksplisit (D-5): jumlahkan atau tolak pengajuan kedua. | K |
+| L-2 | "Jam diakui" = menit disetujui dari **satu** pengajuan approved terbaru pada tanggal itu; beberapa pengajuan approved **tidak dijumlahkan**. | Pengajuan kedua menimpa yang pertama secara diam-diam. | D-5 (diputuskan 2026-10-16): **dijumlahkan** (paket ATT-011-6a). | K |
 | L-3 | Tidak ada perbandingan dengan fakta waktu kerja (scan di luar jadwal); lembur tetap tercatat walau hari itu `absent`/`off`. | HC menilai tanpa melihat scan. | Tampilkan fakta "scan di luar jadwal" di samping pengajuan (bukan inferensi otomatis). | T |
 | L-4 | Halaman lembur hanya memuat 100 pegawai pertama untuk pilihan pegawai; status tampil sebagai enum Inggris. | — | Pencarian pegawai penuh; label Indonesia. | S |
-| L-5 | Tidak ada tahap atasan langsung; keputusan lembur hanya di tabel event sendiri, tidak di `access_audit_events`. | — | Keputusan owner (D-5); audit seragam. | S |
+| L-5 | Tidak ada tahap atasan langsung; keputusan lembur hanya di tabel event sendiri, tidak di `access_audit_events`. | — | D-5: atasan menyetujui pengajuan pegawai, pegawai menyetujui perintah atasan, HC hanya notifikasi (ATT-011-6b); audit seragam. | S |
 | L-6 | Konsekuensi payroll tidak dihitung (benar sesuai MVP). | — | Tetap; PAY-003 di luar ATT-011. | — |
 
 ### 2.5 Pegawai (self-service)

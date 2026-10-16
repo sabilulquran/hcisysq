@@ -90,7 +90,6 @@ Jangan menyatakan quality gate lulus hanya berdasarkan inspeksi statis.
 
 ## 8. Security and privacy
 
-- Gunakan data sintetis untuk development, prompt, test, screenshot, dan demo.
 - Jangan commit `.env`, token, credential, database dump, dokumen pegawai, foto absensi, slip gaji production, atau data payroll production.
 - Jangan log password, token, nomor identitas lengkap, rekening, nominal sensitif, atau isi dokumen.
 - Terapkan least privilege pada role aplikasi, database, storage, dan deployment.

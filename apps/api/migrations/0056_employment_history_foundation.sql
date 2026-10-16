@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS employments (
   voided_by_action_id uuid NULL,
   version integer NOT NULL DEFAULT 0 CHECK (version >= 0),
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT employments_start_basis_check
+  CONSTRAINT employments_start_basis_matches_date
     CHECK ((start_basis = 'UNKNOWN') = (started_on IS NULL)),
   CONSTRAINT employments_end_consistency_check
     CHECK (
@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS employment_actions (
   source_snapshot_id uuid NULL REFERENCES employee_import_source_snapshots(id) ON DELETE RESTRICT,
   recorded_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   recorded_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT employment_actions_effective_on_check
+  CONSTRAINT employment_actions_effective_on_required
     CHECK (action_type = 'BASELINE' OR effective_on IS NOT NULL),
   CONSTRAINT employment_actions_reversal_check
     CHECK ((action_type = 'REVERSAL') = (reverses_action_id IS NOT NULL)),

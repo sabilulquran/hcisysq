@@ -60,7 +60,7 @@ Supporting operations already in place (not separate gates, but pilot depends on
 ## 4. Approvals needed from the owner (in order)
 
 1. ~~Run the isolated restore drill~~ — approved and PASS 2026-10-16.
-2. Release the dependency security update (SEC-16) through OPS-MI8-REL-001 after its PR is merged.
-3. Cloudflare changes for SEC-01 and SEC-17 (details in the private full security report).
+2. ~~Release the dependency security update (SEC-16)~~ — **in production.** PR #106 merged 2026-10-16. Release `hcis-4a578253-20261016` (main `4a57825`, which contains #106 and #105) went live at 14:14 WIB through OPS-MI8-REL-001 by another operator, with a pre-release backup. Read-only check: `fastify` 5.12.7 is in the running release, and public `/login` and `/api/health` return 200. The separately built `hcis-07eae767-20261016` was approved by the owner but deliberately **not** applied, because it would be a downgrade.
+3. ~~Cloudflare changes for SEC-01 and SEC-17~~ — SEC-17 was already protected by an access policy. For SEC-01 the owner **accepted the risk** on 2026-10-16 and declined an edge allowlist, because each new device site would need a rule change; unregistered devices stay blockable in the WDMS screen.
 4. Name the pilot unit and the stop/rollback/incident owners (P1, P6) and decide RPO/RTO.
 5. Identify the legacy system and its administrator (MIG-002 D1) so migration discovery can start.

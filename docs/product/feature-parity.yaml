@@ -155,6 +155,19 @@ features:
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
 
+  - id: ORG-008
+    module: organization
+    name: Organization structure designer UX simplification
+    legacy_evidence: owner reported on 2026-10-16 that the ORG-004 Organization Designer is still uncomfortable for HC operators; ATT-011 overtime approval depends on complete direct-manager, Direktur position, HC unit scope and acting data
+    target_status: specified
+    priority: immediate-product-ux
+    risk: high
+    planning_note: UX and workflow layer over ORG-004 only. Does not change resolver semantics, effective dating, approval snapshots or rollout; does not activate SHADOW/STRUCTURE. Packages ORG-008-1..7 await owner decisions O-1..O-11. Includes a publish safety fix for stale-base drafts silently overwriting other published snapshots.
+    docs:
+      - docs/domain/organization-designer-ux-spec.md
+      - docs/domain/organization-designer-ux-gap-analysis.md
+      - docs/domain/dynamic-organization-structure.md
+
   - id: EMP-005
     module: employee
     name: Employment relationship and contracts

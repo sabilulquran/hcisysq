@@ -1,7 +1,7 @@
 # Mi8VPS Keycloak readiness restarts (OPS-MI8-KC-001)
 
 **Spec ID:** OPS-MI8-KC-001
-**Status:** Part A APPLIED on production 2026-10-16 07:24 WIB (owner-approved), with the 48 h observation pending. Part B is a PLAN, held by the owner.
+**Status:** Part A APPLIED on production 2026-10-16 07:24 WIB (owner-approved), with the 48 h observation pending. Part B is prepared and tested off-production, not applied, and held by the owner.
 **Prepared:** 2026-10-16 (read-only investigation over `ssh mi8vps-root`)
 **Related:** OPS-MI8-REL-001 (`mi8vps-hcis-release.md`, the worker/launcher path rules), OPS-MI8-BAK-001
 (`mi8vps-sq-core-production-backup-plan.md`, backup before the change)
@@ -167,11 +167,47 @@ count. Proposed rule:
   others 6), not wall-clock age from `/proc/<pid>`.
 - Log `unready service=<svc> fails=<n>` on each failure, so the next incident is visible before a kill.
 
-This changes the supervisor for every SQ Core service, so it gets its own approval. It needs a worker
-restart, which leaves services running, and it can roll back on its own (restore
-`sq-core-worker.sh.pre-ops-mi8-kc-001` and restart the worker). Test: run a copy of the new `ensure`
-logic against a stub `ready` in a shell on the device and check the counters before the swap. After
-the swap, confirm a `sq-corectl.sh restart hub-web` (static site, smallest impact) still relaunches.
+This changes the supervisor for every SQ Core service, so it gets its own approval. Status: **prepared
+and tested off-production on 2026-10-16. Not applied; held by the owner.**
+
+Candidate and test (in this repository):
+
+- `scripts/mi8/sq-core-worker.sh` was first committed as a verbatim copy of production (sha256
+  `a4e2adb0…a5a2b`). The next commit replaces only the `ensure` function, which is now between
+  `# BEGIN ensure` and `# END ensure` markers, so `git diff` of that file is the whole part B change.
+- `scripts/mi8/test-worker-ensure.sh` extracts only that block and runs it against stubs for `ready`,
+  `service_pid`, stop, launch and `date +%s`. It never touches a real service.
+
+Test evidence: run on the device with `/system/bin/sh` (mksh) in a throwaway `/data/local/tmp`
+directory, which was deleted afterwards. `sh -n` passed and **14/14 cases passed**:
+
+- A healthy Keycloak survives 7 failed probes and is stopped and relaunched on the 8th.
+- One ready probe resets the count.
+- A 2 h wall-clock jump (resume) followed by one failed probe does not stop anything. The old rule
+  stopped Keycloak here.
+- A missing or crashed process is launched at once.
+- A slow Keycloak start gets 12 probes of grace, and the normal limit applies after its first ready.
+- `hub-web` is stopped on its 6th failed probe.
+- Counters are per service, including hyphenated names.
+- Launch backoff is still respected.
+
+The production worker was confirmed unchanged afterwards (same hash, same PID).
+
+New log lines: `unready service=<svc> pid=<pid> fails=<n>` on every failed probe of a running process,
+and `startup grace exhausted ...` before a startup kill.
+
+Apply steps (after owner approval; no outage):
+
+1. `cp -p /data/local/mi8vps/sq-core-worker.sh /data/local/mi8vps/sq-core-worker.sh.pre-ops-mi8-kc-001`.
+2. Check that production still matches the imported copy (sha256 `a4e2adb0…`). If it does not, for
+   example because an OPS-MI8-REL-001 release changed `service_pid` paths, re-apply the `ensure` block
+   onto the current file instead of copying the candidate.
+3. Install the candidate with LF line endings, mode `0755 root:root`, and run `sh -n` on it.
+4. Restart the worker: TERM the PID in `sq-core-worker.pid`, then start it as `start-services.sh`
+   does (`nohup /system/bin/sh /data/local/mi8vps/sq-core-worker.sh </dev/null >/dev/null 2>&1 &`).
+   Services keep running, and the new worker finds them by `cwd`.
+5. Verify: `SQ Core worker started` appears in `sq-core-worker.log` and no `launch` lines follow. Then
+   `sq-corectl.sh restart hub-web` (static site, smallest impact) is relaunched within about 30 s.
 
 ### Not in scope (owner decision, separate follow-up)
 

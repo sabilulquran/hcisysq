@@ -86,30 +86,54 @@ stop_service() {
   fi
 }
 
+# BEGIN ensure (OPS-MI8-KC-001 part B)
+# Health is judged by consecutive failed probes, not by wall-clock process age.
+# The loop sleeps on the monotonic clock, which stops while the phone is
+# suspended, so N probes are N loop iterations of awake time and a resume
+# (wall clock jumps) never counts as failure time.
 attempts=0
 next_start=0
+# Consecutive failed probes before a running process is stopped (~15 s each).
+fail_limit() { case "$1" in keycloak) echo 8 ;; *) echo 6 ;; esac; }
+# Failed probes allowed after this worker launches a process that has not yet
+# been ready once.
+start_grace() { case "$1" in keycloak) echo 12 ;; *) echo 6 ;; esac; }
+svc_count() { eval "echo \${$1_$(echo "$2" | tr '-' '_'):-0}"; }
+svc_set() { eval "$1_$(echo "$2" | tr '-' '_')=$3"; }
+
 ensure() {
   svc=$1
   if ready "$svc"; then
+    svc_set fails "$svc" 0
+    svc_set starting "$svc" 0
     return 0
+  fi
+  fails=$(($(svc_count fails "$svc") + 1))
+  svc_set fails "$svc" "$fails"
+  existing=$(service_pid "$svc" || true)
+  if [ -n "$existing" ]; then
+    if [ "$(svc_count starting "$svc")" = 1 ]; then
+      [ "$fails" -lt "$(start_grace "$svc")" ] && return 1
+      log "startup grace exhausted service=$svc pid=$existing probes=$fails"
+    else
+      log "unready service=$svc pid=$existing fails=$fails"
+      [ "$fails" -lt "$(fail_limit "$svc")" ] && return 1
+    fi
   fi
   now=$(date +%s)
   [ "$now" -ge "$next_start" ] || return 1
-  existing=$(service_pid "$svc" || true)
-  if [ -n "$existing" ]; then
-    # Allow a normal app startup before declaring a process unhealthy.
-    age=$(($(date +%s) - $(stat -c %Y "/proc/$existing" 2>/dev/null || date +%s)))
-    if [ "$age" -lt 90 ]; then return 1; fi
-    stop_service "$svc"
-  fi
+  [ -n "$existing" ] && stop_service "$svc"
   attempts=$((attempts + 1))
   delay=$((attempts * 15))
   [ "$delay" -gt 120 ] && delay=120
   next_start=$((now + delay))
   log "launch service=$svc attempt=$attempts backoff=${delay}s"
   "$LAUNCH" "$svc" || log "launch command failed service=$svc"
+  svc_set fails "$svc" 0
+  svc_set starting "$svc" 1
   return 1
 }
+# END ensure
 
 last_rotate=0
 last_backup_day=

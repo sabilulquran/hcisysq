@@ -151,7 +151,8 @@ Steps:
 | Candidate | Scratch restore OK (2 realms). Started in 20.2 s with no JGroups lines; ready 200 with checks GracefulShutdown, KeycloakInitialized and DB connections only; issuer correct. Then stopped, and the scratch DB and env copy were removed |
 | Switch | 07:24:38 WIB TERM, worker relaunched at 07:24:43, Keycloak `started in 16.4s`, `/health/ready` 200 at about 37 s |
 | Verify | Ready 200 without the cluster check; 7800 not listening; public well-known 200 with the correct issuer; `hcis`/`hub`/`aset` health 200; `hcis.sabilulquran.or.id` 200; persisted user sessions 1 before and 1 after; `jgroups_ping` 0 rows |
-| Pending | Interactive login per app (needs a human with credentials) and the 48 h observation |
+| Login | The owner confirmed in chat on 2026-10-16 that interactive login works after the switch (HCIS, SQ Hub, Aset) |
+| Pending | 48 h observation (scheduled for 2026-10-18 07:35 WIB) |
 
 ### B. Worker readiness tolerance (all SQ Core services)
 

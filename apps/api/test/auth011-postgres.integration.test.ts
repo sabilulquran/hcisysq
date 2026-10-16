@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthService, type AuthPrincipal } from "../src/modules/auth/service.js";
-import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
+import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
 import { createRoleAssignment, removeRoleAssignment } from "../src/modules/auth/role-assignment.js";
 import { OidcLoginService } from "../src/modules/auth/oidc-service.js";
 import type { OidcProvider } from "../src/modules/auth/oidc-provider.js";
@@ -125,27 +125,76 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments")).rows).toEqual(before.rows);
   });
 
-  it("server-authorizes all 137 transitional administrative routes independently of navigation", async () => {
+  it("fails closed when the human_capital role exceeds the operational delegation bundle", async () => {
+    // ATT-002/ATT-007 (0046-0047) and ATT-008 (0048) granted these to human_capital, outside
+    // HC_OPERATIONAL_PERMISSIONS, so ordinary role administrators may no longer delegate it.
+    const extra = (await pool.query<{ key: string }>(
+      `SELECT permission_key AS key FROM role_permissions WHERE role_id=$1 AND NOT permission_key = ANY($2::text[])
+       ORDER BY permission_key`, [hcRoleId, [...HC_OPERATIONAL_PERMISSIONS]],
+    )).rows.map((row) => row.key);
+    expect(extra).toEqual(["attendance.clarification.manage", "attendance.overtime.manage",
+      "attendance.reports.read", "attendance.shift_swap.manage"]);
+    const target = actors.get("target")!.principal.id;
+    const response = await request("admin", "POST", `/admin/access/accounts/${target}/role-assignments`,
+      { roleId: hcRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic operation" });
+    expect(response.statusCode).toBe(403);
+    // Only in this isolated schema: restore the accepted bundle so later tests exercise the delegation path.
+    await pool.query("DELETE FROM role_permissions WHERE role_id=$1 AND permission_key = ANY($2::text[])", [hcRoleId, extra]);
+  });
+
+  it("server-authorizes every manifest route per persona independently of navigation", async () => {
     const manifest = JSON.parse(await readFile(new URL("../../../docs/domain/AUTH-011-admin-route-permissions.json", import.meta.url), "utf8")) as
-      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string; permissions: string[] }>;
-    const routes = manifest.flatMap((route) => route.url.includes("${spec.path}")
-      ? ["clear-attendance", "clear-photo", "clear-all"].map((path) => ({ ...route, url: route.url.replace("${spec.path}", path) })) : [route]);
-    expect(routes).toHaveLength(137);
-    for (const route of routes) {
-      // An invalid object ID tests that authorization precedes business validation.
-      const url = route.url.replace(/:[A-Za-z]+/g, "invalid-resource-id");
-      for (const name of [null, "employee", "unit_hc", "unit_admin", "board"]) {
-        const response = await request(name, route.method, url);
-        expect(response.statusCode, `${name} ${route.method} ${url}`).toBe(name ? 403 : 401);
-      }
-      const allowed = route.permissions.every((key) => (HC_ADMIN_PERMISSIONS as readonly string[]).includes(key));
-      const admin = await request("admin", route.method, url);
-      if (!allowed) expect(admin.statusCode, `admin ${url}`).toBe(403);
-      else expect([401, 403, 500].includes(admin.statusCode), `admin ${route.method} ${url}: ${admin.body}`).toBe(false);
-      const legacy = await request("legacy", route.method, url);
-      expect([401, 403, 500].includes(legacy.statusCode), `legacy ${route.method} ${url}: ${legacy.body}`).toBe(false);
+      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string; access?: "hc-operational" | "self-service";
+        principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
+    // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(176);
+    expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(40);
+    const personas = ["employee", "unit_hc", "unit_admin", "board", "admin", "legacy"];
+    const granted = new Map<string, string[]>();
+    for (const name of personas) {
+      granted.set(name, (await auth.getAuthorizationContext(actors.get(name)!.principal)).organizationPermissions);
     }
-  }, 60000);
+    // unit_hc and unit_admin hold unit-scoped roles only, which never satisfy organization permissions.
+    expect(granted.get("unit_hc")).toEqual([]);
+    // HC operational handlers check request shape before the HC permission, so they receive
+    // well-formed synthetic IDs and bodies that reach the permission check.
+    const hcNote = "Synthetic AUTH-011 matrix";
+    const hcPayloads: Record<string, object> = {
+      "/leave/hc/tasks/:taskId/decision": { action: "validate" },
+      "/leave/hc/tasks/:taskId/administration-decision": { action: "validate_all", note: hcNote },
+      "/leave/planned/hc/tasks/:taskId/validation-decision": { action: "validate" },
+      "/leave/planned/hc/tasks/:taskId/approval-decision": { decision: "approve" },
+      "/attendance/resolutions/hc/:caseId/decision": { action: "manual_review", note: hcNote },
+    };
+    for (const route of manifest) {
+      const hc = route.access === "hc-operational";
+      // Elsewhere an invalid object ID tests that authorization precedes business validation.
+      const url = route.url.replace(/:[A-Za-z]+/g, hc ? randomUUID() : "invalid-resource-id");
+      const anonymous = await request(null, route.method, url);
+      if (route.access === "self-service") expect.soft([401, 403], `anonymous ${route.method} ${url}`).toContain(anonymous.statusCode);
+      else expect.soft(anonymous.statusCode, `anonymous ${route.method} ${url}`).toBe(401);
+      if (hc && route.method !== "GET") expect(hcPayloads[route.url], route.url).toBeDefined();
+      // Physical device commands need the technical permission unless the body requests mode "execute".
+      const variants = [{ payload: hc ? hcPayloads[route.url] : undefined, permissions: route.permissions },
+        ...(route.executePermissions ? [{ payload: { mode: "execute" }, permissions: route.executePermissions }] : [])];
+      for (const variant of variants) {
+        for (const name of personas) {
+          const { principalType } = actors.get(name)!.principal;
+          const allowed = route.access === "self-service"
+            ? route.principals!.includes(principalType)
+            // HC operational routes require an EMPLOYEE principal; legacy compatibility applies only to admin routes.
+            : (route.access !== "hc-operational" || principalType === "EMPLOYEE")
+              && variant.permissions.every((key) => granted.get(name)!.includes(key));
+          const response = await request(name, route.method, url, variant.payload);
+          const label = `${name} ${route.method} ${url} ${JSON.stringify(variant.payload ?? {})}: ${response.body.slice(0, 160)}`;
+          if (!allowed) expect.soft(response.statusCode, label).toBe(403);
+          else if (route.access === "self-service") expect.soft(response.statusCode, label).not.toBe(401);
+          else expect.soft([401, 403, 500], label).not.toContain(response.statusCode);
+        }
+      }
+    }
+  }, 240000);
 
   it("supports intended admin read surfaces, local context, employee self-service and Board isolation", async () => {
     for (const url of ["/admin/employees", "/admin/access", "/admin/organization", "/admin/leave/configuration", "/admin/leave/calendar", "/admin/payslip-imports"]) {
@@ -302,7 +351,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     const targetId = actors.get("target")!.principal.id;
     await pool.query("UPDATE accounts SET status='invited' WHERE id=$1", [targetId]);
     const issued = await request("admin", "POST", `/admin/access/accounts/${targetId}/activation`);
-    expect(issued.statusCode).toBe(201);
+    expect(issued.statusCode, issued.body).toBe(201);
     const token = issued.json().activationPath.split("#token=")[1];
     const assignmentId = await createRoleAssignment(pool, actors.get("legacy")!.principal, targetId,
       { roleId: adminRoleId, scopeType: "organization", reason: "Synthetic reviewed elevation" });
@@ -376,20 +425,14 @@ describe.skipIf(!databaseUrl)("AUTH-011 migration 0045 production compatibility"
     )`);
     await pool.query("INSERT INTO schema_migrations(name) SELECT unnest($1::text[])", [priorMigrations]);
 
-    // Production retained this role from the historical 0023_leave_approval_principals.sql migration,
-    // whose source commit is not an ancestor of the current main migration chain.
-    await pool.query(
-      "INSERT INTO permissions(permission_key,description) VALUES('leave.governance.approve','Synthetic historical permission')",
-    );
-    await pool.query(
-      `INSERT INTO roles(id,role_key,name,description,is_system)
-       VALUES($1,'governance_leave_approver','Governance Leave Approver','Synthetic historical role',true)`,
-      [governanceRoleId],
-    );
-    await pool.query(
-      "INSERT INTO role_permissions(role_id,permission_key) VALUES($1,'leave.governance.approve')",
-      [governanceRoleId],
-    );
+    // Production retained this role from 0023_leave_approval_principals.sql, which is part of the
+    // main migration chain again since PR #59; the prior migrations above must have seeded it.
+    expect(
+      (await pool.query(
+        `SELECT role.id FROM roles role JOIN role_permissions grant_row ON grant_row.role_id = role.id
+         WHERE role.role_key='governance_leave_approver' AND grant_row.permission_key='leave.governance.approve'`,
+      )).rows,
+    ).toEqual([{ id: governanceRoleId }]);
 
     const employeeId = randomUUID();
     const accountId = randomUUID();
@@ -467,7 +510,9 @@ describe.skipIf(!databaseUrl)("AUTH-011 migration 0045 production compatibility"
         [humanCapitalAdminRoleId],
       )
     ).rows.map((row) => row.permissionKey);
-    expect(adminPermissions).toEqual([...HC_ADMIN_PERMISSIONS].sort());
+    // 0045's own bundle; 0046-0050 extend it to HC_ADMIN_PERMISSIONS, asserted by the suite above.
+    expect(adminPermissions).toEqual([...HC_OPERATIONAL_PERMISSIONS, "organization.manage", "access.manage",
+      "access.roles.assign", "leave.configuration.manage", "attendance.records.manage"].sort());
     expect(adminPermissions.filter((permission) => sensitiveDevicePermissions.includes(permission))).toEqual([]);
     expect(adminPermissions.filter((permission) => [
       "leave.approve", "leave.hc.approve", "leave.governance.approve",

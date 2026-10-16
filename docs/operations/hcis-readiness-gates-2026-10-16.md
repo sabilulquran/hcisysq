@@ -60,7 +60,7 @@ Supporting operations already in place (not separate gates, but pilot depends on
 ## 4. Approvals needed from the owner (in order)
 
 1. ~~Run the isolated restore drill~~ — approved and PASS 2026-10-16.
-2. Release the dependency security update (SEC-16) through OPS-MI8-REL-001 after its PR is merged.
-3. Cloudflare changes for SEC-01 and SEC-17 (details in the private full security report).
+2. Release the dependency security update (SEC-16) — PR #106 merged 2026-10-16; bundle `hcis-07eae767-20261016` built (run 38864802890); **release not applied** — waiting for explicit owner confirmation of SHA, window and rollback, coordinated with the concurrent Hub/Aset web releases.
+3. ~~Cloudflare changes for SEC-01 and SEC-17~~ — approved 2026-10-16. SEC-17 turned out to be already protected by an access policy. SEC-01 must be applied by the owner in the zone owner's Cloudflare account, which the operator cannot access; the exact rule was given to the owner privately.
 4. Name the pilot unit and the stop/rollback/incident owners (P1, P6) and decide RPO/RTO.
 5. Identify the legacy system and its administrator (MIG-002 D1) so migration discovery can start.

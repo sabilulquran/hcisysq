@@ -5,7 +5,11 @@
 #   scripts/mi8/release-mi8.sh <phase> --bundle <hcis-SHA8-DATE.tar.gz> --sha <40-hex>
 #                              [--apply --confirm RELEASE_<sha8>]
 #
-# Phases: preflight upload backup migrate candidate cutover verify rollback all
+# Phases: preflight upload backup migrate candidate cutover verify rollback all unlock
+#
+# One release operator at a time: --apply takes the device-wide lock
+# /data/local/mi8vps/sq-core-release.lock (atomic mkdir) with a token unique to this
+# checkout; preflight stops while another operator holds it. verify/rollback release it.
 #
 # Dry run is the default: read-only checks run against the device, every mutating
 # step is printed instead of executed. --apply needs owner approval for the release.
@@ -39,6 +43,7 @@ HCIS_DB=${MI8_HCIS_DB:-sqcore_hcis}
 PUBLIC_URL=${MI8_PUBLIC_URL:-https://hcis.sabilulquran.or.id}
 CAND_API_PORT=3391
 CAND_WEB_PORT=3291
+LOCK_STALE_SECONDS=${MI8_LOCK_STALE_SECONDS:-21600}
 
 die() { echo "STOP: $*" >&2; exit 1; }
 say() { echo "[$(date '+%H:%M:%S')] $*"; }
@@ -49,6 +54,15 @@ SHA8=${SHA:0:8}
 NAME=$(basename "$BUNDLE" .tar.gz)
 [[ "$NAME" =~ ^hcis-[0-9a-f]{8}-[0-9]{8}$ ]] || die "bundle name must be hcis-<sha8>-<yyyymmdd>.tar.gz"
 [[ "$NAME" == "hcis-$SHA8-"* ]] || die "bundle $NAME does not match --sha $SHA"
+
+# Per-checkout operator token: two sessions on one workstation use different worktrees, so
+# they get different tokens and cannot both hold the release lock.
+token_file="$(git rev-parse --git-dir)/mi8-release-operator"
+if [[ ! -s "$token_file" ]]; then
+  od -An -N12 -tx1 /dev/urandom | tr -d ' \n' >"$token_file"
+fi
+LOCK_TOKEN=$(tr -cd '0-9a-f' <"$token_file")
+[[ ${#LOCK_TOKEN} -ge 16 ]] || die "could not create an operator token in $token_file"
 
 if [[ "$APPLY" == 1 ]]; then
   [[ "$CONFIRM" == "RELEASE_$SHA8" ]] || die "--apply requires --confirm RELEASE_$SHA8 (owner-approved release)"
@@ -74,8 +88,24 @@ SHA='$SHA'
 DB='$HCIS_DB'
 CAND_API_PORT=$CAND_API_PORT
 CAND_WEB_PORT=$CAND_WEB_PORT
+LOCK_TOKEN='$LOCK_TOKEN'
+LOCK_STALE_SECONDS=$LOCK_STALE_SECONDS
 EOF
   cat <<'EOF'
+# BEGIN release-lock
+LOCK=/data/local/mi8vps/sq-core-release.lock
+lock_field() { sed -n "s/^$1=//p" "$LOCK/owner" 2>/dev/null | head -n 1; }
+# Fails unless the release lock is free or held by this operator.
+lock_check() {
+  [ -d "$LOCK" ] || return 0
+  [ "$(lock_field token)" = "$LOCK_TOKEN" ] && return 0
+  started=$(lock_field started); [ -n "$started" ] || started=0
+  age=$(( $(date +%s) - started ))
+  info="app=$(lock_field app) release=$(lock_field release) operator=$(lock_field operator) age=${age}s"
+  [ "$age" -lt "$LOCK_STALE_SECONDS" ] || fail "stale release lock ($info); confirm nobody is releasing, then remove $LOCK by hand"
+  fail "another operator holds the release lock ($info); wait for it to finish"
+}
+# END release-lock
 TUID=$(stat -c %u /data/data/com.termux)
 TGID=$(stat -c %g /data/data/com.termux)
 TENV="HOME=/data/data/com.termux/files/home PREFIX=/data/data/com.termux/files/usr TMPDIR=/data/data/com.termux/files/usr/tmp PATH=/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
@@ -198,12 +228,41 @@ pending_migrations() {
   PENDING=$(comm -23 <(printf '%s\n' "$BUNDLE_MIGRATIONS") <(printf '%s\n' "$applied") | grep -v '^$' || true)
 }
 
+# ---------------------------------------------------------------- release lock
+
+lock_acquire() {
+  [[ "$APPLY" == 1 ]] || return 0
+  local operator
+  operator=$(printf '%s' "${MI8_OPERATOR:-$(whoami)@$(hostname)}" | tr -cd 'A-Za-z0-9@._-')
+  { prelude; cat <<EOF; } | ssh -o BatchMode=yes "$SSH_ROOT" /system/bin/sh -s
+if mkdir "\$LOCK" 2>/dev/null; then
+  printf 'app=hcis\nrelease=%s\ntoken=%s\noperator=%s\nstarted=%s\n' "\$NAME" "\$LOCK_TOKEN" '$operator' "\$(date +%s)" >"\$LOCK/owner"
+fi
+lock_check
+[ "\$(lock_field token)" = "\$LOCK_TOKEN" ] || fail "release lock exists without a readable owner file; inspect \$LOCK"
+echo "release_lock=held release=\$(lock_field release)"
+EOF
+}
+
+lock_release() {
+  [[ "$APPLY" == 1 ]] || { say "dry-run: would release the release lock"; return 0; }
+  remote_ro <<'EOF'
+if [ -d "$LOCK" ]; then
+  [ "$(lock_field token)" = "$LOCK_TOKEN" ] || fail "release lock is held by another operator; not releasing it"
+  rm -f "$LOCK/owner"; rmdir "$LOCK"
+fi
+echo "release_lock=released"
+EOF
+}
+
 # ---------------------------------------------------------------- phases
 
 phase_preflight() {
   check_main
   bundle_checks
   remote_ro <<'EOF'
+lock_check
+if [ -d "$LOCK" ]; then echo "release_lock=held_by_this_operator"; else echo "release_lock=free"; fi
 cur=$(running_release node apps/api) || fail "running hcis API process not found"
 web=$(running_release python3 apps/web/dist) || fail "running hcis-web process not found"
 [ "$cur" = "$web" ] || fail "API runs $cur but web runs $web"
@@ -444,21 +503,23 @@ EOF
 
 case "$PHASE" in
   preflight) phase_preflight ;;
-  upload) phase_upload ;;
-  backup) phase_backup ;;
-  migrate) phase_migrate ;;
-  candidate) phase_candidate ;;
-  cutover) phase_cutover ;;
-  verify) phase_verify ;;
-  rollback) phase_rollback ;;
+  upload) lock_acquire; phase_upload ;;
+  backup) lock_acquire; phase_backup ;;
+  migrate) lock_acquire; phase_migrate ;;
+  candidate) lock_acquire; phase_candidate ;;
+  cutover) lock_acquire; phase_cutover ;;
+  verify) phase_verify; lock_release ;;
+  rollback) lock_acquire; phase_rollback; lock_release ;;
+  unlock) lock_release ;;
   all)
     phase_preflight
+    lock_acquire
     phase_upload
     phase_backup
     phase_migrate
     phase_candidate
     phase_cutover
-    if [[ "$APPLY" == 1 ]]; then phase_verify; else say "dry-run: verify runs after cutover"; fi
+    if [[ "$APPLY" == 1 ]]; then phase_verify; lock_release; else say "dry-run: verify runs after cutover"; fi
     ;;
   *) usage ;;
 esac

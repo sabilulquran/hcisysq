@@ -99,10 +99,15 @@ wait_worker_gone() {
   i=0; while [ "$i" -lt 20 ] && [ -d "/proc/$1" ]; do sleep 1; i=$((i+1)); done
   [ -d "/proc/$1" ] && kill -KILL "$1" 2>/dev/null || true
 }
+# OPS-MI8-SUP-001: stop the worker with KILL, never TERM. A worker started with
+# setsid leads its process group, and Android mksh answers an untrapped TERM
+# with kill(0, TERM), which stops every service the worker launched into that
+# group (2026-10-16: 1-2.5 min web outages). KILL runs no shell code. The
+# services keep running and the new worker finds them by cwd.
 restart_worker() {
   wp=$(cat "$S/sq-core-worker.pid" 2>/dev/null || true)
   if [ -n "$wp" ] && tr '\000' ' ' <"/proc/$wp/cmdline" 2>/dev/null | grep -q sq-core-worker.sh; then
-    echo "worker_stop pid=$wp"; kill -TERM "$wp" 2>/dev/null || true; wait_worker_gone "$wp"
+    echo "worker_stop pid=$wp"; kill -KILL "$wp" 2>/dev/null || true; wait_worker_gone "$wp"
   fi
   rm -f "$S/sq-core-worker.pid"
   if command -v setsid >/dev/null 2>&1; then

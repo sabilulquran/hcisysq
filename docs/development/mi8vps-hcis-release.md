@@ -40,7 +40,7 @@ Two consequences drive the design:
 2. **The worker keeps the old `service_pid` patterns in memory.** Editing `sq-core-worker.sh` does
    not change the running loop. Unless the worker is restarted, it cannot find the new process when
    it becomes unhealthy and would launch a second copy that fails to bind. The worker must be
-   restarted (which leaves the services running) after its file changes.
+   restarted after its file changes. Stop it with **KILL**, not TERM: see §4.7 step 4.
 
 ## 2. Actors and permissions
 
@@ -147,9 +147,16 @@ Logs go to `/srv/hcis/logs/candidate-<name>.log`.
    lines changed, that the new files contain no other HCIS release, `sh -n` both, then install them
    atomically (`mv` of a new file, so the running worker keeps its open copy intact).
 3. Point `/srv/hcis/current` at the new release (bookkeeping; the backup set records it).
-4. Restart the worker: TERM the PID in `sq-core-worker.pid`, wait for it to exit, start
-   `nohup /system/bin/sh sq-core-worker.sh` exactly as `start-services.sh` does. Services keep
-   running; the new worker sees them healthy.
+4. Restart the worker: send **KILL** to the PID in `sq-core-worker.pid`, wait for it to exit, and
+   start `setsid nohup /system/bin/sh sq-core-worker.sh`. Services keep running, and the new worker
+   finds them healthy.
+   **Do not use TERM** (OPS-MI8-SUP-001, `sq-core-ops/runbooks/ops-mi8-sup-001-worker-restart-isolation.md`).
+   A worker started with `setsid` leads its own process group. When Android mksh leads a group and
+   dies from an untrapped TERM, it runs `kill(0, TERM)`. That stops every service the worker
+   launched into its group. On 2026-10-16 this caused 1–2.5 minute outages of HCIS, HCIS web, Hub
+   web and Aset web. Keycloak is in that group now too, and it takes about 6 minutes to start. KILL
+   runs no shell code, so nothing reaches the group. An earlier version of this step said TERM
+   leaves the services running. That was true only while the worker was not a group leader.
 5. `sq-corectl.sh restart hcis` and `sq-corectl.sh restart hcis-web`. The worker finds them
    unhealthy, cannot find a process under the new path, and launches the new release.
 6. Wait up to 180 s for `:3301/health` and `:3201/` and for both processes' `cwd` to be inside the

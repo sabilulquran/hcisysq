@@ -5,6 +5,10 @@
 **Proposed:** 2026-09-22  
 **Related:** ATT-001, ATT-002, ATT-003, ATT-005, ATT-006, ATT-007, ATT-008, ATT-009, ATT-010  
 **Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`
+**Specification (owner decisions D-1..D-11 recorded 2026-10-16):** `docs/domain/attendance-operational-simplification-spec.md`  
+**Gap analysis (2026-10-16):** `docs/domain/attendance-operational-simplification-gap-analysis.md`
+
+> Dokumen ini tetap menjadi arah produk. Actor, state, permission, audit, failure behavior, layar, paket implementasi, dan keputusan owner yang terbuka ada di spesifikasi ATT-011 di atas.
 
 ## Problem
 

@@ -1,10 +1,11 @@
 # Employment Administration
 
 **Status:** ACCEPTED PRODUCT DIRECTION  
-**Specifications:** EMP-005, EMP-006, EMP-007, EMP-008, EMP-009  
+**Specifications:** EMP-005, EMP-006, EMP-007, EMP-008, EMP-009, EMP-010  
 **Decision date:** 2026-09-22  
 **Related:** EMP-001, EMP-003, ORG-001, ORG-004, ORG-005, ORG-007, APR-001, PAY-003  
-**Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`
+**Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`  
+**Package 1 (ACCEPTED PRODUCT DIRECTION, owner decisions closed 2026-10-16):** `docs/domain/employment-administration-package1.md` — EMP-005, EMP-006, EMP-010 workflow, migration, and `docs/domain/employment-administration-package1-implementation-plan.md`
 
 ## Goal
 
@@ -111,6 +112,8 @@ Dasar: SK Ketua Yayasan No. ...
 ```
 
 Riwayat karier harus dapat menjelaskan perubahan tersebut tanpa membaca dokumen secara manual.
+
+Specification ID untuk decision document reference: **EMP-010** (ditetapkan 2026-10-16 bersama Package 1). Owner 2026-10-16 (D-08): Perjanjian Kerja (kontrak) dan Surat Keputusan adalah jenis dokumen terpisah dengan nomor dan field masing-masing. Package 1 hanya menyimpan metadata/referensi dokumen; upload file menunggu storage boundary dokumen pegawai.
 
 ## EMP-006 — Placement and career movement
 

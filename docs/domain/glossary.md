@@ -11,6 +11,10 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Employment / Hubungan Kerja | Hubungan formal seorang person/employee dengan satu legal entity untuk periode tertentu. Kontrak, assignment, payroll, leave, dan status statutory dapat bergantung pada employment ini. |
 | Employment Action / Tindakan Kepegawaian | Perubahan administratif bermakna historis seperti penempatan, promosi, demosi, mutasi, perpanjangan kontrak, atau perubahan kompensasi yang menghasilkan record effective-dated dan audit. |
 | Decision Document / Surat Keputusan | Dokumen pendukung/dasar administratif bagi suatu employment action. Nomor dan file dokumen bukan pengganti structured effective-dated domain fact. |
+| Perjanjian Kerja (PK) | Kontrak kerja antara YSQ dan pegawai; dasar mulai kontrak dan perpanjangan kontrak. Berbeda dari Surat Keputusan: nomor, jenis, dan field-nya terpisah (EMP-010, D-08). |
+| Employment Term / Masa Kepegawaian | Periode effective-dated dalam satu employment dengan satu status kepegawaian (mis. kontrak ke-2, tetap). Perpanjangan membuat term baru; term lama tidak dihapus. DRAFT (EMP-005 Package 1). |
+| Placement / Penempatan | Record effective-dated yang menyatakan unit dan jabatan tempat employee bekerja dalam satu employment (utama atau tambahan). Bukan authority ORG-004; incumbency tetap milik ORG-004. DRAFT (EMP-006 Package 1). |
+| Baseline / Data Awal Kepegawaian | Record employment/term/placement pertama yang dibentuk dari employee master saat migrasi; menandai bahwa riwayat sebelum tanggal baseline tidak tercatat. DRAFT. |
 | Legal Entity / Badan Hukum | Boundary organisasi formal yang dapat memiliki struktur ORG-004, site, employment, payroll, leave, dan attendance scope sendiri bila ORG-007 diaktifkan. Bukan sinonim tenant SaaS. |
 | Unit | Bagian organisasi tempat pegawai ditugaskan. Struktur dan kewenangannya perlu diverifikasi. |
 | Position / Posisi | Jabatan atau fungsi organisasi yang dapat memengaruhi akses dan approval. |

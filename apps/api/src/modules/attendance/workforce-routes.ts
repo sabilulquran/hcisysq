@@ -1296,11 +1296,11 @@ export async function registerAttendanceWorkforceRoutes(
     const clauses: string[] = [];
     if (query.data.date) {
       values.push(query.data.date);
-      clauses.push(`(evidence.created_at AT TIME ZONE 'Asia/Jakarta')::date = ${values.length}::date`);
+      clauses.push(`(evidence.created_at AT TIME ZONE 'Asia/Jakarta')::date = $${values.length}::date`);
     }
     if (query.data.reviewState !== "all") {
       values.push(query.data.reviewState);
-      clauses.push(`evidence.review_state = ${values.length}`);
+      clauses.push(`evidence.review_state = $${values.length}`);
     }
     const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
     const result = await pool.query(

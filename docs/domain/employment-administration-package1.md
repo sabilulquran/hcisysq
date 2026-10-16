@@ -592,7 +592,7 @@ Daftar pegawai dengan masa kontrak berakhir dalam 30/60/90 hari, plus "Sudah lew
 
 Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis baru/perpanjangan, tahun, status kepegawaian) dan **Surat Keputusan** (cari nomor/perihal, filter jenis SK dan tahun). Detail dokumen memperlihatkan tindakan yang memakainya. Dokumen yang sudah dipakai ditandai "Terkunci".
 
-### 13.6 Menu **Kepegawaian → Periksa kecocokan data** (SHADOW dan sesudahnya)
+### 13.6 Menu **Pegawai → Kecocokan Data** (halaman "Periksa Kecocokan Data"; SHADOW dan sesudahnya)
 
 Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Pengurus Yayasan (bukan pegawai)", "Status kepegawaian bertentangan dengan Aktif PKWT", "Jenis kepegawaian kosong/tidak valid", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
 

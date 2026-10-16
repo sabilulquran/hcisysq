@@ -81,6 +81,8 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S3 — Admin read UI (tabs, timeline, consistency report)
 
+**Status:** IMPLEMENTED on branch `feat/emp-s3-read-screens` (2026-10-16), pending review/merge (stacked on S2). Delivered: employee detail tabs **Ringkasan / Kepegawaian & Kontrak / Penempatan & Karier** (tabs visible only with `employment.read`; data loaded on first open), menu **Pegawai → Kecocokan Data** at `/admin/employment/consistency` (UI gate `employment.read`; Super Admin legacy compatibility never opens it), shared view states (loading, OFF/disabled, forbidden, error, empty, ready) with a SHADOW read-only banner; `apps/web/src/lib/employment.ts` (client + display labels only), `apps/web/src/components/employment/EmploymentPanels.tsx`. Evidence: 16 static-render tests; browser smoke against a loopback synthetic mock API (desktop dark/light, 375 px mobile without horizontal scroll, OFF and empty states). Not verified against a real API/database in a browser; that happens in S8 SHADOW UAT.
+
 **Spec:** §13.1, §13.2 (read parts), §13.6, EMP-PKG1-X2.  
 **Prerequisite:** S2 merged. Can run parallel to S4.
 

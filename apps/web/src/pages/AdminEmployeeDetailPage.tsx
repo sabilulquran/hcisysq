@@ -1,6 +1,7 @@
 import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { EmploymentContractPanel, PlacementCareerPanel } from "@/components/employment/EmploymentPanels";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AccountActivationApiError,
@@ -14,6 +15,49 @@ import {
   updateEmployeeContact,
   type EmployeeDetailResponse,
 } from "@/lib/adminOrgAccess";
+import { getCurrentSession } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
+import {
+  getEmployeeEmployment,
+  getEmployeeEmploymentTimeline,
+  viewFromError,
+  type EmploymentSummary,
+  type EmploymentTimelineItem,
+  type EmploymentView,
+} from "@/lib/employment";
+
+export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan";
+
+const TABS: Array<{ key: EmployeeDetailTab; label: string }> = [
+  { key: "ringkasan", label: "Ringkasan" },
+  { key: "kepegawaian", label: "Kepegawaian & Kontrak" },
+  { key: "penempatan", label: "Penempatan & Karier" },
+];
+
+/** Tab bar; employment tabs appear only for employment.read (the API still authorizes). */
+export function EmployeeDetailTabs({ active, canReadEmployment, onSelect }: {
+  active: EmployeeDetailTab;
+  canReadEmployment: boolean;
+  onSelect: (tab: EmployeeDetailTab) => void;
+}) {
+  if (!canReadEmployment) return null;
+  return (
+    <div role="tablist" aria-label="Bagian detail pegawai" className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-surface p-1">
+      {TABS.map((tab) => (
+        <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          aria-selected={active === tab.key}
+          onClick={() => onSelect(tab.key)}
+          className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold ${active === tab.key ? "bg-surface-raised text-brand-primary-deep shadow-[var(--shadow-soft)]" : "text-muted-foreground"}`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function accountStatusLabel(status: string | null) {
   if (status === "active") return "Aktif";
@@ -39,6 +83,31 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<EmployeeDetailTab>("ringkasan");
+  const [canReadEmployment, setCanReadEmployment] = useState(false);
+  const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
+  const [timelineView, setTimelineView] = useState<EmploymentView<EmploymentTimelineItem[]>>({ kind: "loading" });
+
+  useEffect(() => {
+    let mounted = true;
+    void getCurrentSession().then((session) => {
+      if (mounted) setCanReadEmployment(hasPermission(session, "employment.read"));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tab === "ringkasan" || employmentView !== null) return;
+    setEmploymentView({ kind: "loading" });
+    void getEmployeeEmployment(employeeId)
+      .then((data) => setEmploymentView({ kind: "ready", data }))
+      .catch((cause: unknown) => setEmploymentView(viewFromError(cause)));
+    void getEmployeeEmploymentTimeline(employeeId)
+      .then((data) => setTimelineView({ kind: "ready", data: data.items }))
+      .catch((cause: unknown) => setTimelineView(viewFromError(cause)));
+  }, [tab, employmentView, employeeId]);
 
   const applyResult = (result: EmployeeDetailResponse) => {
     setData(result);
@@ -206,6 +275,12 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         </section>
       ) : null}
 
+      <EmployeeDetailTabs active={tab} canReadEmployment={canReadEmployment} onSelect={setTab} />
+
+      {tab === "kepegawaian" ? <EmploymentContractPanel view={employmentView ?? { kind: "loading" }} /> : null}
+      {tab === "penempatan" ? <PlacementCareerPanel view={employmentView ?? { kind: "loading" }} timeline={timelineView} /> : null}
+
+      {tab === "ringkasan" ? (<>
       <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
@@ -369,6 +444,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           </div>
         </article>
       </section>
+      </>) : null}
     </AdminShell>
   );
 }

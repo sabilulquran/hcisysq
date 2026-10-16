@@ -13,6 +13,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
+  // EMP-005: HC-only; Super Admin legacy compatibility never carries employment.*.
+  if (path === "/admin/employment/consistency") return hasPermission(session, "employment.read");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
   if (/^\/admin\/attendance\/adms(?:\/|$)/.test(path)) return hasPermission(session, "attendance.devices.read");
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {

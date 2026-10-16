@@ -111,7 +111,7 @@ Employee services continue with:
 
 - Recruitment/candidate workflow — REC-001.
 
-Recruitment belongs to HCIS but is an HC/admin workspace capability rather than an employee self-service launcher.
+Recruitment is a separate SQ Core application outside HCIS (Product Owner decision, 2026-10-16; see SQ Hub `docs/product/roadmap-and-decision-register.md` and ADR-0008). Candidates sign in through an external Akun SQ realm. HCIS keeps the employment side of the hand-off: vacant-position facts going out and the hire -> employment contract coming in.
 
 Target integration direction:
 

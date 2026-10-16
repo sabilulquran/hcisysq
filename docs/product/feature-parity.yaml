@@ -576,7 +576,7 @@ features:
     target_status: discovery
     priority: validate-product-scope
     risk: high
-    planning_note: Preserve Candidate != Employee. Target future integration is ORG-004 vacant position -> requisition/vacancy -> candidate -> selection -> hire -> EMP-005 employment -> EMP-006 placement. SemartHRIS call-screen is benchmark evidence for screening/evidence/masking only, not proof of a complete ATS.
+    planning_note: Separate SQ Core application outside HCIS (Product Owner decision 2026-10-16); candidates use an external Akun SQ realm (SQ Hub ADR-0008, PROPOSED). HCIS owns only the hand-off contracts. Preserve Candidate != Employee. Target future integration is ORG-004 vacant position -> requisition/vacancy -> candidate -> selection -> hire -> EMP-005 employment -> EMP-006 placement. SemartHRIS call-screen is benchmark evidence for screening/evidence/masking only, not proof of a complete ATS.
     docs:
       - docs/domain/employment-administration.md
       - docs/product/hcis-capability-map.md

@@ -79,12 +79,47 @@ delegate its role or permissions to others; only Super Admin can grant roles." T
   scope rules.
 - **Earlier open item:** the `human_capital` bundle drift from migrations 0046–0048 no longer decides who can
   delegate, so it is closed by this decision.
-- **Follow-up, not done here:** `human_capital_admin` still holds `access.roles.assign`, which now grants nothing
-  on its own. Removing it, and hiding the assignment controls in the web UI for non-Super-Admin users, needs a
-  migration and a UI change.
+- **Stored grant removed (migration 0057):** `0057_hc_admin_revoke_role_assign.sql` removes
+  `access.roles.assign` from `human_capital_admin`, and `HC_ADMIN_PERMISSIONS` no longer lists it.
+  `ADMIN_PERMISSIONS` keeps it, so legacy Super Admin compatibility is the only holder. Details are in the
+  2026-10-16 role-grant cleanup section below.
 
 Reproduce: run `apps/api/test/auth011-*.test.ts` with `HCIS_AUTH011_TEST_DATABASE_URL` pointing to an empty
 loopback `hcis_auth011_permissions_test` database, as described below.
+
+## Update 2026-10-16: role-grant cleanup (migration 0057 and web controls)
+
+This completes the owner decision above. The API behavior is unchanged: role-assignment routes were already
+Super Admin only.
+
+**Migration.** `apps/api/migrations/0057_hc_admin_revoke_role_assign.sql` deletes one `role_permissions` row:
+`human_capital_admin` → `access.roles.assign`. It does not touch the permission catalog, other roles or any
+account assignment. Rerunning it is a no-op.
+
+- **Rollback/recovery:** re-insert the row. The statement is in the migration header and needs a new explicit
+  owner decision. It restores the old stored bundle only; HC still cannot grant roles, because
+  `assertRoleGrantor` requires a Super Admin principal.
+- **Production effect:** HC admin sessions lose `access.roles.assign` from `/auth/me`. That permission already
+  produced 403 on both routes it guards, so no reachable capability changes.
+
+**Tests.**
+
+- `auth011-postgres.integration.test.ts`, "seeds exactly the intended bundle":
+  - the HC admin context equals `HC_ADMIN_PERMISSIONS`, which no longer contains `access.roles.assign`;
+  - no stored role holds the permission, but the catalog row and the legacy Super Admin context keep it;
+  - replaying 0045 and then 0057 twice restores the bundle without changing assignment counts.
+- The persona matrix and the Super-Admin-only grant test still pass unchanged. HC admins remain 403 on both
+  role-assignment routes.
+- `apps/web/src/pages/AdminAccessPage.test.tsx` renders the access workspace statically:
+  - a Super Admin context gets the "Tambah role tambahan" form and the "Cabut" buttons;
+  - these contexts get neither, only the read-only notice: Employee with `access.manage`, Employee holding a
+    stale `access.roles.assign`, Super Admin without `access.roles.assign`, Foundation Board and no session;
+  - the account list and existing assignments stay visible in every case.
+- `apps/web/src/lib/authorization.test.tsx` pins the HC admin bundle without `access.roles.assign` and checks
+  `canManageRoleAssignments`.
+
+The web check is UI eligibility only (`canManageRoleAssignments` in `apps/web/src/lib/authorization.ts`); the
+API stays authoritative.
 
 ## Original verification (2026-09-07)
 

@@ -48,6 +48,12 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
 }
 
 
+// UI eligibility only. Owner decision 2026-10-16 (AUTH-011): the API grants or removes roles
+// only for a Super Admin principal holding access.roles.assign; everyone else gets 403.
+export function canManageRoleAssignments(session: AuthSession | null): boolean {
+  return session?.principal.principalType === "SUPER_ADMIN" && hasPermission(session, "access.roles.assign");
+}
+
 export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType !== "EMPLOYEE") return false;
   if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {

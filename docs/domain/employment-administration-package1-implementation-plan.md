@@ -27,6 +27,8 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S1 — Schema and domain resolver (no routes, no UI)
 
+**Status:** IMPLEMENTED on branch `feat/emp-s1-employment-history-foundation` (2026-10-16), pending review/merge. Delivered: migration `0056_employment_history_foundation.sql`; pure domain module `apps/api/src/modules/employment/domain/` (`resolveEmployment`, `planEmploymentAction`, `applyPlan`, policy table); tests `apps/api/test/employment-history-domain.test.ts` (unit) and `apps/api/test/employment-history-migration.test.ts` (PostgreSQL, CI). Not deployed; nothing reads the tables yet; rollout mode stays OFF (no settings row).
+
 **Spec:** EMP-005-B/C, EMP-006-B/C, EMP-010 data model.  
 **Prerequisite decisions:** D-01, D-06 (ADDITIONAL placements yes/no).
 

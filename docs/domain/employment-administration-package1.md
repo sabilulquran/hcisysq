@@ -534,6 +534,12 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_ACTION_NOT_REVERSIBLE` | 409 | Not the latest action, already reversed, or baseline. | "Tindakan ini tidak dapat dibatalkan." |
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
+| `EMPLOYMENT_BACKDATE_REASON_REQUIRED` | 400 | Effective date before today without a reason. | "Tindakan yang berlaku mundur wajib disertai alasan." |
+| `EMPLOYMENT_TERM_END_REQUIRED` | 400 | Fixed-term category (D-03) without an end date. | "Status kepegawaian ini wajib memiliki tanggal akhir kontrak." |
+| `EMPLOYMENT_TERM_INVALID` | 422 | Unclassified category, end before start, `TETAP` with an end date, same category again, or extension of a non-contract term. | "Status kepegawaian atau masa kontrak tidak valid." |
+| `EMPLOYMENT_REASON_REQUIRED` | 400 | Termination/demotion/reversal without a valid reason code. | "Pilih alasan tindakan." |
+| `EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED` | 409 | Recording while a preview warning (D-04) is not acknowledged. | "Periksa dan centang peringatan sebelum menyimpan." |
+| `DECISION_DOCUMENT_EMPLOYEE_MISMATCH` | 422 | Perjanjian Kerja of another employee linked. | "Perjanjian Kerja ini milik pegawai lain." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
 | `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
 | `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." |

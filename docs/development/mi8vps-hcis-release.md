@@ -62,6 +62,11 @@ Two consequences drive the design:
   running `hcis` process uses — on exactly 4 and 2 lines. Anything else is drift: stop.
 - `BIOMETRIC_COLLECTION_ENABLED` in `final.env` is absent or `0`.
 - Ports 3391 (candidate API) and 3291 (candidate web) are free; at least 1 GiB free on `/data`.
+- **One release operator per window.** No other operator is changing Mi8 (any SQ Core app, the
+  launcher, the worker, or `start-services.sh`). Before `--apply`, announce the release (app,
+  SHA, window, session) in the shared operator notes. The script enforces this with the
+  device-wide release lock (§4.10); the announcement covers releases of other apps whose
+  tooling does not take the lock yet.
 - Pending migrations are additive/backward compatible with the running release (the old release
   runs on the new schema between `migrate` and `cutover`, and again after a rollback). A
   non-additive migration needs its own reviewed recovery plan before this flow is used.
@@ -103,6 +108,7 @@ Remote: the running `hcis` process's release (from its `cwd`), that the launcher
 reference only that release on 4 and 2 lines, the target release directory does not exist yet,
 free space, candidate ports free, biometric gate, the database name in `DATABASE_URL` equals the
 configured one, and the list of **pending migrations** (bundle files not in `schema_migrations`).
+It stops first if another operator holds the release lock (§4.10).
 
 ### 4.3 upload
 
@@ -182,6 +188,26 @@ always available. **The database is not rolled back.** Restoring the pre-release
 separate owner decision (it discards data written since the backup) and follows the Mi8VPS
 runbook's PostgreSQL restore procedure.
 
+### 4.10 release lock (one operator at a time)
+
+Added after 2026-10-16, when two sessions released `hcis-6066d5b0-20261016` in the same minute
+and, earlier that day, a Hub/Aset web release restarted the worker during HCIS work. Neither
+caused data loss, but two operators editing the same launcher/worker files is unsafe.
+
+| Item | Behaviour |
+|---|---|
+| Lock | Directory `/data/local/mi8vps/sq-core-release.lock` with an `owner` file (`app`, `release`, `token`, `operator`, `started`). `mkdir` is atomic, so when two operators race, exactly one gets it. |
+| Token | Random, stored per checkout in `$(git rev-parse --git-dir)/mi8-release-operator`. Two sessions on one workstation use different worktrees and therefore different tokens. |
+| Acquire | Every `--apply` phase that changes the device (`upload`, `backup`, `migrate`, `candidate`, `cutover`, `rollback`, and `all` right after preflight) takes the lock, or continues if it already holds it. |
+| Check | `preflight` (also in dry run) stops with the holder's app, release, operator and age when someone else holds the lock. |
+| Release | After `verify` passes, and after a successful `rollback`. `unlock` releases a lock this checkout holds (for example after a release abandoned before verify). |
+| Stale lock | A lock older than 6 h (`MI8_LOCK_STALE_SECONDS`) is reported as stale but still stops the run. Remove it by hand only after confirming that nobody is releasing: `rm -f /data/local/mi8vps/sq-core-release.lock/owner && rmdir /data/local/mi8vps/sq-core-release.lock`. |
+| Test | `sh scripts/mi8/test-release-lock.sh` (offline; never contacts the device). |
+
+Follow-up (`TBD`, outside this repository): the Hub/Aset release tooling (`sq-core-ops`) must take
+and honour the same lock. Until it does, the announcement rule in §3 is the only guard for
+cross-app releases.
+
 ## 5. Retention
 
 Keep the current release and at least the previous one. Older release directories (~135 MB each)
@@ -192,7 +218,7 @@ may be deleted by hand once the new release has run for 7 days without rollback.
 
 | Phase | On failure | Production impact |
 |---|---|---|
-| preflight | stop | none |
+| preflight | stop (including "another operator holds the release lock") | none |
 | upload | remove `<name>.partial`; stop | none |
 | backup | stop; no migration | none |
 | migrate | stop; old release keeps running on the partly migrated schema; decide restore vs fix-forward | depends on migration |

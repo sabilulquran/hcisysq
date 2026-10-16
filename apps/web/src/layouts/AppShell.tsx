@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import type { AuthSession } from "@/types/hcis";
 import {
   ArrowLeftRight,
-  Bell,
   CalendarDays,
   Camera,
   ClipboardCheck,
@@ -17,9 +16,8 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import { BrandLockup } from "@/components/BrandLockup";
-import { AccountMenu } from "@/components/hcis/AccountMenu";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
+import { CoreShell, type ShellNavGroup, type ShellNavItem, type ShellPreviewMode } from "@/layouts/CoreShell";
 import { categoryTileClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +33,7 @@ interface AppShellProps {
   children: ReactNode;
   user: AppShellUser;
   activeItem?: string;
+  previewMode?: ShellPreviewMode;
 }
 
 // `category` paints the icon marker with the service category accent (SQ Core direction C).
@@ -58,13 +57,13 @@ const humanCapitalNavigation = [
   { label: "Penyelesaian Kehadiran", href: "/app/hc/attendance-resolution", icon: Clock3, category: "task" },
 ] as const;
 
-const mobileNavigation = [
-  { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
-  { label: "Hadir", activeLabel: "Kehadiran", href: "/app/attendance", icon: Clock3 },
-  { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
-  { label: "Lainnya", activeLabel: "Lainnya", href: "/app/services", icon: Grid2X2 },
-];
+// Phone bottom navigation: four destinations, then "Lainnya" with everything else.
+const mobileShortLabels: Record<string, string> = {
+  "/app": "Beranda",
+  "/app/attendance": "Hadir",
+  "/app/leave": "Cuti",
+  "/app/approvals": "Approval",
+};
 
 function NavigationLink({
   label,
@@ -161,6 +160,7 @@ export function AppShell({
   children,
   user,
   activeItem = "Beranda",
+  previewMode,
 }: AppShellProps) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [canAdminister, setCanAdminister] = useState(false);
@@ -193,95 +193,54 @@ export function AppShell({
     : activeItem === "Clock In/Out" ? "/app/attendance/clock" : "/app/attendance";
   const currentPath = typeof window !== "undefined" && window.location.pathname.startsWith("/app/attendance")
     ? window.location.pathname : fallbackPath;
-  const hasOrganizationHcAccess = humanCapitalNavigation.some((item) => canAccessEmployeeHcPath(session, item.href));
-  const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
+  const humanCapitalItems = humanCapitalNavigation.filter((item) => canAccessEmployeeHcPath(session, item.href));
+  const managementLabel = humanCapitalItems.length ? "Human Capital" : user.additionalRole;
+
+  const employeeItems: ShellNavItem[] = employeeNavigation.map((item) => ({
+    key: item.href,
+    label: item.label,
+    shortLabel: mobileShortLabels[item.href],
+    href: item.href,
+    icon: item.icon,
+    category: item.category,
+    active: attendanceActive && item.href.startsWith("/app/attendance")
+      ? item.href === currentPath
+      : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya"),
+  }));
+  const taskItems: ShellNavItem[] = [...managementNavigation, ...humanCapitalItems].map((item) => ({
+    key: item.href,
+    label: item.label,
+    shortLabel: mobileShortLabels[item.href],
+    href: item.href,
+    icon: item.icon,
+    category: item.category,
+    active: item.label === activeItem,
+  }));
+  const navigation: ShellNavGroup[] = [
+    { label: "Saya", items: employeeItems },
+    { label: "Tugas", badge: managementLabel, items: taskItems },
+  ];
+  const allItems = [...employeeItems, ...taskItems];
+  const mobileItems = Object.keys(mobileShortLabels)
+    .map((href) => allItems.find((item) => item.href === href))
+    .filter((item): item is ShellNavItem => Boolean(item))
+    .map((item) => (item.href === "/app/attendance" ? { ...item, active: attendanceActive } : item));
+
+  const roles = [...new Set([user.position, managementLabel, canAdminister ? "Administrator HCIS" : undefined]
+    .filter((role): role is string => Boolean(role)))];
 
   return (
-    <div className="min-h-screen bg-surface text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border/80 bg-sidebar/95 lg:flex lg:flex-col">
-        <div className="px-7 py-6">
-          <BrandLockup />
-        </div>
-
-        <nav className="flex-1 overflow-y-auto px-5 pb-5" aria-label="Navigasi utama pegawai">
-          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Saya</p>
-          <div className="space-y-1">
-            {employeeNavigation.map((item) => (
-              <NavigationLink
-                key={item.label} label={item.label} href={item.href} icon={item.icon} category={item.category}
-                active={attendanceActive && item.href.startsWith("/app/attendance")
-                  ? item.href === currentPath
-                  : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya")}
-              />
-            ))}
-          </div>
-
-          <div className="pt-6">
-            <div className="mb-2 flex items-center justify-between px-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Tugas</p>
-              {managementLabel ? (
-                <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-warning-ink">{managementLabel}</span>
-              ) : null}
-            </div>
-            <div className="space-y-1">
-              {managementNavigation.map((item) => (
-                <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} category={item.category} active={item.label === activeItem} />
-              ))}
-              <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} />
-            </div>
-          </div>
-        </nav>
-
-        <div className="px-5 pb-5"><AccountMenu user={user} variant="sidebar" /></div>
-      </aside>
-
-      <div className="lg:pl-72">
-        <header className="sticky top-0 z-20 border-b border-border/70 bg-surface/95 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="min-w-0 lg:hidden">
-              <BrandLockup compact />
-            </div>
-            <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
-            <div className="flex items-center gap-2">
-              <a href="/app/notifications" aria-label={unreadNotifications > 0 ? `Notifikasi, ${unreadNotifications} belum dibaca` : "Notifikasi"}
-                title="Buka pusat notifikasi"
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-surface-raised text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
-                {unreadNotifications > 0 ? (
-                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-destructive-foreground">
-                    {unreadNotifications > 99 ? "99+" : unreadNotifications}
-                  </span>
-                ) : null}
-              </a>
-              {canAdminister ? (
-                <a href="/admin" aria-label="Administrasi HCIS" className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2 text-xs font-semibold text-brand-primary-deep">
-                  <ShieldCheck className="h-4 w-4 sm:hidden" aria-hidden="true" /><span className="hidden sm:inline">Administrasi HCIS</span>
-                </a>
-              ) : null}
-              <AccountMenu user={user} variant="header" />
-            </div>
-          </div>
-        </header>
-        <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">
-          <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} mobile />
-          {attendanceActive ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
-          {children}
-        </main>
-      </div>
-
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/80 bg-surface-raised/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
-        {mobileNavigation.map((item) => {
-          const Icon = item.icon;
-          const active = item.activeLabel === activeItem || (attendanceActive && item.activeLabel === "Kehadiran");
-          return (
-            <a href={item.href} key={item.label} aria-current={active ? "page" : undefined}
-              className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground")}>
-              <Icon className="h-[19px] w-[19px]" aria-hidden="true" /><span>{item.label}</span>
-            </a>
-          );
-        })}
-      </nav>
-    </div>
+    <CoreShell
+      space="workspace"
+      canSwitchSpace={canAdminister}
+      user={{ name: user.name, initials: user.initials, detail: `${user.position} · ${user.unit}`, roles }}
+      unreadNotifications={unreadNotifications}
+      navigation={navigation}
+      mobileItems={mobileItems}
+      previewMode={previewMode}
+    >
+      {attendanceActive ? <EmployeeAttendanceNavigation currentPath={currentPath} /> : null}
+      {children}
+    </CoreShell>
   );
 }

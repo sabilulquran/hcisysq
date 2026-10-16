@@ -10,10 +10,7 @@ import {
   History,
   KeyRound,
   LayoutDashboard,
-  LogOut,
-  Menu,
   ServerCog,
-  ShieldCheck,
   Upload,
   UsersRound,
   WalletCards,
@@ -21,8 +18,9 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { BrandLockup } from "@/components/BrandLockup";
-import { getCurrentSession, logout } from "@/lib/auth";
+import { CoreShell, type ShellNavGroup, type ShellPreviewMode } from "@/layouts/CoreShell";
+import { getCurrentSession } from "@/lib/auth";
+import { getMyNotifications } from "@/lib/notifications";
 import { categoryIconClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
 import type { AuthSession } from "@/types/hcis";
@@ -115,12 +113,32 @@ const navGroups: AdminNavGroup[] = [
   },
 ];
 
-export function AdminNavigation({ active, session, compact = false }: { active: AdminNavKey; session: AuthSession | null; compact?: boolean }) {
+function permittedGroups(session: AuthSession | null): AdminNavGroup[] {
+  return navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.authorizationPath ?? item.href)) }))
+    .filter((group) => group.items.length);
+}
+
+/**
+ * Shown in page content, never in the sidebar (sidebars hold navigation only):
+ * the account can run attendance operations but cannot open the ADMS back office.
+ */
+export function AdminDeviceAccessNote({ session }: { session: AuthSession | null }) {
   const missingDeviceAccess = canAccessAdminPath(session, "/admin/attendance/workforce")
     && !canAccessAdminPath(session, "/admin/attendance/adms");
+  if (!missingDeviceAccess) return null;
+  return (
+    <div className="mb-5 rounded-xl border border-border bg-surface-raised p-3 text-xs leading-5 text-muted-foreground" role="note">
+      <p className="font-bold text-brand-heading">ADMS sudah terpasang</p>
+      <p>Akun ini belum memiliki permission perangkat yang dibutuhkan untuk membuka Back Office ADMS. Minta pengelola akses meninjau role/scope account ini.</p>
+    </div>
+  );
+}
+
+export function AdminNavigation({ active, session, compact = false }: { active: AdminNavKey; session: AuthSession | null; compact?: boolean }) {
   return (
     <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Administrator HCIS">
-      {navGroups.map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.authorizationPath ?? item.href)) })).filter((group) => group.items.length).map((group, groupIndex) => (
+      {permittedGroups(session).map((group, groupIndex) => (
         <div key={group.label ?? `root-${groupIndex}`}>
           {group.label ? <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p> : null}
           <div className="space-y-1">
@@ -138,25 +156,33 @@ export function AdminNavigation({ active, session, compact = false }: { active: 
           </div>
         </div>
       ))}
-      {missingDeviceAccess ? (
-        <div className="rounded-xl border border-border bg-surface p-3 text-xs leading-5 text-muted-foreground" role="note">
-          <p className="font-bold text-brand-heading">ADMS sudah terpasang</p>
-          <p>Akun ini belum memiliki permission perangkat yang dibutuhkan untuk membuka Back Office ADMS. Minta pengelola akses meninjau role/scope account ini.</p>
-        </div>
-      ) : null}
     </nav>
   );
 }
 
-export function AdminShell({ children, active, title, description }: {
+const attendanceKeys: AdminNavKey[] = ["attendance", "attendance-adms", "attendance-workforce", "attendance-shift-swaps"];
+// Phone bottom navigation in admin: Ringkasan, Pegawai, Kehadiran, Cuti, then "Lainnya".
+const mobileKeys: Array<{ key: AdminNavKey; shortLabel: string }> = [
+  { key: "overview", shortLabel: "Ringkasan" },
+  { key: "employees", shortLabel: "Pegawai" },
+  { key: "attendance", shortLabel: "Kehadiran" },
+  { key: "leave", shortLabel: "Cuti" },
+];
+
+function adminDisplayName(email: string) {
+  return email.split("@")[0] || email;
+}
+
+export function AdminShell({ children, active, title, description, previewMode }: {
   children: ReactNode;
   active: AdminNavKey;
   title: string;
   description?: string;
+  previewMode?: ShellPreviewMode;
 }) {
   const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -164,52 +190,57 @@ export function AdminShell({ children, active, title, description }: {
       if (!mounted) return;
       if (!canAccessAdminPath(current, "/admin")) { void navigate({ to: "/" }); return; }
       setSession(current);
+      if (current?.principal.principalType === "EMPLOYEE") {
+        void getMyNotifications("unread", 1)
+          .then((value) => { if (mounted) setUnreadNotifications(value.unreadCount); })
+          .catch(() => { if (mounted) setUnreadNotifications(0); });
+      }
     });
     return () => { mounted = false; };
   }, [navigate]);
 
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try { await logout(); } finally { await navigate({ to: "/" }); setLoggingOut(false); }
-  };
+  const groups = permittedGroups(session);
+  const navigation: ShellNavGroup[] = groups.map((group) => ({
+    label: group.label,
+    items: group.items.map((item) => ({
+      key: item.key,
+      label: item.label,
+      href: item.href,
+      icon: item.icon,
+      category: group.category,
+      active: item.key === active,
+    })),
+  }));
+  const flat = navigation.flatMap((group) => group.items);
+  const mobileItems = mobileKeys
+    .map(({ key, shortLabel }) => {
+      const item = flat.find((entry) => entry.key === key);
+      if (!item) return null;
+      const selected = key === "attendance" ? attendanceKeys.includes(active) : item.active;
+      return { ...item, shortLabel, active: selected };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+  const activeGroup = groups.find((group) => group.items.some((item) => item.key === active));
+  const email = session?.principal.email ?? "";
+  const name = email ? adminDisplayName(email) : "Administrator";
 
   return (
-    <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
-      <aside className="border-b border-border/70 bg-surface-raised lg:min-h-screen lg:border-b-0 lg:border-r">
-        <div className="px-5 py-5 lg:px-6">
-          <BrandLockup />
-        </div>
-        <details className="mx-4 mb-4 rounded-xl border border-border bg-surface lg:hidden">
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm font-bold text-brand-heading">
-            <Menu className="h-4 w-4" aria-hidden="true" />Menu administrasi
-          </summary>
-          <div className="border-t border-border bg-surface-raised p-2"><AdminNavigation session={session} active={active} compact /></div>
-        </details>
-        <div className="hidden px-4 lg:block"><AdminNavigation session={session} active={active} /></div>
-        <div className="hidden px-4 pb-5 pt-8 lg:block">
-          <div className="rounded-2xl border border-border/70 bg-surface p-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep"><ShieldCheck className="h-4 w-4" aria-hidden="true" />Administrator HCIS</div>
-            <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">{session?.principal.email ?? "Memuat sesi..."}</p>
-            <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}
-              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised text-xs font-semibold hover:bg-muted/60 disabled:opacity-60">
-              <LogOut className="h-4 w-4" aria-hidden="true" />{loggingOut ? "Keluar..." : "Keluar"}
-            </button>
-          </div>
-        </div>
-      </aside>
-      <div className="min-w-0">
-        <header className="border-b border-border/70 bg-surface-raised/90 px-5 py-5 sm:px-7 lg:px-10">
-          <div className="mx-auto max-w-7xl">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Administrasi sistem</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
-            {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
-          </div>
-        </header>
-        <main className="mx-auto max-w-7xl px-5 py-6 sm:px-7 lg:px-10 lg:py-8">
-          {session?.principal.principalType === "EMPLOYEE" ? <a href="/app" className="mb-4 inline-block text-sm font-semibold text-brand-primary-deep">Buka ruang pegawai</a> : null}
-          {session ? children : <p>Memuat izin administrasi...</p>}
-        </main>
-      </div>
-    </div>
+    <CoreShell
+      space="admin"
+      canSwitchSpace={session?.principal.principalType === "EMPLOYEE"}
+      user={{ name, initials: name.slice(0, 2).toUpperCase(), detail: email || "Memuat sesi...", roles: ["Administrator HCIS"] }}
+      unreadNotifications={unreadNotifications}
+      navigation={navigation}
+      mobileItems={mobileItems}
+      breadcrumb={["Administrasi", activeGroup?.label ?? "Ringkasan"]}
+      previewMode={previewMode}
+    >
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
+        {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
+      </header>
+      {attendanceKeys.includes(active) ? <AdminDeviceAccessNote session={session} /> : null}
+      {session ? children : <p>Memuat izin administrasi...</p>}
+    </CoreShell>
   );
 }

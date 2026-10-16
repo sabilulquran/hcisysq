@@ -125,8 +125,9 @@
   --shadow-pressed: inset 0 2px 4px rgba(22, 30, 37, .14);
 }
 
+/* Dark tokens: follow the system unless the account menu "Tampilan" choice overrides it (data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --brand-primary: #2bb3b1;
     --brand-primary-deep: #7fdcd8;
@@ -181,6 +182,62 @@
     --shadow-brand-card: 0 14px 34px -28px rgba(0, 0, 0, .6);
     --shadow-pressed: inset 0 2px 4px rgba(0, 0, 0, .4);
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-primary: #2bb3b1;
+  --brand-primary-deep: #7fdcd8;
+  --brand-primary-pale: #12393a;
+  --brand-foreground: #04201f;
+  --brand-accent-cyan: #6fd3cf;
+  --brand-secondary-yellow: #f2c230;
+  --brand-accent-orange: #e5763f;
+  --brand-heading: #e8edef;
+
+  --background: #0f1418;
+  --foreground: #e8edef;
+  --muted: #1d252b;
+  --muted-foreground: #9aa7b0;
+  --border: #2a343b;
+  --ring: #2bb3b1;
+  --destructive: #e0574c;
+  --destructive-foreground: #1f0806;
+  --sidebar: #161d22;
+  --surface: #0f1418;
+  --surface-raised: #161d22;
+
+  --danger-soft: #3d1716;
+  --danger-line: #5c2522;
+  --danger-ink: #f2958d;
+  --warning-soft: #3a2c0b;
+  --warning-line: #5c4614;
+  --warning-ink: #f2c766;
+  --success-soft: #12301f;
+  --success-line: #1f4d33;
+  --success-ink: #7fd3a3;
+  --info-soft: #142a40;
+  --info-line: #234567;
+  --info-ink: #8db8ee;
+
+  --cat-attendance: #6fd3cf;
+  --cat-attendance-soft: #12393a;
+  --cat-leave: #8db8ee;
+  --cat-leave-soft: #16283f;
+  --cat-pay: #f0cd5e;
+  --cat-pay-soft: #3a2f0f;
+  --cat-service: #bba6ee;
+  --cat-service-soft: #2a2142;
+  --cat-task: #e5763f;
+  --cat-task-soft: #2a1a12;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
+  --shadow-input: none;
+  --shadow-input-focus: 0 0 0 3px rgba(43, 179, 177, .28);
+  --shadow-button: none;
+  --shadow-brand-card: 0 14px 34px -28px rgba(0, 0, 0, .6);
+  --shadow-pressed: inset 0 2px 4px rgba(0, 0, 0, .4);
 }
 
 /* Base rules live in the base layer so Tailwind utilities (e.g. text-brand-foreground on buttons) win. */

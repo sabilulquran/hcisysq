@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
-import { AdminNavigation } from "@/layouts/AdminShell";
+import { AdminDeviceAccessNote, AdminNavigation } from "@/layouts/AdminShell";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
 import { AttendanceWorkforceNavigation } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
@@ -25,7 +25,8 @@ describe("employee attendance discoverability", () => {
     expect(html).toContain('href="/app/attendance/clock"');
     expect(html).toContain('href="/app/attendance/shift-swap"');
     const mobile = html.split('aria-label="Navigasi mobile pegawai"')[1]?.split("</nav>")[0] ?? "";
-    expect(mobile.match(/href=/g)).toHaveLength(5);
+    expect(mobile.match(/href=/g)).toHaveLength(4);
+    expect(mobile).toContain(">Lainnya<");
   });
   it("does not hide attendance actions beyond a horizontal scroll strip", () => {
     const html = renderToStaticMarkup(<EmployeeAttendanceNavigation currentPath="/app/attendance/shift-swap" />);
@@ -145,7 +146,10 @@ describe("HC and device-operator navigation", () => {
   it.each([false, true])("shows HC shift approval in compact=%s without granting ADMS", (compact) => {
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-shift-swaps" session={session(["attendance.shift_swap.manage"])} compact={compact} />);
     expect(html).toContain('href="/admin/attendance/workforce/shift-swaps"');
-    expect(html).toContain("ADMS sudah terpasang");
+    // Sidebars hold navigation only; the ADMS note is shown in page content instead.
+    expect(html).not.toContain("ADMS sudah terpasang");
+    expect(renderToStaticMarkup(<AdminDeviceAccessNote session={session(["attendance.shift_swap.manage"])} />)).toContain("ADMS sudah terpasang");
+    expect(renderToStaticMarkup(<AdminDeviceAccessNote session={session(["attendance.devices.read"])} />)).toBe("");
     expect(html).not.toContain('href="/admin/attendance/devices"');
     expect(html).not.toContain('href="/admin/attendance/adms"');
   });

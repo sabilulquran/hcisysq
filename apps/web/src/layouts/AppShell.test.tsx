@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { AccountMenu } from "@/components/hcis/AccountMenu";
+import { AppLauncher } from "@/components/shell/AppLauncher";
+import { SpaceSwitcher } from "@/components/shell/SpaceSwitcher";
 import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
 import type { AuthSession } from "@/types/hcis";
 
@@ -58,12 +61,55 @@ describe("AppShell Human Capital navigation", () => {
 });
 
 describe("AppShell account affordances", () => {
-  it("renders account-menu triggers in both the sidebar and responsive header", () => {
+  it("renders exactly one account menu, in the header, and keeps the sidebar navigation only", () => {
     const html = renderShell();
 
-    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
+    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(1);
     expect(html).toContain('aria-label="Menu akun Pegawai Sintetis"');
     expect(html).toContain('aria-expanded="false"');
+    const sidebar = html.slice(html.indexOf("<aside"), html.indexOf("</aside>"));
+    expect(sidebar).not.toContain("Menu akun");
+    expect(sidebar).not.toContain("Keluar");
+    expect(sidebar).not.toContain(">PS<");
+  });
+
+  it("puts the launcher with the way back to SQ Hub in the header and no admin link outside the switcher", () => {
+    const html = renderShell();
+    expect(html).toContain('aria-label="Buka peluncur aplikasi"');
+    expect(html).not.toContain("Administrasi HCIS");
+    expect(html).not.toContain('href="/admin"');
+  });
+
+  it("account menu holds identity, Akun SQ in SQ Hub, Tampilan and Keluar", () => {
+    const html = renderToStaticMarkup(
+      <AccountMenu user={{ name: "Pegawai Sintetis", initials: "PS", detail: "Staf · Unit Sintetis", roles: ["Staf", "Administrator HCIS"] }} previewOpen />,
+    );
+    expect(html).toContain('href="https://hub.sabilulquran.or.id/account"');
+    expect(html).toContain("Akun SQ");
+    expect(html).toContain("Terang");
+    expect(html).toContain("Gelap");
+    expect(html).toContain("Sistem");
+    expect(html).toContain("Administrator HCIS");
+    expect(html).toContain("Keluar");
+    expect(html).not.toContain("Segera");
+  });
+});
+
+describe("AppShell space switcher", () => {
+  it("links both spaces as tabs", () => {
+    const html = renderToStaticMarkup(<SpaceSwitcher space="admin" />);
+    expect(html).toContain('role="tablist" aria-label="Pindah ruang"');
+    expect(html).toContain('href="/app"');
+    expect(html).toContain('href="/admin" role="tab" aria-selected="true"');
+  });
+});
+
+describe("AppShell launcher", () => {
+  it("lists SQ Hub first and marks HCIS as the current app", () => {
+    const html = renderToStaticMarkup(<AppLauncher previewOpen />);
+    expect(html.indexOf("SQ Hub")).toBeLessThan(html.indexOf(">HCIS<"));
+    expect(html).toContain('href="https://hub.sabilulquran.or.id/"');
+    expect(html).toContain("Di sini");
   });
 });
 
@@ -81,17 +127,16 @@ describe("AppShell employee service discovery", () => {
     expect(html).toContain('href="/app/notifications"');
 
     const mobile = html.split('aria-label="Navigasi mobile pegawai"')[1]?.split("</nav>")[0] ?? "";
-    expect(mobile.match(/href=/g)).toHaveLength(5);
+    expect(mobile.match(/href=/g)).toHaveLength(4);
   });
 });
 
 describe("AppShell SQ brand lockup", () => {
-  it("shows the star, HCIS and the gold wordmark in the sidebar and the compact header", () => {
+  it("shows the star, HCIS and the gold wordmark once, in the header", () => {
     const html = renderShell();
 
-    expect(html).toContain('class="h-11 w-11 shrink-0 object-contain"');
     expect(html).toContain('class="h-9 w-9 shrink-0 object-contain"');
-    expect(html.match(/sq-wordmark-gold/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html.match(/<img src="[^"]*sq-wordmark-gold/g)).toHaveLength(1);
     expect(html).not.toContain("Human Capital Information System");
   });
 

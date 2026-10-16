@@ -8,7 +8,7 @@ describe("OIDC login failure copy", () => {
     expect(oidcLoginFailureMessage("access_unavailable")).toContain("belum dapat memverifikasi hak akses");
     expect(oidcLoginFailureMessage("account_inactive")).toContain("sedang tidak aktif");
     expect(oidcLoginFailureMessage("oidc_failed")).toBe(
-      "Masuk melalui SQ Identity belum berhasil. Silakan coba lagi.",
+      "Masuk dengan Akun SQ belum berhasil. Silakan coba lagi.",
     );
   });
 

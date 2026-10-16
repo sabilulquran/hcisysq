@@ -128,7 +128,7 @@ export async function registerAuthRoutes(
     if (!oidcLogin) {
       return reply.status(404).send({
         code: "OIDC_AUTH_DISABLED",
-        message: "SQ Identity tidak aktif pada environment ini.",
+        message: "Login Akun SQ belum aktif pada environment ini.",
       });
     }
 
@@ -138,7 +138,7 @@ export async function registerAuthRoutes(
     } catch {
       return reply.status(503).send({
         code: "IDENTITY_UNAVAILABLE",
-        message: "SQ Identity belum dapat dihubungi. Coba lagi.",
+        message: "Akun SQ belum dapat dihubungi. Coba lagi.",
       });
     }
   });
@@ -148,7 +148,7 @@ export async function registerAuthRoutes(
     if (!oidcLogin) {
       return reply.status(404).send({
         code: "OIDC_AUTH_DISABLED",
-        message: "SQ Identity tidak aktif pada environment ini.",
+        message: "Login Akun SQ belum aktif pada environment ini.",
       });
     }
 

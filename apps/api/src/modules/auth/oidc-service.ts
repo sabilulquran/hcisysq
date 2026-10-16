@@ -59,7 +59,7 @@ export class OidcLoginService {
     const state = callbackUrl.searchParams.get("state");
     if (!state) {
       await this.audit("auth.oidc.callback.invalid", context, null, null);
-      throw new AuthError(401, "OIDC_CALLBACK_INVALID", "Respons SQ Identity tidak valid.");
+      throw new AuthError(401, "OIDC_CALLBACK_INVALID", "Respons Akun SQ tidak valid.");
     }
 
     const transaction = await this.consumeTransaction(state);
@@ -68,7 +68,7 @@ export class OidcLoginService {
       throw new AuthError(
         401,
         "OIDC_CALLBACK_INVALID",
-        "Respons SQ Identity tidak valid atau sudah digunakan.",
+        "Respons Akun SQ tidak valid atau sudah digunakan.",
       );
     }
 
@@ -84,7 +84,7 @@ export class OidcLoginService {
       throw new AuthError(
         401,
         "OIDC_CALLBACK_INVALID",
-        "Respons SQ Identity tidak dapat diverifikasi.",
+        "Respons Akun SQ tidak dapat diverifikasi.",
       );
     }
 

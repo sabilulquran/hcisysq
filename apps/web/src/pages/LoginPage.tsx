@@ -55,10 +55,10 @@ export function LoginPage() {
             href="/api/auth/oidc/start"
             className="flex h-12 w-full items-center justify-center rounded-xl bg-brand-primary text-sm font-bold text-white shadow-[var(--shadow-button)] transition-[transform,box-shadow,background-color] hover:-translate-y-0.5 hover:bg-brand-primary-deep hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/35"
           >
-            Masuk dengan SQ Identity
+            Masuk dengan Akun SQ
           </a>
           <p className="text-center text-xs leading-5 text-muted-foreground">
-            Gunakan identitas Staff Sabilul Qur&apos;an yang telah diaktifkan.
+            Gunakan Akun SQ yang sama untuk SQ Hub, HCIS, dan Aset SQ.
           </p>
         </div>
       )}

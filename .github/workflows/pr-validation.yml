@@ -60,6 +60,12 @@ jobs:
           set -euo pipefail
           bash -n scripts/uat-account-hygiene.sh
 
+      - name: Reject legacy user-facing identity brand
+        shell: bash
+        run: |
+          legacy="$(git grep -n -I -F 'SQ Identity' -- apps/web/src apps/api/src || true)"
+          test -z "$legacy" || { printf '%s\n' "$legacy"; echo 'Use "Akun SQ" for the shared sign-in, not "SQ Identity".' >&2; exit 1; }
+
       - name: Create synthetic API environment
         run: |
           cat > apps/api/.env.local <<'EOF'

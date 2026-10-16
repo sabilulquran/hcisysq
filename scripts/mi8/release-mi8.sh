@@ -65,7 +65,7 @@ fi
 prelude() {
   cat <<EOF
 set -eu
-PATH=/system/bin:/system/xbin:\$PATH
+PATH=/system/bin:/system/xbin:\$PATH:/usr/sbin:/usr/bin:/sbin:/bin
 R=/data/local/ubuntu26
 S=/data/local/mi8vps
 REL=/srv/hcis/releases
@@ -227,7 +227,7 @@ echo "biometric_collection=OFF"
 [ "$(grep -Ec "^DATABASE_URL=.*/$DB([?'\"].*)?\$" "$env")" = 1 ] || fail "DATABASE_URL does not name $DB"
 echo "database=$DB"
 [ -f "$R/srv/hcis/shared/spa_static_server.py" ] || fail "spa_static_server.py missing"
-h=$(date -u +%H); [ "$h" != 02 ] || fail "02 UTC is the SQ Core backup hour; release outside it"
+h=$(date -u +%H); [ "$h" != 19 ] || fail "19 UTC (02:00 WIB) is the SQ Core backup hour (OPS-MI8-BAK-001); release outside it"
 echo "worker_pid=$(cat "$S/sq-core-worker.pid")"
 EOF
   pending_migrations
@@ -249,7 +249,10 @@ sha256sum -c "$NAME.tar.gz.sha256" >/dev/null || fail "uploaded bundle checksum 
 [ ! -e "$R$REL/$NAME" ] || fail "$REL/$NAME already exists; not overwriting"
 IN="$REL/.incoming-$NAME"
 rm -rf "$R$IN"; mkdir -p "$R$IN"
-chroot "$R" /usr/bin/tar -xzf "/tmp/$NAME.tar.gz" -C "$IN" --no-same-owner
+# GNU tar in the chroot needs syscalls the Android kernel lacks ("Function not
+# implemented"); Python tarfile uses plain open/mkdir and its "data" filter
+# rejects absolute paths and links that escape the target.
+chroot "$R" /usr/bin/python3 -c "import sys, tarfile; tarfile.open(sys.argv[1]).extractall(sys.argv[2], filter='data')" "/tmp/$NAME.tar.gz" "$IN"
 grep -q "\"sha\": \"$SHA\"" "$R$IN/$NAME/RELEASE.json" || { rm -rf "$R$IN"; fail "RELEASE.json mismatch after extract"; }
 chroot "$R" /bin/chown -R -h 989:989 "$IN/$NAME"
 chroot "$R" /usr/bin/find "$IN/$NAME" -type d -exec /bin/chmod 0550 {} +
@@ -347,7 +350,7 @@ EOF
 phase_cutover() {
   bundle_checks
   remote_rw "cut over hcis + hcis-web to $NAME (launcher/worker path edit, worker restart, service restart)" <<'EOF'
-[ "$(date -u +%H)" != 02 ] || fail "02 UTC is the SQ Core backup hour"
+[ "$(date -u +%H)" != 19 ] || fail "19 UTC (02:00 WIB) is the SQ Core backup hour (OPS-MI8-BAK-001)"
 [ -f "$R$REL/$NAME/RELEASE.json" ] || fail "$NAME is not uploaded"
 grep -q "\"sha\": \"$SHA\"" "$R$REL/$NAME/RELEASE.json" || fail "$NAME RELEASE.json SHA mismatch"
 PREV=$(running_release node apps/api) || fail "running hcis API not found"

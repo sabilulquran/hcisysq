@@ -1,9 +1,9 @@
 # Mi8VPS HCIS release flow (OPS-MI8-REL-001)
 
-**Status:** ACTIVE DESIGN / DRAFT TOOLING — the scripts are dry-run by default. Read-only `preflight` and a full dry
-run were exercised against production on 2026-10-15 (current release `hcis-1f482549-20261004`, 55
-migrations applied, none pending). No release has been cut with this flow yet; the first `--apply` run needs explicit owner approval and its evidence must
-be recorded here or in a dated verification note.
+**Status:** ACTIVE — the scripts are dry-run by default. The first `--apply` release
+(`hcis-3b670849-20261016`, main `3b67084`) was cut on 2026-10-16 with owner approval; evidence is in
+`production-release-verification-2026-10-16.md`. Every later `--apply` run still needs explicit owner
+approval and a dated verification note.
 **Prepared:** 2026-10-15
 **Supersedes for production:** `vps-deployment.md`, `github-vps-production-deployment.md`,
 `.github/workflows/deploy-production.yml` (all old-VPS Docker/GHCR, now retired).
@@ -116,9 +116,9 @@ running services.
 `pg_dump -Fc` of the HCIS database as the Termux user, copied to
 `/srv/hcis/backups/pre-release/<name>-<stamp>.dump` (`root:root 0600`) with a `.sha256` file, then
 `pg_restore --list` to prove the archive is readable. A marker records the dump for the release;
-`migrate` refuses to run without a marker younger than 6 hours. The daily SQ Core backup set
-(`sq-core-backup.sh`, 7 sets) is not relied on: it may rotate away, and on 2026-10-15 it dumped
-`sqcore_phase3_cutf8_20261004_hcis` (a rehearsal copy), **not** the production `sqcore_hcis`.
+`migrate` refuses to run without a marker younger than 6 hours. The daily production set from
+OPS-MI8-BAK-001 (19 UTC, 14 sets plus an encrypted off-host copy) is not relied on for a release:
+the release backup must be taken right before migrations and kept outside the daily rotation.
 
 ### 4.5 migrate
 
@@ -203,14 +203,13 @@ health results. Never record `final.env` values, tokens, cookies or employee dat
 
 ## 8. Known limits and follow-ups
 
-- **Production HCIS (`sqcore_hcis`) is not covered by any scheduled backup, on the device or on Google
-  Drive.** `sq-core-backup.sh` dumps the `sqcore_phase3_cutf8_20261004_*` rehearsal databases and labels
-  its sets `scope=non-production-rehearsal`. Encrypted Google Drive copies exist (rclone remote
-  `mi8_crypt:production/`, scripts in `/usr/local/sbin`), but they are one-shot, approval-gated uploads
-  from 12–13 October with no schedule. The only SQ Core set uploaded there (`set-20261012T020012Z`)
-  holds the same rehearsal dumps. Fixing the daily set and its off-host copy is a separate
-  owner-approved change; until then the `backup` phase here is the only release-time dump of
-  `sqcore_hcis`, and it stays on the device.
+- Resolved 2026-10-15/16 by OPS-MI8-BAK-001 (`mi8vps-sq-core-production-backup-plan.md`):
+  `sqcore_hcis` and the other SQ Core production databases are backed up daily at 19 UTC (02:00 WIB)
+  with an encrypted Google Drive copy and a weekly restore check. Releases must not run during the
+  19 UTC hour; `preflight` and `cutover` refuse it.
+- First `--apply` run findings (fixed in the script): the remote `PATH` lacked the chroot's
+  `/usr/bin`, so chroot `tar` could not exec `gzip`; and chroot GNU `tar` fails on the Android kernel
+  with "Function not implemented", so extraction now uses Python `tarfile` with the `data` filter.
 
 - A one-time change could make the launcher and worker read `/srv/hcis/current` (launcher `cd`
   through the symlink, worker pattern from `readlink`), so a release would flip a symlink instead of

@@ -104,8 +104,34 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # AUTH-011 / SEC-03: the persona matrix needs its own empty loopback database
+      # (the test refuses any other name or host) and creates disposable schemas in it.
+      - name: Create empty AUTH-011 permissions database
+        env:
+          PGPASSWORD: hcis_ci_password
+        run: |
+          psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_pr -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE hcis_auth011_permissions_test;'
+
       - name: Test
+        env:
+          HCIS_AUTH011_TEST_DATABASE_URL: postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_auth011_permissions_test
         run: npm run test
+
+      - name: Require AUTH-011 PostgreSQL suite to have run
+        env:
+          HCIS_AUTH011_TEST_DATABASE_URL: postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_auth011_permissions_test
+        working-directory: apps/api
+        run: |
+          set -o pipefail
+          npx vitest run test/auth011-postgres.integration.test.ts test/auth011-route-coverage.test.ts \
+            --reporter=verbose --reporter=json --outputFile=/tmp/auth011.json | tee /tmp/auth011.log
+          node -e '
+            const r = require("/tmp/auth011.json");
+            const skipped = r.numPendingTests + r.numTodoTests;
+            console.log(`AUTH-011: ${r.numPassedTests} passed, ${skipped} skipped, ${r.numFailedTests} failed`);
+            if (!r.success || skipped > 0 || r.numPassedTests < 20) process.exit(1);
+          '
 
       - name: Build
         run: npm run build

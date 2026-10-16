@@ -76,6 +76,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/firmware",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.firmware"
     ]
   },
@@ -84,6 +85,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/time-sync",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.operate"
+    ],
+    "executePermissions": [
       "attendance.devices.operate"
     ]
   },
@@ -92,6 +97,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/firmware-packages",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.firmware"
     ]
   },
@@ -100,6 +106,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/firmware-packages",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.firmware"
     ]
   },
@@ -108,6 +115,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/attendance/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -116,6 +124,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/mappings/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -124,6 +133,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/audit/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -132,6 +142,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/operations/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -140,6 +151,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/operations",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.read"
     ]
   },
@@ -148,6 +160,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/wdms-evidence",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.read"
     ]
   },
@@ -156,6 +169,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/work-codes/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -164,6 +178,7 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/export.csv",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.export"
     ]
   },
@@ -172,6 +187,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/ntp",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.configure"
+    ],
+    "executePermissions": [
       "attendance.devices.configure"
     ]
   },
@@ -188,6 +207,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/user-enabled",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.configure"
+    ],
+    "executePermissions": [
       "attendance.devices.configure"
     ]
   },
@@ -196,6 +219,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/user-profile",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.configure"
+    ],
+    "executePermissions": [
       "attendance.devices.configure"
     ]
   },
@@ -236,13 +263,32 @@
     "method": "GET",
     "url": "/admin/attendance/adms/devices/:deviceId/physical-capabilities",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.read"
     ]
   },
   {
     "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
     "method": "POST",
-    "url": "/admin/attendance/adms/devices/:deviceId/physical/${spec.path}",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/clear-attendance",
+    "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/clear-photo",
+    "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.destructive"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/physical-parity-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/physical/clear-all",
     "permissions": [
       "attendance.devices.technical",
       "attendance.devices.destructive"
@@ -253,6 +299,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/attendance-photo-canary",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.operate"
     ]
   },
@@ -261,6 +308,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-delete",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.biometrics",
       "attendance.devices.destructive"
     ]
@@ -270,6 +318,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-enroll",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.biometrics"
     ]
   },
@@ -278,6 +327,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-query",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.biometrics"
     ]
   },
@@ -286,6 +336,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/biometric-restore",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.biometrics"
     ]
   },
@@ -294,6 +345,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/capability-state",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.configure"
     ]
   },
@@ -302,6 +354,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/duplicate-punch",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.configure"
+    ],
+    "executePermissions": [
       "attendance.devices.configure"
     ]
   },
@@ -310,6 +366,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/message",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.operate"
+    ],
+    "executePermissions": [
       "attendance.devices.operate"
     ]
   },
@@ -318,6 +378,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/reboot",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.operate"
+    ],
+    "executePermissions": [
       "attendance.devices.operate"
     ]
   },
@@ -326,6 +390,7 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/time-sync-canary",
     "permissions": [
+      "attendance.devices.technical",
       "attendance.devices.operate"
     ]
   },
@@ -334,6 +399,10 @@
     "method": "POST",
     "url": "/admin/attendance/adms/devices/:deviceId/physical/work-code",
     "permissions": [
+      "attendance.devices.technical",
+      "attendance.devices.operate"
+    ],
+    "executePermissions": [
       "attendance.devices.operate"
     ]
   },
@@ -733,6 +802,7 @@
     "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
     "method": "POST",
     "url": "/admin/access/accounts/:accountId/role-assignments",
+    "access": "super-admin",
     "permissions": [
       "access.roles.assign"
     ]
@@ -757,6 +827,7 @@
     "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
     "method": "DELETE",
     "url": "/admin/access/role-assignments/:assignmentId",
+    "access": "super-admin",
     "permissions": [
       "access.roles.assign"
     ]
@@ -1080,5 +1151,835 @@
     "permissions": [
       "payslips.publish"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/management/summary",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/management/user-sync",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/management/jobs",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/management/health",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/management/audit",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/management-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/devices/:deviceId/retire",
+    "permissions": [
+      "attendance.devices.configure"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/wave1-admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/adms/transactions",
+    "permissions": [
+      "attendance.devices.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/shift-swaps",
+    "permissions": [
+      "attendance.shift_swap.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/shift-swaps/:shiftSwapId/decision",
+    "permissions": [
+      "attendance.shift_swap.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/clarifications",
+    "permissions": [
+      "attendance.clarification.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/clarifications/:clarificationId/decision",
+    "permissions": [
+      "attendance.clarification.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/work-locations",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/work-locations/:locationId",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/work-locations",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedules",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/schedules/:scheduleId",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedules",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-assignments",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/attendance/schedule-assignments/:assignmentId",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedule-assignments",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/rosters",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/rosters",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "PUT",
+    "url": "/admin/attendance/rosters/:rosterId/entries",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/attendance/rosters/:rosterId/entries/:employeeId/:workDate",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/rosters/:rosterId/copy-previous",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/rosters/:rosterId/publish",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/mobile-evidence",
+    "permissions": [
+      "attendance.clarification.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/mobile-evidence/:evidenceId/photo",
+    "permissions": [
+      "attendance.clarification.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/overtime",
+    "permissions": [
+      "attendance.overtime.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/overtime",
+    "permissions": [
+      "attendance.overtime.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/overtime/:overtimeId/decision",
+    "permissions": [
+      "attendance.overtime.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/manual-corrections",
+    "permissions": [
+      "attendance.records.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/daily",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/finalize/:date",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/report",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/payslip-imports/:batchId/rows",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "POST",
+    "url": "/admin/payslip-imports/:batchId/rows/exclude",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/payslip-imports/:batchId/rows/:rowNumber",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "DELETE",
+    "url": "/admin/payslip-imports/:batchId/rows/:rowNumber",
+    "permissions": [
+      "payslips.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "GET",
+    "url": "/leave/hc/administration-queue",
+    "access": "hc-operational",
+    "permissions": [
+      "attendance.resolution.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "POST",
+    "url": "/leave/hc/tasks/:taskId/administration-decision",
+    "access": "hc-operational",
+    "permissions": [
+      "attendance.resolution.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "GET",
+    "url": "/attendance/resolutions/hc",
+    "access": "hc-operational",
+    "permissions": [
+      "attendance.resolution.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "POST",
+    "url": "/attendance/resolutions/hc/:caseId/decision",
+    "access": "hc-operational",
+    "permissions": [
+      "attendance.resolution.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/planned/hc/validation-queue",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/planned/hc/tasks/:taskId/validation-decision",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/planned/hc/approval-queue",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate",
+      "leave.hc.approve"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/planned/hc/tasks/:taskId/approval-decision",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate",
+      "leave.hc.approve"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/planned/hc/requests/:requestId/evidence/:evidenceId",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/hc/validation-queue",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/hc/requests/:requestId/evidence/:evidenceId",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/hc/tasks/:taskId/decision",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/routes.ts",
+    "method": "GET",
+    "url": "/attendance/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "GET",
+    "url": "/attendance/shift-swaps/candidates",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "GET",
+    "url": "/attendance/shift-swaps/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "POST",
+    "url": "/attendance/shift-swaps",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "POST",
+    "url": "/attendance/shift-swaps/:shiftSwapId/counterpart-decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/shift-swap-routes.ts",
+    "method": "POST",
+    "url": "/attendance/shift-swaps/:shiftSwapId/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/me/workforce",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/me/schedule",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/mobile/clock",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/mobile/evidence/:evidenceId/photo",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/clarifications/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/clarifications",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/clarifications/:clarificationId/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/overtime/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/overtime",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/overtime/:overtimeId/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/board/dashboard-routes.ts",
+    "method": "GET",
+    "url": "/board/dashboard",
+    "access": "self-service",
+    "principals": [
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "GET",
+    "url": "/attendance/resolutions/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",
+    "method": "POST",
+    "url": "/attendance/resolutions/me/:caseId/annual-conversion-decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "GET",
+    "url": "/leave/me/summary",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/annual/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/annual/submit",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "GET",
+    "url": "/leave/me/requests",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "GET",
+    "url": "/leave/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "POST",
+    "url": "/leave/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-evidence-routes.ts",
+    "method": "POST",
+    "url": "/leave/planned/me/requests/:requestId/evidence",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/planned/me/summary",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/planned/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/planned/me/submit",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/planned-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/planned/me/requests/:requestId/evidence/:evidenceId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/special/me/summary",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/special/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/special/me/submit",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "POST",
+    "url": "/leave/special/me/requests/:requestId/evidence",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/special-leave-routes.ts",
+    "method": "GET",
+    "url": "/leave/special/me/requests/:requestId/evidence/:evidenceId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/notifications/routes.ts",
+    "method": "GET",
+    "url": "/notifications/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD",
+      "SUPER_ADMIN"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/notifications/routes.ts",
+    "method": "POST",
+    "url": "/notifications/:notificationId/read",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD",
+      "SUPER_ADMIN"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/notifications/routes.ts",
+    "method": "POST",
+    "url": "/notifications/read-all",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD",
+      "SUPER_ADMIN"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "GET",
+    "url": "/payslips",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/payslips/routes.ts",
+    "method": "GET",
+    "url": "/payslips/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
   }
 ]

@@ -2,6 +2,92 @@
 
 # AUTH-011 implementation verification
 
+## Update 2026-10-16: route coverage and CI enforcement (SEC-02, SEC-03)
+
+Follow-up to the 2026-10-16 HCIS security review (redacted summary in
+`docs/operations/hcis-security-review-2026-10-16.md`). The inventory, tests and CI changed. The only production
+change enforces the owner decision of 2026-10-16 that only Super Admin grants roles (see below).
+
+**Manifest completeness (SEC-02).** [The route inventory](../domain/AUTH-011-admin-route-permissions.json) now
+lists every route that `createApp` registers, except an explicit public allowlist: `/health`, `/ready`, `/auth/*`,
+`/iclock/*` (device ingress) and `/internal/v1/*` (service token). It has 228 entries:
+
+| `access` | Count | Guard | Persona expectation |
+| --- | --- | --- | --- |
+| absent (admin) | 174 | `requirePermissionsFromCookie` with every listed `permissions` key; legacy Super Admin compatibility applies | Allowed only when the persona's effective organization permissions include all keys |
+| `hc-operational` | 12 | EMPLOYEE principal, then an organization-scoped permission (`leave.validate`, `leave.hc.approve`, `attendance.resolution.manage`) | Same, but legacy Super Admin and Foundation Board are always 403 |
+| `super-admin` | 2 | Role-assignment create/remove: `access.roles.assign` **and** a Super Admin principal | Every other persona is 403, including HC and HC admins |
+| `self-service` | 40 | Principal type only (`principals`) | Anonymous 401/403; principals not listed are 403 |
+
+Earlier the inventory had 135 entries; 51 admin and HC routes plus 40 self-service routes were missing. Every
+missing route was already guarded in code. The physical clear template entry became three concrete routes.
+Re-auditing the existing entries against handlers found 27 that were *less* strict than the code, because
+`attendance.devices.technical` was missing. 8 physical commands require it unless the body requests
+`mode: "execute"`; this is now recorded as `executePermissions`. No entry was more permissive in code than in
+the inventory.
+
+**Tests.**
+
+- `apps/api/test/auth011-route-coverage.test.ts` runs without a database in every `npm run test`. It records
+  routes through a Fastify `onRoute` hook and fails on these conditions:
+  - a registered non-public route that is missing from the inventory;
+  - a stale, duplicate or public inventory entry;
+  - any change to the pinned public route list;
+  - an unknown permission key.
+- `apps/api/test/auth011-postgres.integration.test.ts` takes each persona's real effective permissions:
+  anonymous, employee, unit-scoped HC, unit-scoped HC admin, Foundation Board, organization HC admin and legacy.
+  From those it computes the expected 401, 403 or allowed result for every inventory route. Routes that support
+  `mode: "execute"` are checked in both modes.
+  - Unit-scoped HC is denied on every route, because organization permissions ignore unit scope. This is expected.
+  - HC operational handlers check request shape before the HC permission, so the matrix sends well-formed
+    synthetic IDs and bodies to reach the permission branch. Elsewhere it sends a malformed ID to show that
+    authorization runs before validation.
+
+**CI (SEC-03).** `.github/workflows/pr-validation.yml` creates an empty `hcis_auth011_permissions_test`
+database on the job's PostgreSQL service and sets `HCIS_AUTH011_TEST_DATABASE_URL` for the test step. A separate
+step reruns both AUTH-011 files with the JSON reporter. It fails if any test failed, any test was skipped, or
+fewer than 20 tests passed, so a silent `describe.skipIf` cannot pass the gate.
+
+**Fixed rot found once the suite ran.** On `main` the suite had 4 failing tests and 1 failing suite. None was a
+security regression:
+
+1. The inventory was stale for technical-gated ADMS routes (see above).
+2. `0023_leave_approval_principals.sql` is back in the main chain (PR #59), so the 0045 compatibility test no
+   longer seeds that role itself. It now asserts that the migration seeded it.
+3. The 0045 compatibility test now pins the bundle that 0045 grants. Migrations 0046–0050 extend it to
+   `HC_ADMIN_PERMISSIONS`, which the main suite asserts.
+4. HC admins could no longer delegate `human_capital` after migrations 0046–0048 widened that role (see the
+   owner decision below). The rollback test then failed and left its synthetic trigger behind, which caused the
+   invitation-revocation failure.
+
+**Owner decision 2026-10-16: only Super Admin grants roles.** The owner ruled: "the Human Capital role may NOT
+delegate its role or permissions to others; only Super Admin can grant roles." This is recorded in
+[AUTH-011](../domain/hcis-authorization-modernization.md#delegation-and-account-management) and
+[roles and permissions](../domain/roles-permissions.md).
+
+- **Enforcement:** `assertRoleGrantor` runs in both role-assignment routes before input validation, and again in
+  `createRoleAssignment` and `removeRoleAssignment`.
+- **Denied actors:** all of the following get `403 ROLE_GRANT_SUPER_ADMIN_ONLY`:
+  - organization-scoped and unit-scoped `human_capital`;
+  - organization-scoped and unit-scoped `human_capital_admin`;
+  - `access.roles.delegate` and `access.governance.manage` holders;
+  - plain employees.
+- **Test coverage:** the test tries every role, three scopes, and both a third-party and a self target. It also
+  tries an empty body, removing an existing assignment, and direct service calls. It then asserts that the
+  assignment count and the `role.assignment.*` audit count are unchanged.
+- **Super Admin path:** Super Admin can still grant and remove roles, within the HCIS role/permission allowlist and
+  scope rules.
+- **Earlier open item:** the `human_capital` bundle drift from migrations 0046–0048 no longer decides who can
+  delegate, so it is closed by this decision.
+- **Follow-up, not done here:** `human_capital_admin` still holds `access.roles.assign`, which now grants nothing
+  on its own. Removing it, and hiding the assignment controls in the web UI for non-Super-Admin users, needs a
+  migration and a UI change.
+
+Reproduce: run `apps/api/test/auth011-*.test.ts` with `HCIS_AUTH011_TEST_DATABASE_URL` pointing to an empty
+loopback `hcis_auth011_permissions_test` database, as described below.
+
+## Original verification (2026-09-07)
+
 Date: 2026-09-07. Review target: local branch `refactor/hcis-human-capital-admin`.
 Starting main was fetched and matched exactly `b17fd11a63152a5a021a8fd49f238bf3f84152ef` before any source write.
 
@@ -17,7 +103,7 @@ See [the accepted specification](../domain/hcis-authorization-modernization.md) 
 - Operational HC remains separate. Global permissions require organization scope, inclusive effective dates, active account and active linked employee.
 - Board governance APIs and employee self-service principal boundaries remain unchanged.
 - Technical/device, biometric, destructive, firmware, policy/approval assignment and delegation permissions are separated from normal HC administration.
-- Role assignments cannot target the actor. Normal role administrators can delegate only the accepted operational HC bundle; role IDs and permission contents are checked in the database. The admin bundle requires an explicit delegation operator and organization scope.
+- Role assignments cannot target the actor. Normal role administrators can delegate only the accepted operational HC bundle; role IDs and permission contents are checked in the database. The admin bundle requires an explicit delegation operator and organization scope. *(Superseded 2026-10-16: only Super Admin grants roles; see the update above.)*
 - Role changes and audit writes are atomic. Elevated role assignment revokes preexisting invitation tokens inside the same transaction. Account state and invitation authorization checks run while holding the target account lock; privileged invitations cannot be taken over through normal HC access management.
 - Frontend routes, menus and landing use backend authorization context. Missing context fails closed. Desktop and compact admin menus have render tests.
 - OIDC protocol, exact issuer/subject matching, original account ID, Application Access gate, cookie behavior and auth mode remain intact.

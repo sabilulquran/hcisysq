@@ -65,8 +65,15 @@ Legenda: `O` own, `U` unit, `A` organization sesuai permission, `RO` read only, 
 | Kelola employee master | - | HC sesuai permission | RO bila diberi detail | A teknis/administratif sesuai policy |
 | Lihat statistik/report | own/terbatas | U/A sesuai permission | RO | sesuai permission |
 | Export report | sesuai modul | sesuai permission | RO/export sesuai permission | sesuai permission |
-| Kelola role/permission | - | - | - | A |
+| Kelola role/permission | - | - (termasuk Human Capital dan Human Capital Administrator) | - | A |
 | Konfigurasi sistem | - | - | - | A |
+
+Keputusan owner 2026-10-16 (AUTH-011): hanya Super Admin yang dapat memberikan atau mencabut role
+(`POST /admin/access/accounts/:accountId/role-assignments`, `DELETE /admin/access/role-assignments/:assignmentId`).
+Role Human Capital dan Human Capital Administrator, atau pemegang permission apa pun termasuk
+`access.roles.assign` dan `access.roles.delegate`, tidak boleh mendelegasikan role atau permission kepada akun lain.
+Percobaan tersebut mendapat 403 sebelum validasi input dan tidak menulis assignment maupun audit event.
+Lihat [AUTH-011](hcis-authorization-modernization.md#delegation-and-account-management).
 
 ## Permission naming
 

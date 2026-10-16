@@ -56,14 +56,23 @@ task. Validation permission is not actual approval. The new role receives neithe
 
 ## Delegation and account management
 
-Actors cannot create/delete their own role assignments. Ordinary HCIS role
-administrators may assign/remove only `human_capital` on another Employee, with
-valid own/unit/organization scope and dates, and only while the role's permissions
-remain within the accepted HC operational bundle. They cannot delegate the admin
-role, approval, technical or external capabilities, even by modifying a different
-account first. An explicit `access.roles.delegate` operator can manage the known
-HCIS system roles, subject to the HCIS permission allowlist. Unknown/external
-roles or permission keys fail closed. `human_capital_admin` requires organization
+**Owner decision, 2026-10-16: only Super Admin grants or removes roles.** The Human
+Capital role may not delegate its role or permissions to others. This applies to
+`human_capital` and `human_capital_admin` at any scope, and to every other
+Employee, including holders of `access.roles.assign` or `access.roles.delegate`.
+They receive `403 ROLE_GRANT_SUPER_ADMIN_ONLY` on
+`POST /admin/access/accounts/:accountId/role-assignments` and
+`DELETE /admin/access/role-assignments/:assignmentId`. The check runs before input
+validation and resource lookup, and nothing is committed: no assignment and no audit
+event. `createRoleAssignment` and `removeRoleAssignment` repeat the check for
+non-HTTP callers. This supersedes the earlier rule that let ordinary role
+administrators assign `human_capital`. As a result, the bundle drift from
+migrations 0046–0048 no longer affects who can delegate.
+
+Super Admin grants are still bounded. Actors cannot create/delete their own role
+assignments. Only known HCIS system roles whose permissions are within the HCIS
+permission allowlist can be granted; unknown/external roles or permission keys fail
+closed. Scope and dates must be valid. `human_capital_admin` requires organization
 scope and a nonempty mandate/reason.
 
 Normal account administrators cannot change their own account state or issue
@@ -99,8 +108,8 @@ Excluded actions may return 403 on shared pages; this is never an API bypass.
 
 ## Reviewed later operator assignment
 
-After independent review and environment authorization, a legacy administrator or
-separately provisioned HCIS delegation operator uses existing
+After independent review and environment authorization, a Super Admin (the only
+principal allowed to grant roles since the 2026-10-16 owner decision) uses existing
 `GET /api/admin/access` to resolve the role and target account IDs, verifies the
 existing account against authoritative organization data, then reviews a request:
 

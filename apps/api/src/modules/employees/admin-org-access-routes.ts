@@ -1,4 +1,6 @@
-import { createRoleAssignment, removeRoleAssignment, assertAccountManagementTarget, canDelegateRole } from "../auth/role-assignment.js";
+import {
+  assertAccountManagementTarget, assertRoleGrantor, canDelegateRole, createRoleAssignment, removeRoleAssignment,
+} from "../auth/role-assignment.js";
 import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
@@ -672,8 +674,23 @@ export async function registerOrgAccessAdminRoutes(
     }
   });
 
-  app.post("/admin/access/accounts/:accountId/role-assignments", async (request, reply) => {
+  // Role grants are Super Admin only; the check precedes input validation so other actors learn nothing.
+  async function authenticateRoleGrantor(request: FastifyRequest, reply: FastifyReply) {
     const principal = await authenticateAdmin(request, reply, "access.roles.assign");
+    if (!principal) return null;
+    try {
+      assertRoleGrantor(principal);
+      return principal;
+    } catch (error) {
+      if (!(error instanceof AuthError)) throw error;
+      reply.header("Cache-Control", "no-store");
+      await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      return null;
+    }
+  }
+
+  app.post("/admin/access/accounts/:accountId/role-assignments", async (request, reply) => {
+    const principal = await authenticateRoleGrantor(request, reply);
     if (!principal) return;
 
     const params = accountIdSchema.safeParse(request.params);
@@ -694,7 +711,7 @@ export async function registerOrgAccessAdminRoutes(
   });
 
   app.delete("/admin/access/role-assignments/:assignmentId", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply, "access.roles.assign");
+    const principal = await authenticateRoleGrantor(request, reply);
     if (!principal) return;
 
     const params = assignmentIdSchema.safeParse(request.params);

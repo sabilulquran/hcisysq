@@ -98,7 +98,7 @@ export async function logout(): Promise<void> {
 
 /**
  * Preferred account-menu flow. One navigation decision owns the transition so
- * a local redirect cannot overwrite SQ Identity end-session navigation.
+ * a local redirect cannot overwrite Akun SQ (Keycloak) end-session navigation.
  */
 export async function logoutFromAccountMenu(): Promise<void> {
   const logoutUrl = await requestLogout();
@@ -108,13 +108,13 @@ export async function logoutFromAccountMenu(): Promise<void> {
 export function oidcLoginFailureMessage(category: string | null): string | null {
   switch (category) {
     case "access_denied":
-      return "Identitas Anda berhasil dikenali oleh SQ Identity, tetapi akun ini belum memiliki akses ke HCIS. Hubungi administrator SQ jika akses diperlukan.";
+      return "Anda berhasil masuk dengan Akun SQ, tetapi akun ini belum memiliki akses ke HCIS. Hubungi administrator SQ jika akses diperlukan.";
     case "access_unavailable":
       return "HCIS belum dapat memverifikasi hak akses Anda. Silakan coba lagi beberapa saat.";
     case "account_inactive":
       return "Akun HCIS Anda sedang tidak aktif. Hubungi Human Capital jika status ini perlu diperiksa.";
     case "oidc_failed":
-      return "Masuk melalui SQ Identity belum berhasil. Silakan coba lagi.";
+      return "Masuk dengan Akun SQ belum berhasil. Silakan coba lagi.";
     default:
       return null;
   }

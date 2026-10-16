@@ -72,7 +72,6 @@ Rules:
 - do not redesign requirements
 - do not move business rules into the frontend
 - do not weaken authorization/tests to make them pass
-- use synthetic data only
 - do not commit secrets
 
 Report:
@@ -98,7 +97,7 @@ Report:
 
 ## Data policy
 
-Hanya synthetic data yang boleh masuk prompt, fixture, screenshot, dan prototype. Secret dan data production dilarang.
+Secret (password, token, credential) dilarang masuk prompt, fixture, screenshot, dan prototype.
 
 ## Human approval required
 

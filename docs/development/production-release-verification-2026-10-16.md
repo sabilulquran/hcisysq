@@ -40,9 +40,9 @@ HCIS web and API were interrupted for about 26 s during cutover. Hub, Aset and K
 
 PASS (10:08–10:18 WIB). After the cutover restarts, `sq-core-worker.log` shows exactly one `launch service=hcis` (10:07:51) and one `launch service=hcis-web` (10:08:07), and no repeated launches. The API (pid 3713) and web (pid 4019) run from `hcis-3b670849-20261016`. HCIS `/health` and web `/` return 200; Keycloak `/health/ready` and Hub `/health` return 200.
 
-## Not verified by the operator
+## Owner acceptance
 
-- Authenticated browser login and the new ADMS device pages need an owner or HC account. The operator has no credentials and did not test them.
+- 2026-10-16: the owner logged in to production and opened the attendance-device (mesin absensi) menu, and reported in chat that everything works normally. The operator did not log in, because they have no credentials.
 
 ## Rollback (if needed later)
 

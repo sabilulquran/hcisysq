@@ -39,6 +39,10 @@ describe("OPS-MI8-REL-001 Mi8VPS release tooling", () => {
     expect(source).toContain('refs "$S/sq-core-launch.sh" "$cur")" = 4');
     expect(source).toContain('refs "$S/sq-core-worker.sh" "$cur")" = 2');
     expect(source).toContain("restart_worker");
+    // OPS-MI8-SUP-001: TERM to the worker stops every service in its process group.
+    const restartWorker = source.slice(source.indexOf("restart_worker() {"), source.indexOf("wait_release() {"));
+    expect(restartWorker).toContain('kill -KILL "$wp"');
+    expect(restartWorker).not.toContain("-TERM");
     expect(source).toContain("database NOT rolled back");
     expect(source).not.toMatch(/rm -rf[^\n]*\$REL\/\$PREV/);
     expect(source).not.toContain("final.env >");

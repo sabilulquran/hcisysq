@@ -29,6 +29,11 @@ exec >>"$LOG" 2>&1
 echo "SQ Core worker started $(date), pid=$$"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+# OPS-MI8-SUP-001: when this shell is a process-group leader (it is, after
+# setsid) and dies from an untrapped SIGTERM or SIGINT, Android mksh runs
+# kill(0, sig) and takes down every service still in its group. Trapping the
+# signal makes it a plain exit.
+trap 'log "worker stop on TERM/INT, pid=$$"; exit 0' TERM INT
 http_code() { chroot "$ROOT" /usr/bin/curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 8 "$1" 2>/dev/null || true; }
 https_code_insecure() { chroot "$ROOT" /usr/bin/curl -ksS -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 8 "$1" 2>/dev/null || true; }
 pg_ready() {

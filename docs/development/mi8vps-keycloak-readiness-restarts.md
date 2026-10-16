@@ -203,9 +203,13 @@ Apply steps (after owner approval; no outage):
    example because an OPS-MI8-REL-001 release changed `service_pid` paths, re-apply the `ensure` block
    onto the current file instead of copying the candidate.
 3. Install the candidate with LF line endings, mode `0755 root:root`, and run `sh -n` on it.
-4. Restart the worker: TERM the PID in `sq-core-worker.pid`, then start it as `start-services.sh`
-   does (`nohup /system/bin/sh /data/local/mi8vps/sq-core-worker.sh </dev/null >/dev/null 2>&1 &`).
-   Services keep running, and the new worker finds them by `cwd`.
+4. Restart the worker: send **KILL** (not TERM) to the PID in `sq-core-worker.pid`, wait for it to
+   exit, then start it as `release-mi8.sh` `restart_worker` does
+   (`setsid nohup /system/bin/sh /data/local/mi8vps/sq-core-worker.sh </dev/null >/dev/null 2>&1 &`).
+   Services keep running, and the new worker finds them by `cwd`. TERM would stop every service in
+   the worker's process group, Keycloak included (OPS-MI8-SUP-001, see `mi8vps-hcis-release.md` §4.7).
+   If production already has the OPS-MI8-SUP-001 `trap ... TERM INT` line, re-apply the `ensure`
+   block onto that file (step 2) so the trap stays.
 5. Verify: `SQ Core worker started` appears in `sq-core-worker.log` and no `launch` lines follow. Then
    `sq-corectl.sh restart hub-web` (static site, smallest impact) is relaunched within about 30 s.
 
@@ -224,7 +228,8 @@ not part of this change.
   Schedule the window outside working hours, after the 02:00 WIB backup, and announce it to admins.
 - **After A:** no change to login screens, realms, clients or sessions. The repeated 1–2 min outages on
   bad days, caused by restart loops, should stop.
-- **B:** no outage. The worker restart leaves services running.
+- **B:** no outage, provided the worker is stopped with KILL (step 4). A TERM stops the services
+  the worker launched, including Keycloak, which takes up to about 6 minutes to start.
 
 ## 6. Rollback
 
@@ -232,7 +237,7 @@ not part of this change.
   `KC_CACHE_EMBEDDED_NETWORK_*` lines), then send TERM to the Keycloak java process and let the worker relaunch it.
   This takes about 1 min and causes the same short login outage. The cache mode does not change the
   database schema or data, so no database restore is needed. The OPS-MI8-BAK-001 set from step A1 is a safety net only.
-- **B:** restore `sq-core-worker.sh.pre-ops-mi8-kc-001` and restart the worker.
+- **B:** restore `sq-core-worker.sh.pre-ops-mi8-kc-001` and restart the worker (KILL, step 4).
 
 ## 7. Audit and evidence
 

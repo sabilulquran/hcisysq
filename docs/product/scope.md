@@ -278,6 +278,8 @@ MVP complete and deployed ORG-004 code do not automatically mean Pilot Ready. Be
 - decide whether password recovery and production notification delivery are required for the selected pilot population or whether documented administrative/manual fallback is acceptable;
 - record a human go/no-go decision before STRUCTURE activation/deployment changes.
 
+Current gate-by-gate evidence: `docs/operations/hcis-readiness-gates-2026-10-16.md` (OPS-READY-001). Restore drill runbook: `docs/operations/hcis-isolated-restore-drill.md` (OPS-MI8-DRILL-001). Go/no-go template: `docs/operations/go-live-decision-record-template.md` (OPS-GOLIVE-001).
+
 ## Production ready — PENDING
 
 Production application delivery is active, but full HCIS production-readiness/cutover remains broader than “application currently running.” The following remain separate gates:
@@ -289,3 +291,5 @@ Production application delivery is active, but full HCIS production-readiness/cu
 - rollback/data-recovery procedure is tested, including isolated restore drill;
 - old system remains read-only during the agreed verification period when full cutover occurs;
 - broader production go-live/cutover is approved by the authorized operational owner.
+
+Latest security review: `docs/operations/hcis-security-review-2026-10-16.md`. Legacy migration and freeze plan (DRAFT/DISCOVERY): `docs/migration/legacy-migration-and-freeze-plan.md` (MIG-002).

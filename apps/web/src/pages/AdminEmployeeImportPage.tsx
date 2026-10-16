@@ -18,11 +18,11 @@ const CSV_TEMPLATE = [
 function summaryCard(label: string, value: number, tone: "neutral" | "good" | "warn" | "error") {
   const toneClass =
     tone === "good"
-      ? "bg-emerald-50 text-emerald-900"
+      ? "bg-success-soft text-success-ink"
       : tone === "warn"
-        ? "bg-amber-50 text-amber-900"
+        ? "bg-warning-soft text-warning-ink"
         : tone === "error"
-          ? "bg-red-50 text-red-900"
+          ? "bg-danger-soft text-danger-ink"
           : "bg-surface text-foreground";
   return (
     <div className={`rounded-xl px-4 py-3 ${toneClass}`}>
@@ -110,7 +110,7 @@ export function AdminEmployeeImportPage() {
       title="Impor Pegawai"
       description="CSV UTF-8 adalah format yang disarankan; XLSX tetap didukung. Tidak ada perubahan employee master sebelum konfirmasi dijalankan."
     >
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary-pale/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-brand-heading">Gunakan CSV untuk import rutin</p>
@@ -121,7 +121,7 @@ export function AdminEmployeeImportPage() {
           <a
             href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}
             download="template-import-pegawai.csv"
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-white px-4 text-sm font-bold text-brand-primary-deep"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-surface-raised px-4 text-sm font-bold text-brand-primary-deep"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
             Template CSV
@@ -149,7 +149,7 @@ export function AdminEmployeeImportPage() {
           <button
             type="submit"
             disabled={!file || loading}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-white hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Upload className="h-4 w-4" aria-hidden="true" />
             {loading ? "Memproses..." : "Buat preview"}
@@ -158,7 +158,7 @@ export function AdminEmployeeImportPage() {
       </section>
 
       {error ? (
-        <div className="mt-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        <div className="mt-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <p>{error}</p>
         </div>
@@ -166,7 +166,7 @@ export function AdminEmployeeImportPage() {
 
       {preview ? (
         <>
-          <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
@@ -199,8 +199,8 @@ export function AdminEmployeeImportPage() {
                     <span
                       key={item.code}
                       className={item.severity === "error"
-                        ? "rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800"
-                        : "rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900"}
+                        ? "rounded-full bg-danger-soft px-3 py-1 text-xs font-semibold text-danger-ink"
+                        : "rounded-full bg-warning-soft px-3 py-1 text-xs font-semibold text-warning-ink"}
                     >
                       {item.code} · {item.count}
                     </span>
@@ -230,7 +230,7 @@ export function AdminEmployeeImportPage() {
                 type="button"
                 onClick={() => void handleCommit()}
                 disabled={preview.errorCount > 0 || preview.status !== "previewed" || committing || Boolean(committed)}
-                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-white hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                 {committing ? "Mengimpor..." : committed ? "Sudah diimpor" : "Konfirmasi import"}
@@ -238,7 +238,7 @@ export function AdminEmployeeImportPage() {
             </div>
           </section>
 
-          <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+          <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
             <div className="border-b border-border/70 px-5 py-4">
               <h2 className="text-sm font-bold text-brand-heading">Hasil validasi per baris</h2>
               <p className="mt-1 text-xs text-muted-foreground">Menampilkan maksimal 200 baris pertama dari preview.</p>
@@ -257,19 +257,19 @@ export function AdminEmployeeImportPage() {
                     <tr key={row.rowNumber}>
                       <td className="px-4 py-3 font-semibold">{row.rowNumber}</td>
                       <td className="px-4 py-3">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-700">{row.action}</span>
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold uppercase text-foreground">{row.action}</span>
                       </td>
                       <td className="px-4 py-3">
                         {row.issues.length ? (
                           <div className="space-y-1.5">
                             {row.issues.map((issue) => (
-                              <p key={`${row.rowNumber}-${issue.code}`} className={issue.severity === "error" ? "text-xs text-red-700" : "text-xs text-amber-800"}>
+                              <p key={`${row.rowNumber}-${issue.code}`} className={issue.severity === "error" ? "text-xs text-danger-ink" : "text-xs text-warning-ink"}>
                                 <strong>{issue.code}</strong> · {issue.message}
                               </p>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-xs text-emerald-700">Valid</span>
+                          <span className="text-xs text-success-ink">Valid</span>
                         )}
                       </td>
                     </tr>

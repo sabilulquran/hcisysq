@@ -167,13 +167,13 @@ export function HcPlannedLeavePage() {
       </section>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
+        <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div>
       ) : null}
       {success ? (
-        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{success}</div>
+        <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{success}</div>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex items-center gap-3 border-b border-border/70 px-5 py-4">
           <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <div>
@@ -205,7 +205,7 @@ export function HcPlannedLeavePage() {
                             href={plannedHcEvidenceHref(item.requestId, evidence.id)}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs font-semibold"
+                            className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs font-semibold"
                           >
                             <FileText className="h-4 w-4" aria-hidden="true" /> {evidence.fileName}
                           </a>
@@ -218,7 +218,7 @@ export function HcPlannedLeavePage() {
                       type="button"
                       disabled={busyTask === item.taskId}
                       onClick={() => void validate(item.taskId, true)}
-                      className="inline-flex h-10 items-center rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-950 disabled:opacity-50"
+                      className="inline-flex h-10 items-center rounded-xl border border-warning-line bg-warning-soft px-4 text-xs font-bold text-warning-ink disabled:opacity-50"
                     >
                       Minta dilengkapi
                     </button>
@@ -226,7 +226,7 @@ export function HcPlannedLeavePage() {
                       type="button"
                       disabled={busyTask === item.taskId}
                       onClick={() => void validate(item.taskId, false)}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
                     >
                       {busyTask === item.taskId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
                       Administrasi sesuai
@@ -239,7 +239,7 @@ export function HcPlannedLeavePage() {
         )}
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4">
           <h2 className="text-base font-bold text-brand-heading">Persetujuan Cuti Tanpa Gaji</h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -271,7 +271,7 @@ export function HcPlannedLeavePage() {
                       type="button"
                       disabled={busyTask === item.taskId}
                       onClick={() => void approve(item.taskId, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-xs font-bold text-red-700 disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-4 text-xs font-bold text-danger-ink disabled:opacity-50"
                     >
                       <XCircle className="h-4 w-4" aria-hidden="true" /> Tolak
                     </button>
@@ -279,7 +279,7 @@ export function HcPlannedLeavePage() {
                       type="button"
                       disabled={busyTask === item.taskId}
                       onClick={() => void approve(item.taskId, "approve")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
                     >
                       {busyTask === item.taskId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
                       Setujui

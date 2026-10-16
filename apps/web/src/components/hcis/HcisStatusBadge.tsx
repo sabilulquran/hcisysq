@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils";
 
 export type StatusTone = "pending" | "review" | "approved" | "warning" | "neutral";
 
+// Status colours from SQ Core direction C; they never stand in for a service category.
 const toneClasses: Record<StatusTone, string> = {
-  pending: "border-brand-yellow/45 bg-brand-yellow/15 text-amber-900",
-  review: "border-brand-cyan/45 bg-brand-cyan/14 text-cyan-900",
-  approved: "border-brand-primary/35 bg-brand-primary-pale text-brand-primary-deep",
-  warning: "border-brand-orange/45 bg-brand-orange/15 text-orange-900",
+  pending: "border-warning-line bg-warning-soft text-warning-ink",
+  review: "border-info-line bg-info-soft text-info-ink",
+  approved: "border-success-line bg-success-soft text-success-ink",
+  warning: "border-danger-line bg-danger-soft text-danger-ink",
   neutral: "border-border bg-muted text-muted-foreground",
 };
 

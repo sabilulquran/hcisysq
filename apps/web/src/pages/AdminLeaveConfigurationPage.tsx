@@ -177,13 +177,13 @@ export function AdminLeaveConfigurationPage() {
       description="Siapkan approver unit, klasifikasi hak cuti, dan cek rantai approval sebelum modul cuti dibuka untuk pegawai."
     >
       {error ? (
-        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           {error}
         </div>
       ) : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <p className="mt-4 text-2xl font-bold text-brand-heading">{unitCoverage}%</p>
           <p className="mt-1 text-sm font-semibold">Approver unit siap</p>
@@ -191,7 +191,7 @@ export function AdminLeaveConfigurationPage() {
             {activeUnits.filter((unit) => unit.approverEmployeeId).length} dari {activeUnits.length} unit aktif.
           </p>
         </article>
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <UsersRound className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <p className="mt-4 text-2xl font-bold text-brand-heading">{managerCoverage}%</p>
           <p className="mt-1 text-sm font-semibold">Atasan langsung siap</p>
@@ -199,7 +199,7 @@ export function AdminLeaveConfigurationPage() {
             {summary?.directManagerConfigured ?? 0} dari {summary?.activeEmployees ?? 0} pegawai aktif.
           </p>
         </article>
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <p className="mt-4 text-2xl font-bold text-brand-heading">{groupCoverage}%</p>
           <p className="mt-1 text-sm font-semibold">Kelompok hak cuti siap</p>
@@ -209,7 +209,7 @@ export function AdminLeaveConfigurationPage() {
         </article>
       </section>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex items-start gap-3">
           <CalendarDays className="mt-0.5 h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <div>
@@ -228,7 +228,7 @@ export function AdminLeaveConfigurationPage() {
         </div>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4">
           <h2 className="text-base font-bold text-brand-heading">Approver Unit</h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -256,7 +256,7 @@ export function AdminLeaveConfigurationPage() {
                       onChange={(event) =>
                         void updateApprover(unit.id, event.target.value || null)
                       }
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary"
+                      className="h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-primary"
                     >
                       <option value="">Belum dikonfigurasi</option>
                       {(data?.employees ?? []).map((employee) => (
@@ -273,7 +273,7 @@ export function AdminLeaveConfigurationPage() {
         </div>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex flex-col gap-3 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-base font-bold text-brand-heading">Klasifikasi Hak Cuti Pegawai Aktif</h2>
@@ -287,7 +287,7 @@ export function AdminLeaveConfigurationPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Cari pegawai, unit, jabatan..."
-              className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary"
+              className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none focus:border-brand-primary"
             />
           </label>
         </div>
@@ -315,7 +315,7 @@ export function AdminLeaveConfigurationPage() {
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">
                     {employee.directManagerName ?? (
-                      <span className="inline-flex items-center gap-1 text-amber-700">
+                      <span className="inline-flex items-center gap-1 text-warning-ink">
                         <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> Belum diatur
                       </span>
                     )}
@@ -330,7 +330,7 @@ export function AdminLeaveConfigurationPage() {
                           (event.target.value || null) as LeaveEntitlementGroup | null,
                         )
                       }
-                      className="h-9 rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary"
+                      className="h-9 rounded-xl border border-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-primary"
                     >
                       <option value="">Belum diatur</option>
                       <option value="education">Tenaga pendidikan</option>
@@ -342,7 +342,7 @@ export function AdminLeaveConfigurationPage() {
                       type="button"
                       disabled={previewLoading}
                       onClick={() => void loadPreview(employee.id)}
-                      className="inline-flex h-9 items-center rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
+                      className="inline-flex h-9 items-center rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
                     >
                       Cek chain
                     </button>
@@ -355,12 +355,12 @@ export function AdminLeaveConfigurationPage() {
       </section>
 
       {preview ? (
-        <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2">
             {preview.warnings.length === 0 ? (
               <CheckCircle2 className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             ) : (
-              <AlertTriangle className="h-5 w-5 text-amber-700" aria-hidden="true" />
+              <AlertTriangle className="h-5 w-5 text-warning-ink" aria-hidden="true" />
             )}
             <h2 className="text-base font-bold text-brand-heading">Preview — {preview.employee.fullName}</h2>
           </div>
@@ -413,7 +413,7 @@ export function AdminLeaveConfigurationPage() {
           {preview.warnings.length ? (
             <div className="mt-4 space-y-2">
               {preview.warnings.map((warning) => (
-                <div key={warning.code} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div key={warning.code} className="rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-warning-ink">
                   <span className="font-semibold">{warning.code}</span> — {warning.message}
                 </div>
               ))}

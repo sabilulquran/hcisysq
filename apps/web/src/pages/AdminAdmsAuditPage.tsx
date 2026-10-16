@@ -33,8 +33,8 @@ export function AdminAdmsAuditPage() {
   return (
     <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Riwayat perubahan administratif ADMS yang tersimpan append-only.">
       <AdmsManagementNav active="audit" />
-      {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      {error ? <div className="mb-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {items.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">Belum ada audit ADMS.</div> : (
           <div className="divide-y divide-border/70">
             {items.map((item) => (

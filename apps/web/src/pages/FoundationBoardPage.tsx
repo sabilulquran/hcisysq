@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import ysqMark from "@/assets/brand/ysq-mark.png";
+import { BrandLockup } from "@/components/BrandLockup";
 import { logout } from "@/lib/auth";
 import {
   BoardDashboardApiError,
@@ -85,19 +85,16 @@ export function FoundationBoardPage() {
 
   return (
     <div className="min-h-screen bg-surface text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-surface-raised/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <img src={ysqMark} alt="" className="h-10 w-10 shrink-0 object-contain" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-brand-heading">Human Capital Information System</p>
-              <p className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground">Organ Yayasan · Yayasan Sabilul Qur&apos;an</p>
-            </div>
+            <BrandLockup compact />
+            <span className="hidden truncate border-l border-border pl-3 text-[11px] font-semibold text-muted-foreground sm:inline">Organ Yayasan</span>
           </div>
           <button
             type="button"
             onClick={() => void handleLogout()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3.5 text-xs font-bold text-muted-foreground"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3.5 text-xs font-bold text-muted-foreground"
           >
             <LogOut className="h-4 w-4" aria-hidden="true" /> Keluar
           </button>
@@ -119,19 +116,19 @@ export function FoundationBoardPage() {
         </section>
 
         {error ? (
-          <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
           </div>
         ) : null}
 
         {!data ? (
-          <div className="mt-6 flex items-center gap-2 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          <div className="mt-6 flex items-center gap-2 rounded-3xl border border-border/70 bg-surface-raised p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat data organisasi...
           </div>
         ) : (
           <>
             <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
+              <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
                 <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
                   <UsersRound className="h-5 w-5" aria-hidden="true" />
                 </span>
@@ -140,8 +137,8 @@ export function FoundationBoardPage() {
                 <p className="mt-1 text-xs text-muted-foreground">{data.employees.total} seluruh record employee master</p>
               </article>
 
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-900">
+              <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-cyan/14 text-info-ink">
                   <Building2 className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <p className="mt-5 text-3xl font-bold text-brand-heading">{data.approvalReadiness.activeUnits}</p>
@@ -149,8 +146,8 @@ export function FoundationBoardPage() {
                 <p className="mt-1 text-xs text-muted-foreground">{data.approvalReadiness.unitsWithApprover} sudah memiliki Approver Unit</p>
               </article>
 
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-yellow/16 text-amber-950">
+              <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-yellow/16 text-warning-ink">
                   <CalendarDays className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <p className="mt-5 text-3xl font-bold text-brand-heading">{data.workflow.leaveInReview}</p>
@@ -158,8 +155,8 @@ export function FoundationBoardPage() {
                 <p className="mt-1 text-xs text-muted-foreground">{data.workflow.hcValidationPending} menunggu validasi HC</p>
               </article>
 
-              <article className={`rounded-3xl border p-5 shadow-[var(--shadow-soft)] ${data.workflow.attendanceResolutionOpen > 0 ? "border-amber-200 bg-amber-50" : "border-border/75 bg-white"}`}>
-                <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${data.workflow.attendanceResolutionOpen > 0 ? "bg-amber-100 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>
+              <article className={`rounded-3xl border p-5 shadow-[var(--shadow-soft)] ${data.workflow.attendanceResolutionOpen > 0 ? "border-warning-line bg-warning-soft" : "border-border/75 bg-surface-raised"}`}>
+                <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${data.workflow.attendanceResolutionOpen > 0 ? "bg-warning-soft text-warning-ink" : "bg-success-soft text-success-ink"}`}>
                   {data.workflow.attendanceResolutionOpen > 0 ? <Clock3 className="h-5 w-5" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
                 </span>
                 <p className="mt-5 text-3xl font-bold text-brand-heading">{data.workflow.attendanceResolutionOpen}</p>
@@ -169,7 +166,7 @@ export function FoundationBoardPage() {
             </section>
 
             <section className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-              <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
+              <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kesiapan approval</p>
@@ -214,7 +211,7 @@ export function FoundationBoardPage() {
                 </div>
               </article>
 
-              <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
+              <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Komposisi hak cuti</p>
@@ -240,7 +237,7 @@ export function FoundationBoardPage() {
             </section>
 
             <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
+              <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Distribusi unit</p>
                   <h2 className="mt-1 text-lg font-bold text-brand-heading">Pegawai aktif per unit</h2>
@@ -263,7 +260,7 @@ export function FoundationBoardPage() {
                 ) : null}
               </article>
 
-              <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
+              <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Status kepegawaian</p>
                 <h2 className="mt-1 text-lg font-bold text-brand-heading">Komposisi pegawai aktif</h2>
                 <div className="mt-5 divide-y divide-border/70">
@@ -278,22 +275,22 @@ export function FoundationBoardPage() {
             </section>
 
             <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
+              <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pergerakan tahun ini</p>
                 <p className="mt-3 text-2xl font-bold text-brand-heading">{data.movements.startedThisYear}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Tanggal mulai kerja tercatat tahun ini</p>
               </article>
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
+              <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pergerakan tahun ini</p>
                 <p className="mt-3 text-2xl font-bold text-brand-heading">{data.movements.endedThisYear}</p>
                 <p className="mt-1 text-xs text-muted-foreground">Tanggal akhir kerja tercatat tahun ini</p>
               </article>
-              <article className="rounded-3xl border border-dashed border-border bg-white p-5">
+              <article className="rounded-3xl border border-dashed border-border bg-surface-raised p-5">
                 <Clock3 className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                 <p className="mt-3 text-sm font-bold text-brand-heading">Kehadiran organisasi</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">Belum terhubung. Tidak ada persentase kehadiran sintetis.</p>
               </article>
-              <article className="rounded-3xl border border-dashed border-border bg-white p-5">
+              <article className="rounded-3xl border border-dashed border-border bg-surface-raised p-5">
                 <WalletCards className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                 <p className="mt-3 text-sm font-bold text-brand-heading">Ringkasan payroll</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">Belum terhubung. Tidak ada nominal payroll sintetis.</p>

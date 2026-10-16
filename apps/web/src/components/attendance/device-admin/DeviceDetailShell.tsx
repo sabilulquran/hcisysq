@@ -53,9 +53,9 @@ function lifecycleLabel(value: string | undefined) {
 }
 
 function connectivityClass(status: AdmsConnectivityStatus | undefined) {
-  if (status === "online") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  if (status === "offline") return "bg-red-50 text-red-700 border-red-200";
-  return "bg-slate-100 text-slate-600 border-slate-200";
+  if (status === "online") return "bg-success-soft text-success-ink border-success-line";
+  if (status === "offline") return "bg-danger-soft text-danger-ink border-danger-line";
+  return "bg-muted text-muted-foreground border-border";
 }
 
 export function DeviceDetailNavigation({
@@ -98,7 +98,7 @@ export function DeviceDetailNavigation({
           className={cn(
             "mb-2 inline-flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold",
             section === "diagnostics"
-              ? "bg-slate-900 text-white"
+              ? "bg-foreground text-background"
               : "text-muted-foreground hover:bg-surface hover:text-brand-heading",
           )}
         >
@@ -131,7 +131,7 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
         </a>
         <div className="flex items-center gap-2">
           {device ? (
-            <span className="hidden rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted-foreground sm:inline-flex">
+            <span className="hidden rounded-full border border-border bg-surface-raised px-3 py-1.5 text-xs font-semibold text-muted-foreground sm:inline-flex">
               {lifecycleLabel(device.lifecycle)}
             </span>
           ) : null}
@@ -139,7 +139,7 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
             type="button"
             onClick={() => void refresh()}
             disabled={refreshing || loading}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-brand-heading hover:bg-surface disabled:opacity-60"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold text-brand-heading hover:bg-surface disabled:opacity-60"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden="true" />
             {refreshing ? "Memuat..." : "Muat ulang"}
@@ -150,13 +150,13 @@ export function DeviceDetailShell({ section, children }: { section: DeviceAdminS
       <DeviceDetailNavigation baseHref={baseHref} section={section} session={session} />
 
       {error ? (
-        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+        <div className="mb-5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger-ink" role="alert">
           {error}
         </div>
       ) : null}
 
       {loading && !detail ? (
-        <div className="rounded-2xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
           Memuat detail mesin...
         </div>
       ) : (

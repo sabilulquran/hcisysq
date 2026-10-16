@@ -177,8 +177,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         Kembali ke daftar pegawai
       </a>
 
-      {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
-      {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+      {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{notice}</div> : null}
 
       {activationLink ? (
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
@@ -191,13 +191,13 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
               readOnly
               value={activationLink.url}
               onFocus={(event) => event.currentTarget.select()}
-              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-surface-raised px-3 text-xs"
               aria-label="Link aktivasi"
             />
             <button
               type="button"
               onClick={() => void copyActivation()}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
             >
               <Copy className="h-4 w-4" aria-hidden="true" />
               Salin link
@@ -207,7 +207,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
             <UserRoundCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             <h2 className="text-base font-bold text-brand-heading">Employee master</h2>
@@ -243,7 +243,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                   value={contactEmail}
                   onChange={(event) => setContactEmail(event.target.value)}
                   placeholder="pegawai@contoh.id"
-                  className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-foreground outline-none focus:border-brand-primary"
+                  className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm text-foreground outline-none focus:border-brand-primary"
                 />
               </label>
               <label className="text-xs font-semibold text-muted-foreground">
@@ -252,21 +252,21 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                   value={contactPhone}
                   onChange={(event) => setContactPhone(event.target.value)}
                   placeholder="08xxxxxxxxxx"
-                  className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-foreground outline-none focus:border-brand-primary"
+                  className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm text-foreground outline-none focus:border-brand-primary"
                 />
               </label>
             </div>
             <button
               type="submit"
               disabled={savingContact || !employee}
-              className="mt-3 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+              className="mt-3 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
             >
               {savingContact ? "Menyimpan..." : "Simpan kontak"}
             </button>
           </form>
         </article>
 
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
             <Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             <h2 className="text-base font-bold text-brand-heading">Reporting line</h2>
@@ -290,7 +290,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             <button
               type="submit"
               disabled={savingManager || !employee}
-              className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+              className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
             >
               {savingManager ? "Menyimpan..." : "Simpan atasan langsung"}
             </button>
@@ -299,7 +299,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
             <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             <h2 className="text-base font-bold text-brand-heading">Account akses</h2>
@@ -313,7 +313,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                   type="button"
                   onClick={() => void issueActivation(employee.accountId!)}
                   disabled={issuingActivation}
-                  className="mt-4 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+                  className="mt-4 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
                 >
                   {issuingActivation ? "Membuat link..." : "Buat link aktivasi"}
                 </button>
@@ -335,7 +335,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                 type="button"
                 onClick={() => void prepareAccount()}
                 disabled={preparingAccount || employee?.status !== "active"}
-                className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+                className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
               >
                 {preparingAccount ? "Menyiapkan..." : "Siapkan account & link aktivasi"}
               </button>
@@ -346,7 +346,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           )}
         </article>
 
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">Role tambahan</h2>
           <p className="mt-1 text-xs text-muted-foreground">Base employee self-service tidak ditampilkan sebagai role; hanya assignment tambahan yang tercatat di sini.</p>
           <div className="mt-4 space-y-3">

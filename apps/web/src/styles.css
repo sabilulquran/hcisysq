@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* SQ Core design direction C — sabilulquran/SQ-Hub docs/design/sq-core-design-system-c.md. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./assets/fonts/inter-latin-wght.woff2") format("woff2");
+}
+
 @theme inline {
   --font-sans: var(--font-body);
   --font-display: var(--font-heading);
@@ -11,6 +21,7 @@
   --color-border: var(--border);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar: var(--sidebar);
 
   --color-brand-primary: var(--brand-primary);
@@ -23,77 +34,170 @@
   --color-brand-foreground: var(--brand-foreground);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-danger-ink: var(--danger-ink);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-line: var(--warning-line);
+  --color-warning-ink: var(--warning-ink);
+  --color-success-soft: var(--success-soft);
+  --color-success-line: var(--success-line);
+  --color-success-ink: var(--success-ink);
+  --color-info-soft: var(--info-soft);
+  --color-info-line: var(--info-line);
+  --color-info-ink: var(--info-ink);
+
+  --color-cat-attendance: var(--cat-attendance);
+  --color-cat-attendance-soft: var(--cat-attendance-soft);
+  --color-cat-leave: var(--cat-leave);
+  --color-cat-leave-soft: var(--cat-leave-soft);
+  --color-cat-pay: var(--cat-pay);
+  --color-cat-pay-soft: var(--cat-pay-soft);
+  --color-cat-service: var(--cat-service);
+  --color-cat-service-soft: var(--cat-service-soft);
+  --color-cat-task: var(--cat-task);
+  --color-cat-task-soft: var(--cat-task-soft);
 }
 
-:root {
-  --font-heading: "LT Museum", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+/*
+ * Light tokens. `.sq-paper` re-declares them so printable documents (the payslip)
+ * stay paper-white even when the device is in dark mode.
+ */
+:root,
+.sq-paper {
+  color-scheme: light;
+  --font-heading: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
-  --brand-primary: oklch(0.651 0.106 195.68);
-  --brand-accent-cyan: oklch(0.746 0.11 207.2);
-  --brand-secondary-yellow: oklch(0.832 0.161 88.87);
-  --brand-accent-orange: oklch(0.755 0.14 56.12);
-  --brand-heading: oklch(0 0 0);
-  --brand-primary-deep: oklch(0.49 0.09 195.68);
-  --brand-primary-pale: oklch(0.93 0.035 195.68);
-  --brand-foreground: oklch(0.99 0.004 95);
+  /* Primary: buttons, links, active navigation. Brand teal is the accent. */
+  --brand-primary: #0b7a79;
+  --brand-primary-deep: #075e5d;
+  --brand-primary-pale: #ddf3f2;
+  --brand-foreground: #ffffff;
+  --brand-accent-cyan: #1ca3a4;
+  --brand-secondary-yellow: #e9b824;
+  --brand-accent-orange: #c2531f;
+  --brand-heading: #161e25;
 
-  --background: oklch(0.982 0.006 96);
-  --foreground: oklch(0.23 0.018 245);
-  --muted: oklch(0.955 0.007 96);
-  --muted-foreground: oklch(0.52 0.024 245);
-  --border: oklch(0.89 0.012 195.68);
-  --ring: var(--brand-primary);
-  --destructive: oklch(0.57 0.19 28);
-  --sidebar: oklch(0.975 0.008 96);
-  --surface: oklch(0.982 0.006 96);
-  --surface-raised: oklch(0.998 0.002 95);
+  --background: #f7f7f5;
+  --foreground: #161e25;
+  --muted: #f1f2f0;
+  --muted-foreground: #5b6873;
+  --border: #e2e4e2;
+  --ring: #1ca3a4;
+  --destructive: #c0362c;
+  --destructive-foreground: #ffffff;
+  --sidebar: #ffffff;
+  --surface: #f7f7f5;
+  --surface-raised: #ffffff;
 
-  --shadow-soft:
-    0 2px 4px oklch(0.37 0.05 195.68 / 0.05),
-    0 12px 30px -12px oklch(0.37 0.05 195.68 / 0.16);
-  --shadow-raised:
-    inset 0 1px 0 oklch(1 0 0 / 0.72),
-    0 10px 24px -12px oklch(0.33 0.05 195.68 / 0.2),
-    0 26px 54px -32px oklch(0.33 0.05 195.68 / 0.3);
-  --shadow-input:
-    inset 0 1px 0 oklch(1 0 0 / 0.9),
-    0 5px 12px -7px oklch(0.33 0.04 195.68 / 0.2),
-    0 14px 28px -20px oklch(0.33 0.04 195.68 / 0.24);
-  --shadow-input-focus:
-    inset 0 1px 0 oklch(1 0 0 / 0.95),
-    0 8px 20px -10px oklch(0.651 0.106 195.68 / 0.28);
-  --shadow-button:
-    inset 0 1px 0 oklch(1 0 0 / 0.26),
-    0 9px 18px -10px oklch(0.42 0.09 195.68 / 0.52),
-    0 20px 36px -24px oklch(0.42 0.09 195.68 / 0.5);
-  --shadow-brand-card:
-    inset 0 1px 0 oklch(1 0 0 / 0.22),
-    0 12px 26px -14px oklch(0.31 0.07 195.68 / 0.42),
-    0 32px 64px -40px oklch(0.31 0.07 195.68 / 0.62);
-  --shadow-pressed: inset 0 3px 6px oklch(0.3 0.04 195.68 / 0.2);
+  --danger-soft: #fcebea;
+  --danger-line: #f3c7c3;
+  --danger-ink: #7f1d17;
+  --warning-soft: #fff3d6;
+  --warning-line: #f0d595;
+  --warning-ink: #6b4000;
+  --success-soft: #e6f4ec;
+  --success-line: #b8dec8;
+  --success-ink: #14532f;
+  --info-soft: #e8f1fa;
+  --info-line: #bcd3ec;
+  --info-ink: #143f66;
+
+  --cat-attendance: #0b7a79;
+  --cat-attendance-soft: #ddf3f2;
+  --cat-leave: #2563a8;
+  --cat-leave-soft: #dce8f7;
+  --cat-pay: #8a6300;
+  --cat-pay-soft: #fbefc9;
+  --cat-service: #6d4ab8;
+  --cat-service-soft: #eae3f7;
+  --cat-task: #c2531f;
+  --cat-task-soft: #fdeee6;
+
+  --shadow-soft: 0 1px 2px rgba(22, 30, 37, .04), 0 10px 24px -18px rgba(22, 30, 37, .16);
+  --shadow-raised: 0 1px 2px rgba(22, 30, 37, .04), 0 12px 32px rgba(22, 30, 37, .08);
+  --shadow-input: 0 1px 2px rgba(22, 30, 37, .05);
+  --shadow-input-focus: 0 0 0 3px rgba(28, 163, 164, .22);
+  --shadow-button: 0 6px 14px -10px rgba(11, 122, 121, .55);
+  --shadow-brand-card: 0 14px 34px -28px rgba(22, 30, 37, .4);
+  --shadow-pressed: inset 0 2px 4px rgba(22, 30, 37, .14);
 }
 
-* {
-  box-sizing: border-box;
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --brand-primary: #2bb3b1;
+    --brand-primary-deep: #7fdcd8;
+    --brand-primary-pale: #12393a;
+    --brand-foreground: #04201f;
+    --brand-accent-cyan: #6fd3cf;
+    --brand-secondary-yellow: #f2c230;
+    --brand-accent-orange: #e5763f;
+    --brand-heading: #e8edef;
+
+    --background: #0f1418;
+    --foreground: #e8edef;
+    --muted: #1d252b;
+    --muted-foreground: #9aa7b0;
+    --border: #2a343b;
+    --ring: #2bb3b1;
+    --destructive: #e0574c;
+    --destructive-foreground: #1f0806;
+    --sidebar: #161d22;
+    --surface: #0f1418;
+    --surface-raised: #161d22;
+
+    --danger-soft: #3d1716;
+    --danger-line: #5c2522;
+    --danger-ink: #f2958d;
+    --warning-soft: #3a2c0b;
+    --warning-line: #5c4614;
+    --warning-ink: #f2c766;
+    --success-soft: #12301f;
+    --success-line: #1f4d33;
+    --success-ink: #7fd3a3;
+    --info-soft: #142a40;
+    --info-line: #234567;
+    --info-ink: #8db8ee;
+
+    --cat-attendance: #6fd3cf;
+    --cat-attendance-soft: #12393a;
+    --cat-leave: #8db8ee;
+    --cat-leave-soft: #16283f;
+    --cat-pay: #f0cd5e;
+    --cat-pay-soft: #3a2f0f;
+    --cat-service: #bba6ee;
+    --cat-service-soft: #2a2142;
+    --cat-task: #e5763f;
+    --cat-task-soft: #2a1a12;
+
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
+    --shadow-input: none;
+    --shadow-input-focus: 0 0 0 3px rgba(43, 179, 177, .28);
+    --shadow-button: none;
+    --shadow-brand-card: 0 14px 34px -28px rgba(0, 0, 0, .6);
+    --shadow-pressed: inset 0 2px 4px rgba(0, 0, 0, .4);
+  }
 }
 
-html {
-  background: var(--surface);
+/* Base rules live in the base layer so Tailwind utilities (e.g. text-brand-foreground on buttons) win. */
+@layer base {
+  * { box-sizing: border-box; }
+  html { background: var(--surface); }
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button, input { font: inherit; }
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-button,
-input {
-  font: inherit;
-}
+::selection { background: var(--brand-primary-pale); color: var(--brand-primary-deep); }

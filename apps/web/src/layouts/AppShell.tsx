@@ -17,9 +17,10 @@ import {
   WalletCards,
 } from "lucide-react";
 
-import ysqMark from "@/assets/brand/ysq-mark.png";
+import { BrandLockup } from "@/components/BrandLockup";
 import { AccountMenu } from "@/components/hcis/AccountMenu";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
+import { categoryTileClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
 
 interface AppShellUser {
@@ -36,24 +37,25 @@ interface AppShellProps {
   activeItem?: string;
 }
 
-const employeeNavigation = [
+// `category` paints the icon marker with the service category accent (SQ Core direction C).
+const employeeNavigation: { label: string; href: string; icon: typeof Home; category?: ServiceCategoryTone }[] = [
   { label: "Beranda", href: "/app", icon: Home },
-  { label: "Kehadiran", href: "/app/attendance", icon: Clock3 },
-  { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera },
-  { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight },
-  { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
-  { label: "Semua Layanan", href: "/app/services", icon: Grid2X2 },
+  { label: "Kehadiran", href: "/app/attendance", icon: Clock3, category: "attendance" },
+  { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera, category: "attendance" },
+  { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight, category: "attendance" },
+  { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays, category: "leave" },
+  { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards, category: "pay" },
+  { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },
 ];
 
 const managementNavigation = [
-  { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
-];
+  { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck, category: "task" },
+] as const;
 
 const humanCapitalNavigation = [
-  { label: "Validasi Cuti", href: "/app/hc/leave", icon: ShieldCheck },
-  { label: "Cuti Terencana", href: "/app/hc/planned-leave", icon: CalendarDays },
-  { label: "Penyelesaian Kehadiran", href: "/app/hc/attendance-resolution", icon: Clock3 },
+  { label: "Validasi Cuti", href: "/app/hc/leave", icon: ShieldCheck, category: "task" },
+  { label: "Cuti Terencana", href: "/app/hc/planned-leave", icon: CalendarDays, category: "task" },
+  { label: "Penyelesaian Kehadiran", href: "/app/hc/attendance-resolution", icon: Clock3, category: "task" },
 ] as const;
 
 const mobileNavigation = [
@@ -68,11 +70,13 @@ function NavigationLink({
   label,
   href,
   icon: Icon,
+  category,
   active = false,
 }: {
   label: string;
   href: string;
   icon: typeof Home;
+  category?: ServiceCategoryTone;
   active?: boolean;
 }) {
   return (
@@ -83,15 +87,17 @@ function NavigationLink({
         "group flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
           ? "bg-brand-primary-pale text-brand-primary-deep"
-          : "text-muted-foreground hover:bg-white hover:text-foreground",
+          : "text-muted-foreground hover:bg-surface-raised hover:text-foreground",
       )}
     >
       <span
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-          active
-            ? "bg-white text-brand-primary shadow-[var(--shadow-soft)]"
-            : "bg-muted/70 text-muted-foreground group-hover:bg-brand-primary-pale",
+          category
+            ? categoryTileClass[category]
+            : active
+              ? "bg-surface-raised text-brand-primary shadow-[var(--shadow-soft)]"
+              : "bg-muted/70 text-muted-foreground group-hover:bg-brand-primary-pale",
         )}
       >
         <Icon className="h-4 w-4" aria-hidden="true" />
@@ -115,7 +121,7 @@ export function EmployeeHumanCapitalNavigation({
 
   if (mobile) {
     return (
-      <nav aria-label="Tugas Human Capital" className="mb-5 rounded-2xl border border-border/80 bg-white p-3 shadow-[var(--shadow-soft)] lg:hidden">
+      <nav aria-label="Tugas Human Capital" className="mb-5 rounded-2xl border border-border/80 bg-surface-raised p-3 shadow-[var(--shadow-soft)] lg:hidden">
         <div className="mb-2 flex items-center gap-2 px-1">
           <ShieldCheck className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-heading">Human Capital</p>
@@ -144,8 +150,8 @@ export function EmployeeHumanCapitalNavigation({
 
   return (
     <>
-      {items.map(({ label, href, icon }) => (
-        <NavigationLink key={href} label={label} href={href} icon={icon} active={activeItem === label} />
+      {items.map(({ label, href, icon, category }) => (
+        <NavigationLink key={href} label={label} href={href} icon={icon} category={category} active={activeItem === label} />
       ))}
     </>
   );
@@ -193,12 +199,8 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-surface text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border/80 bg-sidebar/95 lg:flex lg:flex-col">
-        <div className="flex items-start gap-3 px-7 py-6">
-          <img src={ysqMark} alt="" className="h-12 w-12 shrink-0 object-contain" />
-          <div className="min-w-0 pt-0.5">
-            <p className="font-display text-base font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">HCIS</p>
-            <p className="mt-1 text-[11px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
-          </div>
+        <div className="px-7 py-6">
+          <BrandLockup />
         </div>
 
         <nav className="flex-1 overflow-y-auto px-5 pb-5" aria-label="Navigasi utama pegawai">
@@ -206,7 +208,7 @@ export function AppShell({
           <div className="space-y-1">
             {employeeNavigation.map((item) => (
               <NavigationLink
-                key={item.label} label={item.label} href={item.href} icon={item.icon}
+                key={item.label} label={item.label} href={item.href} icon={item.icon} category={item.category}
                 active={attendanceActive && item.href.startsWith("/app/attendance")
                   ? item.href === currentPath
                   : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya")}
@@ -218,12 +220,12 @@ export function AppShell({
             <div className="mb-2 flex items-center justify-between px-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Tugas</p>
               {managementLabel ? (
-                <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-amber-900">{managementLabel}</span>
+                <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-warning-ink">{managementLabel}</span>
               ) : null}
             </div>
             <div className="space-y-1">
               {managementNavigation.map((item) => (
-                <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} active={item.label === activeItem} />
+                <NavigationLink key={item.label} label={item.label} href={item.href} icon={item.icon} category={item.category} active={item.label === activeItem} />
               ))}
               <EmployeeHumanCapitalNavigation session={session} activeItem={activeItem} />
             </div>
@@ -236,21 +238,17 @@ export function AppShell({
       <div className="lg:pl-72">
         <header className="sticky top-0 z-20 border-b border-border/70 bg-surface/95 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
-              <img src={ysqMark} alt="" className="h-10 w-10 shrink-0 object-contain" />
-              <div className="min-w-0">
-                <p className="font-display text-sm font-bold leading-tight text-brand-heading">HCIS</p>
-                <p className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
-              </div>
+            <div className="min-w-0 lg:hidden">
+              <BrandLockup compact />
             </div>
             <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
             <div className="flex items-center gap-2">
               <a href="/app/notifications" aria-label={unreadNotifications > 0 ? `Notifikasi, ${unreadNotifications} belum dibaca` : "Notifikasi"}
                 title="Buka pusat notifikasi"
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-border/70 bg-surface-raised text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
                 {unreadNotifications > 0 ? (
-                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white">
+                  <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-destructive-foreground">
                     {unreadNotifications > 99 ? "99+" : unreadNotifications}
                   </span>
                 ) : null}
@@ -271,7 +269,7 @@ export function AppShell({
         </main>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/80 bg-white/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/80 bg-surface-raised/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
         {mobileNavigation.map((item) => {
           const Icon = item.icon;
           const active = item.activeLabel === activeItem || (attendanceActive && item.activeLabel === "Kehadiran");

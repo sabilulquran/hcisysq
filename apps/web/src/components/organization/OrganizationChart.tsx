@@ -53,7 +53,7 @@ function PositionCard({
         selected
           ? "border-brand-primary bg-brand-primary-pale/60 ring-2 ring-brand-primary/15"
           : vacant
-            ? "border-dashed border-amber-300 bg-amber-50/60 hover:border-amber-400"
+            ? "border-dashed border-warning-line bg-warning-soft/60 hover:border-warning-line"
             : "border-border/70 bg-surface/70 hover:border-brand-primary/40",
       )}
     >
@@ -65,7 +65,7 @@ function PositionCard({
           <span
             className={cn(
               "mt-0.5 block truncate text-[11px]",
-              vacant ? "font-semibold text-amber-800" : "text-muted-foreground",
+              vacant ? "font-semibold text-warning-ink" : "text-muted-foreground",
             )}
           >
             {acting
@@ -74,15 +74,15 @@ function PositionCard({
           </span>
         </span>
         {vacant ? (
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" aria-hidden="true" />
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-ink" aria-hidden="true" />
         ) : acting ? (
-          <UserCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-700" aria-hidden="true" />
+          <UserCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info-ink" aria-hidden="true" />
         ) : (
           <BriefcaseBusiness className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-primary-deep" aria-hidden="true" />
         )}
       </span>
       {position.visualRankOffset > 0 ? (
-        <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+        <span className="mt-2 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-semibold text-info-ink">
           Tampilan {position.visualRankOffset} tingkat lebih rendah
         </span>
       ) : null}
@@ -188,7 +188,7 @@ function TreeBranch({
           }
         }}
         className={cn(
-          "w-[22rem] rounded-2xl border bg-white p-4 shadow-[var(--shadow-soft)] transition-colors",
+          "w-[22rem] rounded-2xl border bg-surface-raised p-4 shadow-[var(--shadow-soft)] transition-colors",
           selected
             ? "border-brand-primary ring-2 ring-brand-primary/15"
             : "border-border/70 hover:border-brand-primary/40",
@@ -222,7 +222,7 @@ function TreeBranch({
         </div>
 
         {item.visualRankOffset > 0 ? (
-          <div className="mt-3 rounded-lg bg-blue-50 px-2.5 py-2 text-[10px] leading-4 text-blue-800">
+          <div className="mt-3 rounded-lg bg-info-soft px-2.5 py-2 text-[10px] leading-4 text-info-ink">
             Rank visual diturunkan {item.visualRankOffset} tingkat. Hubungan struktural tetap mengikuti garis induk.
           </div>
         ) : null}
@@ -297,7 +297,7 @@ export function OrganizationChart({
           <button
             type="button"
             onClick={onStart}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white shadow-sm hover:bg-brand-primary-deep"
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-sm hover:bg-brand-primary-deep"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             {canEdit ? "Tambah kelompok pertama" : "Buat draft struktur"}

@@ -95,7 +95,7 @@ export function EmployeeNotificationsPage() {
             type="button"
             disabled={busy || unreadCount === 0}
             onClick={() => void markAll()}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-brand-heading disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-bold text-brand-heading disabled:opacity-50"
           >
             <CheckCheck className="h-4 w-4" /> Tandai semua dibaca
           </button>
@@ -103,18 +103,18 @@ export function EmployeeNotificationsPage() {
 
         <div className="mt-5 flex gap-2">
           <button type="button" onClick={() => setState("all")}
-            className={state === "all" ? "rounded-full bg-brand-primary px-3 py-1.5 text-xs font-bold text-white" : "rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground"}>
+            className={state === "all" ? "rounded-full bg-brand-primary px-3 py-1.5 text-xs font-bold text-brand-foreground" : "rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground"}>
             Semua
           </button>
           <button type="button" onClick={() => setState("unread")}
-            className={state === "unread" ? "rounded-full bg-brand-primary px-3 py-1.5 text-xs font-bold text-white" : "rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground"}>
+            className={state === "unread" ? "rounded-full bg-brand-primary px-3 py-1.5 text-xs font-bold text-brand-foreground" : "rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground"}>
             Belum dibaca ({unreadCount})
           </button>
         </div>
 
-        {error ? <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
+        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
 
-        <section className="mt-5 overflow-hidden rounded-3xl border border-border/75 bg-white shadow-[var(--shadow-soft)]">
+        <section className="mt-5 overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
           {loading ? (
             <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat notifikasi...</div>
           ) : items.length ? (

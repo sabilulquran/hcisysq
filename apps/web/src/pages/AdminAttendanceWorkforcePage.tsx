@@ -135,18 +135,18 @@ export function AdminAttendanceWorkforcePage() {
       description="Kelola lokasi kerja, jadwal/shift, assignment, roster, klarifikasi, finalisasi, dan laporan presensi."
     >
       {error ? (
-        <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="mb-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
         </div>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">1. Lokasi kerja / geofence</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Nama lokasi" className="h-11 rounded-xl border border-border px-3 text-sm" />
@@ -166,7 +166,7 @@ export function AdminAttendanceWorkforcePage() {
               }),
               "Lokasi kerja disimpan.",
             )}
-            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
             <Save className="mr-2 inline h-4 w-4" /> Simpan lokasi
           </button>
@@ -175,7 +175,7 @@ export function AdminAttendanceWorkforcePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">2. Template jadwal / shift</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input value={scheduleName} onChange={(event) => setScheduleName(event.target.value)} placeholder="Nama jadwal" className="h-11 rounded-xl border border-border px-3 text-sm" />
@@ -202,14 +202,14 @@ export function AdminAttendanceWorkforcePage() {
               }),
               "Template jadwal disimpan.",
             )}
-            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >Simpan jadwal</button>
           <div className="mt-4 space-y-2 text-xs text-muted-foreground">
             {schedules.map((item) => <div key={item.id}>{item.name} · {item.startTime.slice(0, 5)}–{item.endTime.slice(0, 5)} · grace {item.lateGraceMinutes} mnt</div>)}
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">3. Assignment jadwal default</h2>
           <div className="mt-4 grid gap-3">
             <select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm">{employeeOptions}</select>
@@ -232,11 +232,11 @@ export function AdminAttendanceWorkforcePage() {
               }),
               "Assignment jadwal disimpan.",
             )}
-            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-3 h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >Simpan assignment</button>
         </section>
 
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">4. Weekly roster</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <input type="date" value={rosterWeek} onChange={(event) => setRosterWeek(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" />
@@ -275,13 +275,13 @@ export function AdminAttendanceWorkforcePage() {
                     }]),
                     "Entry roster disimpan.",
                   )}
-                  className="h-10 rounded-xl border border-border bg-white px-3 text-xs font-bold disabled:opacity-50"
+                  className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold disabled:opacity-50"
                 >Simpan entry</button>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => void run(() => publishAttendanceRoster(rosterId), "Roster dipublikasikan.")}
-                  className="h-10 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+                  className="h-10 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
                 >Publish roster</button>
               </div>
             </div>
@@ -289,7 +289,7 @@ export function AdminAttendanceWorkforcePage() {
         </section>
       </div>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">5. Klarifikasi menunggu keputusan</h2>
         <div className="mt-4 space-y-3">
           {clarifications.length === 0 ? <p className="text-sm text-muted-foreground">Tidak ada klarifikasi tertunda.</p> : null}
@@ -299,7 +299,7 @@ export function AdminAttendanceWorkforcePage() {
               <p className="mt-1 text-xs text-muted-foreground">{String(item.mode)} · {String(item.kind)}</p>
               <p className="mt-2 text-sm">{String(item.reason)}</p>
               <div className="mt-3 flex gap-2">
-                <button type="button" disabled={busy} onClick={() => void run(() => decideAttendanceClarification(String(item.id), "approve", null), "Klarifikasi disetujui.")} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white">Setujui</button>
+                <button type="button" disabled={busy} onClick={() => void run(() => decideAttendanceClarification(String(item.id), "approve", null), "Klarifikasi disetujui.")} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground">Setujui</button>
                 <button type="button" disabled={busy} onClick={() => void run(() => decideAttendanceClarification(String(item.id), "reject", null), "Klarifikasi ditolak.")} className="h-9 rounded-xl border border-border px-3 text-xs font-bold">Tolak</button>
               </div>
             </div>
@@ -307,11 +307,11 @@ export function AdminAttendanceWorkforcePage() {
         </div>
       </section>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">6. Finalisasi & laporan harian</h2>
         <div className="mt-4 flex flex-wrap gap-2">
           <input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" />
-          <button type="button" disabled={busy} onClick={() => void run(() => finalizeAttendanceDate(reportDate), "Hasil kehadiran dimaterialisasi.")} className="h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void run(() => finalizeAttendanceDate(reportDate), "Hasil kehadiran dimaterialisasi.")} className="h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
             {busy ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : null} Finalisasi
           </button>
           <button type="button" disabled={busy} onClick={() => void loadReport()} className="h-11 rounded-xl border border-border px-4 text-sm font-bold">Muat laporan</button>

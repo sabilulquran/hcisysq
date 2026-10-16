@@ -210,17 +210,17 @@ export function EmployeeMobileAttendancePage() {
         <h1 className="mt-1 text-2xl font-bold text-brand-heading sm:text-3xl">Clock In / Out</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Tekan Baca GPS, buka kamera, lalu ambil foto sebelum mengirim. Tidak ada pelacakan lokasi di latar belakang.</p>
       </section>
-      {error ? <div role="alert" className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
-      {notice ? <div role="status" className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{notice}</div> : null}
+      {error ? <div role="alert" className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
+      {notice ? <div role="status" className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{notice}</div> : null}
       {!snapshot ? (
-        <div className="mt-6 rounded-3xl border bg-white p-6 text-sm text-muted-foreground">
+        <div className="mt-6 rounded-3xl border bg-surface-raised p-6 text-sm text-muted-foreground">
           {loading ? <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Memuat jadwal...</span>
             : <button type="button" className="min-h-11 rounded-xl border px-4 font-bold" onClick={() => void load()}>Muat ulang data presensi</button>}
         </div>
       ) : (
         <>
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
-            <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+            <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Hari kerja {snapshot.workDate}</p>
               <h2 className="mt-2 text-lg font-bold text-brand-heading">{statusLabel(snapshot.result?.status ?? snapshot.schedule.state)}</h2>
               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -232,13 +232,13 @@ export function EmployeeMobileAttendancePage() {
                 {snapshot.schedule.workLocation ? <p className="mt-1 text-xs text-muted-foreground">Radius {snapshot.schedule.workLocation.radiusMeters} m</p>
                   : <p className="mt-1 text-xs leading-5 text-muted-foreground">Membuat lokasi saja belum menghubungkannya ke pegawai. Pastikan lokasi dipilih pada jadwal, lalu periksa tanggal berlaku assignment atau roster.</p>}
               </div>
-              {snapshot.schedule.state !== "scheduled" ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">Jadwal tanggal ini belum terbaca sebagai hari kerja. HC perlu memeriksa hari kerja, tanggal berlaku, assignment, dan roster. Bukti presensi tidak otomatis berarti hasil evaluasi sudah benar.</p> : null}
+              {snapshot.schedule.state !== "scheduled" ? <p className="mt-3 rounded-xl bg-warning-soft p-3 text-xs leading-5 text-warning-ink">Jadwal tanggal ini belum terbaca sebagai hari kerja. HC perlu memeriksa hari kerja, tanggal berlaku, assignment, dan roster. Bukti presensi tidak otomatis berarti hasil evaluasi sudah benar.</p> : null}
               {snapshot.result ? <p className="mt-3 text-xs leading-5 text-muted-foreground">Aktual masuk {formatTime(snapshot.result.firstCheckInAt)} · keluar {formatTime(snapshot.result.lastCheckOutAt)}{snapshot.result.lateMinutes > 0 ? " · telat " + snapshot.result.lateMinutes + " menit" : ""}{snapshot.result.justified ? " · justifikasi disetujui" : ""}</p> : null}
             </article>
-            <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+            <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
               <h2 className="font-bold text-brand-heading">Persiapan presensi</h2>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">Server: {snapshot.mobileEnabled ? "siap" : "belum siap"} · GPS: {location ? "siap" : "belum dibaca"} · Foto: {photoBase64 ? "siap" : "belum diambil"}</p>
-              <p className={snapshot.mobileEnabled ? "mt-3 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-900" : "mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900"}>
+              <p className={snapshot.mobileEnabled ? "mt-3 rounded-xl bg-success-soft p-3 text-xs leading-5 text-success-ink" : "mt-3 rounded-xl bg-warning-soft p-3 text-xs leading-5 text-warning-ink"}>
                 {mobileReadinessMessage(snapshot.mobileReadiness.captureReason)}
               </p>
               <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
@@ -260,21 +260,21 @@ export function EmployeeMobileAttendancePage() {
               <canvas ref={canvasRef} className="hidden" />
               <button type="button" onClick={capturePhoto} disabled={!cameraReady || captureLocked} className="mt-3 min-h-11 w-full rounded-2xl bg-surface px-4 text-sm font-bold disabled:opacity-50">{photoBase64 ? "Foto sudah siap" : "3. Ambil foto"}</button>
               {retryPending ? (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+                <div className="mt-4 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm">
                   <p>Pengiriman belum terkonfirmasi. Data dan nomor pengiriman sebelumnya dipertahankan.</p>
-                  <button type="button" disabled={busy !== null} onClick={() => { if (attemptRef.current) void clock(attemptRef.current.action); }} className="mt-3 min-h-11 w-full rounded-xl bg-brand-primary px-3 font-bold text-white disabled:opacity-50">Coba ulang pengiriman yang sama</button>
+                  <button type="button" disabled={busy !== null} onClick={() => { if (attemptRef.current) void clock(attemptRef.current.action); }} className="mt-3 min-h-11 w-full rounded-xl bg-brand-primary px-3 font-bold text-brand-foreground disabled:opacity-50">Coba ulang pengiriman yang sama</button>
                   <button type="button" disabled={busy !== null} onClick={resetCapture} className="mt-2 min-h-11 w-full rounded-xl border px-3 text-xs font-semibold">Mulai pengambilan baru</button>
                 </div>
               ) : (
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => void clock("check_in")} disabled={busy !== null || !ready} className="min-h-12 rounded-2xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50">{busy === "check_in" ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <LogIn className="mr-2 inline h-4 w-4" />}Clock in</button>
+                  <button type="button" onClick={() => void clock("check_in")} disabled={busy !== null || !ready} className="min-h-12 rounded-2xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">{busy === "check_in" ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <LogIn className="mr-2 inline h-4 w-4" />}Clock in</button>
                   <button type="button" onClick={() => void clock("check_out")} disabled={busy !== null || !ready} className="min-h-12 rounded-2xl border border-brand-primary px-4 text-sm font-bold text-brand-primary-deep disabled:opacity-50">{busy === "check_out" ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> : <LogOut className="mr-2 inline h-4 w-4" />}Clock out</button>
                 </div>
               )}
               {!ready && !retryPending ? <p className="mt-2 text-xs text-muted-foreground">Tombol aktif setelah server siap, GPS terbaca, dan foto diambil.</p> : null}
             </article>
           </section>
-          <section id="clarification" className="scroll-mt-28 mt-5 rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <section id="clarification" className="scroll-mt-28 mt-5 rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <h2 className="text-base font-bold text-brand-heading">Klarifikasi kehadiran</h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Justifikasi mempertahankan waktu aktual. Koreksi menambahkan usulan waktu baru tanpa mengubah bukti mentah.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -283,7 +283,7 @@ export function EmployeeMobileAttendancePage() {
             </div>
             {mode === "correction" ? <div className="mt-3 grid gap-3 sm:grid-cols-2"><input type="datetime-local" value={proposedIn} onChange={(event) => setProposedIn(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam masuk" /><input type="datetime-local" value={proposedOut} onChange={(event) => setProposedOut(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam keluar" /></div> : null}
             <textarea aria-label="Penjelasan klarifikasi" value={reason} maxLength={2000} onChange={(event) => setReason(event.target.value)} placeholder="Tuliskan penjelasan..." className="mt-3 min-h-24 w-full rounded-xl border border-border p-3 text-sm" />
-            <button type="button" onClick={() => void submitClarification()} disabled={!reason.trim() || clarifying} className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"><Send className="mr-2 inline h-4 w-4" />{clarifying ? "Mengirim..." : "Kirim klarifikasi"}</button>
+            <button type="button" onClick={() => void submitClarification()} disabled={!reason.trim() || clarifying} className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"><Send className="mr-2 inline h-4 w-4" />{clarifying ? "Mengirim..." : "Kirim klarifikasi"}</button>
           </section>
         </>
       )}

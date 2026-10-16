@@ -122,15 +122,15 @@ export function AccountActivationPage() {
           Memeriksa link aktivasi...
         </div>
       ) : success ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-          <CheckCircle2 className="h-6 w-6 text-emerald-700" aria-hidden="true" />
-          <h3 className="mt-3 text-base font-bold text-emerald-950">Account sudah aktif</h3>
-          <p className="mt-1 text-sm leading-6 text-emerald-900/80">
+        <div className="rounded-2xl border border-success-line bg-success-soft p-5">
+          <CheckCircle2 className="h-6 w-6 text-success-ink" aria-hidden="true" />
+          <h3 className="mt-3 text-base font-bold text-success-ink">Account sudah aktif</h3>
+          <p className="mt-1 text-sm leading-6 text-success-ink/80">
             Silakan masuk menggunakan email dan kata sandi yang baru dibuat.
           </p>
           <a
             href="/"
-            className="mt-4 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+            className="mt-4 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
           >
             Ke halaman masuk
           </a>
@@ -151,7 +151,7 @@ export function AccountActivationPage() {
           </div>
 
           {error ? (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <div className="mb-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">
               {error}
             </div>
           ) : null}
@@ -167,7 +167,7 @@ export function AccountActivationPage() {
                 minLength={12}
                 maxLength={128}
                 required
-                className="mt-1.5 h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary"
+                className="mt-1.5 h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-primary"
               />
               <span className="mt-1.5 block text-xs font-normal text-muted-foreground">
                 Minimal 12 karakter.
@@ -184,23 +184,23 @@ export function AccountActivationPage() {
                 minLength={12}
                 maxLength={128}
                 required
-                className="mt-1.5 h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary"
+                className="mt-1.5 h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-primary"
               />
             </label>
 
             <button
               type="submit"
               disabled={busy}
-              className="h-11 w-full rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+              className="h-11 w-full rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
             >
               {busy ? "Mengaktifkan..." : "Aktifkan account"}
             </button>
           </form>
         </>
       ) : (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
-          <h3 className="text-base font-bold text-red-950">Link aktivasi tidak tersedia</h3>
-          <p className="mt-2 text-sm leading-6 text-red-900/80">
+        <div className="rounded-2xl border border-danger-line bg-danger-soft p-5">
+          <h3 className="text-base font-bold text-danger-ink">Link aktivasi tidak tersedia</h3>
+          <p className="mt-2 text-sm leading-6 text-danger-ink/80">
             {error ?? "Minta link aktivasi baru kepada administrator."}
           </p>
           <a href="/" className="mt-4 inline-flex text-sm font-bold text-brand-primary-deep">

@@ -236,12 +236,12 @@ export function EmployeePlannedLeavePage() {
       </section>
 
       {error ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       ) : null}
       {success ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {success}
         </div>
       ) : null}
@@ -255,7 +255,7 @@ export function EmployeePlannedLeavePage() {
             className={`rounded-3xl border p-4 text-left shadow-[var(--shadow-soft)] ${
               policyKey === policy.key
                 ? "border-brand-primary bg-brand-primary-pale/45"
-                : "border-border/70 bg-white"
+                : "border-border/70 bg-surface-raised"
             }`}
           >
             <p className="text-sm font-bold text-brand-heading">{policy.name}</p>
@@ -265,7 +265,7 @@ export function EmployeePlannedLeavePage() {
       </section>
 
       {selectedPolicy ? (
-        <section className="mt-5 rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+        <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
           <h2 className="text-base font-bold text-brand-heading">{selectedPolicy.name}</h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold">
@@ -295,7 +295,7 @@ export function EmployeePlannedLeavePage() {
             </label>
           ) : null}
 
-          <button type="button" disabled={busy} onClick={() => void handlePreview()} className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void handlePreview()} className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold disabled:opacity-50">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
             Periksa pengajuan
           </button>
@@ -314,7 +314,7 @@ export function EmployeePlannedLeavePage() {
               {preview.unpaid ? (
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">Cuti ini dicatat sebagai tidak bergaji untuk kebutuhan downstream. Halaman ini tidak menghitung potongan payroll.</p>
               ) : null}
-              <button type="button" disabled={busy} onClick={() => void handleSubmit()} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-white disabled:opacity-50">
+              <button type="button" disabled={busy} onClick={() => void handleSubmit()} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
                 Kirim pengajuan
               </button>
@@ -323,7 +323,7 @@ export function EmployeePlannedLeavePage() {
         </section>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4"><h2 className="text-base font-bold text-brand-heading">Pengajuan saya</h2></div>
         <div className="divide-y divide-border/70">
           {loading ? (
@@ -342,8 +342,8 @@ export function EmployeePlannedLeavePage() {
                 </div>
                 <p className="mt-2 text-xs font-semibold text-brand-primary-deep">{item.nextAction}</p>
                 {item.hcTaskStatus === "needs_correction" ? (
-                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-xs font-semibold text-amber-950">Human Capital meminta kelengkapan dokumen.</p>
+                  <div className="mt-3 rounded-2xl border border-warning-line bg-warning-soft p-3">
+                    <p className="text-xs font-semibold text-warning-ink">Human Capital meminta kelengkapan dokumen.</p>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         type="file"
@@ -360,7 +360,7 @@ export function EmployeePlannedLeavePage() {
                         type="button"
                         disabled={busy || !correctionFiles[item.id]}
                         onClick={() => void completeEvidence(item.id)}
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
                       >
                         <FileUp className="h-4 w-4" aria-hidden="true" /> Kirim dokumen
                       </button>

@@ -20,7 +20,7 @@ function lifecycleLabel(value: string | undefined) {
 }
 
 function SummaryCard({ label, value, helper }: { label: string; value: string | number; helper?: string }) {
-  return <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><p className="text-xs font-semibold text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading">{value}</p>{helper ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</p> : null}</div>;
+  return <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><p className="text-xs font-semibold text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-bold tracking-[-0.02em] text-brand-heading">{value}</p>{helper ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</p> : null}</div>;
 }
 
 export function AdminAdmsDeviceOverviewPage() {
@@ -66,14 +66,14 @@ export function AdminAdmsDeviceOverviewPage() {
 
   return (
     <div className="space-y-6">
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
-      {actionError ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{actionError}</div> : null}
+      {notice ? <div className="rounded-xl border border-success-line bg-success-soft p-3 text-sm text-success-ink">{notice}</div> : null}
+      {actionError ? <div className="rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{actionError}</div> : null}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Ringkasan kondisi mesin">
-        <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Radio className="h-4 w-4" /> Status koneksi</div><span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span><p className="mt-2 text-xs leading-5 text-muted-foreground">Terakhir terhubung {fmt(health?.lastSuccessfulRequestAt ?? device.lastSuccessfulRequestAt)}</p></div>
-        <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><MapPin className="h-4 w-4" /> Lokasi / unit</div><p className="mt-3 text-sm font-bold text-brand-heading">{profile?.worksiteLabel || profile?.areaContext || "Belum diisi"}</p><p className="mt-1 text-xs text-muted-foreground">Atur pada tab Konfigurasi.</p></div>
-        <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Activity className="h-4 w-4" /> Transaksi terakhir</div><p className="mt-3 text-sm font-bold text-brand-heading">{fmt(health?.lastTransactionActivityAt ?? null)}</p><p className="mt-1 text-xs text-muted-foreground">Aktivitas transaksi terakhir yang tercatat.</p></div>
-        <div className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Fingerprint className="h-4 w-4" /> Status mesin</div><p className="mt-3 text-lg font-bold text-brand-heading">{lifecycleLabel(device.lifecycle)}</p><p className="mt-1 text-xs text-muted-foreground">{device.model ?? "Model belum terbaca"} · {device.firmwareVersion ?? "Firmware belum terbaca"}</p></div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Radio className="h-4 w-4" /> Status koneksi</div><span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span><p className="mt-2 text-xs leading-5 text-muted-foreground">Terakhir terhubung {fmt(health?.lastSuccessfulRequestAt ?? device.lastSuccessfulRequestAt)}</p></div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><MapPin className="h-4 w-4" /> Lokasi / unit</div><p className="mt-3 text-sm font-bold text-brand-heading">{profile?.worksiteLabel || profile?.areaContext || "Belum diisi"}</p><p className="mt-1 text-xs text-muted-foreground">Atur pada tab Konfigurasi.</p></div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Activity className="h-4 w-4" /> Transaksi terakhir</div><p className="mt-3 text-sm font-bold text-brand-heading">{fmt(health?.lastTransactionActivityAt ?? null)}</p><p className="mt-1 text-xs text-muted-foreground">Aktivitas transaksi terakhir yang tercatat.</p></div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Fingerprint className="h-4 w-4" /> Status mesin</div><p className="mt-3 text-lg font-bold text-brand-heading">{lifecycleLabel(device.lifecycle)}</p><p className="mt-1 text-xs text-muted-foreground">{device.model ?? "Model belum terbaca"} · {device.firmwareVersion ?? "Firmware belum terbaca"}</p></div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -83,7 +83,7 @@ export function AdminAdmsDeviceOverviewPage() {
         <SummaryCard label="Masalah aktif" value={unmappedPins + detail.recentQuarantines.length} helper="Mapping atau catatan karantina yang perlu perhatian." />
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Aksi cepat</h2>
         <p className="mt-1 text-xs text-muted-foreground">Tindakan harian yang aman. Fitur yang belum diuji tetap terlihat beserta alasannya.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -96,7 +96,7 @@ export function AdminAdmsDeviceOverviewPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4"><h2 className="text-base font-bold text-brand-heading">Informasi mesin</h2><p className="mt-1 text-xs text-muted-foreground">Identitas dan metadata aman untuk kebutuhan operasional.</p></div>
         <dl className="grid gap-x-8 p-5 sm:grid-cols-2">
           {[
@@ -113,7 +113,7 @@ export function AdminAdmsDeviceOverviewPage() {
       </section>
 
       {unmappedPins > 0 || detail.recentQuarantines.length > 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><div className="flex gap-3"><Fingerprint className="mt-0.5 h-5 w-5 text-amber-700" /><div><h2 className="text-sm font-bold text-amber-900">Perlu perhatian</h2><div className="mt-2 space-y-1 text-sm leading-6 text-amber-900/80">{unmappedPins > 0 ? <p className="flex items-center gap-2"><Link2 className="h-4 w-4" /> {unmappedPins} PIN belum terhubung ke pegawai HCIS.</p> : null}{detail.recentQuarantines.length > 0 ? <p className="flex items-center gap-2"><UsersRound className="h-4 w-4" /> Ada {detail.recentQuarantines.length} catatan yang perlu ditinjau.</p> : null}</div></div></div></section>
+        <section className="rounded-2xl border border-warning-line bg-warning-soft p-5"><div className="flex gap-3"><Fingerprint className="mt-0.5 h-5 w-5 text-warning-ink" /><div><h2 className="text-sm font-bold text-warning-ink">Perlu perhatian</h2><div className="mt-2 space-y-1 text-sm leading-6 text-warning-ink/80">{unmappedPins > 0 ? <p className="flex items-center gap-2"><Link2 className="h-4 w-4" /> {unmappedPins} PIN belum terhubung ke pegawai HCIS.</p> : null}{detail.recentQuarantines.length > 0 ? <p className="flex items-center gap-2"><UsersRound className="h-4 w-4" /> Ada {detail.recentQuarantines.length} catatan yang perlu ditinjau.</p> : null}</div></div></div></section>
       ) : null}
     </div>
   );

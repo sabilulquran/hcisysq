@@ -180,17 +180,17 @@ export function HcLeaveValidationPage() {
       </section>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           {error}
         </div>
       ) : null}
       {success ? (
-        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           {success}
         </div>
       ) : null}
 
-      <section className="mt-5 rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
           <div className="flex items-center gap-3">
             <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
@@ -215,7 +215,7 @@ export function HcLeaveValidationPage() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading"
+                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-surface-raised px-4 text-xs font-bold text-brand-heading"
               >
                 Coba lagi
               </button>
@@ -266,12 +266,12 @@ export function HcLeaveValidationPage() {
                       <div className="mt-4">
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs font-semibold text-muted-foreground">Dokumen pendukung</p>
-                          <span className={`text-[10px] font-bold ${item.evidence.length ? "text-brand-primary-deep" : "text-amber-800"}`}>
+                          <span className={`text-[10px] font-bold ${item.evidence.length ? "text-brand-primary-deep" : "text-warning-ink"}`}>
                             {item.evidence.length ? `${item.evidence.length} tersedia` : "Belum tersedia"}
                           </span>
                         </div>
                         {item.evidence.length === 0 ? (
-                          <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                          <p className="mt-2 rounded-xl bg-warning-soft p-3 text-xs leading-5 text-warning-ink">
                             Belum ada dokumen. Jika bukti memang wajib, minta pegawai melengkapinya atau tandai administrasi tidak terpenuhi.
                           </p>
                         ) : (
@@ -280,7 +280,7 @@ export function HcLeaveValidationPage() {
                               <a
                                 key={evidence.id}
                                 href={hcEvidenceDownloadHref(item.requestId, evidence.id)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs font-semibold"
+                                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs font-semibold"
                                 target="_blank"
                                 rel="noreferrer"
                               >
@@ -311,7 +311,7 @@ export function HcLeaveValidationPage() {
                             }))
                           }
                           placeholder="Contoh: surat dokter hanya mencakup 1–2 September."
-                          className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-primary"
+                          className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-primary"
                         />
                       </label>
 
@@ -320,7 +320,7 @@ export function HcLeaveValidationPage() {
                           type="button"
                           disabled={busyTask === item.taskId}
                           onClick={() => void validateAll(item.taskId)}
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
                         >
                           {busyTask === item.taskId ? (
                             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -333,7 +333,7 @@ export function HcLeaveValidationPage() {
                           type="button"
                           disabled={busyTask === item.taskId}
                           onClick={() => requestCorrection(item.taskId)}
-                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-bold text-amber-950 disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-warning-line bg-warning-soft px-4 text-xs font-bold text-warning-ink disabled:opacity-50"
                         >
                           <RotateCcw className="h-4 w-4" aria-hidden="true" />
                           Minta dilengkapi
@@ -342,7 +342,7 @@ export function HcLeaveValidationPage() {
                           type="button"
                           disabled={busyTask === item.taskId}
                           onClick={() => openPartial(item.taskId, item.workingDates)}
-                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-xs font-semibold text-brand-heading disabled:opacity-50"
+                          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-xs font-semibold text-brand-heading disabled:opacity-50"
                         >
                           Sebagian / tidak terpenuhi
                           <ChevronDown className={`h-4 w-4 transition-transform ${partialOpen ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -350,7 +350,7 @@ export function HcLeaveValidationPage() {
                       </div>
 
                       {partialOpen ? (
-                        <div className="mt-4 rounded-2xl border border-border bg-white p-4">
+                        <div className="mt-4 rounded-2xl border border-border bg-surface-raised p-4">
                           <p className="text-xs font-bold text-brand-heading">Tanggal yang administrasinya terpenuhi</p>
                           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
                             Centang tanggal yang didukung dokumen. Hilangkan semua centang bila tidak ada tanggal yang dapat divalidasi.
@@ -381,7 +381,7 @@ export function HcLeaveValidationPage() {
                             type="button"
                             disabled={busyTask === item.taskId}
                             onClick={() => savePartial(item.taskId, item.workingDates)}
-                            className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-brand-heading px-4 text-xs font-bold text-white disabled:opacity-50"
+                            className="mt-3 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-foreground px-4 text-xs font-bold text-background disabled:opacity-50"
                           >
                             Simpan hasil per tanggal
                           </button>

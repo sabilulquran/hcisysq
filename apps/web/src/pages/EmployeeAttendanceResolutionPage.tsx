@@ -120,42 +120,42 @@ export function EmployeeAttendanceResolutionPage() {
         </div>
         <a
           href="/app/leave"
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold"
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Cuti & Izin
         </a>
       </section>
 
       {error ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       ) : null}
       {success ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {success}
         </div>
       ) : null}
 
       <section className="mt-5 space-y-3">
         {!items ? (
-          <div className="flex items-center gap-2 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          <div className="flex items-center gap-2 rounded-3xl border border-border/70 bg-surface-raised p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat tindak lanjut...
           </div>
         ) : openItems.length === 0 ? (
-          <div className="rounded-3xl border border-border/70 bg-white p-8 text-center shadow-[var(--shadow-soft)]">
+          <div className="rounded-3xl border border-border/70 bg-surface-raised p-8 text-center shadow-[var(--shadow-soft)]">
             <CheckCircle2 className="mx-auto h-8 w-8 text-brand-primary-deep" aria-hidden="true" />
             <p className="mt-3 text-sm font-bold text-brand-heading">Tidak ada yang perlu Anda lakukan</p>
             <p className="mt-1 text-xs text-muted-foreground">Tidak ada penyelesaian ketidakhadiran yang menunggu.</p>
           </div>
         ) : (
           openItems.map((item) => (
-            <article key={item.caseId} className="rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+            <article key={item.caseId} className="rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-bold text-muted-foreground">{item.policyName}</span>
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-bold ${item.status === "awaiting_employee" ? "bg-brand-yellow/18 text-amber-950" : "bg-brand-primary-pale text-brand-primary-deep"}`}>
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-bold ${item.status === "awaiting_employee" ? "bg-brand-yellow/18 text-warning-ink" : "bg-brand-primary-pale text-brand-primary-deep"}`}>
                       {item.status === "awaiting_employee" ? "Perlu keputusan Anda" : "Sedang ditangani HC"}
                     </span>
                   </div>
@@ -186,7 +186,7 @@ export function EmployeeAttendanceResolutionPage() {
                         type="button"
                         disabled={busyCase === item.caseId || !item.annualConversion.available}
                         onClick={() => void decide(item.caseId, "accept")}
-                        className="min-h-11 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                        className="min-h-11 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
                       >
                         Gunakan Cuti Tahunan
                       </button>
@@ -194,13 +194,13 @@ export function EmployeeAttendanceResolutionPage() {
                         type="button"
                         disabled={busyCase === item.caseId}
                         onClick={() => void decide(item.caseId, "reject")}
-                        className="min-h-11 rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading disabled:opacity-50"
+                        className="min-h-11 rounded-xl border border-border bg-surface-raised px-4 text-xs font-bold text-brand-heading disabled:opacity-50"
                       >
                         Jangan gunakan
                       </button>
                     </div>
                     {!item.annualConversion.available ? (
-                      <p className="mt-3 text-[11px] leading-5 text-red-800">{item.annualConversion.reason}</p>
+                      <p className="mt-3 text-[11px] leading-5 text-danger-ink">{item.annualConversion.reason}</p>
                     ) : null}
                   </div>
                 ) : (
@@ -216,7 +216,7 @@ export function EmployeeAttendanceResolutionPage() {
       </section>
 
       {resolvedItems.length > 0 ? (
-        <section className="mt-6 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+        <section className="mt-6 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
           <div className="border-b border-border/70 px-5 py-4">
             <h2 className="text-base font-bold text-brand-heading">Riwayat terbaru</h2>
           </div>

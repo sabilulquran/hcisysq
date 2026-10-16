@@ -45,9 +45,9 @@ function stateLabel(state: string) {
 }
 
 function stateClass(state: string) {
-  if (state === "available") return "bg-emerald-50 text-emerald-700";
-  if (state === "not_verified") return "bg-slate-100 text-slate-700";
-  return "bg-amber-50 text-amber-800";
+  if (state === "available") return "bg-success-soft text-success-ink";
+  if (state === "not_verified") return "bg-muted text-foreground";
+  return "bg-warning-soft text-warning-ink";
 }
 
 function fmt(value: string | null) {
@@ -266,7 +266,7 @@ export function AdminAdmsDeviceOperationsPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -285,20 +285,20 @@ export function AdminAdmsDeviceOperationsPage() {
           <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Command pending</div><div className="mt-1 text-xl font-bold text-brand-heading">{summary?.pendingCommandCount ?? 0}</div></div>
           <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Import offline</div><div className="mt-1 text-xl font-bold text-brand-heading">{imports.length}</div></div>
           <div className="rounded-xl bg-surface p-3"><div className="text-[11px] text-muted-foreground">Katalog Work Code</div><div className="mt-1 text-xl font-bold text-brand-heading">{workCodes.length}</div></div>
-          <div className="rounded-xl bg-amber-50 p-3"><div className="text-[11px] text-amber-800">Hardware gated</div><div className="mt-1 text-xl font-bold text-amber-950">{blockedHardware.length}</div></div>
+          <div className="rounded-xl bg-warning-soft p-3"><div className="text-[11px] text-warning-ink">Hardware gated</div><div className="mt-1 text-xl font-bold text-warning-ink">{blockedHardware.length}</div></div>
         </div>
-        {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
-        {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
+        {notice ? <div className="mt-4 rounded-xl border border-success-line bg-success-soft p-3 text-xs leading-5 text-success-ink">{notice}</div> : null}
+        {error ? <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div> : null}
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Work Code</h3></div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{workDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(workDeliveryCapability)}`}>{stateLabel(workDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
             <input value={workCode} onChange={(event) => setWorkCode(event.target.value.replace(/[^0-9A-Za-z._-]/g, ""))} placeholder="Kode" className="h-9 rounded-xl border border-border px-3 text-sm" />
             <input value={workCodeName} onChange={(event) => setWorkCodeName(event.target.value)} placeholder="Nama Work Code" className="h-9 rounded-xl border border-border px-3 text-sm" />
-            <button type="button" onClick={() => void submitWorkCode()} disabled={busy !== null || !workCode || !workCodeName.trim()} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Simpan</button>
+            <button type="button" onClick={() => void submitWorkCode()} disabled={busy !== null || !workCode || !workCodeName.trim()} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50">Simpan</button>
           </div>
           <div className="mt-4 space-y-2">
             {visibleWorkCodes.map((item) => (
@@ -315,7 +315,7 @@ export function AdminAdmsDeviceOperationsPage() {
           {workCodes.length > PAGE_SIZE ? <PaginationBar page={workPage} pageSize={PAGE_SIZE} total={workCodes.length} onPageChange={setWorkPage} /> : null}
         </section>
 
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><MessageSquareText className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Pesan perangkat</h3></div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{messageDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(messageDeliveryCapability)}`}>{stateLabel(messageDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -325,7 +325,7 @@ export function AdminAdmsDeviceOperationsPage() {
           {messageAudience === "private" ? (
             <div className="mt-2">
               {selectedEmployee ? (
-                <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs"><span><strong>{selectedEmployee.fullName}</strong> · {selectedEmployee.employeeNumber}</span><button type="button" onClick={() => setSelectedEmployee(null)} className="font-semibold text-red-700">Ganti</button></div>
+                <div className="flex items-center justify-between rounded-xl border border-success-line bg-success-soft p-3 text-xs"><span><strong>{selectedEmployee.fullName}</strong> · {selectedEmployee.employeeNumber}</span><button type="button" onClick={() => setSelectedEmployee(null)} className="font-semibold text-danger-ink">Ganti</button></div>
               ) : (
                 <>
                   <div className="flex gap-2"><input value={employeeQuery} onChange={(event) => setEmployeeQuery(event.target.value)} placeholder="Cari pegawai aktif" className="h-9 min-w-0 flex-1 rounded-xl border border-border px-3 text-sm" /><button type="button" onClick={() => void searchEmployees()} disabled={employeeLoading || !employeeQuery.trim()} className="inline-flex h-9 items-center gap-1 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">{employeeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />} Cari</button></div>
@@ -335,11 +335,11 @@ export function AdminAdmsDeviceOperationsPage() {
             </div>
           ) : null}
           <textarea value={messageText} onChange={(event) => setMessageText(event.target.value)} maxLength={500} placeholder="Isi pesan" rows={3} className="mt-2 w-full rounded-xl border border-border p-3 text-sm" />
-          <div className="mt-2 flex justify-end"><button type="button" onClick={() => void submitMessage()} disabled={busy !== null || !messageTitle.trim() || !messageText.trim()} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Simpan pesan HCIS</button></div>
+          <div className="mt-2 flex justify-end"><button type="button" onClick={() => void submitMessage()} disabled={busy !== null || !messageTitle.trim() || !messageText.trim()} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50">Simpan pesan HCIS</button></div>
           <div className="mt-4 space-y-2">
             {visibleMessages.map((item) => (
               <div key={item.id} className="rounded-xl border border-border/70 p-3">
-                <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold text-brand-heading">{item.title}</div><div className="mt-1 text-[11px] text-muted-foreground">{item.audience === "private" ? `Private · ${item.employeeName ?? "pegawai"}` : "Public"} · delivery {item.deliveryState}</div></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">HCIS only</span></div>
+                <div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold text-brand-heading">{item.title}</div><div className="mt-1 text-[11px] text-muted-foreground">{item.audience === "private" ? `Private · ${item.employeeName ?? "pegawai"}` : "Public"} · delivery {item.deliveryState}</div></div><span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-foreground">HCIS only</span></div>
                 <p className="mt-2 text-xs leading-5 text-brand-body">{item.messageText}</p>
                 <div className="mt-2 flex gap-2"><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "present")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Desired: tampil</button><button type="button" disabled={busy !== null} onClick={() => void updateMessageTarget(item, "absent")} className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold">Desired: hapus</button></div>
               </div>
@@ -350,28 +350,28 @@ export function AdminAdmsDeviceOperationsPage() {
         </section>
       </div>
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h3 className="text-sm font-bold text-brand-heading">Transfer data & maintenance aman</h3>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           <div className="rounded-xl border border-border/70 p-4"><Download className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Export transaksi CSV</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Mengekspor fakta raw durable. Tidak menghitung terlambat, jam kerja, overtime, atau payroll.</p><a href={admsTransactionExportUrl(deviceId)} className="mt-3 inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold">Download CSV</a></div>
-          <div className="rounded-xl border border-border/70 p-4"><FileUp className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Import ATTLOG offline</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Fallback file ≤512 KiB. Parser, dedupe, quarantine, provenance, dan manual-attendance protection tetap sama. Device command = 0.</p><input type="file" accept=".txt,.dat,.log,text/plain" onChange={(event) => setOfflineFile(event.target.files?.[0] ?? null)} className="mt-3 block w-full text-xs" /><button type="button" onClick={() => void importOffline()} disabled={!offlineFile || busy !== null} className="mt-2 h-8 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Import file</button></div>
+          <div className="rounded-xl border border-border/70 p-4"><FileUp className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Import ATTLOG offline</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Fallback file ≤512 KiB. Parser, dedupe, quarantine, provenance, dan manual-attendance protection tetap sama. Device command = 0.</p><input type="file" accept=".txt,.dat,.log,text/plain" onChange={(event) => setOfflineFile(event.target.files?.[0] ?? null)} className="mt-3 block w-full text-xs" /><button type="button" onClick={() => void importOffline()} disabled={!offlineFile || busy !== null} className="mt-2 h-8 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50">Import file</button></div>
           <div className="rounded-xl border border-border/70 p-4"><Trash2 className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Bersihkan queue pending</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Hanya command berstatus pending yang belum pernah delivered. Delivered/acknowledged tidak disentuh.</p><button type="button" onClick={() => void clearPending()} disabled={busy !== null || (summary?.pendingCommandCount ?? 0) === 0} className="mt-3 h-8 rounded-lg border border-border px-3 text-xs font-semibold disabled:opacity-50">Batalkan {summary?.pendingCommandCount ?? 0} pending</button></div>
         </div>
         {imports.length ? <div className="mt-4"><div className="text-xs font-bold text-brand-heading">Import terakhir</div><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[640px] text-left text-xs"><thead className="bg-surface text-[10px] uppercase text-muted-foreground"><tr><th className="px-3 py-2">File</th><th className="px-3 py-2">Waktu</th><th className="px-3 py-2">Baru</th><th className="px-3 py-2">Duplikat</th><th className="px-3 py-2">Quarantine</th></tr></thead><tbody className="divide-y divide-border/60">{imports.slice(0, 8).map((item) => <tr key={item.id}><td className="px-3 py-2 font-medium">{item.sourceFilename}</td><td className="px-3 py-2">{fmt(item.createdAt)}</td><td className="px-3 py-2">{item.insertedEventCount}</td><td className="px-3 py-2">{item.duplicateEventCount}</td><td className="px-3 py-2">{item.quarantineCount}</td></tr>)}</tbody></table></div></div> : null}
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-amber-600" /><div><h3 className="text-sm font-bold text-brand-heading">Capability matrix</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Status ini adalah projection dari physical capability evidence per mesin. “Belum terverifikasi” berarti typed capability belum memiliki canary verified atau hasil terakhir belum cukup; execute normal tetap fail-closed.</p></div></div>
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+        <div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-warning-ink" /><div><h3 className="text-sm font-bold text-brand-heading">Capability matrix</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Status ini adalah projection dari physical capability evidence per mesin. “Belum terverifikasi” berarti typed capability belum memiliki canary verified atau hasil terakhir belum cukup; execute normal tetap fail-closed.</p></div></div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(summary?.capabilities ?? []).map((capability) => (
             <div key={capability.key} className="rounded-xl border border-border/70 p-3">
               <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-brand-heading">{capability.label}</span><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${stateClass(capability.state)}`}>{stateLabel(capability.state)}</span></div>
               <p className="mt-2 text-[11px] leading-5 text-muted-foreground">{capability.reason}</p>
-              <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">{capability.execution === "hcis_only" ? <CheckCircle2 className="h-3 w-3 text-emerald-600" /> : capability.execution === "blocked" ? <AlertTriangle className="h-3 w-3 text-amber-600" /> : <Wrench className="h-3 w-3" />}{capability.execution === "hcis_only" ? "HCIS-side" : capability.execution === "blocked" ? "Tidak executable" : "Device command proven"}</div>
+              <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">{capability.execution === "hcis_only" ? <CheckCircle2 className="h-3 w-3 text-success-ink" /> : capability.execution === "blocked" ? <AlertTriangle className="h-3 w-3 text-warning-ink" /> : <Wrench className="h-3 w-3" />}{capability.execution === "hcis_only" ? "HCIS-side" : capability.execution === "blocked" ? "Tidak executable" : "Device command proven"}</div>
             </div>
           ))}
         </div>
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Retention operasional tetap policy-gated dan raw ADMS facts tidak dibersihkan otomatis. Status verified hanya berlaku untuk capability dan mesin tersebut; biometric/destructive/firmware tetap mengikuti gate, confirmation, rate-limit, dan physical UAT masing-masing.</div>
+        <div className="mt-4 rounded-xl border border-warning-line bg-warning-soft p-3 text-xs leading-5 text-warning-ink">Retention operasional tetap policy-gated dan raw ADMS facts tidak dibersihkan otomatis. Status verified hanya berlaku untuk capability dan mesin tersebut; biometric/destructive/firmware tetap mengikuti gate, confirmation, rate-limit, dan physical UAT masing-masing.</div>
       </section>
     </div>
   );

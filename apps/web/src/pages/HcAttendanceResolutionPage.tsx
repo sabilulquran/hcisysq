@@ -114,17 +114,17 @@ export function HcAttendanceResolutionPage() {
       </section>
 
       {error ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       ) : null}
       {success ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {success}
         </div>
       ) : null}
 
-      <section className="mt-5 rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
           <div className="flex items-center gap-3">
             <Clock3 className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
@@ -149,7 +149,7 @@ export function HcAttendanceResolutionPage() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading"
+                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-surface-raised px-4 text-xs font-bold text-brand-heading"
               >
                 Coba lagi
               </button>
@@ -182,7 +182,7 @@ export function HcAttendanceResolutionPage() {
                       <p className="text-xs font-semibold text-muted-foreground">Tanggal yang belum terselesaikan</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {item.unresolvedDates.map((date) => (
-                          <span key={date} className="rounded-xl bg-white px-3 py-2 text-xs font-bold text-brand-heading shadow-sm">
+                          <span key={date} className="rounded-xl bg-surface-raised px-3 py-2 text-xs font-bold text-brand-heading shadow-sm">
                             {shortDate(date)}
                           </span>
                         ))}
@@ -196,9 +196,9 @@ export function HcAttendanceResolutionPage() {
                     ) : null}
 
                     {item.status === "awaiting_employee" ? (
-                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                        <p className="text-xs font-bold text-amber-950">Menunggu keputusan pegawai</p>
-                        <p className="mt-1 text-xs leading-5 text-amber-900">
+                      <div className="mt-3 rounded-2xl border border-warning-line bg-warning-soft p-4">
+                        <p className="text-xs font-bold text-warning-ink">Menunggu keputusan pegawai</p>
+                        <p className="mt-1 text-xs leading-5 text-warning-ink">
                           Usulan penggunaan Cuti Tahunan sudah dikirim. Jangan menetapkan treatment lain sebelum pegawai menjawab.
                         </p>
                       </div>
@@ -221,7 +221,7 @@ export function HcAttendanceResolutionPage() {
                         }
                         disabled={item.status === "awaiting_employee"}
                         placeholder="Tuliskan dasar singkat penyelesaian."
-                        className="mt-2 w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-primary disabled:bg-muted"
+                        className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2.5 text-sm font-normal outline-none focus:border-brand-primary disabled:bg-muted"
                       />
                     </label>
 
@@ -242,7 +242,7 @@ export function HcAttendanceResolutionPage() {
                             </span>
                           </button>
                         ) : item.entitlementGroup === "non_education" ? (
-                          <div className="rounded-xl border border-border bg-white p-3 text-[11px] leading-5 text-muted-foreground">
+                          <div className="rounded-xl border border-border bg-surface-raised p-3 text-[11px] leading-5 text-muted-foreground">
                             Konversi Cuti Tahunan tidak tersedia: {item.annualConversion.reason}
                           </div>
                         ) : null}
@@ -251,7 +251,7 @@ export function HcAttendanceResolutionPage() {
                           type="button"
                           disabled={busyCase === item.caseId}
                           onClick={() => void decide(item.caseId, "dispensation")}
-                          className="min-h-11 rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading disabled:opacity-50"
+                          className="min-h-11 rounded-xl border border-border bg-surface-raised px-4 text-xs font-bold text-brand-heading disabled:opacity-50"
                         >
                           Tetapkan dispensasi
                         </button>
@@ -259,7 +259,7 @@ export function HcAttendanceResolutionPage() {
                           type="button"
                           disabled={busyCase === item.caseId}
                           onClick={() => void decide(item.caseId, "unpaid_absence")}
-                          className="min-h-11 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-bold text-red-900 disabled:opacity-50"
+                          className="min-h-11 rounded-xl border border-danger-line bg-danger-soft px-4 text-xs font-bold text-danger-ink disabled:opacity-50"
                         >
                           Ketidakhadiran tanpa hak
                         </button>

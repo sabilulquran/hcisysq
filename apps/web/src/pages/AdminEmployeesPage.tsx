@@ -16,9 +16,9 @@ function statusLabel(status: EmployeeStatus) {
 }
 
 function statusClass(status: EmployeeStatus) {
-  if (status === "active") return "bg-emerald-50 text-emerald-800";
-  if (status === "resigned") return "bg-orange-50 text-orange-800";
-  return "bg-slate-100 text-slate-700";
+  if (status === "active") return "bg-success-soft text-success-ink";
+  if (status === "resigned") return "bg-warning-soft text-warning-ink";
+  return "bg-muted text-foreground";
 }
 
 export function AdminEmployeesPage() {
@@ -77,14 +77,14 @@ export function AdminEmployeesPage() {
           ["Tidak aktif", summary.inactive],
           ["Keluar", summary.resigned],
         ].map(([label, value]) => (
-          <article key={String(label)} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+          <article key={String(label)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
             <p className="text-xs font-semibold text-muted-foreground">{label}</p>
             <p className="mt-1 text-2xl font-bold text-brand-heading">{value}</p>
           </article>
         ))}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
         <form onSubmit={submitSearch} className="grid gap-3 lg:grid-cols-[minmax(14rem,1.3fr)_repeat(3,minmax(10rem,0.7fr))_auto]">
           <label className="relative block">
             <span className="sr-only">Cari pegawai</span>
@@ -139,13 +139,13 @@ export function AdminEmployeesPage() {
             ))}
           </select>
 
-          <button type="submit" className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white hover:bg-brand-primary-deep">
+          <button type="submit" className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep">
             Cari
           </button>
         </form>
       </section>
 
-      <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {error ? (
           <div className="p-6 text-sm text-destructive">{error}</div>
         ) : loading ? (
@@ -198,7 +198,7 @@ export function AdminEmployeesPage() {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  className="h-9 rounded-xl border border-border bg-white px-3 font-semibold text-foreground disabled:opacity-40"
+                  className="h-9 rounded-xl border border-border bg-surface-raised px-3 font-semibold text-foreground disabled:opacity-40"
                 >
                   Sebelumnya
                 </button>
@@ -206,7 +206,7 @@ export function AdminEmployeesPage() {
                   type="button"
                   disabled={page >= data.pagination.pageCount}
                   onClick={() => setPage((current) => current + 1)}
-                  className="h-9 rounded-xl border border-border bg-white px-3 font-semibold text-foreground disabled:opacity-40"
+                  className="h-9 rounded-xl border border-border bg-surface-raised px-3 font-semibold text-foreground disabled:opacity-40"
                 >
                   Berikutnya
                 </button>

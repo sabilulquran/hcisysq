@@ -137,7 +137,7 @@ function PayslipPaper({
   const employmentStatus = payslipEmploymentStatusLabel(payslip.employmentStatus);
 
   return (
-    <article className="payslip-print-paper mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-hidden rounded-sm border border-slate-300 bg-white text-[9.5pt] text-slate-900 shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
+    <article className="payslip-print-paper sq-paper mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-hidden rounded-sm border border-slate-300 bg-white text-[9.5pt] text-slate-900 shadow-[0_16px_44px_rgba(15,23,42,0.12)]">
       <header className="payslip-document-header bg-brand-primary-deep px-6 py-5 text-center text-white">
         <img
           src={ysqLogoHorizontal}
@@ -328,31 +328,31 @@ export function EmployeePayslipsPage() {
           <h1 className="mt-2 font-display text-2xl font-bold text-brand-heading sm:text-3xl">Slip Gaji</h1>
         </div>
 
-        <section className="print:hidden rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+        <section className="print:hidden rounded-2xl border border-warning-line bg-warning-soft/70 px-4 py-3">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-800" />
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warning-ink" />
             <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-amber-900">Catatan penting</p>
-              <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs leading-5 text-amber-950">
+              <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-warning-ink">Catatan penting</p>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs leading-5 text-warning-ink">
                 {payslipConfidentialityNotes.map((note) => <li key={note}>{note}</li>)}
               </ol>
             </div>
           </div>
         </section>
 
-        {error ? <div className="print:hidden rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
+        {error ? <div className="print:hidden rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
 
         {items === null ? (
-          <div className="print:hidden flex min-h-36 items-center justify-center rounded-2xl border border-border bg-white"><Loader2 className="h-6 w-6 animate-spin text-brand-primary" aria-label="Memuat payslip" /></div>
+          <div className="print:hidden flex min-h-36 items-center justify-center rounded-2xl border border-border bg-surface-raised"><Loader2 className="h-6 w-6 animate-spin text-brand-primary" aria-label="Memuat payslip" /></div>
         ) : items.length === 0 ? (
-          <div className="print:hidden rounded-2xl border border-border bg-white p-8 text-center shadow-[var(--shadow-soft)]">
+          <div className="print:hidden rounded-2xl border border-border bg-surface-raised p-8 text-center shadow-[var(--shadow-soft)]">
             <FileText className="mx-auto h-10 w-10 text-muted-foreground" />
             <h2 className="mt-4 text-base font-bold">Belum ada slip gaji yang dipublikasikan</h2>
             <p className="mt-2 text-sm text-muted-foreground">Draft atau batch yang masih direview tidak ditampilkan di sini.</p>
           </div>
         ) : (
           <>
-            <section className="print:hidden rounded-2xl border border-border bg-white p-4 shadow-[var(--shadow-soft)]">
+            <section className="print:hidden rounded-2xl border border-border bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
                 <label className="relative min-w-0 flex-1 text-xs font-bold text-brand-heading">
                   Pilih periode slip
@@ -369,11 +369,11 @@ export function EmployeePayslipsPage() {
                       }}
                       onKeyDown={(event) => event.key === "Enter" && void showSelectedPayslip()}
                       placeholder="Ketik bulan, tahun, atau status kepegawaian"
-                      className="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-3 text-sm font-normal"
+                      className="w-full rounded-xl border border-border bg-surface-raised py-2.5 pl-9 pr-3 text-sm font-normal"
                       autoComplete="off"
                     />
                     {selectorOpen ? (
-                      <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-white p-1 shadow-xl">
+                      <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border bg-surface-raised p-1 shadow-xl">
                         {filteredOptions.length > 0 ? filteredOptions.map((item) => {
                           const status = payslipEmploymentStatusLabel(item.employmentStatus);
                           return (
@@ -400,10 +400,10 @@ export function EmployeePayslipsPage() {
                     ) : null}
                   </div>
                 </label>
-                <button type="button" disabled={loadingDetail} onClick={() => void showSelectedPayslip()} className="rounded-xl bg-brand-primary px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                <button type="button" disabled={loadingDetail} onClick={() => void showSelectedPayslip()} className="rounded-xl bg-brand-primary px-5 py-2.5 text-sm font-bold text-brand-foreground disabled:opacity-50">
                   Tampilkan
                 </button>
-                <button type="button" disabled={!selected || loadingDetail} onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-white px-4 py-2.5 text-sm font-bold text-brand-primary-deep disabled:opacity-50">
+                <button type="button" disabled={!selected || loadingDetail} onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-surface-raised px-4 py-2.5 text-sm font-bold text-brand-primary-deep disabled:opacity-50">
                   <Printer className="h-4 w-4" /> Cetak / Simpan PDF
                 </button>
               </div>
@@ -411,11 +411,11 @@ export function EmployeePayslipsPage() {
             </section>
 
             {loadingDetail ? (
-              <div className="print:hidden flex min-h-72 items-center justify-center rounded-2xl border border-border bg-white"><Loader2 className="h-6 w-6 animate-spin" /></div>
+              <div className="print:hidden flex min-h-72 items-center justify-center rounded-2xl border border-border bg-surface-raised"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : selected ? (
               <PayslipPaper payslip={selected} employee={employee} />
             ) : (
-              <div className="print:hidden flex min-h-64 items-center justify-center rounded-2xl border border-border bg-white p-8 text-center text-sm text-muted-foreground">Pilih periode dan klik Tampilkan.</div>
+              <div className="print:hidden flex min-h-64 items-center justify-center rounded-2xl border border-border bg-surface-raised p-8 text-center text-sm text-muted-foreground">Pilih periode dan klik Tampilkan.</div>
             )}
           </>
         )}

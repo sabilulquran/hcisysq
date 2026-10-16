@@ -3,7 +3,7 @@ import { FileQuestion } from "lucide-react";
 export function NotFoundPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface px-5 py-10">
-      <section className="w-full max-w-lg rounded-3xl border border-border/70 bg-white p-7 text-center shadow-[var(--shadow-soft)] sm:p-9">
+      <section className="w-full max-w-lg rounded-3xl border border-border/70 bg-surface-raised p-7 text-center shadow-[var(--shadow-soft)] sm:p-9">
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
           <FileQuestion className="h-6 w-6" aria-hidden="true" />
         </span>
@@ -14,7 +14,7 @@ export function NotFoundPage() {
         </p>
         <a
           href="/"
-          className="mt-6 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+          className="mt-6 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
         >
           Kembali
         </a>

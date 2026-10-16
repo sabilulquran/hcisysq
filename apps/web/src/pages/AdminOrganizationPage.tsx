@@ -123,9 +123,9 @@ function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="organization-dialog-title"
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-xl sm:rounded-3xl"
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-surface-raised shadow-2xl sm:max-w-xl sm:rounded-3xl"
       >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border/70 bg-white px-5 py-4 sm:px-6">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border/70 bg-surface-raised px-5 py-4 sm:px-6">
           <div>
             <h2 id="organization-dialog-title" className="text-lg font-bold text-brand-heading">{title}</h2>
             {description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}
@@ -150,13 +150,13 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-const inputClass = "h-11 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10";
+const inputClass = "h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10";
 
 function SubmitRow({ saving, onCancel, label }: { saving: boolean; onCancel: () => void; label: string }) {
   return (
     <div className="mt-6 flex justify-end gap-2 border-t border-border/70 pt-4">
       <button type="button" onClick={onCancel} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Batal</button>
-      <button type="submit" disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white hover:bg-brand-primary-deep disabled:opacity-60">
+      <button type="submit" disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-60">
         {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
         {saving ? "Menyimpan..." : label}
       </button>
@@ -165,15 +165,15 @@ function SubmitRow({ saving, onCancel, label }: { saving: boolean; onCancel: () 
 }
 
 function statusCopy(mode: OrganizationDesignerView["mode"]) {
-  if (mode === "HISTORICAL") return { label: "Historis", className: "bg-slate-100 text-slate-700" };
-  if (mode === "FUTURE") return { label: "Terjadwal", className: "bg-blue-50 text-blue-800" };
-  if (mode === "DRAFT") return { label: "Draft", className: "bg-amber-100 text-amber-900" };
-  return { label: "Saat ini", className: "bg-emerald-50 text-emerald-800" };
+  if (mode === "HISTORICAL") return { label: "Historis", className: "bg-muted text-foreground" };
+  if (mode === "FUTURE") return { label: "Terjadwal", className: "bg-info-soft text-info-ink" };
+  if (mode === "DRAFT") return { label: "Draft", className: "bg-warning-soft text-warning-ink" };
+  return { label: "Saat ini", className: "bg-success-soft text-success-ink" };
 }
 
 function ImpactCard({ label, count, tone = "default" }: { label: string; count: number; tone?: "default" | "warning" | "visual" }) {
   return (
-    <div className={cn("rounded-xl border px-3 py-3", tone === "warning" ? "border-amber-200 bg-amber-50" : tone === "visual" ? "border-blue-200 bg-blue-50" : "border-border/70 bg-surface")}>
+    <div className={cn("rounded-xl border px-3 py-3", tone === "warning" ? "border-warning-line bg-warning-soft" : tone === "visual" ? "border-info-line bg-info-soft" : "border-border/70 bg-surface")}>
       <p className="text-xl font-bold text-brand-heading">{count}</p>
       <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{label}</p>
     </div>
@@ -432,26 +432,26 @@ export function AdminOrganizationPage() {
 
   return (
     <AdminShell active="organization" title="Organization Designer" description="Gambar struktur, posisi, dan kewenangan berdasarkan tanggal efektif. Hubungan approval tetap dihitung dan divalidasi oleh server.">
-      {error ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div> : null}
-      {notice ? <div className="mb-4 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>{notice}</span></div> : null}
+      {error ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div> : null}
+      {notice ? <div className="mb-4 flex items-start gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>{notice}</span></div> : null}
 
-      <section className={cn("overflow-hidden rounded-3xl border bg-white shadow-[var(--shadow-soft)]", canEdit ? "border-amber-300 ring-4 ring-amber-100/60" : "border-border/70")}>
-        <div className={cn("flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-end lg:justify-between", canEdit ? "border-amber-200 bg-amber-50/60" : "border-border/70")}>
+      <section className={cn("overflow-hidden rounded-3xl border bg-surface-raised shadow-[var(--shadow-soft)]", canEdit ? "border-warning-line ring-4 ring-warning-soft/60" : "border-border/70")}>
+        <div className={cn("flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-end lg:justify-between", canEdit ? "border-warning-line bg-warning-soft/60" : "border-border/70")}>
           <div className="flex flex-wrap items-center gap-3">
             <Field label="Lihat struktur pada tanggal"><span className="relative block"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input type="date" value={effectiveDate} onChange={(event) => { setDraftId(null); setEffectiveDate(event.target.value); setSelection(null); }} className={`${inputClass} w-48 pl-9`} /></span></Field>
             <span className={cn("mb-0.5 self-end rounded-full px-3 py-2 text-xs font-bold", status.className)}>{status.label}</span>
-            {data?.draft ? <div className="mb-0.5 self-end"><p className="text-xs font-bold text-amber-900">{data.draft.name}</p><p className="text-[11px] text-amber-800">Efektif {displayDate(data.draft.effectiveOn)} · {data.draft.status}</p></div> : null}
+            {data?.draft ? <div className="mb-0.5 self-end"><p className="text-xs font-bold text-warning-ink">{data.draft.name}</p><p className="text-[11px] text-warning-ink">Efektif {displayDate(data.draft.effectiveOn)} · {data.draft.status}</p></div> : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            {!hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-bold hover:bg-muted"><CalendarClock className="h-4 w-4" /> Jadwalkan perubahan</button> : <>
-              {canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ShieldCheck className="h-4 w-4" /> Validasi</button> : null}
-              <button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-4 w-4" /> Preview dampak</button>
-              <button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-4 w-4" /> Publikasikan</button>
+            {!hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted"><CalendarClock className="h-4 w-4" /> Jadwalkan perubahan</button> : <>
+              {canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-warning-line bg-surface-raised px-3 text-xs font-bold text-warning-ink hover:bg-warning-soft disabled:opacity-60"><ShieldCheck className="h-4 w-4" /> Validasi</button> : null}
+              <button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-4 w-4" /> Preview dampak</button>
+              <button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-4 w-4" /> Publikasikan</button>
             </>}
           </div>
         </div>
 
-        {canEdit && (selectedNode || selectedPosition) ? <div className="flex flex-col gap-3 border-b border-amber-200 bg-white px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
+        {canEdit && (selectedNode || selectedPosition) ? <div className="flex flex-col gap-3 border-b border-warning-line bg-surface-raised px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p><p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p></div>
           <div className="flex flex-wrap gap-2">
             {selectedNode ? <>
@@ -476,36 +476,36 @@ export function AdminOrganizationPage() {
           </div>
         </div> : null}
 
-        <div className="relative min-h-[34rem] overflow-auto bg-[#f8fbfa]">
-          {loading ? <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-sm font-semibold text-muted-foreground"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Memuat chart...</div> : null}
+        <div className="relative min-h-[34rem] overflow-auto bg-surface">
+          {loading ? <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised/70 text-sm font-semibold text-muted-foreground"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Memuat chart...</div> : null}
           <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-white px-5 py-3 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-surface-raised px-5 py-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" /> Posisi terisi</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-amber-400 bg-amber-50" /> Posisi vacant nyata</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-dashed border-warning-line bg-warning-soft" /> Posisi vacant nyata</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-px w-5 bg-brand-primary/40" /> Hubungan struktural</span>
-          <span className="inline-flex items-center gap-1.5"><ArrowDownToLine className="h-3.5 w-3.5 text-blue-700" /> Rank visual tidak mengubah reporting / approval</span>
+          <span className="inline-flex items-center gap-1.5"><ArrowDownToLine className="h-3.5 w-3.5 text-info-ink" /> Rank visual tidak mengubah reporting / approval</span>
         </div>
       </section>
 
-      {validation ? <section className={cn("mt-5 rounded-2xl border p-5", validation.valid ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50")}>
-        <div className="flex items-center gap-2">{validation.valid ? <CheckCircle2 className="h-5 w-5 text-emerald-700" /> : <AlertTriangle className="h-5 w-5 text-red-700" />}<h2 className="text-base font-bold text-brand-heading">{validation.valid ? "Draft valid" : "Draft perlu diperbaiki"}</h2></div>
-        {validation.issues.length > 0 ? <ul className="mt-3 space-y-2 text-sm">{validation.issues.map((issue, index) => <li key={`${issue.code}-${index}`}><span className="font-bold">{issue.code}</span> — {issue.message}</li>)}</ul> : <p className="mt-2 text-sm text-emerald-800">Tidak ada cycle, overlap, atau authority configuration error yang ditemukan server.</p>}
+      {validation ? <section className={cn("mt-5 rounded-2xl border p-5", validation.valid ? "border-success-line bg-success-soft" : "border-danger-line bg-danger-soft")}>
+        <div className="flex items-center gap-2">{validation.valid ? <CheckCircle2 className="h-5 w-5 text-success-ink" /> : <AlertTriangle className="h-5 w-5 text-danger-ink" />}<h2 className="text-base font-bold text-brand-heading">{validation.valid ? "Draft valid" : "Draft perlu diperbaiki"}</h2></div>
+        {validation.issues.length > 0 ? <ul className="mt-3 space-y-2 text-sm">{validation.issues.map((issue, index) => <li key={`${issue.code}-${index}`}><span className="font-bold">{issue.code}</span> — {issue.message}</li>)}</ul> : <p className="mt-2 text-sm text-success-ink">Tidak ada cycle, overlap, atau authority configuration error yang ditemukan server.</p>}
       </section> : null}
 
-      {impact ? <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex items-start justify-between gap-4"><div><h2 className="text-base font-bold text-brand-heading">Dampak restrukturisasi</h2><p className="mt-1 text-xs text-muted-foreground">Hasil perbandingan dari server untuk tanggal efektif draft.</p></div>{impact.noApprovalRoutingImpact ? <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-800">Tidak ada dampak routing approval</span> : <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-900">Routing perlu ditinjau</span>}</div>
+      {impact ? <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+        <div className="flex items-start justify-between gap-4"><div><h2 className="text-base font-bold text-brand-heading">Dampak restrukturisasi</h2><p className="mt-1 text-xs text-muted-foreground">Hasil perbandingan dari server untuk tanggal efektif draft.</p></div>{impact.noApprovalRoutingImpact ? <span className="rounded-full bg-info-soft px-3 py-1.5 text-xs font-bold text-info-ink">Tidak ada dampak routing approval</span> : <span className="rounded-full bg-warning-soft px-3 py-1.5 text-xs font-bold text-warning-ink">Routing perlu ditinjau</span>}</div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6"><ImpactCard label="Atasan langsung berubah" count={impact.directManagerChanges.length} /><ImpactCard label="Unit approver berubah" count={impact.unitApproverChanges.length} /><ImpactCard label="Jalur kewenangan" count={impact.authorityPathsAffected.length} /><ImpactCard label="Kewenangan vacant" count={impact.vacantAuthorities.length} tone="warning" /><ImpactCard label="Pegawai unresolved" count={impact.unresolvedEmployees.length} tone="warning" /><ImpactCard label="Perubahan visual saja" count={impact.visualOnlyChanges.length} tone="visual" /></div>
       </section> : null}
 
       {hasActiveDraft ? <section className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-brand-primary-deep" /><h2 className="text-base font-bold text-brand-heading">Preview rantai approval</h2></div>
           <p className="mt-1 text-xs text-muted-foreground">Server menyelesaikan kewenangan, vacancy, acting, capability, dan deduplikasi. Chart tidak menebak approver.</p>
-          <form onSubmit={(event) => void runResolutionPreview(event)} className="mt-4 flex flex-col gap-2 sm:flex-row"><select required value={previewEmployeeId} onChange={(event) => setPreviewEmployeeId(event.target.value)} className={`${inputClass} min-w-0 flex-1`}><option value="">Pilih pegawai...</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select><button type="submit" disabled={previewLoading || !previewEmployeeId} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50">{previewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Preview</button></form>
-          {preview ? <div className="mt-4 rounded-xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">{preview.employee.fullName}</p><div className="mt-3 flex flex-wrap items-center gap-2">{preview.steps.map((step, index) => <div key={`${step.employeeId}-${index}`} className="contents"><span className="rounded-xl border border-border bg-white px-3 py-2 text-xs"><span className="font-bold">{step.employeeName}</span>{step.authorityType ? <span className="block text-[10px] text-muted-foreground">{step.authorityType}</span> : null}</span>{index < preview.steps.length - 1 ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : null}</div>)}{preview.steps.length === 0 ? <span className="text-xs text-muted-foreground">Tidak ada approver yang terselesaikan.</span> : null}</div>{preview.oversight ? <p className="mt-3 text-xs text-muted-foreground">Setelah final approved, notifikasi oversight: <span className="font-bold text-brand-heading">{preview.oversight.employeeName}</span></p> : null}</div> : null}
+          <form onSubmit={(event) => void runResolutionPreview(event)} className="mt-4 flex flex-col gap-2 sm:flex-row"><select required value={previewEmployeeId} onChange={(event) => setPreviewEmployeeId(event.target.value)} className={`${inputClass} min-w-0 flex-1`}><option value="">Pilih pegawai...</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select><button type="submit" disabled={previewLoading || !previewEmployeeId} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">{previewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Preview</button></form>
+          {preview ? <div className="mt-4 rounded-xl bg-surface p-4"><p className="text-xs font-bold text-brand-heading">{preview.employee.fullName}</p><div className="mt-3 flex flex-wrap items-center gap-2">{preview.steps.map((step, index) => <div key={`${step.employeeId}-${index}`} className="contents"><span className="rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs"><span className="font-bold">{step.employeeName}</span>{step.authorityType ? <span className="block text-[10px] text-muted-foreground">{step.authorityType}</span> : null}</span>{index < preview.steps.length - 1 ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : null}</div>)}{preview.steps.length === 0 ? <span className="text-xs text-muted-foreground">Tidak ada approver yang terselesaikan.</span> : null}</div>{preview.oversight ? <p className="mt-3 text-xs text-muted-foreground">Setelah final approved, notifikasi oversight: <span className="font-bold text-brand-heading">{preview.oversight.employeeName}</span></p> : null}</div> : null}
         </article>
-        <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5"><h2 className="text-sm font-bold text-blue-950">Snapshot approval tetap aman</h2><p className="mt-2 text-xs leading-5 text-blue-900">Publikasi struktur hanya memengaruhi transaksi baru pada tanggal efektif. Approver konkret pada permintaan yang sudah disubmit tidak dihitung ulang.</p></article>
+        <article className="rounded-2xl border border-info-line bg-info-soft p-5"><h2 className="text-sm font-bold text-info-ink">Snapshot approval tetap aman</h2><p className="mt-2 text-xs leading-5 text-info-ink">Publikasi struktur hanya memengaruhi transaksi baru pada tanggal efektif. Approver konkret pada permintaan yang sudah disubmit tidak dihitung ulang.</p></article>
       </section> : null}
 
       {action?.type === "draft" ? <Modal title="Jadwalkan perubahan struktur" description="Buat draft terpisah agar struktur terpublikasi dan riwayat sebelumnya tidak tertimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama draft"><input name="name" required defaultValue={`Restrukturisasi ${effectiveDate}`} className={inputClass} /></Field><Field label="Tanggal efektif" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Buat draft" /></form></Modal> : null}
@@ -518,7 +518,7 @@ export function AdminOrganizationPage() {
 
       {action?.type === "members" ? <Modal title={`Kelola anggota · ${action.node.name}`} description="Anggota biasa diringkas sebagai jumlah pada chart agar struktur besar tetap mudah dibaca." onClose={() => setAction(null)}><form onSubmit={(event) => handleMembers(event, action)}><div className="max-h-[24rem] space-y-1 overflow-y-auto rounded-xl border border-border p-2">{employees.map((employee) => { const checked = data?.memberships.some((membership) => membership.nodeKey === action.node.stableKey && membership.employeeId === employee.id); return <label key={employee.id} className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted"><input type="checkbox" name="employeeIds" value={employee.id} defaultChecked={checked} className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span><span className="text-[11px] text-muted-foreground">{employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}</span></span></label>; })}{employees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Daftar pegawai aktif belum tersedia.</p> : null}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan anggota" /></form></Modal> : null}
 
-      {action?.type === "visual" ? <Modal title="Atur rank visual" description="Pengaturan ini hanya mengubah posisi kotak pada chart. Reporting, Direct Manager, Unit Approver, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-950">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Tingkat struktural normal" : `Tampilkan ${offset} tingkat lebih rendah`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan rank visual" /></form></Modal> : null}
+      {action?.type === "visual" ? <Modal title="Atur rank visual" description="Pengaturan ini hanya mengubah posisi kotak pada chart. Reporting, Direct Manager, Unit Approver, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm font-bold text-info-ink">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Tingkat struktural normal" : `Tampilkan ${offset} tingkat lebih rendah`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan rank visual" /></form></Modal> : null}
 
       {action?.type === "authority" ? <Modal title="Konfigurasi kewenangan" description="Pilih hubungan semantik dan posisi target. Nama jabatan tidak dipakai sebagai business rule." onClose={() => setAction(null)}><form onSubmit={(event) => handleAuthority(event, action)} className="space-y-4"><Field label="Jenis kewenangan"><select name="authorityType" className={inputClass}>{action.kind === "position" ? <><option value="SUPERVISORY_PARENT">Atasan struktural</option><option value="GOVERNANCE_APPROVER">Governance approver</option><option value="OVERSIGHT_PARENT">Oversight di atas approver</option></> : <><option value="LEADER">Leader kelompok</option><option value="UNIT_APPROVER">Unit approver</option></>}</select></Field><Field label="Posisi target"><select name="targetPositionKey" required className={inputClass}><option value="">Pilih posisi...</option>{data?.positions.map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Jika posisi target vacant"><select name="vacancyPolicy" defaultValue="CLIMB_TO_PARENT" className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atas</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib acting atau blokir</option><option value="BLOCK">Blokir</option></select></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan kewenangan" /></form></Modal> : null}
     </AdminShell>
@@ -526,5 +526,5 @@ export function AdminOrganizationPage() {
 }
 
 function ActionButton({ onClick, icon, children }: { onClick: () => void; icon: ReactNode; children: ReactNode }) {
-  return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-2.5 text-[11px] font-bold hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{children}</button>;
+  return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 text-[11px] font-bold hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{children}</button>;
 }

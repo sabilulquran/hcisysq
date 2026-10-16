@@ -21,8 +21,9 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import ysqMark from "@/assets/brand/ysq-mark.png";
+import { BrandLockup } from "@/components/BrandLockup";
 import { getCurrentSession, logout } from "@/lib/auth";
+import { categoryIconClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
 import type { AuthSession } from "@/types/hcis";
 
@@ -52,6 +53,8 @@ type AdminNavItem = {
 
 type AdminNavGroup = {
   label: string | null;
+  /** Service category accent for the group's icon markers (SQ Core direction C). */
+  category?: ServiceCategoryTone;
   items: AdminNavItem[];
 };
 
@@ -74,6 +77,7 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Kehadiran",
+    category: "attendance",
     items: [
       { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
       { key: "attendance-workforce", label: "Operasional Kehadiran", href: "/admin/attendance/workforce", icon: CalendarRange },
@@ -82,12 +86,14 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Perangkat ADMS",
+    category: "attendance",
     items: [
       { key: "attendance-adms", label: "Manajemen ADMS", href: "/admin/attendance/adms", icon: ServerCog },
     ],
   },
   {
     label: "Cuti",
+    category: "leave",
     items: [
       { key: "leave", label: "Kebijakan Cuti", href: "/admin/leave", icon: CalendarDays },
       { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
@@ -95,6 +101,7 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Payslip",
+    category: "pay",
     items: [{ key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards }],
   },
   {
@@ -103,6 +110,7 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Modul",
+    category: "service",
     items: [{ key: "services", label: "Katalog Modul", href: "/admin/services", authorizationPath: "/admin", icon: Grid2X2 }],
   },
 ];
@@ -123,7 +131,7 @@ export function AdminNavigation({ active, session, compact = false }: { active: 
                 <a key={item.key} href={item.href} aria-current={selected ? "page" : undefined}
                   className={cn("flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground")}>
-                  <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />{item.label}
+                  <Icon className={cn("h-[18px] w-[18px] shrink-0", group.category ? categoryIconClass[group.category] : null)} aria-hidden="true" />{item.label}
                 </a>
               );
             })}
@@ -166,20 +174,16 @@ export function AdminShell({ children, active, title, description }: {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f8f7] text-foreground lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
-      <aside className="border-b border-border/70 bg-white lg:min-h-screen lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-3 px-5 py-5 lg:px-6">
-          <img src={ysqMark} alt="" className="h-10 w-10 object-contain" />
-          <div className="min-w-0">
-            <p className="text-sm font-bold leading-5 text-brand-heading">Human Capital Information System</p>
-            <p className="text-[11px] text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
-          </div>
+    <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[16.5rem_minmax(0,1fr)]">
+      <aside className="border-b border-border/70 bg-surface-raised lg:min-h-screen lg:border-b-0 lg:border-r">
+        <div className="px-5 py-5 lg:px-6">
+          <BrandLockup />
         </div>
         <details className="mx-4 mb-4 rounded-xl border border-border bg-surface lg:hidden">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm font-bold text-brand-heading">
             <Menu className="h-4 w-4" aria-hidden="true" />Menu administrasi
           </summary>
-          <div className="border-t border-border bg-white p-2"><AdminNavigation session={session} active={active} compact /></div>
+          <div className="border-t border-border bg-surface-raised p-2"><AdminNavigation session={session} active={active} compact /></div>
         </details>
         <div className="hidden px-4 lg:block"><AdminNavigation session={session} active={active} /></div>
         <div className="hidden px-4 pb-5 pt-8 lg:block">
@@ -187,14 +191,14 @@ export function AdminShell({ children, active, title, description }: {
             <div className="flex items-center gap-2 text-xs font-bold text-brand-primary-deep"><ShieldCheck className="h-4 w-4" aria-hidden="true" />Administrator HCIS</div>
             <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">{session?.principal.email ?? "Memuat sesi..."}</p>
             <button type="button" onClick={() => void handleLogout()} disabled={loggingOut}
-              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-white text-xs font-semibold hover:bg-muted/60 disabled:opacity-60">
+              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised text-xs font-semibold hover:bg-muted/60 disabled:opacity-60">
               <LogOut className="h-4 w-4" aria-hidden="true" />{loggingOut ? "Keluar..." : "Keluar"}
             </button>
           </div>
         </div>
       </aside>
       <div className="min-w-0">
-        <header className="border-b border-border/70 bg-white/90 px-5 py-5 sm:px-7 lg:px-10">
+        <header className="border-b border-border/70 bg-surface-raised/90 px-5 py-5 sm:px-7 lg:px-10">
           <div className="mx-auto max-w-7xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Administrasi sistem</p>
             <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>

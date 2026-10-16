@@ -111,9 +111,9 @@ export function AdminAdmsGlobalTransactionsPage() {
         <button type="button" className="h-10 rounded-xl border px-3 text-xs font-bold" onClick={() => { setFrom(jakartaStartOfToday()); setTo(jakartaLocalDateTime()); }}>Hari ini</button>
       </div>
 
-      {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
+      {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="border-b border-border/70 px-4 py-3 text-xs text-muted-foreground">{filtered.length} transaksi pada filter aktif</header>
         <div className="overflow-x-auto">
           <table className="min-w-[1050px] w-full text-left text-sm">

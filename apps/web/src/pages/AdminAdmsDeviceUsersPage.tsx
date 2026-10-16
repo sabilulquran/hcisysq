@@ -409,7 +409,7 @@ export function AdminAdmsDeviceUsersPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-brand-heading">Pengguna mesin</h2>
@@ -421,7 +421,7 @@ export function AdminAdmsDeviceUsersPage() {
             type="button"
             onClick={() => void refreshAll()}
             disabled={refreshing || loading}
-            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Memuat…" : "Muat ulang"}
@@ -430,13 +430,13 @@ export function AdminAdmsDeviceUsersPage() {
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-surface px-3 py-1.5 font-semibold text-brand-heading">{rows.length} PIN dikenal HCIS</span>
-          <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700">{mappedCount} terhubung</span>
-          <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{unmappedCount} belum terhubung</span>
+          <span className="rounded-full bg-success-soft px-3 py-1.5 font-semibold text-success-ink">{mappedCount} terhubung</span>
+          <span className="rounded-full bg-warning-soft px-3 py-1.5 font-semibold text-warning-ink">{unmappedCount} belum terhubung</span>
           {reviewCount > 0 ? (
-            <span className="rounded-full bg-orange-50 px-3 py-1.5 font-semibold text-orange-800">{reviewCount} hubungan perlu ditinjau</span>
+            <span className="rounded-full bg-warning-soft px-3 py-1.5 font-semibold text-warning-ink">{reviewCount} hubungan perlu ditinjau</span>
           ) : null}
           {corrections.some((item) => item.status === "planned") ? (
-            <span className="rounded-full bg-sky-50 px-3 py-1.5 font-semibold text-sky-700">
+            <span className="rounded-full bg-info-soft px-3 py-1.5 font-semibold text-info-ink">
               {corrections.filter((item) => item.status === "planned").length} rencana koreksi PIN
             </span>
           ) : null}
@@ -449,13 +449,13 @@ export function AdminAdmsDeviceUsersPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Cari PIN, nama, kartu, atau pegawai HCIS"
-              className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary"
+              className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none focus:border-brand-primary"
             />
           </label>
           <select
             value={mappingFilter}
             onChange={(event) => setMappingFilter(event.target.value as typeof mappingFilter)}
-            className="h-10 rounded-xl border border-border bg-white px-3 text-sm text-brand-heading"
+            className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-sm text-brand-heading"
             aria-label="Filter hubungan pegawai"
           >
             <option value="all">Semua status</option>
@@ -469,11 +469,11 @@ export function AdminAdmsDeviceUsersPage() {
             Mode baca saja. Menghubungkan PIN, sinkronisasi nama, koreksi PIN, dan mengakhiri mapping memerlukan izin operasi perangkat.
           </div>
         ) : null}
-        {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
-        {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
+        {notice ? <div className="mt-4 rounded-xl border border-success-line bg-success-soft p-3 text-xs leading-5 text-success-ink">{notice}</div> : null}
+        {error ? <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div> : null}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {loading ? (
           <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Memuat pengguna mesin…
@@ -505,7 +505,7 @@ export function AdminAdmsDeviceUsersPage() {
                           <>
                             <div className="font-semibold text-brand-heading">{row.employeeName ?? "Pegawai terhubung"}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{row.employeeNumber ?? "—"}</div>
-                            {mappingReview ? <div className="mt-1 text-[11px] font-semibold text-orange-800">{employeeLifecycleLabel(row.employeeStatus)}</div> : null}
+                            {mappingReview ? <div className="mt-1 text-[11px] font-semibold text-warning-ink">{employeeLifecycleLabel(row.employeeStatus)}</div> : null}
                           </>
                         ) : <span className="text-xs text-muted-foreground">Belum terhubung</span>}
                       </td>
@@ -516,14 +516,14 @@ export function AdminAdmsDeviceUsersPage() {
                       <td className="px-4 py-4">
                         <div className="space-y-1.5">
                           <span className={mappingReview
-                            ? "inline-flex rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-800"
+                            ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-ink"
                             : !mapped || !row.rosterObserved || (row.employeeName && row.displayName !== row.employeeName)
-                              ? "inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"
-                              : "inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"}
+                              ? "inline-flex rounded-full bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-ink"
+                              : "inline-flex rounded-full bg-success-soft px-2 py-1 text-[11px] font-semibold text-success-ink"}
                           >
                             {mappingReview ? "Perlu ditinjau" : !mapped ? "Belum terhubung" : !row.rosterObserved ? "Belum ada di mesin" : row.employeeName && row.displayName !== row.employeeName ? "Data berbeda" : "Sinkron"}
                           </span>
-                          {plan ? <div className="text-[11px] font-medium text-sky-700">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div> : null}
+                          {plan ? <div className="text-[11px] font-medium text-info-ink">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div> : null}
                         </div>
                       </td>
                       <td className="px-4 py-4 text-xs text-muted-foreground">
@@ -545,20 +545,20 @@ export function AdminAdmsDeviceUsersPage() {
                                 setEmployeeQuery("");
                                 setEmployeeResults([]);
                               }}
-                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50"
                             >
                               <Link2 className="h-3.5 w-3.5" /> Hubungkan
                             </button>
                           ) : null}
                           {mapped && canOperate ? <details className="relative text-left">
-                            <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-border bg-white px-3 text-xs font-semibold hover:bg-surface">
+                            <summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface">
                               Aksi
                             </summary>
-                            <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-white p-1.5 shadow-lg">
+                            <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-surface-raised p-1.5 shadow-lg">
                               {mapped ? (
                                 <>
                                   {mappingReview ? (
-                                    <div className="rounded-lg bg-orange-50 px-3 py-2 text-[11px] leading-4 text-orange-900">
+                                    <div className="rounded-lg bg-warning-soft px-3 py-2 text-[11px] leading-4 text-warning-ink">
                                       Pegawai HCIS sudah tidak aktif. Akhiri hubungan jika mapping ini tidak lagi berlaku.
                                     </div>
                                   ) : null}
@@ -614,7 +614,7 @@ export function AdminAdmsDeviceUsersPage() {
                                     type="button"
                                     disabled={busyKey !== null}
                                     onClick={() => void disconnectMapping(row)}
-                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-danger-ink hover:bg-danger-soft disabled:opacity-50"
                                   >
                                     Akhiri hubungan
                                   </button>
@@ -648,7 +648,7 @@ export function AdminAdmsDeviceUsersPage() {
 
       {canOperate && mappingTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="mapping-dialog-title">
-          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface-raised p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 id="mapping-dialog-title" className="text-base font-bold text-brand-heading">Hubungkan PIN {mappingTarget.pin}</h3>
@@ -687,7 +687,7 @@ export function AdminAdmsDeviceUsersPage() {
                         {candidate.employeeNumber}{candidate.unitName ? ` · ${candidate.unitName}` : ""}{candidate.positionName ? ` · ${candidate.positionName}` : ""}
                       </span>
                     </span>
-                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                    <span className="shrink-0 rounded-full bg-success-soft px-2 py-1 text-[11px] font-semibold text-success-ink">
                       {candidateLabel(candidate.matchKind)} · {candidate.similarity}/100
                     </span>
                   </button>
@@ -751,7 +751,7 @@ export function AdminAdmsDeviceUsersPage() {
 
       {canOperate && correctionTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="correction-dialog-title">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl bg-surface-raised p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 id="correction-dialog-title" className="text-base font-bold text-brand-heading">Koreksi PIN {correctionTarget.pin}</h3>
@@ -762,22 +762,22 @@ export function AdminAdmsDeviceUsersPage() {
               </button>
             </div>
 
-            <div className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+            <div className="mt-4 flex gap-2 rounded-xl border border-warning-line bg-warning-soft p-3 text-xs leading-5 text-warning-ink">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>Perubahan PIN belum dijalankan ke mesin. HCIS hanya menyimpan rencana sampai pemindahan biometrik terbukti aman.</span>
             </div>
 
             {plannedByPin.get(correctionTarget.pin) ? (
-              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
-                <div className="text-xs font-semibold text-sky-900">Rencana aktif</div>
-                <div className="mt-1 font-mono text-sm font-bold text-sky-950">
+              <div className="mt-4 rounded-xl border border-info-line bg-info-soft p-4">
+                <div className="text-xs font-semibold text-info-ink">Rencana aktif</div>
+                <div className="mt-1 font-mono text-sm font-bold text-info-ink">
                   {plannedByPin.get(correctionTarget.pin)!.legacyPin} → {plannedByPin.get(correctionTarget.pin)!.intendedPin}
                 </div>
                 <button
                   type="button"
                   disabled={busyKey !== null}
                   onClick={() => void cancelCorrection(plannedByPin.get(correctionTarget.pin)!)}
-                  className="mt-3 h-9 rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 disabled:opacity-50"
+                  className="mt-3 h-9 rounded-xl border border-danger-line bg-surface-raised px-3 text-xs font-semibold text-danger-ink disabled:opacity-50"
                 >
                   Batalkan rencana
                 </button>
@@ -800,7 +800,7 @@ export function AdminAdmsDeviceUsersPage() {
                     type="button"
                     disabled={busyKey !== null || !intendedPin.trim()}
                     onClick={() => void saveCorrection()}
-                    className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50"
+                    className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50"
                   >
                     Simpan rencana koreksi
                   </button>

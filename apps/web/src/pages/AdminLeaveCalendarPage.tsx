@@ -119,11 +119,11 @@ export function AdminLeaveCalendarPage() {
       description="Kalender ini dipakai backend untuk menghitung hari kerja. Tidak ada asumsi Senin-Jumat: hari kerja harus dikonfigurasi eksplisit."
     >
       {error ? (
-        <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>
+        <div className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div>
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
             <CalendarDays className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             <div>
@@ -142,7 +142,7 @@ export function AdminLeaveCalendarPage() {
                   className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                     selected
                       ? "border-brand-primary/35 bg-brand-primary-pale text-brand-primary-deep"
-                      : "border-border bg-white text-muted-foreground"
+                      : "border-border bg-surface-raised text-muted-foreground"
                   }`}
                 >
                   {day.label}
@@ -154,14 +154,14 @@ export function AdminLeaveCalendarPage() {
             type="button"
             disabled={saving}
             onClick={() => void saveWorkweek()}
-            className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-60"
+            className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
             Simpan hari kerja
           </button>
         </article>
 
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-base font-bold text-brand-heading">Pengecualian {yearLabel}</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             Gunakan untuk libur/collective leave yang jatuh pada hari kerja, atau hari kerja khusus yang jatuh pada hari non-kerja mingguan.
@@ -183,7 +183,7 @@ export function AdminLeaveCalendarPage() {
               type="button"
               disabled={saving}
               onClick={() => void addException()}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold"
             >
               <Plus className="h-4 w-4" aria-hidden="true" /> Tambah
             </button>
@@ -218,7 +218,7 @@ export function AdminLeaveCalendarPage() {
                       aria-label={`Hapus ${item.date}`}
                       disabled={saving}
                       onClick={() => void removeException(item.date)}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-red-700"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-danger-ink"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>

@@ -73,21 +73,21 @@ export function AdminAdmsDeviceBiometricsPage() {
 
   return (
     <div className="space-y-5">
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {error ? <div className="rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
 
       {!collectionEnabled ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-amber-700" /><div><h2 className="font-bold text-amber-900">Pengelolaan biometrik belum diaktifkan</h2><p className="mt-1 text-sm leading-6 text-amber-900/80">Data yang sudah tercatat dapat ditinjau, tetapi pendaftaran, pencadangan, pemulihan, dan penyebaran biometrik tetap ditahan sampai aktivasi keamanan disetujui terpisah.</p></div></div>
+        <section className="rounded-2xl border border-warning-line bg-warning-soft p-5">
+          <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-warning-ink" /><div><h2 className="font-bold text-warning-ink">Pengelolaan biometrik belum diaktifkan</h2><p className="mt-1 text-sm leading-6 text-warning-ink/80">Data yang sudah tercatat dapat ditinjau, tetapi pendaftaran, pencadangan, pemulihan, dan penyebaran biometrik tetap ditahan sampai aktivasi keamanan disetujui terpisah.</p></div></div>
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex items-center gap-2"><Fingerprint className="h-5 w-5 text-brand-primary" /><h2 className="font-bold text-brand-heading">Biometrik pegawai</h2></div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">Tampilan ini berpusat pada pegawai. Isi template biometrik dan data rahasia tidak pernah ditampilkan.</p>
       </section>
 
       {employees.length === 0 ? (
-        <div className="rounded-2xl border border-border/70 bg-white p-8 text-center text-sm text-muted-foreground">Belum ada data biometrik yang tercatat untuk mesin ini.</div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-8 text-center text-sm text-muted-foreground">Belum ada data biometrik yang tercatat untuk mesin ini.</div>
       ) : employees.map((employee) => {
         const known = [...employee.credentials.map((item) => ({
           key: item.id,
@@ -101,7 +101,7 @@ export function AdminAdmsDeviceBiometricsPage() {
           state: replicaLabel(item.state),
         }))];
         return (
-          <section key={employee.employeeId} className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <section key={employee.employeeId} className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface"><UserRound className="h-5 w-5 text-brand-primary-deep" /></div><div><h3 className="font-bold text-brand-heading">{employee.employeeName}</h3><p className="text-xs text-muted-foreground">{employee.employeeNumber}</p></div></div>
               <button type="button" disabled={!collectionEnabled} className="h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Daftarkan sidik jari</button>

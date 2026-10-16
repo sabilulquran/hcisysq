@@ -28,6 +28,7 @@ import {
   type EmployeeLeaveSummary,
 } from "@/lib/employeeLeave";
 import { employeeShellUser } from "@/lib/employeeIdentity";
+import { categoryTileClass, employeeCategoryToneOf } from "@/lib/serviceCategory";
 
 const icons = {
   attendance: Clock3,
@@ -62,9 +63,9 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
   return (
     <a
       href={service.href}
-      className="group grid min-h-24 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-2xl border border-border/75 bg-white p-3.5 shadow-[var(--shadow-soft)] transition-colors hover:border-brand-primary/40 hover:bg-brand-primary-pale/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group grid min-h-24 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-2xl border border-border/75 bg-surface-raised p-3.5 shadow-[var(--shadow-soft)] transition-colors hover:border-brand-primary/40 hover:bg-brand-primary-pale/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
+      <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${categoryTileClass[employeeCategoryToneOf(service.category)]}`}>
         <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <span className="min-w-0">
@@ -77,7 +78,7 @@ function ServiceTile({ service }: { service: EmployeeServiceDefinition }) {
         ) : null}
       </span>
       <span className="flex min-h-10 flex-col items-end justify-between gap-2">
-        <span className={available ? "rounded-full bg-emerald-50 px-2.5 py-1 text-right text-[10px] font-bold text-emerald-800" : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground"}>
+        <span className={available ? "rounded-full bg-success-soft px-2.5 py-1 text-right text-[10px] font-bold text-success-ink" : "max-w-24 rounded-full bg-muted px-2.5 py-1 text-right text-[10px] font-bold leading-4 text-muted-foreground"}>
           {employeeServiceStageLabel(service.stage)}
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
@@ -115,7 +116,7 @@ export function EmployeeServicesPage() {
             Layanan disusun berdasarkan kebutuhan Anda. Yang belum aktif tetap ditampilkan sebagai arah pengembangan HCIS dan akan membuka halaman Coming Soon.
           </p>
           <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">{availableCount} tersedia</span>
+            <span className="rounded-full bg-success-soft px-3 py-1.5 text-success-ink">{availableCount} tersedia</span>
             <span className="rounded-full bg-muted px-3 py-1.5 text-muted-foreground">{plannedCount} direncanakan</span>
           </div>
         </header>

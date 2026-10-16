@@ -98,17 +98,17 @@ export function AdminAttendanceShiftSwapsPage() {
       description="Keputusan final Human Capital setelah rekan kerja menyetujui pertukaran shift."
     >
       {error ? (
-        <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="mb-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex flex-col gap-3 border-b border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-5 w-5 text-brand-primary-deep" />
@@ -194,7 +194,7 @@ export function AdminAttendanceShiftSwapsPage() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void decide(item, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50"
                     >
                       <XCircle className="h-4 w-4" /> Tolak
                     </button>
@@ -202,7 +202,7 @@ export function AdminAttendanceShiftSwapsPage() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void decide(item, "approve")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
                     >
                       {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       Setujui & publish roster

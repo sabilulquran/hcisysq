@@ -85,13 +85,23 @@ describe("AppShell employee service discovery", () => {
   });
 });
 
-describe("AppShell SQ brand lockup sizing", () => {
-  it("keeps the official mark and organization name readable in desktop and compact headers", () => {
+describe("AppShell SQ brand lockup", () => {
+  it("shows the star, HCIS and the gold wordmark in the sidebar and the compact header", () => {
     const html = renderShell();
 
-    expect(html).toContain('class="h-12 w-12 shrink-0 object-contain"');
-    expect(html).toContain('class="h-10 w-10 shrink-0 object-contain"');
-    expect(html).toContain('text-[11px] font-semibold leading-4 text-muted-foreground">Yayasan Sabilul Qur');
-    expect(html).toContain('text-[10px] font-semibold text-muted-foreground">Yayasan Sabilul Qur');
+    expect(html).toContain('class="h-11 w-11 shrink-0 object-contain"');
+    expect(html).toContain('class="h-9 w-9 shrink-0 object-contain"');
+    expect(html.match(/sq-wordmark-gold/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain("Human Capital Information System");
+  });
+
+  it("marks service navigation with category accents while the active item stays primary", () => {
+    const html = renderShell();
+
+    expect(html).toContain("bg-cat-attendance-soft text-cat-attendance");
+    expect(html).toContain("bg-cat-leave-soft text-cat-leave");
+    expect(html).toContain("bg-cat-pay-soft text-cat-pay");
+    expect(html).toContain("bg-cat-task-soft text-cat-task");
+    expect(html).toMatch(/aria-current="page" class="[^"]*bg-brand-primary-pale text-brand-primary-deep/);
   });
 });

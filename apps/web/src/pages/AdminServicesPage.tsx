@@ -24,6 +24,7 @@ import {
   adminServiceStageLabel,
   type AdminServiceDefinition,
 } from "@/lib/adminServices";
+import { adminCategoryToneOf, categoryTileClass } from "@/lib/serviceCategory";
 
 const icons = {
   schedules: CalendarDays,
@@ -48,18 +49,18 @@ const icons = {
 
 export function AdminServiceTile({ service, canOpen }: { service: AdminServiceDefinition; canOpen: boolean }) {
   const Icon = icons[service.key as keyof typeof icons] ?? FileText;
-  const className = "group flex min-h-32 flex-col rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  const className = "group flex min-h-32 flex-col rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     + (canOpen ? " hover:border-brand-primary/35 hover:bg-brand-primary-pale/15" : " cursor-not-allowed opacity-70");
 
   const content = (
     <>
 
       <div className="flex items-start justify-between gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
+        <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${categoryTileClass[adminCategoryToneOf(service.category)]}`}>
           <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
         <span className={service.stage === "available"
-          ? "rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-800"
+          ? "rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-bold text-success-ink"
           : "rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold text-muted-foreground"}>
           {adminServiceStageLabel(service.stage)}
         </span>
@@ -72,7 +73,7 @@ export function AdminServiceTile({ service, canOpen }: { service: AdminServiceDe
         </p>
       ) : null}
       {!canOpen && service.stage === "available" ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-amber-800">Tersedia di HCIS · akun ini belum memiliki akses</p>
+        <p className="mt-2 text-[10px] font-bold leading-4 text-warning-ink">Tersedia di HCIS · akun ini belum memiliki akses</p>
       ) : null}
     </>
   );

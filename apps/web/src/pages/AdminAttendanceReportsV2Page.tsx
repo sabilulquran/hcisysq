@@ -273,9 +273,9 @@ export function AdminAttendanceReportsV2Page() {
 
   return (
     <AttendanceWorkforceShell section="reports" title="Laporan Kehadiran" description="Laporan canonical dari result version, sesi, scan, jadwal historis, dan lembur.">
-      {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
+      {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="text-xs font-semibold text-muted-foreground">Jenis laporan
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={type} onChange={(e) => changeType(e.target.value as AttendanceReportType)}>
@@ -340,13 +340,13 @@ export function AdminAttendanceReportsV2Page() {
           <button type="button" className="h-10 rounded-xl border px-3 text-xs font-bold" onClick={() => { setFrom(shiftDate(today, -6)); setTo(today); }}>7 hari terakhir</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={exportCsv}><Download className="h-4 w-4" /> Ekspor CSV</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={() => window.print()}><Printer className="h-4 w-4" /> Cetak / PDF</button>
-          {canFinalize && from === to ? <button type="button" disabled={busy} className="h-10 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50" onClick={() => void finalize()}>Finalisasi tanggal</button> : null}
+          {canFinalize && from === to ? <button type="button" disabled={busy} className="h-10 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50" onClick={() => void finalize()}>Finalisasi tanggal</button> : null}
         </div>
 
         {data?.summary ? <div className="mt-4 flex flex-wrap gap-2">{Object.entries(data.summary).map(([key, value]) => <span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{statusLabel(key)}: {value}</span>)}</div> : null}
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="border-b p-4"><h2 className="font-bold text-brand-heading">{labels[type]}</h2><p className="mt-1 text-xs text-muted-foreground">{from} → {to} · {data?.items.length ?? 0} baris</p></header>
         {busy ? <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat laporan…</div> :
           <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr>{visibleColumns.map(([key, label]) => <th key={key} className="p-3 whitespace-nowrap">{label}</th>)}</tr></thead><tbody className="divide-y">{(data?.items ?? []).map((row, index) => <tr key={String(row.id ?? row.employeeId ?? index) + ":" + String(row.workDate ?? index)}>{visibleColumns.map(([key]) => <td key={key} className="p-3 whitespace-nowrap">{renderValue(key, row[key])}</td>)}</tr>)}{data && data.items.length === 0 ? <tr><td colSpan={visibleColumns.length} className="p-8 text-center text-muted-foreground">Tidak ada data pada filter ini.</td></tr> : null}</tbody></table></div>}

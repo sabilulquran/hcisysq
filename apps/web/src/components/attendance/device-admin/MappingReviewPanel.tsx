@@ -58,7 +58,7 @@ export function MappingReviewPanel() {
   );
 
   return (
-    <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+    <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export function MappingReviewPanel() {
           <Loader2 className="h-4 w-4 animate-spin" /> Memuat backlog mapping…
         </div>
       ) : error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>
+        <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs text-danger-ink">{error}</div>
       ) : (
         <>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -93,22 +93,22 @@ export function MappingReviewPanel() {
               <div className="text-[11px] font-semibold text-muted-foreground">Belum terhubung</div>
               <div className="mt-1 text-xl font-bold text-brand-heading">{summary.totalUnmapped}</div>
             </div>
-            <div className="rounded-xl bg-emerald-50 p-3">
-              <div className="text-[11px] font-semibold text-emerald-700">Rekomendasi nama sama</div>
-              <div className="mt-1 text-xl font-bold text-emerald-800">{summary.exactNameRecommendations}</div>
+            <div className="rounded-xl bg-success-soft p-3">
+              <div className="text-[11px] font-semibold text-success-ink">Rekomendasi nama sama</div>
+              <div className="mt-1 text-xl font-bold text-success-ink">{summary.exactNameRecommendations}</div>
             </div>
-            <div className="rounded-xl bg-sky-50 p-3">
-              <div className="text-[11px] font-semibold text-sky-700">Rekomendasi nama mirip</div>
-              <div className="mt-1 text-xl font-bold text-sky-800">{summary.fuzzyNameRecommendations}</div>
+            <div className="rounded-xl bg-info-soft p-3">
+              <div className="text-[11px] font-semibold text-info-ink">Rekomendasi nama mirip</div>
+              <div className="mt-1 text-xl font-bold text-info-ink">{summary.fuzzyNameRecommendations}</div>
             </div>
-            <div className="rounded-xl bg-amber-50 p-3">
-              <div className="text-[11px] font-semibold text-amber-700">Tanpa rekomendasi nama</div>
-              <div className="mt-1 text-xl font-bold text-amber-800">{summary.withoutRecommendation}</div>
+            <div className="rounded-xl bg-warning-soft p-3">
+              <div className="text-[11px] font-semibold text-warning-ink">Tanpa rekomendasi nama</div>
+              <div className="mt-1 text-xl font-bold text-warning-ink">{summary.withoutRecommendation}</div>
             </div>
           </div>
 
           {summary.totalUnmapped === 0 ? (
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-success-line bg-success-soft p-3 text-xs text-success-ink">
               <CheckCircle2 className="h-4 w-4" /> Semua PIN yang teramati sudah mempunyai mapping aktif.
             </div>
           ) : (
@@ -135,7 +135,7 @@ export function MappingReviewPanel() {
                             </div>
                           </>
                         ) : (
-                          <div className="flex items-center gap-1.5 text-amber-700">
+                          <div className="flex items-center gap-1.5 text-warning-ink">
                             <AlertTriangle className="h-3.5 w-3.5" /> Rekomendasi nama belum tersedia
                           </div>
                         )}

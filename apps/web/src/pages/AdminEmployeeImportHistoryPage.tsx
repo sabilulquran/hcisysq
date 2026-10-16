@@ -17,9 +17,9 @@ function formatDate(value: string | null) {
 }
 
 function statusClass(status: EmployeeImportHistoryItem["status"]) {
-  if (status === "committed") return "bg-emerald-50 text-emerald-800";
-  if (status === "failed") return "bg-red-50 text-red-800";
-  return "bg-amber-50 text-amber-800";
+  if (status === "committed") return "bg-success-soft text-success-ink";
+  if (status === "failed") return "bg-danger-soft text-danger-ink";
+  return "bg-warning-soft text-warning-ink";
 }
 
 export function AdminEmployeeImportHistoryPage() {
@@ -63,14 +63,14 @@ export function AdminEmployeeImportHistoryPage() {
           type="button"
           onClick={() => setRefreshKey((current) => current + 1)}
           disabled={loading}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold hover:bg-muted/60 disabled:opacity-50"
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold hover:bg-muted/60 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
           Muat ulang
         </button>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {error ? (
           <div className="p-6 text-sm text-destructive">{error}</div>
         ) : loading ? (

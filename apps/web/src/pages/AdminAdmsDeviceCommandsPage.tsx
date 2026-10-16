@@ -23,11 +23,11 @@ function fmt(value: string | null) {
 }
 
 function statusClass(status: string) {
-  if (status === "succeeded") return "bg-emerald-50 text-emerald-700";
-  if (status === "failed" || status === "expired") return "bg-red-50 text-red-700";
-  if (status === "cancelled") return "bg-slate-100 text-slate-600";
-  if (status === "delivered" || status === "acknowledged") return "bg-sky-50 text-sky-700";
-  return "bg-amber-50 text-amber-800";
+  if (status === "succeeded") return "bg-success-soft text-success-ink";
+  if (status === "failed" || status === "expired") return "bg-danger-soft text-danger-ink";
+  if (status === "cancelled") return "bg-muted text-muted-foreground";
+  if (status === "delivered" || status === "acknowledged") return "bg-info-soft text-info-ink";
+  return "bg-warning-soft text-warning-ink";
 }
 
 function outcomeLabel(command: AdmsCommandItem) {
@@ -130,13 +130,13 @@ export function AdminAdmsDeviceCommandsPage() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-brand-heading">Perintah mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Satu tempat untuk melihat apakah operasi ke mesin masih menunggu, sudah dikirim, selesai, gagal, atau dibatalkan.</p>
           </div>
-          <button type="button" onClick={() => void refreshAll()} disabled={refreshing || loading} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
+          <button type="button" onClick={() => void refreshAll()} disabled={refreshing || loading} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} /> {refreshing ? "Memuat…" : "Muat ulang"}
           </button>
         </div>
@@ -144,9 +144,9 @@ export function AdminAdmsDeviceCommandsPage() {
         <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nomor atau jenis perintah" className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nomor atau jenis perintah" className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
           </label>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-border bg-white px-3 text-sm text-brand-heading" aria-label="Filter status perintah">
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-sm text-brand-heading" aria-label="Filter status perintah">
             <option value="all">Semua status</option>
             <option value="queued">Menunggu giliran</option>
             <option value="pending">Menunggu mesin</option>
@@ -159,11 +159,11 @@ export function AdminAdmsDeviceCommandsPage() {
           </select>
         </div>
         <SavedFilterBar deviceId={deviceId} viewKey="commands" criteria={{ query, status, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
-        {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{notice}</div> : null}
-        {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
+        {notice ? <div className="mt-4 rounded-xl border border-success-line bg-success-soft p-3 text-xs text-success-ink">{notice}</div> : null}
+        {error ? <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div> : null}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {loading ? (
           <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat riwayat perintah…</div>
         ) : filtered.length === 0 ? (
@@ -182,7 +182,7 @@ export function AdminAdmsDeviceCommandsPage() {
                     <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(item.deliveredAt)}</td>
                     <td className="px-4 py-4 text-xs text-muted-foreground">{fmt(item.completedAt)}</td>
                     <td className="px-4 py-4 text-xs font-medium text-brand-heading">{outcomeLabel(item)}</td>
-                    <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === "pending" && canOperate ? <button type="button" disabled={busyId !== null} onClick={() => void cancel(item)} className="h-8 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">{busyId === item.id ? "Membatalkan…" : "Batalkan"}</button> : null}<button type="button" onClick={() => setSelected(item)} className="h-8 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-surface">Detail</button></div></td>
+                    <td className="px-4 py-4"><div className="flex justify-end gap-2">{item.status === "pending" && canOperate ? <button type="button" disabled={busyId !== null} onClick={() => void cancel(item)} className="h-8 rounded-lg border border-danger-line px-3 text-xs font-semibold text-danger-ink hover:bg-danger-soft disabled:opacity-50">{busyId === item.id ? "Membatalkan…" : "Batalkan"}</button> : null}<button type="button" onClick={() => setSelected(item)} className="h-8 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-surface">Detail</button></div></td>
                   </tr>
                 ))}
               </tbody>
@@ -195,7 +195,7 @@ export function AdminAdmsDeviceCommandsPage() {
 
       {selected ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="command-detail-title">
-          <div className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+          <div className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-surface-raised p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Detail operasional</div><h3 id="command-detail-title" className="mt-1 text-base font-bold text-brand-heading">C:{selected.commandNumber} · {commandActionLabel(selected)}</h3></div><button type="button" onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
             <dl className="mt-5 grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-3 text-xs">
               <dt className="text-muted-foreground">Status</dt><dd className="font-semibold text-brand-heading">{commandStatusLabel(selected.status)}</dd>

@@ -148,15 +148,15 @@ export function AdminAdmsJobsPage() {
     <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Sinkronkan data pegawai dari HCIS ke mesin secara terarah, dengan preview dan pengujian kesiapan per perangkat.">
       <AdmsManagementNav active="jobs" />
 
-      {notice ? <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
-      {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-xl border border-success-line bg-success-soft p-3 text-sm text-success-ink">{notice}</div> : null}
+      {error ? <div className="mb-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex items-center gap-2"><UsersRound className="h-5 w-5 text-brand-primary" /><h2 className="font-bold text-brand-heading">Sinkronisasi pegawai</h2></div>
         <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">Pilih pegawai atau unit, lalu mesin target. HCIS membandingkan data master dengan data yang teramati pada tiap mesin. Tidak ada penyalinan mesin-ke-mesin dan tidak ada mapping otomatis.</p>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-[14rem_minmax(0,1fr)_auto]">
-          <select value={unitId} onChange={(e) => { setUnitId(e.target.value); setSelectedEmployees(new Set()); }} className="h-10 rounded-xl border border-border bg-white px-3 text-sm"><option value="">Semua unit</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>
+          <select value={unitId} onChange={(e) => { setUnitId(e.target.value); setSelectedEmployees(new Set()); }} className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-sm"><option value="">Semua unit</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select>
           <label className="relative"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari pegawai" className="h-10 w-full rounded-xl border border-border pl-9 pr-3 text-sm" /></label>
           <button type="button" disabled={loading} onClick={() => void load()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Muat ulang</button>
         </div>
@@ -174,14 +174,14 @@ export function AdminAdmsJobsPage() {
       </section>
 
       {matrix.length > 0 ? (
-        <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4"><div><h2 className="font-bold text-brand-heading">Preview perubahan</h2><p className="mt-1 text-xs text-muted-foreground">{actionable.length} perubahan dapat dijalankan; item lain dilewati dengan alasan.</p></div><button type="button" disabled={executing || actionable.length === 0} onClick={() => void execute()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{executing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Sinkronkan yang belum sesuai</button></div>
+        <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4"><div><h2 className="font-bold text-brand-heading">Preview perubahan</h2><p className="mt-1 text-xs text-muted-foreground">{actionable.length} perubahan dapat dijalankan; item lain dilewati dengan alasan.</p></div><button type="button" disabled={executing || actionable.length === 0} onClick={() => void execute()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50">{executing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Sinkronkan yang belum sesuai</button></div>
           {progress ? <div className="border-b border-border/60 bg-surface px-4 py-2 text-xs text-muted-foreground">Diproses {progress.done}/{progress.total} · {progress.failed} perlu ditinjau</div> : null}
           <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-surface text-[11px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Pegawai HCIS</th><th className="px-4 py-3">Mesin</th><th className="px-4 py-3">Kondisi saat ini</th><th className="px-4 py-3">Rencana</th></tr></thead><tbody className="divide-y divide-border/60">{matrix.map((item) => <tr key={`${item.employee.id}:${item.device.id}`}><td className="px-4 py-3"><div className="font-semibold text-brand-heading">{item.employee.fullName}</div><div className="text-xs text-muted-foreground">{item.employee.employeeNumber}</div></td><td className="px-4 py-3"><div className="font-semibold">{item.device.displayName || item.device.serialNumber}</div></td><td className="px-4 py-3">{item.current ? stateLabel(item.current.state) : "Belum terhubung"}</td><td className="px-4 py-3"><span className={item.action === "sync" ? "font-semibold text-brand-primary-deep" : "text-muted-foreground"}>{item.reason}</span></td></tr>)}</tbody></table></div>
         </section>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 p-4"><h2 className="font-bold text-brand-heading">Riwayat proses</h2><p className="mt-1 text-xs text-muted-foreground">Status sinkronisasi dan tindakan mesin terbaru dalam bahasa operasional.</p></div>
         {history.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">Belum ada proses sinkronisasi.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-surface text-[11px] uppercase tracking-[.08em] text-muted-foreground"><tr><th className="px-4 py-3">Aksi</th><th className="px-4 py-3">Mesin</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Dibuat</th><th className="px-4 py-3">Selesai</th></tr></thead><tbody className="divide-y divide-border/70">{history.map((item) => <tr key={item.id}><td className="px-4 py-3 font-semibold text-brand-heading">{item.action}</td><td className="px-4 py-3"><a className="font-semibold hover:underline" href={`/admin/attendance/devices/${item.deviceId}`}>{item.deviceName || item.serialNumber}</a></td><td className="px-4 py-3 font-semibold">{commandStatusLabel(item.status)}</td><td className="px-4 py-3 text-muted-foreground">{fmt(item.createdAt)}</td><td className="px-4 py-3 text-muted-foreground">{fmt(item.completedAt)}</td></tr>)}</tbody></table></div>}
       </section>

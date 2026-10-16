@@ -23,10 +23,10 @@ function fmt(value: string) {
 }
 
 function statusClass(status: AdmsRecoveryJob["status"]) {
-  if (status === "succeeded") return "bg-emerald-50 text-emerald-700";
-  if (status === "failed") return "bg-red-50 text-red-700";
-  if (status === "cancelled") return "bg-slate-100 text-slate-700";
-  return "bg-sky-50 text-sky-700";
+  if (status === "succeeded") return "bg-success-soft text-success-ink";
+  if (status === "failed") return "bg-danger-soft text-danger-ink";
+  if (status === "cancelled") return "bg-muted text-foreground";
+  return "bg-info-soft text-info-ink";
 }
 
 export function LongRangeRecoveryPanel() {
@@ -134,7 +134,7 @@ export function LongRangeRecoveryPanel() {
   }, [load]);
 
   return (
-    <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+    <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -179,7 +179,7 @@ export function LongRangeRecoveryPanel() {
           type="button"
           disabled={!rangePlan?.valid || busy !== null}
           onClick={() => void createJob()}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
         >
           {busy === "create" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Buat job
@@ -191,15 +191,15 @@ export function LongRangeRecoveryPanel() {
       ) : null}
 
       {canOperate && rangePlan ? (
-        <div className={`mt-2 text-[11px] ${rangePlan.valid ? "text-sky-700" : "text-muted-foreground"}`}>
+        <div className={`mt-2 text-[11px] ${rangePlan.valid ? "text-info-ink" : "text-muted-foreground"}`}>
           {rangePlan.valid
             ? `Rencana: sekitar ${Math.ceil(rangePlan.days)} hari → ${rangePlan.chunks} chunk, maksimal 31 hari per chunk.`
             : rangePlan.reason}
         </div>
       ) : null}
 
-      {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">{notice}</div> : null}
-      {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">{error}</div> : null}
+      {notice ? <div className="mt-4 rounded-xl border border-success-line bg-success-soft p-3 text-xs leading-5 text-success-ink">{notice}</div> : null}
+      {error ? <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div> : null}
 
       <div className="mt-5 border-t border-border/70 pt-4">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -252,7 +252,7 @@ export function LongRangeRecoveryPanel() {
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface" aria-label={`Progress ${progress}%`}>
                     <div className="h-full rounded-full bg-brand-primary" style={{ width: `${progress}%` }} />
                   </div>
-                  {job.failureReason ? <div className="mt-2 text-[11px] font-medium text-red-700">Alasan berhenti: {job.failureReason}</div> : null}
+                  {job.failureReason ? <div className="mt-2 text-[11px] font-medium text-danger-ink">Alasan berhenti: {job.failureReason}</div> : null}
                 </div>
               );
             })}

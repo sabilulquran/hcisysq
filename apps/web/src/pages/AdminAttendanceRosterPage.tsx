@@ -89,10 +89,10 @@ export function AdminAttendanceRosterPage() {
 
   return (
     <AttendanceWorkforceShell section="roster" title="Roster Shift Mingguan" description="Grid Senin–Minggu dengan draft, inherit default, libur, shift override, dan publish eksplisit.">
-      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
-      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
+      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
+      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
 
-      <section className="overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex flex-col gap-4 border-b border-border/70 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="font-bold text-brand-heading">Minggu {weekStart}</h2>
@@ -105,11 +105,11 @@ export function AdminAttendanceRosterPage() {
             <input className="h-10 rounded-xl border px-3 text-sm" type="date" value={weekStart} onChange={(e) => setWeekStart(mondayOf(new Date(e.target.value + "T12:00:00")))} />
             <button type="button" className="h-10 rounded-xl border px-3" onClick={() => setWeekStart(shiftDate(weekStart, 7))}><ChevronRight className="h-4 w-4" /></button>
             {!draft ? (
-              <button type="button" disabled={busy !== null} onClick={() => void run("create", () => createAttendanceRoster(weekStart), "Draft roster dibuat.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" /> Buat draft</button>
+              <button type="button" disabled={busy !== null} onClick={() => void run("create", () => createAttendanceRoster(weekStart), "Draft roster dibuat.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Buat draft</button>
             ) : (
               <>
                 <button type="button" disabled={busy !== null} onClick={() => void run("copy", () => copyPreviousAttendanceRoster(draft.id), "Roster minggu lalu disalin ke draft.")} className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">{busy === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Salin minggu lalu</button>
-                <button type="button" disabled={busy !== null} onClick={() => void run("publish", () => publishAttendanceRoster(draft.id), "Roster dipublikasikan dan menjadi authoritative.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish</button>
+                <button type="button" disabled={busy !== null} onClick={() => void run("publish", () => publishAttendanceRoster(draft.id), "Roster dipublikasikan dan menjadi authoritative.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish</button>
               </>
             )}
           </div>
@@ -138,7 +138,7 @@ export function AdminAttendanceRosterPage() {
                     return (
                       <td key={workDate} className="p-2 align-top">
                         <select
-                          className="h-10 w-full rounded-lg border border-border bg-white px-2 text-xs disabled:bg-surface disabled:text-muted-foreground"
+                          className="h-10 w-full rounded-lg border border-border bg-surface-raised px-2 text-xs disabled:bg-surface disabled:text-muted-foreground"
                           value={value}
                           disabled={!draft || busy !== null}
                           onChange={(event) => void changeCell(employee.id, workDate, event.target.value)}
@@ -148,7 +148,7 @@ export function AdminAttendanceRosterPage() {
                           {data?.schedules.filter((item) => item.active).map((schedule) => <option key={schedule.id} value={"schedule:" + schedule.id}>{schedule.name}</option>)}
                         </select>
                         <div className="mt-1 text-[10px]">
-                          {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-amber-700">DRAFT</span> : published ? <span className="text-emerald-700">Published</span> : <span className="text-muted-foreground">Default</span>}
+                          {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-warning-ink">DRAFT</span> : published ? <span className="text-success-ink">Published</span> : <span className="text-muted-foreground">Default</span>}
                         </div>
                       </td>
                     );

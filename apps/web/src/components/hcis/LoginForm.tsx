@@ -136,7 +136,7 @@ export function LoginForm() {
         type="submit"
         disabled={isLoading}
         aria-busy={isLoading}
-        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-sm font-bold text-white shadow-[var(--shadow-button)] transition-[transform,box-shadow,background-color] hover:-translate-y-0.5 hover:bg-brand-primary-deep hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] disabled:cursor-not-allowed disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/35"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] transition-[transform,box-shadow,background-color] hover:-translate-y-0.5 hover:bg-brand-primary-deep hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] disabled:cursor-not-allowed disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/35"
       >
         {isLoading ? (
           <>
@@ -154,7 +154,7 @@ export function LoginForm() {
 
       <button
         type="button"
-        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/80 bg-surface-raised text-sm font-semibold text-foreground shadow-[var(--shadow-input)] transition-[transform,box-shadow,background-color,border-color] hover:-translate-y-0.5 hover:border-brand-primary/25 hover:bg-white hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/80 bg-surface-raised text-sm font-semibold text-foreground shadow-[var(--shadow-input)] transition-[transform,box-shadow,background-color,border-color] hover:-translate-y-0.5 hover:border-brand-primary/25 hover:bg-surface-raised hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
         onClick={() => setGoogleNotice(true)}
       >
         <GoogleIcon className="h-4 w-4" />

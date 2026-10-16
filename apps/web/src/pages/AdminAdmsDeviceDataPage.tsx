@@ -156,10 +156,10 @@ export function AdminAdmsDeviceDataPage() {
 
   return (
     <div className="space-y-5">
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-success-line bg-success-soft p-3 text-sm text-success-ink">{notice}</div> : null}
+      {error ? <div className="rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-brand-primary" /><h2 className="font-bold text-brand-heading">Kode kegiatan</h2></div>
@@ -173,7 +173,7 @@ export function AdminAdmsDeviceDataPage() {
         <div className="mt-4 grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_auto]">
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Kode" className="h-10 rounded-xl border border-border px-3 text-sm" />
           <input value={codeName} onChange={(e) => setCodeName(e.target.value)} placeholder="Nama kegiatan" className="h-10 rounded-xl border border-border px-3 text-sm" />
-          <button type="button" disabled={busy !== null || !code.trim() || !codeName.trim()} onClick={() => void addCode()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" /> Tambah</button>
+          <button type="button" disabled={busy !== null || !code.trim() || !codeName.trim()} onClick={() => void addCode()} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Tambah</button>
         </div>
         <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
           {codes.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Belum ada kode kegiatan.</p> : codes.map((item) => (
@@ -188,7 +188,7 @@ export function AdminAdmsDeviceDataPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2"><MessageSquareText className="h-4 w-4 text-brand-primary" /><h2 className="font-bold text-brand-heading">Pesan untuk mesin</h2></div>
@@ -198,15 +198,15 @@ export function AdminAdmsDeviceDataPage() {
         </div>
         <div className="mt-4 grid gap-2 md:grid-cols-2">
           <input value={messageTitle} onChange={(e) => setMessageTitle(e.target.value)} placeholder="Judul pesan" className="h-10 rounded-xl border border-border px-3 text-sm" />
-          <select value={audience} onChange={(e) => { setAudience(e.target.value as "public" | "private"); setEmployee(null); }} className="h-10 rounded-xl border border-border bg-white px-3 text-sm"><option value="public">Semua pengguna</option><option value="private">Pegawai tertentu</option></select>
+          <select value={audience} onChange={(e) => { setAudience(e.target.value as "public" | "private"); setEmployee(null); }} className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-sm"><option value="public">Semua pengguna</option><option value="private">Pegawai tertentu</option></select>
           <textarea value={messageText} onChange={(e) => setMessageText(e.target.value)} placeholder="Isi pesan" rows={3} className="rounded-xl border border-border p-3 text-sm md:col-span-2" />
           {audience === "private" ? (
             <div className="relative md:col-span-2">
               <input value={employee ? `${employee.fullName} · ${employee.employeeNumber}` : employeeQuery} onChange={(e) => { setEmployee(null); setEmployeeQuery(e.target.value); }} placeholder="Cari pegawai" className="h-10 w-full rounded-xl border border-border px-3 text-sm" />
-              {!employee && employeeOptions.length > 0 ? <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-white p-1 shadow-lg">{employeeOptions.map((item) => <button key={item.id} type="button" onClick={() => { setEmployee(item); setEmployeeOptions([]); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-surface"><span className="font-semibold">{item.fullName}</span> · {item.employeeNumber}</button>)}</div> : null}
+              {!employee && employeeOptions.length > 0 ? <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-border bg-surface-raised p-1 shadow-lg">{employeeOptions.map((item) => <button key={item.id} type="button" onClick={() => { setEmployee(item); setEmployeeOptions([]); }} className="block w-full rounded-lg px-3 py-2 text-left text-xs hover:bg-surface"><span className="font-semibold">{item.fullName}</span> · {item.employeeNumber}</button>)}</div> : null}
             </div>
           ) : null}
-          <div className="md:col-span-2 flex justify-end"><button type="button" disabled={busy !== null || !messageTitle.trim() || !messageText.trim() || (audience === "private" && !employee)} onClick={() => void addMessage()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" /> Simpan pesan</button></div>
+          <div className="md:col-span-2 flex justify-end"><button type="button" disabled={busy !== null || !messageTitle.trim() || !messageText.trim() || (audience === "private" && !employee)} onClick={() => void addMessage()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Simpan pesan</button></div>
         </div>
         <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
           {messages.length === 0 ? <p className="p-4 text-sm text-muted-foreground">Belum ada pesan.</p> : messages.map((item) => (

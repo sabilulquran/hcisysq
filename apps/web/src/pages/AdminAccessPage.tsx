@@ -237,8 +237,8 @@ export function AdminAccessPage() {
       title="Account, Role & Scope"
       description="Account type tetap terpisah dari role. Employee aktif memperoleh base self-service setelah account aktif; assignment di bawah hanya untuk akses tambahan."
     >
-      {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
-      {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+      {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{notice}</div> : null}
 
       {activationLink ? (
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
@@ -251,13 +251,13 @@ export function AdminAccessPage() {
               readOnly
               value={activationLink.url}
               onFocus={(event) => event.currentTarget.select()}
-              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-surface-raised px-3 text-xs"
               aria-label="Link aktivasi"
             />
             <button
               type="button"
               onClick={() => void copyActivationLink()}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
             >
               <Copy className="h-4 w-4" aria-hidden="true" />
               Salin link
@@ -268,7 +268,7 @@ export function AdminAccessPage() {
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {summaryCards.map(({ label, value, icon: Icon }) => (
-          <article key={label} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+          <article key={label} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
             <Icon className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
             <p className="mt-3 text-2xl font-bold text-brand-heading">{value}</p>
             <p className="mt-1 text-xs font-semibold text-muted-foreground">{label}</p>
@@ -277,7 +277,7 @@ export function AdminAccessPage() {
       </section>
 
       {canPrepareBoard ? (
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Account Organ Yayasan</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           Account ini terpisah dari employee master dan setelah aktif masuk ke dashboard Organ Yayasan.
@@ -293,7 +293,7 @@ export function AdminAccessPage() {
           <button
             type="submit"
             disabled={busy || !boardEmail.trim()}
-            className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
             Siapkan account & link aktivasi
           </button>
@@ -301,7 +301,7 @@ export function AdminAccessPage() {
       </section>
       ) : null}
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>
         <p className="mt-1 text-xs text-muted-foreground">Scope unit wajib menunjuk satu unit; scope organization berlaku lintas organisasi sesuai permission role.</p>
         <form onSubmit={submitAssignment} className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -334,14 +334,14 @@ export function AdminAccessPage() {
           <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal mulai assignment" />
           <input type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal selesai assignment" />
           <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan / mandat (opsional)" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm lg:col-span-2" />
-          <button type="submit" disabled={busy || !selectedAccountId || !roleId} className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50">
+          <button type="submit" disabled={busy || !selectedAccountId || !roleId} className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
             Tambah assignment
           </button>
         </form>
       </section>
 
       <section className="mt-5 space-y-3">
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
           <div>
             <p className="text-sm font-bold text-brand-heading">Daftar account</p>
             <p className="mt-1 text-xs text-muted-foreground">Account nonaktif disembunyikan secara default, tetapi histori tetap dipertahankan.</p>
@@ -352,12 +352,12 @@ export function AdminAccessPage() {
           </label>
         </div>
         {visibleAccounts.map((account) => (
-          <article key={account.id} className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <article key={account.id} className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-bold text-brand-heading">{account.employeeName ?? account.email}</h2>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">{account.principalType}</span>
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-foreground">{account.principalType}</span>
                   <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">{statusLabel(account.status)}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{account.email}{account.employeeNumber ? ` · ${account.employeeNumber}` : ""}{account.unitName ? ` · ${account.unitName}` : ""}</p>
@@ -369,7 +369,7 @@ export function AdminAccessPage() {
                       type="button"
                       onClick={() => void publishActivationLink(account.id)}
                       disabled={busy}
-                      className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+                      className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
                     >
                       Buat link aktivasi
                     </button>
@@ -395,7 +395,7 @@ export function AdminAccessPage() {
                   <div key={assignment.id} className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2 text-xs">
                     <span className="font-bold">{assignment.roleName}</span>
                     <span className="text-muted-foreground">· {assignment.scopeType === "unit" ? assignment.organizationalUnitName : assignment.scopeType}</span>
-                    <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-red-700 disabled:opacity-50">Cabut</button>
+                    <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-danger-ink disabled:opacity-50">Cabut</button>
                   </div>
                 ))}
               </div>
@@ -406,7 +406,7 @@ export function AdminAccessPage() {
         ))}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Role system</h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {data?.roles.map((role) => (

@@ -140,10 +140,10 @@ export function AdminAdmsDeviceMaintenancePage() {
 
   return (
     <div className="space-y-5">
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-success-line bg-success-soft p-3 text-sm text-success-ink">{notice}</div> : null}
+      {error ? <div className="rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="font-bold text-brand-heading">Perawatan aman</h2>
         <p className="mt-1 text-xs text-muted-foreground">Tindakan yang umum dibutuhkan saat merawat mesin.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -152,7 +152,7 @@ export function AdminAdmsDeviceMaintenancePage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="font-bold text-brand-heading">Riwayat tindakan</h2>
         <p className="mt-1 text-xs text-muted-foreground">Ringkasan tindakan terbaru tanpa detail protokol mesin.</p>
         <div className="mt-4 divide-y divide-border/60 rounded-xl border border-border/70">
@@ -163,19 +163,19 @@ export function AdminAdmsDeviceMaintenancePage() {
       </section>
 
       {canConfigure && device?.lifecycle !== "retired" ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <h2 className="font-bold text-amber-950">Pensiunkan mesin</h2>
-          <p className="mt-1 text-xs leading-5 text-amber-900/80">Gunakan bila mesin sudah tidak dipakai atau diganti. Riwayat tetap disimpan dan mesin pengganti tidak mewarisi hasil pengujian perangkat lama.</p>
+        <section className="rounded-2xl border border-warning-line bg-warning-soft p-5">
+          <h2 className="font-bold text-warning-ink">Pensiunkan mesin</h2>
+          <p className="mt-1 text-xs leading-5 text-warning-ink/80">Gunakan bila mesin sudah tidak dipakai atau diganti. Riwayat tetap disimpan dan mesin pengganti tidak mewarisi hasil pengujian perangkat lama.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-            <label className="text-xs font-semibold text-amber-950">Alasan<textarea value={retirementNote} onChange={(e) => setRetirementNote(e.target.value)} rows={2} placeholder="Contoh: mesin rusak dan diganti unit baru" className="mt-1 w-full rounded-xl border border-amber-200 bg-white p-3 text-sm text-brand-heading" /></label>
-            <label className="text-xs font-semibold text-amber-950">Mesin pengganti (opsional)<select value={replacementDeviceId} onChange={(e) => setReplacementDeviceId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm"><option value="">Belum ditentukan</option>{replacementDevices.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.serialNumber}</option>)}</select></label>
-            <button type="button" disabled={busy !== null || retirementNote.trim().length < 5} onClick={() => void retireDevice()} className="h-10 rounded-xl border border-amber-300 bg-white px-4 text-xs font-bold text-amber-950 disabled:opacity-50">Pensiunkan</button>
+            <label className="text-xs font-semibold text-warning-ink">Alasan<textarea value={retirementNote} onChange={(e) => setRetirementNote(e.target.value)} rows={2} placeholder="Contoh: mesin rusak dan diganti unit baru" className="mt-1 w-full rounded-xl border border-warning-line bg-surface-raised p-3 text-sm text-brand-heading" /></label>
+            <label className="text-xs font-semibold text-warning-ink">Mesin pengganti (opsional)<select value={replacementDeviceId} onChange={(e) => setReplacementDeviceId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-warning-line bg-surface-raised px-3 text-sm"><option value="">Belum ditentukan</option>{replacementDevices.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.serialNumber}</option>)}</select></label>
+            <button type="button" disabled={busy !== null || retirementNote.trim().length < 5} onClick={() => void retireDevice()} className="h-10 rounded-xl border border-warning-line bg-surface-raised px-4 text-xs font-bold text-warning-ink disabled:opacity-50">Pensiunkan</button>
           </div>
         </section>
       ) : null}
 
       {(canFirmware || canTechnical) ? (
-        <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="font-bold text-brand-heading">Perawatan lanjutan</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {canFirmware ? <span className="rounded-xl border border-border px-3 py-2 text-xs font-semibold">Pembaruan firmware tersedia untuk petugas berizin</span> : null}
@@ -185,17 +185,17 @@ export function AdminAdmsDeviceMaintenancePage() {
       ) : null}
 
       {canDestructive ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
-          <div className="flex gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-red-700" /><div><h2 className="font-bold text-red-900">Tindakan berisiko tinggi</h2><p className="mt-1 text-xs leading-5 text-red-800">Setiap tindakan memerlukan izin khusus, konfirmasi dampak, dan tetap tercatat. Jangan gunakan untuk pekerjaan harian.</p></div></div>
+        <section className="rounded-2xl border border-danger-line bg-danger-soft p-5">
+          <div className="flex gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-danger-ink" /><div><h2 className="font-bold text-danger-ink">Tindakan berisiko tinggi</h2><p className="mt-1 text-xs leading-5 text-danger-ink">Setiap tindakan memerlukan izin khusus, konfirmasi dampak, dan tetap tercatat. Jangan gunakan untuk pekerjaan harian.</p></div></div>
           <div className="mt-4 grid gap-3">
             {risks.map((item) => {
               const capability = capabilityByKey(capabilities, item.capability);
-              return <div key={item.key} className="flex flex-col gap-3 rounded-xl border border-red-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-bold text-red-900">{item.label}</div><div className="mt-1 text-xs text-red-800">{item.detail}</div><div className="mt-1 text-[11px] font-semibold text-muted-foreground">{operatorCapabilityLabel(capability)}</div></div><button type="button" disabled={busy !== null || capability?.state !== "available"} onClick={() => void highRisk(item.key)} className="h-9 shrink-0 rounded-xl border border-red-300 px-3 text-xs font-bold text-red-800 disabled:opacity-50">Lanjutkan…</button></div>;
+              return <div key={item.key} className="flex flex-col gap-3 rounded-xl border border-danger-line bg-surface-raised p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-bold text-danger-ink">{item.label}</div><div className="mt-1 text-xs text-danger-ink">{item.detail}</div><div className="mt-1 text-[11px] font-semibold text-muted-foreground">{operatorCapabilityLabel(capability)}</div></div><button type="button" disabled={busy !== null || capability?.state !== "available"} onClick={() => void highRisk(item.key)} className="h-9 shrink-0 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50">Lanjutkan…</button></div>;
             })}
           </div>
         </section>
       ) : (
-        <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900"><AlertTriangle className="h-4 w-4 shrink-0" /> Tindakan berisiko tinggi hanya tersedia untuk petugas dengan izin khusus.</div>
+        <div className="flex gap-2 rounded-xl border border-warning-line bg-warning-soft p-4 text-xs text-warning-ink"><AlertTriangle className="h-4 w-4 shrink-0" /> Tindakan berisiko tinggi hanya tersedia untuk petugas dengan izin khusus.</div>
       )}
     </div>
   );

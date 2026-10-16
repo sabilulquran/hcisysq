@@ -118,7 +118,7 @@ export function AdminPage() {
             <a
               key={card.title}
               href={card.href}
-              className="group rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5"
+              className="group rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5"
             >
               <div className="flex items-start justify-between gap-4">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
@@ -138,8 +138,8 @@ export function AdminPage() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-brand-yellow/30 bg-brand-yellow/10 p-5">
-        <p className="text-sm font-bold text-amber-950">Aktivasi account</p>
-        <p className="mt-1 max-w-4xl text-sm leading-6 text-amber-950/70">
+        <p className="text-sm font-bold text-warning-ink">Aktivasi account</p>
+        <p className="mt-1 max-w-4xl text-sm leading-6 text-warning-ink/70">
           Account dapat disiapkan dan diberi link aktivasi sesuai mandat administrasi yang berlaku. Password dibuat langsung oleh pemilik account melalui link tersebut; sistem tidak menyimpan token aktivasi dalam bentuk plaintext.
         </p>
       </section>

@@ -19,10 +19,10 @@ const stateLabels: Record<AdmsUserSyncState, string> = {
 };
 
 function stateClass(state: AdmsUserSyncState) {
-  if (state === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (state === "unmapped") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (state === "review_required") return "border-red-200 bg-red-50 text-red-700";
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  if (state === "synced") return "border-success-line bg-success-soft text-success-ink";
+  if (state === "unmapped") return "border-warning-line bg-warning-soft text-warning-ink";
+  if (state === "review_required") return "border-danger-line bg-danger-soft text-danger-ink";
+  return "border-border bg-muted text-foreground";
 }
 
 export function AdminAdmsUsersManagementPage() {
@@ -112,14 +112,14 @@ export function AdminAdmsUsersManagementPage() {
           ["Belum terlihat", counts.missing],
           ["Sinkron", counts.synced],
         ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
+          <div key={String(label)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
             <p className="text-xs font-semibold text-muted-foreground">{label}</p>
             <p className="mt-2 text-2xl font-bold text-brand-heading">{value}</p>
           </div>
         ))}
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex flex-col gap-3 border-b border-border/70 p-4 md:flex-row md:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -139,7 +139,7 @@ export function AdminAdmsUsersManagementPage() {
           </button>
         </div>
 
-        {error ? <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div> : null}
+        {error ? <div className="m-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink" role="alert">{error}</div> : null}
         {loading ? <div className="p-8 text-center text-sm text-muted-foreground">Memuat sinkronisasi pengguna...</div> : items.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Tidak ada data pada filter ini.</div>
         ) : (
@@ -178,11 +178,11 @@ export function AdminAdmsUsersManagementPage() {
                     </td>
                     <td className="px-4 py-3">
                       {item.state === "unmapped" && canMap ? (
-                        <button type="button" onClick={() => setMappingItem(item)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white">
+                        <button type="button" onClick={() => setMappingItem(item)} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground">
                           <Link2 className="h-3.5 w-3.5" /> Hubungkan
                         </button>
                       ) : item.state === "synced" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Sesuai</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-ink"><CheckCircle2 className="h-4 w-4" /> Sesuai</span>
                       ) : (
                         <a href={`/admin/attendance/devices/${item.deviceId}/users`} className="text-xs font-semibold text-brand-primary-deep hover:underline">Tinjau di mesin</a>
                       )}
@@ -197,7 +197,7 @@ export function AdminAdmsUsersManagementPage() {
 
       {mappingItem ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="mapping-title">
-          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface-raised p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="mapping-title" className="font-bold text-brand-heading">Hubungkan PIN {mappingItem.pin}</h2>
@@ -205,7 +205,7 @@ export function AdminAdmsUsersManagementPage() {
               </div>
               <button type="button" onClick={() => setMappingItem(null)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button>
             </div>
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="mt-4 rounded-xl border border-warning-line bg-warning-soft p-3 text-xs text-warning-ink">
               <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Teramati sebagai <strong>{mappingItem.observedName || "nama tidak tersedia"}</strong> pada {mappingItem.deviceName || mappingItem.serialNumber}.</div>
             </div>
             <input value={employeeQ} onChange={(event) => setEmployeeQ(event.target.value)} placeholder="Cari nama, NIP, atau email pegawai aktif" className="mt-4 h-10 w-full rounded-xl border border-border px-3 text-sm" />

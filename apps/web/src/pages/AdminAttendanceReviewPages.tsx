@@ -86,10 +86,10 @@ export function AdminAttendanceClarificationsPage() {
 
   return (
     <AttendanceWorkforceShell section="clarifications" title="Klarifikasi Kehadiran" description="Tinjau correction dan justification tanpa menulis ulang raw evidence.">
-      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
-      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
+      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
+      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-4">
           <div><h2 className="font-bold text-brand-heading">Pengajuan pegawai</h2><p className="mt-1 text-xs text-muted-foreground">Justifikasi mempertahankan waktu aktual; correction menambah fakta turunan setelah approval.</p></div>
           <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="h-10 rounded-xl border px-3 text-sm">
@@ -115,7 +115,7 @@ export function AdminAttendanceClarificationsPage() {
                   <div className="w-full shrink-0 lg:w-[320px]">
                     <textarea value={notes[item.id] ?? ""} onChange={(e) => setNotes({ ...notes, [item.id]: e.target.value })} placeholder="Catatan keputusan (opsional)" className="min-h-20 w-full rounded-xl border p-3 text-sm" />
                     <div className="mt-2 flex gap-2">
-                      <button disabled={busy !== null} onClick={() => void decide(item.id, "approve")} className="h-10 flex-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50">{busy === item.id ? "Memproses…" : "Setujui"}</button>
+                      <button disabled={busy !== null} onClick={() => void decide(item.id, "approve")} className="h-10 flex-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === item.id ? "Memproses…" : "Setujui"}</button>
                       <button disabled={busy !== null} onClick={() => void decide(item.id, "reject")} className="h-10 flex-1 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">Tolak</button>
                     </div>
                   </div>
@@ -159,9 +159,9 @@ export function AdminAttendanceMobileEvidencePage() {
 
   return (
     <AttendanceWorkforceShell section="mobile" title="Evidence Mobile" description="Review GPS, geofence, dan foto kamera secara on-demand. Foto tidak dipreload massal.">
-      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
+      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex flex-col gap-3 border-b border-border/70 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div><h2 className="font-bold text-brand-heading">GPS + foto presensi</h2><p className="mt-1 text-xs text-muted-foreground">Outside/uncertain evidence tetap disimpan; keputusan administratif dilakukan melalui klarifikasi.</p></div>
           <div className="flex flex-wrap gap-2">
@@ -181,7 +181,7 @@ export function AdminAttendanceMobileEvidencePage() {
                 <td className="p-3">{item.workLocationName ?? "Belum ditetapkan"}{item.radiusMeters ? <p className="text-xs text-muted-foreground">radius {item.radiusMeters} m</p> : null}</td>
                 <td className="p-3"><p>±{Math.round(item.accuracyMeters)} m</p><p className="text-xs text-muted-foreground">{item.distanceMeters === null ? "jarak —" : Math.round(item.distanceMeters) + " m dari titik"}</p></td>
                 <td className="p-3">{geofenceLabel(item.geofenceStatus)}</td>
-                <td className="p-3"><span className={"rounded-full px-2.5 py-1 text-xs font-bold " + (item.reviewState === "accepted" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800")}>{item.reviewState === "accepted" ? "Accepted" : "Needs review"}</span></td>
+                <td className="p-3"><span className={"rounded-full px-2.5 py-1 text-xs font-bold " + (item.reviewState === "accepted" ? "bg-success-soft text-success-ink" : "bg-warning-soft text-warning-ink")}>{item.reviewState === "accepted" ? "Accepted" : "Needs review"}</span></td>
                 <td className="p-3"><button onClick={() => setPhotoId(item.id)} className="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold"><Eye className="h-4 w-4" /> Lihat</button></td>
               </tr>)}
               {filtered.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Tidak ada evidence pada filter ini.</td></tr> : null}
@@ -192,7 +192,7 @@ export function AdminAttendanceMobileEvidencePage() {
 
       {photoId ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-xl">
+          <div className="w-full max-w-xl rounded-2xl bg-surface-raised p-4 shadow-xl">
             <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4" /><h2 className="font-bold">Foto evidence</h2></div><button className="rounded-lg p-2 hover:bg-surface" onClick={() => setPhotoId(null)}><X className="h-4 w-4" /></button></div>
             <img src={attendanceMobileEvidencePhotoUrl(photoId)} alt="Foto evidence presensi" className="max-h-[70vh] w-full rounded-xl bg-black object-contain" />
             <p className="mt-3 text-xs text-muted-foreground">Akses foto diaudit dan response memakai Cache-Control: no-store.</p>
@@ -238,19 +238,19 @@ export function AdminAttendanceReportsPage() {
 
   return (
     <AttendanceWorkforceShell section="reports" title="Laporan Kehadiran" description="Finalisasi result version dan baca rekap harian tanpa menghitung potongan payroll.">
-      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
-      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
+      {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
+      {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
 
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs font-semibold text-muted-foreground">Tanggal<input className="mt-1 block h-10 rounded-xl border px-3 text-sm" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label className="text-xs font-semibold text-muted-foreground">Status<select className="mt-1 block h-10 rounded-xl border px-3 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua</option><option value="present">Hadir</option><option value="late">Terlambat</option><option value="incomplete">Belum lengkap</option><option value="leave">Cuti/Izin</option><option value="absent">Tidak hadir</option><option value="off">Libur</option><option value="configuration_error">Configuration error</option></select></label>
-          {canFinalize ? <button disabled={busy !== null} onClick={() => void finalize()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">{busy === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finalisasi tanggal</button> : null}
+          {canFinalize ? <button disabled={busy !== null} onClick={() => void finalize()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === "finalize" ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Finalisasi tanggal</button> : null}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">{Object.entries(report?.summary ?? {}).map(([key,value]) => <span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{statusLabel(key)}: {value}</span>)}</div>
       </section>
 
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Unit</th><th className="p-3">Status</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Jam kerja</th><th className="p-3">Telat</th><th className="p-3">Pulang awal</th><th className="p-3">Justifikasi</th></tr></thead><tbody className="divide-y">
           {(report?.items ?? []).map((item) => <tr key={String(item.employeeId)}><td className="p-3"><p className="font-semibold">{String(item.employeeName)}</p><p className="text-xs text-muted-foreground">{String(item.employeeNumber)}</p></td><td className="p-3">{String(item.unitName ?? "—")}</td><td className="p-3">{statusLabel(String(item.status))}</td><td className="p-3">{fmt(item.firstCheckInAt as string | null)}</td><td className="p-3">{fmt(item.lastCheckOutAt as string | null)}</td><td className="p-3">{String(item.workedMinutes ?? 0)} mnt</td><td className="p-3">{String(item.lateMinutes ?? 0)} mnt</td><td className="p-3">{String(item.earlyLeaveMinutes ?? 0)} mnt</td><td className="p-3">{item.justified ? "Ya" : "Tidak"}</td></tr>)}
           {report && report.items.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Belum ada hasil pada filter ini. Jalankan finalisasi bila diperlukan.</td></tr> : null}

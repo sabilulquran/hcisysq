@@ -267,22 +267,22 @@ export function EmployeeSpecialLeavePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href="/app/leave" className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold">
+          <a href="/app/leave" className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Semua Cuti & Izin
           </a>
         </div>
       </section>
 
-      <div className="mt-5 grid grid-cols-3 overflow-hidden rounded-2xl border border-border/70 bg-white text-center text-[11px] font-semibold text-muted-foreground shadow-[var(--shadow-soft)]">
+      <div className="mt-5 grid grid-cols-3 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised text-center text-[11px] font-semibold text-muted-foreground shadow-[var(--shadow-soft)]">
         <div className={`px-2 py-3 ${!policyKey ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>1 · Pilih kondisi</div>
         <div className={`border-x border-border/70 px-2 py-3 ${policyKey && !preview ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>2 · Isi data</div>
         <div className={`px-2 py-3 ${preview ? "bg-brand-primary-pale text-brand-primary-deep" : ""}`}>3 · Periksa & kirim</div>
       </div>
 
-      {error ? <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
-      {success ? <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{success}</div> : null}
+      {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+      {success ? <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{success}</div> : null}
 
-      <section className="mt-5 rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+      <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
             <Stethoscope className="h-5 w-5" aria-hidden="true" />
@@ -307,7 +307,7 @@ export function EmployeeSpecialLeavePage() {
                 className={`group flex min-h-28 items-start justify-between gap-3 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 ${
                   policy.key === policyKey
                     ? "border-brand-primary bg-brand-primary-pale/55 shadow-sm"
-                    : "border-border/70 bg-white hover:border-brand-primary/35"
+                    : "border-border/70 bg-surface-raised hover:border-brand-primary/35"
                 }`}
               >
                 <div>
@@ -322,7 +322,7 @@ export function EmployeeSpecialLeavePage() {
       </section>
 
       {selectedPolicy ? (
-        <section className="mt-4 rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+        <section className="mt-4 rounded-3xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)] sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground">Pilihan Anda</p>
@@ -401,7 +401,7 @@ export function EmployeeSpecialLeavePage() {
             type="button"
             disabled={busy}
             onClick={() => void handlePreview()}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-white shadow-[var(--shadow-button)] disabled:opacity-50"
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-50"
           >
             {busy && !preview ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
             Lanjutkan
@@ -417,7 +417,7 @@ export function EmployeeSpecialLeavePage() {
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-brand-primary-deep" aria-hidden="true" />
               </div>
 
-              <div className="mt-3 rounded-xl bg-white/80 p-3">
+              <div className="mt-3 rounded-xl bg-surface-raised/80 p-3">
                 <p className="text-xs font-semibold text-muted-foreground">Setelah dikirim</p>
                 <div className="mt-2 space-y-1.5 text-xs leading-5 text-brand-heading">
                   {preview.flow.map((step) => <p key={step}>• {step}</p>)}
@@ -427,7 +427,7 @@ export function EmployeeSpecialLeavePage() {
               {preview.warnings.length ? (
                 <div className="mt-3 space-y-2">
                   {preview.warnings.map((warning) => (
-                    <div key={warning.code} className="flex gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+                    <div key={warning.code} className="flex gap-2 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">
                       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                       {warning.message}
                     </div>
@@ -439,7 +439,7 @@ export function EmployeeSpecialLeavePage() {
                 type="button"
                 disabled={busy}
                 onClick={() => void handleSubmit()}
-                className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-white disabled:opacity-60"
+                className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground disabled:opacity-60"
               >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <FileUp className="h-4 w-4" aria-hidden="true" />}
                 Kirim laporan
@@ -449,7 +449,7 @@ export function EmployeeSpecialLeavePage() {
         </section>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4">
           <h2 className="text-base font-bold text-brand-heading">Riwayat kondisi khusus</h2>
         </div>
@@ -473,9 +473,9 @@ export function EmployeeSpecialLeavePage() {
                 </div>
 
                 {item.hcTaskStatus === "needs_correction" ? (
-                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-xs font-bold text-amber-950">Ada yang perlu dilengkapi</p>
-                    <p className="mt-1 text-xs leading-5 text-amber-900">{item.hcTaskNote ?? "Human Capital meminta dokumen pendukung tambahan."}</p>
+                  <div className="mt-3 rounded-2xl border border-warning-line bg-warning-soft p-3">
+                    <p className="text-xs font-bold text-warning-ink">Ada yang perlu dilengkapi</p>
+                    <p className="mt-1 text-xs leading-5 text-warning-ink">{item.hcTaskNote ?? "Human Capital meminta dokumen pendukung tambahan."}</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
                         type="file"
@@ -490,7 +490,7 @@ export function EmployeeSpecialLeavePage() {
                         type="button"
                         disabled={busy || correctionRequestId !== item.id || !correctionFile}
                         onClick={() => void handleCorrectionUpload()}
-                        className="h-9 rounded-xl bg-amber-900 px-3 text-xs font-bold text-white disabled:opacity-40"
+                        className="h-9 rounded-xl bg-warning-ink px-3 text-xs font-bold text-surface-raised disabled:opacity-40"
                       >
                         Kirim dokumen
                       </button>

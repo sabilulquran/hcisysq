@@ -69,13 +69,13 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
         className={cn(
           "group flex items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           variant === "header"
-            ? "gap-2 rounded-2xl border border-border/70 bg-white p-1.5 shadow-[var(--shadow-soft)] sm:pr-3"
-            : "w-full gap-3 rounded-3xl border border-border/70 bg-white p-3.5 shadow-[var(--shadow-soft)]",
+            ? "gap-2 rounded-2xl border border-border/70 bg-surface-raised p-1.5 shadow-[var(--shadow-soft)] sm:pr-3"
+            : "w-full gap-3 rounded-3xl border border-border/70 bg-surface-raised p-3.5 shadow-[var(--shadow-soft)]",
         )}
       >
         <span
           className={cn(
-            "flex shrink-0 items-center justify-center bg-brand-primary font-bold text-white shadow-[var(--shadow-button)]",
+            "flex shrink-0 items-center justify-center bg-brand-primary font-bold text-brand-foreground shadow-[var(--shadow-button)]",
             variant === "header" ? "h-8 w-8 rounded-xl text-xs" : "h-11 w-11 rounded-2xl text-sm",
           )}
         >
@@ -104,7 +104,7 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
           role="menu"
           aria-label="Menu akun"
           className={cn(
-            "absolute z-50 w-[min(18.5rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-white p-2 shadow-[var(--shadow-raised)]",
+            "absolute z-50 w-[min(18.5rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-surface-raised p-2 shadow-[var(--shadow-raised)]",
             variant === "header" ? "right-0 top-full mt-2" : "bottom-full left-0 mb-2",
           )}
         >

@@ -67,9 +67,9 @@ function statusLabel(status: ShiftSwapStatus) {
 }
 
 function statusClass(status: ShiftSwapStatus) {
-  if (status === "approved") return "bg-emerald-50 text-emerald-700";
-  if (status.startsWith("rejected") || status === "cancelled") return "bg-red-50 text-red-700";
-  return "bg-amber-50 text-amber-800";
+  if (status === "approved") return "bg-success-soft text-success-ink";
+  if (status.startsWith("rejected") || status === "cancelled") return "bg-danger-soft text-danger-ink";
+  return "bg-warning-soft text-warning-ink";
 }
 
 function initials(name: string) {
@@ -215,23 +215,23 @@ export function EmployeeShiftSwapPage() {
       </section>
 
       {error ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+        <div className="mt-5 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> {notice}
         </div>
       ) : null}
 
       {incoming.length > 0 ? (
-        <section className="mt-6 rounded-[2rem] border border-amber-200 bg-amber-50/50 p-5">
+        <section className="mt-6 rounded-[2rem] border border-warning-line bg-warning-soft/50 p-5">
           <h2 className="text-base font-bold text-brand-heading">Menunggu keputusan Anda</h2>
           <p className="mt-1 text-xs text-muted-foreground">Anda diminta menjadi rekan tukar shift.</p>
           <div className="mt-4 space-y-3">
             {incoming.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-amber-200 bg-white p-4">
+              <article key={item.id} className="rounded-2xl border border-warning-line bg-surface-raised p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="font-bold text-brand-heading">{item.requesterName}</p>
@@ -247,7 +247,7 @@ export function EmployeeShiftSwapPage() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void counterpartDecision(item, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50"
                     >
                       <XCircle className="h-4 w-4" /> Tolak
                     </button>
@@ -255,7 +255,7 @@ export function EmployeeShiftSwapPage() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void counterpartDecision(item, "accept")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
                     >
                       {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                       Setujui
@@ -269,7 +269,7 @@ export function EmployeeShiftSwapPage() {
       ) : null}
 
       <section className="mt-6 grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-        <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-5 w-5 text-brand-primary-deep" />
             <h2 className="font-bold text-brand-heading">Pengajuan baru</h2>
@@ -327,7 +327,7 @@ export function EmployeeShiftSwapPage() {
           />
 
           {requesterHasActiveSwap ? (
-            <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="mt-3 rounded-xl bg-warning-soft p-3 text-xs text-warning-ink">
               Anda sudah mempunyai tukar shift aktif pada tanggal ini. Selesaikan atau batalkan pengajuan tersebut terlebih dahulu.
             </p>
           ) : null}
@@ -341,14 +341,14 @@ export function EmployeeShiftSwapPage() {
             type="button"
             disabled={busy !== null || requesterHasActiveSwap || !counterpartEmployeeId}
             onClick={() => void submit()}
-            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
             {busy === "submit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Ajukan tukar shift
           </button>
         </article>
 
-        <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="font-bold text-brand-heading">Riwayat pengajuan</h2>
           <div className="mt-4 space-y-3">
             {history.map((item) => {
@@ -380,7 +380,7 @@ export function EmployeeShiftSwapPage() {
                       type="button"
                       disabled={busy !== null}
                       onClick={() => void cancel(item)}
-                      className="mt-3 h-9 rounded-xl border border-red-200 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
+                      className="mt-3 h-9 rounded-xl border border-danger-line px-3 text-xs font-bold text-danger-ink disabled:opacity-50"
                     >
                       Batalkan pengajuan
                     </button>

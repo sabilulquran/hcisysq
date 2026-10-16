@@ -38,9 +38,9 @@ function fmt(value: string | null) {
 }
 
 function connectivityClass(status: AdmsConnectivityStatus) {
-  if (status === "online") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "offline") return "border-red-200 bg-red-50 text-red-700";
-  return "border-slate-200 bg-slate-100 text-slate-600";
+  if (status === "online") return "border-success-line bg-success-soft text-success-ink";
+  if (status === "offline") return "border-danger-line bg-danger-soft text-danger-ink";
+  return "border-border bg-muted text-muted-foreground";
 }
 
 function lifecycleLabel(value: AdmsDevice["lifecycle"]) {
@@ -51,10 +51,10 @@ function lifecycleLabel(value: AdmsDevice["lifecycle"]) {
 }
 
 function lifecycleClass(value: AdmsDevice["lifecycle"]) {
-  if (value === "active") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (value === "disabled") return "border-slate-200 bg-slate-100 text-slate-700";
-  if (value === "retired") return "border-slate-300 bg-slate-100 text-slate-500";
-  return "border-amber-200 bg-amber-50 text-amber-800";
+  if (value === "active") return "border-success-line bg-success-soft text-success-ink";
+  if (value === "disabled") return "border-border bg-muted text-foreground";
+  if (value === "retired") return "border-border bg-muted text-muted-foreground";
+  return "border-warning-line bg-warning-soft text-warning-ink";
 }
 
 export function AdminAdmsDevicesPage() {
@@ -216,15 +216,15 @@ export function AdminAdmsDevicesPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
           <span>{devices.length} mesin</span>
           <span aria-hidden="true">·</span>
-          <span className="text-emerald-700">{summary.online} online</span>
+          <span className="text-success-ink">{summary.online} online</span>
           <span aria-hidden="true">·</span>
-          <span className={summary.offline > 0 ? "text-red-700" : undefined}>{summary.offline} offline</span>
+          <span className={summary.offline > 0 ? "text-danger-ink" : undefined}>{summary.offline} offline</span>
           {summary.unknown > 0 ? <><span aria-hidden="true">·</span><span>{summary.unknown} belum diketahui</span></> : null}
           <span aria-hidden="true">·</span>
-          <span className={summary.attention > 0 ? "text-amber-700" : undefined}>{summary.attention} perlu perhatian</span>
+          <span className={summary.attention > 0 ? "text-warning-ink" : undefined}>{summary.attention} perlu perhatian</span>
         </div>
         {canConfigure ? (
-          <button type="button" onClick={() => void openOnboarding()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white">
+          <button type="button" onClick={() => void openOnboarding()} className="inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground">
             <Plus className="h-3.5 w-3.5" /> Tambah mesin
           </button>
         ) : sessionResolved ? (
@@ -232,7 +232,7 @@ export function AdminAdmsDevicesPage() {
         ) : null}
       </div>
 
-      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex flex-col gap-3 border-b border-border/70 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-1 flex-col gap-3 sm:flex-row">
             <label className="relative block min-w-0 flex-1 sm:max-w-sm">
@@ -242,7 +242,7 @@ export function AdminAdmsDevicesPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Cari nama, serial, atau IP"
-                className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
+                className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
               />
             </label>
             <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -250,7 +250,7 @@ export function AdminAdmsDevicesPage() {
               <select
                 value={status}
                 onChange={(event) => setStatus(event.target.value as AdmsConnectivityStatus | "all")}
-                className="h-10 rounded-xl border border-border bg-white px-3 text-sm font-medium text-brand-heading outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
+                className="h-10 rounded-xl border border-border bg-surface-raised px-3 text-sm font-medium text-brand-heading outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
               >
                 <option value="all">Semua</option>
                 <option value="online">Online</option>
@@ -276,7 +276,7 @@ export function AdminAdmsDevicesPage() {
         </div>
 
         {error ? (
-          <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>
+          <div className="m-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger-ink" role="alert">{error}</div>
         ) : null}
 
         {loading ? (
@@ -317,9 +317,9 @@ export function AdminAdmsDevicesPage() {
                         <td className="px-4 py-3 text-muted-foreground">{fmt(health?.lastSeenAt ?? device.lastSeenAt)}</td>
                         <td className="px-4 py-3">
                           <div className="font-semibold text-brand-heading">{device.activeMappingCount ?? 0} terhubung</div>
-                          {(device.unmappedPinCount ?? 0) > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5" /> {device.unmappedPinCount} belum terhubung</div> : null}
+                          {(device.unmappedPinCount ?? 0) > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs text-warning-ink"><AlertTriangle className="h-3.5 w-3.5" /> {device.unmappedPinCount} belum terhubung</div> : null}
                           {mappingReviewCount === null ? <div className="mt-0.5 text-xs text-muted-foreground">Status lifecycle mapping belum diketahui</div> : null}
-                          {mappingReviewCount !== null && mappingReviewCount > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-orange-800"><AlertTriangle className="h-3.5 w-3.5" /> {mappingReviewCount} hubungan perlu ditinjau</div> : null}
+                          {mappingReviewCount !== null && mappingReviewCount > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-warning-ink"><AlertTriangle className="h-3.5 w-3.5" /> {mappingReviewCount} hubungan perlu ditinjau</div> : null}
                         </td>
                         <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${lifecycleClass(device.lifecycle)}`}>{lifecycleLabel(device.lifecycle)}</span></td>
                       </tr>
@@ -343,9 +343,9 @@ export function AdminAdmsDevicesPage() {
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>Aktivitas {fmt(health?.lastSeenAt ?? device.lastSeenAt)}</span>
                       <span>{device.activeMappingCount ?? 0} mapping</span>
-                      {(device.unmappedPinCount ?? 0) > 0 ? <span className="text-amber-700">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}
+                      {(device.unmappedPinCount ?? 0) > 0 ? <span className="text-warning-ink">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}
                       {mappingReviewCount === null ? <span>Status lifecycle mapping belum diketahui</span> : null}
-                      {mappingReviewCount !== null && mappingReviewCount > 0 ? <span className="font-semibold text-orange-800">{mappingReviewCount} hubungan pegawai perlu ditinjau</span> : null}
+                      {mappingReviewCount !== null && mappingReviewCount > 0 ? <span className="font-semibold text-warning-ink">{mappingReviewCount} hubungan pegawai perlu ditinjau</span> : null}
                     </div>
                   </a>
                 );
@@ -357,7 +357,7 @@ export function AdminAdmsDevicesPage() {
 
       {addOpen && canConfigure ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="add-device-title">
-          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface-raised p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div><h2 id="add-device-title" className="text-base font-bold text-brand-heading">Tambah mesin</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Utamakan mesin yang sudah terdeteksi dari traffic ADMS. Registrasi manual tersedia sebagai fallback saat serial sudah diverifikasi.</p></div>
               <button type="button" onClick={() => setAddOpen(false)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button>
@@ -368,13 +368,13 @@ export function AdminAdmsDevicesPage() {
             <div className="mt-5">
               <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Terdeteksi otomatis</div>
               {detectedLoading ? <div className="mt-2 flex items-center gap-2 rounded-xl bg-surface p-4 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Memuat mesin terdeteksi…</div> : detected.length === 0 ? <div className="mt-2 rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Tidak ada mesin baru yang menunggu untuk ditambahkan.</div> : (
-                <div className="mt-2 space-y-2">{detected.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3"><div><div className="font-mono text-sm font-bold text-brand-heading">{item.serialNumber}</div><div className="mt-1 text-[11px] text-muted-foreground">IP {item.lastIp ?? "—"} · terakhir {fmt(item.lastSeenAt)} · {item.observedCount} request</div></div><button type="button" disabled={onboardingBusy !== null} onClick={() => void claim(item)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50">{onboardingBusy === `claim:${item.id}` ? "Menambahkan…" : "Tambahkan"}</button></div>)}</div>
+                <div className="mt-2 space-y-2">{detected.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 p-3"><div><div className="font-mono text-sm font-bold text-brand-heading">{item.serialNumber}</div><div className="mt-1 text-[11px] text-muted-foreground">IP {item.lastIp ?? "—"} · terakhir {fmt(item.lastSeenAt)} · {item.observedCount} request</div></div><button type="button" disabled={onboardingBusy !== null} onClick={() => void claim(item)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{onboardingBusy === `claim:${item.id}` ? "Menambahkan…" : "Tambahkan"}</button></div>)}</div>
               )}
             </div>
 
             <div className="mt-5 border-t border-border/70 pt-5">
               <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Registrasi manual</div>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} placeholder="Serial mesin, contoh SPK7245000738" className="h-10 min-w-0 flex-1 rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" /><button type="button" disabled={onboardingBusy !== null || !serialNumber.trim()} onClick={() => void registerManual()} className="h-10 rounded-xl border border-border bg-white px-4 text-xs font-semibold hover:bg-surface disabled:opacity-50">{onboardingBusy === "manual" ? "Mendaftarkan…" : "Daftarkan manual"}</button></div>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input value={serialNumber} onChange={(event) => setSerialNumber(event.target.value)} placeholder="Serial mesin, contoh SPK7245000738" className="h-10 min-w-0 flex-1 rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" /><button type="button" disabled={onboardingBusy !== null || !serialNumber.trim()} onClick={() => void registerManual()} className="h-10 rounded-xl border border-border bg-surface-raised px-4 text-xs font-semibold hover:bg-surface disabled:opacity-50">{onboardingBusy === "manual" ? "Mendaftarkan…" : "Daftarkan manual"}</button></div>
             </div>
           </div>
         </div>

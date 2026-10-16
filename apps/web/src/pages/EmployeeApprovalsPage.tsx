@@ -115,14 +115,14 @@ export function EmployeeApprovalsPage() {
       </section>
 
       {error ? (
-        <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           {error}
         </div>
       ) : null}
 
-      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex items-center gap-3 border-b border-border/70 px-5 py-4">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-yellow/15 text-amber-900">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-yellow/15 text-warning-ink">
             <ShieldCheck className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
@@ -161,7 +161,7 @@ export function EmployeeApprovalsPage() {
                       type="button"
                       disabled={acting === item.stepId}
                       onClick={() => void decide(item, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-4 text-sm font-semibold text-danger-ink hover:bg-danger-soft disabled:opacity-60"
                     >
                       <XCircle className="h-4 w-4" aria-hidden="true" /> Tolak
                     </button>
@@ -169,7 +169,7 @@ export function EmployeeApprovalsPage() {
                       type="button"
                       disabled={acting === item.stepId}
                       onClick={() => void decide(item, "approve")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white shadow-[var(--shadow-button)] disabled:opacity-60"
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-60"
                     >
                       {acting === item.stepId ? (
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

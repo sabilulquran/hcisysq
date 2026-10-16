@@ -28,7 +28,7 @@ export function PaginationBar({
             <select
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
-              className="h-8 rounded-lg border border-border bg-white px-2 text-xs text-brand-heading"
+              className="h-8 rounded-lg border border-border bg-surface-raised px-2 text-xs text-brand-heading"
               aria-label="Jumlah data per halaman"
             >
               {[10, 25, 50, 100].map((size) => (
@@ -41,7 +41,7 @@ export function PaginationBar({
           type="button"
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-white px-2 font-semibold text-brand-heading disabled:opacity-40"
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-surface-raised px-2 font-semibold text-brand-heading disabled:opacity-40"
         >
           <ChevronLeft className="h-3.5 w-3.5" /> Sebelumnya
         </button>
@@ -50,7 +50,7 @@ export function PaginationBar({
           type="button"
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
-          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-white px-2 font-semibold text-brand-heading disabled:opacity-40"
+          className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-surface-raised px-2 font-semibold text-brand-heading disabled:opacity-40"
         >
           Berikutnya <ChevronRight className="h-3.5 w-3.5" />
         </button>

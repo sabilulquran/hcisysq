@@ -51,7 +51,7 @@ export function AdminComingSoonPage() {
   if (service.stage === "available") {
     return (
       <AdminShell active="services" title={service.label} description={service.description}>
-        <div className="max-w-xl rounded-3xl border border-border/70 bg-white p-6 shadow-[var(--shadow-soft)]">
+        <div className="max-w-xl rounded-3xl border border-border/70 bg-surface-raised p-6 shadow-[var(--shadow-soft)]">
           {!sessionResolved ? (
             <>
               <p className="text-sm font-bold text-brand-heading">Memeriksa akses {service.label}…</p>
@@ -61,7 +61,7 @@ export function AdminComingSoonPage() {
             <>
               <p className="text-sm font-bold text-brand-heading">{service.label} sudah tersedia</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Tautan lama ini akan diarahkan ke workspace operasional yang aktif.</p>
-              <a href={service.href} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">
+              <a href={service.href} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground">
                 Buka {service.label}
               </a>
             </>
@@ -69,7 +69,7 @@ export function AdminComingSoonPage() {
             <>
               <p className="text-sm font-bold text-brand-heading">{service.label} tersedia di HCIS</p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">Akun ini belum memiliki izin untuk membuka workspace tersebut. Tidak ada hak akses yang ditambahkan melalui katalog modul.</p>
-              <a href="/admin/services" className="mt-5 inline-flex min-h-11 items-center rounded-xl border border-border bg-white px-4 text-sm font-bold text-brand-heading">
+              <a href="/admin/services" className="mt-5 inline-flex min-h-11 items-center rounded-xl border border-border bg-surface-raised px-4 text-sm font-bold text-brand-heading">
                 Kembali ke katalog modul
               </a>
             </>
@@ -90,7 +90,7 @@ export function AdminComingSoonPage() {
           <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Roadmap modul
         </a>
 
-        <section className="mt-5 rounded-3xl border border-border/70 bg-white p-6 shadow-[var(--shadow-soft)] sm:p-8">
+        <section className="mt-5 rounded-3xl border border-border/70 bg-surface-raised p-6 shadow-[var(--shadow-soft)] sm:p-8">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
             <Clock3 className="h-6 w-6" aria-hidden="true" />
           </span>

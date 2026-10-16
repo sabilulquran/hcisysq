@@ -36,7 +36,7 @@ export function AttendanceWorkforceNavigation({ section, session }: {
       {visibleTabs.map(({ key, label, href, icon: Icon }) => (
         <a key={key} href={href} aria-current={key === section ? "page" : undefined}
           className={cn("inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            key === section ? "border-brand-primary/40 bg-brand-primary-pale text-brand-primary-deep" : "border-border bg-white text-muted-foreground hover:text-brand-heading")}>
+            key === section ? "border-brand-primary/40 bg-brand-primary-pale text-brand-primary-deep" : "border-border bg-surface-raised text-muted-foreground hover:text-brand-heading")}>
           <Icon className="h-4 w-4" aria-hidden="true" />{label}
         </a>
       ))}
@@ -61,7 +61,7 @@ export function AttendanceWorkforceShell({ section, children, title, description
     <AdminShell active={section === "shift-swaps" ? "attendance-shift-swaps" : "attendance-workforce"} title={title} description={description}>
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
         {canOpenAdms ? (
-          <a href="/admin/attendance/adms" className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition hover:border-brand-primary/40">
+          <a href="/admin/attendance/adms" className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)] transition hover:border-brand-primary/40">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground"><Radio className="h-4 w-4" />Back Office ADMS</div>
             <p className="mt-1 text-sm font-semibold text-brand-heading">Mesin, mapping pegawai, transaksi, perintah & pemulihan</p>
           </a>

@@ -1,7 +1,7 @@
 # Mi8VPS Keycloak readiness restarts (OPS-MI8-KC-001)
 
 **Spec ID:** OPS-MI8-KC-001
-**Status:** PLAN, awaiting owner approval. Nothing on production has been changed.
+**Status:** Part A APPLIED on production 2026-10-16 07:24 WIB (owner-approved), with the 48 h observation pending. Part B is a PLAN, held by the owner.
 **Prepared:** 2026-10-16 (read-only investigation over `ssh mi8vps-root`)
 **Related:** OPS-MI8-REL-001 (`mi8vps-hcis-release.md`, the worker/launcher path rules), OPS-MI8-BAK-001
 (`mi8vps-sq-core-production-backup-plan.md`, backup before the change)
@@ -95,62 +95,63 @@ between several Keycloak nodes, which cannot happen with one node, so this check
 Two independent parts. A removes the trigger and B makes the supervisor tolerant. Each part needs its
 own approval and can roll back on its own. The recommended order is A, then B.
 
-### A. Keycloak single-node local cache (`cache=local`)
+### A. Keycloak single-node local cache (`cache=local`) — APPLIED 2026-10-16
 
-`cache` is a **build-time** option, and the release starts with `--optimized`. Setting `KC_CACHE=local`
-in `final.env` alone is not applied until a `kc.sh build` runs. The current release directory is
-read-only and is the rollback target, so the build goes into a new release directory.
+`cache` is a **runtime** option in 26.7.2. An earlier draft of this plan called it build-time. It is not:
+`kc.sh build --cache=local` printed `The following run time options were found, but will be ignored
+during build time: kc.cache`, and the persisted build options it wrote were identical to the current
+release's. So `KC_CACHE=local` in `final.env` is enough with `start --optimized`. No new release,
+launcher, worker-pattern or worker-restart change is needed.
 
 Effects:
 
 - No JGroups channel, no port 7800, and no `jdbc-ping` cluster health check in readiness.
 - Somewhat less memory and fewer threads.
 - Sessions: Keycloak 26 keeps user and offline sessions in the database (persistent user sessions),
-  so a restart does not log users out. Step A4 checks this before the change.
-- The `jgroups_ping` table becomes unused. It is left as it is.
+  so a restart does not log users out.
+- The `jgroups_ping` table becomes unused. Keycloak removed its row on shutdown, and the table is left as it is.
 
-Steps (operator, after owner approval, outside working hours):
+Steps:
 
-1. **Backup.** Run the OPS-MI8-BAK-001 backup on demand (`/data/local/mi8vps/sq-core-backup.sh`) and confirm
-   `result=OK` and a `keycloak` dump of `sqcore_keycloak` in the new set.
-2. **Build the new release.**
-   `cp -a releases/keycloak-26.7.2-3a2238fc-20261004 releases/keycloak-26.7.2-3a2238fc-local-<yyyymmdd>`. Make the copy
-   writable for `sqkeycloak`, then as `sqkeycloak` with the same `JAVA_HOME` run:
-   `bin/kc.sh build --db=postgres --health-enabled=true --metrics-enabled=true --cache=local`.
-   The command must name every current build option, because the build replaces the persisted set.
-   Check that `META-INF/keycloak-persisted.properties` in `lib/quarkus/generated-bytecode.jar` now contains
-   `kc.cache=local` plus the same db, health, metrics and provider entries. Return the copy to read-only modes.
-3. **Candidate test, without touching production traffic.** Restore the backup's `keycloak` dump into a scratch
-   database `sqcore_keycloak_kccand`. Start the new release as `sqkeycloak` with a copy of `final.env`
-   where only these differ: `KC_DB_URL` names the scratch database, `KC_HTTP_PORT=18080`,
+1. **Backup.** Run the OPS-MI8-BAK-001 backup on demand (`/data/local/mi8vps/sq-core-backup.sh`) and
+   confirm `result=OK` and a `keycloak` dump of `sqcore_keycloak` in the new set.
+2. **Session persistence check (read-only).** Confirm that `persistent-user-sessions` is not disabled.
+   Neither `final.env` nor the persisted build options set `features`/`features-disabled`, so the 26.x
+   default (enabled) applies.
+3. **Candidate test, without touching production traffic.** Restore the backup's `keycloak` dump into a
+   scratch database `sqcore_keycloak_kccand`. Start the **current** release as `sqkeycloak`, with its working
+   directory outside the release path so the worker's `service_pid` cannot match it, and with a private
+   copy of `final.env` where only these differ: `KC_DB_URL` names the scratch database, `KC_HTTP_PORT=18080`,
    `KC_HTTP_MANAGEMENT_PORT=19000`, `KC_CACHE=local`, the two `KC_CACHE_EMBEDDED_NETWORK_*` lines are
-   removed, and `-Xmx384m` is set for the short test. Pass when all of these hold:
-   - startup log shows Keycloak 26.7.2 with no `Starting JGroups channel` line;
+   removed, and `JAVA_OPTS_KC_HEAP="-Xms64m -Xmx384m"`. Pass when all of these hold:
+   - startup log shows Keycloak 26.7.2 with no JGroups lines and no errors;
    - `GET 127.0.0.1:19000/health/ready` returns 200 with no "cluster health check" entry;
    - `GET 127.0.0.1:18080/realms/sq-staff/.well-known/openid-configuration` returns 200, and its issuer is
      `https://login.sabilulquran.or.id/realms/sq-staff`;
-   - the SQ trusted-device provider is listed as loaded, with no provider errors;
-   - nothing listens on 7800 from the candidate.
-   Then stop the candidate and drop `sqcore_keycloak_kccand`. The restore also serves as a restore test.
-4. **Session persistence check (read-only).** Confirm that the `persistent-user-sessions` feature is
-   not disabled in the build or env. On 2026-10-16 neither `final.env` nor the persisted build
-   options set `features`/`features-disabled`, so the 26.x default (enabled) applies. Re-check on
-   the day. If it is disabled, stop here and re-plan, because the switch would
-   log users out.
-5. **Switch (login outage starts).** Edit 4 places: `shared/start-final.sh` (`exec` path),
-   `sq-core-launch.sh` keycloak `workdir` and `command`, and `sq-core-worker.sh` keycloak
-   `service_pid` pattern. In `final.env` set `KC_CACHE=local` and remove the two
-   `KC_CACHE_EMBEDDED_NETWORK_*` lines. Keep `.pre-ops-mi8-kc-001` copies of all four files.
-   Restart the worker so it picks up the new pattern (see OPS-MI8-REL-001 §1); this leaves services
-   running. Then `sq-corectl.sh restart keycloak`.
-6. **Verify.**
+   - nothing new listens on 7800.
+   Then stop the candidate, drop `sqcore_keycloak_kccand` and delete the candidate env copy.
+4. **Switch (login outage starts).** Run `cp -p final.env final.env.pre-ops-mi8-kc-001`, set
+   `KC_CACHE=local` and delete the two `KC_CACHE_EMBEDDED_NETWORK_*` lines. Send TERM to the Keycloak
+   java process; the worker relaunches it on its next 15 s loop with the new env.
+5. **Verify.**
    - `/health/ready` returns 200, and the startup log has no JGroups lines.
    - The well-known endpoint returns 200 through `https://login.sabilulquran.or.id`.
-   - One synthetic or UAT login works for each of HCIS, SQ Hub and Aset (no real user data is
-     recorded in evidence), and the existing app sessions still refresh.
    - `/health` returns 200 for `hcis`, `hub` and `aset`.
+   - The persisted session count is unchanged.
+   - One login per app (HCIS, SQ Hub, Aset) by the owner or an admin.
    - Watch for 48 h: no Keycloak `stop`/`launch` lines in `sq-core-worker.log` and no
      `JdbcPingClusterHealthImpl` warnings.
+
+#### Evidence (2026-10-16, owner approved part A in chat; run at the owner's request during working hours)
+
+| Step | Result |
+|---|---|
+| Backup | `set-20261016T002118Z` `result=OK scope=production`. All 4 databases, including `sqcore_keycloak` |
+| Build probe | `kc.sh build --cache=local` on a throwaway copy reported that `kc.cache` is a runtime option. The copy was deleted, and the release directory is unchanged |
+| Candidate | Scratch restore OK (2 realms). Started in 20.2 s with no JGroups lines; ready 200 with checks GracefulShutdown, KeycloakInitialized and DB connections only; issuer correct. Then stopped, and the scratch DB and env copy were removed |
+| Switch | 07:24:38 WIB TERM, worker relaunched at 07:24:43, Keycloak `started in 16.4s`, `/health/ready` 200 at about 37 s |
+| Verify | Ready 200 without the cluster check; 7800 not listening; public well-known 200 with the correct issuer; `hcis`/`hub`/`aset` health 200; `hcis.sabilulquran.or.id` 200; persisted user sessions 1 before and 1 after; `jgroups_ping` 0 rows |
+| Pending | Interactive login per app (needs a human with credentials) and the 48 h observation |
 
 ### B. Worker readiness tolerance (all SQ Core services)
 
@@ -180,8 +181,8 @@ not part of this change.
 
 ## 5. User-facing impact
 
-- **During A step 5:** Akun SQ login and token refresh are unavailable for about 30–60 s (Keycloak start was
-  17–33 s on this host, plus readiness). HCIS, SQ Hub and Aset keep serving users whose access tokens are
+- **During A step 4:** Akun SQ login and token refresh are unavailable for about 30–60 s (measured on
+  2026-10-16: about 37 s). HCIS, SQ Hub and Aset keep serving users whose access tokens are
   still valid. A refresh that falls inside the window fails, and the user may be asked to log in again.
   Schedule the window outside working hours, after the 02:00 WIB backup, and announce it to admins.
 - **After A:** no change to login screens, realms, clients or sessions. The repeated 1–2 min outages on
@@ -190,8 +191,8 @@ not part of this change.
 
 ## 6. Rollback
 
-- **A:** point the 4 places back at `keycloak-26.7.2-3a2238fc-20261004` (restore the
-  `.pre-ops-mi8-kc-001` copies, including `final.env`), restart the worker, then `sq-corectl.sh restart keycloak`.
+- **A:** `cp -p final.env.pre-ops-mi8-kc-001 final.env` (restores `KC_CACHE=ispn` and the two
+  `KC_CACHE_EMBEDDED_NETWORK_*` lines), then send TERM to the Keycloak java process and let the worker relaunch it.
   This takes about 1 min and causes the same short login outage. The cache mode does not change the
   database schema or data, so no database restore is needed. The OPS-MI8-BAK-001 set from step A1 is a safety net only.
 - **B:** restore `sq-core-worker.sh.pre-ops-mi8-kc-001` and restart the worker.

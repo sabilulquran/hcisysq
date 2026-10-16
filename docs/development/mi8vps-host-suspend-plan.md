@@ -1,7 +1,7 @@
 # Mi8VPS host suspend: keep it, or block it? (OPS-MI8-PWR-001)
 
 **Spec ID:** OPS-MI8-PWR-001
-**Status:** PLAN, awaiting owner decision. Nothing on production or on the host was changed.
+**Status:** DECIDED 2026-10-16. The owner approved G0 (option 0: keep host suspend, rely on OPS-MI8-KC-001 A + B). No host power change was made or is planned. G1–G3 were not approved (see §10).
 **Prepared:** 2026-10-16 (read-only investigation over `ssh mi8vps-root`)
 **Related:** OPS-MI8-KC-001 (`mi8vps-keycloak-readiness-restarts.md`, PR #96, Keycloak restart bursts after suspend),
 OPS-MI8-REL-001 (`mi8vps-hcis-release.md`), OPS-MI8-BAK-001 (`mi8vps-sq-core-production-backup-plan.md`)
@@ -179,3 +179,13 @@ Each gate needs its own explicit approval. Nothing below runs without one.
 Record the decision (who, when, which gate) in the Mi8VPS Platform Runbook or a dated note next to this file.
 Evidence quotes counters, temperatures and log categories only. It holds no user identifiers, IP addresses,
 tunnel or connection IDs, or secrets.
+
+## 10. Decision record
+
+| Date | Gate | Decision | Host change |
+|---|---|---|---|
+| 2026-10-16 | G0 | **Approved** by the owner: keep host suspend on Mi8VPS and rely on OPS-MI8-KC-001 A + B | none |
+| 2026-10-16 | G1, G2, G3 | Not approved; not run | none |
+
+Follow-ups stay open: §8 question 1 (router/ONT UPS, which would reopen W2) and question 3 (battery controller).
+OPS-MI8-KC-001 A and B still need their own approvals under PR #96.

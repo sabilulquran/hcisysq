@@ -607,16 +607,34 @@ function planReversal(
   if (target.state !== "RECORDED" || target.actionType === "REVERSAL" || target.actionType === "BASELINE") {
     fail("EMPLOYMENT_ACTION_NOT_REVERSIBLE", "Tindakan ini tidak dapat dibatalkan.");
   }
-  const stack = activeActions(history, target.employmentId);
+  // Stack discipline by recording order, not effective date: a later-recorded
+  // (even backdated) action must be reversed first (review of #113, item 1).
+  const stack = history.actions
+    .filter((action) => action.employmentId === target.employmentId && action.state === "RECORDED" && action.actionType !== "REVERSAL")
+    .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
   if (stack.at(-1)?.id !== target.id) {
     fail("EMPLOYMENT_ACTION_NOT_REVERSIBLE", "Hanya tindakan terakhir yang dapat dibatalkan; batalkan tindakan sesudahnya lebih dulu.");
   }
 
   const rowChanges: RowChange[] = [];
   for (const change of [...target.rowChanges].reverse()) {
-    if (change.op === "OPEN") rowChanges.push({ op: "VOID", table: change.table, id: change.id });
-    else if (change.op === "SET") rowChanges.push({ op: "SET", table: change.table, id: change.id, previous: change.next, next: change.previous });
+    const row = findRow(history, change.table, change.id);
+    if (!row || row.voided) {
+      fail("EMPLOYMENT_ACTION_NOT_REVERSIBLE", "Data tindakan ini sudah berubah; tindakan tidak dapat dibatalkan.");
+    }
+    if (change.op === "OPEN") {
+      rowChanges.push({ op: "VOID", table: change.table, id: change.id });
+    } else if (change.op === "SET") {
+      // Never overwrite a value another action changed after this one.
+      for (const [field, value] of Object.entries(change.next)) {
+        if ((row as unknown as Record<string, unknown>)[field] !== value) {
+          fail("EMPLOYMENT_ACTION_NOT_REVERSIBLE", "Data tindakan ini sudah diubah oleh tindakan lain; tindakan tidak dapat dibatalkan.");
+        }
+      }
+      rowChanges.push({ op: "SET", table: change.table, id: change.id, previous: change.next, next: change.previous });
+    }
   }
+  assertReversalKeepsEmploymentsApart(history, target.employmentId, rowChanges);
 
   const employment = history.employments.find((candidate) => candidate.id === target.employmentId);
   return {
@@ -638,6 +656,36 @@ function planReversal(
     newSnapshot: {},
     expectedVersion: employment?.version ?? null,
   };
+}
+
+function findRow(history: EmploymentHistory, table: RowTable, id: string): { voided: boolean } | undefined {
+  if (table === "EMPLOYMENT") return history.employments.find((row) => row.id === id);
+  if (table === "TERM") return history.terms.find((row) => row.id === id);
+  return history.placements.find((row) => row.id === id);
+}
+
+/**
+ * Re-opening an ended employment (reversing a termination) must not overlap
+ * another employment of the same employee, e.g. a later rehire (review of
+ * #113, item 2). Fails in the domain instead of at the exclusion constraint.
+ */
+function assertReversalKeepsEmploymentsApart(history: EmploymentHistory, employmentId: string, changes: RowChange[]) {
+  const employment = history.employments.find((row) => row.id === employmentId);
+  if (!employment) return;
+  const restored = { ...employment } as EmploymentRecord;
+  for (const change of changes) {
+    if (change.op === "SET" && change.table === "EMPLOYMENT" && change.id === employmentId) Object.assign(restored, change.next);
+    if (change.op === "VOID" && change.table === "EMPLOYMENT" && change.id === employmentId) return;
+  }
+  const others = liveEmployments(history).filter((row) => row.id !== employmentId && row.legalEntityKey === restored.legalEntityKey);
+  const clash = others.some((other) =>
+    other.endBasis === "UNKNOWN" || restored.endBasis === "UNKNOWN"
+      ? false
+      : rangesOverlap(restored.startedOn, restored.endedOn, other.startedOn, other.endedOn),
+  );
+  if (clash) {
+    fail("EMPLOYMENT_ACTION_NOT_REVERSIBLE", "Pegawai sudah memiliki hubungan kerja lain pada periode tersebut; pengakhiran tidak dapat dibatalkan.");
+  }
 }
 
 /**

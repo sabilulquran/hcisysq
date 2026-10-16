@@ -7,14 +7,44 @@
 -- explicit owner-approved mode change.
 --
 -- Records are append-oriented: a later action closes or voids a row, it never
--- deletes it. Down script (valid only while the tables are empty):
---   DROP TABLE employment_audit_events, employment_action_documents,
---     employment_decision_document_corrections, employment_placements,
---     employment_terms, employment_decision_documents CASCADE;
---   ALTER TABLE employments DROP CONSTRAINT employments_opened_by_action_fk;
---   DROP TABLE employment_actions, employments, employment_rollout_settings CASCADE;
---   DROP FUNCTION employment_history_guard_delete();
---   DELETE FROM schema_migrations WHERE name = '0056_employment_history_foundation.sql';
+-- deletes it. DELETE and TRUNCATE are refused by triggers (below). Requires
+-- PostgreSQL 14+ (CREATE OR REPLACE TRIGGER); the production database already
+-- has btree_gist 1.8, so CREATE EXTENSION is a no-op there. The script is
+-- idempotent: re-running it does not fail or duplicate objects.
+--
+-- Rollback / recovery plan (review of #113, item 3):
+--   A. Tables still empty (before the S2 baseline): run the down script D.
+--   B. Baseline loaded, no real action recorded (only action_type = 'BASELINE'):
+--      1. Set mode OFF (PUT /admin/employment/rollout) so nothing reads the tables.
+--      2. Take the verified OPS-MI8 database backup and, additionally, export the
+--         history for audit: pg_dump --data-only -t 'employment*' > employment-history.sql
+--      3. Purge baseline rows in one transaction, which is the only allowed delete:
+--           BEGIN;
+--           SET LOCAL hcis.employment_baseline_purge = 'on';
+--           DELETE FROM employment_audit_events;
+--           DELETE FROM employment_placements; DELETE FROM employment_terms;
+--           DELETE FROM employment_actions; DELETE FROM employments;
+--           DELETE FROM employment_rollout_settings;
+--           COMMIT;
+--         Abort if any employment_actions row has action_type <> 'BASELINE'.
+--      4. Run the down script D.
+--   C. Real actions recorded (mode was AUTHORITATIVE): do NOT drop. Set mode OFF;
+--      EMP-004 import becomes the writer of employees again and the history stays
+--      as the administrative record (spec §8.6). Re-enabling later requires a
+--      fresh consistency review.
+--   D. Down script:
+--      DROP TABLE employment_audit_events, employment_action_documents,
+--        employment_decision_document_corrections, employment_placements,
+--        employment_terms, employment_decision_documents CASCADE;
+--      ALTER TABLE employments DROP CONSTRAINT employments_opened_by_action_fk,
+--        DROP CONSTRAINT employments_voided_by_action_fk;
+--      DROP TABLE employment_actions, employments, employment_rollout_settings CASCADE;
+--      DROP FUNCTION employment_history_guard_delete(), employment_history_guard_truncate();
+--      DELETE FROM schema_migrations WHERE name = '0056_employment_history_foundation.sql';
+--
+-- Known limit: the delete guard protects against application mistakes, not a
+-- database role that sets hcis.employment_baseline_purge itself. Least-privilege
+-- grants for the runtime role (no TRUNCATE, no DDL) are part of the S8 runbook.
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
@@ -120,14 +150,22 @@ CREATE INDEX IF NOT EXISTS employment_actions_employee_idx
 
 -- Employment and its opening action are inserted in one transaction, so these
 -- circular references are checked at commit (NO ACTION; RESTRICT cannot defer).
-ALTER TABLE employments
-  ADD CONSTRAINT employments_opened_by_action_fk
-  FOREIGN KEY (opened_by_action_id) REFERENCES employment_actions(id)
-  DEFERRABLE INITIALLY DEFERRED;
-ALTER TABLE employments
-  ADD CONSTRAINT employments_voided_by_action_fk
-  FOREIGN KEY (voided_by_action_id) REFERENCES employment_actions(id)
-  DEFERRABLE INITIALLY DEFERRED;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'employments_opened_by_action_fk') THEN
+    ALTER TABLE employments
+      ADD CONSTRAINT employments_opened_by_action_fk
+      FOREIGN KEY (opened_by_action_id) REFERENCES employment_actions(id)
+      DEFERRABLE INITIALLY DEFERRED;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'employments_voided_by_action_fk') THEN
+    ALTER TABLE employments
+      ADD CONSTRAINT employments_voided_by_action_fk
+      FOREIGN KEY (voided_by_action_id) REFERENCES employment_actions(id)
+      DEFERRABLE INITIALLY DEFERRED;
+  END IF;
+END;
+$$;
 
 -- EMP-010: Perjanjian Kerja and Surat Keputusan are separate document kinds.
 CREATE TABLE IF NOT EXISTS employment_decision_documents (
@@ -317,27 +355,63 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER employments_guard_delete
+CREATE OR REPLACE TRIGGER employments_guard_delete
   BEFORE DELETE ON employments
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_actions_guard_delete
+CREATE OR REPLACE TRIGGER employment_actions_guard_delete
   BEFORE DELETE ON employment_actions
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_terms_guard_delete
+CREATE OR REPLACE TRIGGER employment_terms_guard_delete
   BEFORE DELETE ON employment_terms
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_placements_guard_delete
+CREATE OR REPLACE TRIGGER employment_placements_guard_delete
   BEFORE DELETE ON employment_placements
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_action_documents_guard_delete
+CREATE OR REPLACE TRIGGER employment_action_documents_guard_delete
   BEFORE DELETE ON employment_action_documents
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_decision_documents_guard_delete
+CREATE OR REPLACE TRIGGER employment_decision_documents_guard_delete
   BEFORE DELETE ON employment_decision_documents
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_decision_document_corrections_guard_delete
+CREATE OR REPLACE TRIGGER employment_decision_document_corrections_guard_delete
   BEFORE DELETE ON employment_decision_document_corrections
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
-CREATE TRIGGER employment_audit_events_guard_delete
+CREATE OR REPLACE TRIGGER employment_audit_events_guard_delete
   BEFORE DELETE ON employment_audit_events
   FOR EACH ROW EXECUTE FUNCTION employment_history_guard_delete();
+
+-- TRUNCATE skips row-level DELETE triggers, so it is refused separately and
+-- without any opt-in (review of #113, item 5).
+CREATE OR REPLACE FUNCTION employment_history_guard_truncate()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'EMPLOYMENT_HISTORY_TRUNCATE_FORBIDDEN: % rows are append-only', TG_TABLE_NAME
+    USING ERRCODE = 'restrict_violation';
+END;
+$$;
+CREATE OR REPLACE TRIGGER employments_guard_truncate
+  BEFORE TRUNCATE ON employments
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_actions_guard_truncate
+  BEFORE TRUNCATE ON employment_actions
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_terms_guard_truncate
+  BEFORE TRUNCATE ON employment_terms
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_placements_guard_truncate
+  BEFORE TRUNCATE ON employment_placements
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_action_documents_guard_truncate
+  BEFORE TRUNCATE ON employment_action_documents
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_decision_documents_guard_truncate
+  BEFORE TRUNCATE ON employment_decision_documents
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_decision_document_corrections_guard_truncate
+  BEFORE TRUNCATE ON employment_decision_document_corrections
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();
+CREATE OR REPLACE TRIGGER employment_audit_events_guard_truncate
+  BEFORE TRUNCATE ON employment_audit_events
+  FOR EACH STATEMENT EXECUTE FUNCTION employment_history_guard_truncate();

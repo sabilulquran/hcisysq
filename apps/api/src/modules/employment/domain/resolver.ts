@@ -112,9 +112,10 @@ export function resolveEmployment(
 
   const current = employments.find((employment) => employmentCovers(employment, date)) ?? null;
   if (!current) {
-    const future = employments.find(
-      (employment) => employment.startedOn !== null && employment.startedOn > date && employment.endBasis !== "UNKNOWN",
-    );
+    // Earliest future employment, independent of array order (review of #113, item 6).
+    const future = employments
+      .filter((employment) => employment.startedOn !== null && employment.startedOn > date && employment.endBasis !== "UNKNOWN")
+      .sort((a, b) => (a.startedOn as string).localeCompare(b.startedOn as string))[0];
     const latest = latestEmployment(employments) as EmploymentRecord;
     const ended = future ?? latest;
     const state: DerivedEmploymentState = future ? "AKAN_MULAI" : "BERAKHIR";

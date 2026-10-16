@@ -2,6 +2,7 @@
 // Runs only against the loopback CI database; every write is rolled back.
 
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -150,6 +151,26 @@ describe.skipIf(!allowed)("0056 employment history foundation migration", () => 
     await client.query("SET LOCAL hcis.employment_baseline_purge = 'on'");
     const deleted = await client.query("DELETE FROM employment_terms WHERE id = $1", [termId]);
     expect(deleted.rowCount).toBe(1);
+  });
+
+  it("refuses TRUNCATE on history tables, even with the baseline purge opt-in", async () => {
+    await expectSqlError("TRUNCATE employment_audit_events", [], "23001");
+    await client.query("SET LOCAL hcis.employment_baseline_purge = 'on'");
+    await expectSqlError("TRUNCATE employment_audit_events", [], "23001");
+  });
+
+  it("is idempotent: re-running the migration changes nothing and does not fail", async () => {
+    const sql = await readFile(new URL("../migrations/0056_employment_history_foundation.sql", import.meta.url), "utf8");
+    const count = async () =>
+      (await client.query<{ n: number }>(
+        `SELECT (SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'employment%guard%')::int
+              + (SELECT count(*) FROM pg_constraint WHERE conname LIKE 'employment%')::int AS n`,
+      )).rows[0]!.n;
+    const before = await count();
+    await client.query("SAVEPOINT rerun_0056");
+    await client.query(sql);
+    await client.query("RELEASE SAVEPOINT rerun_0056");
+    expect(await count()).toBe(before);
   });
 
   it("keeps Perjanjian Kerja and SK fields separate and numbers them in separate series (EMP-010)", async () => {

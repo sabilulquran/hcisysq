@@ -307,7 +307,8 @@ Not in Package 1: compensation change, grade change, acting authority, cross-ent
 
 Reversal rules:
 
-- Only the **latest** non-reversed action of an employment can be reversed (stack discipline). To fix an older action, reverse newer ones first, or use an explicit correction sequence. This fails closed instead of silently rewriting later history.
+- Only the **latest recorded** non-reversed action of an employment can be reversed (stack discipline by recording time, not effective date, so a later backdated action is always undone first). To fix an older action, reverse newer ones first, or use an explicit correction sequence. This fails closed instead of silently rewriting later history.
+- A reversal is refused (`EMPLOYMENT_ACTION_NOT_REVERSIBLE`) when a field it would restore no longer holds the value the action wrote, when a row it opened is already voided, or when re-opening the employment would overlap another employment of the same employee (e.g. undoing a termination after a rehire).
 - Reversal restores the previous term/placement closure exactly (re-opens what the action closed, voids what it opened) in one transaction; voided rows keep `voided_by_action_id` and remain readable.
 - `BASELINE` can be reversed only while it is the only action and only by the backfill tooling (re-run baseline), not from the UI.
 
@@ -449,6 +450,7 @@ Purpose: a former employee may briefly need access (e.g. to download own payslip
 | Stage | Rollback |
 |---|---|
 | Schema deployed, mode `OFF` | Additive tables only; no consumer reads them. Leave in place, or run the documented down script (drop new tables/permissions) before any baseline is loaded. Restore not required. |
+| Baseline loaded but no real action, schema must go | Mode OFF → verified backup + `pg_dump --data-only -t 'employment*'` export → purge baseline rows in one transaction with `SET LOCAL hcis.employment_baseline_purge = 'on'` → down script. Full steps in the `0056_employment_history_foundation.sql` header. TRUNCATE is always refused. |
 | Baseline loaded, mode `SHADOW` | Set mode `OFF`. Optionally purge baseline rows with the backfill command's `--purge-baseline` (only rows whose sole action is `BASELINE`). `employees` columns were never written by the new code, so nothing to restore. |
 | Outside-HCIS markers applied (§8.7) | Unmark with reason (audited); no data was deleted, so nothing to restore. |
 | Mode `AUTHORITATIVE` with real actions | Set mode `OFF`: automatic deactivation stops (accounts already deactivated stay inactive; HC reactivates manually if needed); import becomes the writer again and projection stops; `employees` keeps the last projected values. History tables are **kept** (never dropped once real actions exist) so no administrative fact is lost; re-enabling `AUTHORITATIVE` later requires re-running the consistency report because imports may have changed columns meanwhile. A verified database backup is taken before switching to `AUTHORITATIVE` (OPS-MI8 backup procedure). |

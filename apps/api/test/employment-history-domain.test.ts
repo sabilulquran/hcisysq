@@ -437,6 +437,72 @@ describe("Reversal restores the previous state exactly (EMP-006-E)", () => {
   });
 });
 
+describe("Reversal safety (review of #113)", () => {
+  const promote = (history: EmploymentHistory, effectiveOn: string, title: string) =>
+    record(history, {
+      actionType: "PROMOTION",
+      effectiveOn,
+      placement: { unitRef: UNIT_A, positionRef: title === "Wakasek Kurikulum" ? WAKASEK : GURU, jobTitleLabel: title },
+      documents: [sk("SK_PROMOSI")],
+    });
+
+  it("refuses to reverse a SET whose field was changed afterwards, instead of overwriting it (item 1)", () => {
+    const promoted = promote(record(emptyHistory(), hireContract()), "2027-10-01", "Wakasek Kurikulum");
+    const promotion = promoted.actions.at(-1)!;
+    // Simulate a later change of the same field (e.g. a backdated correction recorded afterwards).
+    const tampered: EmploymentHistory = {
+      ...promoted,
+      placements: promoted.placements.map((placement) =>
+        placement.jobTitleLabel === "Guru Kelas" ? { ...placement, effectiveTo: "2027-09-15" } : placement,
+      ),
+    };
+    expectFailure(
+      () => planEmploymentAction(tampered, { actionType: "REVERSAL", targetActionId: promotion.id, reasonCode: "X" }, policy, context({ canCorrect: true })),
+      "EMPLOYMENT_ACTION_NOT_REVERSIBLE",
+    );
+  });
+
+  it("orders the reversal stack by recording time, not effective date (item 1)", () => {
+    const hired = record(emptyHistory(), hireContract());
+    const promoted = promote(hired, "2027-10-01", "Wakasek Kurikulum");
+    // An action recorded later but effective earlier (backdated) is the one on top of the stack.
+    const promotion = promoted.actions.at(-1)!;
+    const backdated: EmploymentHistory = {
+      ...promoted,
+      actions: [
+        ...promoted.actions,
+        { id: "backdated", employmentId: promotion.employmentId, actionType: "PLACEMENT", effectiveOn: "2027-08-01", state: "RECORDED", reversesActionId: null, recordedAt: "2099-01-01T00:00:00Z", rowChanges: [] },
+      ],
+    };
+    expectFailure(
+      () => planEmploymentAction(backdated, { actionType: "REVERSAL", targetActionId: promotion.id, reasonCode: "X" }, policy, context({ canCorrect: true })),
+      "EMPLOYMENT_ACTION_NOT_REVERSIBLE",
+    );
+  });
+
+  it("refuses to reverse a termination once the employee was rehired (item 2)", () => {
+    const hired = record(emptyHistory(), hireContract("2027-07-01", "2028-06-30"));
+    const ended = record(hired, { actionType: "TERMINATION", lastDayOn: "2027-12-31", reasonCode: "RESIGN" });
+    const termination = ended.actions.at(-1)!;
+    const rehired = record(ended, hireContract("2028-03-01", "2029-02-28"));
+    expect(rehired.employments.filter((employment) => !employment.voided)).toHaveLength(2);
+    expectFailure(
+      () => planEmploymentAction(rehired, { actionType: "REVERSAL", targetActionId: termination.id, reasonCode: "BATAL_RESIGN" }, policy, context({ canCorrect: true })),
+      "EMPLOYMENT_ACTION_NOT_REVERSIBLE",
+    );
+  });
+
+  it("derives AKAN_MULAI from the earliest future employment regardless of array order (item 6)", () => {
+    const base = record(emptyHistory(), hireContract("2028-01-01", "2028-12-31"));
+    const first = base.employments[0]!;
+    const later = { ...first, id: "later", startedOn: "2029-06-01", serviceStartOn: "2029-06-01" };
+    const shuffled: EmploymentHistory = { ...base, employments: [later, first] };
+    const resolved = resolveEmployment(shuffled, "2027-08-01", policy);
+    expect(resolved.state).toBe("AKAN_MULAI");
+    expect(resolved.employment?.startedOn).toBe("2028-01-01");
+  });
+});
+
 describe("Baseline-shaped history", () => {
   it("treats an unknown start as active and an unknown end as ended, never active", () => {
     const history: EmploymentHistory = {

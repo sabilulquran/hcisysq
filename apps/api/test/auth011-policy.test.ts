@@ -27,6 +27,9 @@ describe("AUTH-011 permission and delegation boundaries", () => {
     expect(canDelegateRole({ roleKey: "human_capital", permissions: [...HC_OPERATIONAL_PERMISSIONS] }, false)).toBe(true);
     expect(canDelegateRole({ roleKey: "human_capital_admin", permissions: [...HC_ADMIN_PERMISSIONS] }, false)).toBe(false);
     expect(canDelegateRole({ roleKey: "human_capital_admin", permissions: [...HC_ADMIN_PERMISSIONS] }, true)).toBe(true);
+    // EMP-005 S2: the bundle with employment.* stays assignable, and a senior-HC grant may add employment.correct (D-16).
+    expect(canDelegateRole({ roleKey: "human_capital_admin", permissions: [...HC_ADMIN_PERMISSIONS, "employment.correct"] }, true)).toBe(true);
+    expect(canDelegateRole({ roleKey: "human_capital", permissions: [...HC_OPERATIONAL_PERMISSIONS, "employment.read"] }, false)).toBe(false);
     for (const key of ["leave.approve", "leave.hc.approve", "attendance.devices.destructive", "access.roles.delegate", "sq.platform.admin"]) {
       expect(canDelegateRole({ roleKey: "human_capital", permissions: [...HC_OPERATIONAL_PERMISSIONS, key] }, false)).toBe(false);
     }

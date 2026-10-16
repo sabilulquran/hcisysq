@@ -52,6 +52,37 @@ export interface EmployeeImportCandidate {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  /**
+   * EMP-005 baseline source: raw classification values exactly as written in
+   * the workbook (codes only, no personal data). STATUS AKTIF is otherwise
+   * collapsed to active/inactive/resigned, which loses "Aktif BUMY" and
+   * "Aktif PKWT" (spec §4.2.1). Absent on previews created before this field.
+   */
+  sourceClassification?: EmployeeSourceClassification;
+}
+
+export interface EmployeeSourceClassification {
+  statusActive: string | null;
+  employmentStatus: string | null;
+  employmentType: string | null;
+  endedOn: string | null;
+}
+
+export const EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS = {
+  statusActive: EMPLOYEE_SOURCE_HEADERS.status,
+  employmentStatus: EMPLOYEE_SOURCE_HEADERS.employmentStatus,
+  employmentType: EMPLOYEE_SOURCE_HEADERS.employmentType,
+  endedOn: EMPLOYEE_SOURCE_HEADERS.endedOn,
+} as const;
+
+function rawSourceText(value: unknown): string | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${value.getFullYear()}-${month}-${day}`;
+  }
+  const normalized = text(value);
+  return normalized ? normalized.slice(0, 120) : null;
 }
 
 export interface NormalizedEmployeeImportRow {
@@ -404,6 +435,12 @@ export function normalizeEmployeeImportRow(
       education: nullableText(source[EMPLOYEE_SOURCE_HEADERS.education]),
       startedOn: startedOn.value,
       endedOn: endedOn.value,
+      sourceClassification: {
+        statusActive: rawSourceText(source[EMPLOYEE_SOURCE_HEADERS.status]),
+        employmentStatus: rawSourceText(source[EMPLOYEE_SOURCE_HEADERS.employmentStatus]),
+        employmentType: rawSourceText(source[EMPLOYEE_SOURCE_HEADERS.employmentType]),
+        endedOn: rawSourceText(source[EMPLOYEE_SOURCE_HEADERS.endedOn]),
+      },
     },
     issues,
   };

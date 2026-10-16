@@ -12,7 +12,7 @@ Migration numbers below are placeholders (`00NN`); use the next free number at i
 ## Dependency overview
 
 ```text
-S1 schema + resolver ──> S2 baseline + read API + permissions ──> S3 admin read UI (SHADOW UAT)
+S1 schema + resolver ──> S2 baseline + read API + permissions (re-import master once first) ──> S3 admin read UI (SHADOW UAT)
                                    │
                                    ├──> S2B "di luar pengelolaan HCIS" marker (EMP-001 change)
                                    └──> S4 PK & SK register (EMP-010)
@@ -47,6 +47,8 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 - **Rollback:** revert PR; drop empty tables.
 
 ## S2 — Baseline backfill, read API, permissions, rollout setting
+
+**Status:** IMPLEMENTED on branch `feat/emp-s2-baseline-read-api` (2026-10-16), pending review/merge (stacked on S1). Delivered: migration `0058_employment_permissions.sql`; EMP-004 import writes the four raw classification values to `employee_import_source_snapshots`; pure baseline mapping/consistency (`domain/baseline.ts`); store, baseline service and CLI `npm --workspace @hcis/api run employment:baseline` (dry-run default, `--apply`, `--cutoff`, `--employee`, `--rerun`); routes `GET/PUT /admin/employment/rollout` (AUTHORITATIVE refused until S5/S5A), `GET /admin/employees/{id}/employment`, `.../employment/timeline`, `GET /admin/employment/consistency`; `docs/api/employment.openapi.yaml`; AUTH-011 manifest entries (admin routes; Super Admin is denied because employment.* is not in legacy compatibility). ORG-004 placement-vs-incumbency rows in the consistency report move to S6 with the career actions. Not deployed.
 
 **Spec:** EMP-005-E, EMP-005-G (read side), EMP-PKG1-X1, X3; §8.1–8.3.  
 **Prerequisite decisions:** D-02 (accepted mapping; Pegawai Lepas = kontrak lepas with end date), D-14, D-16 (accepted).

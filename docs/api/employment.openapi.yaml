@@ -1,0 +1,322 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
+  version: 0.2.0
+  description: |
+    Package 1 step S2 (docs/domain/employment-administration-package1.md).
+    Read API, SHADOW consistency report, and rollout mode only; actions arrive in S5/S6.
+    employment.* is HC-only and never granted through legacy Super Admin compatibility.
+    Read endpoints return 409 EMPLOYMENT_HISTORY_DISABLED while the rollout mode is OFF.
+    All responses carry Cache-Control: no-store.
+paths:
+  /admin/employment/rollout:
+    get:
+      tags: [Employment]
+      operationId: getEmploymentRollout
+      summary: Current employment-history rollout mode (governance)
+      description: Requires access.governance.manage. Absence of a setting means OFF.
+      responses:
+        '200':
+          description: Current mode
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode, changedAt, availableModes]
+                properties:
+                  mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+                  changedAt: { type: [string, 'null'], format: date-time }
+                  availableModes:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Employment]
+      operationId: setEmploymentRollout
+      summary: Change the rollout mode with an audited reason (governance)
+      description: |
+        Requires access.governance.manage. AUTHORITATIVE is refused with
+        EMPLOYMENT_MODE_NOT_AVAILABLE until actions, projection, and automatic
+        account deactivation (S5/S5A) are released. Audited as employment.mode.changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode, reason]
+              properties:
+                mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: Mode changed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to]
+                properties:
+                  from: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+                  to: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/employees/{employeeId}/employment:
+    get:
+      tags: [Employment]
+      operationId: getEmployeeEmployment
+      summary: Derived current employment plus full employment history of one employee
+      description: Requires employment.read. Current state is derived from effective-dated records for `date`.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+        - name: date
+          in: query
+          required: false
+          description: Asia/Jakarta business date; defaults to today.
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Employment summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmploymentSummary' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/employees/{employeeId}/employment/timeline:
+    get:
+      tags: [Employment]
+      operationId: getEmployeeEmploymentTimeline
+      summary: Employment actions of one employee, newest first, without reason notes
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      responses:
+        '200':
+          description: Timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode, items]
+                properties:
+                  mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmploymentAction' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/employment/consistency:
+    get:
+      tags: [Employment]
+      operationId: getEmploymentConsistencyReport
+      summary: SHADOW review of baseline issues and master-vs-history differences
+      description: Requires employment.read. Computed on read; nothing is written.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: code
+          in: query
+          required: false
+          description: Only rows with this issue code.
+          schema: { type: string, maxLength: 64 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Grouped issue counts and paginated rows
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmploymentConsistencyReport' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+components:
+  parameters:
+    EmployeeId:
+      name: employeeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Error:
+      description: |
+        Error with code and Indonesian message. Codes: UNAUTHENTICATED, FORBIDDEN,
+        EMPLOYMENT_FORBIDDEN, INVALID_EMPLOYMENT_REQUEST, INVALID_EMPLOYMENT_ROLLOUT,
+        EMPLOYEE_NOT_FOUND, EMPLOYMENT_HISTORY_DISABLED, EMPLOYMENT_MODE_NOT_AVAILABLE.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+  schemas:
+    EmploymentRolloutMode:
+      type: string
+      enum: [OFF, SHADOW, AUTHORITATIVE]
+    EmploymentCategory:
+      type: string
+      enum: [TETAP, KONTRAK, KONTRAK_HONORER, MAGANG, PERCOBAAN, LEPAS, BELUM_DIKLASIFIKASIKAN]
+    Employment:
+      type: object
+      required: [id, employeeId, startedOn, startBasis, endedOn, endBasis, endReason, version]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        legalEntityKey: { type: [string, 'null'], format: uuid }
+        staffType: { type: [string, 'null'], enum: [PENDIDIK, KEPENDIDIKAN, null] }
+        startedOn: { type: [string, 'null'], format: date }
+        startBasis: { type: string, enum: [RECORDED, UNKNOWN] }
+        serviceStartOn: { type: [string, 'null'], format: date }
+        endedOn: { type: [string, 'null'], format: date }
+        endBasis: { type: [string, 'null'], enum: [RECORDED, UNKNOWN, null] }
+        endPrecision: { type: [string, 'null'], enum: [DAY, MONTH, null] }
+        endReason: { type: [string, 'null'] }
+        version: { type: integer, description: Optimistic-concurrency token. }
+    EmploymentTerm:
+      type: object
+      required: [id, employmentId, sequence, category, effectiveFrom, effectiveTo]
+      properties:
+        id: { type: string, format: uuid }
+        employmentId: { type: string, format: uuid }
+        sequence: { type: integer, minimum: 1 }
+        category: { $ref: '#/components/schemas/EmploymentCategory' }
+        effectiveFrom: { type: [string, 'null'], format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        contractReference: { type: [string, 'null'] }
+    Placement:
+      type: object
+      required: [id, employmentId, kind, unitRef, jobTitleLabel, effectiveFrom, effectiveTo, effectiveFromBasis]
+      properties:
+        id: { type: string, format: uuid }
+        employmentId: { type: string, format: uuid }
+        kind: { type: string, enum: [PRIMARY, ADDITIONAL] }
+        unitRef:
+          type: object
+          description: ORG-004 node stable key or legacy organizational unit.
+          properties:
+            kind: { type: string, enum: [ORG_NODE, LEGACY_UNIT] }
+            key: { type: string, format: uuid }
+            id: { type: string, format: uuid }
+        positionRef:
+          type: [object, 'null']
+          properties:
+            kind: { type: string, enum: [ORG_POSITION, LEGACY_POSITION] }
+            key: { type: string, format: uuid }
+            id: { type: string, format: uuid }
+        unitName: { type: [string, 'null'] }
+        positionName: { type: [string, 'null'] }
+        jobTitleLabel: { type: string }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        effectiveFromBasis:
+          type: string
+          enum: [RECORDED, BASELINE_ASSUMED]
+          description: BASELINE_ASSUMED = "sejak data awal"; the real start is unknown.
+    EmploymentSummary:
+      type: object
+      required: [mode, date, state, flags, current, employments]
+      properties:
+        mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+        date: { type: string, format: date }
+        state: { type: string, enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA] }
+        flags:
+          type: array
+          items:
+            type: string
+            enum: [KONTRAK_SEGERA_BERAKHIR, KONTRAK_LEWAT_TANPA_TINDAK_LANJUT, TANPA_PENEMPATAN, TANGGAL_MULAI_TIDAK_DIKETAHUI, TANGGAL_AKHIR_TIDAK_DIKETAHUI]
+        current:
+          type: object
+          properties:
+            employment: { oneOf: [{ $ref: '#/components/schemas/Employment' }, { type: 'null' }] }
+            term: { oneOf: [{ $ref: '#/components/schemas/EmploymentTerm' }, { type: 'null' }] }
+            primaryPlacement: { oneOf: [{ $ref: '#/components/schemas/Placement' }, { type: 'null' }] }
+            additionalPlacements:
+              type: array
+              items: { $ref: '#/components/schemas/Placement' }
+        employments:
+          type: array
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/Employment' }
+              - type: object
+                properties:
+                  terms: { type: array, items: { $ref: '#/components/schemas/EmploymentTerm' } }
+                  placements: { type: array, items: { $ref: '#/components/schemas/Placement' } }
+    EmploymentAction:
+      type: object
+      required: [id, actionType, effectiveOn, state, recordedAt, documents]
+      properties:
+        id: { type: string, format: uuid }
+        actionType:
+          type: string
+          enum: [BASELINE, HIRE, CONTRACT_EXTENSION, CATEGORY_CHANGE, PLACEMENT, TRANSFER, PROMOTION, DEMOTION, TERMINATION, REVERSAL]
+        effectiveOn: { type: [string, 'null'], format: date }
+        state: { type: string, enum: [RECORDED, REVERSED] }
+        reversesActionId: { type: [string, 'null'], format: uuid }
+        reversedByActionId: { type: [string, 'null'], format: uuid }
+        reasonCode: { type: [string, 'null'] }
+        previousSnapshot: { type: object, description: Display-only "dari" summary. }
+        newSnapshot: { type: object, description: Display-only "menjadi" summary. }
+        recordedAt: { type: string, format: date-time }
+        documents:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              kind: { type: string, enum: [PERJANJIAN_KERJA, SURAT_KEPUTUSAN] }
+              number: { type: string }
+              type: { type: [string, 'null'] }
+    EmploymentConsistencyReport:
+      type: object
+      required: [mode, date, employeeCount, groups, total, page, pageSize, rows]
+      properties:
+        mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
+        date: { type: string, format: date }
+        employeeCount: { type: integer }
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, description: 'Baseline issue code (BASELINE_*), BASELINE_NOT_LOADED, HISTORY_DIFFERS_FROM_MASTER, ACTIVE_WITHOUT_PLACEMENT, CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP' }
+              count: { type: integer }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              fullName: { type: [string, 'null'] }
+              codes: { type: array, items: { type: string } }
+              differingFields:
+                type: array
+                items: { type: string, enum: [status, startedOn, organizationalUnitId, positionId, employmentStatus] }

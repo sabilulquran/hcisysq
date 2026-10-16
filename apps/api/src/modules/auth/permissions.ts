@@ -14,7 +14,12 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
   "attendance.devices.operate", "attendance.devices.export",
+  "employment.read", "employment.manage",
 ] as const;
+
+/** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
+export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;
+export type EmploymentPermission = (typeof EMPLOYMENT_PERMISSIONS)[number];
 
 // Only capabilities of the existing administrative APIs are eligible for legacy access.
 // access.roles.assign stays here: legacy Super Admin compatibility is the only remaining role grantor.

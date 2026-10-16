@@ -24,6 +24,7 @@ tags:
   - name: Staff Identity Verification
   - name: Attendance
   - name: Payslips
+  - name: Employment
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -1484,6 +1485,14 @@ paths:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1{notificationId}~1read'
   /notifications/read-all:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1read-all'
+  /admin/employment/rollout:
+    $ref: './employment.openapi.yaml#/paths/~1admin~1employment~1rollout'
+  /admin/employees/{employeeId}/employment:
+    $ref: './employment.openapi.yaml#/paths/~1admin~1employees~1{employeeId}~1employment'
+  /admin/employees/{employeeId}/employment/timeline:
+    $ref: './employment.openapi.yaml#/paths/~1admin~1employees~1{employeeId}~1employment~1timeline'
+  /admin/employment/consistency:
+    $ref: './employment.openapi.yaml#/paths/~1admin~1employment~1consistency'
 components:
   securitySchemes:
     StaffIdentityBearer:

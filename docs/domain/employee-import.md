@@ -83,6 +83,8 @@ Admin selects CSV (preferred) or XLSX
 
 Raw upload bytes are not stored permanently.
 
+**EMP-005 source classification (2026-10-16, Package 1 S2).** Commit additionally writes one row per committed employee to `employee_import_source_snapshots` with exactly four raw classification cell values: `STATUS AKTIF`, `STATUS KEPEGAWAIAN`, `JENIS KEPEGAWAIAN`, and `TAHUN KELUAR (TTTT-BB)` (text, max 120 characters each). These are codes, not personal data. They are kept because the normalized `status` collapses `Aktif BUMY` and `Aktif PKWT` into `active`, and the employment baseline needs to tell them apart (spec `employment-administration-package1.md` §4.2.1, §8.2). Previews created before this change commit without a snapshot. No other source column is retained.
+
 ## Preview states
 
 - `insert`: NIP does not exist yet;

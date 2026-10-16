@@ -1,13 +1,13 @@
 # Employment Administration Package 1 — Status, Contract, Placement, Career Movement, and SK
 
-**Status:** DRAFT — all owner decisions D-01..D-19 recorded 2026-10-16 (§15); remaining sub-items listed in §16; no runtime implementation yet  
+**Status:** ACCEPTED PRODUCT DIRECTION — owner accepted all decisions D-01..D-19 and their sub-items on 2026-10-16 (§15); runtime implementation not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Prepared:** 2026-10-16  
 **Parent direction:** `docs/domain/employment-administration.md` (ACCEPTED PRODUCT DIRECTION, 2026-09-22)  
 **Related:** EMP-001, EMP-004, ORG-001, ORG-004, ORG-006, ORG-007, AUTH-010, AUTH-011, LEAVE-004 (annual-leave eligibility), PAY-003  
 **Implementation plan:** `docs/domain/employment-administration-package1-implementation-plan.md`
 
-Dokumen ini mengubah arah EMP-005/EMP-006 menjadi workflow yang dapat di-review dan diimplementasikan secara bertahap. Selama status masih DRAFT, tidak ada kode runtime, migration, atau perubahan production yang boleh dibuat atas dasar dokumen ini. Semua contoh nama, nomor, dan tanggal adalah data sintetis.
+Dokumen ini mengubah arah EMP-005/EMP-006 menjadi workflow yang dapat di-review dan diimplementasikan secara bertahap. Status ACCEPTED berarti arah produk dan keputusan sudah disetujui owner; implementasi tetap mengikuti langkah S1–S8 di implementation plan, masing-masing dengan PR, test, dan review sendiri. Perubahan production tetap hanya melalui OPS-MI8-REL-001 dengan persetujuan owner. Semua contoh nama, nomor, dan tanggal adalah data sintetis.
 
 ## 1. Why this package first
 
@@ -34,8 +34,8 @@ Package 1 sengaja kecil tetapi bernilai tinggi: **status/hubungan kerja + kontra
 | Penugasan sementara/Plt dengan authority | Authority acting tetap milik ORG-004 `ACTING` incumbency. | Tetap ORG-004 |
 | Approval workflow in-app (APR-001) untuk tindakan kepegawaian | Keputusan diambil di luar sistem dan dibuktikan oleh Perjanjian Kerja/SK; D-07 diterima (opsi A). | Setelah pilot |
 | Perpindahan lintas legal entity | ORG-007 masih discovery; ditolak fail-closed. | ORG-007 |
-| Staf BUMY (Badan Usaha Milik Yayasan) | Owner 2026-10-16: staf BUMY **tidak** dikelola di HCIS. Package 1 tidak membuat employment untuk mereka (§8.2). Pembersihan baris BUMY yang sudah ada di `employees` adalah keputusan EMP-001 terpisah (TBD). | — |
-| Pengurus Yayasan | Owner 2026-10-16: **bukan** status kepegawaian. Pengurus Yayasan tetap memakai principal `FOUNDATION_BOARD` yang sudah ada (akses Panel Organ Yayasan read-only, lihat `account-activation.md` dan MVP checkpoint). Package 1 tidak membuat employment untuk mereka; akun board tidak diubah. Nasib baris master `employees` mereka adalah keputusan EMP-001 terpisah (TBD). | — |
+| Staf BUMY (Badan Usaha Milik Yayasan) | Owner 2026-10-16: staf BUMY **tidak** dikelola di HCIS. Package 1 tidak membuat employment untuk mereka (§8.2). Baris BUMY yang sudah ada di `employees` **tidak dihapus**; ditandai "di luar pengelolaan HCIS" (§8.7). | — |
+| Pengurus Yayasan | Owner 2026-10-16: **bukan** status kepegawaian. Pengurus Yayasan tetap memakai principal `FOUNDATION_BOARD` yang sudah ada (akses Panel Organ Yayasan read-only, lihat `account-activation.md` dan MVP checkpoint). Package 1 tidak membuat employment untuk mereka; akun board tidak diubah. Baris master `employees` mereka **tidak dihapus**; ditandai "di luar pengelolaan HCIS" (§8.7). | — |
 
 ## 2. Specification IDs
 
@@ -141,9 +141,9 @@ Owner's intended list (2026-10-16):
 | `KONTRAK_HONORER` | Pegawai Kontrak Honorer | Yes (honorer staff are on a contract) | Perjanjian Kerja |
 | `MAGANG` | Magang | Yes | Perjanjian Kerja (TBD: or a separate internship agreement) |
 | `PERCOBAAN` | Masa Percobaan | Yes | Perjanjian Kerja (TBD) |
-| `LEPAS` | Pegawai Lepas | TBD — proposal: yes, treated as "kontrak lepas" with an end date | Perjanjian Kerja (proposal) |
+| `LEPAS` | Pegawai Lepas (kontrak lepas) | Yes | Perjanjian Kerja |
 
-`LEPAS` is an owner-confirmed category of its own (2026-10-16); only its end-date rule is TBD. Until decided, the policy treats it as fixed-term (end date required) so that an unconfirmed open-ended term is never created by default.
+`LEPAS` is an owner-confirmed category of its own (2026-10-16), treated as "kontrak lepas": a fixed-term contract with a mandatory end date.
 
 Values currently found in the active sheet `Master Data SDM YSQ` (column values only, no personal data read) and their baseline mapping:
 
@@ -153,12 +153,12 @@ Values currently found in the active sheet `Master Data SDM YSQ` (column values 
 | STATUS KEPEGAWAIAN | Pegawai Kontrak | `KONTRAK` |
 | STATUS KEPEGAWAIAN | Calon Pegawai Tetap | `PERCOBAAN` (owner confirmed: same meaning) |
 | STATUS KEPEGAWAIAN | Tenaga Pengabdian | `MAGANG` (owner confirmed) |
-| STATUS KEPEGAWAIAN | Pegawai Lepas | `LEPAS` (own category; end-date rule TBD) |
-| STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`. Board access stays with `FOUNDATION_BOARD` accounts. |
+| STATUS KEPEGAWAIAN | Pegawai Lepas | `LEPAS` (own category, kontrak lepas with end date; baseline raises `BASELINE_CONTRACT_END_UNKNOWN` because the master has no contract end) |
+| STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`; record marked "di luar pengelolaan HCIS" (§8.7). Board access stays with `FOUNDATION_BOARD` accounts. |
 | STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. SHADOW review issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
 | STATUS AKTIF | Aktif | employment effective |
 | STATUS AKTIF | Aktif PKWT | employment effective; category `KONTRAK` (owner confirmed). If STATUS KEPEGAWAIAN is blank or Pegawai Kontrak → `KONTRAK`. If STATUS KEPEGAWAIAN states another category (e.g. Pegawai Tetap) → SHADOW review issue `BASELINE_CATEGORY_CONFLICT_PKWT`, category `BELUM_DIKLASIFIKASIKAN` (never guessed). |
-| STATUS AKTIF | Aktif BUMY | **Excluded** — no employment created; issue `BASELINE_EXCLUDED_BUMY` |
+| STATUS AKTIF | Aktif BUMY | **Excluded** — no employment created; issue `BASELINE_EXCLUDED_BUMY`; record marked "di luar pengelolaan HCIS" (§8.7) |
 | STATUS AKTIF | Tidak Aktif | employment ended (see §8.2) |
 | JENIS KEPEGAWAIAN | Tenaga Pendidik / Tenaga Kependidikan | `staff_type` `PENDIDIK` / `KEPENDIDIKAN` |
 | JENIS KEPEGAWAIAN | "#", "-", blank (stray) | `staff_type` null; SHADOW review issue `BASELINE_STAFF_TYPE_MISSING` |
@@ -226,7 +226,7 @@ They are separate document kinds with their own numbering and fields, kept in on
 | Attribute | Notes |
 |---|---|
 | `document_kind` | `PERJANJIAN_KERJA` or `SURAT_KEPUTUSAN`. |
-| `document_number` | Required. PK numbers and SK numbers are separate series. DRAFT rule: unique per kind + number + signing year. |
+| `document_number` | Required. PK numbers and SK numbers are separate series. Uniqueness: per kind + number + signing year (format check with HC sample numbers in S4). |
 | `signed_on` | Required. |
 | `external_reference` | Optional pointer to where the signed original is kept. No file upload in Package 1. |
 | `notes` | Optional. |
@@ -437,9 +437,9 @@ No other action (hire, extension, category change, placement, transfer, promotio
 
 Purpose: a former employee may briefly need access (e.g. to download own payslips or finish a handover).
 
-- An authorized admin grants a **temporary reactivation** with a mandatory reason and a mandatory expiry (`expires_at`). Proposal: default 7 days, maximum 30 days (TBD by owner). No open-ended reactivation exists for an ended employment.
+- Only an **HC Admin** (holder of `access.accounts.temporary_reactivate`, granted to `human_capital_admin`) grants a **temporary reactivation**, with a mandatory reason and a mandatory expiry (`expires_at`). Maximum **30 days** (owner, 2026-10-16); the form defaults to 7 days. No open-ended reactivation exists for an ended employment.
 - The grant is a separate record (`account_temporary_reactivations`: account, granted by, reason, starts at, expires at, revoked at/by), never a plain status flip without expiry.
-- While valid, the account can sign in. **What it may access** is an explicit allowlist of own read-only self-service (proposal: own payslips, own leave history, own employment history). Every other permission check keeps requiring an active employee, so no HC/admin/approver capability returns. TBD: owner confirms the allowlist.
+- While valid, the account can sign in. **What it may access** is an explicit allowlist of own read-only self-service pages (owner, 2026-10-16): **own payslips, own attendance history, own leave history**. Nothing else — no submissions, no requests, no HC/admin/approver capability, not even own employment history. Every other permission check keeps requiring an active employee.
 - On expiry, the account returns to `inactive` automatically and its sessions are revoked; login/session checks also enforce `expires_at` directly, so a late job cannot extend access.
 - The admin can revoke early. Granting to one's own account is forbidden. Extending means a new grant with a new reason (audited), within the maximum.
 - Audit: `account.temporary_reactivation.granted`, `.revoked`, `.expired` (ids, dates, reason length — not the reason text).
@@ -450,7 +450,21 @@ Purpose: a former employee may briefly need access (e.g. to download own payslip
 |---|---|
 | Schema deployed, mode `OFF` | Additive tables only; no consumer reads them. Leave in place, or run the documented down script (drop new tables/permissions) before any baseline is loaded. Restore not required. |
 | Baseline loaded, mode `SHADOW` | Set mode `OFF`. Optionally purge baseline rows with the backfill command's `--purge-baseline` (only rows whose sole action is `BASELINE`). `employees` columns were never written by the new code, so nothing to restore. |
+| Outside-HCIS markers applied (§8.7) | Unmark with reason (audited); no data was deleted, so nothing to restore. |
 | Mode `AUTHORITATIVE` with real actions | Set mode `OFF`: automatic deactivation stops (accounts already deactivated stay inactive; HC reactivates manually if needed); import becomes the writer again and projection stops; `employees` keeps the last projected values. History tables are **kept** (never dropped once real actions exist) so no administrative fact is lost; re-enabling `AUTHORITATIVE` later requires re-running the consistency report because imports may have changed columns meanwhile. A verified database backup is taken before switching to `AUTHORITATIVE` (OPS-MI8 backup procedure). |
+
+### 8.7 Records outside HCIS management ("di luar pengelolaan HCIS")
+
+Owner, 2026-10-16: BUMY staff and Pengurus Yayasan records already in `employees` are **not deleted**. They are marked as outside HCIS management.
+
+- **Marker:** a dedicated management-scope marker on the employee record (`management_scope = MANAGED | OUTSIDE_HCIS`, with reason code `BUMY` or `PENGURUS_YAYASAN`, marked at/by, audited). It is separate from EMP-001 `removed_at` (population removal) and from `status` (employment status). This is an EMP-001 change delivered inside Package 1 (plan step S2B).
+- **How records get marked:** the baseline dry-run lists candidates (from the source snapshot values `Aktif BUMY` and `Pengurus Yayasan`); HC confirms them in the SHADOW review; applying marks them. Marking is never inferred silently by an import commit — the import preview flags new candidates for HC to confirm.
+- **Read-only:** contact edits, manager assignment, employment actions, and import updates are refused for marked records (`EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`); the import preview shows them as "Di luar pengelolaan HCIS — dilewati".
+- **Hidden from active lists:** excluded from the default admin employee list, active-employee counts, Board aggregates, workflow eligibility (leave, attendance scheduling, approval routing), and ORG-006 directory publishing. The admin list has a filter "Di luar pengelolaan HCIS" to find them.
+- **History preserved:** existing leave, attendance, payslip, import-snapshot, and audit history stays readable to authorized readers; nothing is deleted or rewritten.
+- **Accounts:** `FOUNDATION_BOARD` accounts of Pengurus Yayasan are not linked to employee records and are unaffected. Any `EMPLOYEE` account still linked to a marked record is listed in the consistency report for HC/access review; this package does not change it automatically.
+- **Reversible:** HC Admin can unmark with a reason (audited), e.g. if a record was marked by mistake.
+- **Audit:** `employee.management_scope.changed` (employee id, from, to, reason code).
 
 ## 9. Permissions and visibility
 
@@ -461,7 +475,7 @@ New permission keys (additive migration, assigned explicitly — never inferred 
 | `employment.read` | Read employment, terms, placements, actions, SK metadata, consistency report for employees within the actor's existing employee-admin scope. | `human_capital_admin` |
 | `employment.manage` | Preview/record actions types `HIRE` … `TERMINATION`; create/edit unlinked SK records. | `human_capital_admin` |
 | `employment.correct` | `REVERSAL`, backdating beyond the window, PK/SK correction after link, baseline re-run per employee. | D-16 (accepted): senior HC officer only, granted as a separate explicit assignment — not part of the default `human_capital_admin` bundle. |
-| `access.accounts.temporary_reactivate` | Grant/revoke a time-boxed reactivation of an ended employee's HCIS account (§8.5.2). | Proposal: `human_capital_admin` and Super Admin access administration; TBD owner confirmation. Requires an active account different from the target. |
+| `access.accounts.temporary_reactivate` | Grant/revoke a time-boxed reactivation of an ended employee's HCIS account (§8.5.2). | `human_capital_admin` only (owner, 2026-10-16). Not granted to Super Admin. Requires an active account different from the target. |
 
 - Scope follows AUTH-011 role-assignment scope already used for `employees.manage`/`employees.read.all`; an organization-scoped HC admin acts on all employees, a unit-scoped holder only on employees whose **current primary placement unit** is in scope (TBD: verify exact AUTH-011 scope semantics during implementation step S2).
 - Self-approval guard: an actor cannot record an action on their **own** employee record (`EMPLOYMENT_SELF_ACTION_FORBIDDEN`).
@@ -487,6 +501,7 @@ Stored in a new `employment_audit_events` table written in the same transaction 
 | `employment.import.fields_ignored` | Import commit in AUTHORITATIVE | import job id, count of employees with ignored fields |
 | `employment.account.deactivated` | Automatic deactivation (D-15) | employee id, account id(s), employment action id, effective date, sessions revoked count |
 | `account.temporary_reactivation.granted` / `.revoked` / `.expired` | Time-boxed reactivation (D-15) | account id, grant id, actor, starts/expires at, reason length |
+| `employee.management_scope.changed` | Mark/unmark outside HCIS management (§8.7) | employee id, from, to, reason code |
 
 ## 11. Approval needs
 
@@ -521,6 +536,7 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
 | `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
+| `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." |
 | `REACTIVATION_EXPIRY_REQUIRED` | 400 | Temporary reactivation without expiry or beyond maximum. | "Tentukan tanggal berakhir akses (maksimal 30 hari)." |
 | `REACTIVATION_SELF_FORBIDDEN` | 403 | Admin targets own account. | "Anda tidak dapat mengaktifkan kembali akun Anda sendiri." |
 | `REACTIVATION_NOT_APPLICABLE` | 409 | Employment still active or account suspended. | "Akun ini tidak memerlukan aktivasi sementara." |
@@ -577,7 +593,11 @@ Read-only: status, status kepegawaian, masa kontrak, unit/jabatan saat ini, riwa
 
 ### 13.8 Menu **Akses → Akun** — **Aktifkan sementara** (D-15)
 
-Untuk akun pegawai yang hubungan kerjanya sudah berakhir: tombol **Aktifkan sementara** membuka form *Alasan* (wajib) dan *Akses berakhir pada* (wajib, maksimal 30 hari). Daftar akun menampilkan badge "Aktif sementara s.d. 14 Agu 2027" dan tombol **Hentikan sekarang**. Pesan setelah kedaluwarsa: "Akses sementara berakhir; akun kembali nonaktif."
+Untuk akun pegawai yang hubungan kerjanya sudah berakhir: tombol **Aktifkan sementara** (hanya untuk HC Admin) membuka form *Alasan* (wajib) dan *Akses berakhir pada* (wajib, maksimal 30 hari). Info di form: "Selama akses sementara, pegawai hanya dapat melihat slip gaji, riwayat kehadiran, dan riwayat cuti miliknya sendiri." Daftar akun menampilkan badge "Aktif sementara s.d. 14 Agu 2027" dan tombol **Hentikan sekarang**. Pesan setelah kedaluwarsa: "Akses sementara berakhir; akun kembali nonaktif."
+
+### 13.9 Daftar pegawai — **Di luar pengelolaan HCIS**
+
+Daftar pegawai default hanya menampilkan pegawai yang dikelola HCIS. Filter **Di luar pengelolaan HCIS** menampilkan staf BUMY dan Pengurus Yayasan dengan badge abu-abu "Di luar pengelolaan HCIS — BUMY" / "— Pengurus Yayasan". Detailnya hanya bisa dibaca; semua tombol ubah disembunyikan. Riwayat cuti, kehadiran, dan slip tetap terlihat bagi yang berwenang.
 
 ## 14. Acceptance criteria
 
@@ -592,7 +612,8 @@ EMP-005:
 - EMP-005-G: The `employees` projection equals the resolver result after every action and after the daily refresh; annual-leave eligibility, Board, and ORG-006 outputs are unchanged for unchanged data.
 - EMP-005-H: No action other than `TERMINATION` changes any account; no action changes roles or permissions.
 - EMP-005-I (D-15): A recorded `TERMINATION` deactivates the linked EMPLOYEE account(s) and revokes sessions/activation tokens from the day after `ended_on`; login and session checks deny the account even if the daily job has not run; baseline and reversal never reactivate or deactivate accounts.
-- EMP-005-J (D-15): Temporary reactivation requires reason and expiry within the maximum, cannot target one's own account, grants only the self-service allowlist, ends automatically at expiry (enforced at login/session time), and every grant/revoke/expiry is audited. Positive and negative auth tests are mandatory.
+- EMP-005-J (D-15): Temporary reactivation requires reason and expiry within the maximum, cannot target one's own account, is grantable only by HC Admin (max 30 days), grants only own payslips, own attendance history, and own leave history, ends automatically at expiry (enforced at login/session time), and every grant/revoke/expiry is audited. Positive and negative auth tests are mandatory.
+- EMP-005-L (§8.7): BUMY and Pengurus Yayasan records are never deleted; once marked "di luar pengelolaan HCIS" they are read-only, hidden from active lists/counts/workflow eligibility/ORG-006, keep their history, and every mark/unmark is audited.
 - EMP-005-K (D-02): Baseline excludes `Aktif BUMY` and `Pengurus Yayasan` records (no employment; FOUNDATION_BOARD accounts untouched), maps the §4.2.1 values (Calon Pegawai Tetap → Masa Percobaan, Tenaga Pengabdian → Magang, Aktif PKWT → Pegawai Kontrak, Pegawai Lepas → Lepas), and sends conflicts and stray values to the SHADOW review list as `BELUM_DIKLASIFIKASIKAN`.
 
 EMP-006:
@@ -617,13 +638,13 @@ Cross-cutting:
 
 ## 15. Owner decisions (recorded 2026-10-16)
 
-Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisions are accepted as of 2026-10-16; open sub-items are listed in the Outcome column and §16.
+Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisions and their sub-items are accepted as of 2026-10-16; no owner decision remains open for Package 1.
 
 | ID | Decision | Status | Outcome |
 |---|---|---|---|
 | D-01 | Package 1 scope. | Accepted | Package 1 records the employment journey: hire, status/contract, placement, transfer/promotion/demotion, termination. Two separate document kinds: PK (contract hire, extension) and SK (permanent appointment, transfer, promotion, demotion, termination). Education/family/statutory/grade/compensation deferred. |
-| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted | Categories: Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan, Pegawai Lepas. Mapping: Calon Pegawai Tetap → Masa Percobaan; Tenaga Pengabdian → Magang; Aktif PKWT → Pegawai Kontrak; Pengurus Yayasan → not employment (FOUNDATION_BOARD); Aktif BUMY → excluded; stray values → SHADOW review. Jenis: Tenaga Pendidik / Tenaga Kependidikan (§4.2.1). Sub-item TBD: end-date rule for Pegawai Lepas (proposal: kontrak lepas with end date). |
-| D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan: required. Tetap: not required. Lepas: TBD, treated as required until decided. |
+| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted | Categories: Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan, Pegawai Lepas. Mapping: Calon Pegawai Tetap → Masa Percobaan; Tenaga Pengabdian → Magang; Aktif PKWT → Pegawai Kontrak; Pengurus Yayasan → not employment (FOUNDATION_BOARD); Aktif BUMY → excluded; stray values → SHADOW review. Jenis: Tenaga Pendidik / Tenaga Kependidikan (§4.2.1). Pegawai Lepas = kontrak lepas with end date. Existing BUMY/Pengurus Yayasan records kept and marked outside HCIS management (§8.7). |
+| D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan, Lepas (kontrak lepas): required. Tetap: not required. |
 | D-04 | Contract length/probation rules: block or warn. | Accepted | Warnings only, no blocking; HC acknowledges before saving. |
 | D-05 | Masa kerja on extension and rehire. | Accepted (amended) | Masa kerja continues while the contract is extended continuously under the same NIP; a new NIP means a new masa kerja start. |
 | D-06 | ADDITIONAL placements (jabatan/tugas tambahan). | Accepted | Yes. |
@@ -635,18 +656,15 @@ Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisi
 | D-12 | Expired contract without follow-up. | Accepted | Flag only, no auto-end. |
 | D-13 | Backdating window before extra permission. | Accepted | 31 days. |
 | D-14 | Backfill EMP-001-removed employees. | Accepted | Yes, read-only. |
-| D-15 | Account on termination. | Accepted (changed) | **Automatic** deactivation of the HCIS login account when the employment ends; an admin may grant a time-boxed, audited temporary reactivation with a mandatory reason and expiry (§8.5). Auth change → extra review. Open sub-items: max duration (proposal 30 days), self-service allowlist, who holds the reactivation permission. |
+| D-15 | Account on termination. | Accepted (changed) | **Automatic** deactivation of the HCIS login account when the employment ends; an admin may grant a time-boxed, audited temporary reactivation with a mandatory reason and expiry (§8.5). Auth change → extra review. Sub-items accepted: maximum 30 days; access limited to own payslips, own attendance history, own leave history; granted only by HC Admin with mandatory reason, audited, auto-expiring. |
 | D-16 | Holder of `employment.correct`. | Accepted | Senior HC officer only, separate assignment. |
 | D-17 | Employee sees own employment history. | Accepted | Yes, without reasons/internal notes. |
 | D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | Accepted | No automatic ORG-004 seat update; mismatch warning and report only. |
 | D-19 | Workbook role after AUTHORITATIVE. | Accepted | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only; transitional baseline for new NIPs allowed. |
 
-## 16. Open questions / DISCOVERY
+## 16. Remaining implementation-time checks (no owner decision needed)
 
 - Done 2026-10-16: distinct values of STATUS KEPEGAWAIAN / STATUS AKTIF / JENIS KEPEGAWAIAN collected from the active master sheet (values only, §4.2.1). Counts per value remain DISCOVERY for the SHADOW review.
-- TBD: end-date rule for Pegawai Lepas (proposal: kontrak lepas with end date).
-- TBD (D-15 sub-items): maximum temporary-reactivation duration, self-service allowlist, holder of `access.accounts.temporary_reactivate`.
-- TBD: what to do with existing BUMY and Pengurus Yayasan rows already in `employees` (EMP-001 removal or keep read-only); Pengurus Yayasan board access stays on FOUNDATION_BOARD accounts either way.
 - TBD: whether YSQ ever rehires under the same NIP.
 - DISCOVERY: whether YSQ uses skorsing/suspension or cuti di luar tanggungan as an employment state (the latter is currently handled as Cuti Tanpa Gaji in the leave module).
 - TBD: exact AUTH-011 unit-scope semantics for employee admin permissions.

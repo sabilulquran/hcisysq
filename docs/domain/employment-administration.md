@@ -5,7 +5,7 @@
 **Decision date:** 2026-09-22  
 **Related:** EMP-001, EMP-003, ORG-001, ORG-004, ORG-005, ORG-007, APR-001, PAY-003  
 **Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`  
-**Package 1 (DRAFT, pending owner approval, 2026-10-16):** `docs/domain/employment-administration-package1.md` — EMP-005, EMP-006, EMP-010 workflow, migration, and `docs/domain/employment-administration-package1-implementation-plan.md`
+**Package 1 (ACCEPTED PRODUCT DIRECTION, owner decisions closed 2026-10-16):** `docs/domain/employment-administration-package1.md` — EMP-005, EMP-006, EMP-010 workflow, migration, and `docs/domain/employment-administration-package1-implementation-plan.md`
 
 ## Goal
 

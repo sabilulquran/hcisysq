@@ -1,11 +1,11 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** DRAFT — owner decisions recorded 2026-10-16 (spec §15); all D-01..D-19 accepted; sub-items in spec §16  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); implementation not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
 
-No step may start before the owner approves the spec (decision D-01) and the decisions each step lists as prerequisites. Every step is one pull request with its own spec reference, tests, docs update, and rollback note (AGENTS.md §7, §9). Auth/permission/migration steps need the extra review AGENTS.md §8 requires. Production rollout happens only through OPS-MI8-REL-001 with explicit owner approval; no step deploys anything by itself.
+The owner accepted the spec and all decisions on 2026-10-16, so steps may start in dependency order. Every step is one pull request with its own spec reference, tests, docs update, and rollback note (AGENTS.md §7, §9). Auth/permission/migration steps need the extra review AGENTS.md §8 requires. Production rollout happens only through OPS-MI8-REL-001 with explicit owner approval; no step deploys anything by itself.
 
 Migration numbers below are placeholders (`00NN`); use the next free number at implementation time and keep `npm run migrations:check` green.
 
@@ -14,7 +14,8 @@ Migration numbers below are placeholders (`00NN`); use the next free number at i
 ```text
 S1 schema + resolver ──> S2 baseline + read API + permissions ──> S3 admin read UI (SHADOW UAT)
                                    │
-                                   └──> S4 SK register (EMP-010)
+                                   ├──> S2B "di luar pengelolaan HCIS" marker (EMP-001 change)
+                                   └──> S4 PK & SK register (EMP-010)
 S2 + S4 ──> S5 contract actions + projection + import guard (AUTHORITATIVE capable)
 S5 ──> S5A account deactivation on termination + time-boxed reactivation (AUTH change, D-15)
 S5 ──> S6 career actions (placement/transfer/promotion/demotion)
@@ -22,7 +23,7 @@ S6 ──> S7 reversal, contract worklist, self-service
 S7 ──> S8 pilot activation runbook (ops doc; production only with owner approval)
 ```
 
-S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5. `AUTHORITATIVE` must not be enabled in production before S5A is merged, because termination would otherwise end the employment without the accepted automatic account deactivation. S6 and the self-service part of S7 can be split further if review load requires it.
+S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5. `AUTHORITATIVE` must not be enabled in production before S5A is merged, because termination would otherwise end the employment without the accepted automatic account deactivation. S6 and the self-service part of S7 can be split further if review load requires it.
 
 ## S1 — Schema and domain resolver (no routes, no UI)
 
@@ -46,7 +47,7 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 ## S2 — Baseline backfill, read API, permissions, rollout setting
 
 **Spec:** EMP-005-E, EMP-005-G (read side), EMP-PKG1-X1, X3; §8.1–8.3.  
-**Prerequisite decisions:** D-02 (accepted mapping; only the Pegawai Lepas end-date rule is TBD and defaults to fixed-term), D-14, D-16 (accepted).
+**Prerequisite decisions:** D-02 (accepted mapping; Pegawai Lepas = kontrak lepas with end date), D-14, D-16 (accepted).
 
 - Migration `00NN_employment_permissions.sql`: insert `employment.read`, `employment.manage`, `employment.correct`; grant `employment.read`/`employment.manage` to `human_capital_admin`; `employment.correct` per D-16 (no account is assigned by migration, consistent with migration 0045).
 - Add the keys to `apps/api/src/modules/auth/permissions.ts` and `docs/domain/AUTH-011-admin-route-permissions.json`.
@@ -59,6 +60,20 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 - **OpenAPI:** add the five paths above with schemas `EmploymentSummary`, `EmploymentTerm`, `Placement`, `EmploymentAction`, `EmploymentConsistencyReport`, `EmploymentRolloutSetting`, and error codes. (Note: existing `/admin/employees*` routes are not yet in `docs/api/openapi.yaml`; this step documents only the new paths and records that gap as a follow-up.)
 - Tests: route permission positive/negative (including unit scope), self-access via admin route still requires permission, mode `OFF` returns `EMPLOYMENT_HISTORY_DISABLED`, baseline idempotency, baseline never invents dates, baseline issue codes, BUMY and Pengurus Yayasan exclusion, Aktif PKWT conflict, stray-value issues (`Tidak Aktif` as category, `#`/`-` staff type), no account change during baseline, audit payload has no PII (assert key allowlist).
 - **Rollback:** mode stays `OFF`; `--purge-baseline`; revert permissions migration only if no account holds them.
+
+## S2B — Records outside HCIS management (BUMY, Pengurus Yayasan)
+
+**Spec:** EMP-005-L, §8.7, §13.9.
+**Review:** touches EMP-001 employee master and every consumer of the active-employee population — extra review.
+
+- Migration `00NN_employee_management_scope.sql` (additive): `employees.management_scope` (`MANAGED` default, `OUTSIDE_HCIS`), `management_scope_reason` (`BUMY`, `PENGURUS_YAYASAN`), marked at/by, `CHECK` consistency; audit `employee.management_scope.changed`.
+- Mark/unmark endpoint for HC Admin (`employees.manage`, reason required): `PUT /admin/employees/{employeeId}/management-scope`; candidates come from the baseline dry-run (source snapshot values `Aktif BUMY`, `Pengurus Yayasan`) and are confirmed by HC in the SHADOW review.
+- Read-only enforcement (`EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`) on contact edit, manager assignment, employment actions, and EMP-004 import commit (rows skipped, shown as "Di luar pengelolaan HCIS — dilewati" in preview; new candidates flagged, never auto-marked).
+- Exclusion from default admin employee list, active counts, Board aggregates, leave/attendance/approval eligibility, and the ORG-006 producer; admin list filter "Di luar pengelolaan HCIS".
+- Consistency report lists EMPLOYEE accounts still linked to marked records (no automatic change).
+- Tests: no delete path, history endpoints still readable, every write path refused, every consumer excludes marked rows (leave eligibility, attendance roster, Board, ORG-006, approval resolver), FOUNDATION_BOARD accounts unaffected, mark/unmark audit, permission positive/negative.
+- **OpenAPI:** add the management-scope path, `managementScope` on employee read schemas when those are documented.
+- **Rollback:** unmark all (audited) or revert PR; column default keeps all rows `MANAGED`.
 
 ## S3 — Admin read UI (tabs, timeline, consistency report)
 
@@ -103,15 +118,15 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 
 **Spec:** EMP-005-I/J, §8.5, §13.8.
 **Review:** auth/permission/migration — extra review required (AGENTS.md §8); security review sign-off before merge.
-**Prerequisite decisions:** D-15 (accepted); open sub-items: maximum duration (proposal 30 days), self-service allowlist, holder of `access.accounts.temporary_reactivate`.
+**Prerequisite decisions:** D-15 (accepted with sub-items: maximum 30 days; access only to own payslips, own attendance history, own leave history; granted only by HC Admin with mandatory reason).
 
-- Migration `00NN_account_temporary_reactivation.sql`: `account_temporary_reactivations` (account, granted by, reason, starts at, expires at, revoked at/by, `CHECK (expires_at > starts_at)`), permission `access.accounts.temporary_reactivate`.
+- Migration `00NN_account_temporary_reactivation.sql`: `account_temporary_reactivations` (account, granted by, reason, starts at, expires at, revoked at/by, `CHECK (expires_at > starts_at AND expires_at <= starts_at + interval '30 days')`), permission `access.accounts.temporary_reactivate` granted to `human_capital_admin` only.
 - Termination effect: in the S5 action transaction (past `ended_on`) or in the daily job (future `ended_on`): set linked EMPLOYEE accounts `invited|active → inactive`, revoke sessions and activation tokens, audit `account.status.updated` (actor system, cause) + `employment.account.deactivated`.
-- Auth guard (defence in depth): login (password and OIDC) and session validation deny an EMPLOYEE principal whose latest employment ended before today unless a valid, unexpired reactivation exists; then only the self-service allowlist is allowed.
+- Auth guard (defence in depth): login (password and OIDC) and session validation deny an EMPLOYEE principal whose latest employment ended before today unless a valid, unexpired reactivation exists; then only own payslips, own attendance history, and own leave history (read-only) are allowed.
 - Endpoints: `POST /admin/access/accounts/{accountId}/temporary-reactivations` (reason, expiresAt), `POST /admin/access/accounts/{accountId}/temporary-reactivations/{grantId}/revoke`, `GET` list on the account detail.
 - Expiry job returns the account to `inactive`, revokes sessions, audits `.expired`; login/session checks enforce `expires_at` directly.
 - UI: **Akses → Akun → Aktifkan sementara** (§13.8), badge and early stop.
-- Tests: deactivation on past and future termination; job-late denial at login/session; baseline/import/reversal never change accounts; reactivation requires reason+expiry, max duration, self-grant forbidden, permission positive/negative, allowlist-only access (payslip read allowed, HC/admin/approver routes denied), expiry enforced without the job, revoke early, audit events and payload allowlist; OIDC path covered.
+- Tests: deactivation on past and future termination; job-late denial at login/session; baseline/import/reversal never change accounts; reactivation requires reason+expiry, max duration, self-grant forbidden, permission positive/negative, allowlist-only access (own payslip/attendance/leave history read allowed; own employment history, submissions, HC/admin/approver routes denied), Super Admin cannot grant, 31-day expiry rejected, expiry enforced without the job, revoke early, audit events and payload allowlist; OIDC path covered.
 - **OpenAPI:** add the reactivation paths and `AccountTemporaryReactivation` schema; document new auth error codes.
 - **Rollback:** revert PR; existing reactivation rows become inert; accounts already deactivated stay inactive (fail closed) and are reactivated manually through the existing access flow if needed.
 
@@ -143,7 +158,7 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 
 - Document in `docs/development/` how to: take the verified backup, deploy the release via OPS-MI8-REL-001, run baseline dry-run (counts only), owner review of counts, apply baseline, switch to `SHADOW`, HC UAT, resolve consistency issues, switch to `AUTHORITATIVE` for the pilot.
 - Exit criteria for `AUTHORITATIVE`:
-  1. zero `BASELINE_STATUS_CONFLICT`; BUMY and Pengurus Yayasan exclusions reviewed by HC;
+  1. zero `BASELINE_STATUS_CONFLICT`; BUMY and Pengurus Yayasan exclusions reviewed by HC and marked via S2B;
   2. all employment categories mapped (no `BELUM_DIKLASIFIKASIKAN` for active employees);
   3. every active fixed-term employee has a known contract end date or an explicit HC acknowledgement;
   4. projection equals current `employees` columns for every baselined employee (no unintended change at switch-over);

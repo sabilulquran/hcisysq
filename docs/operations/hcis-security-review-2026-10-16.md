@@ -24,7 +24,7 @@ The authentication core is sound: OIDC with PKCE/state/nonce in production, opaq
 
 | ID | Area | Severity | Finding (redacted) | Fix direction | Needs owner approval |
 |---|---|---|---|---|---|
-| SEC-01 | Attendance device ingress | **High** | Device push requests are accepted on protocol identifiers alone; the protocol has no device credential. | Edge restriction of the device host to known site networks, rate limits per device/IP, cap on auto-detected devices, new-source alerts. | Yes (edge/Cloudflare) |
+| SEC-01 | Attendance device ingress | High — **risk accepted by owner 2026-10-16** | Device push requests are accepted on protocol identifiers alone; the protocol has no device credential. Unregistered serials never create attendance events and can be blocked in the device admin (WDMS) screen; the residual risk is spoofing a **registered** serial. | Owner declined a network allowlist at the edge (2026-10-16), because every new site would need a rule change. Optional app-level controls that need no per-network maintenance: alert when a registered device appears from a new source IP, per-device rate limit, cap on auto-detected devices. | Accepted; app controls optional backlog |
 | SEC-02 | AUTH-011 governance | **High** | `docs/domain/AUTH-011-admin-route-permissions.json` lists 135 routes; 51 admin/HC routes registered in code are missing. All 51 were hand-checked and enforce a permission today; the risk is an unguarded **future** route, because `apps/api/test/auth011-postgres.integration.test.ts` only iterates the manifest and asserts a fixed length. | Route-collection test (`onRoute`) that fails when a non-public route is missing from the manifest; regenerate the manifest; extend the 401/403 matrix. | No (code PR) |
 | SEC-16 | Dependencies | ~~High~~ **Fixed in production 2026-10-16** | `npm audit --omit=dev`: `fastify <=5.12.4` (GHSA-p68q-wchp-6fh7, GHSA-667r-xxjv-c9mm, GHSA-hwr6-493r-vm6h, GHSA-9q9j-q6p8-xq58, GHSA-4mh8-r7rc-xpvc), plus `fast-uri`, `brace-expansion`, `js-yaml`, `seroval`, `source-map-js`; `uuid` via `exceljs` (not used in the affected way). Dev-only: `vitest`/`tinypool`/`@vitest/mocker` (never shipped; release bundle has production deps only). | `npm audit fix` (non-breaking) in a separate PR, then a normal OPS-MI8-REL-001 release. Vitest major upgrade separately. | Release only |
 | SEC-03 | AUTH-011 CI | Medium | The AUTH-011 route-matrix test is skipped in CI because its database variable is not set in any workflow. | Wire it to the existing PostgreSQL service; do with SEC-02. | No |
@@ -64,7 +64,7 @@ Cloudflare dashboard settings (WAF, TLS mode; the zone sits in a Cloudflare acco
 ## 5. Remediation order
 
 1. ~~SEC-16 dependency update~~ — PR #106, live in `hcis-4a578253-20261016` (fastify 5.12.7 verified on the device).
-2. SEC-01 — owner-approved Cloudflare change in the zone owner's account (approved 2026-10-16; to be applied by the owner, because the operator's Cloudflare identity cannot manage this zone). SEC-17 needed no change.
+2. SEC-01 — risk accepted by the owner on 2026-10-16 (no edge allowlist); optional app-level controls in the backlog. SEC-17 needed no change.
 3. SEC-02 + SEC-03 — route-coverage test and CI wiring.
 4. SEC-07 — headers (code + edge).
 5. SEC-05, SEC-06 — auth hardening with extra review.

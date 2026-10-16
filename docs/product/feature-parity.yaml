@@ -162,7 +162,7 @@ features:
     target_status: planned
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is DRAFT pending owner approval since 2026-10-16.
+    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) has all owner decisions D-01..D-19 recorded on 2026-10-16; runtime not started.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -177,7 +177,7 @@ features:
     target_status: planned
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is DRAFT pending owner approval since 2026-10-16.
+    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) has all owner decisions D-01..D-19 recorded on 2026-10-16; runtime not started.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md

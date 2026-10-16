@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** DRAFT — owner decisions recorded 2026-10-16 (spec §15); D-01, D-04, D-18 TBD  
+**Status:** DRAFT — owner decisions recorded 2026-10-16 (spec §15); all D-01..D-19 accepted; sub-items in spec §16  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -46,18 +46,18 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 ## S2 — Baseline backfill, read API, permissions, rollout setting
 
 **Spec:** EMP-005-E, EMP-005-G (read side), EMP-PKG1-X1, X3; §8.1–8.3.  
-**Prerequisite decisions:** D-02 (accepted list; the four TBD source values stay `BELUM_DIKLASIFIKASIKAN` until mapped), D-14, D-16 (accepted).
+**Prerequisite decisions:** D-02 (accepted mapping; only the Pegawai Lepas end-date rule is TBD and defaults to fixed-term), D-14, D-16 (accepted).
 
 - Migration `00NN_employment_permissions.sql`: insert `employment.read`, `employment.manage`, `employment.correct`; grant `employment.read`/`employment.manage` to `human_capital_admin`; `employment.correct` per D-16 (no account is assigned by migration, consistent with migration 0045).
 - Add the keys to `apps/api/src/modules/auth/permissions.ts` and `docs/domain/AUTH-011-admin-route-permissions.json`.
-- CLI `employment-baseline` (`--dry-run` default, `--apply`, `--employee <id>` re-run, `--purge-baseline`): counts-only stdout; per-employee issues stored for the consistency report; audit `employment.baseline.*`. Reads STATUS AKTIF/KEPEGAWAIAN/JENIS from the latest `employee_import_source_snapshots` row, excludes `Aktif BUMY`, applies the spec §4.2.1 mapping table (kept as versioned configuration so TBD values can be mapped later without code changes), and never touches accounts.
+- CLI `employment-baseline` (`--dry-run` default, `--apply`, `--employee <id>` re-run, `--purge-baseline`): counts-only stdout; per-employee issues stored for the consistency report; audit `employment.baseline.*`. Reads STATUS AKTIF/KEPEGAWAIAN/JENIS from the latest `employee_import_source_snapshots` row, excludes `Aktif BUMY` and `Pengurus Yayasan` (leaving FOUNDATION_BOARD accounts untouched), maps `Aktif PKWT` to Pegawai Kontrak with conflict detection, applies the spec §4.2.1 mapping table (kept as versioned configuration so later vocabulary changes need no code change), and never touches accounts.
 - Rollout endpoints (permission `access.governance.manage`): `GET/PUT /admin/employment/rollout` with reason; audit `employment.mode.changed`.
 - Read endpoints (permission `employment.read`, scope-checked):
   - `GET /admin/employees/{employeeId}/employment` — derived current summary + employments, terms, placements.
   - `GET /admin/employees/{employeeId}/employment/timeline` — actions with "dari → menjadi" snapshot and SK refs.
   - `GET /admin/employment/consistency` — grouped issue counts + paginated rows (incl. ORG-004 incumbency mismatch and projection lag).
 - **OpenAPI:** add the five paths above with schemas `EmploymentSummary`, `EmploymentTerm`, `Placement`, `EmploymentAction`, `EmploymentConsistencyReport`, `EmploymentRolloutSetting`, and error codes. (Note: existing `/admin/employees*` routes are not yet in `docs/api/openapi.yaml`; this step documents only the new paths and records that gap as a follow-up.)
-- Tests: route permission positive/negative (including unit scope), self-access via admin route still requires permission, mode `OFF` returns `EMPLOYMENT_HISTORY_DISABLED`, baseline idempotency, baseline never invents dates, baseline issue codes, BUMY exclusion, stray-value issues (`Tidak Aktif` as category, `#`/`-` staff type), no account change during baseline, audit payload has no PII (assert key allowlist).
+- Tests: route permission positive/negative (including unit scope), self-access via admin route still requires permission, mode `OFF` returns `EMPLOYMENT_HISTORY_DISABLED`, baseline idempotency, baseline never invents dates, baseline issue codes, BUMY and Pengurus Yayasan exclusion, Aktif PKWT conflict, stray-value issues (`Tidak Aktif` as category, `#`/`-` staff type), no account change during baseline, audit payload has no PII (assert key allowlist).
 - **Rollback:** mode stays `OFF`; `--purge-baseline`; revert permissions migration only if no account holds them.
 
 ## S3 — Admin read UI (tabs, timeline, consistency report)
@@ -85,7 +85,7 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 ## S5 — Contract actions, projection writer, import guard
 
 **Spec:** EMP-005-A/B/C/D/F/G/H, §6, §7, §8.4, §8.5, §11, §12.  
-**Prerequisite decisions:** D-03, D-05, D-07, D-10, D-12, D-13, D-19 (accepted); D-04 (TBD — implement as warnings, the accepted default); ops decision for the daily refresh host (spec §8.4 TBD).
+**Prerequisite decisions:** D-03, D-05, D-07, D-10, D-12, D-13, D-19 (accepted); D-04 (accepted: warnings only, never blocking); ops decision for the daily refresh host (spec §8.4 TBD).
 
 - Endpoints (`employment.manage`, `Idempotency-Key`, `expectedVersion`):
   - `POST /admin/employees/{employeeId}/employment-actions/preview`
@@ -118,7 +118,7 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 ## S6 — Career actions
 
 **Spec:** EMP-006-A/B/C/D.  
-**Prerequisite decisions:** D-06 (accepted), D-08 (accepted: SK Mutasi/Promosi/Demosi required), D-18 (TBD — implement the default: no ORG-004 change, mismatch report only). ORG-004 acceptance state determines whether placements use stable keys or legacy references for pilot.
+**Prerequisite decisions:** D-06 (accepted), D-08 (accepted: SK Mutasi/Promosi/Demosi required), D-18 (accepted: no ORG-004 change, mismatch warning/report only). ORG-004 acceptance state determines whether placements use stable keys or legacy references for pilot.
 
 - Extend action types: `PLACEMENT`, `TRANSFER`, `PROMOTION`, `DEMOTION`.
 - Validation against the ORG-004 structure effective on the date (stable key) or the legacy unit/position tables.
@@ -143,7 +143,7 @@ S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel after S5.
 
 - Document in `docs/development/` how to: take the verified backup, deploy the release via OPS-MI8-REL-001, run baseline dry-run (counts only), owner review of counts, apply baseline, switch to `SHADOW`, HC UAT, resolve consistency issues, switch to `AUTHORITATIVE` for the pilot.
 - Exit criteria for `AUTHORITATIVE`:
-  1. zero `BASELINE_STATUS_CONFLICT`; BUMY exclusions reviewed by HC;
+  1. zero `BASELINE_STATUS_CONFLICT`; BUMY and Pengurus Yayasan exclusions reviewed by HC;
   2. all employment categories mapped (no `BELUM_DIKLASIFIKASIKAN` for active employees);
   3. every active fixed-term employee has a known contract end date or an explicit HC acknowledgement;
   4. projection equals current `employees` columns for every baselined employee (no unintended change at switch-over);

@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Status, Contract, Placement, Career Movement, and SK
 
-**Status:** DRAFT — owner decisions recorded 2026-10-16 (§15); D-01, D-04, D-18 still TBD; no runtime implementation yet  
+**Status:** DRAFT — all owner decisions D-01..D-19 recorded 2026-10-16 (§15); remaining sub-items listed in §16; no runtime implementation yet  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Prepared:** 2026-10-16  
 **Parent direction:** `docs/domain/employment-administration.md` (ACCEPTED PRODUCT DIRECTION, 2026-09-22)  
@@ -35,6 +35,7 @@ Package 1 sengaja kecil tetapi bernilai tinggi: **status/hubungan kerja + kontra
 | Approval workflow in-app (APR-001) untuk tindakan kepegawaian | Keputusan diambil di luar sistem dan dibuktikan oleh Perjanjian Kerja/SK; D-07 diterima (opsi A). | Setelah pilot |
 | Perpindahan lintas legal entity | ORG-007 masih discovery; ditolak fail-closed. | ORG-007 |
 | Staf BUMY (Badan Usaha Milik Yayasan) | Owner 2026-10-16: staf BUMY **tidak** dikelola di HCIS. Package 1 tidak membuat employment untuk mereka (§8.2). Pembersihan baris BUMY yang sudah ada di `employees` adalah keputusan EMP-001 terpisah (TBD). | — |
+| Pengurus Yayasan | Owner 2026-10-16: **bukan** status kepegawaian. Pengurus Yayasan tetap memakai principal `FOUNDATION_BOARD` yang sudah ada (akses Panel Organ Yayasan read-only, lihat `account-activation.md` dan MVP checkpoint). Package 1 tidak membuat employment untuk mereka; akun board tidak diubah. Nasib baris master `employees` mereka adalah keputusan EMP-001 terpisah (TBD). | — |
 
 ## 2. Specification IDs
 
@@ -140,6 +141,9 @@ Owner's intended list (2026-10-16):
 | `KONTRAK_HONORER` | Pegawai Kontrak Honorer | Yes (honorer staff are on a contract) | Perjanjian Kerja |
 | `MAGANG` | Magang | Yes | Perjanjian Kerja (TBD: or a separate internship agreement) |
 | `PERCOBAAN` | Masa Percobaan | Yes | Perjanjian Kerja (TBD) |
+| `LEPAS` | Pegawai Lepas | TBD — proposal: yes, treated as "kontrak lepas" with an end date | Perjanjian Kerja (proposal) |
+
+`LEPAS` is an owner-confirmed category of its own (2026-10-16); only its end-date rule is TBD. Until decided, the policy treats it as fixed-term (end date required) so that an unconfirmed open-ended term is never created by default.
 
 Values currently found in the active sheet `Master Data SDM YSQ` (column values only, no personal data read) and their baseline mapping:
 
@@ -147,17 +151,19 @@ Values currently found in the active sheet `Master Data SDM YSQ` (column values 
 |---|---|---|
 | STATUS KEPEGAWAIAN | Pegawai Tetap | `TETAP` |
 | STATUS KEPEGAWAIAN | Pegawai Kontrak | `KONTRAK` |
-| STATUS KEPEGAWAIAN | Calon Pegawai Tetap | TBD — probably `PERCOBAAN`; owner confirming |
-| STATUS KEPEGAWAIAN | Pengurus Yayasan | TBD — may not be an employment at all (foundation organ); owner confirming |
-| STATUS KEPEGAWAIAN | Tenaga Pengabdian | TBD; owner confirming |
-| STATUS KEPEGAWAIAN | Pegawai Lepas | TBD; owner confirming |
-| STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. Issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
+| STATUS KEPEGAWAIAN | Calon Pegawai Tetap | `PERCOBAAN` (owner confirmed: same meaning) |
+| STATUS KEPEGAWAIAN | Tenaga Pengabdian | `MAGANG` (owner confirmed) |
+| STATUS KEPEGAWAIAN | Pegawai Lepas | `LEPAS` (own category; end-date rule TBD) |
+| STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`. Board access stays with `FOUNDATION_BOARD` accounts. |
+| STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. SHADOW review issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
 | STATUS AKTIF | Aktif | employment effective |
-| STATUS AKTIF | Aktif PKWT | employment effective; issue `BASELINE_CATEGORY_HINT_CONTRACT` when the category is not a contract type |
+| STATUS AKTIF | Aktif PKWT | employment effective; category `KONTRAK` (owner confirmed). If STATUS KEPEGAWAIAN is blank or Pegawai Kontrak → `KONTRAK`. If STATUS KEPEGAWAIAN states another category (e.g. Pegawai Tetap) → SHADOW review issue `BASELINE_CATEGORY_CONFLICT_PKWT`, category `BELUM_DIKLASIFIKASIKAN` (never guessed). |
 | STATUS AKTIF | Aktif BUMY | **Excluded** — no employment created; issue `BASELINE_EXCLUDED_BUMY` |
 | STATUS AKTIF | Tidak Aktif | employment ended (see §8.2) |
 | JENIS KEPEGAWAIAN | Tenaga Pendidik / Tenaga Kependidikan | `staff_type` `PENDIDIK` / `KEPENDIDIKAN` |
-| JENIS KEPEGAWAIAN | "#", "-", blank (stray) | `staff_type` null; issue `BASELINE_STAFF_TYPE_MISSING` |
+| JENIS KEPEGAWAIAN | "#", "-", blank (stray) | `staff_type` null; SHADOW review issue `BASELINE_STAFF_TYPE_MISSING` |
+
+Jenis kepegawaian (`staff_type`) vocabulary is confirmed as exactly **Tenaga Pendidik** and **Tenaga Kependidikan**. Pegawai Kontrak Honorer remains a contract category with a mandatory end date (D-03); it has no separate source value today and is assigned by HC through actions or the SHADOW review.
 
 Note: today's EMP-004 import normalizes every `Aktif …` value (including `Aktif BUMY` and `Aktif PKWT`) to `employees.status = active`, so the distinction survives only in `employee_import_source_snapshots.source_data`. Baseline must read the latest source snapshot for STATUS AKTIF, not only `employees.status`.
 
@@ -165,7 +171,7 @@ Rules:
 
 - Terms inside one employment must not overlap (database exclusion constraint, same `btree_gist` approach as migration 0021).
 - Gaps between terms are allowed but shown as a data-quality warning ("Ada jeda antara kontrak ke-1 dan ke-2").
-- Legal limits (e.g. maximum PKWT duration, probation only for permanent staff) are **warnings only** in Package 1 (D-04 TBD, being clarified with the owner: "blokir" would mean the system refuses to save; "peringatan" means it shows a warning HC must acknowledge before saving). The system must not silently block or silently accept; it shows the warning in preview and records that the actor acknowledged it.
+- Legal limits (e.g. maximum PKWT duration, probation only for permanent staff) are **warnings only, never blocking** (D-04 confirmed by the owner 2026-10-16): the preview shows the warning and HC must tick "Saya sudah memeriksa" before saving. The system must not silently block or silently accept; it shows the warning in preview and records that the actor acknowledged it.
 
 ### 4.3 Placement (Penempatan)
 
@@ -232,7 +238,7 @@ They are separate document kinds with their own numbering and fields, kept in on
 | `pk_type` | `PK_BARU` (contract hire) or `PK_PERPANJANGAN` (extension); addendum TBD. |
 | `employee_id` | A PK belongs to exactly one employee. |
 | `contract_from`, `contract_to` | Contract period stated in the PK; `contract_to` required (all PK categories are fixed-term, D-03). |
-| `category` | Status kepegawaian the PK establishes (`KONTRAK`, `KONTRAK_HONORER`, `MAGANG`, `PERCOBAAN`). |
+| `category` | Status kepegawaian the PK establishes (`KONTRAK`, `KONTRAK_HONORER`, `MAGANG`, `PERCOBAAN`, `LEPAS`). |
 | `signatory_employer_label` | Who signed for YSQ (text; optional ORG-004 position stable key). Does not grant authority. |
 | `previous_pk_id` | For `PK_PERPANJANGAN`: the PK being extended. |
 
@@ -377,7 +383,7 @@ Mode changes require `access.governance.manage` (Super Admin governance) and an 
 
 For each employee, including EMP-001-removed employees (`removed_at` set), which are backfilled read-only so history is complete (D-14, accepted):
 
-0. Read STATUS AKTIF / STATUS KEPEGAWAIAN / JENIS KEPEGAWAIAN from the latest `employee_import_source_snapshots.source_data` (because `employees.status` has already collapsed `Aktif BUMY`/`Aktif PKWT` into `active`). If STATUS AKTIF is `Aktif BUMY` → **skip** the employee (no employment), issue `BASELINE_EXCLUDED_BUMY`. If no snapshot exists, use `employees` columns and raise issue `BASELINE_NO_SOURCE_SNAPSHOT`.
+0. Read STATUS AKTIF / STATUS KEPEGAWAIAN / JENIS KEPEGAWAIAN from the latest `employee_import_source_snapshots.source_data` (because `employees.status` has already collapsed `Aktif BUMY`/`Aktif PKWT` into `active`). If STATUS AKTIF is `Aktif BUMY` → **skip** the employee (no employment), issue `BASELINE_EXCLUDED_BUMY`. If STATUS KEPEGAWAIAN is `Pengurus Yayasan` → **skip** (no employment), issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`; any `FOUNDATION_BOARD` account is left untouched. If no snapshot exists, use `employees` columns and raise issue `BASELINE_NO_SOURCE_SNAPSHOT`.
 
 1. Create one employment:
    - `started_on = employees.started_on`; if null → `start_basis = UNKNOWN`, `started_on = NULL`, data-quality issue `BASELINE_START_UNKNOWN`.
@@ -487,7 +493,7 @@ Stored in a new `employment_audit_events` table written in the same transaction 
 - Package 1 records decisions already taken outside HCIS; the PK or SK is the approval evidence. HCIS does not route an approval request for these actions. D-07 accepted option A: one HC officer records with the PK/SK as evidence.
 - Required basis document per action type is configurable policy with the accepted defaults in §5 (D-08). When required and missing → `DECISION_DOCUMENT_REQUIRED`; when the wrong kind is linked (e.g. an SK for a contract extension) → `DECISION_DOCUMENT_KIND_INVALID`.
 - Maker-checker (D-07 option B) is not used in Package 1; it remains a possible later option.
-- No action changes ORG-004 authority. If an action places someone into an ORG-004 authority-bearing position, the preview says: "Penempatan ini tidak mengubah kewenangan approval. Perbarui juga Struktur Organisasi (draft perubahan) bila pegawai ini menjadi pemegang jabatan." The consistency report lists placement vs incumbency mismatches. Whether a placement into a head seat should also update ORG-004 incumbency automatically is D-18 (TBD, being clarified with the owner; leave approval already follows ORG-004 where rolled out). Package 1 baseline: mismatch report only.
+- No action changes ORG-004 authority. If an action places someone into an ORG-004 authority-bearing position, the preview says: "Penempatan ini tidak mengubah kewenangan approval. Perbarui juga Struktur Organisasi (draft perubahan) bila pegawai ini menjadi pemegang jabatan." The consistency report lists placement vs incumbency mismatches. D-18 (confirmed 2026-10-16): a placement into a head seat does **not** update ORG-004 incumbency automatically; HCIS shows the mismatch warning in the preview and in the consistency report, and the ORG-004 change is made by the organization administrator in the Organization Designer.
 
 ## 12. Failure behaviour
 
@@ -514,6 +520,7 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
+| `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
 | `REACTIVATION_EXPIRY_REQUIRED` | 400 | Temporary reactivation without expiry or beyond maximum. | "Tentukan tanggal berakhir akses (maksimal 30 hari)." |
 | `REACTIVATION_SELF_FORBIDDEN` | 403 | Admin targets own account. | "Anda tidak dapat mengaktifkan kembali akun Anda sendiri." |
 | `REACTIVATION_NOT_APPLICABLE` | 409 | Employment still active or account suspended. | "Akun ini tidak memerlukan aktivasi sementara." |
@@ -562,7 +569,7 @@ Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis ba
 
 ### 13.6 Menu **Kepegawaian → Periksa kecocokan data** (SHADOW dan sesudahnya)
 
-Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
+Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Pengurus Yayasan (bukan pegawai)", "Status kepegawaian bertentangan dengan Aktif PKWT", "Jenis kepegawaian kosong/tidak valid", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
 
 ### 13.7 Pegawai — **Profil saya → Kepegawaian** (D-17 disetujui)
 
@@ -586,7 +593,7 @@ EMP-005:
 - EMP-005-H: No action other than `TERMINATION` changes any account; no action changes roles or permissions.
 - EMP-005-I (D-15): A recorded `TERMINATION` deactivates the linked EMPLOYEE account(s) and revokes sessions/activation tokens from the day after `ended_on`; login and session checks deny the account even if the daily job has not run; baseline and reversal never reactivate or deactivate accounts.
 - EMP-005-J (D-15): Temporary reactivation requires reason and expiry within the maximum, cannot target one's own account, grants only the self-service allowlist, ends automatically at expiry (enforced at login/session time), and every grant/revoke/expiry is audited. Positive and negative auth tests are mandatory.
-- EMP-005-K (D-02): Baseline excludes `Aktif BUMY` employees and maps the §4.2.1 values; unmapped values remain `BELUM_DIKLASIFIKASIKAN`.
+- EMP-005-K (D-02): Baseline excludes `Aktif BUMY` and `Pengurus Yayasan` records (no employment; FOUNDATION_BOARD accounts untouched), maps the §4.2.1 values (Calon Pegawai Tetap → Masa Percobaan, Tenaga Pengabdian → Magang, Aktif PKWT → Pegawai Kontrak, Pegawai Lepas → Lepas), and sends conflicts and stray values to the SHADOW review list as `BELUM_DIKLASIFIKASIKAN`.
 
 EMP-006:
 
@@ -610,14 +617,14 @@ Cross-cutting:
 
 ## 15. Owner decisions (recorded 2026-10-16)
 
-Status: **Accepted** = owner accepted (as proposed or as amended); **TBD** = still being clarified with the owner.
+Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisions are accepted as of 2026-10-16; open sub-items are listed in the Outcome column and §16.
 
 | ID | Decision | Status | Outcome |
 |---|---|---|---|
-| D-01 | Package 1 scope (status/contract, placement, promotion/demotion/transfer, basis document) and deferral of education/family/statutory/grade/compensation. | TBD | Owner stated the primary documents are the **Perjanjian Kerja** and the **SK Pengangkatan**; both are now first-class document kinds (§4.5). Scope kept as proposed pending clarification. |
-| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted (partially TBD) | Owner list: Guru/Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan. BUMY staff excluded from HCIS. Mapping of Calon Pegawai Tetap, Pengurus Yayasan, Tenaga Pengabdian, Pegawai Lepas TBD (§4.2.1). |
-| D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan: required. Tetap: not required. |
-| D-04 | Contract length/probation rules: block or warn. | TBD | Package 1 default: warnings only, acknowledged by HC. |
+| D-01 | Package 1 scope. | Accepted | Package 1 records the employment journey: hire, status/contract, placement, transfer/promotion/demotion, termination. Two separate document kinds: PK (contract hire, extension) and SK (permanent appointment, transfer, promotion, demotion, termination). Education/family/statutory/grade/compensation deferred. |
+| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted | Categories: Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan, Pegawai Lepas. Mapping: Calon Pegawai Tetap → Masa Percobaan; Tenaga Pengabdian → Magang; Aktif PKWT → Pegawai Kontrak; Pengurus Yayasan → not employment (FOUNDATION_BOARD); Aktif BUMY → excluded; stray values → SHADOW review. Jenis: Tenaga Pendidik / Tenaga Kependidikan (§4.2.1). Sub-item TBD: end-date rule for Pegawai Lepas (proposal: kontrak lepas with end date). |
+| D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan: required. Tetap: not required. Lepas: TBD, treated as required until decided. |
+| D-04 | Contract length/probation rules: block or warn. | Accepted | Warnings only, no blocking; HC acknowledges before saving. |
 | D-05 | Masa kerja on extension and rehire. | Accepted (amended) | Masa kerja continues while the contract is extended continuously under the same NIP; a new NIP means a new masa kerja start. |
 | D-06 | ADDITIONAL placements (jabatan/tugas tambahan). | Accepted | Yes. |
 | D-07 | Recording model. | Accepted | A: one HC officer records with PK/SK as evidence. |
@@ -631,13 +638,15 @@ Status: **Accepted** = owner accepted (as proposed or as amended); **TBD** = sti
 | D-15 | Account on termination. | Accepted (changed) | **Automatic** deactivation of the HCIS login account when the employment ends; an admin may grant a time-boxed, audited temporary reactivation with a mandatory reason and expiry (§8.5). Auth change → extra review. Open sub-items: max duration (proposal 30 days), self-service allowlist, who holds the reactivation permission. |
 | D-16 | Holder of `employment.correct`. | Accepted | Senior HC officer only, separate assignment. |
 | D-17 | Employee sees own employment history. | Accepted | Yes, without reasons/internal notes. |
-| D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | TBD | Package 1 default: no automatic ORG-004 change; mismatch report only. |
+| D-18 | Should a placement into a head seat also update ORG-004 incumbency automatically? | Accepted | No automatic ORG-004 seat update; mismatch warning and report only. |
 | D-19 | Workbook role after AUTHORITATIVE. | Accepted | New hires via **Mulai hubungan kerja**; workbook keeps identity/contact only; transitional baseline for new NIPs allowed. |
 
 ## 16. Open questions / DISCOVERY
 
 - Done 2026-10-16: distinct values of STATUS KEPEGAWAIAN / STATUS AKTIF / JENIS KEPEGAWAIAN collected from the active master sheet (values only, §4.2.1). Counts per value remain DISCOVERY for the SHADOW review.
-- TBD: what to do with existing BUMY rows already in `employees` (EMP-001 removal or keep read-only).
+- TBD: end-date rule for Pegawai Lepas (proposal: kontrak lepas with end date).
+- TBD (D-15 sub-items): maximum temporary-reactivation duration, self-service allowlist, holder of `access.accounts.temporary_reactivate`.
+- TBD: what to do with existing BUMY and Pengurus Yayasan rows already in `employees` (EMP-001 removal or keep read-only); Pengurus Yayasan board access stays on FOUNDATION_BOARD accounts either way.
 - TBD: whether YSQ ever rehires under the same NIP.
 - DISCOVERY: whether YSQ uses skorsing/suspension or cuti di luar tanggungan as an employment state (the latter is currently handled as Cuti Tanpa Gaji in the leave module).
 - TBD: exact AUTH-011 unit-scope semantics for employee admin permissions.

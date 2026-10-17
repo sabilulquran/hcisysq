@@ -34,6 +34,7 @@ Nama final dapat disesuaikan saat implementasi, tetapi konsepnya:
 | Finance | Reimbursement/payroll/keuangan sesuai permission |
 | Management | Management dashboard/report sesuai mandat |
 | Special Approver | Capability approval tertentu bila tidak berasal dari struktur normal |
+| Panel Organ Yayasan (`foundation_board_viewer`, ORG-010 ACCEPTED) | Hanya `board.read` scope organization: membaca `/board` dan governance summary untuk Pengurus bergaji yang tercatat sebagai Employee. Tanpa mutasi. Hanya Super Admin yang memberikan. |
 
 Jangan membuat role kombinasi seperti `pegawai-kepala-unit-finance`. Satu employee dapat memiliki lebih dari satu assignment.
 
@@ -64,6 +65,7 @@ Legenda: `O` own, `U` unit, `A` organization sesuai permission, `RO` read only, 
 | Lihat/kerjakan approval | - | sesuai assignment/scope | - | troubleshooting/reassign terkontrol |
 | Kelola employee master | - | HC sesuai permission | RO bila diberi detail | A teknis/administratif sesuai policy |
 | Lihat statistik/report | own/terbatas | U/A sesuai permission | RO | sesuai permission |
+| Panel Organ Yayasan `/board` (ORG-010 ACCEPTED) | - | RO bila role Panel Organ Yayasan efektif | RO | - |
 | Export report | sesuai modul | sesuai permission | RO/export sesuai permission | sesuai permission |
 | Kelola role/permission | - | - (termasuk Human Capital dan Human Capital Administrator) | - | A |
 | Konfigurasi sistem | - | - | - | A |

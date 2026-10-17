@@ -22,6 +22,7 @@ tags:
   - name: Organization
   - name: Organization Directory
   - name: Staff Identity Verification
+  - name: Governance Summary
   - name: Attendance
   - name: Payslips
   - name: Employment
@@ -76,6 +77,45 @@ paths:
           description: Ambiguous employee number
         '503':
           description: Verification contract disabled
+
+  /governance/summary:
+    get:
+      tags: [Governance Summary]
+      operationId: getGovernanceSummaryForSqHub
+      summary: ORG-010 (ACCEPTED) — HCIS governance summary for SQ Hub Ringkasan Yayasan (not implemented yet)
+      description: |
+        ACCEPTED 2026-10-17, not implemented yet. See docs/domain/foundation-board-governance-summary.md (ORG-010).
+        Bearer-only; the exchanged token is accepted on this route and no other. Disabled by default (404).
+        Requires board access: active FOUNDATION_BOARD account, or active EMPLOYEE with effective
+        organization-scope board.read; SQ Hub Application Access is re-checked per request. Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
+        aggregate only, no actor or personal data. Cache-Control private, no-store.
+      security:
+        - GovernanceSummaryBearer: []
+      responses:
+        '200':
+          description: HUB-IMPL-021 GovernanceSummaryV1 (contractVersion 1)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contractVersion, applicationKey, title, dataAsOf, metrics, detailUrl]
+                properties:
+                  contractVersion: { type: integer, const: 1 }
+                  applicationKey: { type: string }
+                  title: { type: string }
+                  dataAsOf: { type: string, format: date-time }
+                  metrics: { type: array, minItems: 1, maxItems: 6, items: { type: object } }
+                  charts: { type: array, maxItems: 2, items: { type: object } }
+                  attention: { type: array, maxItems: 3, items: { type: object } }
+                  detailUrl: { type: string, format: uri }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Endpoint disabled
+        '503':
+          description: APPLICATION_ACCESS_UNAVAILABLE or JWKS_UNAVAILABLE (owner decisions D3, D9)
 
   /internal/v1/organization-directory/snapshot:
     get:
@@ -1507,6 +1547,14 @@ components:
       description: |
         Dedicated Keycloak client-credentials token. HCIS verifies issuer, audience,
         allowlisted client_id/azp, and organization-directory.read scope.
+    GovernanceSummaryBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        ORG-010 (ACCEPTED). User access token obtained by SQ Hub through Keycloak token exchange.
+        HCIS verifies signature, issuer (OIDC_ISSUER), expiry, typ Bearer, audience containing the
+        HCIS client ID, and allowlisted azp (SQ Hub), then maps iss + sub like OIDC login.
 
   parameters:
     Cursor:

@@ -40,6 +40,9 @@ Separately grantable, excluded permissions are:
 
 - `access.roles.delegate`: reviewed HCIS role delegation/bootstrap;
 - `access.governance.manage`: preparing governance accounts;
+- `board.read` (ORG-010, ACCEPTED 2026-10-17): read-only board view for an `EMPLOYEE`, carried only by the
+  board-view role with organization scope; outside every HC bundle and outside legacy
+  Super Admin compatibility. Granted only by Super Admin like every other role;
 - `approvals.policy.manage`: changing direct managers, approvers, authority
   bindings, reporting overrides, incumbencies, publishing structure and changing
   resolver rollout. Draft editing stays available to HC administrators; publishing

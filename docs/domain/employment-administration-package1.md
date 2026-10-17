@@ -154,7 +154,7 @@ Values currently found in the active sheet `Master Data SDM YSQ` (column values 
 | STATUS KEPEGAWAIAN | Calon Pegawai Tetap | `PERCOBAAN` (owner confirmed: same meaning) |
 | STATUS KEPEGAWAIAN | Tenaga Pengabdian | `MAGANG` (owner confirmed) |
 | STATUS KEPEGAWAIAN | Pegawai Lepas | `LEPAS` (own category, kontrak lepas with end date; baseline raises `BASELINE_CONTRACT_END_UNKNOWN` because the master has no contract end) |
-| STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`; record marked "di luar pengelolaan HCIS" (§8.7). Board access stays with `FOUNDATION_BOARD` accounts. |
+| STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`; record marked "di luar pengelolaan HCIS" (§8.7). Board access stays with `FOUNDATION_BOARD` accounts. Owner 2026-10-17 (SQ Hub ADR-0009): a **salaried** Pengurus paid through HCIS payroll is an Employee with a real category chosen by HC; see ORG-010 §6 (DRAFT, Q2). |
 | STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. SHADOW review issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
 | STATUS AKTIF | Aktif | employment effective |
 | STATUS AKTIF | Aktif PKWT | employment effective; category `KONTRAK` (owner confirmed). If STATUS KEPEGAWAIAN is blank or Pegawai Kontrak → `KONTRAK`. If STATUS KEPEGAWAIAN states another category (e.g. Pegawai Tetap) → SHADOW review issue `BASELINE_CATEGORY_CONFLICT_PKWT`, category `BELUM_DIKLASIFIKASIKAN` (never guessed). |

@@ -22,7 +22,7 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-010), lalu Package 1 di `domain/employment-administration-package1.md` dan rencana implementasinya.
    - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
-   - untuk akses Panel Organ Yayasan bagi Employee dan governance summary ke SQ Hub Ringkasan Yayasan, baca `domain/foundation-board-governance-summary.md` (ORG-010, DRAFT) setelah `domain/foundation-board-dashboard.md` (ORG-003).
+   - untuk akses Panel Organ Yayasan bagi Employee dan governance summary ke SQ Hub Ringkasan Yayasan, baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
    - untuk evidence benchmarking SemartHRIS dan guardrail yang tidak boleh dicopy, baca `product/semarthris-benchmark-2026-09-22.md`.
 11. `architecture/system-context.md`
 12. ADR yang relevan

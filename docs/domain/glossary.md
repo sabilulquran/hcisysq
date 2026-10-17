@@ -24,8 +24,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Organization Directory | Projection read-only fakta struktur yang bersumber dari HCIS untuk pencarian, navigasi, integrasi, dan distribusi lintas aplikasi; bukan editor/master kedua dan bukan pemilik workflow aplikasi. |
 | Stable Business Identifier | Identifier domain yang dimaksudkan bertahan lintas versi/snapshot; tidak boleh disamakan otomatis dengan primary-row id. |
 | Organ Yayasan | Pembina, Pengurus, atau Pengawas Yayasan Sabilul Qur'an. Keanggotaan organ dicatat di SQ Hub, bukan di HCIS, dan tidak memberi permission HCIS. |
-| Board Access / Akses Panel Organ Yayasan | Izin membaca `/board` dan governance summary: akun `FOUNDATION_BOARD` aktif, atau akun `EMPLOYEE` aktif dengan role Panel Organ Yayasan (`board.read`) yang efektif. DRAFT (ORG-010). |
-| Governance Summary | Ringkasan agregat read-only yang HCIS kirim ke SQ Hub Ringkasan Yayasan (kontrak HUB-IMPL-021 v1). Tanpa data pribadi. DRAFT (ORG-010). |
+| Board Access / Akses Panel Organ Yayasan | Izin membaca `/board` dan governance summary: akun `FOUNDATION_BOARD` aktif, atau akun `EMPLOYEE` aktif dengan role Panel Organ Yayasan (`board.read`) yang efektif. ACCEPTED (ORG-010). |
+| Governance Summary | Ringkasan agregat read-only yang HCIS kirim ke SQ Hub Ringkasan Yayasan (kontrak HUB-IMPL-021 v1). Tanpa data pribadi. ACCEPTED (ORG-010). |
 | Role | Kelompok kewenangan tingkat tinggi, misalnya pegawai atau super admin. |
 | Permission | Kemampuan spesifik terhadap aksi/resource. Permission lebih presisi daripada role. |
 | Policy | Aturan otorisasi yang menilai actor, aksi, dan resource. |

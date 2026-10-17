@@ -1,6 +1,6 @@
 # ORG-010 — Board view for Employees and HCIS governance summary for SQ Hub
 
-**Status:** DRAFT — not approved for implementation. All open questions were answered by the Product Owner on 2026-10-17 (see "Product Owner decisions"); none remain.
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. Acceptance authorizes implementation under this spec; release to Mi8VPS and enabling `GOVERNANCE_SUMMARY_ENABLED` still need review, CI, and explicit owner approval (OPS-MI8-REL-001).
 **Specification:** ORG-010
 **Date:** 2026-10-17
 **Extends:** ORG-003 (`foundation-board-dashboard.md`)
@@ -116,7 +116,7 @@ Accept: application/json
 
 Public URL on the HCIS origin: `https://<hcis-canonical-host>/api/governance/summary`. The `/api` prefix follows the existing web proxy; verify during implementation. The Hub registry gets `governance_summary_path = /api/governance/summary` and `governance_audience = <HCIS OIDC client ID>`.
 
-`docs/api/openapi.yaml` carries a DRAFT entry for this path and the `GovernanceSummaryBearer` scheme.
+`docs/api/openapi.yaml` carries the accepted, not yet implemented entry for this path and the `GovernanceSummaryBearer` scheme.
 
 The route is **disabled by default** (`GOVERNANCE_SUMMARY_ENABLED=false` → `404`), like HCIS-ID-001. Enabling it on production needs owner approval.
 
@@ -379,7 +379,7 @@ All tests use synthetic data. Quality gates (typecheck, lint, test, build) must 
 
 ## 12. Rollout
 
-1. Owner accepts this spec (open questions already answered on 2026-10-17).
+1. Done: the owner answered the open questions and accepted this spec on 2026-10-17.
 2. Implement in HCIS behind `GOVERNANCE_SUMMARY_ENABLED=false`; migration is additive.
 3. Release to Mi8VPS through OPS-MI8-REL-001 with owner approval.
 4. Keycloak token-exchange configuration (Hub's job, owner approval) and a probe: an exchanged token with `aud` = HCIS is accepted; a token for another audience, and Hub's own session token, are refused.
@@ -413,7 +413,7 @@ Every production change on Mi8VPS needs explicit owner approval.
 
 ## Product Owner decisions (2026-10-17)
 
-The owner approved every suggested answer on 2026-10-17: "Setuju semua 11 saran ORG-010." No open questions remain. The spec itself stays DRAFT until the owner accepts it.
+The owner approved every suggested answer on 2026-10-17: "Setuju semua 11 saran ORG-010." No open questions remain. The owner accepted the spec the same day: "Tandai ORG-010 sebagai ACCEPTED dan siapkan PR hcisysq 122 untuk direview."
 
 | # | Question | Decision |
 | --- | --- | --- |

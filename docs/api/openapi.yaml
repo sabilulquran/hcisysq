@@ -82,9 +82,9 @@ paths:
     get:
       tags: [Governance Summary]
       operationId: getGovernanceSummaryForSqHub
-      summary: DRAFT ORG-010 — HCIS governance summary for SQ Hub Ringkasan Yayasan (not implemented)
+      summary: ORG-010 (ACCEPTED) — HCIS governance summary for SQ Hub Ringkasan Yayasan (not implemented yet)
       description: |
-        DRAFT, not implemented. See docs/domain/foundation-board-governance-summary.md (ORG-010).
+        ACCEPTED 2026-10-17, not implemented yet. See docs/domain/foundation-board-governance-summary.md (ORG-010).
         Bearer-only; the exchanged token is accepted on this route and no other. Disabled by default (404).
         Requires board access: active FOUNDATION_BOARD account, or active EMPLOYEE with effective
         organization-scope board.read; SQ Hub Application Access is re-checked per request. Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
@@ -1552,7 +1552,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        DRAFT ORG-010. User access token obtained by SQ Hub through Keycloak token exchange.
+        ORG-010 (ACCEPTED). User access token obtained by SQ Hub through Keycloak token exchange.
         HCIS verifies signature, issuer (OIDC_ISSUER), expiry, typ Bearer, audience containing the
         HCIS client ID, and allowlisted azp (SQ Hub), then maps iss + sub like OIDC login.
 

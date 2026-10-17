@@ -54,7 +54,7 @@ Default access is aggregate-first and read-only, for example:
 
 This account type does **not** automatically allow employee mutation, operational approval, payroll mutation, role management, or system configuration.
 
-`FOUNDATION_BOARD` is for organ members who are **not** staff. A salaried Pengurus who is an HCIS Employee keeps the `EMPLOYEE` account and receives board access through the board-view role (`board.read`, organization scope) instead. See ORG-010 (DRAFT, `foundation-board-governance-summary.md`).
+`FOUNDATION_BOARD` is for organ members who are **not** staff. A salaried Pengurus who is an HCIS Employee keeps the `EMPLOYEE` account and receives board access through the board-view role (`board.read`, organization scope) instead. See ORG-010 (ACCEPTED, `foundation-board-governance-summary.md`).
 
 Individual sensitive data is available only through explicit authorization.
 
@@ -87,7 +87,7 @@ SUPER_ADMIN      -> /admin
 
 This is navigation behavior, not authorization. Every backend route still performs its own authorization check.
 
-ORG-010 (DRAFT): an `EMPLOYEE` with effective `board.read` still lands on `/app` and gets a "Panel Organ Yayasan" entry to `/board`.
+ORG-010 (ACCEPTED): an `EMPLOYEE` with effective `board.read` still lands on `/app` and gets a "Panel Organ Yayasan" entry to `/board`.
 
 ## Employee access: base plus additional authority
 
@@ -330,4 +330,4 @@ A stale frontend chart or client-side navigation state must never be an authoriz
 - AUTH-010-I: when ORG-004 is implemented, structural position/incumbency alone does not bypass explicit permission/capability binding.
 - AUTH-010-J: acting structural authority is effective-dated, auditable, scope-bound, and never implies Super Admin access.
 - AUTH-010-K: job-title text and numeric organization level are never authorization inputs by themselves.
-- AUTH-010-L: governance organizational positions and `FOUNDATION_BOARD` account type remain distinct concepts unless an explicit mapping specification is approved. ORG-010 (DRAFT) grants board read access to an `EMPLOYEE` only through an explicit, Super Admin-assigned role, never from a position or job title.
+- AUTH-010-L: governance organizational positions and `FOUNDATION_BOARD` account type remain distinct concepts unless an explicit mapping specification is approved. ORG-010 (ACCEPTED) grants board read access to an `EMPLOYEE` only through an explicit, Super Admin-assigned role, never from a position or job title.

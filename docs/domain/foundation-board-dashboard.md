@@ -4,7 +4,7 @@
 **Specification:** ORG-003  
 **Related:** ORG-001, ORG-002, EMP-005, LEAVE-007, ORG-010 (DRAFT)
 
-> **ORG-010 (DRAFT, 2026-10-17)** proposes two extensions: an `EMPLOYEE` account with the board-view role (`board.read`) may also open `/board` (amends ORG-003-A), and HCIS publishes these aggregates to SQ Hub Ringkasan Yayasan through a bearer-only governance summary. The privacy, attendance and payroll boundaries below are unchanged. See [ORG-010](foundation-board-governance-summary.md).
+> **ORG-010 (DRAFT, 2026-10-17)** proposes two extensions: an `EMPLOYEE` account with the board-view role (`board.read`) may also open `/board` (amends ORG-003-A), and HCIS publishes these aggregates to SQ Hub Ringkasan Yayasan through a bearer-only governance summary. It also removes `actor.email` from the `GET /board/dashboard` response (owner decision D7, 2026-10-17). The privacy, attendance and payroll boundaries below are unchanged. See [ORG-010](foundation-board-governance-summary.md).
 
 ## Purpose
 

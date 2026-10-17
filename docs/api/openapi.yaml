@@ -87,7 +87,7 @@ paths:
         DRAFT, not implemented. See docs/domain/foundation-board-governance-summary.md (ORG-010).
         Bearer-only; the exchanged token is accepted on this route and no other. Disabled by default (404).
         Requires board access: active FOUNDATION_BOARD account, or active EMPLOYEE with effective
-        organization-scope board.read. Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
+        organization-scope board.read; SQ Hub Application Access is re-checked per request. Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
         aggregate only, no actor or personal data. Cache-Control private, no-store.
       security:
         - GovernanceSummaryBearer: []
@@ -115,7 +115,7 @@ paths:
         '404':
           description: Endpoint disabled
         '503':
-          description: Application Access or JWKS unavailable
+          description: APPLICATION_ACCESS_UNAVAILABLE or JWKS_UNAVAILABLE (owner decisions D3, D9)
 
   /internal/v1/organization-directory/snapshot:
     get:

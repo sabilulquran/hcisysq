@@ -171,11 +171,11 @@ features:
   - id: ORG-010
     module: organization
     name: Board view for Employees and governance summary for SQ Hub Ringkasan Yayasan
-    legacy_evidence: Product Owner decisions of 2026-10-17 recorded in SQ Hub ADR-0009 (PROPOSED) and HUB-IMPL-021 (DRAFT); salaried Pengurus are HCIS Employees and need board access; Hub fetches one governance summary per app as the user through Keycloak token exchange
+    legacy_evidence: Product Owner decisions of 2026-10-17 recorded in SQ Hub ADR-0009 (ACCEPTED) and HUB-IMPL-021 (ACCEPTED), merged to main 2026-10-17; salaried Pengurus are HCIS Employees and need board access; Hub fetches one governance summary per app as the user through Keycloak token exchange
     target_status: specified
     priority: post-mvp-governance
     risk: high
-    planning_note: DRAFT, not approved for implementation. Adds board.read and a Super Admin-assigned board-view role for EMPLOYEE accounts (FOUNDATION_BOARD unchanged for non-staff members), and a bearer-only GET /governance/summary implementing HUB-IMPL-021 v1 from ORG-003 aggregates. Monthly headcount trend only in EMP-005 AUTHORITATIVE mode; unit ranking from current data. Keeps ORG-003-F (no attendance/payroll aggregates). Endpoint disabled by default; production enablement and Keycloak token exchange need owner approval.
+    planning_note: DRAFT, not approved for implementation; the owner answered all 11 open questions on 2026-10-17 (Super Admin-only grant, unit ranking folds units under 3, trend = last 12 completed months, JWKS unavailable = 503, actor.email removed from /board/dashboard). Adds board.read and a Super Admin-assigned board-view role for EMPLOYEE accounts (FOUNDATION_BOARD unchanged for non-staff members), and a bearer-only GET /governance/summary implementing HUB-IMPL-021 v1 from ORG-003 aggregates. Monthly headcount trend only in EMP-005 AUTHORITATIVE mode; unit ranking from current data. Keeps ORG-003-F (no attendance/payroll aggregates). Endpoint disabled by default; production enablement and Keycloak token exchange need owner approval.
     docs:
       - docs/domain/foundation-board-governance-summary.md
       - docs/domain/foundation-board-dashboard.md

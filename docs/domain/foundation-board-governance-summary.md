@@ -1,15 +1,15 @@
 # ORG-010 — Board view for Employees and HCIS governance summary for SQ Hub
 
-**Status:** DRAFT — not approved for implementation
+**Status:** DRAFT — not approved for implementation. All open questions were answered by the Product Owner on 2026-10-17 (see "Product Owner decisions"); none remain.
 **Specification:** ORG-010
 **Date:** 2026-10-17
 **Extends:** ORG-003 (`foundation-board-dashboard.md`)
 **Related:** AUTH-010 (`access-model.md`), AUTH-011 (`hcis-authorization-modernization.md`), EMP-005/EMP-006 (`employment-administration-package1.md`), HCIS-ID-001, HUB-IMPL-003 (identity mapping CLI)
-**External:** SQ Hub ADR-0009 (PROPOSED) and HUB-IMPL-021 (DRAFT), draft PR [sabilulquran/SQ-Hub#122](https://github.com/sabilulquran/SQ-Hub/pull/122), branch `docs/ringkasan-yayasan`
+**External:** SQ Hub [ADR-0009](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0009-ringkasan-yayasan-governance-view.md) (ACCEPTED) and [HUB-IMPL-021](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/specs/HUB-IMPL-021-ringkasan-yayasan.md) (ACCEPTED), merged to main on 2026-10-17 ([sabilulquran/SQ-Hub#122](https://github.com/sabilulquran/SQ-Hub/pull/122))
 
 ## Why
 
-The Product Owner decided on 2026-10-17 (recorded in SQ Hub ADR-0009) that members of the Yayasan organs (Pembina, Pengurus, Pengawas) land on **Ringkasan Yayasan** in SQ Hub. Hub shows one summary card per application. Each application owns its figures and its own governance permission. Hub fetches each summary **as the user**, with a token obtained through Keycloak token exchange.
+The Product Owner decided on 2026-10-17 (recorded in SQ Hub ADR-0009, ACCEPTED) that members of the Yayasan organs (Pembina, Pengurus, Pengawas) land on **Ringkasan Yayasan** in SQ Hub. Hub shows one summary card per application. Each application owns its figures and its own governance permission. Hub fetches each summary **as the user**, with a token obtained through Keycloak token exchange.
 
 Two of those decisions need HCIS changes:
 
@@ -42,7 +42,7 @@ Out of scope:
 | Term | Meaning |
 | --- | --- |
 | Board access | Permission to read `/board` and the governance summary. Comes from **either** an active `FOUNDATION_BOARD` account **or** an effective `board.read` role assignment on an active `EMPLOYEE` account. |
-| Board-view role | The new HCIS system role (working key `foundation_board_viewer`, label "Panel Organ Yayasan") that carries only `board.read`. Name is DRAFT. |
+| Board-view role | The new HCIS system role (key `foundation_board_viewer`, label "Panel Organ Yayasan") that carries only `board.read` (D11). |
 | Governance summary | The HUB-IMPL-021 v1 response HCIS returns to Hub for one user. Aggregate only. |
 | Exchanged token | A short-lived Keycloak access token that Hub obtains by token exchange, with `aud` containing the HCIS client ID. |
 
@@ -53,7 +53,7 @@ Out of scope:
 | Item | Value |
 | --- | --- |
 | Permission key | `board.read` — "Membaca Panel Organ Yayasan (agregat)" |
-| Role key | `foundation_board_viewer` (DRAFT name) |
+| Role key | `foundation_board_viewer` (D11) |
 | Role label | "Panel Organ Yayasan" |
 | Role permissions | `board.read` only |
 | Scope | `organization` only, `organizational_unit_id` null. Unit or own scope is refused (`ROLE_SCOPE_INVALID`). |
@@ -78,7 +78,7 @@ Only **Super Admin**, through the existing routes:
 
 This follows the owner decision of 2026-10-16 (AUTH-011): only Super Admin grants or removes roles. Holders of `access.governance.manage` keep their current job (preparing and activating `FOUNDATION_BOARD` accounts) but cannot grant this role. Existing guards stay: no self-assignment, known HCIS system roles only, valid scope and dates, mutation and audit in one transaction.
 
-DRAFT — see open question Q1. The SQ Hub brief suggested `access.governance.manage` as the grantor; this spec recommends Super Admin only because it needs no exception to the 2026-10-16 decision.
+Decided by the owner on 2026-10-17 (D1): Super Admin only. Holders of `access.governance.manage` cannot grant it.
 
 ### 1.3 Effective board access
 
@@ -100,7 +100,7 @@ Anything else has no board access. Ending the Employee's employment, suspending 
 
 - `GET /board/dashboard` uses a new guard `requireBoardAccessFromCookie` that implements §1.3, replacing `requirePrincipalFromCookie(..., "FOUNDATION_BOARD")`.
 - The web route `/board` (`apps/web/src/router.tsx`) allows `FOUNDATION_BOARD`, or `EMPLOYEE` whose `/auth/me` lists `board.read`.
-- The response keeps its shape. `actor.principalType` may now be `EMPLOYEE`. DRAFT: drop `actor.email` from the response, since the page already knows who is signed in (Q7).
+- The response keeps its shape except that `actor.email` is removed (D7). `actor.principalType` may now be `EMPLOYEE`.
 - At implementation, `docs/domain/AUTH-011-admin-route-permissions.json` changes the `/board/dashboard` entry to principals `FOUNDATION_BOARD, EMPLOYEE` with permission `board.read` for `EMPLOYEE`, and adds `/governance/summary`. It is not changed in this docs-only PR because `auth011-route-coverage.test.ts` checks it against the registered routes.
 - ORG-003-B to ORG-003-F are unchanged. ORG-003-A is amended by ORG-010-A.
 
@@ -114,7 +114,7 @@ Authorization: Bearer <exchanged access token>
 Accept: application/json
 ```
 
-Public URL on the HCIS origin: `https://<hcis-canonical-host>/api/governance/summary`. The `/api` prefix follows the existing web proxy; confirm during implementation (TBD). The Hub registry gets `governance_summary_path = /api/governance/summary` and `governance_audience = <HCIS OIDC client ID>`.
+Public URL on the HCIS origin: `https://<hcis-canonical-host>/api/governance/summary`. The `/api` prefix follows the existing web proxy; verify during implementation. The Hub registry gets `governance_summary_path = /api/governance/summary` and `governance_audience = <HCIS OIDC client ID>`.
 
 `docs/api/openapi.yaml` carries a DRAFT entry for this path and the `GovernanceSummaryBearer` scheme.
 
@@ -124,12 +124,12 @@ The route is **disabled by default** (`GOVERNANCE_SUMMARY_ENABLED=false` → `40
 
 HCIS verifies the token with the existing `jose` pattern used by `organization-directory/machine-auth.ts` (remote JWKS from the issuer, 3-second deadline):
 
-1. signature valid against the staff realm JWKS; algorithm `RS256` only (TBD: confirm the realm's signing algorithm);
+1. signature valid against the staff realm JWKS; algorithm `RS256` only (verify the realm's signing algorithm during implementation);
 2. `iss` equals `OIDC_ISSUER` exactly (trailing slash removed), the same issuer HCIS login uses;
 3. `exp` in the future and `iat`/`nbf` not in the future, with at most 30 seconds of clock skew;
 4. `aud` contains `GOVERNANCE_SUMMARY_AUDIENCE` (the HCIS OIDC client ID);
-5. `typ` claim equals `Bearer`, so an ID token or refresh token is refused (TBD: confirm the claim Keycloak puts on exchanged tokens);
-6. `azp` is in `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`, which holds only the SQ Hub client. Only tokens exchanged by Hub are accepted (TBD: confirm `azp` on a Keycloak standard token exchange result during the Mi8VPS probe);
+5. `typ` claim equals `Bearer`, so an ID token or refresh token is refused (verify the claim on exchanged tokens in the Mi8VPS probe);
+6. `azp` is in `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`, which holds only the SQ Hub client. Only tokens exchanged by Hub are accepted (verify `azp` on a Keycloak standard token exchange result in the Mi8VPS probe);
 7. `sub` present, 1–512 characters.
 
 The Authorization header must contain exactly one bearer token. A cookie on this request is ignored: the endpoint never authenticates by cookie, and a valid cookie without a bearer token gets `401`.
@@ -141,7 +141,7 @@ After the token checks:
 1. Map `iss + sub` to one account, exactly as `OidcLoginService.findMappedAccount` does (`accounts.identity_issuer`, `accounts.identity_subject`). No match, or more than one → `403 OIDC_ACCOUNT_NOT_MAPPED`.
 2. Account `status` not `active` → `403 ACCOUNT_INACTIVE`.
 3. Board access per §1.3. None → `403 BOARD_ACCESS_REQUIRED`.
-4. DRAFT (Q3): re-check SQ Hub Application Access for this identity with the existing `SqHubApplicationAccessClient`, as login does. Denied → `403 HCIS_ACCESS_DENIED`; unavailable → `503 APPLICATION_ACCESS_UNAVAILABLE`.
+4. Re-check (D3) SQ Hub Application Access for this identity with the existing `SqHubApplicationAccessClient`, as login does. Denied → `403 HCIS_ACCESS_DENIED`; unavailable → `503 APPLICATION_ACCESS_UNAVAILABLE`.
 
 No HCIS session is created, no cookie is set, and no refresh happens.
 
@@ -153,7 +153,7 @@ No HCIS session is created, no cookie is set, and no refresh happens.
 
 ### 3.5 Two-step verification
 
-The owner requires TOTP for every organ member. Keycloak enforces it (HUB-IMPL-021 `CONFIGURE_TOTP`). HCIS v1 does not inspect `acr`/`amr` on the exchanged token. DRAFT (Q4): add an `acr` check once the staff realm publishes a level for TOTP sign-in.
+The owner requires TOTP for every organ member. Keycloak enforces it (HUB-IMPL-021 `CONFIGURE_TOTP`). HCIS v1 does not inspect `acr`/`amr` on the exchanged token (D4). An `acr` check can be added once the staff realm publishes a level for TOTP sign-in.
 
 ## 4. Governance summary endpoint: content
 
@@ -164,7 +164,7 @@ The owner requires TOTP for every organ member. Keycloak enforces it (HUB-IMPL-0
 | Field | HCIS value |
 | --- | --- |
 | `contractVersion` | `1` |
-| `applicationKey` | the HCIS key in the Hub registry, from config `GOVERNANCE_SUMMARY_APPLICATION_KEY` (TBD: confirm the registry key, likely `hcis`) |
+| `applicationKey` | the HCIS key in the Hub registry, from config `GOVERNANCE_SUMMARY_APPLICATION_KEY` (verify the registry key during implementation, likely `hcis`) |
 | `title` | `"SDM"` |
 | `dataAsOf` | request time; figures are live (ORG-003-B) |
 | `detailUrl` | `https://<hcis-canonical-host>/board` |
@@ -213,12 +213,12 @@ S2 (#117) added the baseline backfill. What this means for a trend:
 Rule:
 
 - HCIS includes `trend` on `active_employees` and a `trend` chart (`key: "active_headcount_monthly"`, title "Pegawai aktif per bulan", one `line` series, `unit: "orang"`) **only when** the mode is `AUTHORITATIVE`.
-- Periods: the last 12 completed months plus the current month, capped at 12 points (TBD: include the current partial month or not; Q6).
+- Periods: the last 12 completed months, oldest first; the current month is not included (D6).
 - A month gets `null` (a gap, never zero) when any non-voided employment has an unknown basis that could change that month's count, or when the month ends before the earliest recorded `started_on` among active baseline rows. Fewer than 6 non-null points → omit the trend and chart entirely.
 - `change` compares the last point with the point 12 months earlier when both exist; `good` is not set (neutral colour), because more or fewer staff is not good or bad on its own.
 - Until then, HCIS omits `trend` and the chart, which the contract allows. The card works with metrics only.
 
-Current production mode: **TBD**. Not inspected; only read-only inspection is allowed and it was not needed for this draft. The EMP-005 plan keeps `AUTHORITATIVE` behind S5/S5A releases and an owner decision, so expect no trend at first.
+Current production mode: not inspected (verify read-only during implementation). The EMP-005 plan keeps `AUTHORITATIVE` behind S5/S5A releases and an owner decision, so expect no trend at first.
 
 A reconstruction from `employees.started_on`/`ended_on` alone is **rejected**: it loses rehires, treats unknown dates as known, and would present a guess as history.
 
@@ -227,9 +227,9 @@ A reconstruction from `employees.started_on`/`ended_on` alone is **rejected**: i
 The ranking needs only **current** unit placement, not history. ORG-003 already computes "active headcount by organizational unit" from `employees.organizational_unit_id`.
 
 - Chart `kind: "ranking"`, `key: "active_headcount_by_unit"`, title "Pegawai aktif per unit", `unit: "orang"`.
-- Up to 7 largest units by count, ties sorted by name, then one "Lainnya" item with the sum of the rest when more than 8 units exist. "Tanpa Unit" is an ordinary item.
+- Units with fewer than 3 active employees are folded into "Lainnya" first (D5). Of the rest, up to 7 largest units by count, ties sorted by name, then one "Lainnya" item with the sum of everything folded. Without anything to fold, up to 8 units are shown. "Tanpa Unit" is an ordinary item.
 - Labels are unit names from `organizational_units.name`. A unit name is an organization fact, not personal data.
-- Small cells: a unit count of 1 or 2 is still a headcount, not a breakdown of a person's attributes, and `/board` already shows it. DRAFT (Q5): fold units with fewer than 3 active employees into "Lainnya" anyway, to follow the HUB-IMPL-021 rule on figures that describe one person.
+- Small cells: folding units under 3 follows the HUB-IMPL-021 rule on figures that describe one person. `/board` keeps its full unit list.
 - When ORG-004 becomes the unit source for placements, the ranking follows whatever ORG-003 uses at that time; it never mixes sources in one response.
 
 No `composition`, `stages`, or `target` charts in v1.
@@ -253,11 +253,11 @@ In HCIS, `accounts.identity_issuer + identity_subject` is unique, so the identit
 | Step | Who | What |
 | --- | --- | --- |
 | 1 | HC | The person is recorded as an Employee (EMP-004 import, or **Mulai hubungan kerja** once EMP-005 is authoritative). Their `EMPLOYEE` account exists, unmapped. |
-| 2 | Operator | **Identity hand-over** (new CLI mode, DRAFT): preview, then `--apply`. In one transaction under the existing advisory lock: clear the mapping on the `FOUNDATION_BOARD` account, set it to `inactive`, end its sessions, map the identity to the `EMPLOYEE` account. Requires `HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1`. Refuses when the target is not an active `EMPLOYEE` account or already has another identity. |
+| 2 | Operator | **Identity hand-over** (new CLI mode): preview, then `--apply`. In one transaction under the existing advisory lock: clear the mapping on the `FOUNDATION_BOARD` account, set it to `inactive`, end its sessions, map the identity to the `EMPLOYEE` account. Requires `HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1`. Refuses when the target is not an active `EMPLOYEE` account or already has another identity. |
 | 3 | Super Admin | If the person is still an organ member, grants the board-view role with the term end as `endsOn`. |
 
 - The old `FOUNDATION_BOARD` account is never deleted; it stays `inactive` for audit.
-- Between steps 2 and 3 the person has no board access and Hub hides the HCIS card. Doing step 3 right after step 2 keeps the gap short (Q8 asks whether one command should do both).
+- Between steps 2 and 3 the person has no board access and Hub hides the HCIS card. Doing step 3 right after step 2 keeps the gap short. The CLI does not grant the role (D8).
 - The reverse (an Employee who leaves staff but stays an organ member) uses the same hand-over in the other direction to a new or re-activated `FOUNDATION_BOARD` account, prepared by a holder of `access.governance.manage`.
 
 Without the new CLI mode, the existing command can do it in two runs (`--clear --apply` on the old account, then map on the new one) plus a separate account deactivation. That leaves a window where the identity maps to nothing, so the combined mode is preferred.
@@ -272,7 +272,7 @@ The 2026-10-17 decision says a **salaried** Pengurus paid through HCIS payroll i
 - a salaried Pengurus is recorded with a real employment category (for example Pegawai Tetap or Pegawai Kontrak) chosen by HC, and is counted as an active employee in `/board` and the summary like any other Employee;
 - board access for them comes only from the board-view role, never from their status value or job title.
 
-DRAFT (Q2): confirm with the owner and HC which category a salaried Pengurus gets, and whether they are counted in "Pegawai aktif".
+Decided by the owner on 2026-10-17 (D2): a salaried Pengurus keeps their real category, set by HC, and counts in "Pegawai aktif".
 
 ## 7. Errors
 
@@ -280,14 +280,15 @@ DRAFT (Q2): confirm with the owner and HC which category a salaried Pengurus get
 | --- | --- | --- |
 | 404 | — | `GOVERNANCE_SUMMARY_ENABLED` is false |
 | 401 | `UNAUTHENTICATED` | no bearer token, malformed header, or several tokens |
-| 401 | `INVALID_TOKEN` | signature, issuer, expiry, `typ`, or `sub` check fails; JWKS unreachable within the deadline (DRAFT: `503` instead, Q9) |
+| 401 | `INVALID_TOKEN` | signature, issuer, expiry, `typ`, or `sub` check fails |
 | 403 | `FORBIDDEN_AUDIENCE` | `aud` lacks the HCIS client ID |
 | 403 | `FORBIDDEN_CLIENT` | `azp` not allowlisted |
 | 403 | `OIDC_ACCOUNT_NOT_MAPPED` | no single account for `iss + sub` |
 | 403 | `ACCOUNT_INACTIVE` | account not active |
 | 403 | `BOARD_ACCESS_REQUIRED` | no board access per §1.3 |
-| 403 | `HCIS_ACCESS_DENIED` | Application Access denied (if Q3 = yes) |
-| 503 | `APPLICATION_ACCESS_UNAVAILABLE` | Application Access check failed (if Q3 = yes) |
+| 403 | `HCIS_ACCESS_DENIED` | Application Access denied (D3) |
+| 503 | `APPLICATION_ACCESS_UNAVAILABLE` | Application Access check failed (D3) |
+| 503 | `JWKS_UNAVAILABLE` | signing keys unreachable within the deadline (D9) |
 | 500 | — | database error; body has no detail |
 
 Every error sets `Cache-Control: no-store`. Error bodies never echo the token or its claims.
@@ -302,7 +303,7 @@ Written to `auth_audit_events` (account ID when known, event type, IP, user agen
 | `governance.summary.served` | `200` returned |
 | `governance.summary.denied` | any `401`/`403`, with a reason code from §7; account ID only when mapping succeeded |
 | `auth.oidc.identity_handed_over` | §5 step 2 applied: old account ID, new account ID, actor (operator) |
-| `board.dashboard.viewed` | DRAFT (Q10): not added; `/board` reads stay unaudited as today |
+| `board.dashboard.viewed` | Not added (D10); `/board` reads stay unaudited as today |
 
 Hub caches a summary for up to 60 seconds per session, so `served` volume stays small.
 
@@ -362,7 +363,10 @@ Every new permission needs automated tests (AGENTS.md §7). Minimum:
 - `GOVERNANCE_SUMMARY_ENABLED=false` → 404;
 - no token, claim, or body is logged (log capture assertion);
 - trend present only in `AUTHORITATIVE` mode; unknown-basis rows produce `null` points; fewer than 6 points omits trend and chart;
-- ranking has at most 8 items with "Lainnya" when more units exist;
+- ranking has at most 8 items, folds units with fewer than 3 active employees into "Lainnya", and folds the rest beyond 7 when anything is folded;
+- trend has only completed months (no current month);
+- JWKS unreachable → `503 JWKS_UNAVAILABLE`; Application Access denied → 403, unavailable → 503;
+- `GET /board/dashboard` no longer returns `actor.email`;
 - audit events written for served and denied requests.
 
 **Identity hand-over**
@@ -375,7 +379,7 @@ All tests use synthetic data. Quality gates (typecheck, lint, test, build) must 
 
 ## 12. Rollout
 
-1. Owner accepts this spec and answers the open questions.
+1. Owner accepts this spec (open questions already answered on 2026-10-17).
 2. Implement in HCIS behind `GOVERNANCE_SUMMARY_ENABLED=false`; migration is additive.
 3. Release to Mi8VPS through OPS-MI8-REL-001 with owner approval.
 4. Keycloak token-exchange configuration (Hub's job, owner approval) and a probe: an exchanged token with `aud` = HCIS is accepted; a token for another audience, and Hub's own session token, are refused.
@@ -399,26 +403,32 @@ Every production change on Mi8VPS needs explicit owner approval.
 - ORG-010-D: `GET /governance/summary` accepts only a bearer token whose signature, issuer, expiry, `typ`, audience (HCIS client), and `azp` (SQ Hub) are valid, maps `iss + sub` like OIDC login, and requires board access.
 - ORG-010-E: the exchanged token is refused by every other HCIS route, and the endpoint never authenticates by cookie or creates a session.
 - ORG-010-F: the response follows HUB-IMPL-021 v1 with ORG-003 aggregates only, no actor data, no PII, and no attendance or payroll aggregates.
-- ORG-010-G: the monthly active-headcount trend appears only in employment-history `AUTHORITATIVE` mode, uses `null` for months that unknown dates make uncertain, and is omitted with fewer than 6 known points.
-- ORG-010-H: the headcount-by-unit ranking has at most 8 items, largest first, with "Lainnya" for the rest.
+- ORG-010-G: the monthly active-headcount trend covers the last 12 completed months, appears only in employment-history `AUTHORITATIVE` mode, uses `null` for months that unknown dates make uncertain, and is omitted with fewer than 6 known points.
+- ORG-010-H: the headcount-by-unit ranking has at most 8 items, largest first, with units under 3 active employees and any overflow folded into "Lainnya".
 - ORG-010-I: the identity hand-over moves one Akun SQ identity from a `FOUNDATION_BOARD` account to an `EMPLOYEE` account in one audited transaction and deactivates the old account without deleting it.
 - ORG-010-J: served and denied summary requests, role grants and removals, and hand-overs write audit events without tokens, claims, or response bodies.
 - ORG-010-K: the endpoint is disabled by default and enabling it in production needs owner approval.
+- ORG-010-L: `GET /board/dashboard` no longer returns `actor.email`.
+- ORG-010-M: the summary endpoint re-checks SQ Hub Application Access on each request, and returns 503 when it or the signing keys are unavailable.
 
-## Open questions
+## Product Owner decisions (2026-10-17)
 
-Each has a suggested answer (Saran).
+The owner approved every suggested answer on 2026-10-17: "Setuju semua 11 saran ORG-010." No open questions remain. The spec itself stays DRAFT until the owner accepts it.
 
-| # | Question | Saran |
+| # | Question | Decision |
 | --- | --- | --- |
-| Q1 | Who grants the board-view role: Super Admin only, or also holders of `access.governance.manage`? | Super Admin only. It matches the 2026-10-16 decision that only Super Admin grants roles, and needs no exception. `access.governance.manage` stays for `FOUNDATION_BOARD` accounts. |
-| Q2 | Which employment category does a salaried Pengurus get, and do they count in "Pegawai aktif"? | Record them with their real category (usually Pegawai Tetap) and count them like any Employee. The `Pengurus Yayasan` workbook value stays excluded (D-02); HC sets the category by hand. |
-| Q3 | Should HCIS re-check SQ Hub Application Access on each summary request, as login does? | Yes. It is the same check as login, costs one call, and keeps HCIS from trusting Hub's own filtering. |
-| Q4 | Should HCIS require proof of TOTP (`acr`) on the exchanged token? | Not in v1. Rely on Keycloak's required TOTP; add an `acr` check once the realm publishes a level for it. |
-| Q5 | Fold units with fewer than 3 active employees into "Lainnya" in the ranking? | Yes. It costs little and follows the HUB-IMPL-021 rule about figures that describe one person. `/board` keeps its full list. |
-| Q6 | Should the trend include the current, unfinished month? | No. Show the last 12 completed months, so every point means the same thing. |
-| Q7 | Drop `actor.email` from `GET /board/dashboard`? | Yes. The page does not need it and it is the only personal field in the response. |
-| Q8 | Should the identity hand-over CLI also grant the board-view role? | No. Keep it to identity only; the Super Admin grants the role right after, as a separate audited step that follows the 2026-10-16 rule. |
-| Q9 | JWKS unreachable: `401` or `503`? | `503`. It is an HCIS-side problem, so Hub shows "Tidak dapat dimuat" with retry instead of hiding the card. |
-| Q10 | Audit every `/board` page view? | No for now. Audit summary requests (Hub calls, few) and role changes; add page-view audit only if the owner asks for it. |
-| Q11 | Final names for the role and permission? | Role `foundation_board_viewer` "Panel Organ Yayasan", permission `board.read`. Short and matches the `/board` route. |
+| D1 | Who grants the board-view role? | Super Admin only, through the existing role-assignment routes. Holders of `access.governance.manage` cannot grant it; that permission stays for `FOUNDATION_BOARD` accounts. |
+| D2 | Which employment category does a salaried Pengurus get, and do they count in "Pegawai aktif"? | Their real category, set by HC (usually Pegawai Tetap). They count in "Pegawai aktif" like any Employee. The `Pengurus Yayasan` workbook value stays excluded (EMP-005 D-02). |
+| D3 | Re-check SQ Hub Application Access on each summary request? | Yes, with the same client and rules as OIDC login. |
+| D4 | Require proof of TOTP (`acr`) on the exchanged token? | Not in v1. Keycloak's required TOTP is relied on; an `acr` check can be added once the realm publishes a level for it. |
+| D5 | Fold small units in the ranking? | Yes. Units with fewer than 3 active employees are folded into "Lainnya". `/board` keeps its full list. |
+| D6 | Trend window? | The last 12 completed months; the current month is not included. |
+| D7 | `actor.email` in `GET /board/dashboard`? | Removed. The response no longer carries the actor's e-mail. |
+| D8 | Should the identity hand-over CLI also grant the board-view role? | No. The CLI moves the identity only; Super Admin grants the role as a separate audited step. |
+| D9 | JWKS unreachable? | `503 JWKS_UNAVAILABLE`, so Hub shows "Tidak dapat dimuat" with retry. |
+| D10 | Audit every `/board` page view? | No, not for now. Summary requests, role changes and hand-overs are audited. |
+| D11 | Names? | Role `foundation_board_viewer`, label "Panel Organ Yayasan"; permission `board.read`. |
+
+### To verify during implementation (not decisions)
+
+These are facts to check, not product choices: the realm signing algorithm (`RS256` expected), the `typ` and `azp` claims on a Keycloak standard token exchange result (Mi8VPS probe), the `/api` prefix on the public URL, the Hub registry key for HCIS (likely `hcis`), and the current employment-history mode in production (read-only check).

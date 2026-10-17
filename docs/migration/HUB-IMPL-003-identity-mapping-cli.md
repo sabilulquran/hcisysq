@@ -102,6 +102,35 @@ HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 \
 
 Clearing the mapping does not delete or disable the Keycloak identity and does not change HCIS roles, permissions, `principal_type`, employee linkage, or `accounts.id`.
 
+## Identity hand-over (ORG-010 §5)
+
+When an Organ Yayasan member with a `FOUNDATION_BOARD` account becomes an Employee (or the reverse), the same Akun SQ identity moves to the other account in one transaction under the mapping advisory lock: the identity is cleared on the old account, the old account is set `inactive` (never deleted) and its sessions end, the identity is mapped to the new account, and one `auth.oidc.identity_handed_over` audit event is written (new account, previous account in `related_account_id`, operator CLI as actor).
+
+The target must be an active account of the other kind (`FOUNDATION_BOARD` → `EMPLOYEE` with an active employee record, or `EMPLOYEE` → `FOUNDATION_BOARD`) and must not already hold an identity. The source must hold the identity. The hand-over never grants a role (owner decision D8): a Super Admin grants the board-view role afterwards through `POST /admin/access/accounts/:accountId/role-assignments`.
+
+Preview (writes nothing):
+
+```bash
+HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 \
+  npm run auth:map-oidc-identity -- \
+  --hand-over \
+  --from-account-id <OLD_ACCOUNT_UUID> \
+  --to-account-id <NEW_ACCOUNT_UUID>
+```
+
+Apply only after verifying both account IDs in the preview, and on production only with explicit owner approval:
+
+```bash
+HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 \
+  npm run auth:map-oidc-identity -- \
+  --hand-over \
+  --from-account-id <OLD_ACCOUNT_UUID> \
+  --to-account-id <NEW_ACCOUNT_UUID> \
+  --apply
+```
+
+Reverse a hand-over by running it in the other direction after re-activating the previous account through the reviewed account-status route.
+
 ## Synthetic UAT provisioning sequence
 
 For each synthetic persona:

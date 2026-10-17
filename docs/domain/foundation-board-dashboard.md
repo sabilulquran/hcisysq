@@ -4,7 +4,7 @@
 **Specification:** ORG-003  
 **Related:** ORG-001, ORG-002, EMP-005, LEAVE-007, ORG-010 (ACCEPTED)
 
-> **ORG-010 (ACCEPTED 2026-10-17, not implemented yet)** adds two extensions: an `EMPLOYEE` account with the board-view role (`board.read`) may also open `/board` (amends ORG-003-A), and HCIS publishes these aggregates to SQ Hub Ringkasan Yayasan through a bearer-only governance summary. It also removes `actor.email` from the `GET /board/dashboard` response (owner decision D7, 2026-10-17). The privacy, attendance and payroll boundaries below are unchanged. See [ORG-010](foundation-board-governance-summary.md).
+> **ORG-010 (ACCEPTED 2026-10-17, implemented; the summary endpoint is off by default)** adds two extensions: an `EMPLOYEE` account with the board-view role (`board.read`) may also open `/board` (amends ORG-003-A), and HCIS publishes these aggregates to SQ Hub Ringkasan Yayasan through a bearer-only governance summary. It also removes `actor.email` from the `GET /board/dashboard` response (owner decision D7, 2026-10-17). The privacy, attendance and payroll boundaries below are unchanged. See [ORG-010](foundation-board-governance-summary.md).
 
 ## Purpose
 
@@ -64,7 +64,7 @@ Real browser UAT verified:
 
 ## Acceptance criteria
 
-- ORG-003-A: `/board` requires an authenticated `FOUNDATION_BOARD` principal. (ORG-010-A, ACCEPTED, also allows, once implemented, an active `EMPLOYEE` with effective organization-scope `board.read`.)
+- ORG-003-A: `/board` requires an authenticated `FOUNDATION_BOARD` principal. (Amended by ORG-010-A: an active `EMPLOYEE` with an active employee record and effective organization-scope `board.read` is also allowed.)
 - ORG-003-B: all metrics are aggregate and live from the HCIS database.
 - ORG-003-C: initial board dashboard exposes no employee-level PII, evidence, or personal payslip data.
 - ORG-003-D: approval readiness reports direct-manager and Unit Approver coverage without inferring hierarchy from titles.

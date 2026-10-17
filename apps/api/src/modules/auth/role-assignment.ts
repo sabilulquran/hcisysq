@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { AuthError, type AuthPrincipal } from "./service.js";
-import { ADMIN_PERMISSIONS, EMPLOYMENT_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS, hasEffectiveOrganizationPermission } from "./permissions.js";
+import {
+  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, EMPLOYMENT_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS,
+  hasEffectiveOrganizationPermission,
+} from "./permissions.js";
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
-const HCIS_ROLES = ["human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver"];
+const HCIS_ROLES = [
+  "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
+];
 const HCIS_PERMISSIONS: readonly string[] = [
   ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, "employees.read.unit", "attendance.read.unit",
-  "leave.approve", "leave.hc.approve", "reports.read.organization", "reports.export.organization",
+  "leave.approve", "leave.hc.approve", "reports.read.organization", "reports.export.organization", BOARD_READ_PERMISSION,
 ];
 
 export interface AssignableRole { roleKey: string; permissions: string[] }
@@ -94,6 +99,15 @@ export async function createRoleAssignment(
     if (role.roleKey === "human_capital_admin" &&
       (input.scopeType !== "organization" || !input.reason?.trim())) {
       throw new AuthError(400, "ADMIN_ORGANIZATION_MANDATE_REQUIRED", "Admin HC memerlukan scope organisasi dan alasan penugasan.");
+    }
+    // ORG-010 §1.1: the board-view role is organization scope only and needs a reason naming the mandate.
+    if (role.roleKey === BOARD_VIEWER_ROLE_KEY) {
+      if (input.scopeType !== "organization" || input.organizationalUnitId) {
+        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Panel Organ Yayasan hanya dapat diberikan dengan scope organisasi.");
+      }
+      if (!input.reason?.trim()) {
+        throw new AuthError(400, "ROLE_REASON_REQUIRED", "Alasan penugasan wajib diisi, misalnya nomor SK kepengurusan.");
+      }
     }
     if (input.organizationalUnitId) {
       const unit = await db.query("SELECT id FROM organizational_units WHERE id = $1", [input.organizationalUnitId]);

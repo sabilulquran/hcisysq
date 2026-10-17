@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiConfig } from "../src/config/env.js";
-import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS } from "../src/modules/auth/permissions.js";
+import { ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, HC_ADMIN_PERMISSIONS } from "../src/modules/auth/permissions.js";
 
 // AUTH-011 / SEC-02: every route registered by createApp must be either explicitly public
 // or listed in the route-permission manifest, so a new unguarded route fails CI.
@@ -26,7 +26,7 @@ type ManifestEntry = {
   file: string;
   method: string;
   url: string;
-  access?: "hc-operational" | "self-service" | "super-admin";
+  access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
   principals?: string[];
   permissions: string[];
   executePermissions?: string[];
@@ -101,6 +101,12 @@ describe("AUTH-011 route manifest coverage", () => {
     expect(keys.filter((key) => PUBLIC_ROUTE(key.split(" ")[1]!))).toEqual([]);
   });
 
+  it("lists exactly the two ORG-010 board-access routes", async () => {
+    const board = (await manifest()).filter((entry) => entry.access === "board" || entry.access === "governance-bearer")
+      .map((entry) => `${entry.access} ${entry.method} ${entry.url}`);
+    expect(board).toEqual(["board GET /board/dashboard", "governance-bearer GET /governance/summary"]);
+  });
+
   it("keeps the public allowlist exact", async () => {
     const urls = [...new Set((await registeredRoutes()).map((route) => route.url).filter(PUBLIC_ROUTE))].sort();
     expect(urls).toEqual(EXPECTED_PUBLIC_URLS);
@@ -110,6 +116,14 @@ describe("AUTH-011 route manifest coverage", () => {
     const known = new Set<string>([...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve"]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;
+      // ORG-010: board access is FOUNDATION_BOARD, or EMPLOYEE with board.read; never an admin permission.
+      if (entry.access === "board" || entry.access === "governance-bearer") {
+        expect(entry.principals, label).toEqual(["FOUNDATION_BOARD", "EMPLOYEE"]);
+        expect(entry.permissions, label).toEqual([BOARD_READ_PERMISSION]);
+        expect(known.has(BOARD_READ_PERMISSION), label).toBe(false);
+        expect(entry.url.startsWith("/admin/"), label).toBe(false);
+        continue;
+      }
       if (entry.access === "self-service") {
         expect(entry.permissions, label).toEqual([]);
         expect(entry.principals?.length, label).toBeGreaterThan(0);

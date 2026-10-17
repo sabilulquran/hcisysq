@@ -1738,11 +1738,27 @@
     "file": "apps/api/src/modules/board/dashboard-routes.ts",
     "method": "GET",
     "url": "/board/dashboard",
-    "access": "self-service",
+    "access": "board",
     "principals": [
-      "FOUNDATION_BOARD"
+      "FOUNDATION_BOARD",
+      "EMPLOYEE"
     ],
-    "permissions": []
+    "permissions": [
+      "board.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/governance/routes.ts",
+    "method": "GET",
+    "url": "/governance/summary",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD",
+      "EMPLOYEE"
+    ],
+    "permissions": [
+      "board.read"
+    ]
   },
   {
     "file": "apps/api/src/modules/leave/attendance-resolution-routes.ts",

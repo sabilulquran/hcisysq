@@ -48,13 +48,30 @@ export class OidcIdentityMappingError extends Error {
     public readonly code:
       | "ACCOUNT_NOT_FOUND"
       | "IDENTITY_ALREADY_ASSIGNED"
-      | "REPLACE_REQUIRED",
+      | "REPLACE_REQUIRED"
+      | "SOURCE_HAS_NO_IDENTITY"
+      | "TARGET_NOT_ELIGIBLE"
+      | "TARGET_ALREADY_MAPPED"
+      | "SAME_ACCOUNT",
     message: string,
   ) {
     super(message);
     this.name = "OidcIdentityMappingError";
   }
 }
+
+export interface OidcIdentityHandOverResult {
+  status: "would_hand_over" | "handed_over";
+  identity: OidcIdentityRef;
+  from: OidcIdentityMappingResult["account"];
+  to: OidcIdentityMappingResult["account"];
+}
+
+// ORG-010 §5: a hand-over always goes to the other principal kind.
+const HAND_OVER_TARGET: Partial<Record<AccountMappingRow["principalType"], AccountMappingRow["principalType"]>> = {
+  FOUNDATION_BOARD: "EMPLOYEE",
+  EMPLOYEE: "FOUNDATION_BOARD",
+};
 
 export class OidcIdentityMappingService {
   constructor(private readonly client: Pick<PoolClient, "query">) {}
@@ -160,6 +177,116 @@ export class OidcIdentityMappingService {
     await this.audit("auth.oidc.identity_mapping_cleared", account);
 
     return this.result("cleared", account, previousIdentity, null);
+  }
+
+  /**
+   * ORG-010 §5: move the Akun SQ identity held by one account (usually FOUNDATION_BOARD) to an active
+   * account of the other kind (usually EMPLOYEE) under the mapping lock. The old account is set
+   * inactive, never deleted, and its sessions end. Identity only: no role is granted (D8).
+   * With apply, the caller owns the surrounding transaction.
+   */
+  async handOver(input: {
+    fromAccountId: string;
+    toAccountId: string;
+    apply: boolean;
+  }): Promise<OidcIdentityHandOverResult> {
+    const fromAccountId = accountIdSchema.parse(input.fromAccountId);
+    const toAccountId = accountIdSchema.parse(input.toAccountId);
+    if (fromAccountId === toAccountId) {
+      throw new OidcIdentityMappingError("SAME_ACCOUNT", "Source and target must be different HCIS accounts.");
+    }
+
+    if (input.apply) {
+      await this.client.query("SELECT pg_advisory_xact_lock(hashtext('hcis-oidc-identity-mapping'))");
+    }
+
+    const from = await this.findAccount(fromAccountId, input.apply);
+    if (!from) throw new OidcIdentityMappingError("ACCOUNT_NOT_FOUND", `HCIS account ${fromAccountId} was not found.`);
+    const to = await this.findAccount(toAccountId, input.apply);
+    if (!to) throw new OidcIdentityMappingError("ACCOUNT_NOT_FOUND", `HCIS account ${toAccountId} was not found.`);
+
+    const identity = this.identityFromAccount(from);
+    if (!identity) {
+      throw new OidcIdentityMappingError("SOURCE_HAS_NO_IDENTITY", `HCIS account ${from.id} does not hold an OIDC identity.`);
+    }
+    if (this.identityFromAccount(to)) {
+      throw new OidcIdentityMappingError("TARGET_ALREADY_MAPPED", `HCIS account ${to.id} already has an OIDC identity.`);
+    }
+    const expectedType = HAND_OVER_TARGET[from.principalType];
+    if (!expectedType || to.principalType !== expectedType || to.status !== "active" || !(await this.employeeActive(to))) {
+      throw new OidcIdentityMappingError(
+        "TARGET_NOT_ELIGIBLE",
+        `HCIS account ${to.id} must be an active ${expectedType ?? "EMPLOYEE or FOUNDATION_BOARD"} account.`,
+      );
+    }
+
+    if (!input.apply) {
+      return { status: "would_hand_over", identity, from: this.summary(from), to: this.summary(to) };
+    }
+
+    await this.client.query(
+      `
+        UPDATE accounts
+        SET identity_issuer = NULL,
+            identity_subject = NULL,
+            status = 'inactive',
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [from.id],
+    );
+    await this.client.query(
+      "UPDATE auth_sessions SET revoked_at = now() WHERE account_id = $1 AND revoked_at IS NULL",
+      [from.id],
+    );
+    await this.client.query(
+      `
+        UPDATE accounts
+        SET identity_issuer = $2,
+            identity_subject = $3,
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [to.id, identity.issuer, identity.subject],
+    );
+    // One event naming the new account, the previous account, and the operator CLI as actor.
+    await this.client.query(
+      `
+        INSERT INTO auth_audit_events (id, account_id, event_type, email, user_agent, related_account_id)
+        VALUES ($1, $2, 'auth.oidc.identity_handed_over', $3, 'operator-cli:map-oidc-identity', $4)
+      `,
+      [randomUUID(), to.id, to.email, from.id],
+    );
+
+    return {
+      status: "handed_over",
+      identity,
+      from: { ...this.summary(from), accountStatus: "inactive" },
+      to: this.summary(to),
+    };
+  }
+
+  private async employeeActive(account: AccountMappingRow): Promise<boolean> {
+    if (account.principalType !== "EMPLOYEE") return true;
+    const result = await this.client.query<{ active: boolean }>(
+      `
+        SELECT employee.status = 'active' AS active
+        FROM accounts account
+        JOIN employees employee ON employee.id = account.employee_id
+        WHERE account.id = $1
+      `,
+      [account.id],
+    );
+    return result.rows[0]?.active === true;
+  }
+
+  private summary(account: AccountMappingRow): OidcIdentityMappingResult["account"] {
+    return {
+      id: account.id,
+      email: account.email,
+      principalType: account.principalType,
+      accountStatus: account.status,
+    };
   }
 
   private async findAccount(accountId: string, lock: boolean): Promise<AccountMappingRow | null> {

@@ -21,6 +21,11 @@ export const HC_ADMIN_PERMISSIONS = [
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;
 export type EmploymentPermission = (typeof EMPLOYMENT_PERMISSIONS)[number];
 
+/** ORG-010: read the Panel Organ Yayasan (aggregate only). Carried only by foundation_board_viewer;
+ * outside every HC bundle and never granted through legacy Super Admin compatibility. */
+export const BOARD_READ_PERMISSION = "board.read";
+export const BOARD_VIEWER_ROLE_KEY = "foundation_board_viewer";
+
 // Only capabilities of the existing administrative APIs are eligible for legacy access.
 // access.roles.assign stays here: legacy Super Admin compatibility is the only remaining role grantor.
 export const ADMIN_PERMISSIONS = [
@@ -81,6 +86,17 @@ export async function hasEffectiveOrganizationPermission(
   if (hasLegacySuperAdminCompatibility(principal, permission)) return true;
   if (principal.principalType !== "EMPLOYEE") return false;
   return hasOrganizationPermission(db, principal.id, permission);
+}
+
+/** ORG-010 §1.3: an active FOUNDATION_BOARD account (path B), or an active EMPLOYEE with an active
+ * employee record and an effective organization-scope board.read assignment (path A). No cache. */
+export async function hasBoardAccess(
+  db: Pick<Pool, "query">, account: { id: string; principalType: string; status?: string },
+): Promise<boolean> {
+  if (account.status !== undefined && account.status !== "active") return false;
+  if (account.principalType === "FOUNDATION_BOARD") return true;
+  if (account.principalType !== "EMPLOYEE") return false;
+  return hasOrganizationPermission(db, account.id, BOARD_READ_PERMISSION);
 }
 
 export async function resolveAuthorizationContext(

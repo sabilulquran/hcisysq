@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminNavigation } from "@/layouts/AdminShell";
-import { canAccessAdminPath, canAccessEmployeeHcPath, canManageRoleAssignments } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessBoard, canAccessEmployeeHcPath, canManageRoleAssignments } from "@/lib/authorization";
 import { landingPath } from "@/lib/auth";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
@@ -119,5 +119,24 @@ describe("default landing by principal persona", () => {
     ["non-Employee with admin capability", session("SUPER_ADMIN", hcAdmin), "/admin"],
   ] as const)("lands %s at the expected path", (_label, actor, expected) => {
     expect(landingPath(actor)).toBe(expected);
+  });
+});
+
+describe("ORG-010 /board route eligibility", () => {
+  it("allows FOUNDATION_BOARD and an Employee with board.read, and denies everyone else", () => {
+    expect(canAccessBoard(session("FOUNDATION_BOARD", []))).toBe(true);
+    expect(canAccessBoard(session("EMPLOYEE", ["board.read"]))).toBe(true);
+    expect(canAccessBoard(session("EMPLOYEE", []))).toBe(false);
+    expect(canAccessBoard(session("EMPLOYEE", hcAdmin))).toBe(false);
+    expect(canAccessBoard(session("SUPER_ADMIN", ["board.read"]))).toBe(false);
+    expect(canAccessBoard(null)).toBe(false);
+  });
+
+  it("keeps landing paths and adds no admin path for board.read", () => {
+    const viewer = session("EMPLOYEE", ["board.read"]);
+    expect(landingPath(viewer)).toBe("/app");
+    expect(canAccessAdminPath(viewer, "/admin")).toBe(false);
+    expect(landingPath(session("FOUNDATION_BOARD", []))).toBe("/board");
+    expect(canAccessAdminPath(session("FOUNDATION_BOARD", ["board.read"]), "/admin")).toBe(false);
   });
 });

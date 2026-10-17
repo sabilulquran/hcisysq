@@ -5,6 +5,7 @@ import {
   Building2,
   CalendarDays,
   CalendarRange,
+  ClipboardCheck,
   Clock3,
   Grid2X2,
   History,
@@ -30,6 +31,7 @@ export type AdminNavKey =
   | "employees"
   | "import"
   | "history"
+  | "employment-consistency"
   | "organization"
   | "attendance"
   | "attendance-adms"
@@ -67,6 +69,7 @@ const navGroups: AdminNavGroup[] = [
       { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
       { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
       { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
+      { key: "employment-consistency", label: "Kecocokan Data", href: "/admin/employment/consistency", icon: ClipboardCheck },
     ],
   },
   {

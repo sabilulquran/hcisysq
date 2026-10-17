@@ -479,7 +479,7 @@ New permission keys (additive migration, assigned explicitly — never inferred 
 | `employment.correct` | `REVERSAL`, backdating beyond the window, PK/SK correction after link, baseline re-run per employee. | D-16 (accepted): senior HC officer only, granted as a separate explicit assignment — not part of the default `human_capital_admin` bundle. |
 | `access.accounts.temporary_reactivate` | Grant/revoke a time-boxed reactivation of an ended employee's HCIS account (§8.5.2). | `human_capital_admin` only (owner, 2026-10-16). Not granted to Super Admin. Requires an active account different from the target. |
 
-- Scope follows AUTH-011 role-assignment scope already used for `employees.manage`/`employees.read.all`; an organization-scoped HC admin acts on all employees, a unit-scoped holder only on employees whose **current primary placement unit** is in scope (TBD: verify exact AUTH-011 scope semantics during implementation step S2).
+- Scope: verified in S2 — AUTH-011 permissions are effective only through **organization-scoped** role assignments (`scope_type = 'organization'`); unit-scoped assignments never satisfy an organization permission. So an `employment.*` holder acts on all employees; there is no unit-scoped employment administration in Package 1.
 - Self-approval guard: an actor cannot record an action on their **own** employee record (`EMPLOYMENT_SELF_ACTION_FORBIDDEN`).
 - Super Admin (technical) does not receive `employment.manage` by default (least privilege; MVP keeps Super Admin out of HR decisions). Mode switching uses `access.governance.manage`.
 - Employee self-service (`employees.read.own`), D-17 accepted — employee sees own current status, current placement, contract end date, and a timeline of action type + date + unit/position + PK/SK number. Employee does **not** see `reason_note`, demotion reason code, or internal notes.
@@ -518,6 +518,7 @@ All failures return an error code and an Indonesian message; nothing is partiall
 
 | Code | HTTP | Condition | UI message (Indonesian) |
 |---|---|---|---|
+| `EMPLOYMENT_MODE_NOT_AVAILABLE` | 409 | Switching to AUTHORITATIVE before S5/S5A are released. | "Mode AUTHORITATIVE belum tersedia pada rilis ini." |
 | `EMPLOYMENT_HISTORY_DISABLED` | 409 | Actions while mode is not `AUTHORITATIVE`, or reads while mode is `OFF`. | "Riwayat kepegawaian belum diaktifkan." |
 | `EMPLOYMENT_FORBIDDEN` | 403 | Missing permission/scope. | "Anda tidak memiliki akses untuk tindakan ini." |
 | `EMPLOYMENT_SELF_ACTION_FORBIDDEN` | 403 | Actor targets own employee record. | "Tindakan kepegawaian untuk diri sendiri harus dicatat oleh petugas lain." |
@@ -675,6 +676,8 @@ Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisi
 - Done 2026-10-16: distinct values of STATUS KEPEGAWAIAN / STATUS AKTIF / JENIS KEPEGAWAIAN collected from the active master sheet (values only, §4.2.1). Counts per value remain DISCOVERY for the SHADOW review.
 - TBD: whether YSQ ever rehires under the same NIP.
 - DISCOVERY: whether YSQ uses skorsing/suspension or cuti di luar tanggungan as an employment state (the latter is currently handled as Cuti Tanpa Gaji in the leave module).
-- TBD: exact AUTH-011 unit-scope semantics for employee admin permissions.
+- Resolved in S2: AUTH-011 employee-admin permissions are organization-scoped only (§9).
+- Finding in S2: no code in the repository wrote `employee_import_source_snapshots` (the table came from a recovered production migration). S2 adds the writer for the four classification columns; production rows written by any earlier importer are unknown (DISCOVERY, read-only count before baseline). **Before the baseline dry-run, HC must re-import the current master once** so every employee has a snapshot; otherwise `BASELINE_NO_SOURCE_SNAPSHOT` is raised and BUMY staff cannot be detected.
+- Follow-up: `docs/api/openapi.yaml` does not parse as YAML at the ADMS device schema (pre-existing on main); employment paths live in `docs/api/employment.openapi.yaml`.
 - TBD: scheduler host for the daily projection refresh on Mi8VPS.
 - TBD: whether ORG-006 directory should later publish placement history (default: no; current only).

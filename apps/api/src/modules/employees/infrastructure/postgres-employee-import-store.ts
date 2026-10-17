@@ -10,7 +10,7 @@ import type {
   ImportAction,
   ImportIssue,
 } from "../domain/employee-import.js";
-import { normalizeReferenceName } from "../domain/employee-import.js";
+import { EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS, normalizeReferenceName } from "../domain/employee-import.js";
 import type {
   EmployeeImportStore,
   SaveEmployeeImportPreviewInput,
@@ -192,7 +192,8 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
 
       for (const row of rows.rows) {
         if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
-        const actualAction = await this.upsertEmployee(client, row.payload, importId);
+        const { action: actualAction, employeeId } = await this.upsertEmployee(client, row.payload, importId);
+        await this.writeSourceSnapshot(client, job, row.row_number, employeeId, row.payload);
         if (actualAction === "insert") insertCount += 1;
         if (actualAction === "update") updateCount += 1;
 
@@ -227,7 +228,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     client: PoolClient,
     candidate: EmployeeImportCandidate,
     importId: string,
-  ): Promise<"insert" | "update"> {
+  ): Promise<{ action: "insert" | "update"; employeeId: string }> {
     const existing = await client.query<{ id: string }>(
       "SELECT id FROM employees WHERE employee_number = $1 FOR UPDATE",
       [candidate.employeeNumber],
@@ -277,9 +278,10 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
           importId,
         ],
       );
-      return "update";
+      return { action: "update", employeeId: existing.rows[0].id };
     }
 
+    const employeeId = randomUUID();
     await client.query(
       `INSERT INTO employees (
         id, employee_number, full_name, status, employment_status,
@@ -288,7 +290,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         started_on, ended_on, source_last_import_job_id
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
-        randomUUID(),
+        employeeId,
         candidate.employeeNumber,
         candidate.fullName,
         candidate.status,
@@ -306,7 +308,35 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         importId,
       ],
     );
-    return "insert";
+    return { action: "insert", employeeId };
+  }
+
+  /**
+   * EMP-005 baseline source (spec §4.2.1, §8.2): keep the raw classification
+   * values of this row. Only the allowlisted classification columns are stored.
+   */
+  private async writeSourceSnapshot(
+    client: PoolClient,
+    job: ImportJobRow,
+    rowNumber: number,
+    employeeId: string,
+    candidate: EmployeeImportCandidate,
+  ): Promise<void> {
+    const classification = candidate.sourceClassification;
+    if (!classification) return;
+    const sourceData = {
+      [EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS.statusActive]: classification.statusActive,
+      [EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS.employmentStatus]: classification.employmentStatus,
+      [EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS.employmentType]: classification.employmentType,
+      [EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS.endedOn]: classification.endedOn,
+    };
+    await client.query(
+      `INSERT INTO employee_import_source_snapshots (
+        id, employee_id, import_job_id, row_number, source_filename, source_sheet, source_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      ON CONFLICT (import_job_id, row_number) DO NOTHING`,
+      [randomUUID(), employeeId, job.id, rowNumber, job.source_filename, job.source_sheet, JSON.stringify(sourceData)],
+    );
   }
 
   private async upsertReference(

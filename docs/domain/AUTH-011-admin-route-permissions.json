@@ -1981,5 +1981,45 @@
       "EMPLOYEE"
     ],
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employment/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employment/rollout",
+    "permissions": [
+      "access.governance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/admin-routes.ts",
+    "method": "PUT",
+    "url": "/admin/employment/rollout",
+    "permissions": [
+      "access.governance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/employment",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/employment/timeline",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/employment/consistency",
+    "permissions": [
+      "employment.read"
+    ]
   }
 ]

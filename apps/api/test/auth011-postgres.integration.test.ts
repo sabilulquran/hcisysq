@@ -13,6 +13,7 @@ import type { SqHubApplicationAccessClient } from "../src/modules/auth/applicati
 const databaseUrl = process.env.HCIS_AUTH011_TEST_DATABASE_URL;
 const schema = `auth011_${randomUUID().replaceAll("-", "")}`;
 const context = { ipAddress: "127.0.0.1", userAgent: "synthetic-auth011" };
+const oidcIssuer = "https://identity.example.invalid/realms/synthetic";
 
 describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () => {
   let pool: Pool;
@@ -99,7 +100,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       [randomUUID(), managedEmployeeId, adminRoleId],
     );
     app = await createApp({ NODE_ENV: "test", HOST: "127.0.0.1", PORT: 3001, DATABASE_URL: databaseUrl!,
-      AUTH_MODE: "local", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8 }, pool);
+      AUTH_MODE: "local", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8,
+      OIDC_ISSUER: `${oidcIssuer}/` }, pool);
   }, 60000);
 
   afterAll(async () => {
@@ -390,6 +392,86 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     );
     expect(response.statusCode).toBe(403);
     expect((await pool.query("SELECT status FROM accounts WHERE id=$1", [targetId])).rows[0].status).toBe("active");
+  });
+
+  describe("AUTH-002 activation through a mapped Akun SQ identity", () => {
+    async function invitedBoard(identity: { issuer: string; subject: string } | null) {
+      const id = randomUUID();
+      await pool.query(
+        `INSERT INTO accounts(id,email,principal_type,status,identity_issuer,identity_subject)
+         VALUES($1,$2,'FOUNDATION_BOARD','invited',$3,$4)`,
+        [id, `board-${id}@example.invalid`, identity?.issuer ?? null, identity?.subject ?? null],
+      );
+      return id;
+    }
+    const statusOf = async (id: string) =>
+      (await pool.query<{ status: string }>("SELECT status FROM accounts WHERE id=$1", [id])).rows[0]!.status;
+
+    it("lets a governance manager activate an invited Board account mapped to the configured issuer", async () => {
+      const id = await invitedBoard({ issuer: oidcIssuer, subject: `opaque:${randomUUID()}` });
+      const response = await request("governance", "PATCH", `/admin/access/accounts/${id}/status`, { status: "active" });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(await statusOf(id)).toBe("active");
+      const audit = await pool.query<{ actor: string; payload: { status: string; authenticationMethod: string } }>(
+        `SELECT actor_account_id AS actor, payload FROM access_audit_events
+         WHERE action='account.status.updated' AND entity_id=$1`, [id]);
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]!.actor).toBe(actors.get("governance")!.principal.id);
+      expect(audit.rows[0]!.payload).toMatchObject({ status: "active", authenticationMethod: "oidc_identity" });
+    });
+
+    it("lets the legacy Super Admin activate it too", async () => {
+      const id = await invitedBoard({ issuer: oidcIssuer, subject: `opaque:${randomUUID()}` });
+      expect((await request("legacy", "PATCH", `/admin/access/accounts/${id}/status`, { status: "active" })).statusCode).toBe(200);
+      expect(await statusOf(id)).toBe("active");
+    });
+
+    it("refuses activation without a password or identity mapping", async () => {
+      const id = await invitedBoard(null);
+      const response = await request("governance", "PATCH", `/admin/access/accounts/${id}/status`, { status: "active" });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("ACCOUNT_ACTIVATION_NOT_READY");
+      expect(await statusOf(id)).toBe("invited");
+    });
+
+    it("refuses activation when the mapping belongs to another issuer", async () => {
+      const id = await invitedBoard({ issuer: "https://other.example.invalid/realms/x", subject: `opaque:${randomUUID()}` });
+      const response = await request("governance", "PATCH", `/admin/access/accounts/${id}/status`, { status: "active" });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("OIDC_ISSUER_MISMATCH");
+      expect(await statusOf(id)).toBe("invited");
+    });
+
+    it("keeps mapped Board activation forbidden without access.governance.manage", async () => {
+      const id = await invitedBoard({ issuer: oidcIssuer, subject: `opaque:${randomUUID()}` });
+      for (const name of ["delegate", "admin", "hc", "employee", "board"]) {
+        const response = await request(name, "PATCH", `/admin/access/accounts/${id}/status`, { status: "active" });
+        expect.soft(response.statusCode, name).toBe(403);
+      }
+      expect(await statusOf(id)).toBe("invited");
+    });
+
+    it("keeps self-targeted activation forbidden for a governance manager", async () => {
+      const selfId = actors.get("governance")!.principal.id;
+      const response = await request("governance", "PATCH", `/admin/access/accounts/${selfId}/status`, { status: "active" });
+      expect(response.statusCode).toBe(403);
+    });
+
+    it("refuses a mapped Employee account whose employee is no longer active", async () => {
+      const employeeId = randomUUID();
+      const accountId = randomUUID();
+      await pool.query("INSERT INTO employees(id,employee_number,full_name,status) VALUES($1,$2,'Synthetic Resigned','resigned')",
+        [employeeId, `AUTH011-${employeeId}`]);
+      await pool.query(
+        `INSERT INTO accounts(id,employee_id,email,principal_type,status,identity_issuer,identity_subject)
+         VALUES($1,$2,$3,'EMPLOYEE','invited',$4,$5)`,
+        [accountId, employeeId, `resigned-${accountId}@example.invalid`, oidcIssuer, `opaque:${randomUUID()}`],
+      );
+      const response = await request("delegate", "PATCH", `/admin/access/accounts/${accountId}/status`, { status: "active" });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe("EMPLOYEE_NOT_ACTIVE");
+      expect(await statusOf(accountId)).toBe("invited");
+    });
   });
 
   it("rolls back role assignment if the audit insert fails", async () => {

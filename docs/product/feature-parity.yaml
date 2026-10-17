@@ -172,7 +172,7 @@ features:
     module: employee
     name: Employment relationship and contracts
     legacy_evidence: benchmark HRIS includes contract and employment administration; product owner requested adoption on 2026-09-22
-    target_status: specified
+    target_status: implementing
     priority: post-attendance-simplification
     risk: high
     planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16; runtime not started.
@@ -187,7 +187,7 @@ features:
     module: employee
     name: Placement and career movement
     legacy_evidence: benchmark HRIS includes placement, promotion, demotion, mutation, and career history
-    target_status: specified
+    target_status: implementing
     priority: post-attendance-simplification
     risk: high
     planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16; runtime not started.
@@ -200,7 +200,7 @@ features:
     module: employee
     name: "Employment basis documents: Perjanjian Kerja and Surat Keputusan"
     legacy_evidence: benchmark HRIS links contracts/career actions to SK; parent direction accepted 2026-09-22 without an ID
-    target_status: specified
+    target_status: implementing
     priority: post-attendance-simplification
     risk: medium
     planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary.

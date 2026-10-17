@@ -307,7 +307,8 @@ Not in Package 1: compensation change, grade change, acting authority, cross-ent
 
 Reversal rules:
 
-- Only the **latest** non-reversed action of an employment can be reversed (stack discipline). To fix an older action, reverse newer ones first, or use an explicit correction sequence. This fails closed instead of silently rewriting later history.
+- Only the **latest recorded** non-reversed action of an employment can be reversed (stack discipline by recording time, not effective date, so a later backdated action is always undone first). To fix an older action, reverse newer ones first, or use an explicit correction sequence. This fails closed instead of silently rewriting later history.
+- A reversal is refused (`EMPLOYMENT_ACTION_NOT_REVERSIBLE`) when a field it would restore no longer holds the value the action wrote, when a row it opened is already voided, or when re-opening the employment would overlap another employment of the same employee (e.g. undoing a termination after a rehire).
 - Reversal restores the previous term/placement closure exactly (re-opens what the action closed, voids what it opened) in one transaction; voided rows keep `voided_by_action_id` and remain readable.
 - `BASELINE` can be reversed only while it is the only action and only by the backfill tooling (re-run baseline), not from the UI.
 
@@ -449,6 +450,7 @@ Purpose: a former employee may briefly need access (e.g. to download own payslip
 | Stage | Rollback |
 |---|---|
 | Schema deployed, mode `OFF` | Additive tables only; no consumer reads them. Leave in place, or run the documented down script (drop new tables/permissions) before any baseline is loaded. Restore not required. |
+| Baseline loaded but no real action, schema must go | Mode OFF → verified backup + `pg_dump --data-only -t 'employment*'` export → purge baseline rows in one transaction with `SET LOCAL hcis.employment_baseline_purge = 'on'` → down script. Full steps in the `0056_employment_history_foundation.sql` header. TRUNCATE is always refused. |
 | Baseline loaded, mode `SHADOW` | Set mode `OFF`. Optionally purge baseline rows with the backfill command's `--purge-baseline` (only rows whose sole action is `BASELINE`). `employees` columns were never written by the new code, so nothing to restore. |
 | Outside-HCIS markers applied (§8.7) | Unmark with reason (audited); no data was deleted, so nothing to restore. |
 | Mode `AUTHORITATIVE` with real actions | Set mode `OFF`: automatic deactivation stops (accounts already deactivated stay inactive; HC reactivates manually if needed); import becomes the writer again and projection stops; `employees` keeps the last projected values. History tables are **kept** (never dropped once real actions exist) so no administrative fact is lost; re-enabling `AUTHORITATIVE` later requires re-running the consistency report because imports may have changed columns meanwhile. A verified database backup is taken before switching to `AUTHORITATIVE` (OPS-MI8 backup procedure). |
@@ -534,6 +536,12 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_ACTION_NOT_REVERSIBLE` | 409 | Not the latest action, already reversed, or baseline. | "Tindakan ini tidak dapat dibatalkan." |
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
+| `EMPLOYMENT_BACKDATE_REASON_REQUIRED` | 400 | Effective date before today without a reason. | "Tindakan yang berlaku mundur wajib disertai alasan." |
+| `EMPLOYMENT_TERM_END_REQUIRED` | 400 | Fixed-term category (D-03) without an end date. | "Status kepegawaian ini wajib memiliki tanggal akhir kontrak." |
+| `EMPLOYMENT_TERM_INVALID` | 422 | Unclassified category, end before start, `TETAP` with an end date, same category again, or extension of a non-contract term. | "Status kepegawaian atau masa kontrak tidak valid." |
+| `EMPLOYMENT_REASON_REQUIRED` | 400 | Termination/demotion/reversal without a valid reason code. | "Pilih alasan tindakan." |
+| `EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED` | 409 | Recording while a preview warning (D-04) is not acknowledged. | "Periksa dan centang peringatan sebelum menyimpan." |
+| `DECISION_DOCUMENT_EMPLOYEE_MISMATCH` | 422 | Perjanjian Kerja of another employee linked. | "Perjanjian Kerja ini milik pegawai lain." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
 | `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
 | `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." |

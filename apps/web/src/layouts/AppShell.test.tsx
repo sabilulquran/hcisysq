@@ -5,6 +5,7 @@ import { AccountMenu } from "@/components/hcis/AccountMenu";
 import { AppLauncher } from "@/components/shell/AppLauncher";
 import { SpaceSwitcher } from "@/components/shell/SpaceSwitcher";
 import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
+import { boardNavigationFor } from "@/layouts/boardNavigation";
 import type { AuthSession } from "@/types/hcis";
 
 const employee = {
@@ -57,6 +58,17 @@ describe("AppShell Human Capital navigation", () => {
     expect(full).toContain('href="/app/hc/leave"');
     expect(full).toContain('href="/app/hc/planned-leave"');
     expect(full).toContain('href="/app/hc/attendance-resolution"');
+  });
+});
+
+describe("ORG-010 Panel Organ Yayasan entry", () => {
+  it("is offered to an Employee only when /auth/me lists board.read", () => {
+    expect(boardNavigationFor(session(["board.read"]))).toEqual([
+      expect.objectContaining({ label: "Panel Organ Yayasan", href: "/board" }),
+    ]);
+    expect(boardNavigationFor(session([]))).toEqual([]);
+    expect(boardNavigationFor(session(["leave.validate", "reports.read.organization"]))).toEqual([]);
+    expect(boardNavigationFor(null)).toEqual([]);
   });
 });
 

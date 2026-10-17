@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ArrowLeft,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -15,7 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { BrandLockup } from "@/components/BrandLockup";
-import { logout } from "@/lib/auth";
+import { getCurrentSession, logout } from "@/lib/auth";
 import {
   BoardDashboardApiError,
   getBoardDashboard,
@@ -42,6 +43,12 @@ export function FoundationBoardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<BoardDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // ORG-010 §1.4: an Employee with board.read keeps /app; offer the way back.
+  const [isEmployee, setIsEmployee] = useState(false);
+
+  useEffect(() => {
+    void getCurrentSession().then((session) => setIsEmployee(session?.principal.principalType === "EMPLOYEE")).catch(() => setIsEmployee(false));
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -91,13 +98,24 @@ export function FoundationBoardPage() {
             <BrandLockup compact />
             <span className="hidden truncate border-l border-border pl-3 text-[11px] font-semibold text-muted-foreground sm:inline">Organ Yayasan</span>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleLogout()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3.5 text-xs font-bold text-muted-foreground"
-          >
-            <LogOut className="h-4 w-4" aria-hidden="true" /> Keluar
-          </button>
+          <div className="flex items-center gap-2">
+            {isEmployee ? (
+              <a
+                href="/app"
+                aria-label="Kembali ke Beranda HCIS"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3.5 text-xs font-bold text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" /> <span className="hidden sm:inline">Beranda HCIS</span>
+              </a>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3.5 text-xs font-bold text-muted-foreground"
+            >
+              <LogOut className="h-4 w-4" aria-hidden="true" /> Keluar
+            </button>
+          </div>
         </div>
       </header>
 

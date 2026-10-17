@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
+import { boardNavigationFor } from "@/layouts/boardNavigation";
 import { CoreShell, type ShellNavGroup, type ShellNavItem, type ShellPreviewMode } from "@/layouts/CoreShell";
 import { categoryTileClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
@@ -207,7 +208,7 @@ export function AppShell({
       ? item.href === currentPath
       : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya"),
   }));
-  const taskItems: ShellNavItem[] = [...managementNavigation, ...humanCapitalItems].map((item) => ({
+  const taskItems: ShellNavItem[] = [...managementNavigation, ...humanCapitalItems, ...boardNavigationFor(session)].map((item) => ({
     key: item.href,
     label: item.label,
     shortLabel: mobileShortLabels[item.href],

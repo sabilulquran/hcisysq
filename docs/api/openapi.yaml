@@ -23,6 +23,7 @@ tags:
   - name: Organization Directory
   - name: Staff Identity Verification
   - name: Governance Summary
+  - name: Board
   - name: Attendance
   - name: Payslips
   - name: Employment
@@ -82,13 +83,19 @@ paths:
     get:
       tags: [Governance Summary]
       operationId: getGovernanceSummaryForSqHub
-      summary: ORG-010 (ACCEPTED) — HCIS governance summary for SQ Hub Ringkasan Yayasan (not implemented yet)
+      summary: ORG-010 — HCIS governance summary for SQ Hub Ringkasan Yayasan
       description: |
-        ACCEPTED 2026-10-17, not implemented yet. See docs/domain/foundation-board-governance-summary.md (ORG-010).
-        Bearer-only; the exchanged token is accepted on this route and no other. Disabled by default (404).
-        Requires board access: active FOUNDATION_BOARD account, or active EMPLOYEE with effective
-        organization-scope board.read; SQ Hub Application Access is re-checked per request. Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
-        aggregate only, no actor or personal data. Cache-Control private, no-store.
+        ORG-010 (ACCEPTED 2026-10-17). See docs/domain/foundation-board-governance-summary.md.
+        Public URL on the HCIS origin is /api/governance/summary (web proxy prefix).
+        Bearer-only; the exchanged token is accepted on this route and no other, and a cookie never
+        authenticates it. Exactly one Authorization header with one bearer token. Disabled by default
+        (GOVERNANCE_SUMMARY_ENABLED=false returns 404). Requires board access: active FOUNDATION_BOARD
+        account, or active EMPLOYEE with effective organization-scope board.read; SQ Hub Application
+        Access is re-checked per request (D3). Response follows SQ Hub HUB-IMPL-021 GovernanceSummaryV1;
+        aggregate only, no actor or personal data. Monthly trend only in employment-history
+        AUTHORITATIVE mode (last 12 completed months); ranking folds units under 3 into "Lainnya".
+        No session or cookie is created. Every response sets Cache-Control no-store
+        (200: private, no-store). Served and denied requests are audited without token or body.
       security:
         - GovernanceSummaryBearer: []
       responses:
@@ -109,13 +116,68 @@ paths:
                   attention: { type: array, maxItems: 3, items: { type: object } }
                   detailUrl: { type: string, format: uri }
         '401':
+          description: UNAUTHENTICATED (no, malformed or several bearer tokens) or INVALID_TOKEN (signature, issuer, expiry, typ, sub)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: |
+            FORBIDDEN_AUDIENCE, FORBIDDEN_CLIENT, OIDC_ACCOUNT_NOT_MAPPED, ACCOUNT_INACTIVE,
+            BOARD_ACCESS_REQUIRED, or HCIS_ACCESS_DENIED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Endpoint disabled (GOVERNANCE_SUMMARY_ENABLED=false)
+        '500':
+          description: Unexpected error; the body carries no detail
+        '503':
+          description: APPLICATION_ACCESS_UNAVAILABLE or JWKS_UNAVAILABLE (owner decisions D3, D9)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /board/dashboard:
+    get:
+      tags: [Board]
+      operationId: getBoardDashboard
+      summary: ORG-003 / ORG-010 — Panel Organ Yayasan aggregates
+      description: |
+        Cookie session. Allowed for an active FOUNDATION_BOARD account, or an active EMPLOYEE with an
+        active employee record and an effective organization-scope board.read assignment (ORG-010-A).
+        Everyone else gets 403. Aggregate only; the response no longer carries actor.email (ORG-010 D7).
+        Cache-Control private, no-store.
+      responses:
+        '200':
+          description: ORG-003 aggregates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actor, generatedAt, employees, entitlementGroups, approvalReadiness, workflow, movements, unitDistribution, employmentStatus, unavailableModules]
+                properties:
+                  actor:
+                    type: object
+                    additionalProperties: false
+                    required: [principalType]
+                    properties:
+                      principalType: { type: string, enum: [FOUNDATION_BOARD, EMPLOYEE] }
+                  generatedAt: { type: string, format: date-time }
+                  employees: { type: object }
+                  entitlementGroups: { type: object }
+                  approvalReadiness: { type: object }
+                  workflow: { type: object }
+                  movements: { type: object }
+                  unitDistribution: { type: array, items: { type: object } }
+                  employmentStatus: { type: array, items: { type: object } }
+                  unavailableModules: { type: object }
+        '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Endpoint disabled
-        '503':
-          description: APPLICATION_ACCESS_UNAVAILABLE or JWKS_UNAVAILABLE (owner decisions D3, D9)
 
   /internal/v1/organization-directory/snapshot:
     get:
@@ -1552,9 +1614,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        ORG-010 (ACCEPTED). User access token obtained by SQ Hub through Keycloak token exchange.
-        HCIS verifies signature, issuer (OIDC_ISSUER), expiry, typ Bearer, audience containing the
-        HCIS client ID, and allowlisted azp (SQ Hub), then maps iss + sub like OIDC login.
+        ORG-010. User access token obtained by SQ Hub through Keycloak token exchange.
+        HCIS verifies signature (RS256, staff realm JWKS, 3-second deadline), issuer (OIDC_ISSUER),
+        exp/iat/nbf with 30 seconds of skew, typ Bearer, sub, audience containing
+        GOVERNANCE_SUMMARY_AUDIENCE (the HCIS client ID), and azp in GOVERNANCE_SUMMARY_ALLOWED_CLIENTS
+        (SQ Hub), then maps iss + sub like OIDC login. Accepted only on /governance/summary.
 
   parameters:
     Cursor:

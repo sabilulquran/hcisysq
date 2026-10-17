@@ -1,6 +1,6 @@
 # ORG-010 — Board view for Employees and HCIS governance summary for SQ Hub
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-17. Acceptance authorizes implementation under this spec; release to Mi8VPS and enabling `GOVERNANCE_SUMMARY_ENABLED` still need review, CI, and explicit owner approval (OPS-MI8-REL-001).
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. Implemented in the repository (see "Implementation notes"), with the summary endpoint off by default. Release to Mi8VPS and enabling `GOVERNANCE_SUMMARY_ENABLED` still need review, CI, and explicit owner approval (OPS-MI8-REL-001).
 **Specification:** ORG-010
 **Date:** 2026-10-17
 **Extends:** ORG-003 (`foundation-board-dashboard.md`)
@@ -101,7 +101,7 @@ Anything else has no board access. Ending the Employee's employment, suspending 
 - `GET /board/dashboard` uses a new guard `requireBoardAccessFromCookie` that implements §1.3, replacing `requirePrincipalFromCookie(..., "FOUNDATION_BOARD")`.
 - The web route `/board` (`apps/web/src/router.tsx`) allows `FOUNDATION_BOARD`, or `EMPLOYEE` whose `/auth/me` lists `board.read`.
 - The response keeps its shape except that `actor.email` is removed (D7). `actor.principalType` may now be `EMPLOYEE`.
-- At implementation, `docs/domain/AUTH-011-admin-route-permissions.json` changes the `/board/dashboard` entry to principals `FOUNDATION_BOARD, EMPLOYEE` with permission `board.read` for `EMPLOYEE`, and adds `/governance/summary`. It is not changed in this docs-only PR because `auth011-route-coverage.test.ts` checks it against the registered routes.
+- `docs/domain/AUTH-011-admin-route-permissions.json` lists `/board/dashboard` with `access: "board"` (principals `FOUNDATION_BOARD, EMPLOYEE`, permission `board.read` for `EMPLOYEE`) and `/governance/summary` with `access: "governance-bearer"`. `auth011-route-coverage.test.ts` and the AUTH-011 persona matrix check both.
 - ORG-003-B to ORG-003-F are unchanged. ORG-003-A is amended by ORG-010-A.
 
 ## 3. Governance summary endpoint: authentication
@@ -394,6 +394,21 @@ Every production change on Mi8VPS needs explicit owner approval.
 - Remove board-view assignments through the DELETE route; `/board` returns to `FOUNDATION_BOARD` only in effect.
 - Reverting the guard code restores ORG-003-A behaviour. The additive role and permission can stay.
 - An identity hand-over is reversed by running it in the other direction.
+
+## Implementation notes
+
+Implemented on 2026-10-17. Facts fixed during implementation, within the decisions above:
+
+- **Migration** `apps/api/migrations/0059_board_read_permission.sql`: permission `board.read` and system role `foundation_board_viewer` (fixed ID `10000000-0000-4000-8000-000000000010`, name "Panel Organ Yayasan") carrying only `board.read`. It also adds two nullable columns to `auth_audit_events`: `reason_code` (an upper-case code only, enforced by a CHECK) so `governance.summary.denied` carries its §7 code, and `related_account_id` so `auth.oidc.identity_handed_over` names the previous account. No assignment is seeded. Rollback as in §10; the columns may stay.
+- **Grant guards** (`role-assignment.ts`): the board-view role answers `400 ROLE_SCOPE_INVALID` for unit or own scope and `400 ROLE_REASON_REQUIRED` for a missing or blank reason. The role-assignment routes answer `403 ROLE_GRANT_SUPER_ADMIN_ONLY` to every signed-in non-Super-Admin before any permission check (ORG-010-C).
+- **Board guard**: `requireBoardAccessFromCookie` (`auth/authorization.ts`) uses `hasBoardAccess` (`auth/permissions.ts`). A suspended or inactive account's cookie session ends with the account, so `/board/dashboard` answers `401` for it; an inactive or resigned employee record answers `403`.
+- **Aggregates** moved to `apps/api/src/modules/board/aggregates.ts`, shared by `/board/dashboard` and the summary, so both always use the same ORG-003 queries.
+- **Summary** (`apps/api/src/modules/governance/`): the route is always registered and answers `404` while the flag is off. When on, configuration requires `AUTH_MODE=oidc` (issuer and Application Access client) and the three `GOVERNANCE_SUMMARY_*` values; startup fails when the audience equals a machine-token audience. `GOVERNANCE_SUMMARY_ENABLED` accepts `true`/`false` (also `1`/`0`). `detailUrl` and attention links use the origin of `OIDC_REDIRECT_URI`, the HCIS origin users sign in on; no separate variable was added. Business months follow Asia/Jakarta. `change.value` is the absolute difference, with `direction`. A month whose month end precedes the earliest recorded start among active baseline rows is `null`. Unknown dates make a month `null` only when they could change that month: an unknown end does not affect months before the recorded start, and a recorded end before the month makes an unknown start irrelevant.
+- **Hand-over CLI**: `npm run auth:map-oidc-identity -- --hand-over --from-account-id <uuid> --to-account-id <uuid> [--apply]`, documented in `docs/migration/HUB-IMPL-003-identity-mapping-cli.md`. Works in both directions (`FOUNDATION_BOARD` ↔ `EMPLOYEE`). The audit row has the new account as `account_id`, the old one as `related_account_id`, and `operator-cli:map-oidc-identity` as user agent.
+- **Web**: the `/board` guard uses `canAccessBoard`; the employee shell shows "Panel Organ Yayasan" under "Tugas" when `/auth/me` lists `board.read`; `/board` offers "Beranda HCIS" back to `/app` for an Employee.
+- **Tests**: `apps/api/test/governance-summary.test.ts` (ranking, trend, contract, token verifier, configuration), `apps/api/test/org010-board-governance.postgres.test.ts` (board access, role grant, live endpoint, audit, log capture, hand-over, OIDC login after hand-over), and updates to the AUTH-011 suites and web tests.
+
+Still to verify on Mi8VPS with owner approval (unchanged): the realm signing algorithm, `typ` and `azp` on an exchanged token, the `/api` prefix, the Hub registry key, and the employment-history mode.
 
 ## Acceptance criteria
 

@@ -12,8 +12,10 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
+  AUTH_COOKIE_NAME,
   AuthError,
   AuthService,
+  readCookie,
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
@@ -676,7 +678,12 @@ export async function registerOrgAccessAdminRoutes(
 
   // Role grants are Super Admin only; the check precedes input validation so other actors learn nothing.
   async function authenticateRoleGrantor(request: FastifyRequest, reply: FastifyReply) {
-    const principal = await authenticateAdmin(request, reply, "access.roles.assign");
+    // ORG-010-C: every signed-in actor other than Super Admin gets ROLE_GRANT_SUPER_ADMIN_ONLY,
+    // whatever permissions it holds; nothing is read or written.
+    const session = await auth.getSession(readCookie(request.headers.cookie, AUTH_COOKIE_NAME));
+    const principal = session && session.principal.principalType !== "SUPER_ADMIN"
+      ? session.principal
+      : await authenticateAdmin(request, reply, "access.roles.assign");
     if (!principal) return null;
     try {
       assertRoleGrantor(principal);

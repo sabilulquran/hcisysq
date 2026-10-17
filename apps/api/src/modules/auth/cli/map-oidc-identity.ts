@@ -25,12 +25,16 @@ function printUsage(): void {
   console.log(`Usage:
   map-oidc-identity --account-id <uuid> --issuer <issuer> --subject <sub> [--apply] [--replace]
   map-oidc-identity --account-id <uuid> --clear [--apply]
+  map-oidc-identity --hand-over --from-account-id <uuid> --to-account-id <uuid> [--apply]
 
 Safety:
   - preview is the default; no database write occurs without --apply
   - replacing an existing different mapping requires --replace --apply
   - set HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 for this operator command
   - use the exact OIDC issuer and subject returned by the staging identity provider
+  - --hand-over (ORG-010 §5) moves the identity held by --from-account-id to the active
+    --to-account-id of the other kind (FOUNDATION_BOARD <-> EMPLOYEE), deactivates the old
+    account and ends its sessions in one transaction; it never grants a role
 `);
 }
 
@@ -44,6 +48,11 @@ async function run() {
     throw new Error(
       "Set HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1 only for the explicit staging identity-mapping command.",
     );
+  }
+
+  if (hasFlag("--hand-over")) {
+    await runHandOver();
+    return;
   }
 
   const accountId = accountIdSchema.parse(readArgument("--account-id"));
@@ -101,6 +110,50 @@ async function run() {
     console.log(JSON.stringify(result, null, 2));
     if (!apply && result.status.startsWith("would_")) {
       console.log("Preview only. Re-run with --apply after verifying account ID, issuer, and subject.");
+    }
+  } catch (error) {
+    if (transactionOpen) {
+      await client.query("ROLLBACK");
+    }
+    if (error instanceof OidcIdentityMappingError) {
+      throw new Error(`${error.code}: ${error.message}`);
+    }
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+async function runHandOver() {
+  for (const flag of ["--account-id", "--issuer", "--subject", "--clear", "--replace"]) {
+    if (hasFlag(flag)) throw new Error(`--hand-over cannot be combined with ${flag}.`);
+  }
+  const fromAccountId = accountIdSchema.parse(readArgument("--from-account-id"));
+  const toAccountId = accountIdSchema.parse(readArgument("--to-account-id"));
+  const apply = hasFlag("--apply");
+
+  const config = loadConfig();
+  const pool = createPool(config.DATABASE_URL);
+  const client = await pool.connect();
+  let transactionOpen = false;
+
+  try {
+    if (apply) {
+      await client.query("BEGIN");
+      transactionOpen = true;
+    }
+
+    const result = await new OidcIdentityMappingService(client).handOver({ fromAccountId, toAccountId, apply });
+
+    if (transactionOpen) {
+      await client.query("COMMIT");
+      transactionOpen = false;
+    }
+
+    console.log(JSON.stringify(result, null, 2));
+    if (!apply) {
+      console.log("Preview only. Re-run with --apply after verifying both account IDs. A Super Admin grants any role separately.");
     }
   } catch (error) {
     if (transactionOpen) {

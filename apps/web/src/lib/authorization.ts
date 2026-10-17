@@ -56,6 +56,13 @@ export function canManageRoleAssignments(session: AuthSession | null): boolean {
   return session?.principal.principalType === "SUPER_ADMIN" && hasPermission(session, "access.roles.assign");
 }
 
+// ORG-010 §1.4: UI eligibility for /board only; GET /board/dashboard authorizes independently.
+export function canAccessBoard(session: AuthSession | null): boolean {
+  if (!session) return false;
+  if (session.principal.principalType === "FOUNDATION_BOARD") return true;
+  return session.principal.principalType === "EMPLOYEE" && hasPermission(session, "board.read");
+}
+
 export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType !== "EMPLOYEE") return false;
   if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {

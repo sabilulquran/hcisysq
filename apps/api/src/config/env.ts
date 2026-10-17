@@ -46,6 +46,14 @@ const envSchema = z
     STAFF_IDENTITY_TOKEN_ISSUER: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
     STAFF_IDENTITY_TOKEN_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     STAFF_IDENTITY_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    // ORG-010 §9: off by default; enabling it in production needs owner approval.
+    GOVERNANCE_SUMMARY_ENABLED: z.enum(["true", "false", "1", "0"]).default("false"),
+    GOVERNANCE_SUMMARY_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    GOVERNANCE_SUMMARY_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    GOVERNANCE_SUMMARY_APPLICATION_KEY: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
+    ),
   })
   .superRefine((value, ctx) => {
     const biometricKeyringRequested =
@@ -114,6 +122,37 @@ const envSchema = z
       }
     }
 
+    // ORG-010 §3.4: the governance audience must never equal a machine-token audience.
+    if (value.GOVERNANCE_SUMMARY_AUDIENCE) {
+      for (const key of ["ORG_DIRECTORY_TOKEN_AUDIENCE", "STAFF_IDENTITY_TOKEN_AUDIENCE"] as const) {
+        if (value[key] !== value.GOVERNANCE_SUMMARY_AUDIENCE) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["GOVERNANCE_SUMMARY_AUDIENCE"],
+          message: `GOVERNANCE_SUMMARY_AUDIENCE must differ from ${key}`,
+        });
+      }
+    }
+
+    if (isGovernanceSummaryEnabled(value)) {
+      for (const key of [
+        "GOVERNANCE_SUMMARY_AUDIENCE",
+        "GOVERNANCE_SUMMARY_ALLOWED_CLIENTS",
+        "GOVERNANCE_SUMMARY_APPLICATION_KEY",
+      ] as const) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when GOVERNANCE_SUMMARY_ENABLED=true` });
+      }
+      // Issuer, identity mapping, Application Access (D3) and the public origin come from the OIDC login config.
+      if (value.AUTH_MODE !== "oidc") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["GOVERNANCE_SUMMARY_ENABLED"],
+          message: "GOVERNANCE_SUMMARY_ENABLED=true requires AUTH_MODE=oidc",
+        });
+      }
+    }
+
     if (value.AUTH_MODE !== "oidc") return;
 
     if (value.AUTH_SESSION_TTL_HOURS > 12) {
@@ -146,6 +185,10 @@ const envSchema = z
   });
 
 export type ApiConfig = z.infer<typeof envSchema>;
+
+export function isGovernanceSummaryEnabled(config: { GOVERNANCE_SUMMARY_ENABLED?: string | undefined }): boolean {
+  return config.GOVERNANCE_SUMMARY_ENABLED === "true" || config.GOVERNANCE_SUMMARY_ENABLED === "1";
+}
 
 export interface OidcRuntimeConfig {
   issuer: string;

@@ -1,7 +1,7 @@
 export interface BoardDashboardData {
+  // ORG-010 D7: the actor's e-mail is no longer returned.
   actor: {
-    email: string;
-    principalType: "FOUNDATION_BOARD";
+    principalType: "FOUNDATION_BOARD" | "EMPLOYEE";
   };
   generatedAt: string;
   employees: {

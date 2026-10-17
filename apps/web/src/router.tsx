@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
-import { canAccessAdminPath, canAccessEmployeeHcPath } from "@/lib/authorization";
+import { canAccessAdminPath, canAccessBoard, canAccessEmployeeHcPath } from "@/lib/authorization";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
@@ -87,6 +87,13 @@ async function requireAdminPath(path: string) {
   const session = await getCurrentSession();
   if (!session) throw redirect({ to: "/" });
   if (!canAccessAdminPath(session, path)) throw notFound();
+  return session;
+}
+
+async function requireBoardAccess() {
+  const session = await getCurrentSession();
+  if (!session) throw redirect({ to: "/" });
+  if (!canAccessBoard(session)) throw notFound();
   return session;
 }
 
@@ -517,7 +524,7 @@ const adminComingSoonRoute = createRoute({
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/board",
-  beforeLoad: () => requirePrincipal("FOUNDATION_BOARD"),
+  beforeLoad: () => requireBoardAccess(),
   component: FoundationBoardPage,
 });
 

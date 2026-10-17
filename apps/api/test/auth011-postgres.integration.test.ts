@@ -183,13 +183,16 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
 
   it("server-authorizes every manifest route per persona independently of navigation", async () => {
     const manifest = JSON.parse(await readFile(new URL("../../../docs/domain/AUTH-011-admin-route-permissions.json", import.meta.url), "utf8")) as
-      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string; access?: "hc-operational" | "self-service" | "super-admin";
+      Array<{ method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT"; url: string;
+        access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
     expect(manifest.filter((route) => route.access === undefined)).toHaveLength(179);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(2);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(40);
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(39);
+    expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
+    expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
     const personas = ["employee", "hc", "unit_hc", "unit_admin", "board", "admin", "legacy"];
     const granted = new Map<string, string[]>();
     for (const name of personas) {
@@ -208,6 +211,14 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       "/attendance/resolutions/hc/:caseId/decision": { action: "manual_review", note: hcNote },
     };
     for (const route of manifest) {
+      // ORG-010: the bearer-only summary is disabled here (404 for everyone, cookies never count);
+      // test/governance-summary.postgres.test.ts covers it enabled.
+      if (route.access === "governance-bearer") {
+        for (const name of [null, ...personas]) {
+          expect.soft((await request(name, route.method, route.url)).statusCode, `${name} ${route.url}`).toBe(404);
+        }
+        continue;
+      }
       const hc = route.access === "hc-operational";
       // Elsewhere an invalid object ID tests that authorization precedes business validation.
       const url = route.url.replace(/:[A-Za-z]+/g, hc ? randomUUID() : "invalid-resource-id");
@@ -221,7 +232,9 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       for (const variant of variants) {
         for (const name of personas) {
           const { principalType } = actors.get(name)!.principal;
-          const allowed = route.access === "self-service"
+          const allowed = route.access === "board"
+            ? principalType === "FOUNDATION_BOARD" || (principalType === "EMPLOYEE" && granted.get(name)!.includes("board.read"))
+            : route.access === "self-service"
             ? route.principals!.includes(principalType)
             // HC operational routes require an EMPLOYEE principal; legacy compatibility applies only to admin routes.
             : (route.access !== "hc-operational" || principalType === "EMPLOYEE")
@@ -230,7 +243,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
           const response = await request(name, route.method, url, variant.payload);
           const label = `${name} ${route.method} ${url} ${JSON.stringify(variant.payload ?? {})}: ${response.body.slice(0, 160)}`;
           if (!allowed) expect.soft(response.statusCode, label).toBe(403);
-          else if (route.access === "self-service") expect.soft(response.statusCode, label).not.toBe(401);
+          else if (route.access === "self-service" || route.access === "board") expect.soft(response.statusCode, label).not.toBe(401);
           else expect.soft([401, 403, 500], label).not.toContain(response.statusCode);
         }
       }

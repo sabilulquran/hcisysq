@@ -86,7 +86,9 @@ paths:
       summary: ORG-010 — HCIS governance summary for SQ Hub Ringkasan Yayasan
       description: |
         ORG-010 (ACCEPTED 2026-10-17). See docs/domain/foundation-board-governance-summary.md.
-        Public URL on the HCIS origin is /api/governance/summary (web proxy prefix).
+        Browser URL on the HCIS origin is /api/governance/summary (the web proxy strips /api).
+        SQ Hub reaches the API through the internal proxy without that prefix, so the Hub registry path
+        is /governance/summary (corrected 2026-10-18).
         Bearer-only; the exchanged token is accepted on this route and no other, and a cookie never
         authenticates it. Exactly one Authorization header with one bearer token. Disabled by default
         (GOVERNANCE_SUMMARY_ENABLED=false returns 404). Requires board access: active FOUNDATION_BOARD

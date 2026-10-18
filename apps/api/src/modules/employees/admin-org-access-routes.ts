@@ -19,6 +19,10 @@ import {
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
+  activationReadiness,
+  type ActivationReadiness,
+} from "../auth/account-activation-readiness.js";
+import {
   assertManagerAssignment,
   OrgAccessPolicyError,
 } from "./org-access-policy.js";
@@ -48,6 +52,13 @@ const roleAssignmentSchema = z.object({
   endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   reason: z.string().trim().max(500).nullable().optional(),
 });
+
+const ACTIVATION_NOT_READY_MESSAGES: Record<Extract<ActivationReadiness, { ready: false }>["code"], string> = {
+  ACCOUNT_ACTIVATION_NOT_READY:
+    "Account belum memiliki metode masuk. Petakan identitas Akun SQ-nya terlebih dahulu, atau gunakan link aktivasi.",
+  OIDC_ISSUER_MISMATCH: "Identitas Akun SQ pada account ini bukan dari realm login HCIS yang aktif.",
+  EMPLOYEE_NOT_ACTIVE: "Account pegawai hanya dapat diaktifkan untuk pegawai aktif.",
+};
 
 interface UnitRow {
   id: string;
@@ -620,10 +631,16 @@ export async function registerOrgAccessAdminRoutes(
       const account = await client.query<{
         id: string;
         principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
-        passwordHash: string | null;
+        hasPassword: boolean;
+        identityIssuer: string | null;
+        identitySubject: string | null;
+        employeeStatus: "active" | "inactive" | "resigned" | null;
       }>(
-        `SELECT id, principal_type AS "principalType", password_hash AS "passwordHash"
-         FROM accounts WHERE id = $1 FOR UPDATE`,
+        `SELECT a.id, a.principal_type AS "principalType", a.password_hash IS NOT NULL AS "hasPassword",
+                a.identity_issuer AS "identityIssuer", a.identity_subject AS "identitySubject",
+                e.status AS "employeeStatus"
+         FROM accounts a LEFT JOIN employees e ON e.id = a.employee_id
+         WHERE a.id = $1 FOR UPDATE OF a`,
         [params.data.accountId],
       );
       const row = account.rows[0];
@@ -637,11 +654,11 @@ export async function registerOrgAccessAdminRoutes(
           message: "Status Super Admin tidak diubah melalui employee access administration.",
         });
       }
-      if (body.data.status === "active" && !row.passwordHash) {
-        return reply.status(409).send({
-          code: "ACCOUNT_ACTIVATION_NOT_READY",
-          message: "Account belum memiliki metode autentikasi. Aktivasi akan dibuka pada flow invite/login berikutnya.",
-        });
+      const readiness = body.data.status === "active"
+        ? activationReadiness(row, config.OIDC_ISSUER)
+        : null;
+      if (readiness && !readiness.ready) {
+        return reply.status(409).send({ code: readiness.code, message: ACTIVATION_NOT_READY_MESSAGES[readiness.code] });
       }
 
       await client.query(
@@ -662,6 +679,7 @@ export async function registerOrgAccessAdminRoutes(
       }
       await audit(client, principal, "account.status.updated", "account", row.id, {
         status: body.data.status,
+        ...(readiness?.ready ? { authenticationMethod: readiness.method } : {}),
         sessionsRevoked: body.data.status !== "active",
         activationTokensRevoked: body.data.status !== "active",
       });

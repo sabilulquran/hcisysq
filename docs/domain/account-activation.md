@@ -71,6 +71,32 @@ Penyelesaian harus atomik:
 
 Aktivasi tidak otomatis membuat role tambahan dan tidak mengubah reporting line.
 
+## Aktivasi melalui Akun SQ (OIDC)
+
+**Status:** decision note 2026-10-18 (gap fix, AUTH-002-OIDC). Login HCIS production memakai Akun SQ (Keycloak OIDC), sehingga account baru tidak pernah memiliki password lokal. Link aktivasi di atas hanya relevan untuk mode password lokal.
+
+Masalah yang ditutup: account `FOUNDATION_BOARD` (Organ Yayasan non-pegawai, HUB-IMPL-021 Path B) dibuat `invited`, tetapi `PATCH /admin/access/accounts/:accountId/status` menolak `active` karena tidak ada `password_hash`, sedangkan login OIDC mensyaratkan status `active`. Akibatnya Organ Yayasan non-pegawai tidak pernah bisa memakai HCIS atau Ringkasan Yayasan.
+
+Aturan:
+
+1. Administrator dapat mengubah status account menjadi `active` bila account mempunyai **salah satu** metode masuk:
+   - password lokal (aturan lama, tidak berubah); atau
+   - identitas Akun SQ yang sudah dipetakan tepat pada `identity_issuer + identity_subject`, dengan issuer sama dengan `OIDC_ISSUER` yang dikonfigurasi HCIS.
+2. Tanpa keduanya: `409 ACCOUNT_ACTIVATION_NOT_READY`. Pemetaan dari issuer lain atau saat `OIDC_ISSUER` tidak dikonfigurasi: `409 OIDC_ISSUER_MISMATCH`.
+3. Untuk `EMPLOYEE` tanpa password, employee harus `active` (`409 EMPLOYEE_NOT_ACTIVE`), sama seperti aturan link aktivasi.
+4. Authorization tidak berubah: perlu `access.manage`; target `FOUNDATION_BOARD` juga perlu `access.governance.manage` (Super Admin memilikinya); target `SUPER_ADMIN` dan diri sendiri tetap ditolak.
+5. Audit tetap `account.status.updated` di `access_audit_events` dengan actor, ditambah `authenticationMethod` (`password` atau `oidc_identity`). Tidak ada issuer, subject, token, atau password di payload.
+6. Email **tidak pernah** dipakai untuk mengikat identitas atau mengaktifkan account.
+
+Pemetaan identitas tetap dilakukan operator dengan perintah `map-oidc-identity` (HUB-IMPL-003): preview, lalu `--apply`, dengan `HCIS_ALLOW_OIDC_IDENTITY_MAPPING=1`. Perintah itu memeriksa issuer terhadap `OIDC_ISSUER`, menolak identitas yang sudah dipakai account lain, dan menulis `auth.oidc.identity_mapped`. Urutan untuk Organ Yayasan non-pegawai:
+
+1. Pemegang `access.governance.manage` membuat account Organ Yayasan (`POST /admin/access/board-accounts`), status `invited`.
+2. Operator memetakan `iss + sub` Akun SQ orang tersebut ke account itu (CLI, preview lalu `--apply`).
+3. Pemegang `access.governance.manage` mengubah status menjadi **Aktif** di Admin Akses.
+4. Orang tersebut masuk dengan Akun SQ; akses aplikasi HCIS di SQ Hub tetap diperiksa saat login dan saat Ringkasan Yayasan diminta.
+
+Tidak dibuat dalam perubahan ini (usulan lanjutan, butuh keputusan owner): route admin teraudit untuk memetakan Akun SQ ke account `FOUNDATION_BOARD` tanpa CLI. **Saran:** buat nanti bila penambahan Organ Yayasan non-pegawai menjadi rutin; batasi ke account `invited` tanpa pemetaan, issuer harus `OIDC_ISSUER`, input `sub` eksak (bukan email), Super Admin saja, dan penggantian pemetaan tetap lewat CLI.
+
 ## MFA
 
 - `SUPER_ADMIN` tetap wajib MFA.
@@ -129,6 +155,7 @@ Audit tidak boleh memuat token aktivasi, password, password hash, TOTP secret, a
 
 - Account `EMPLOYEE` invited dapat diaktivasi dan login ke `/app`.
 - Account `FOUNDATION_BOARD` invited dapat diaktivasi dan login ke `/board`.
+- Account invited tanpa password tetapi dengan identitas Akun SQ terpetakan (issuer = `OIDC_ISSUER`) dapat diaktifkan oleh administrator yang berwenang; tanpa pemetaan tetap ditolak `ACCOUNT_ACTIVATION_NOT_READY`.
 - Token hanya sekali pakai, hashed at rest, dan expire 24 jam.
 - Token tidak muncul pada server request URL/access log normal.
 - Reissue mencabut token lama.

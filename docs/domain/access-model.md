@@ -237,7 +237,7 @@ suspended
 inactive
 ```
 
-- `invited`: activation not completed where activation flow applies;
+- `invited`: activation not completed where activation flow applies; an administrator may set it `active` once the account has a local password or an exact Akun SQ identity mapping (`iss + sub`, configured issuer) — see AUTH-002 "Aktivasi melalui Akun SQ" in `account-activation.md`;
 - `active`: may authenticate according to available methods and permissions;
 - `suspended`: access temporarily closed without changing employment status;
 - `inactive`: login disabled because the account/mandate ended.

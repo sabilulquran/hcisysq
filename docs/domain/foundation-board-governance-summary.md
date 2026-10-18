@@ -262,6 +262,10 @@ In HCIS, `accounts.identity_issuer + identity_subject` is unique, so the identit
 
 Without the new CLI mode, the existing command can do it in two runs (`--clear --apply` on the old account, then map on the new one) plus a separate account deactivation. That leaves a window where the identity maps to nothing, so the combined mode is preferred.
 
+### 5.1 Non-staff member from the start (HUB-IMPL-021 Path B)
+
+A non-staff organ member gets a `FOUNDATION_BOARD` account: prepared (`invited`) by a holder of `access.governance.manage`, mapped to their Akun SQ `iss + sub` by the operator command, then set **Aktif** by the same administrator. Activation without a local password is allowed only for a mapped identity from the configured issuer (AUTH-002 "Aktivasi melalui Akun SQ", 2026-10-18). Before this fix the status route refused `active` for any account without a password, so such a member could never pass §3.3.
+
 ## 6. Interaction with EMP-005 D-02
 
 EMP-005 Package 1 D-02 (owner, 2026-10-16) says `Pengurus Yayasan` in STATUS KEPEGAWAIAN is **not** an employment status: the baseline creates no employment for those rows and marks them "di luar pengelolaan HCIS".

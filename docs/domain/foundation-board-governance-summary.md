@@ -114,7 +114,9 @@ Authorization: Bearer <exchanged access token>
 Accept: application/json
 ```
 
-Public URL on the HCIS origin: `https://<hcis-canonical-host>/api/governance/summary`. The `/api` prefix follows the existing web proxy; verify during implementation. The Hub registry gets `governance_summary_path = /api/governance/summary` and `governance_audience = <HCIS OIDC client ID>`.
+Browser URL on the HCIS origin: `https://<hcis-canonical-host>/api/governance/summary`, because the HCIS web proxy strips `/api` before the request reaches the API. SQ Hub does not call it that way. On Mi8, Hub's server-side fetch goes through the internal proxy, which forwards the path unchanged. So the Hub registry gets `governance_summary_path = /governance/summary` and `governance_audience = hcis` (the HCIS OIDC client ID).
+
+The registry first held `/api/governance/summary`, and HCIS answered 404, so Hub hid the card. Production was corrected on 2026-10-18 (Hub platform audit actor `ops:ringkasan-yayasan-20261018`; see sq-core-ops `runbooks/release-2026-10-18-ringkasan-yayasan-activation.md`).
 
 `docs/api/openapi.yaml` carries the accepted, not yet implemented entry for this path and the `GovernanceSummaryBearer` scheme.
 

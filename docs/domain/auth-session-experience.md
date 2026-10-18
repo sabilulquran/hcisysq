@@ -62,7 +62,11 @@ Perilaku:
 - tombol menunjukkan progress dan tidak dapat dipicu berulang selama request berjalan;
 - bila request logout gagal sebelum redirect, user mendapat error generik yang dapat dicoba ulang.
 
-Keycloak saat ini dapat meminta konfirmasi logout sebelum SSO benar-benar diputus. AUTH-003 tidak menyembunyikan atau melewati konfirmasi tersebut dengan CSS/JS. Penghilangan konfirmasi kedua memerlukan perubahan kontrak RP-initiated logout yang dinilai terpisah dan harus tetap menjaga terminasi SSO.
+Keycloak meminta konfirmasi logout ("Keluar dari Akun SQ?") bila RP-initiated logout tidak membawa `id_token_hint`. Halaman itu kedaluwarsa setelah beberapa menit; pada Keycloak 26.7.2 konfirmasi basi menghasilkan "Log keluar gagal", dan bila form yang sama dikirim ulang (misalnya setelah Back) Keycloak mengembalikan internal server error (temuan owner 2026-10-18). UI tetap tidak menyembunyikan konfirmasi dengan CSS/JS. Kontrak RP-initiated logout kini:
+
+- saat callback OIDC berhasil, backend menyimpan ID token Akun SQ di cookie `hcis_oidc_id_token` (HttpOnly, SameSite=Lax, Secure di production, umur sama dengan sesi). Token tidak disimpan di database, localStorage, atau log;
+- `POST /auth/logout` mengirim token itu sebagai `id_token_hint` bersama `client_id` dan `post_logout_redirect_uri`, lalu menghapus cookie sesi dan cookie ID token. Keycloak memverifikasi tanda tangan hint dan langsung memutus SSO tanpa halaman konfirmasi, jadi terminasi SSO tetap terjadi;
+- bila HCIS tidak memegang ID token (misalnya login ditolak HCIS sehingga tidak ada sesi, atau cookie tidak berbentuk JWS), `logoutUrl` tetap dibentuk tanpa hint dan Keycloak menampilkan konfirmasinya.
 
 ## OIDC callback failure UX
 

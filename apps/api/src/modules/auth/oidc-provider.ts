@@ -17,6 +17,8 @@ export interface OidcAuthorizationTransaction {
 export interface OidcIdentity {
   issuer: string;
   subject: string;
+  /** Raw ID token, kept only so RP-initiated logout can send it as id_token_hint. */
+  idToken?: string;
 }
 
 export class OidcProvider {
@@ -69,13 +71,24 @@ export class OidcProvider {
       throw new Error("OIDC identity claims are invalid");
     }
 
-    return { issuer: this.issuer, subject: claims.sub };
+    return {
+      issuer: this.issuer,
+      subject: claims.sub,
+      ...(typeof tokens.id_token === "string" && tokens.id_token ? { idToken: tokens.id_token } : {}),
+    };
   }
 
-  async buildLogoutUrl(): Promise<URL> {
+  /**
+   * Akun SQ (Keycloak) skips its own "Keluar dari Akun SQ?" confirmation only when
+   * id_token_hint is present. That confirmation page expires after a few minutes and a
+   * resubmitted stale confirmation ends in a Keycloak internal server error, so the
+   * hint is sent whenever HCIS still holds the ID token of the session.
+   */
+  async buildLogoutUrl(idTokenHint?: string | null): Promise<URL> {
     const configuration = await this.getConfiguration();
     return oidc.buildEndSessionUrl(configuration, {
       post_logout_redirect_uri: this.options.postLogoutRedirectUri,
+      ...(idTokenHint ? { id_token_hint: idTokenHint } : {}),
     });
   }
 

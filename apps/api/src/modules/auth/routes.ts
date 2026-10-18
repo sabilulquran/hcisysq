@@ -11,6 +11,7 @@ import {
   AuthError,
   AuthService,
   readCookie,
+  readOidcIdTokenCookie,
   type RequestContext,
 } from "./service.js";
 
@@ -157,7 +158,12 @@ export async function registerAuthRoutes(
 
     try {
       const result = await oidcLogin.complete(callbackUrl, requestContext(request));
-      reply.header("Set-Cookie", result.setCookie);
+      reply.header(
+        "Set-Cookie",
+        result.idToken
+          ? [result.setCookie, auth.buildOidcIdTokenCookie(result.idToken)]
+          : [result.setCookie, auth.clearOidcIdTokenCookie()],
+      );
       return reply.redirect("/");
     } catch (error) {
       return reply.redirect(`/?authError=${safeOidcFailureCategory(error)}`);
@@ -182,13 +188,14 @@ export async function registerAuthRoutes(
   app.post("/auth/logout", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     const token = readCookie(request.headers.cookie, AUTH_COOKIE_NAME);
+    const idTokenHint = readOidcIdTokenCookie(request.headers.cookie);
     await auth.logout(token, requestContext(request));
-    reply.header("Set-Cookie", auth.clearSessionCookie());
+    reply.header("Set-Cookie", [auth.clearSessionCookie(), auth.clearOidcIdTokenCookie()]);
 
     if (!oidcLogin) return reply.status(204).send();
 
     try {
-      return reply.send({ logoutUrl: (await oidcLogin.buildLogoutUrl()).href });
+      return reply.send({ logoutUrl: (await oidcLogin.buildLogoutUrl(idTokenHint)).href });
     } catch {
       return reply.send({ logoutUrl: null });
     }

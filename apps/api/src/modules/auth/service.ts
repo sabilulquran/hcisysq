@@ -14,6 +14,15 @@ import {
 } from "./crypto.js";
 
 export const AUTH_COOKIE_NAME = "hcis_session";
+/** HttpOnly cookie holding the Akun SQ ID token, used only as id_token_hint on logout. */
+export const OIDC_ID_TOKEN_COOKIE_NAME = "hcis_oidc_id_token";
+const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+/** Returns the cookie value only when it has the compact JWS shape of an ID token. */
+export function readOidcIdTokenCookie(cookieHeader: string | undefined): string | null {
+  const value = readCookie(cookieHeader, OIDC_ID_TOKEN_COOKIE_NAME);
+  return value && value.length <= 8192 && JWT_SHAPE.test(value) ? value : null;
+}
 
 export type PrincipalType = "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
 export type AccountStatus = "invited" | "active" | "suspended" | "inactive";
@@ -333,6 +342,16 @@ export class AuthService {
       email: account.email,
       principalType: account.principalType,
     };
+  }
+
+  buildOidcIdTokenCookie(idToken: string): string {
+    const secure = this.secureCookies ? "; Secure" : "";
+    return `${OIDC_ID_TOKEN_COOKIE_NAME}=${idToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${this.sessionTtlSeconds}${secure}`;
+  }
+
+  clearOidcIdTokenCookie(): string {
+    const secure = this.secureCookies ? "; Secure" : "";
+    return `${OIDC_ID_TOKEN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
   }
 
   private buildSessionCookie(token: string): string {

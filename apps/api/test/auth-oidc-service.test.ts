@@ -87,6 +87,19 @@ describe("OidcLoginService", () => {
       "auth.oidc.login.succeeded",
     );
     expect(result.session.principal.id).toBe(mappedAccount.id);
+    expect(result.idToken).toBeNull();
+  });
+
+  it("returns the ID token so logout can send it as id_token_hint", async () => {
+    const { service } = buildHarness({
+      identity: {
+        issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+        subject: "opaque-subject-1",
+        idToken: "header.payload.signature",
+      } as { issuer: string; subject: string },
+    });
+    const result = await service.complete(callback(), context);
+    expect(result.idToken).toBe("header.payload.signature");
   });
 
   it.each([

@@ -55,7 +55,7 @@ export class OidcLoginService {
   async complete(
     callbackUrl: URL,
     context: RequestContext,
-  ): Promise<{ session: AuthSessionResult; setCookie: string }> {
+  ): Promise<{ session: AuthSessionResult; setCookie: string; idToken: string | null }> {
     const state = callbackUrl.searchParams.get("state");
     if (!state) {
       await this.audit("auth.oidc.callback.invalid", context, null, null);
@@ -130,15 +130,16 @@ export class OidcLoginService {
       throw new AuthError(403, "HCIS_ACCESS_DENIED", "Akses ke HCIS tidak diberikan.");
     }
 
-    return this.auth.createSessionForAccountId(
+    const result = await this.auth.createSessionForAccountId(
       account.id,
       context,
       "auth.oidc.login.succeeded",
     );
+    return { ...result, idToken: identity.idToken ?? null };
   }
 
-  buildLogoutUrl(): Promise<URL> {
-    return this.provider.buildLogoutUrl();
+  buildLogoutUrl(idTokenHint?: string | null): Promise<URL> {
+    return this.provider.buildLogoutUrl(idTokenHint);
   }
 
   private async consumeTransaction(state: string): Promise<OidcTransactionRow | null> {

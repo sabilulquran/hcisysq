@@ -53,7 +53,12 @@ export class SqHubApplicationAccessClient {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ identity, applicationKey: "hcis" }),
+        // SQ Hub accepts only { issuer, subject } (strict schema). Never forward
+        // the rest of the identity, such as the raw ID token kept for logout.
+        body: JSON.stringify({
+          identity: { issuer: identity.issuer, subject: identity.subject },
+          applicationKey: "hcis",
+        }),
         signal: AbortSignal.timeout(5_000),
       });
 

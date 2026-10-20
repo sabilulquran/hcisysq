@@ -78,6 +78,8 @@ See `docs/domain/payroll-engine-discovery.md`.
 - Performance review and KPI — PERF-001.
 - Training / LMS and learning records — TRAIN-001.
 
+TRAIN-001 stays inside HCIS (Product Owner decision, 2026-10-20). Discovery direction, including training evaluation and server-hosted video, is in `docs/domain/training-lms-discovery.md`.
+
 ### 5. Employment administration and employee services
 
 Classic employment administration is an explicit HCIS direction, using effective-dated history rather than overwriting current employee fields:

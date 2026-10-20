@@ -525,6 +525,10 @@ features:
     target_status: discovery
     priority: later
     risk: medium
+    planning_note: HCIS feature, not a separate SQ Core app (Product Owner, 2026-10-20). Staged R1 training records, R2 offline programs, R3 training evaluation (four-level framework, evaluation plans, form/test/rubric instruments), R4 online modules with server-hosted video that cannot be skipped or sped up, enforced by server-side progress crediting. Storage goes through the ObjectStorage port and must not assume Mi8VPS.
+    docs:
+      - docs/domain/training-lms-discovery.md
+      - docs/product/hcis-capability-map.md
 
   - id: DOC-001
     module: documents

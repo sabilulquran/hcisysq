@@ -2,7 +2,7 @@
 
 **Status:** DISCOVERY / DRAFT — dokumen ini tidak mengizinkan implementasi, migrasi database, atau perubahan production.
 **Spesifikasi:** TRAIN-001
-**Tanggal:** 2026-10-20 (revisi 2 — keputusan evaluasi dan rujukan LMS mapan masuk; revisi 1 pada tanggal yang sama)
+**Tanggal:** 2026-10-20 (revisi 3 — jumlah peserta dan pengelola harian terjawab; revisi 2 menambah keputusan evaluasi dan rujukan LMS mapan; revisi 1 pada tanggal yang sama)
 **Terkait:** EMP-008, PERF-001, ORG-004, NOTIF-004, APR-001, ADR-0001, ADR-0002
 **Rujukan:** LMS mapan (Moodle, Totara, Canvas, Docebo) dan model evaluasi Kirkpatrick; lihat §14
 
@@ -22,7 +22,7 @@ Dokumen ini **tidak** mengulang isi dokumen yang sudah ada. Yang sudah ada dan t
 
 ## 2. Masalah dan hasil yang dituju
 
-> **DISCOVERY.** Belum ada pendataan jumlah program, peserta, dan materi. Angka di §8.2 adalah perkiraan kasar.
+> **DISCOVERY.** Peserta adalah semua guru dan pegawai, kira-kira 100 orang (§3 keputusan 15). Jumlah program dan materi per tahun belum didata, sehingga angka penyimpanan di §8.2 masih perkiraan kasar.
 
 Hasil yang dituju:
 
@@ -50,6 +50,8 @@ Hasil yang dituju:
 | 12 | Hasil pelatihan **tidak menjadi komponen nilai PERF-001**, hanya keterangan (§10). |
 | 13 | Pelatihan eksternal wajib **laporan singkat dan RTL**. **Diseminasi** ke rekan unit dicatat sebagai sesi luring kecil (§7.9). |
 | 14 | Hasil evaluasi narasumber internal: narasumber melihat agregat miliknya sendiri, HC melihat semua, atasan narasumber tidak otomatis melihat (§11). |
+| 15 | **Peserta: semua guru dan pegawai, kira-kira 100 orang.** Tidak ada pegawai yang dikecualikan dari TRAIN-001. |
+| 16 | **Pengelola harian adalah Product Owner sendiri.** Pada awalnya peran Admin HC (pengelola pelatihan) dipegang satu orang (§5). |
 
 ## 4. Penempatan: fitur HCIS atau aplikasi terpisah
 
@@ -79,6 +81,8 @@ Keputusan ini ditinjau ulang bila salah satu terjadi:
 | Atasan / Kepala unit | Melihat status pelatihan anggota unitnya (scope `U`) |
 | Narasumber internal | Pegawai yang mengisi sesi; melihat agregat evaluasi atas dirinya sendiri |
 | Organ Yayasan | Hanya ringkasan agregat bila nanti disepakati; tidak melihat nilai perorangan |
+
+Pada awalnya peran Admin HC dipegang satu orang, yaitu Product Owner (§3 keputusan 16). Karena itu rancangan tidak boleh mengandalkan pemisahan tugas antar-admin. Pemeriksaan silang yang benar-benar dibutuhkan (misalnya penilai akhir di §7.7) dilakukan dengan menunjuk pegawai lain per komponen.
 
 Nama permission masih usulan dan mengikuti gaya `board.read`: `training.read`, `training.manage`, `training.assess`, `training.grade`, `training.record.verify`. Nama final ditetapkan di spesifikasi implementasi bersama `docs/domain/hcis-authorization-modernization.md`.
 
@@ -294,6 +298,8 @@ Peserta hanya melihat nilai dan komentar setelah status **Dirilis**. Status *Dit
 3. Bila selisih > ambang, respons masuk *Ditinjau* dan **penilai akhir** menetapkan nilainya. Penilai akhir adalah HC atau orang yang ditunjuk, dan bukan salah satu dari dua penilai itu.
 4. Kedua nilai awal tetap tersimpan sebagai bukti dan ikut diaudit.
 
+Karena pengelola harian hanya satu orang (§3 keputusan 16), sistem menolak penunjukan bila penilai akhir sama dengan salah satu dari dua penilai. Bila pengelola sendiri ikut menilai, penilai akhir harus pegawai lain yang ditunjuk.
+
 Nilai akhir program baru final setelah semua komponen manual berstatus *Dirilis*.
 
 ### 7.8 Rencana tindak lanjut dan evaluasi penerapan
@@ -352,6 +358,8 @@ Konsekuensi:
 - Kapasitas disk dan bandwidth menjadi masukan rencana perpindahan server. Rencana kapasitas SQ Core di repo SQ Hub (`docs/operations/sq-core-capacity-and-migration-plan.md`, masih di branch `docs/rapat-sq-and-capacity-plan`) sudah mencatat bahwa media dan backup adalah bagian yang tumbuh.
 - Video perlu kebijakan backup sendiri. Memasukkannya ke backup harian off-host akan membengkakkan ukuran backup.
 - Batas ukuran unggah per berkas dan kuota total ditetapkan di spesifikasi.
+
+**Bandwidth untuk ±100 peserta.** Satu jam materi 720p yang ditonton semua peserta berarti ±65 GB lalu lintas keluar. Bila 100 orang menonton bersamaan, dibutuhkan ±150 Mbps. Angka itu tidak realistis untuk Mi8, sedangkan 10 penonton bersamaan (±15 Mbps) masih masuk akal. Karena itu modul daring diberi jendela pengerjaan beberapa hari, bukan jadwal tonton serentak, dan kualitas 480p tetap disediakan. Ukuran penyimpanan ditentukan oleh jumlah materi, bukan jumlah peserta.
 
 ### 8.3 Format dan penyajian
 
@@ -418,8 +426,8 @@ R3 sengaja ditempatkan sebelum R4: evaluasi juga dibutuhkan untuk pelatihan luri
 
 | # | Pertanyaan | Saran |
 | --- | --- | --- |
-| 1 | Berapa perkiraan program dan peserta per tahun? | Perkiraan dari HCM sebelum spesifikasi R1; tanpa ini kapasitas §8.2 tetap tebakan. |
-| 2 | Siapa pengelola harian? | Admin HC, dengan Kepala HCM sebagai pemilik proses. Koordinator per unit menyusul. |
+| 1 | Berapa perkiraan program dan jam materi daring per tahun? Jumlah peserta sudah terjawab (§3 keputusan 15). | Perkirakan saat menyusun spesifikasi R4; R1–R3 tidak bergantung pada angka ini. |
+| 2 | ~~Siapa pengelola harian?~~ | **Terjawab:** Product Owner sendiri (§3 keputusan 16). Koordinator per unit dapat ditambahkan nanti. |
 | 3 | Apakah ada target jam pelatihan per pegawai per tahun? | Catat jam pelatihan sejak R1; target ditetapkan HCM sebagai kebijakan, tidak ditanam di kode. |
 | 4 | Siapa penilai esai/praktik? | Ditugaskan per komponen evaluasi: HC atau pegawai yang ditunjuk (misalnya koordinator tahfidz). |
 | 5 | Apakah video harus berhenti saat tab/aplikasi tidak terlihat? | Ya. Lebih sesuai dengan tujuan "benar-benar ditonton". |
@@ -438,9 +446,8 @@ R3 sengaja ditempatkan sebelum R4: evaluasi juga dibutuhkan untuk pelatihan luri
 
 ## 13. Langkah berikutnya
 
-1. Jawab pertanyaan §12, terutama nomor 1 dan 2.
-2. Perbarui `feature-parity.yaml` bila tahap R1 disetujui untuk dispesifikasikan.
-3. Tulis spesifikasi implementasi R1 (TRAIN-001 R1) lengkap dengan aktor, state, transisi, permission, audit event, dan failure behavior sesuai `AGENTS.md` §3.
+1. Tulis spesifikasi implementasi R1 (TRAIN-001 R1, catatan pelatihan) lengkap dengan aktor, state, transisi, permission, audit event, dan failure behavior sesuai `AGENTS.md` §3. Pertanyaan §12 yang tersisa tidak menghalangi R1.
+2. Perbarui `feature-parity.yaml` saat spesifikasi R1 diterima.
 
 ## 14. Rujukan LMS mapan
 

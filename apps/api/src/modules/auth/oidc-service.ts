@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import { OidcProvider, type OidcIdentity } from "./oidc-provider.js";
+import { safeReturnTo } from "./return-to.js";
 import {
   AuthError,
   AuthService,
@@ -18,6 +19,7 @@ const TRANSACTION_TTL_MINUTES = 10;
 interface OidcTransactionRow {
   codeVerifier: string;
   nonce: string;
+  returnTo: string | null;
 }
 
 interface MappedAccountRow {
@@ -35,7 +37,8 @@ export class OidcLoginService {
     private readonly auth: AuthService,
   ) {}
 
-  async begin(): Promise<URL> {
+  /** `returnTo` is validated again here; an unsafe value is dropped, not stored. */
+  async begin(returnTo?: string | null): Promise<URL> {
     const { url, transaction } = await this.provider.createAuthorizationRequest();
     const stateHash = this.hashState(transaction.state);
 
@@ -43,10 +46,16 @@ export class OidcLoginService {
     await this.pool.query(
       `
         INSERT INTO auth_oidc_transactions (
-          state_hash, code_verifier, nonce, expires_at
-        ) VALUES ($1, $2, $3, now() + ($4 * interval '1 minute'))
+          state_hash, code_verifier, nonce, return_to, expires_at
+        ) VALUES ($1, $2, $3, $4, now() + ($5 * interval '1 minute'))
       `,
-      [stateHash, transaction.codeVerifier, transaction.nonce, TRANSACTION_TTL_MINUTES],
+      [
+        stateHash,
+        transaction.codeVerifier,
+        transaction.nonce,
+        safeReturnTo(returnTo),
+        TRANSACTION_TTL_MINUTES,
+      ],
     );
 
     return url;
@@ -55,7 +64,12 @@ export class OidcLoginService {
   async complete(
     callbackUrl: URL,
     context: RequestContext,
-  ): Promise<{ session: AuthSessionResult; setCookie: string; idToken: string | null }> {
+  ): Promise<{
+    session: AuthSessionResult;
+    setCookie: string;
+    idToken: string | null;
+    returnTo: string | null;
+  }> {
     const state = callbackUrl.searchParams.get("state");
     if (!state) {
       await this.audit("auth.oidc.callback.invalid", context, null, null);
@@ -135,7 +149,12 @@ export class OidcLoginService {
       context,
       "auth.oidc.login.succeeded",
     );
-    return { ...result, idToken: identity.idToken ?? null };
+    return {
+      ...result,
+      idToken: identity.idToken ?? null,
+      // Taken from the server-side transaction only, never from the callback query.
+      returnTo: safeReturnTo(transaction.returnTo),
+    };
   }
 
   buildLogoutUrl(idTokenHint?: string | null): Promise<URL> {
@@ -148,7 +167,7 @@ export class OidcLoginService {
         DELETE FROM auth_oidc_transactions
         WHERE state_hash = $1
           AND expires_at > now()
-        RETURNING code_verifier AS "codeVerifier", nonce
+        RETURNING code_verifier AS "codeVerifier", nonce, return_to AS "returnTo"
       `,
       [this.hashState(state)],
     );

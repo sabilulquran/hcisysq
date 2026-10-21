@@ -4,7 +4,7 @@
 
 **Status:** ACCEPTED  
 **Specification:** AUTH-003 — Shared Identity Session Experience  
-**Related:** AUTH-001, AUTH-002, AUTH-010, `HUB-IMPL-003`
+**Related:** AUTH-001, AUTH-002, AUTH-010, AUTH-012, `HUB-IMPL-003`
 
 Dokumen ini menetapkan pengalaman sesi/account HCIS setelah autentikasi Staff dipindahkan ke SQ Identity. Scope ini tidak memindahkan business authorization HCIS ke platform dan tidak menjadikan HCIS pemilik credential global.
 
@@ -83,6 +83,19 @@ Setelah callback gagal, route hanya meneruskan kategori aman berikut ke login pa
 
 `OIDC_ACCOUNT_NOT_MAPPED`, invalid/expired state, token-validation failure, provider error, dan unexpected error tidak dibedakan di URL browser.
 
+## AUTH-012 — Masuk langsung ke Akun SQ
+
+**Status:** ACCEPTED (owner, 2026-10-21)
+
+Pada `AUTH_MODE=oidc`, halaman perantara "Masuk dengan Akun SQ" tidak lagi ditampilkan bila tidak ada kegagalan sebelumnya. Keycloak (realm `sq-staff`) sudah meneruskan tanpa interaksi bila sesi SSO Akun SQ masih aktif, sehingga HCIS cukup langsung membuka route start.
+
+- Actor: pengunjung tanpa sesi HCIS yang membuka `/` atau route terlindungi.
+- Flow: route terlindungi mengarahkan ke `/?returnTo=<path>`; login entry memeriksa `/auth/mode`, lalu `window.location.replace("/api/auth/oidc/start?returnTo=<path>")`. Selama itu hanya tampil status netral "Membuka Akun SQ…", bukan halaman hero.
+- `returnTo` hanya path same-origin yang diawali satu `/` (maksimal 512 karakter); `//`, backslash, scheme, karakter kontrol, serta path `/api/*` dan `/auth/*` ditolak. API memvalidasi ulang, menyimpannya di baris `auth_oidc_transactions.return_to` (migration `0060`), dan callback sukses mengarah ke nilai dari transaksi itu, tidak pernah dari query callback. Nilai tidak aman diabaikan dan login tetap berjalan ke `/`.
+- Failure: bila ada query `authError` (nilai apa pun), login entry tidak memulai ulang otomatis supaya tidak terjadi loop; pesan kategori di atas tetap tampil dengan tombol "Masuk dengan Akun SQ" sebagai percobaan ulang (membawa `returnTo` bila ada). Gagal memuat mode tetap fail closed.
+- Tidak ada `prompt=none`, direct grant/ROPC, atau form kata sandi. Local mode tetap memakai `LoginForm`.
+- Audit: tidak ada event baru; event OIDC yang ada tetap berlaku.
+
 ## Permission dan authorization
 
 Account menu tidak memberikan capability baru. Menampilkan `Akun Saya` atau `Keluar` tidak mengubah role, scope, Application Access, maupun permission domain.
@@ -124,7 +137,7 @@ Tidak ada notifikasi out-of-band untuk menu account, login failure, atau logout 
 
 ## Dependency dan migration impact
 
-- tidak ada database migration;
+- AUTH-003 tidak membutuhkan database migration; AUTH-012 menambah kolom nullable `auth_oidc_transactions.return_to` (`0060_oidc_transaction_return_to.sql`, aditif, rollback `DROP COLUMN IF EXISTS return_to`);
 - bergantung pada kontrak `/auth/logout` dan error `AuthError` yang sudah ada;
 - SQ Account Center adalah dependency platform masa depan, bukan blocker logout/account menu;
 - perubahan runtime harus diverifikasi pada staging OIDC sebelum merge/cutover lebih lanjut.

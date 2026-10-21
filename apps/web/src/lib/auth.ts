@@ -120,6 +120,49 @@ export function oidcLoginFailureMessage(category: string | null): string | null 
   }
 }
 
+export const OIDC_START_PATH = "/api/auth/oidc/start";
+
+export interface LoginSearch {
+  returnTo?: string;
+  authError?: string;
+}
+
+/** Keeps only the string query values the login entry understands. */
+export function loginSearch(search: Record<string, unknown>): LoginSearch {
+  const result: LoginSearch = {};
+  if (typeof search.returnTo === "string") result.returnTo = search.returnTo;
+  if (typeof search.authError === "string") result.authError = search.authError;
+  return result;
+}
+
+// eslint-disable-next-line no-control-regex
+const RETURN_TO_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Browser-side pre-check for the page to return to after Akun SQ sign-in. The API
+ * applies the authoritative rule again; this only avoids sending values it would drop.
+ */
+export function isSafeReturnTo(value: string | null | undefined): value is string {
+  if (!value || value.length > 512) return false;
+  if (!value.startsWith("/") || value.startsWith("//")) return false;
+  if (value.includes("\\") || RETURN_TO_CONTROL_CHARACTERS.test(value)) return false;
+  return !/^\/(api|auth)(\/|[?#]|$)/i.test(value);
+}
+
+export function oidcStartHref(returnTo?: string | null): string {
+  if (!isSafeReturnTo(returnTo) || returnTo === "/") return OIDC_START_PATH;
+  return `${OIDC_START_PATH}?${new URLSearchParams({ returnTo }).toString()}`;
+}
+
+/**
+ * Akun SQ passes through silently when its session is still active, so the login entry
+ * goes straight to the authorization start. A callback failure (`authError`) stops the
+ * automatic start so a failing sign-in cannot loop; the visitor retries with the button.
+ */
+export function shouldStartOidcAutomatically(mode: AuthMode | null, search: LoginSearch): boolean {
+  return mode === "oidc" && search.authError === undefined;
+}
+
 export function landingPath(
   session: AuthSession,
 ): "/app" | "/admin" | "/board" {

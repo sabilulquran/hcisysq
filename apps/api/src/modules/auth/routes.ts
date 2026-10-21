@@ -6,6 +6,7 @@ import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
 import { SqHubApplicationAccessClient } from "./application-access.js";
 import { OidcProvider } from "./oidc-provider.js";
 import { OidcLoginService } from "./oidc-service.js";
+import { safeReturnTo } from "./return-to.js";
 import {
   AUTH_COOKIE_NAME,
   AuthError,
@@ -124,7 +125,7 @@ export async function registerAuthRoutes(
     }
   });
 
-  app.get("/auth/oidc/start", async (_request, reply) => {
+  app.get("/auth/oidc/start", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     if (!oidcLogin) {
       return reply.status(404).send({
@@ -134,7 +135,9 @@ export async function registerAuthRoutes(
     }
 
     try {
-      const authorizationUrl = await oidcLogin.begin();
+      // An unsafe or missing returnTo is ignored: sign-in still starts and lands on "/".
+      const { returnTo } = (request.query ?? {}) as { returnTo?: unknown };
+      const authorizationUrl = await oidcLogin.begin(safeReturnTo(returnTo));
       return reply.redirect(authorizationUrl.href);
     } catch {
       return reply.status(503).send({
@@ -164,7 +167,7 @@ export async function registerAuthRoutes(
           ? [result.setCookie, auth.buildOidcIdTokenCookie(result.idToken)]
           : [result.setCookie, auth.clearOidcIdTokenCookie()],
       );
-      return reply.redirect("/");
+      return reply.redirect(result.returnTo ?? "/");
     } catch (error) {
       return reply.redirect(`/?authError=${safeOidcFailureCategory(error)}`);
     }

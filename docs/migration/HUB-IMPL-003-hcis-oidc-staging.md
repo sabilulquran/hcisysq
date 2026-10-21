@@ -22,8 +22,8 @@ Preconditions for OIDC mode:
 
 ## Workflow and state transition
 
-1. The browser requests `/api/auth/oidc/start`.
-2. HCIS creates one-time server-side state containing only a SHA-256 hash of OAuth `state`, the PKCE verifier, nonce, and a 10-minute expiry.
+1. The browser requests `/api/auth/oidc/start` (AUTH-012: the login entry does this automatically unless `authError` is present, optionally with a validated same-origin `returnTo`).
+2. HCIS creates one-time server-side state containing only a SHA-256 hash of OAuth `state`, the PKCE verifier, nonce, the optional validated `return_to` path (AUTH-012), and a 10-minute expiry.
 3. The browser is redirected to SQ Identity using Authorization Code + PKCE + state + nonce.
 4. Keycloak redirects to the exact public `/auth/callback` route. Nginx sends this route directly to the API; it is not handled by the SPA.
 5. HCIS atomically consumes the one-time transaction and validates the callback through `openid-client`.

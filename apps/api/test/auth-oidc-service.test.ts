@@ -22,6 +22,7 @@ function buildHarness(options?: {
   accountRows?: Array<typeof mappedAccount>;
   allowed?: boolean;
   accessError?: boolean;
+  transactionReturnTo?: string | null;
 }) {
   const identity = options?.identity ?? {
     issuer: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
@@ -30,7 +31,10 @@ function buildHarness(options?: {
   const accountRows = options?.accountRows ?? [mappedAccount];
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("DELETE FROM auth_oidc_transactions")) {
-      return { rows: [{ codeVerifier: "verifier", nonce: "nonce" }], rowCount: 1 };
+      return {
+        rows: [{ codeVerifier: "verifier", nonce: "nonce", returnTo: options?.transactionReturnTo ?? null }],
+        rowCount: 1,
+      };
     }
     if (sql.includes("FROM accounts") && sql.includes("identity_issuer")) {
       return { rows: accountRows, rowCount: accountRows.length };
@@ -100,6 +104,16 @@ describe("OidcLoginService", () => {
     });
     const result = await service.complete(callback(), context);
     expect(result.idToken).toBe("header.payload.signature");
+  });
+
+  it("returns the returnTo stored with the consumed transaction", async () => {
+    const { service } = buildHarness({ transactionReturnTo: "/app/leave" });
+    expect((await service.complete(callback(), context)).returnTo).toBe("/app/leave");
+  });
+
+  it("re-validates the stored returnTo instead of trusting the row", async () => {
+    const { service } = buildHarness({ transactionReturnTo: "//evil.example" });
+    expect((await service.complete(callback(), context)).returnTo).toBeNull();
   });
 
   it.each([

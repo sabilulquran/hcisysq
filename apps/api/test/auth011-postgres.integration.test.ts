@@ -509,7 +509,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     const access = { isAllowed: vi.fn(async () => true) };
     const oidc = new OidcLoginService(pool, { completeAuthorization: vi.fn(async () => identity) } as unknown as OidcProvider,
       access as unknown as SqHubApplicationAccessClient, auth);
-    const result = await oidc.complete(new URL(`https://hcis.example.invalid/auth/callback?state=${state}`), context);
+    const result = await oidc.complete(new URL(`https://hcis.example.invalid/auth/callback?state=${state}`), context, () => true);
     expect(result.session.principal.id).toBe(principal.id);
     expect(access.isAllowed).toHaveBeenCalledWith(identity);
     const me = await app.inject({ method: "GET", url: "/auth/me", headers: { cookie: result.setCookie.split(";")[0]! } });

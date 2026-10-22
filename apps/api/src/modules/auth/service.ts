@@ -16,6 +16,13 @@ import {
 export const AUTH_COOKIE_NAME = "hcis_session";
 /** HttpOnly cookie holding the Akun SQ ID token, used only as id_token_hint on logout. */
 export const OIDC_ID_TOKEN_COOKIE_NAME = "hcis_oidc_id_token";
+/**
+ * SEC-05: one short-lived cookie per login attempt, named by the state hash, so several tabs can sign in
+ * at once. With Secure cookies the `__Host-` prefix stops sibling subdomains from planting one.
+ */
+export function oidcStateCookieName(stateHash: string, secure: boolean): string {
+  return `${secure ? "__Host-" : ""}hcis_oidc_state_${stateHash.slice(0, 32)}`;
+}
 const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
 /** Returns the cookie value only when it has the compact JWS shape of an ID token. */
@@ -347,6 +354,20 @@ export class AuthService {
   buildOidcIdTokenCookie(idToken: string): string {
     const secure = this.secureCookies ? "; Secure" : "";
     return `${OIDC_ID_TOKEN_COOKIE_NAME}=${idToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${this.sessionTtlSeconds}${secure}`;
+  }
+
+  buildOidcStateCookie(stateHash: string, maxAgeSeconds: number): string {
+    const secure = this.secureCookies ? "; Secure" : "";
+    return `${oidcStateCookieName(stateHash, this.secureCookies)}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure}`;
+  }
+
+  clearOidcStateCookie(stateHash: string): string {
+    const secure = this.secureCookies ? "; Secure" : "";
+    return `${oidcStateCookieName(stateHash, this.secureCookies)}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
+  }
+
+  hasOidcStateCookie(cookieHeader: string | undefined, stateHash: string): boolean {
+    return readCookie(cookieHeader, oidcStateCookieName(stateHash, this.secureCookies)) === "1";
   }
 
   clearOidcIdTokenCookie(): string {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
 import { SqHubApplicationAccessClient } from "./application-access.js";
 import { OidcProvider } from "./oidc-provider.js";
-import { OidcLoginService } from "./oidc-service.js";
+import { OidcLoginService, TRANSACTION_TTL_MINUTES } from "./oidc-service.js";
 import { safeReturnTo } from "./return-to.js";
 import {
   AUTH_COOKIE_NAME,
@@ -137,8 +137,9 @@ export async function registerAuthRoutes(
     try {
       // An unsafe or missing returnTo is ignored: sign-in still starts and lands on "/".
       const { returnTo } = (request.query ?? {}) as { returnTo?: unknown };
-      const authorizationUrl = await oidcLogin.begin(safeReturnTo(returnTo));
-      return reply.redirect(authorizationUrl.href);
+      const { url, stateHash } = await oidcLogin.begin(safeReturnTo(returnTo));
+      reply.header("Set-Cookie", auth.buildOidcStateCookie(stateHash, TRANSACTION_TTL_MINUTES * 60));
+      return reply.redirect(url.href);
     } catch {
       return reply.status(503).send({
         code: "IDENTITY_UNAVAILABLE",
@@ -158,17 +159,25 @@ export async function registerAuthRoutes(
 
     const oidcConfig = getOidcRuntimeConfig(config);
     const callbackUrl = new URL(request.url, new URL(oidcConfig.redirectUri).origin);
+    const state = callbackUrl.searchParams.get("state");
+    // SEC-05: the per-state cookie is single-use; drop it whatever the outcome.
+    const clearState = state ? [auth.clearOidcStateCookie(oidcLogin.hashState(state))] : [];
 
     try {
-      const result = await oidcLogin.complete(callbackUrl, requestContext(request));
+      const result = await oidcLogin.complete(
+        callbackUrl,
+        requestContext(request),
+        (stateHash) => auth.hasOidcStateCookie(request.headers.cookie, stateHash),
+      );
       reply.header(
         "Set-Cookie",
         result.idToken
-          ? [result.setCookie, auth.buildOidcIdTokenCookie(result.idToken)]
-          : [result.setCookie, auth.clearOidcIdTokenCookie()],
+          ? [result.setCookie, auth.buildOidcIdTokenCookie(result.idToken), ...clearState]
+          : [result.setCookie, auth.clearOidcIdTokenCookie(), ...clearState],
       );
       return reply.redirect(result.returnTo ?? "/");
     } catch (error) {
+      if (clearState.length > 0) reply.header("Set-Cookie", clearState);
       return reply.redirect(`/?authError=${safeOidcFailureCategory(error)}`);
     }
   });

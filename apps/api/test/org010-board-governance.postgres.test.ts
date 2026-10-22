@@ -512,7 +512,7 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       const login = new OidcLoginService(pool,
         { completeAuthorization: vi.fn(async () => ({ issuer, subject: member.subject })) } as unknown as OidcProvider,
         { isAllowed: vi.fn(async () => true) } as unknown as SqHubApplicationAccessClient, auth);
-      const result = await login.complete(new URL(`https://hcis.example.invalid/auth/callback?state=${stateValue}`), context);
+      const result = await login.complete(new URL(`https://hcis.example.invalid/auth/callback?state=${stateValue}`), context, () => true);
       expect(result.session.principal).toMatchObject({ id: employee.principal.id, principalType: "EMPLOYEE" });
     });
   });

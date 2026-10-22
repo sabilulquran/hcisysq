@@ -73,6 +73,9 @@ function buildHarness(options?: {
   return { service, query, provider, applicationAccess, auth, identity };
 }
 
+// The browser presented the per-state cookie set by /auth/oidc/start (SEC-05).
+const bound = () => true;
+
 const callback = () =>
   new URL(
     "https://hcis-staging.sabilulquran.or.id/auth/callback?code=opaque&state=state-1",
@@ -81,7 +84,7 @@ const callback = () =>
 describe("OidcLoginService", () => {
   it("maps exact issuer + sub and preserves the original accounts.id", async () => {
     const { service, query, auth, identity } = buildHarness();
-    const result = await service.complete(callback(), context);
+    const result = await service.complete(callback(), context, bound);
 
     const mappingCall = query.mock.calls.find(([sql]) => String(sql).includes("identity_issuer"));
     expect(mappingCall?.[1]).toEqual([identity.issuer, identity.subject]);
@@ -102,18 +105,18 @@ describe("OidcLoginService", () => {
         idToken: "header.payload.signature",
       } as { issuer: string; subject: string },
     });
-    const result = await service.complete(callback(), context);
+    const result = await service.complete(callback(), context, bound);
     expect(result.idToken).toBe("header.payload.signature");
   });
 
   it("returns the returnTo stored with the consumed transaction", async () => {
     const { service } = buildHarness({ transactionReturnTo: "/app/leave" });
-    expect((await service.complete(callback(), context)).returnTo).toBe("/app/leave");
+    expect((await service.complete(callback(), context, bound)).returnTo).toBe("/app/leave");
   });
 
   it("re-validates the stored returnTo instead of trusting the row", async () => {
     const { service } = buildHarness({ transactionReturnTo: "//evil.example" });
-    expect((await service.complete(callback(), context)).returnTo).toBeNull();
+    expect((await service.complete(callback(), context, bound)).returnTo).toBeNull();
   });
 
   it.each([
@@ -137,7 +140,7 @@ describe("OidcLoginService", () => {
     ],
   ])("denies %s instead of joining by email or NIP", async (_label, identity) => {
     const { service, auth } = buildHarness({ identity, accountRows: [] });
-    await expect(service.complete(callback(), context)).rejects.toMatchObject({
+    await expect(service.complete(callback(), context, bound)).rejects.toMatchObject({
       code: "OIDC_ACCOUNT_NOT_MAPPED",
       statusCode: 403,
     });
@@ -148,7 +151,7 @@ describe("OidcLoginService", () => {
     const { service, applicationAccess, auth } = buildHarness({
       accountRows: [{ ...mappedAccount, status: "suspended" as const }],
     });
-    await expect(service.complete(callback(), context)).rejects.toMatchObject({
+    await expect(service.complete(callback(), context, bound)).rejects.toMatchObject({
       code: "ACCOUNT_INACTIVE",
       statusCode: 403,
     });
@@ -158,7 +161,7 @@ describe("OidcLoginService", () => {
 
   it("denies a new session when HCIS Application Access is absent or revoked", async () => {
     const { service, auth } = buildHarness({ allowed: false });
-    await expect(service.complete(callback(), context)).rejects.toMatchObject({
+    await expect(service.complete(callback(), context, bound)).rejects.toMatchObject({
       code: "HCIS_ACCESS_DENIED",
       statusCode: 403,
     });
@@ -167,7 +170,7 @@ describe("OidcLoginService", () => {
 
   it("fails closed when the Application Access machine call cannot be verified", async () => {
     const { service, auth } = buildHarness({ accessError: true });
-    await expect(service.complete(callback(), context)).rejects.toMatchObject({
+    await expect(service.complete(callback(), context, bound)).rejects.toMatchObject({
       code: "APPLICATION_ACCESS_UNAVAILABLE",
       statusCode: 503,
     });
@@ -180,8 +183,21 @@ describe("OidcLoginService", () => {
       service.complete(
         new URL("https://hcis-staging.sabilulquran.or.id/auth/callback?code=opaque"),
         context,
+        bound,
       ),
     ).rejects.toMatchObject({ code: "OIDC_CALLBACK_INVALID", statusCode: 401 });
+    expect(provider.completeAuthorization).not.toHaveBeenCalled();
+  });
+
+  it("rejects a callback this browser did not start and leaves the transaction unused (SEC-05)", async () => {
+    const { service, query, provider } = buildHarness();
+    const seen: string[] = [];
+    await expect(service.complete(callback(), context, (stateHash) => {
+      seen.push(stateHash);
+      return false;
+    })).rejects.toMatchObject({ code: "OIDC_CALLBACK_UNBOUND", statusCode: 401 });
+    expect(seen).toEqual([service.hashState("state-1")]);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("DELETE FROM auth_oidc_transactions"))).toBe(false);
     expect(provider.completeAuthorization).not.toHaveBeenCalled();
   });
 });

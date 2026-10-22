@@ -122,6 +122,41 @@ describe("AppShell launcher", () => {
     expect(html.indexOf("SQ Hub")).toBeLessThan(html.indexOf(">HCIS<"));
     expect(html).toContain('href="https://hub.sabilulquran.or.id/"');
     expect(html).toContain("Di sini");
+    expect(html).toContain('href="https://hub.sabilulquran.or.id/apps"');
+    expect(html).toContain(">Lihat semua aplikasi<");
+  });
+
+  it("AUTH-013: shows the SQ Hub list in the shared grid with HCIS marked as here", () => {
+    const html = renderToStaticMarkup(
+      <AppLauncher
+        previewOpen
+        applications={[
+          { key: "aset-sq", name: "Aset SQ", canonicalUrl: "https://aset.sabilulquran.or.id" },
+          { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.sabilulquran.or.id" },
+          { key: "spmb", name: "SPMB", canonicalUrl: "https://spmb.sabilulquran.or.id" },
+        ]}
+      />,
+    );
+    expect(html.indexOf("SQ Hub")).toBeLessThan(html.indexOf(">Aset SQ<"));
+    expect(html.indexOf(">Aset SQ<")).toBeLessThan(html.indexOf(">HCIS<"));
+    expect(html.indexOf(">HCIS<")).toBeLessThan(html.indexOf(">SPMB<"));
+    expect(html).toContain('href="https://aset.sabilulquran.or.id"');
+    expect(html).toContain("bg-cat-service-soft text-cat-service");
+    expect(html).toContain("bg-brand-primary-pale text-brand-primary-deep");
+    expect(html).toContain('href="/app" aria-current="page"');
+    expect(html).not.toContain('href="https://hcis.sabilulquran.or.id"');
+    expect(html.match(/Di sini/g)).toHaveLength(1);
+    expect(html).toContain("grid-cols-3");
+  });
+
+  it("AUTH-013: falls back to the HCIS tile alone when SQ Hub is unavailable or empty", () => {
+    for (const applications of [null, []]) {
+      const html = renderToStaticMarkup(<AppLauncher previewOpen applications={applications} />);
+      expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+      expect(html).toContain(">HCIS<");
+      expect(html).toContain("Di sini");
+      expect(html.match(/min-h-24/g)).toHaveLength(1);
+    }
   });
 });
 

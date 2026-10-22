@@ -4,7 +4,7 @@
 
 **Status:** ACCEPTED  
 **Specification:** AUTH-003 — Shared Identity Session Experience  
-**Related:** AUTH-001, AUTH-002, AUTH-010, AUTH-012, `HUB-IMPL-003`
+**Related:** AUTH-001, AUTH-002, AUTH-010, AUTH-012, AUTH-013, `HUB-IMPL-003`
 
 Dokumen ini menetapkan pengalaman sesi/account HCIS setelah autentikasi Staff dipindahkan ke SQ Identity. Scope ini tidak memindahkan business authorization HCIS ke platform dan tidak menjadikan HCIS pemilik credential global.
 
@@ -96,6 +96,22 @@ Pada `AUTH_MODE=oidc`, halaman perantara "Masuk dengan Akun SQ" tidak lagi ditam
 - Tidak ada `prompt=none`, direct grant/ROPC, atau form kata sandi. Local mode tetap memakai `LoginForm`.
 - Audit: tidak ada event baru; event OIDC yang ada tetap berlaku.
 
+## AUTH-013 — Peluncur aplikasi bersama
+
+**Status:** ACCEPTED (owner, 2026-10-23; kontrak peluncur SQ Core yang sama untuk HCIS, Aset, Karir staf, SPMB staf)
+
+Peluncur di header (ikon titik 3×3) menampilkan daftar yang sama dengan peluncur SQ Hub: baris SQ Hub ("Beranda semua aplikasi Anda", ke `https://hub.sabilulquran.or.id/`), lalu "Aplikasi Anda" berupa grid 3 kolom dengan ikon/warna kategori yang sama dengan SQ Hub (`applicationAppearance`: `hcis` → UsersRound/attendance, `aset-sq` → Boxes/service, lainnya → PanelsTopLeft/brand), HCIS ditandai "Di sini", dan tautan "Lihat semua aplikasi" ke `https://hub.sabilulquran.or.id/apps`. Referensi desain: SQ Hub `docs/design/sq-core-app-shell.md` item 4 ("same in every app").
+
+- Actor: principal dengan sesi HCIS (`hcis_session`).
+- Flow: SPA memanggil `GET /api/auth/launcher` (same-origin, satu kali per muat halaman, maksimal tiap 5 menit). API memvalidasi sesi, membaca `accounts.identity_issuer`/`identity_subject` milik akun sesi, lalu memanggil SQ Hub `POST /internal/v1/application-access/launcher` server-to-server dengan body `{"identity":{"issuer","subject"}}` dan token `client_credentials` dari machine client yang sama dengan Application Access check (`SQ_HUB_MACHINE_CLIENT_ID`). Browser tidak pernah memanggil SQ Hub dan tidak menerima token.
+- URL SQ Hub diturunkan dari `SQ_HUB_APPLICATION_ACCESS_URL` (`.../application-access/check` → `.../application-access/launcher`); `SQ_HUB_APPLICATION_LAUNCHER_URL` opsional sebagai override. Tidak ada env baru yang wajib.
+- Respons: `{"applications":[{key,name,canonicalUrl}]}` (SQ Hub sendiri tidak termasuk; hanya link `https:`/`http:` yang diteruskan) atau `{"applications":null,"unavailable":true}`. `Cache-Control: no-store`. Tanpa sesi: `401 UNAUTHENTICATED`.
+- Cache: per sesi HCIS (kunci = hash token sesi yang sudah disimpan, bukan token mentah) di memori proses API selama 5 menit; kegagalan disimpan 30 detik supaya SQ Hub tidak dipanggil pada setiap muat halaman. Maksimal 2.000 entri. Restart API mengosongkan cache.
+- Failure: timeout 5 detik, HTTP non-2xx, respons tidak valid, URL tidak dapat diturunkan, akun tanpa identitas tersimpan, atau `AUTH_MODE=local` → `unavailable`. Web lalu menampilkan hanya tile HCIS seperti sebelumnya; daftar kosong dari SQ Hub juga menampilkan tile HCIS saja. Bila HCIS tidak ada di daftar SQ Hub, tile HCIS tetap ditampilkan dengan tanda "Di sini". Tile HCIS selalu menuju `/app`.
+- Permission: tidak ada capability baru; daftar hanya navigasi. Akses ke aplikasi lain tetap diputuskan oleh aplikasi tersebut dan SQ Hub.
+- Audit/log: tidak ada audit event baru (membaca daftar bukan security event). Issuer, subject, dan token tidak ditulis ke log.
+- Local mode: perilaku lama (hanya tile HCIS) tetap berlaku.
+
 ## Pengikatan login ke browser dan penolakan mutasi lintas situs (SEC-05, SEC-06)
 
 Bagian dari temuan security review `SEC-REV-2026-10-16`.
@@ -156,6 +172,7 @@ Tidak ada notifikasi out-of-band untuk menu account, login failure, atau logout 
 ## Dependency dan migration impact
 
 - AUTH-003 tidak membutuhkan database migration; AUTH-012 menambah kolom nullable `auth_oidc_transactions.return_to` (`0060_oidc_transaction_return_to.sql`, aditif, rollback `DROP COLUMN IF EXISTS return_to`);
+- AUTH-013 tidak membutuhkan database migration (memakai kolom `accounts.identity_issuer`/`identity_subject` yang sudah ada) dan bergantung pada endpoint SQ Hub `/internal/v1/application-access/launcher`; sebelum endpoint itu live, peluncur tetap menampilkan tile HCIS saja. Rollback: revert commit, tanpa langkah data;
 - bergantung pada kontrak `/auth/logout` dan error `AuthError` yang sudah ada;
 - SQ Account Center adalah dependency platform masa depan, bukan blocker logout/account menu;
 - perubahan runtime harus diverifikasi pada staging OIDC sebelum merge/cutover lebih lanjut.

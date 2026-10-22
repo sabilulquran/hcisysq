@@ -42,6 +42,8 @@ const EXPECTED_PUBLIC_URLS = [
   "/auth/activation/complete",
   "/auth/activation/preview",
   "/auth/callback",
+  // AUTH-013: like /auth/me, authenticated by the HCIS session inside the handler (401 without one).
+  "/auth/launcher",
   "/auth/login",
   "/auth/logout",
   "/auth/me",

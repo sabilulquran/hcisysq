@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
 import { SqHubApplicationAccessClient } from "./application-access.js";
+import { hashSessionToken } from "./crypto.js";
+import { LauncherService, type LauncherIdentity } from "./launcher.js";
 import { OidcProvider } from "./oidc-provider.js";
 import { OidcLoginService, TRANSACTION_TTL_MINUTES } from "./oidc-service.js";
 import { safeReturnTo } from "./return-to.js";
@@ -57,10 +59,16 @@ export function safeOidcFailureCategory(error: unknown): SafeOidcFailureCategory
   }
 }
 
+export interface AuthRouteOptions {
+  /** Test seam for AUTH-013; production builds it from the OIDC runtime config. */
+  launcher?: LauncherService;
+}
+
 export async function registerAuthRoutes(
   app: FastifyInstance,
   pool: Pool,
   config: ApiConfig,
+  options: AuthRouteOptions = {},
 ) {
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required when the API auth routes are enabled");
@@ -74,6 +82,8 @@ export async function registerAuthRoutes(
   );
 
   let oidcLogin: OidcLoginService | null = null;
+  // Local mode has no SQ Hub identity: the launcher always reports unavailable (current-app tile).
+  let launcher = options.launcher ?? new LauncherService(null);
   if (config.AUTH_MODE === "oidc") {
     const oidcConfig = getOidcRuntimeConfig(config);
     const provider = new OidcProvider({
@@ -88,8 +98,10 @@ export async function registerAuthRoutes(
       oidcConfig.machineClientId,
       oidcConfig.machineClientSecret,
       oidcConfig.applicationAccessUrl,
+      oidcConfig.applicationLauncherUrl,
     );
     oidcLogin = new OidcLoginService(pool, provider, applicationAccess, auth);
+    launcher = options.launcher ?? new LauncherService(applicationAccess);
   }
 
   app.get("/auth/mode", async (_request, reply) => {
@@ -195,6 +207,29 @@ export async function registerAuthRoutes(
     }
 
     return reply.send({ ...session, authorization: await auth.getAuthorizationContext(session.principal) });
+  });
+
+  // AUTH-013: the SQ Hub applications this session's Akun SQ identity may open.
+  app.get("/auth/launcher", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const token = readCookie(request.headers.cookie, AUTH_COOKIE_NAME);
+    const session = await auth.getSession(token);
+    if (!session || !token) {
+      return reply.status(401).send({
+        code: "UNAUTHENTICATED",
+        message: "Sesi tidak ditemukan atau sudah berakhir.",
+      });
+    }
+
+    const result = await launcher.get(hashSessionToken(token), async () => {
+      const identity = await pool.query<{ issuer: string | null; subject: string | null }>(
+        `SELECT identity_issuer AS issuer, identity_subject AS subject FROM accounts WHERE id = $1`,
+        [session.principal.id],
+      );
+      const row = identity.rows[0];
+      return row?.issuer && row.subject ? ({ issuer: row.issuer, subject: row.subject } satisfies LauncherIdentity) : null;
+    });
+    return reply.send(result);
   });
 
   app.post("/auth/logout", async (request, reply) => {

@@ -10,6 +10,8 @@ describe("admin module catalog", () => {
   it("covers accepted future HCIS operational modules", () => {
     expect(getAdminService("payroll")?.featureIds).toContain("PAY-003");
     expect(getAdminService("recruitment")?.featureIds).toContain("REC-001");
+    // REC-001: Recruitment is a separate SQ Core app (Karir SQ), not an HCIS module.
+    expect(getAdminService("recruitment")?.description).toContain("Karir SQ");
     expect(getAdminService("sites")?.featureIds).toContain("ORG-005");
     expect(getAdminService("mobile-attendance")?.featureIds).toContain("ATT-006");
     expect(getAdminService("mobile-attendance")?.stage).toBe("available");

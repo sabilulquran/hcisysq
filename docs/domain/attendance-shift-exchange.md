@@ -2,7 +2,7 @@
 
 # ATT-008 — Shift Exchange Workflow
 
-**Status:** IMPLEMENTED — REPOSITORY VERIFIED; PRODUCTION DEPLOYMENT PENDING  
+**Status:** IMPLEMENTED — DEPLOYED. Migration `0048_attendance_shift_exchange.sql` is applied in production (read-only check 2026-10-22, running release `hcis-9b8f49a7-20261019`); no shift-swap request has been made yet, so there is no real-use evidence.  
 **Decision date:** 2026-09-21  
 **Related:** ATT-003, ATT-010, APR-001
 

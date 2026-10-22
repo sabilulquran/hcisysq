@@ -1,6 +1,6 @@
 # ORG-010 — Board view for Employees and HCIS governance summary for SQ Hub
 
-**Status:** ACCEPTED by the Product Owner on 2026-10-17. Implemented in the repository (see "Implementation notes"), with the summary endpoint off by default. Release to Mi8VPS and enabling `GOVERNANCE_SUMMARY_ENABLED` still need review, CI, and explicit owner approval (OPS-MI8-REL-001).
+**Status:** ACCEPTED by the Product Owner on 2026-10-17. Implemented (#124) and deployed: migration `0059_board_read_permission.sql` is applied and `GOVERNANCE_SUMMARY_ENABLED` is on in production (read-only check 2026-10-22, running release `hcis-9b8f49a7-20261019`). The code default stays off.
 **Specification:** ORG-010
 **Date:** 2026-10-17
 **Extends:** ORG-003 (`foundation-board-dashboard.md`)

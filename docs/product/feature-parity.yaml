@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-09-22
+updated_at: 2026-10-22
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -172,10 +172,10 @@ features:
     module: organization
     name: Board view for Employees and governance summary for SQ Hub Ringkasan Yayasan
     legacy_evidence: Product Owner decisions of 2026-10-17 recorded in SQ Hub ADR-0009 (ACCEPTED) and HUB-IMPL-021 (ACCEPTED), merged to main 2026-10-17; salaried Pengurus are HCIS Employees and need board access; Hub fetches one governance summary per app as the user through Keycloak token exchange
-    target_status: accepted
+    target_status: implemented
     priority: post-mvp-governance
     risk: high
-    planning_note: ACCEPTED by the Product Owner on 2026-10-17; implementation authorized, release to Mi8VPS and enabling GOVERNANCE_SUMMARY_ENABLED still need review, CI and explicit owner approval. The owner answered all 11 open questions on 2026-10-17 (Super Admin-only grant, unit ranking folds units under 3, trend = last 12 completed months, JWKS unavailable = 503, actor.email removed from /board/dashboard). Adds board.read and a Super Admin-assigned board-view role for EMPLOYEE accounts (FOUNDATION_BOARD unchanged for non-staff members), and a bearer-only GET /governance/summary implementing HUB-IMPL-021 v1 from ORG-003 aggregates. Monthly headcount trend only in EMP-005 AUTHORITATIVE mode; unit ranking from current data. Keeps ORG-003-F (no attendance/payroll aggregates). Endpoint disabled by default; production enablement and Keycloak token exchange need owner approval.
+    planning_note: ACCEPTED by the Product Owner on 2026-10-17 and implemented in #124. Deployed; GOVERNANCE_SUMMARY_ENABLED is on in production (read-only check 2026-10-22, release hcis-9b8f49a7-20261019). The owner answered all 11 open questions on 2026-10-17 (Super Admin-only grant, unit ranking folds units under 3, trend = last 12 completed months, JWKS unavailable = 503, actor.email removed from /board/dashboard). Adds board.read and a Super Admin-assigned board-view role for EMPLOYEE accounts (FOUNDATION_BOARD unchanged for non-staff members), and a bearer-only GET /governance/summary implementing HUB-IMPL-021 v1 from ORG-003 aggregates. Monthly headcount trend only in EMP-005 AUTHORITATIVE mode; unit ranking from current data. Keeps ORG-003-F (no attendance/payroll aggregates). Endpoint disabled by default in code.
     docs:
       - docs/domain/foundation-board-governance-summary.md
       - docs/domain/foundation-board-dashboard.md
@@ -188,7 +188,7 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16; runtime not started.
+    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. Steps S1-S3 (history schema and resolver, baseline CLI, read API, employment permissions, admin read screens) are merged (#113, #117, #120) and released in hcis-5e4ddc96-20261017 with rollout mode OFF and empty tables. Contract actions (S5), account deactivation (S5A), reversal/self-service (S7) and the pilot runbook (S8) are not started; AUTHORITATIVE stays refused until S5/S5A.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -203,7 +203,7 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16; runtime not started.
+    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. The read-only placement/career tab shipped with S3; career actions (S6) are not started.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -216,7 +216,7 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary.
+    planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The PK/SK register (S4) is not started.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -384,7 +384,7 @@ features:
     target_status: implemented
     priority: later
     risk: high
-    planning_note: Same-date/same-unit exchange with immutable schedule snapshots, counterpart consent, Human Capital approval, conflict/cutoff checks, append-only audit, and new roster-version publication is repository-verified. Production deployment remains a separate gate.
+    planning_note: Same-date/same-unit exchange with immutable schedule snapshots, counterpart consent, Human Capital approval, conflict/cutoff checks, append-only audit, and new roster-version publication is repository-verified and deployed (migration 0048 applied in production, read-only check 2026-10-22); no real shift-swap request yet.
     docs:
       - docs/product/hcis-capability-map.md
       - docs/domain/attendance-shift-exchange.md
@@ -597,7 +597,7 @@ features:
     target_status: implemented
     priority: immediate-post-attendance
     risk: high
-    planning_note: Inbox/read-unread, account-scoped unread count, shift-swap lifecycle, overtime decision, and payslip publication notifications are repository-verified. Production deployment remains separate. External adapters and scheduled reminders remain separate.
+    planning_note: Inbox/read-unread, account-scoped unread count, shift-swap lifecycle, overtime decision, and payslip publication notifications are repository-verified and deployed (migration 0049 applied in production, read-only check 2026-10-22). External adapters and scheduled reminders remain separate.
     docs:
       - docs/domain/in-app-notification-center.md
 

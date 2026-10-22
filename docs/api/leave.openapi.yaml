@@ -1,0 +1,290 @@
+openapi: 3.1.0
+info:
+  title: HCIS Annual Leave and Leave Approvals (LEAVE-001, LEAVE-002, APR-001)
+  version: 1.0.0
+  description: |
+    Employee annual-leave self-service and the approver inbox, as implemented in
+    apps/api/src/modules/leave/employee-routes.ts. Replaces the early DRAFT paths
+    /leave/preview, /leave/requests, /leave/requests/{requestId}, /approvals/tasks and
+    /approvals/tasks/{taskId}/decision, which were never implemented.
+    All routes use the session cookie and answer with Cache-Control: no-store.
+    Errors use { code, message }.
+    Planned leave (/leave/planned/*), special leave (/leave/special/*), Human Capital
+    queues (/leave/hc/*) and leave configuration (/admin/leave/*) are implemented but not
+    yet described here; their guards are listed in docs/domain/AUTH-011-admin-route-permissions.json.
+paths:
+  /leave/me/summary:
+    get:
+      tags: [Leave]
+      summary: Current employee annual-leave balance, request history and pending approval count
+      description: EMPLOYEE principal only.
+      responses:
+        '200':
+          description: Leave summary for the signed-in employee
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [referenceDate, employee, annualPolicy, annualLeave, pendingApprovalCount, requests]
+                properties:
+                  referenceDate: { type: string, format: date }
+                  employee:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      employeeNumber: { type: string }
+                      fullName: { type: string }
+                      unitName: { type: [string, 'null'] }
+                      positionName: { type: [string, 'null'] }
+                      leaveEntitlementGroup: { type: [string, 'null'] }
+                      startedOn: { type: [string, 'null'], format: date }
+                  annualPolicy: { type: object, description: Annual leave policy catalog entry }
+                  annualLeave: { type: object, description: Year view with entitlement, periods and used/available days }
+                  pendingApprovalCount: { type: integer, minimum: 0 }
+                  requests:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaveRequestSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /leave/me/annual/preview:
+    post:
+      tags: [Leave]
+      summary: Non-persistent annual-leave calculation and resolved approval chain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnnualLeaveRequestInput' }
+      responses:
+        '200':
+          description: Preview; nothing is stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  annualEntitlementDays: { type: integer }
+                  periodKey: { type: string }
+                  periodLimitDays: { type: integer }
+                  availableDaysBeforeRequest: { type: integer }
+                  requestedWorkingDays: { type: integer }
+                  availableDaysAfterRequest: { type: integer }
+                  minimumNoticeDays: { type: integer }
+                  noticeDays: { type: integer }
+                  workingDates: { type: array, items: { type: string, format: date } }
+                  nonWorkingDates: { type: array, items: { type: string, format: date } }
+                  approvalChain: { type: array, items: { type: object } }
+                  authorityResolution: { type: object }
+        '400': { $ref: '#/components/responses/InvalidAnnualLeaveRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/PolicyConflict' }
+
+  /leave/me/annual/submit:
+    post:
+      tags: [Leave]
+      summary: Submit an annual-leave request; snapshots the approval chain (APR-001)
+      description: |
+        Idempotent per employee and idempotencyKey. A replay answers 200 with
+        idempotentReplay true and the stored id/status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/AnnualLeaveRequestInput'
+                - type: object
+                  required: [idempotencyKey]
+                  properties:
+                    idempotencyKey: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier submission
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, idempotentReplay]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/LeaveRequestStatus' }
+                  idempotentReplay: { const: true }
+        '201':
+          description: Request created in review
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, workingDays, periodKey, annualEntitlementDays, approvalChain, idempotentReplay]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { const: in_review }
+                  workingDays: { type: integer }
+                  periodKey: { type: string }
+                  annualEntitlementDays: { type: integer }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        accountId: { type: [string, 'null'], format: uuid }
+                        name: { type: string }
+                  idempotentReplay: { const: false }
+        '400': { $ref: '#/components/responses/InvalidAnnualLeaveRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/PolicyConflict' }
+
+  /leave/me/requests:
+    get:
+      tags: [Leave]
+      summary: All leave requests of the signed-in employee, newest first
+      responses:
+        '200':
+          description: Request list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requests]
+                properties:
+                  requests:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaveRequestSummary' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /leave/approvals:
+    get:
+      tags: [Approvals]
+      summary: Pending leave approval steps owned by the caller
+      description: EMPLOYEE or FOUNDATION_BOARD principal; only steps in status pending on requests in review.
+      responses:
+        '200':
+          description: Approver inbox, oldest submission first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stepId: { type: string, format: uuid }
+                        requestId: { type: string, format: uuid }
+                        requesterEmployeeId: { type: string, format: uuid }
+                        requesterName: { type: string }
+                        policyKey: { type: string }
+                        startOn: { type: string, format: date }
+                        endOn: { type: string, format: date }
+                        workingDays: { type: integer }
+                        reason: { type: [string, 'null'] }
+                        submittedAt: { type: string, format: date-time }
+                        sources: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /leave/approvals/{stepId}/decision:
+    post:
+      tags: [Approvals]
+      summary: Approve or reject one owned pending approval step
+      parameters:
+        - name: stepId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '200':
+          description: Decision committed and audited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string, format: uuid }
+                  requestStatus: { $ref: '#/components/schemas/LeaveRequestStatus' }
+                  stepStatus: { type: string, enum: [approved, rejected] }
+                  nextPendingStepId: { type: [string, 'null'], format: uuid }
+                  hcHandling: { type: string, enum: [notify, validate, approve, none] }
+                  hcTaskStatus: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/PolicyConflict' }
+
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    LeaveRequestStatus:
+      type: string
+      enum: [in_review, approved, rejected, cancelled]
+    AnnualLeaveRequestInput:
+      type: object
+      required: [startOn, endOn]
+      properties:
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        reason: { type: [string, 'null'], maxLength: 1000 }
+    LeaveRequestSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        policyKey: { type: string }
+        status: { $ref: '#/components/schemas/LeaveRequestStatus' }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        workingDays: { type: integer }
+        reason: { type: [string, 'null'] }
+        annualPeriodKey: { type: [string, 'null'] }
+        submittedAt: { type: string, format: date-time }
+        finalDecidedAt: { type: [string, 'null'], format: date-time }
+        currentApproverName: { type: [string, 'null'] }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No valid session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Wrong principal type or not the owner of the step
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    InvalidAnnualLeaveRequest:
+      description: INVALID_ANNUAL_LEAVE_REQUEST (dates or reason malformed)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PolicyConflict:
+      description: Leave policy, approval configuration, authority resolution or workflow state conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }

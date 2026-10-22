@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
+import { quoteCsvCell } from "../../../lib/csv.js";
 import type { ApiConfig } from "../../../config/env.js";
 import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
@@ -203,8 +204,7 @@ async function withTransaction<T>(pool: Pool, work: (client: PoolClient) => Prom
 }
 
 function csvCell(value: unknown) {
-  const text = value === null || value === undefined ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  return quoteCsvCell(value === null || value === undefined ? "" : String(value));
 }
 
 export async function registerAdmsWave3AdminRoutes(

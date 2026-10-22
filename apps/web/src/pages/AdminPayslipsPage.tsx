@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
+import { csvCell } from "@/lib/csv";
 import {
   bulkCorrectPayslipImportRows,
   bulkExcludePayslipImportRows,
@@ -37,11 +38,6 @@ function sourceFormatLabel(value: PayslipSourceFormat) {
   if (value === "tetap") return "Tetap";
   if (value === "honorer") return "Honorer";
   return "Generic";
-}
-
-function csvCell(value: string | number | null) {
-  const text = value === null ? "" : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function parseCsvLine(line: string) {

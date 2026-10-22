@@ -96,6 +96,24 @@ Pada `AUTH_MODE=oidc`, halaman perantara "Masuk dengan Akun SQ" tidak lagi ditam
 - Tidak ada `prompt=none`, direct grant/ROPC, atau form kata sandi. Local mode tetap memakai `LoginForm`.
 - Audit: tidak ada event baru; event OIDC yang ada tetap berlaku.
 
+## Pengikatan login ke browser dan penolakan mutasi lintas situs (SEC-05, SEC-06)
+
+Bagian dari temuan security review `SEC-REV-2026-10-16`.
+
+**SEC-05 — callback hanya diterima di browser yang memulai login.**
+
+- `/auth/oidc/start` memasang satu cookie per percobaan login: nama `__Host-hcis_oidc_state_<32 hex pertama sha256(state)>` (tanpa prefiks `__Host-` bila cookie tidak Secure, yaitu di luar production), nilai `1`, `Path=/; HttpOnly; SameSite=Lax`, umur sama dengan transaksi OIDC (10 menit). Nama per state membuat beberapa tab bisa login bersamaan; prefiks `__Host-` mencegah subdomain saudara menanam cookie ini.
+- `/auth/callback` meneruskan ke `OidcLoginService.complete` fungsi pemeriksa yang wajib: tanpa cookie untuk state tersebut, callback ditolak (`OIDC_CALLBACK_UNBOUND`, audit `auth.oidc.callback.invalid`) **sebelum** transaksi dipakai, sehingga browser yang sah masih bisa menyelesaikannya. URL browser hanya menerima kategori `oidc_failed`.
+- Cookie state dihapus pada setiap respons callback, sukses maupun gagal.
+- Kasus yang dicegah: penyerang mengirim tautan callback dari login miliknya sendiri, sehingga korban masuk ke akun penyerang (login CSRF).
+
+**SEC-06 — mutasi lintas situs ditolak.**
+
+- Hook `onRequest` untuk `POST`, `PUT`, `PATCH`, `DELETE` (kecuali ingress perangkat `/iclock/*`): bila browser mengirim `Sec-Fetch-Site`, hanya `same-origin` dan `none` yang diterima; `same-site` (aplikasi SQ Core lain di domain yayasan) dan `cross-site` ditolak `403 CROSS_SITE_REQUEST_REJECTED`.
+- Browser lama tanpa `Sec-Fetch-Site`: `Origin` harus sama dengan origin publik HCIS (diambil dari `OIDC_REDIRECT_URI`). Pada local mode origin publik tidak dikenal, sehingga hanya `Sec-Fetch-Site` yang diperiksa.
+- Klien tanpa `Sec-Fetch-Site` dan tanpa `Origin` (perangkat, token mesin, skrip) tidak membawa risiko cookie browser dan tetap diterima; route-nya tetap dijaga autentikasi masing-masing.
+- Frontend tidak berubah: SPA memanggil `/api` dari origin yang sama.
+
 ## Permission dan authorization
 
 Account menu tidak memberikan capability baru. Menampilkan `Akun Saya` atau `Keluar` tidak mengubah role, scope, Application Access, maupun permission domain.

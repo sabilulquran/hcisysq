@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import Fastify from "fastify";
 import type { Pool } from "pg";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -48,10 +50,14 @@ const config: ApiConfig = {
   SQ_HUB_MACHINE_CLIENT_SECRET: "synthetic-machine-secret",
 };
 
-async function inject(url: string, query = vi.fn(async () => ({ rows: [], rowCount: 0 }))) {
+async function inject(
+  url: string,
+  query = vi.fn(async () => ({ rows: [], rowCount: 0 })),
+  headers: Record<string, string> = {},
+) {
   const app = Fastify({ logger: false });
   await registerAuthRoutes(app, { query } as unknown as Pool, config);
-  const response = await app.inject({ method: "GET", url });
+  const response = await app.inject({ method: "GET", url, headers });
   await app.close();
   return { response, query };
 }
@@ -160,6 +166,51 @@ describe("AUTH-012 /auth/callback redirect target", () => {
     vi.spyOn(OidcLoginService.prototype, "complete").mockRejectedValue(new Error("synthetic"));
     const { response } = await inject("/auth/callback?code=opaque&state=state-1");
     expect(response.headers.location).toBe("/?authError=oidc_failed");
+  });
+});
+
+describe("SEC-05 login bound to the starting browser", () => {
+  const stateHash = (state: string) => createHash("sha256").update(state, "utf8").digest("hex");
+  const cookieName = (state: string) => `hcis_oidc_state_${stateHash(state).slice(0, 32)}`;
+  const setCookies = (value: string | string[] | undefined) => [value ?? []].flat();
+
+  it("sets a short-lived HttpOnly cookie named by the state hash when sign-in starts", async () => {
+    const { response } = await inject("/auth/oidc/start");
+    const state = new URL(String(response.headers.location)).searchParams.get("state")!;
+    expect(setCookies(response.headers["set-cookie"])).toEqual([
+      `${cookieName(state)}=1; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+    ]);
+  });
+
+  it("only accepts the state whose cookie this browser holds, and clears that cookie", async () => {
+    const complete = vi.spyOn(OidcLoginService.prototype, "complete").mockImplementation(
+      async (_url, _context, isBoundToBrowser) => {
+        if (!isBoundToBrowser(stateHash("state-1"))) throw new Error("unbound");
+        return {
+          session: {
+            principal: { id: "synthetic-account", email: "staff@example.org", principalType: "EMPLOYEE" as const },
+            expiresAt: "2099-01-01T00:00:00Z",
+          },
+          setCookie: "hcis_session=opaque; HttpOnly",
+          idToken: null,
+          returnTo: null,
+        };
+      },
+    );
+    const clear = `${cookieName("state-1")}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+
+    const bound = await inject("/auth/callback?code=opaque&state=state-1", undefined, {
+      cookie: `${cookieName("state-1")}=1`,
+    });
+    expect(bound.response.headers.location).toBe("/");
+    expect(setCookies(bound.response.headers["set-cookie"])).toContain(clear);
+
+    for (const cookie of [undefined, `${cookieName("state-2")}=1`, `${cookieName("state-1")}=0`]) {
+      const unbound = await inject("/auth/callback?code=opaque&state=state-1", undefined, cookie ? { cookie } : {});
+      expect(unbound.response.headers.location).toBe("/?authError=oidc_failed");
+      expect(setCookies(unbound.response.headers["set-cookie"])).toEqual([clear]);
+    }
+    expect(complete).toHaveBeenCalledTimes(4);
   });
 });
 

@@ -24,6 +24,7 @@ import { registerAttendanceShiftSwapRoutes } from "./modules/attendance/shift-sw
 import { registerAttendanceWorkforceRoutes } from "./modules/attendance/workforce-routes.js";
 import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-account-activation-routes.js";
 import { registerAccountActivationRoutes } from "./modules/auth/activation-routes.js";
+import { isCrossSiteMutation, publicOrigin } from "./modules/auth/csrf.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerBoardDashboardRoutes } from "./modules/board/dashboard-routes.js";
 import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-employee-contact-routes.js";
@@ -107,6 +108,16 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
     for (const [name, value] of Object.entries(securityHeaders(config))) {
       if (!reply.hasHeader(name)) reply.header(name, value);
     }
+  });
+
+  const appOrigin = publicOrigin(config);
+  app.addHook("onRequest", async (request, reply) => {
+    if (!isCrossSiteMutation(request.method, request.url, request.headers, appOrigin)) return;
+    request.log.warn({ method: request.method, url: logUrl(request.url) }, "cross-site mutation rejected");
+    return reply.status(403).send({
+      code: "CROSS_SITE_REQUEST_REJECTED",
+      message: "Permintaan ditolak karena tidak berasal dari aplikasi HCIS.",
+    });
   });
 
   app.addContentTypeParser(

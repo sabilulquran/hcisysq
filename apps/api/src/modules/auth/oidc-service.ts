@@ -14,7 +14,7 @@ import {
   type RequestContext,
 } from "./service.js";
 
-const TRANSACTION_TTL_MINUTES = 10;
+export const TRANSACTION_TTL_MINUTES = 10;
 
 interface OidcTransactionRow {
   codeVerifier: string;
@@ -38,7 +38,7 @@ export class OidcLoginService {
   ) {}
 
   /** `returnTo` is validated again here; an unsafe value is dropped, not stored. */
-  async begin(returnTo?: string | null): Promise<URL> {
+  async begin(returnTo?: string | null): Promise<{ url: URL; stateHash: string }> {
     const { url, transaction } = await this.provider.createAuthorizationRequest();
     const stateHash = this.hashState(transaction.state);
 
@@ -58,12 +58,18 @@ export class OidcLoginService {
       ],
     );
 
-    return url;
+    return { url, stateHash };
   }
 
+  /**
+   * SEC-05: `isBoundToBrowser` must confirm that this browser started the login for this state
+   * (a per-state cookie set by /auth/oidc/start); otherwise a victim could be signed in to an
+   * attacker's account through a crafted callback link.
+   */
   async complete(
     callbackUrl: URL,
     context: RequestContext,
+    isBoundToBrowser: (stateHash: string) => boolean,
   ): Promise<{
     session: AuthSessionResult;
     setCookie: string;
@@ -74,6 +80,12 @@ export class OidcLoginService {
     if (!state) {
       await this.audit("auth.oidc.callback.invalid", context, null, null);
       throw new AuthError(401, "OIDC_CALLBACK_INVALID", "Respons Akun SQ tidak valid.");
+    }
+
+    if (!isBoundToBrowser(this.hashState(state))) {
+      // The transaction is left to expire so the browser that started it can still finish.
+      await this.audit("auth.oidc.callback.invalid", context, null, null);
+      throw new AuthError(401, "OIDC_CALLBACK_UNBOUND", "Login Akun SQ harus diselesaikan di browser yang memulainya.");
     }
 
     const transaction = await this.consumeTransaction(state);
@@ -190,7 +202,7 @@ export class OidcLoginService {
     return result.rows[0] ?? null;
   }
 
-  private hashState(state: string): string {
+  hashState(state: string): string {
     return createHash("sha256").update(state, "utf8").digest("hex");
   }
 

@@ -249,6 +249,30 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /auth/launcher:
+    get:
+      tags: [Session]
+      operationId: getAppLauncher
+      summary: AUTH-013 SQ Hub applications for the header launcher
+      description: >-
+        Reads SQ Hub POST /internal/v1/application-access/launcher server-to-server with the
+        signed-in account's stored OIDC issuer and subject, using the existing machine client.
+        Cached per HCIS session for 5 minutes (a failure for 30 seconds). Any SQ Hub failure,
+        local auth mode, or an account without a stored identity returns
+        `{applications: null, unavailable: true}`. SQ Hub itself is not in the list.
+      responses:
+        '200':
+          description: Application list, or the unavailable fallback
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: [no-store] }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppLauncher'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /leave/me/summary:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1summary'
   /leave/me/annual/preview:
@@ -1786,6 +1810,28 @@ components:
         bindings: { type: array, items: { type: object } }
         reportingOverrides: { type: array, items: { type: object } }
 
+    AppLauncher:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [applications]
+          properties:
+            applications:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [key, name, canonicalUrl]
+                properties:
+                  key: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' }
+                  name: { type: string }
+                  canonicalUrl: { type: string, format: uri }
+        - type: object
+          additionalProperties: false
+          required: [applications, unavailable]
+          properties:
+            applications: { type: 'null' }
+            unavailable: { type: boolean, enum: [true] }
     Session:
       type: object
       required: [principal, expiresAt, authorization]

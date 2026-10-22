@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { deriveLauncherUrl } from "../modules/auth/launcher.js";
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -26,6 +28,11 @@ const envSchema = z
     OIDC_REDIRECT_URI: z.string().url().optional(),
     OIDC_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
     SQ_HUB_APPLICATION_ACCESS_URL: z.string().url().optional(),
+    // AUTH-013: optional; by default derived from SQ_HUB_APPLICATION_ACCESS_URL (.../check -> .../launcher).
+    SQ_HUB_APPLICATION_LAUNCHER_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().optional(),
+    ),
     SQ_HUB_MACHINE_CLIENT_ID: z.string().trim().min(1).optional(),
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
     ORG_DIRECTORY_EXPORT_ENABLED: z.enum(["0", "1"]).default("0"),
@@ -197,6 +204,8 @@ export interface OidcRuntimeConfig {
   redirectUri: string;
   postLogoutRedirectUri: string;
   applicationAccessUrl: string;
+  /** AUTH-013 launcher endpoint; null when it cannot be derived and no override is set. */
+  applicationLauncherUrl: string | null;
   machineClientId: string;
   machineClientSecret: string;
 }
@@ -223,6 +232,10 @@ export function getOidcRuntimeConfig(config: ApiConfig): OidcRuntimeConfig {
     redirectUri: config.OIDC_REDIRECT_URI,
     postLogoutRedirectUri: config.OIDC_POST_LOGOUT_REDIRECT_URI,
     applicationAccessUrl: config.SQ_HUB_APPLICATION_ACCESS_URL,
+    applicationLauncherUrl: deriveLauncherUrl(
+      config.SQ_HUB_APPLICATION_ACCESS_URL,
+      config.SQ_HUB_APPLICATION_LAUNCHER_URL,
+    ),
     machineClientId: config.SQ_HUB_MACHINE_CLIENT_ID,
     machineClientSecret: config.SQ_HUB_MACHINE_CLIENT_SECRET,
   };

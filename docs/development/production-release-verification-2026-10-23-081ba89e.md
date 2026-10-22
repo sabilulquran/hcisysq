@@ -1,6 +1,6 @@
 # Production release verification — 2026-10-23 (Mi8VPS, hcis-081ba89e)
 
-**Status:** RELEASED AND VERIFIED. The operator's browser login, logout and deep-link refresh are not yet confirmed (see Notes).
+**Status:** RELEASED AND VERIFIED, including the owner's browser check.
 
 **Owner approval:** 2026-10-23, in chat: "Ya, saya setujui rilis hcis-081ba89e-20261022 ke produksi sekarang dengan --apply --confirm RELEASE_081ba89e. Tidak ada migrasi. Rollback aplikasi kalau ada cek yang gagal."
 
@@ -53,7 +53,7 @@ The SEC-05 check created one unused OIDC transaction row that expires after 10 m
 - **Release made outside this session.** Preflight found `hcis-f2d0f8fb-20261022` (main after #134: SEC-07 API headers, SEC-09/10/11/13/15, AUTH-012, the OpenAPI repair) already running. Its pre-release backup is `hcis-f2d0f8fb-20261022-20261022T222125Z.dump` (22:21 UTC on 2026-10-22). No verification note for it exists in the repository; this release builds on it and its contents are now verified through the checks above.
 - The `Hub dependency gate: HCIS unavailable` / `HCIS web unavailable` worker lines at 05:44:36 and 05:44:52 came from the restart window. They did not repeat.
 - A login that was in progress at 05:44 had no state cookie and fails once with `oidc_failed`; signing in again works.
-- Still to confirm by the operator: Akun SQ login (including AUTH-012 silent SSO), logout, and a deep-link refresh in a real browser.
+- Browser check by the owner (2026-10-23, in chat): "Login Akun SQ, logout, dan refresh deep-link sudah saya cek di browser dan lancar."
 - No `final.env` values, tokens, cookies or employee data are recorded here.
 
 ## Rollback

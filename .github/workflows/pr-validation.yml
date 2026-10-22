@@ -112,6 +112,13 @@ jobs:
         run: |
           psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_pr -v ON_ERROR_STOP=1 \
             -c 'CREATE DATABASE hcis_auth011_permissions_test;'
+          # Extensions are database-wide. The AUTH-011 and ORG-010 suites migrate their own
+          # schemas in this database in parallel, so two concurrent
+          # CREATE EXTENSION IF NOT EXISTS btree_gist calls can race (duplicate key on
+          # pg_extension). Creating it once here makes the migration statement a no-op,
+          # as it is in production.
+          psql -h 127.0.0.1 -U "$CI_PG_USER" -d hcis_auth011_permissions_test -v ON_ERROR_STOP=1 \
+            -c 'CREATE EXTENSION IF NOT EXISTS btree_gist;'
 
       - name: Test
         env:

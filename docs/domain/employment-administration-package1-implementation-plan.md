@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); implementation not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S2B and S4–S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -27,7 +27,7 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S1 — Schema and domain resolver (no routes, no UI)
 
-**Status:** IMPLEMENTED on branch `feat/emp-s1-employment-history-foundation` (2026-10-16), pending review/merge. Delivered: migration `0056_employment_history_foundation.sql`; pure domain module `apps/api/src/modules/employment/domain/` (`resolveEmployment`, `planEmploymentAction`, `applyPlan`, policy table); tests `apps/api/test/employment-history-domain.test.ts` (unit) and `apps/api/test/employment-history-migration.test.ts` (PostgreSQL, CI). Not deployed; nothing reads the tables yet; rollout mode stays OFF (no settings row).
+**Status:** IMPLEMENTED on branch `feat/emp-s1-employment-history-foundation` (2026-10-16); merged in #113 and released in `hcis-5e4ddc96-20261017`. Delivered: migration `0056_employment_history_foundation.sql`; pure domain module `apps/api/src/modules/employment/domain/` (`resolveEmployment`, `planEmploymentAction`, `applyPlan`, policy table); tests `apps/api/test/employment-history-domain.test.ts` (unit) and `apps/api/test/employment-history-migration.test.ts` (PostgreSQL, CI). At release nothing reads the tables yet; rollout mode stays OFF (no settings row).
 
 **Spec:** EMP-005-B/C, EMP-006-B/C, EMP-010 data model.  
 **Prerequisite decisions:** D-01, D-06 (ADDITIONAL placements yes/no).
@@ -48,7 +48,7 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S2 — Baseline backfill, read API, permissions, rollout setting
 
-**Status:** IMPLEMENTED on branch `feat/emp-s2-baseline-read-api` (2026-10-16), pending review/merge (stacked on S1). Delivered: migration `0058_employment_permissions.sql`; EMP-004 import writes the four raw classification values to `employee_import_source_snapshots`; pure baseline mapping/consistency (`domain/baseline.ts`); store, baseline service and CLI `npm --workspace @hcis/api run employment:baseline` (dry-run default, `--apply`, `--cutoff`, `--employee`, `--rerun`); routes `GET/PUT /admin/employment/rollout` (AUTHORITATIVE refused until S5/S5A), `GET /admin/employees/{id}/employment`, `.../employment/timeline`, `GET /admin/employment/consistency`; `docs/api/employment.openapi.yaml`; AUTH-011 manifest entries (admin routes; Super Admin is denied because employment.* is not in legacy compatibility). ORG-004 placement-vs-incumbency rows in the consistency report move to S6 with the career actions. Not deployed.
+**Status:** IMPLEMENTED on branch `feat/emp-s2-baseline-read-api` (2026-10-16); merged in #117 and released in `hcis-5e4ddc96-20261017`. Delivered: migration `0058_employment_permissions.sql`; EMP-004 import writes the four raw classification values to `employee_import_source_snapshots`; pure baseline mapping/consistency (`domain/baseline.ts`); store, baseline service and CLI `npm --workspace @hcis/api run employment:baseline` (dry-run default, `--apply`, `--cutoff`, `--employee`, `--rerun`); routes `GET/PUT /admin/employment/rollout` (AUTHORITATIVE refused until S5/S5A), `GET /admin/employees/{id}/employment`, `.../employment/timeline`, `GET /admin/employment/consistency`; `docs/api/employment.openapi.yaml`; AUTH-011 manifest entries (admin routes; Super Admin is denied because employment.* is not in legacy compatibility). ORG-004 placement-vs-incumbency rows in the consistency report move to S6 with the career actions. The baseline backfill CLI has not been run in production; running it and moving rollout OFF → SHADOW are separate owner-approved steps.
 
 **Spec:** EMP-005-E, EMP-005-G (read side), EMP-PKG1-X1, X3; §8.1–8.3.  
 **Prerequisite decisions:** D-02 (accepted mapping; Pegawai Lepas = kontrak lepas with end date), D-14, D-16 (accepted).
@@ -81,7 +81,7 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S3 — Admin read UI (tabs, timeline, consistency report)
 
-**Status:** IMPLEMENTED on branch `feat/emp-s3-read-screens` (2026-10-16), pending review/merge (stacked on S2). Delivered: employee detail tabs **Ringkasan / Kepegawaian & Kontrak / Penempatan & Karier** (tabs visible only with `employment.read`; data loaded on first open), menu **Pegawai → Kecocokan Data** at `/admin/employment/consistency` (UI gate `employment.read`; Super Admin legacy compatibility never opens it), shared view states (loading, OFF/disabled, forbidden, error, empty, ready) with a SHADOW read-only banner; `apps/web/src/lib/employment.ts` (client + display labels only), `apps/web/src/components/employment/EmploymentPanels.tsx`. Evidence: 16 static-render tests; browser smoke against a loopback synthetic mock API (desktop dark/light, 375 px mobile without horizontal scroll, OFF and empty states). Not verified against a real API/database in a browser; that happens in S8 SHADOW UAT.
+**Status:** IMPLEMENTED on branch `feat/emp-s3-read-screens` (2026-10-16); merged in #120 and released in `hcis-5e4ddc96-20261017`. Delivered: employee detail tabs **Ringkasan / Kepegawaian & Kontrak / Penempatan & Karier** (tabs visible only with `employment.read`; data loaded on first open), menu **Pegawai → Kecocokan Data** at `/admin/employment/consistency` (UI gate `employment.read`; Super Admin legacy compatibility never opens it), shared view states (loading, OFF/disabled, forbidden, error, empty, ready) with a SHADOW read-only banner; `apps/web/src/lib/employment.ts` (client + display labels only), `apps/web/src/components/employment/EmploymentPanels.tsx`. Evidence: 16 static-render tests; browser smoke against a loopback synthetic mock API (desktop dark/light, 375 px mobile without horizontal scroll, OFF and empty states). Not verified against a real API/database in a browser; that happens in S8 SHADOW UAT.
 
 **Spec:** §13.1, §13.2 (read parts), §13.6, EMP-PKG1-X2.  
 **Prerequisite:** S2 merged. Can run parallel to S4.

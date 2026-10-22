@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Status, Contract, Placement, Career Movement, and SK
 
-**Status:** ACCEPTED PRODUCT DIRECTION — owner accepted all decisions D-01..D-19 and their sub-items on 2026-10-16 (§15); runtime implementation not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — owner accepted all decisions D-01..D-19 and their sub-items on 2026-10-16 (§15); runtime steps S1–S3 (schema, read API, admin read screens) merged and released with rollout mode OFF; S2B and S4–S8 not started (see implementation plan)  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Prepared:** 2026-10-16  
 **Parent direction:** `docs/domain/employment-administration.md` (ACCEPTED PRODUCT DIRECTION, 2026-09-22)  

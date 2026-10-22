@@ -154,11 +154,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "recruitment",
     label: "Recruitment",
-    description: "Kelola kandidat, proses seleksi, interview, dan keputusan rekrutmen.",
+    description: "Rekrutmen akan dikelola di aplikasi terpisah Karir SQ. HCIS menerima pegawai baru dari hasil rekrutmen.",
     featureIds: ["REC-001"],
     stage: "discovery",
     category: "talent",
     href: "/admin/services/recruitment",
+    details: [
+      "Lowongan, kandidat, seleksi, dan keputusan dikelola di Karir SQ",
+      "Kandidat masuk dengan akun Karir SQ, bukan akun HCIS",
+      "Di HCIS: lowongan dari jabatan kosong dan pegawai baru dari kandidat yang diterima",
+    ],
   },
   {
     key: "business-travel",

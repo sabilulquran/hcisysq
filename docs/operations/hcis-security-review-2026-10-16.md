@@ -1,7 +1,7 @@
 # HCIS production security review — 2026-10-16 (public summary)
 
 **Spec ID:** SEC-REV-2026-10-16 (security review gate of *Production ready*, `docs/product/scope.md`)
-**Status:** REVIEW COMPLETE — FINDINGS OPEN. No production change was made.
+**Status:** REVIEW COMPLETE — FINDINGS OPEN. No production change was made by the review itself. Status of individual findings updated 2026-10-22 (SEC-02, SEC-03 fixed by #107; SEC-12 logout hint fixed by #126).
 **Scope:** production-facing surface of HCIS on Mi8VPS: auth/session, admin authorization (AUTH-011 manifest vs code), secrets handling on the device (names and modes only), public ingress (edge proxy, Cloudflare tunnels, ADMS host), personal data in logs, dependency vulnerabilities.
 **Code baseline:** `origin/main` `c2746a3`; running release `hcis-3b670849-20261016`.
 **Method:** static review of `apps/api` and `apps/web`; read-only device inspection via `ssh mi8vps-root` (process list, file modes, env **key names**, edge proxy source, tunnel ingress listing, sshd config, log pattern **counts**); unauthenticated HTTPS probes; `npm audit`. No secret, cookie or personal value was printed or stored.
@@ -13,8 +13,8 @@
 | Severity | Count |
 |---|---|
 | Critical | 0 |
-| High | 3 |
-| Medium | 5 (1 mitigated after re-check: SEC-17) |
+| High | 3 (SEC-16 and SEC-02 fixed; SEC-01 risk accepted) |
+| Medium | 5 (SEC-17 mitigated after re-check; SEC-03 fixed) |
 | Low | 10 |
 | Info | 2 |
 
@@ -25,9 +25,9 @@ The authentication core is sound: OIDC with PKCE/state/nonce in production, opaq
 | ID | Area | Severity | Finding (redacted) | Fix direction | Needs owner approval |
 |---|---|---|---|---|---|
 | SEC-01 | Attendance device ingress | High — **risk accepted by owner 2026-10-16** | Device push requests are accepted on protocol identifiers alone; the protocol has no device credential. Unregistered serials never create attendance events and can be blocked in the device admin (WDMS) screen; the residual risk is spoofing a **registered** serial. | Owner declined a network allowlist at the edge (2026-10-16), because every new site would need a rule change. Optional app-level controls that need no per-network maintenance: alert when a registered device appears from a new source IP, per-device rate limit, cap on auto-detected devices. | Accepted; app controls optional backlog |
-| SEC-02 | AUTH-011 governance | **High** | `docs/domain/AUTH-011-admin-route-permissions.json` lists 135 routes; 51 admin/HC routes registered in code are missing. All 51 were hand-checked and enforce a permission today; the risk is an unguarded **future** route, because `apps/api/test/auth011-postgres.integration.test.ts` only iterates the manifest and asserts a fixed length. | Route-collection test (`onRoute`) that fails when a non-public route is missing from the manifest; regenerate the manifest; extend the 401/403 matrix. | No (code PR) |
+| SEC-02 | AUTH-011 governance | ~~High~~ **Fixed 2026-10-16 (#107)** | `docs/domain/AUTH-011-admin-route-permissions.json` lists 135 routes; 51 admin/HC routes registered in code are missing. All 51 were hand-checked and enforce a permission today; the risk is an unguarded **future** route, because `apps/api/test/auth011-postgres.integration.test.ts` only iterates the manifest and asserts a fixed length. | Done in #107: a DB-free `onRoute` coverage test fails when any registered non-public route is missing from the manifest (pinned public allowlist); manifest regenerated to 228 entries and 27 entries re-synced to the stricter code rule; the PostgreSQL persona matrix derives each expected 401/403/allow from effective permissions. Test-only change, no release needed. | No (code PR) |
 | SEC-16 | Dependencies | ~~High~~ **Fixed in production 2026-10-16** | `npm audit --omit=dev`: `fastify <=5.12.4` (GHSA-p68q-wchp-6fh7, GHSA-667r-xxjv-c9mm, GHSA-hwr6-493r-vm6h, GHSA-9q9j-q6p8-xq58, GHSA-4mh8-r7rc-xpvc), plus `fast-uri`, `brace-expansion`, `js-yaml`, `seroval`, `source-map-js`; `uuid` via `exceljs` (not used in the affected way). Dev-only: `vitest`/`tinypool`/`@vitest/mocker` (never shipped; release bundle has production deps only). | `npm audit fix` (non-breaking) in a separate PR, then a normal OPS-MI8-REL-001 release. Vitest major upgrade separately. | Release only |
-| SEC-03 | AUTH-011 CI | Medium | The AUTH-011 route-matrix test is skipped in CI because its database variable is not set in any workflow. | Wire it to the existing PostgreSQL service; do with SEC-02. | No |
+| SEC-03 | AUTH-011 CI | ~~Medium~~ **Fixed 2026-10-16 (#107)** | The AUTH-011 route-matrix test is skipped in CI because its database variable is not set in any workflow. | Done in #107: the CI workflow sets the AUTH-011 database variable against the existing PostgreSQL service, so the suite runs on every PR. | No |
 | SEC-17 | Host access | ~~Medium~~ **Mitigated** (re-checked 2026-10-16) | Host administration access published through a tunnel hostname. Follow-up check: every such hostname redirects to an identity-aware access login before any connection, and sshd is key-only. | Keep the access policy; review authorized keys and access-policy membership periodically. | No further change |
 | SEC-05 | OIDC login | Medium | Login state is not bound to the initiating browser (login CSRF class). | Short-lived HttpOnly state cookie checked at the callback. | No (auth change → extra review) |
 | SEC-06 | CSRF | Medium | Mutations rely on SameSite=Lax only; same-site sibling apps share the registrable domain. | Origin / `Sec-Fetch-Site` check for unsafe methods. | No (auth change → extra review) |
@@ -37,7 +37,7 @@ The authentication core is sound: OIDC with PKCE/state/nonce in production, opaq
 | SEC-09 | Logging | Low | Logger has no redaction config. Production log scan (counts only): 0 auth headers, cookies, passwords, e-mail addresses, bearer tokens or bodies found; OIDC callback already silent. | pino `redact` (cookie, authorization, `err.detail`); drop query strings for non-device routes. | No |
 | SEC-10 | Error handling | Low | Some 5xx responses echo internal error messages. | Generic 5xx body; details in logs only. | No |
 | SEC-11 | Device ingress | Low | Raw body parser keeps reading past its buffer (edge limit mitigates in production). | Hard cap with 413. | No |
-| SEC-12 | Session/MFA | Low | TOTP replay inside the window (local mode only), no idle timeout, no `id_token_hint` at logout. | Last-step tracking, idle timeout, hint on logout. | No |
+| SEC-12 | Session/MFA | Low | TOTP replay inside the window (local mode only), no idle timeout. The missing `id_token_hint` at logout was fixed in #126 (released in `hcis-9b8f49a7-20261019`). | Last-step tracking, idle timeout. | No |
 | SEC-13 | Exports | Low | CSV exports do not neutralize formula prefixes. | Prefix `= + - @` cells. | No |
 | SEC-14 | Import | Low | Spreadsheet import loads files fully into memory on a phone-class host (admin-only). | Lower limit / check uncompressed size. | No |
 | SEC-18 | Device secrets hygiene | Low | Older copies of environment files remain beside the live one (correct owners/modes; values not inspected). | Confirm unused, then archive root-only or delete; keep a secret inventory. | Yes (device) |
@@ -65,7 +65,7 @@ Cloudflare dashboard settings (WAF, TLS mode; the zone sits in a Cloudflare acco
 
 1. ~~SEC-16 dependency update~~ — PR #106, live in `hcis-4a578253-20261016` (fastify 5.12.7 verified on the device).
 2. SEC-01 — risk accepted by the owner on 2026-10-16 (no edge allowlist); optional app-level controls in the backlog. SEC-17 needed no change.
-3. SEC-02 + SEC-03 — route-coverage test and CI wiring.
+3. ~~SEC-02 + SEC-03~~ — route-coverage test and CI wiring, done in #107.
 4. SEC-07 — headers (code + edge).
 5. SEC-05, SEC-06 — auth hardening with extra review.
 6. SEC-09, SEC-10, SEC-13 — code hardening.

@@ -1,6 +1,6 @@
 # NOTIF-004 — In-App Notification Center
 
-**Status:** IMPLEMENTED — REPOSITORY VERIFIED; PRODUCTION DEPLOYMENT PENDING
+**Status:** IMPLEMENTED — DEPLOYED. Migration `0049_in_app_notifications.sql` is applied in production and notifications are being written (read-only check 2026-10-22, running release `hcis-9b8f49a7-20261019`). External adapters (NOTIF-001) and reminders (NOTIF-003) remain separate.
 **Decision date:** 2026-09-21
 **Related:** NOTIF-001, NOTIF-003, ATT-007, ATT-008, PAY-002
 

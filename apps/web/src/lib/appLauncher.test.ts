@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchLauncherApplications, launcherTiles, loadLauncherApplications, resetLauncherCacheForTests } from "@/lib/appLauncher";
+import { applicationAppearance, fetchLauncherApplications, launcherTiles, loadLauncherApplications, resetLauncherCacheForTests } from "@/lib/appLauncher";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -24,6 +24,21 @@ describe("AUTH-013 launcher tiles", () => {
   it("shows only HCIS for an unavailable or empty list", () => {
     expect(launcherTiles(null).map((tile) => tile.key)).toEqual(["hcis"]);
     expect(launcherTiles([]).map((tile) => tile.key)).toEqual(["hcis"]);
+  });
+});
+
+describe("AUTH-013 launcher appearance (SQ Hub HUB-IMPL-022 §6)", () => {
+  it.each([
+    ["hcis", "UsersRound", "bg-cat-attendance-soft text-cat-attendance"],
+    ["aset-sq", "Boxes", "bg-cat-service-soft text-cat-service"],
+    ["karir-sq", "BriefcaseBusiness", "bg-cat-task-soft text-cat-task"],
+    ["spmb-sq", "GraduationCap", "bg-cat-leave-soft text-cat-leave"],
+    ["kirim-sq", "MessageCircle", "bg-cat-pay-soft text-cat-pay"],
+    ["unknown-app", "PanelsTopLeft", "bg-brand-primary-pale text-brand-primary-deep"],
+  ])("maps %s like SQ Hub", (key, iconName, tile) => {
+    const appearance = applicationAppearance(key);
+    expect(appearance.tile).toBe(tile);
+    expect((appearance.icon as { displayName?: string }).displayName).toBe(iconName);
   });
 });
 

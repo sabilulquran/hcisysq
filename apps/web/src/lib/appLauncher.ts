@@ -1,4 +1,12 @@
-import { Boxes, PanelsTopLeft, UsersRound, type LucideIcon } from "lucide-react";
+import {
+  Boxes,
+  BriefcaseBusiness,
+  GraduationCap,
+  MessageCircle,
+  PanelsTopLeft,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
 
 // AUTH-013: the header launcher shows the same applications as SQ Hub. The list comes from the
 // HCIS API (/api/auth/launcher), which asks SQ Hub server-to-server; the browser never calls SQ Hub.
@@ -20,11 +28,15 @@ export interface ApplicationAppearance {
   tile: string;
 }
 
-// Same key -> icon/category colour as SQ Hub apps/web/src/components/applicationAppearance.ts
-// (docs/design/sq-core-design-system-c.md: one category per application). Keep the two in sync.
+// Same key -> icon/category colour as SQ Hub apps/web/src/components/applicationAppearance.ts,
+// the table in SQ Hub HUB-IMPL-022 §6 (docs/design/sq-core-design-system-c.md: one category per
+// application). The cat-* tokens in styles.css carry the same hex values as SQ Hub. Keep in sync.
 const appearanceByKey: Record<string, ApplicationAppearance> = {
   hcis: { icon: UsersRound, tile: "bg-cat-attendance-soft text-cat-attendance" },
   "aset-sq": { icon: Boxes, tile: "bg-cat-service-soft text-cat-service" },
+  "karir-sq": { icon: BriefcaseBusiness, tile: "bg-cat-task-soft text-cat-task" },
+  "spmb-sq": { icon: GraduationCap, tile: "bg-cat-leave-soft text-cat-leave" },
+  "kirim-sq": { icon: MessageCircle, tile: "bg-cat-pay-soft text-cat-pay" },
 };
 
 const defaultAppearance: ApplicationAppearance = {

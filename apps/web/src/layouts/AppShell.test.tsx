@@ -133,7 +133,8 @@ describe("AppShell launcher", () => {
         applications={[
           { key: "aset-sq", name: "Aset SQ", canonicalUrl: "https://aset.sabilulquran.or.id" },
           { key: "hcis", name: "HCIS", canonicalUrl: "https://hcis.sabilulquran.or.id" },
-          { key: "spmb", name: "SPMB", canonicalUrl: "https://spmb.sabilulquran.or.id" },
+          { key: "spmb-sq", name: "SPMB", canonicalUrl: "https://spmb.sabilulquran.or.id" },
+          { key: "lain", name: "Zakat", canonicalUrl: "https://zakat.sabilulquran.or.id" },
         ]}
       />,
     );
@@ -142,6 +143,7 @@ describe("AppShell launcher", () => {
     expect(html.indexOf(">HCIS<")).toBeLessThan(html.indexOf(">SPMB<"));
     expect(html).toContain('href="https://aset.sabilulquran.or.id"');
     expect(html).toContain("bg-cat-service-soft text-cat-service");
+    expect(html).toContain("bg-cat-leave-soft text-cat-leave");
     expect(html).toContain("bg-brand-primary-pale text-brand-primary-deep");
     expect(html).toContain('href="/app" aria-current="page"');
     expect(html).not.toContain('href="https://hcis.sabilulquran.or.id"');

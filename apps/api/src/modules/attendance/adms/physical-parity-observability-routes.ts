@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
+import { quoteCsvCell } from "../../../lib/csv.js";
 import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 
@@ -39,7 +40,7 @@ function scalar(value: unknown): string {
 
 function csv(rows: unknown[][]) {
   return rows
-    .map((row) => row.map((value) => `"${scalar(value).replaceAll('"', '""')}"`).join(","))
+    .map((row) => row.map((value) => quoteCsvCell(scalar(value))).join(","))
     .join("\r\n") + "\r\n";
 }
 

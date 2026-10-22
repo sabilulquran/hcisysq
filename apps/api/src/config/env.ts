@@ -229,5 +229,9 @@ export function getOidcRuntimeConfig(config: ApiConfig): OidcRuntimeConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
+  // SEC-15: the code default is local login; production must state its mode instead of inheriting it.
+  if (env.NODE_ENV === "production" && !env.AUTH_MODE) {
+    throw new Error("AUTH_MODE must be set explicitly when NODE_ENV=production");
+  }
   return envSchema.parse(env);
 }

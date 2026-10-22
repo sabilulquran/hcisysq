@@ -31,18 +31,18 @@ The authentication core is sound: OIDC with PKCE/state/nonce in production, opaq
 | SEC-17 | Host access | ~~Medium~~ **Mitigated** (re-checked 2026-10-16) | Host administration access published through a tunnel hostname. Follow-up check: every such hostname redirects to an identity-aware access login before any connection, and sshd is key-only. | Keep the access policy; review authorized keys and access-policy membership periodically. | No further change |
 | SEC-05 | OIDC login | Medium | Login state is not bound to the initiating browser (login CSRF class). | Short-lived HttpOnly state cookie checked at the callback. | No (auth change → extra review) |
 | SEC-06 | CSRF | Medium | Mutations rely on SameSite=Lax only; same-site sibling apps share the registrable domain. | Origin / `Sec-Fetch-Site` check for unsafe methods. | No (auth change → extra review) |
-| SEC-07 | Browser headers | Medium | Production responses carry no HSTS, CSP, frame-ancestors, nosniff or Referrer-Policy. | `@fastify/helmet` for the API plus headers at one edge layer; CSP report-only first. | Edge part yes |
+| SEC-07 | Browser headers | Medium — API part **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release**; SPA/edge part open | Production responses carry no HSTS, CSP, frame-ancestors, nosniff or Referrer-Policy. | API: every response now carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, and HSTS (`max-age=31536000`) in production, without a new dependency. Still open: a page CSP (report-only first) and the same headers for the SPA, set at the device's SPA static server / edge proxy (outside Git, SEC-19). | Edge part yes |
 | SEC-04 | Proxy trust | Low | API trusts any proxy hop for client IP. The production edge overwrites the forwarding header and production uses OIDC, so not exploitable through the public path today. | Trust only the loopback proxy; use `request.ip` everywhere. | No |
 | SEC-08 | Cookie flag | Low | Secure cookie flag derives from `NODE_ENV` (production value verified correct). | Refuse to start with an https redirect URI unless production mode. | No |
-| SEC-09 | Logging | Low | Logger has no redaction config. Production log scan (counts only): 0 auth headers, cookies, passwords, e-mail addresses, bearer tokens or bodies found; OIDC callback already silent. | pino `redact` (cookie, authorization, `err.detail`); drop query strings for non-device routes. | No |
-| SEC-10 | Error handling | Low | Some 5xx responses echo internal error messages. | Generic 5xx body; details in logs only. | No |
-| SEC-11 | Device ingress | Low | Raw body parser keeps reading past its buffer (edge limit mitigates in production). | Hard cap with 413. | No |
+| SEC-09 | Logging | ~~Low~~ **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release** | Logger has no redaction config. Production log scan (counts only): 0 auth headers, cookies, passwords, e-mail addresses, bearer tokens or bodies found; OIDC callback already silent. | Done: pino `redact` censors authorization/cookie request headers, `set-cookie`, `err.detail` and password/token/client-secret fields; the request log drops query strings except on `/iclock/*`. | No |
+| SEC-10 | Error handling | ~~Low~~ **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release** | Some 5xx responses echo internal error messages. | Done: the global error handler answers every 5xx with `INTERNAL_ERROR` and a generic message and logs the error; 4xx bodies and explicit route responses are unchanged. | No |
+| SEC-11 | Device ingress | ~~Low~~ **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release** | Raw body parser keeps reading past its buffer (edge limit mitigates in production). | Done: bodies between 512 KiB and 8 MiB are still kept as hash-only evidence with 413; above 8 MiB the parser stops reading and answers 413 `ADMS_BODY_TOO_LARGE`. | No |
 | SEC-12 | Session/MFA | Low | TOTP replay inside the window (local mode only), no idle timeout. The missing `id_token_hint` at logout was fixed in #126 (released in `hcis-9b8f49a7-20261019`). | Last-step tracking, idle timeout. | No |
-| SEC-13 | Exports | Low | CSV exports do not neutralize formula prefixes. | Prefix `= + - @` cells. | No |
+| SEC-13 | Exports | ~~Low~~ **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release** | CSV exports do not neutralize formula prefixes. | Done: every API CSV export and the two browser-built exports (attendance report, payslip corrections) prefix `'` to cells starting with `= + - @`, tab or CR; plain numbers keep their sign. | No |
 | SEC-14 | Import | Low | Spreadsheet import loads files fully into memory on a phone-class host (admin-only). | Lower limit / check uncompressed size. | No |
 | SEC-18 | Device secrets hygiene | Low | Older copies of environment files remain beside the live one (correct owners/modes; values not inspected). | Confirm unused, then archive root-only or delete; keep a secret inventory. | Yes (device) |
 | SEC-19 | Change control | Low | The edge proxy and SPA static server exist only on the device, outside version control. | Version them; record their hash in release notes. | No |
-| SEC-15 | Config default | Info | Code default `AUTH_MODE` is `local` (production is `oidc`). | Require explicit value in production. | No |
+| SEC-15 | Config default | ~~Info~~ **Fixed in code (fix/sec-hardening-headers-lows); live after the next owner-approved release** | Code default `AUTH_MODE` is `local` (production is `oidc`). | Done: the API refuses to start with `NODE_ENV=production` and no `AUTH_MODE`. Production sets `AUTH_MODE=oidc` explicitly (key checked read-only 2026-10-22). | No |
 | SEC-20 | Logs | Info | API log grows ≈ 150 MB between releases (device polling); one rotated file is world-readable. | Rotate API log in the existing logrotate script; `0640`; lower device-poll log level. | Yes (device) |
 
 ## 3. Verified OK
@@ -66,9 +66,9 @@ Cloudflare dashboard settings (WAF, TLS mode; the zone sits in a Cloudflare acco
 1. ~~SEC-16 dependency update~~ — PR #106, live in `hcis-4a578253-20261016` (fastify 5.12.7 verified on the device).
 2. SEC-01 — risk accepted by the owner on 2026-10-16 (no edge allowlist); optional app-level controls in the backlog. SEC-17 needed no change.
 3. ~~SEC-02 + SEC-03~~ — route-coverage test and CI wiring, done in #107.
-4. SEC-07 — headers (code + edge).
+4. SEC-07 — headers: API part done (fix/sec-hardening-headers-lows); SPA/edge part needs an owner-approved device change.
 5. SEC-05, SEC-06 — auth hardening with extra review.
-6. SEC-09, SEC-10, SEC-13 — code hardening.
+6. ~~SEC-09, SEC-10, SEC-13~~ — code hardening done together with SEC-11 and SEC-15 (fix/sec-hardening-headers-lows).
 7. SEC-18, SEC-19, SEC-20 — device hygiene (owner-approved).
 8. Remaining Low/Info — backlog.
 

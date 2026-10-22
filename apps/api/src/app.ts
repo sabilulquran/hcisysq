@@ -46,17 +46,74 @@ import { registerOrganizationAdminRoutes } from "./modules/organization/admin-ro
 import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
+// SEC-09: never write credentials or session material to the log.
+const LOG_REDACT_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "res.headers[\"set-cookie\"]",
+  "*.password",
+  "*.token",
+  "*.accessToken",
+  "*.refreshToken",
+  "*.idToken",
+  "*.clientSecret",
+  "err.detail",
+];
+
+// SEC-09: query strings can carry search terms with names; device ingress keeps them for protocol diagnosis.
+export function logUrl(url: string) {
+  return url.startsWith("/iclock/") ? url : url.split("?")[0]!;
+}
+
+const INTERNAL_ERROR_BODY = {
+  code: "INTERNAL_ERROR",
+  message: "Terjadi kesalahan pada server. Coba lagi beberapa saat.",
+};
+
+export function securityHeaders(config: Pick<ApiConfig, "NODE_ENV">): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    // The API serves JSON, files and redirects, never pages: it must not be framed. The page CSP belongs to
+    // the SPA static server at the edge (SEC-07 edge part, owner-approved device change).
+    "Content-Security-Policy": "frame-ancestors 'none'",
+  };
+  if (config.NODE_ENV === "production") headers["Strict-Transport-Security"] = "max-age=31536000";
+  return headers;
+}
+
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   const pool = injectedPool ?? createPool(config.DATABASE_URL);
   const app = Fastify({
-    logger: config.NODE_ENV !== "test",
+    logger: config.NODE_ENV !== "test"
+      ? {
+        redact: { paths: LOG_REDACT_PATHS, censor: "[redacted]" },
+        serializers: {
+          req: (request) => ({
+            method: request.method,
+            url: logUrl(request.url),
+            host: request.host,
+            remoteAddress: request.ip,
+            remotePort: request.socket?.remotePort ?? 0,
+          }),
+        },
+      }
+      : false,
     trustProxy: true,
+  });
+
+  // SEC-07: baseline headers on every API response; a route that sets its own value keeps it.
+  app.addHook("onSend", async (_request, reply) => {
+    for (const [name, value] of Object.entries(securityHeaders(config))) {
+      if (!reply.hasHeader(name)) reply.header(name, value);
+    }
   });
 
   const appOrigin = publicOrigin(config);
   app.addHook("onRequest", async (request, reply) => {
     if (!isCrossSiteMutation(request.method, request.url, request.headers, appOrigin)) return;
-    request.log.warn({ method: request.method, url: request.url.split("?")[0] }, "cross-site mutation rejected");
+    request.log.warn({ method: request.method, url: logUrl(request.url) }, "cross-site mutation rejected");
     return reply.status(403).send({
       code: "CROSS_SITE_REQUEST_REJECTED",
       message: "Permintaan ditolak karena tidak berasal dari aplikasi HCIS.",
@@ -115,7 +172,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPayslipRoutes(app, pool, config);
   await registerNotificationRoutes(app, pool, config);
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     const databaseError = error as Error & { code?: string; constraint?: string };
     if (
       databaseError.code === "23514" &&
@@ -174,6 +231,12 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
         code: "HAJJ_ALREADY_USED",
         message: "Hak Cuti Ibadah Haji Wajib sudah pernah digunakan selama masa kerja.",
       });
+    }
+    // SEC-10: a 5xx body never carries the internal message; details stay in the log.
+    const statusCode = (error as { statusCode?: number }).statusCode ?? 500;
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, "unhandled request error");
+      return reply.status(statusCode).send(INTERNAL_ERROR_BODY);
     }
     return reply.send(error);
   });

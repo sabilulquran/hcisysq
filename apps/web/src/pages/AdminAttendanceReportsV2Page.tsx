@@ -6,6 +6,7 @@ import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees"
 import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
+import { csvCell } from "@/lib/csv";
 import {
   finalizeAttendanceDate,
   getAttendanceReportV2,
@@ -244,10 +245,9 @@ export function AdminAttendanceReportsV2Page() {
 
   const exportCsv = () => {
     if (!data?.items.length) return;
-    const encode = (value: unknown) => '"' + String(value ?? "").replaceAll('"', '""') + '"';
     const csv = [
-      visibleColumns.map(([, label]) => encode(label)).join(","),
-      ...data.items.map((row) => visibleColumns.map(([key]) => encode(renderValue(key, row[key]))).join(",")),
+      visibleColumns.map(([, label]) => csvCell(label)).join(","),
+      ...data.items.map((row) => visibleColumns.map(([key]) => csvCell(renderValue(key, row[key]))).join(",")),
     ].join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");

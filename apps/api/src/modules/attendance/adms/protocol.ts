@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { isNonSensitivePhysicalWireCommand } from "./physical-parity-protocol.js";
 
 export const ADMS_MAX_BODY_BYTES = 512 * 1024;
+// SEC-11: bodies above ADMS_MAX_BODY_BYTES are still hashed as evidence, but reading stops here.
+export const ADMS_HARD_MAX_BODY_BYTES = 8 * 1024 * 1024;
 export const ADMS_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 
 export type ParsedAttlogEvent = {

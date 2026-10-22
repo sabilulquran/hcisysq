@@ -18,6 +18,7 @@ import {
   type UnifiedBiometricCandidate,
 } from "./physical-parity-ingress.js";
 import {
+  ADMS_HARD_MAX_BODY_BYTES,
   ADMS_MAX_BODY_BYTES,
   attlogAcknowledgementBody,
   deviceTimeResponseBody,
@@ -146,21 +147,32 @@ export async function registerAdmsIngressRoutes(
       let length = 0;
       let captured = true;
 
-      payload.on("data", (chunk: Buffer | string) => {
+      const onData = (chunk: Buffer | string) => {
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         length += buffer.length;
+        if (length > ADMS_HARD_MAX_BODY_BYTES) {
+          payload.removeListener("data", onData);
+          payload.removeListener("end", onEnd);
+          done(Object.assign(new Error("ADMS request body exceeds the hard limit"), {
+            statusCode: 413,
+            code: "ADMS_BODY_TOO_LARGE",
+          }), undefined);
+          return;
+        }
         hash.update(buffer);
         if (length <= ADMS_MAX_BODY_BYTES) chunks.push(buffer);
         else captured = false;
-      });
-      payload.on("end", () => {
+      };
+      const onEnd = () => {
         done(null, {
           body: captured ? Buffer.concat(chunks, length) : null,
           bodySha256: hash.digest("hex"),
           bodyByteLength: length,
           bodyCaptured: captured,
         } satisfies CapturedBody);
-      });
+      };
+      payload.on("data", onData);
+      payload.on("end", onEnd);
       payload.on("error", done);
     });
 

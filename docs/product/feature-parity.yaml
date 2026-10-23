@@ -455,6 +455,9 @@ features:
     planning_note: Payroll is an explicit HCIS roadmap item but remains discovery. Direction now requires component catalog, effective-dated recurring compensation, period adjustments, resolved attendance/overtime/leave inputs, composable processors, exact-money arithmetic, versioned statutory policies/profiles, employee deductions separated from employer/company cost, review/reconciliation/finalization, controlled reopen/revision, payment handoff, publication, history, and cutover from PAY-001/PAY-002. PAY-001/PAY-002 remain authoritative until PAY-003 is separately implemented and accepted.
     docs:
       - docs/domain/payroll-engine-discovery.md
+      - docs/domain/payroll-legacy-flow-audit.md
+      - docs/domain/payroll-calculation-v1.md
+      - docs/architecture/adr/0003-payroll-calculation-in-hcis.md
       - docs/product/hcis-capability-map.md
       - docs/product/roadmap.md
       - docs/product/semarthris-benchmark-2026-09-22.md

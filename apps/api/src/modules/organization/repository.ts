@@ -171,6 +171,26 @@ export class PostgresOrganizationRepository {
     return result.rows.map(mapChangeSet);
   }
 
+  /**
+   * ORG-008-4b: has this stable key ever appeared in a published change set?
+   *
+   * Published structure is history: it can be deactivated or ended, never deleted. A key that only
+   * exists inside the change set being composed was never anywhere else, so removing it loses
+   * nothing.
+   */
+  async isStableKeyPublished(kind: "node" | "position", stableKey: string): Promise<boolean> {
+    const table = kind === "node" ? "organization_nodes" : "organization_positions";
+    const result = await this.db.query<{ published: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM ${table} item
+         JOIN organization_change_sets change_set ON change_set.id = item.change_set_id
+         WHERE item.stable_key = $1 AND change_set.status = 'PUBLISHED'
+       ) AS published`,
+      [stableKey],
+    );
+    return result.rows[0]?.published === true;
+  }
+
   /** ORG-008-4a: record one applied command, in the operator's own order. */
   async appendJournalEntry(input: {
     changeSetId: string;

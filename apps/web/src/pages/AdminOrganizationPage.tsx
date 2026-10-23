@@ -60,6 +60,23 @@ import {
   type OrganizationVacancyPolicy,
 } from "@/lib/organizationDesigner";
 import {
+  OrganizationActingTab,
+  OrganizationApprovalCheckTab,
+  OrganizationPeopleTab,
+  OrganizationReadinessTab,
+} from "@/components/organization/OrganizationReadOnlyTabs";
+import {
+  getOrganizationExplanation,
+  getOrganizationPeople,
+  getOrganizationReadiness,
+  previewOrganizationApproval,
+  type OrganizationApprovalPreview,
+  type OrganizationExplanation,
+  type OrganizationPeoplePage,
+  type OrganizationPreviewWorkflow,
+  type OrganizationReadiness,
+} from "@/lib/organizationReadModel";
+import {
   organizationApiMessage,
   organizationDraftStatusLabel,
   organizationIssueSentence,
@@ -105,17 +122,45 @@ function jakartaToday() {
   }).format(new Date());
 }
 
+/** ORG-008 navigasi target (spec 3). "Perubahan" is the composing surface that already existed. */
+const ORGANIZATION_TABS = [
+  { key: "kesiapan", label: "Kesiapan" },
+  { key: "bagan", label: "Bagan" },
+  { key: "pegawai", label: "Pegawai" },
+  { key: "plt", label: "Plt & jabatan kosong" },
+  { key: "persetujuan", label: "Cek persetujuan" },
+  { key: "perubahan", label: "Perubahan" },
+] as const;
+
+type OrganizationTab = (typeof ORGANIZATION_TABS)[number]["key"];
+
+function isOrganizationTab(value: string | null): value is OrganizationTab {
+  return ORGANIZATION_TABS.some((tab) => tab.key === value);
+}
+
 function initialDesignerState() {
   const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  const draftId = params.get("draftId");
   return {
     effectiveDate: params.get("effectiveDate") ?? jakartaToday(),
-    draftId: params.get("draftId"),
+    draftId,
+    // The old links keep working for at least one release (spec 3): a link carrying a change opens
+    // Perubahan, a link carrying only a date opens Bagan, and a bare link opens Kesiapan.
+    tab: isOrganizationTab(tab)
+      ? tab
+      : draftId
+        ? "perubahan"
+        : params.get("effectiveDate")
+          ? "bagan"
+          : "kesiapan",
   };
 }
 
-function updateDesignerUrl(effectiveDate: string, draftId: string | null) {
+function updateDesignerUrl(effectiveDate: string, draftId: string | null, tab: OrganizationTab) {
   const url = new URL(window.location.href);
   url.searchParams.set("effectiveDate", effectiveDate);
+  url.searchParams.set("tab", tab);
   if (draftId) url.searchParams.set("draftId", draftId);
   else url.searchParams.delete("draftId");
   window.history.replaceState(null, "", url);
@@ -844,8 +889,32 @@ function MembersModal({
   );
 }
 
+function TabBar({ active, onChange }: { active: OrganizationTab; onChange: (tab: OrganizationTab) => void }) {
+  return (
+    <nav aria-label="Bagian Struktur Organisasi" className="mb-4 flex flex-wrap gap-2">
+      {ORGANIZATION_TABS.map((tab) => (
+        <button
+          key={tab.key}
+          type="button"
+          aria-current={active === tab.key ? "page" : undefined}
+          onClick={() => onChange(tab.key)}
+          className={cn(
+            "h-10 rounded-xl border px-3 text-xs font-bold",
+            active === tab.key
+              ? "border-brand-primary bg-brand-primary-pale/60 text-brand-primary-deep"
+              : "border-border bg-surface-raised hover:bg-muted",
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export function AdminOrganizationPage() {
   const [initialState] = useState(initialDesignerState);
+  const [tab, setTab] = useState<OrganizationTab>(initialState.tab);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [effectiveDate, setEffectiveDate] = useState(initialState.effectiveDate);
   const [draftId, setDraftId] = useState<string | null>(initialState.draftId);
@@ -856,6 +925,28 @@ export function AdminOrganizationPage() {
   const [rolloutFailed, setRolloutFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [readiness, setReadiness] = useState<OrganizationReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+
+  const [people, setPeople] = useState<OrganizationPeoplePage | null>(null);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState<string | null>(null);
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [peopleIssue, setPeopleIssue] = useState("");
+  const [peoplePage, setPeoplePage] = useState(1);
+
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [explanation, setExplanation] = useState<OrganizationExplanation | null>(null);
+  const [explanationLoading, setExplanationLoading] = useState(false);
+
+  const [checkEmployeeId, setCheckEmployeeId] = useState("");
+  const [checkWorkflow, setCheckWorkflow] = useState<OrganizationPreviewWorkflow>("LEAVE_ANNUAL");
+  const [checkDate, setCheckDate] = useState(initialState.effectiveDate);
+  const [checkResult, setCheckResult] = useState<OrganizationApprovalPreview | null>(null);
+  const [checkLoading, setCheckLoading] = useState(false);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   const reload = async () => {
     setLoading(true);
@@ -876,8 +967,36 @@ export function AdminOrganizationPage() {
       .catch(() => { setEmployees([]); setEmployeesFailed(true); });
   };
 
+  const loadReadiness = () => {
+    setReadinessLoading(true);
+    setReadinessError(null);
+    void getOrganizationReadiness({ asOf: effectiveDate, draftId })
+      .then(setReadiness)
+      .catch((cause: unknown) => setReadinessError(errorMessage(cause, "Kesiapan tidak dapat dihitung.")))
+      .finally(() => setReadinessLoading(false));
+  };
+
+  const loadPeople = () => {
+    setPeopleLoading(true);
+    setPeopleError(null);
+    void getOrganizationPeople({
+      asOf: effectiveDate,
+      draftId,
+      page: peoplePage,
+      withLegacy: true,
+      ...(peopleQuery ? { q: peopleQuery } : {}),
+      ...(peopleIssue ? { issue: peopleIssue } : {}),
+    })
+      .then(setPeople)
+      .catch((cause: unknown) => setPeopleError(errorMessage(cause, "Daftar pegawai tidak dapat dimuat.")))
+      .finally(() => setPeopleLoading(false));
+  };
+
   useEffect(() => {
-    updateDesignerUrl(effectiveDate, draftId);
+    updateDesignerUrl(effectiveDate, draftId, tab);
+  }, [effectiveDate, draftId, tab]);
+
+  useEffect(() => {
     void reload();
   }, [effectiveDate, draftId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -891,27 +1010,153 @@ export function AdminOrganizationPage() {
     return () => { mounted = false; };
   }, []);
 
+  // Each read-only tab asks for exactly what it shows, when it is shown.
+  useEffect(() => {
+    if (tab === "kesiapan" || tab === "plt") loadReadiness();
+  }, [tab, effectiveDate, draftId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (tab === "pegawai") loadPeople();
+  }, [tab, effectiveDate, draftId, peoplePage, peopleQuery, peopleIssue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedEmployeeId) { setExplanation(null); return; }
+    setExplanationLoading(true);
+    void getOrganizationExplanation({ employeeId: selectedEmployeeId, asOf: effectiveDate, draftId })
+      .then(setExplanation)
+      .catch(() => setExplanation(null))
+      .finally(() => setExplanationLoading(false));
+  }, [selectedEmployeeId, effectiveDate, draftId]);
+
+  const openIssue = (issue: string) => {
+    setPeopleIssue(issue);
+    setPeoplePage(1);
+    setTab("pegawai");
+  };
+
+  const runApprovalCheck = () => {
+    if (!checkEmployeeId) return;
+    setCheckLoading(true);
+    setCheckError(null);
+    setCheckResult(null);
+    void previewOrganizationApproval({
+      employeeId: checkEmployeeId,
+      workflow: checkWorkflow,
+      date: checkDate,
+      draftId,
+    })
+      .then(setCheckResult)
+      .catch((cause: unknown) => setCheckError(errorMessage(cause, "Jalur persetujuan tidak dapat ditampilkan.")))
+      .finally(() => setCheckLoading(false));
+  };
+
+  const banner = organizationModeBanner(rollout, {
+    loadFailed: rolloutFailed,
+    pending: !rollout && !rolloutFailed,
+  });
+  const showsWorkspace = tab === "bagan" || tab === "perubahan";
+
   return (
     <AdminShell
       active="organization"
       title="Struktur Organisasi"
       description="Lihat dan susun unit, jabatan, dan pejabat berdasarkan tanggal berlaku. Siapa menyetujui siapa tetap dihitung dan diperiksa oleh server."
     >
-      {loadError ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{loadError}</span></div> : null}
-      <OrganizationDesignerWorkspace
-        session={session}
-        view={data}
-        rollout={rollout}
-        rolloutFailed={rolloutFailed}
-        employees={employees}
-        employeesFailed={employeesFailed}
-        loading={loading}
-        effectiveDate={effectiveDate}
-        onEffectiveDateChange={setEffectiveDate}
-        onDraftIdChange={setDraftId}
-        onReload={reload}
-        onRetryEmployees={loadEmployees}
-      />
+      <TabBar active={tab} onChange={setTab} />
+
+      {/* The mode banner belongs on every tab (spec 4.1). The composing surface renders its own,
+          so the page adds it for the read-only tabs rather than showing it twice. */}
+      {!showsWorkspace ? (
+        <div
+          role="status"
+          className={cn(
+            "mb-4 flex items-start gap-3 rounded-2xl border p-4 text-sm",
+            banner.tone === "info" ? "border-info-line bg-info-soft text-info-ink" : "border-warning-line bg-warning-soft text-warning-ink",
+          )}
+        >
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="block font-bold">{banner.title}</span>
+            <span className="mt-0.5 block leading-5">{banner.detail}</span>
+          </span>
+        </div>
+      ) : null}
+
+      {loadError && showsWorkspace ? <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{loadError}</span></div> : null}
+
+      {showsWorkspace ? (
+        <OrganizationDesignerWorkspace
+          session={session}
+          view={data}
+          rollout={rollout}
+          rolloutFailed={rolloutFailed}
+          employees={employees}
+          employeesFailed={employeesFailed}
+          loading={loading}
+          effectiveDate={effectiveDate}
+          onEffectiveDateChange={setEffectiveDate}
+          onDraftIdChange={setDraftId}
+          onReload={reload}
+          onRetryEmployees={loadEmployees}
+        />
+      ) : null}
+
+      {tab === "kesiapan" ? (
+        <OrganizationReadinessTab
+          readiness={readiness}
+          loading={readinessLoading}
+          error={readinessError}
+          onRetry={loadReadiness}
+          onOpenIssue={openIssue}
+          onOpenActing={() => setTab("plt")}
+        />
+      ) : null}
+
+      {tab === "pegawai" ? (
+        <OrganizationPeopleTab
+          page={people}
+          loading={peopleLoading}
+          error={peopleError}
+          onRetry={loadPeople}
+          query={peopleQuery}
+          issue={peopleIssue}
+          onQueryChange={(value) => { setPeopleQuery(value); setPeoplePage(1); }}
+          onIssueChange={(value) => { setPeopleIssue(value); setPeoplePage(1); }}
+          onPageChange={setPeoplePage}
+          selectedEmployeeId={selectedEmployeeId}
+          explanation={explanation}
+          explanationLoading={explanationLoading}
+          onSelect={setSelectedEmployeeId}
+          onCloseExplanation={() => setSelectedEmployeeId(null)}
+        />
+      ) : null}
+
+      {tab === "plt" ? (
+        <OrganizationActingTab
+          readiness={readiness}
+          positions={data?.positions ?? []}
+          loading={readinessLoading || loading}
+          error={readinessError}
+          onRetry={loadReadiness}
+        />
+      ) : null}
+
+      {tab === "persetujuan" ? (
+        <OrganizationApprovalCheckTab
+          employees={employees.filter((employee) => (employee.status ?? "active") === "active")}
+          employeeId={checkEmployeeId}
+          workflow={checkWorkflow}
+          date={checkDate}
+          onEmployeeChange={setCheckEmployeeId}
+          onWorkflowChange={setCheckWorkflow}
+          onDateChange={setCheckDate}
+          onSubmit={runApprovalCheck}
+          loading={checkLoading}
+          error={checkError}
+          result={checkResult}
+          legacyPerson={people?.items.find((person) => person.employeeId === checkEmployeeId) ?? null}
+        />
+      ) : null}
     </AdminShell>
   );
 }

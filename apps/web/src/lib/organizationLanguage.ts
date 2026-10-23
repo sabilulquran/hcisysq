@@ -272,6 +272,27 @@ export function organizationModeBanner(
         "Halaman ini tidak dapat memastikan apakah persetujuan cuti memakai data atasan lama atau struktur. Coba muat ulang halaman.",
     };
   }
+  // ORG-008-2 made this exact: the endpoint now reports how many rollout rows exist and which ones
+  // are effective today per workflow and unit, so the screen no longer has to hedge.
+  if (rollout.configuredRowCount !== undefined) {
+    const nonLegacy = (rollout.settings ?? []).filter((setting) => setting.mode !== "LEGACY");
+    if (rollout.configuredRowCount === 0 || nonLegacy.length === 0) {
+      return {
+        tone: "info",
+        certain: true,
+        title: "Persetujuan cuti saat ini memakai data atasan lama.",
+        detail:
+          "Sumbernya Detail Pegawai dan Konfigurasi Cuti. Struktur di halaman ini belum dipakai untuk persetujuan, dan menerbitkan struktur tidak mengubahnya.",
+      };
+    }
+    const modes = [...new Set(nonLegacy.map((setting) => ROLLOUT_MODE_WORDING[setting.mode] ?? setting.mode))];
+    return {
+      tone: "warning",
+      certain: true,
+      title: "Sebagian unit sudah tidak memakai data atasan lama.",
+      detail: `${nonLegacy.length} pengaturan berlaku hari ini (${modes.join(", ")}). Periksa daftar pengaturan rollout untuk mengetahui unit dan jenis pengajuan yang terdampak.`,
+    };
+  }
   if (rollout.updatedAt === undefined) {
     return {
       tone: "info",
@@ -288,4 +309,81 @@ export function organizationModeBanner(
     title: "Mode persetujuan tidak dapat dipastikan dari halaman ini.",
     detail: `Sudah ada pengaturan rollout yang tercatat (${wording}), tetapi halaman ini belum dapat menampilkan mode yang berlaku untuk setiap unit dan jenis pengajuan. Periksa pengaturan rollout sebelum menyimpulkan.`,
   };
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  OVERRIDE: "atasan khusus",
+  ACTING: "diisi Plt",
+  VACANCY_CLIMB: "naik karena jabatan kosong",
+  POSITION_PARENT: "dari jabatannya",
+  MEMBERSHIP_LEADER: "pemimpin unitnya",
+  INHERITED_LEADER: "pemimpin dari unit induk",
+};
+
+/** ORG-008-2b: the short reason shown next to a name in the Pegawai table. */
+export function organizationSourceLabel(source: string | null): string {
+  if (!source) return "belum bisa ditentukan";
+  return SOURCE_LABELS[source] ?? "alasan lain";
+}
+
+const COMPARISON_LABELS: Record<string, string> = {
+  SAME: "sama",
+  DIFFERENT: "berbeda",
+  UNRESOLVED: "belum bisa ditentukan",
+  NO_LEGACY: "data lama kosong",
+};
+
+export function organizationComparisonLabel(comparison: string | null): string {
+  if (!comparison) return "—";
+  return COMPARISON_LABELS[comparison] ?? "—";
+}
+
+/**
+ * ORG-008-2b: the API returns explanation steps as codes plus parameters, so the sentence is built
+ * here, in the operator's language. An unknown code is skipped rather than printed raw.
+ */
+export function organizationExplanationSentence(step: {
+  code: string;
+  params: Record<string, string | null>;
+}): string | null {
+  const value = (key: string) => step.params[key] ?? null;
+  switch (step.code) {
+    case "MEMBER_OF_UNIT":
+      return `${value("employee") ?? "Pegawai ini"} adalah anggota ${value("unit") ?? "unitnya"}.`;
+    case "NOT_IN_ANY_UNIT":
+      return `${value("employee") ?? "Pegawai ini"} belum ditempatkan di unit mana pun.`;
+    case "HOLDS_POSITION":
+      return `${value("employee") ?? "Pegawai ini"} menjabat ${value("position") ?? "sebuah jabatan"}.`;
+    case "UNIT_LEADER_IS_POSITION":
+      return `Pemimpin unit ${value("unit") ?? "tersebut"} adalah jabatan ${value("position") ?? "yang ditetapkan"}.`;
+    case "LEADER_INHERITED_FROM_PARENT":
+      return `Unit ${value("unit") ?? "tersebut"} belum punya pemimpin sendiri, jadi atasannya diambil dari unit induk: jabatan ${value("position") ?? "di atasnya"}.`;
+    case "POSITION_REPORTS_TO":
+      return `Jabatan ${value("position") ?? "pegawai ini"} melapor ke ${value("parent") ?? "jabatan di atasnya"}.`;
+    case "REPORTING_OVERRIDE":
+      return `${value("employee") ?? "Pegawai ini"} punya atasan khusus yang ditetapkan sebagai pengecualian.`;
+    case "POSITION_VACANT_CLIMBED":
+      return `Jabatan di bawahnya kosong, jadi pengajuan naik ke ${value("position") ?? "atasan berikutnya"}.`;
+    case "POSITION_HELD_BY_ACTING":
+      return `Jabatan ${value("position") ?? "itu"} sedang diisi Plt ${value("employee") ?? ""}.`.trim();
+    case "RESULT_DIRECT_MANAGER":
+      return `Atasan langsungnya: ${value("employee") ?? "—"}${value("position") ? ` (${value("position")})` : ""}.`;
+    case "RESULT_UNIT_APPROVER":
+      return `Penyetuju cuti unit: ${value("employee") ?? "—"}${value("position") ? ` (${value("position")})` : ""}.`;
+    case "RESULT_UNRESOLVED":
+      return organizationIssueSentence({ code: value("code") ?? "", itemKey: null });
+    default:
+      return null;
+  }
+}
+
+const PREVIEW_WARNINGS: Record<string, string> = {
+  OVERTIME_CAPABILITY_PENDING:
+    "Pratinjau: syarat penyetuju lembur belum ditetapkan, jadi hasil ini belum berlaku.",
+  OVERSIGHT_UNRESOLVED:
+    "Siapa yang diberi tahu setelah disetujui belum bisa ditentukan.",
+};
+
+export function organizationWarningSentence(code: string): string {
+  return PREVIEW_WARNINGS[code] ?? organizationIssueSentence({ code, itemKey: null });
 }

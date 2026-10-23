@@ -27,6 +27,12 @@ export interface OrganizationIncumbent {
   effectiveFrom: string;
   effectiveTo: string | null;
   assignmentType?: "PRIMARY" | "ACTING";
+  /** ORG-004 migrations 0020-0023: a Dewan account holder, or a holder of several structural seats.
+   *  The API already sends these; ORG-008-1 uses them to mark a seat read-only before it is edited. */
+  accountId?: string | null;
+  accountEmail?: string | null;
+  accountStatus?: string | null;
+  isPrimaryStructural?: boolean;
 }
 
 export interface OrganizationNode {
@@ -56,6 +62,7 @@ export interface OrganizationPosition {
   effectiveFrom: string;
   effectiveTo: string | null;
   visualRankOffset: number;
+  holderSource?: "EMPLOYEE" | "ACCOUNT";
   primaryIncumbent: OrganizationIncumbent | null;
   actingIncumbent: OrganizationIncumbent | null;
 }

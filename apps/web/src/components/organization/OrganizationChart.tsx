@@ -15,6 +15,10 @@ import type {
   OrganizationPosition,
 } from "@/lib/organizationDesigner";
 import {
+  organizationNodeTypeLabel,
+  organizationSeatEditability,
+} from "@/lib/organizationLanguage";
+import {
   buildOrganizationTree,
   type OrganizationLayoutPosition,
   type OrganizationTreeNode,
@@ -40,6 +44,7 @@ function PositionCard({
   const acting = position.actingIncumbent;
   const primary = position.primaryIncumbent;
   const vacant = !primary && !acting;
+  const editability = organizationSeatEditability(position);
 
   return (
     <button
@@ -69,8 +74,8 @@ function PositionCard({
             )}
           >
             {acting
-              ? `${acting.employeeName} · Pelaksana tugas`
-              : primary?.employeeName ?? "VACANT · Belum ada pejabat"}
+              ? `${acting.employeeName} · Plt`
+              : primary?.employeeName ?? "Kosong · belum ada pejabat"}
           </span>
         </span>
         {vacant ? (
@@ -83,12 +88,20 @@ function PositionCard({
       </span>
       {position.visualRankOffset > 0 ? (
         <span className="mt-2 inline-flex rounded-full bg-info-soft px-2 py-0.5 text-[10px] font-semibold text-info-ink">
-          Tampilan {position.visualRankOffset} tingkat lebih rendah
+          Tampilan: turun {position.visualRankOffset} tingkat
         </span>
       ) : null}
       {isLeader ? (
         <span className="mt-2 ml-1 inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
-          Leader kelompok
+          Pemimpin unit
+        </span>
+      ) : null}
+      {editability.badge ? (
+        <span
+          title={editability.reason ?? undefined}
+          className="mt-2 ml-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+        >
+          {editability.badge}
         </span>
       ) : null}
     </button>
@@ -202,7 +215,7 @@ function TreeBranch({
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold text-brand-heading">{item.name}</span>
               <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                {item.nodeType} · {item.memberCount} anggota
+                {organizationNodeTypeLabel(item.nodeType)} · {item.memberCount} anggota
               </span>
             </span>
           </div>
@@ -223,7 +236,7 @@ function TreeBranch({
 
         {item.visualRankOffset > 0 ? (
           <div className="mt-3 rounded-lg bg-info-soft px-2.5 py-2 text-[10px] leading-4 text-info-ink">
-            Rank visual diturunkan {item.visualRankOffset} tingkat. Hubungan struktural tetap mengikuti garis induk.
+            Tampilan kotak ini diturunkan {item.visualRankOffset} tingkat. Hubungan sebenarnya tetap mengikuti garis induk dan tidak memengaruhi persetujuan.
           </div>
         ) : null}
 
@@ -290,9 +303,9 @@ export function OrganizationChart({
           <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-primary-pale text-brand-primary-deep">
             <UsersRound className="h-7 w-7" aria-hidden="true" />
           </span>
-          <h2 className="mt-5 text-xl font-bold text-brand-heading">Start organization structure</h2>
+          <h2 className="mt-5 text-xl font-bold text-brand-heading">Belum ada struktur</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Bangun struktur dari kelompok paling atas, lalu tambahkan unit, posisi, dan anggota secara bertahap.
+            Mulai dari unit paling atas, lalu tambahkan unit, jabatan, dan anggota secara bertahap.
           </p>
           <button
             type="button"
@@ -300,7 +313,7 @@ export function OrganizationChart({
             className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-sm hover:bg-brand-primary-deep"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
-            {canEdit ? "Tambah kelompok pertama" : "Buat draft struktur"}
+            {canEdit ? "Tambah unit pertama" : "Mulai perubahan struktur"}
           </button>
         </div>
       </div>

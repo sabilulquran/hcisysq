@@ -1,6 +1,6 @@
 # ORG-008 — Rencana Implementasi Designer Struktur Organisasi
 
-**Status:** DRAFT PLAN — menunggu persetujuan owner. Belum ada kode produksi yang ditulis.
+**Status:** DISETUJUI OWNER 2026-10-23 — eksekusi berjalan. **ORG-008-1 selesai** (frontend saja). Paket berikutnya menurut urutan di bawah: ORG-008-8, yang menunggu keputusan owner B (pemegang izin Terbitkan).
 **Specification:** ORG-008 (`organization-designer-ux-spec.md`, ACCEPTED, O-1..O-10)
 **Gap analysis:** `organization-designer-ux-gap-analysis.md`
 **Batas semantik:** ORG-004 (`dynamic-organization-structure.md`, `organization-designer-visual-ranking.md`)
@@ -25,7 +25,7 @@
 ### 1.1 Urutan yang direkomendasikan
 
 ```text
-ORG-008-1   Bahasa, banner, gating                    frontend saja
+ORG-008-1   Bahasa, banner, gating                    frontend saja          SELESAI
 ORG-008-8   Izin penyusunan (O-1)                     API (konstanta permission) — butuh keputusan owner pendamping
 ORG-008-3a  Penjaga publish dasar usang               API, TANPA migration      ← dipindah maju dari §9 spec
 ORG-008-3b  Siklus perubahan (daftar/reopen/discard/rebase/If-Match)  API + migration

@@ -176,6 +176,10 @@ export class OrganizationDraftService {
     if (snapshot.changeSet.status === "PUBLISHED") {
       throw new OrganizationDraftError("CHANGE_SET_PUBLISHED", "Published organization history is immutable.");
     }
+    // ORG-008-3b: a discarded change set keeps its rows for the history, but is never worked on again.
+    if (snapshot.changeSet.status === "DISCARDED") {
+      throw new OrganizationDraftError("CHANGE_SET_DISCARDED", "Discarded organization change set cannot be changed.");
+    }
     return snapshot;
   }
 

@@ -2037,5 +2037,29 @@
     "permissions": [
       "employment.read"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/drafts",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/reopen",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/discard",
+    "permissions": [
+      "organization.manage"
+    ]
   }
 ]

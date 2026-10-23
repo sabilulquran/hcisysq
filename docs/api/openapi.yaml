@@ -1389,6 +1389,33 @@ paths:
         '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/nodes/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationNode
+      summary: Remove a unit that exists only inside this change set (ORG-008-4b)
+      description: >
+        Only for a stable key that has never been published: published structure is history
+        and is deactivated instead. Refused while anything still points at it.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: >
+            ORGANIZATION_ITEM_PUBLISHED when the item has been published, so it can only be
+            deactivated or ended; ORGANIZATION_ITEM_IN_USE when something still points at it, with
+            the list in details.uses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
     patch:
       tags: [Organization]
       operationId: updateOrganizationNode
@@ -1427,6 +1454,33 @@ paths:
         '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/positions/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationPosition
+      summary: Remove a position that exists only inside this change set (ORG-008-4b)
+      description: >
+        Only for a stable key that has never been published: published structure is history
+        and is deactivated instead. Refused while anything still points at it.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: >
+            ORGANIZATION_ITEM_PUBLISHED when the item has been published, so it can only be
+            deactivated or ended; ORGANIZATION_ITEM_IN_USE when something still points at it, with
+            the list in details.uses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
     patch:
       tags: [Organization]
       operationId: updateOrganizationPosition
@@ -1507,6 +1561,54 @@ paths:
         '201': { description: Semantic authority relationship created }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/authority-bindings/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationAuthorityBinding
+      summary: Remove an authority created inside this change set (ORG-008-4b, gap W-1)
+      description: >
+        The authority dialog can only add today, so one wrong leader makes a change set permanently
+        unvalidatable and the only way out is to discard it. A binding created inside this change set
+        can go; one that came from published structure is ended instead, with PATCH.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: ORGANIZATION_ITEM_PUBLISHED, with details.endInstead, when it came from published structure
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
+    patch:
+      tags: [Organization]
+      operationId: endOrganizationAuthorityBinding
+      summary: End an authority from a given date, keeping the record (ORG-008-4b)
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effectiveTo]
+              properties:
+                effectiveTo: { type: string, format: date }
+      responses:
+        '200':
+          description: The authority now ends on that date
+        '400': { description: ORGANIZATION_BINDING_PERIOD_INVALID when it would end before it began }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
 
   /admin/organization/designer/drafts/{draftId}/reporting-overrides:
     post:
@@ -2301,6 +2403,32 @@ components:
             type: object
             properties:
               code: { type: string }
+
+    OrganizationItemInUse:
+      type: object
+      description: >
+        ORG-008-4b. Why an item cannot be removed or switched off yet. details.uses lists the records
+        that still point at it, by identifier and, where the change set has one, a name.
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [ORGANIZATION_ITEM_IN_USE, ORGANIZATION_ITEM_PUBLISHED] }
+        message: { type: string }
+        details:
+          type: object
+          properties:
+            itemKind: { type: string }
+            deactivateInstead: { type: boolean }
+            endInstead: { type: boolean }
+            uses:
+              type: array
+              items:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum: [MEMBERSHIP, POSITION, CHILD_UNIT, INCUMBENT, ACTING_INCUMBENT, AUTHORITY_BINDING, CHILD_POSITION, REPORTING_OVERRIDE]
+                  id: { type: string }
+                  name: { type: [string, 'null'] }
 
     OrganizationCommand:
       description: >

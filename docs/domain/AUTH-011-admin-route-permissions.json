@@ -2117,5 +2117,37 @@
     "permissions": [
       "organization.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/nodes/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/positions/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
+    "permissions": [
+      "approvals.policy.manage"
+    ]
   }
 ]

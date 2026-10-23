@@ -1530,6 +1530,96 @@ paths:
         '201': { description: Reasoned effective reporting exception created }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/designer/drafts/{draftId}/commands:
+    post:
+      tags: [Organization]
+      operationId: applyOrganizationCommand
+      summary: Apply one operator action to a change set as one atomic command (ORG-008-4a)
+      description: >
+        Registering a unit with its head is five dialogs today, and forgetting one of them is
+        invisible until an approval fails. A command does the whole thing or none of it. The model is
+        unchanged: a node, a position, an incumbency and each authority binding are still stored and
+        audited as separate records, and each gets its own audit event plus one
+        organization.command.applied summary event in the same transaction.
+
+
+        Permission: the route needs organization.manage. A command that records an incumbent, an
+        authority binding or a reporting exception additionally needs approvals.policy.manage,
+        exactly like the primitive endpoints it replaces, and answers 403 naming what it needs. That
+        second requirement moves to organization.manage with decision O-1 in ORG-008-8.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationCommand' }
+      responses:
+        '201':
+          description: The command was applied whole
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commandType, seq, primitives]
+                properties:
+                  commandType: { type: string }
+                  seq: { type: integer, description: Position in the change journal }
+                  primitives: { type: integer, description: How many records the command wrote }
+                  summary: { type: object }
+        '400':
+          description: >
+            The command cannot be meant: an unknown shape, an acting appointment with no reason or a
+            period that ends before it starts, a reporting exception with no reason, or a position
+            that would report to itself.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+        '409':
+          description: >
+            ORGANIZATION_MEMBERSHIP_CONFLICT when an employee is already a primary member of another
+            unit and the move has not been confirmed; the body names them. Also the draft-not-editable
+            and ORGANIZATION_DRAFT_CHANGED refusals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  details: { type: object }
+
+  /admin/organization/designer/drafts/{draftId}/journal:
+    get:
+      tags: [Organization]
+      operationId: listOrganizationChangeJournal
+      summary: What was changed in this change set, in the operator's order (ORG-008-4a)
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          description: Applied commands, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        seq: { type: integer }
+                        commandType: { type: string }
+                        summary: { type: object }
+                        actorAccountId: { type: string, format: uuid }
+                        createdAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+
   /admin/organization/designer/drafts/{draftId}/validate:
     post:
       tags: [Organization]
@@ -2211,6 +2301,85 @@ components:
             type: object
             properties:
               code: { type: string }
+
+    OrganizationCommand:
+      description: >
+        ORG-008-4a. One operator action. Nothing is inferred from a job title (invariant I-7): every
+        authority a command creates comes from an explicit choice in the command itself.
+      oneOf:
+        - type: object
+          required: [type, name, nodeType]
+          properties:
+            type: { type: string, enum: [ADD_UNIT] }
+            name: { type: string, minLength: 1, maxLength: 160 }
+            nodeType: { type: string, minLength: 1, maxLength: 80 }
+            parentNodeKey: { type: [string, 'null'], format: uuid }
+            leader:
+              description: >
+                Optional. Creates the unit's leadership seat, its incumbent, the LEADER binding and,
+                unless alsoUnitApprover is false, the UNIT_APPROVER binding. A new leadership seat
+                climbs to the next authority when empty (decision O-6).
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 160 }
+                employeeId: { type: [string, 'null'], format: uuid }
+                vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+                alsoUnitApprover: { type: boolean, default: true }
+        - type: object
+          required: [type, nodeKey, employeeIds]
+          properties:
+            type: { type: string, enum: [PLACE_EMPLOYEES] }
+            nodeKey: { type: string, format: uuid }
+            employeeIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+            move:
+              description: Confirms moving employees who are already a primary member elsewhere
+              type: boolean
+        - type: object
+          required: [type, positionKey, employeeId, effectiveFrom, effectiveTo, reason]
+          properties:
+            type: { type: string, enum: [APPOINT_ACTING] }
+            positionKey: { type: string, format: uuid }
+            employeeId: { type: string, format: uuid }
+            effectiveFrom: { type: string, format: date }
+            effectiveTo: { type: string, format: date }
+            reason:
+              description: >
+                Required (decision O-5) and stored on the incumbency. The server no longer writes a
+                fixed "Explicit acting mandate" in its place.
+              type: string
+              minLength: 1
+              maxLength: 500
+            mandateNumber: { type: [string, 'null'], maxLength: 120 }
+        - type: object
+          required: [type, positionKey, parentPositionKey]
+          properties:
+            type: { type: string, enum: [SET_REPORTS_TO] }
+            positionKey: { type: string, format: uuid }
+            parentPositionKey:
+              description: >
+                One answer. A conflicting SUPERVISORY_PARENT binding on the same position is ended,
+                so the field and the binding can no longer disagree.
+              type: [string, 'null']
+              format: uuid
+        - type: object
+          required: [type, nodeKey, positionKey]
+          properties:
+            type: { type: string, enum: [SET_UNIT_LEADER, SET_UNIT_APPROVER] }
+            nodeKey: { type: string, format: uuid }
+            positionKey:
+              description: The previous binding of that kind is ended, never duplicated
+              type: string
+              format: uuid
+        - type: object
+          required: [type, employeeId, managerPositionKey, reason]
+          properties:
+            type: { type: string, enum: [SET_OVERRIDE] }
+            employeeId: { type: string, format: uuid }
+            managerPositionKey: { type: string, format: uuid }
+            reason: { type: string, minLength: 1, maxLength: 500 }
+            effectiveFrom: { type: string, format: date }
+            effectiveTo: { type: [string, 'null'], format: date }
 
     OrganizationDraftConflict:
       type: object

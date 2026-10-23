@@ -171,6 +171,55 @@ export class PostgresOrganizationRepository {
     return result.rows.map(mapChangeSet);
   }
 
+  /** ORG-008-4a: record one applied command, in the operator's own order. */
+  async appendJournalEntry(input: {
+    changeSetId: string;
+    commandType: string;
+    payload: Record<string, unknown>;
+    summary: Record<string, unknown>;
+    actorAccountId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ seq: number }>(
+      `INSERT INTO organization_change_set_journal
+         (id, change_set_id, seq, command_type, payload, summary, actor_account_id)
+       SELECT $1, $2, COALESCE(MAX(seq), 0) + 1, $3, $4::jsonb, $5::jsonb, $6
+       FROM organization_change_set_journal WHERE change_set_id = $2
+       RETURNING seq`,
+      [
+        randomUUID(),
+        input.changeSetId,
+        input.commandType,
+        JSON.stringify(input.payload),
+        JSON.stringify(input.summary),
+        input.actorAccountId,
+      ],
+    );
+    return result.rows[0]?.seq ?? 1;
+  }
+
+  /** ORG-008-4a: the "Yang berubah" list for one change set, oldest first. */
+  async listJournal(changeSetId: string): Promise<Array<{
+    id: string;
+    seq: number;
+    commandType: string;
+    summary: Record<string, unknown>;
+    actorAccountId: string;
+    createdAt: string;
+  }>> {
+    const result = await this.db.query<{
+      id: string; seq: number; commandType: string;
+      summary: Record<string, unknown>; actorAccountId: string; createdAt: Date;
+    }>(
+      `SELECT id, seq, command_type AS "commandType", summary,
+        actor_account_id AS "actorAccountId", created_at AS "createdAt"
+       FROM organization_change_set_journal
+       WHERE change_set_id = $1
+       ORDER BY seq`,
+      [changeSetId],
+    );
+    return result.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
   /** ORG-008-3b (O-7): the one change set that is still being composed, if any. */
   async findOpenChangeSet(): Promise<OrganizationChangeSet | null> {
     const open = await this.listChangeSets(["DRAFT", "VALIDATED"]);

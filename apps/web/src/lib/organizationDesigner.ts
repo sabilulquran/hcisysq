@@ -169,8 +169,20 @@ export interface OrganizationResolutionPreview {
   warnings: Array<{ code: string; message: string }>;
 }
 
+export interface OrganizationRolloutSetting {
+  workflowKey: string;
+  organizationalNodeKey: string | null;
+  mode: "LEGACY" | "SHADOW" | "STRUCTURE";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
 export interface OrganizationRolloutConfiguration {
   mode: "LEGACY" | "SHADOW" | "STRUCTURE";
+  /** ORG-008-2: how many rollout rows exist at all, and the rows effective today. */
+  configuredRowCount?: number;
+  asOf?: string;
+  settings?: OrganizationRolloutSetting[];
   workflowKey?: string | null;
   organizationalNodeKey?: string | null;
   effectiveFrom?: string;

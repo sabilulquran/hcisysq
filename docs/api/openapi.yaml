@@ -1692,6 +1692,70 @@ paths:
                   message: { type: string }
                   details: { type: object }
 
+  /admin/organization/designer/drafts/{draftId}/rebase:
+    post:
+      tags: [Organization]
+      operationId: rebaseOrganizationDraft
+      summary: Rebuild a change set on the newest published structure (ORG-008-4c)
+      description: >
+        Replays the change journal onto the structure effective on the change set's own date, which
+        is what the stale-base guard asks for before publishing (gap D-2). It previews by default:
+        only apply=true writes. A line that no longer fits the newer structure is reported in
+        `skipped` and dropped from the journal, never resolved on the operator's behalf, so they can
+        see what was lost and redo it.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply: { type: boolean, default: false }
+      responses:
+        '200':
+          description: The result of the replay, applied or previewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationReplayReport' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or ORGANIZATION_DRAFT_CHANGED on apply }
+
+  /admin/organization/designer/drafts/{draftId}/journal/{seq}/undo:
+    post:
+      tags: [Organization]
+      operationId: undoOrganizationJournalEntry
+      summary: Undo one line of the change list (ORG-008-4c)
+      description: >
+        Rebuilds the change set from its base with that line left out. Lines that depended on it are
+        reported in `skipped` rather than silently dropped. Previews by default, like rebase.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: seq, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply: { type: boolean, default: false }
+      responses:
+        '200':
+          description: The result of the replay, applied or previewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationReplayReport' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set or journal line not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or ORGANIZATION_DRAFT_CHANGED on apply }
+
   /admin/organization/designer/drafts/{draftId}/journal:
     get:
       tags: [Organization]
@@ -2403,6 +2467,34 @@ components:
             type: object
             properties:
               code: { type: string }
+
+    OrganizationReplayReport:
+      type: object
+      description: ORG-008-4c. What a rebuild kept and what no longer fits.
+      required: [applied, kept, skipped]
+      properties:
+        applied:
+          description: False for a preview; true when the change set was actually rebuilt
+          type: boolean
+        baseChangeSetId: { type: [string, 'null'], format: uuid }
+        kept:
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              summary: { type: object }
+        skipped:
+          description: Lines that could not be replayed; nothing was guessed on their behalf
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              code: { type: string }
+              message: { type: string }
 
     OrganizationItemInUse:
       type: object

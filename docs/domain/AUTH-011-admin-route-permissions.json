@@ -2149,5 +2149,21 @@
     "permissions": [
       "approvals.policy.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/rebase",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/journal/:seq/undo",
+    "permissions": [
+      "organization.manage"
+    ]
   }
 ]

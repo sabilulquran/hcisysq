@@ -45,6 +45,7 @@ interface ChangeSetRow {
   createdAt: Date;
   validatedAt: Date | null;
   publishedAt: Date | null;
+  revision: number;
 }
 
 interface NodeRow extends Omit<OrganizationNode, "effectiveFrom" | "effectiveTo"> {
@@ -127,7 +128,7 @@ export class PostgresOrganizationRepository {
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets
         WHERE status = 'PUBLISHED' AND effective_on <= $1::date
         ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
@@ -145,7 +146,7 @@ export class PostgresOrganizationRepository {
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets WHERE id = $1
       `,
       [changeSetId],
@@ -154,18 +155,71 @@ export class PostgresOrganizationRepository {
     return row ? this.loadSnapshotRows(mapChangeSet(row)) : null;
   }
 
-  async listChangeSets(): Promise<OrganizationChangeSet[]> {
+  async listChangeSets(statuses?: readonly OrganizationChangeSet["status"][]): Promise<OrganizationChangeSet[]> {
     const result = await this.db.query<ChangeSetRow>(
       `
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets
+        WHERE $1::text[] IS NULL OR status = ANY($1::text[])
         ORDER BY effective_on DESC, created_at DESC, id DESC
       `,
+      [statuses && statuses.length > 0 ? [...statuses] : null],
     );
     return result.rows.map(mapChangeSet);
+  }
+
+  /** ORG-008-3b (O-7): the one change set that is still being composed, if any. */
+  async findOpenChangeSet(): Promise<OrganizationChangeSet | null> {
+    const open = await this.listChangeSets(["DRAFT", "VALIDATED"]);
+    return open[0] ?? null;
+  }
+
+  /**
+   * ORG-008-3b concurrency guard. Compare-and-swap on one row: the mutation proceeds only when the
+   * caller carried the revision it last saw. Returns the new revision, or null when the revision did
+   * not match or the change set is no longer a draft.
+   */
+  async bumpDraftRevision(changeSetId: string, expectedRevision: number): Promise<number | null> {
+    const result = await this.db.query<{ revision: number }>(
+      `UPDATE organization_change_sets
+       SET revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status = 'DRAFT' AND revision = $2
+       RETURNING revision`,
+      [changeSetId, expectedRevision],
+    );
+    return result.rows[0]?.revision ?? null;
+  }
+
+  /** ORG-008-3b: VALIDATED -> DRAFT. The validation report is cleared, so it must be checked again. */
+  async markReopened(changeSetId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE organization_change_sets
+       SET status = 'DRAFT', validation_report = '{}'::jsonb,
+           validated_by_account_id = NULL, validated_at = NULL,
+           revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status = 'VALIDATED'`,
+      [changeSetId],
+    );
+    return result.rowCount === 1;
+  }
+
+  /**
+   * ORG-008-3b: DRAFT or VALIDATED -> DISCARDED. Rows and audit stay; nothing is deleted, and a
+   * discarded change set can never become effective structure because only PUBLISHED is loaded.
+   */
+  async markDiscarded(changeSetId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE organization_change_sets
+       SET status = 'DISCARDED', validation_report = '{}'::jsonb,
+           validated_by_account_id = NULL, validated_at = NULL,
+           revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status IN ('DRAFT', 'VALIDATED')`,
+      [changeSetId],
+    );
+    return result.rowCount === 1;
   }
 
   async createDraft(input: CreateOrganizationDraftInput): Promise<OrganizationSnapshot> {
@@ -187,7 +241,7 @@ export class PostgresOrganizationRepository {
         RETURNING id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
       `,
       [changeSetId, input.name.trim(), input.effectiveOn, base?.changeSet.id ?? null, input.actorAccountId],
     );

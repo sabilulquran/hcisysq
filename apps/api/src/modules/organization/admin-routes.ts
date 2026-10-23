@@ -203,6 +203,45 @@ export async function registerOrganizationAdminRoutes(
     return snapshot;
   }
 
+  /**
+   * ORG-008-3b concurrency guard (If-Match).
+   *
+   * The header carries the draft revision the operator last saw. When it is present and no longer
+   * matches, the mutation is refused with 409 ORGANIZATION_DRAFT_CHANGED instead of overwriting the
+   * other person's work. The revision is bumped in the same transaction as the mutation.
+   *
+   * A request without the header still proceeds and still bumps the revision. Rejecting those would
+   * lock out any client that has not been updated yet; the Perubahan screen sends the header, and
+   * making it mandatory is a separate, deliberate step once no client is left without it.
+   */
+  async function claimDraftRevision(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    snapshot: { changeSet: { id: string; revision: number } },
+    activeRepository: PostgresOrganizationRepository,
+  ): Promise<boolean> {
+    const header = request.headers["if-match"];
+    const raw = Array.isArray(header) ? header[0] : header;
+    const expected = raw === undefined ? snapshot.changeSet.revision : Number(raw.replace(/"/g, "").trim());
+    if (!Number.isInteger(expected)) {
+      await reply.status(400).send({
+        code: "INVALID_DRAFT_REVISION",
+        message: "If-Match must carry the draft revision the client last read.",
+      });
+      return false;
+    }
+    const bumped = await activeRepository.bumpDraftRevision(snapshot.changeSet.id, expected);
+    if (bumped === null) {
+      await reply.status(409).send({
+        code: "ORGANIZATION_DRAFT_CHANGED",
+        message: "This change was modified by someone else; reload before saving.",
+        details: { revision: snapshot.changeSet.revision },
+      });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/admin/organization/designer", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const query = z.object({ effectiveDate: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
@@ -331,6 +370,18 @@ export async function registerOrganizationAdminRoutes(
     const parsed = draftInput.safeParse(request.body);
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
+    // ORG-008-3b (O-7): one change set is composed at a time for the whole foundation, so a second
+    // one cannot be built from a base the first will replace. The existing one is named in the reply
+    // so the screen can offer to continue it. This is checked here rather than by a unique index,
+    // because how many open change sets production already holds has not been verified.
+    const open = await repository.findOpenChangeSet();
+    if (open) {
+      return reply.status(409).send({
+        code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
+        message: "Another organization change is still open.",
+        details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
+      });
+    }
     const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await transaction.repository.createDraft({ ...parsed.data, actorAccountId: principal.id });
       await transaction.audit("organization.draft.created", "organization_change_set", snapshot.changeSet.id, snapshot.changeSet.id, {
@@ -340,6 +391,68 @@ export async function registerOrganizationAdminRoutes(
       return snapshot.changeSet;
     });
     return reply.status(201).send(changeSet);
+  });
+
+  app.get("/admin/organization/designer/drafts", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      status: z.enum(["DRAFT", "VALIDATED", "PUBLISHED", "DISCARDED"]).optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_DRAFT_FILTER", "Invalid change status filter.");
+    const items = await repository.listChangeSets(query.data.status ? [query.data.status] : undefined);
+    return reply.send({ items });
+  });
+
+  app.post("/admin/organization/designer/drafts/:draftId/reopen", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      // Only a checked change goes back to being composed; published history stays immutable.
+      if (!(await transaction.repository.markReopened(snapshot.changeSet.id))) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_REOPENABLE",
+          message: "Only a validated change set can be reopened for editing.",
+        });
+        return null;
+      }
+      await transaction.audit("organization.draft.reopened", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
+  });
+
+  app.post("/admin/organization/designer/drafts/:draftId/discard", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    const body = z.object({ reason: z.string().trim().min(1).max(500).optional() })
+      .safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "INVALID_DRAFT_DISCARD", "Invalid discard request.");
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      // Discarding keeps every row and the audit trail; a published change set is never discarded.
+      if (!(await transaction.repository.markDiscarded(snapshot.changeSet.id))) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_DISCARDABLE",
+          message: "Only a change set that has not been published can be discarded.",
+        });
+        return null;
+      }
+      await transaction.audit("organization.draft.discarded", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, {
+          effectiveOn: snapshot.changeSet.effectiveOn,
+          previousStatus: snapshot.changeSet.status,
+          ...(body.data.reason ? { reason: body.data.reason } : {}),
+        });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
   });
 
   app.get("/admin/organization/designer/drafts/:draftId", async (request, reply) => {
@@ -356,6 +469,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, integrationCode: body.data.integrationCode ?? null,
         active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -372,6 +486,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group update.");
     const result = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const item = snapshot.nodes.find((entry) => entry.id === params.data.itemId);
       if (!item) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
       Object.assign(item, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -390,6 +505,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid organization position.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, active: true,
         effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.positions.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -406,6 +522,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid position update.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const updated = snapshot.positions.find((entry) => entry.id === params.data.itemId);
       if (!updated) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return null; }
       Object.assign(updated, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -423,6 +540,7 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_MEMBERSHIP", "Invalid membership assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return false;
       snapshot.memberships = snapshot.memberships.filter((item) => item.nodeKey !== body.data.nodeKey);
       snapshot.memberships.push(...body.data.employeeIds.map((employeeId) => ({ id: randomUUID(), employeeId,
         nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: true,
@@ -444,6 +562,7 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_INCUMBENCY", "Invalid primary or acting assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return false;
       const position = snapshot.positions.find((item) => item.stableKey === body.data.positionKey);
       const existingForPosition = snapshot.incumbencies.filter(
         (item) => item.positionKey === body.data.positionKey,
@@ -485,6 +604,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_AUTHORITY_BINDING", "Invalid authority relationship.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), subjectKind: body.data.sourceType, subjectKey: body.data.sourceKey,
         bindingType: body.data.authorityType as AuthorityBindingType, targetPositionKey: body.data.targetPositionKey,
         vacancyPolicy: body.data.vacancyPolicy, effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
@@ -505,6 +625,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), ...body.data, managerEmployeeId: null, effectiveTo: body.data.effectiveTo ?? null };
       snapshot.reportingOverrides.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.reporting_override.created", "organization_reporting_override", created.id,

@@ -1092,12 +1092,87 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: >
+            ORGANIZATION_DRAFT_ALREADY_OPEN (ORG-008-3b, decision O-7). One change set is composed at
+            a time for the whole foundation; details name the open one so it can be continued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraftConflict' }
+    get:
+      tags: [Organization]
+      operationId: listOrganizationDrafts
+      summary: List organization change sets, newest effective date first (ORG-008-3b)
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED, DISCARDED] }
+      responses:
+        '200':
+          description: Change sets, optionally filtered by status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrganizationDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/reopen:
+    post:
+      tags: [Organization]
+      operationId: reopenOrganizationDraft
+      summary: Return a validated change set to composing, clearing its validation report (ORG-008-3b)
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          description: Change set is being composed again and must be validated before publishing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraft' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_REOPENABLE when the change set is not validated }
+
+  /admin/organization/designer/drafts/{draftId}/discard:
+    post:
+      tags: [Organization]
+      operationId: discardOrganizationDraft
+      summary: Discard a change set that was never published, keeping its rows and audit (ORG-008-3b)
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: >
+            Change set is DISCARDED. Its rows and audit trail stay, and it can never become effective
+            structure because only PUBLISHED change sets are loaded as effective.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_DISCARDABLE when the change set was published }
 
   /admin/organization/designer/drafts/{draftId}/nodes:
     post:
       tags: [Organization]
       operationId: createOrganizationNode
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1107,7 +1182,7 @@ paths:
         '201': { description: Organizational group created in the draft }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Draft is not editable }
+        '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/nodes/{itemId}:
     patch:
@@ -1115,6 +1190,7 @@ paths:
       operationId: updateOrganizationNode
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
         - name: itemId
           in: path
           required: true
@@ -1128,13 +1204,13 @@ paths:
         '200': { description: Organizational group updated within the draft }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Draft is not editable }
+        '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/positions:
     post:
       tags: [Organization]
       operationId: createOrganizationPosition
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1144,7 +1220,7 @@ paths:
         '201': { description: Authority-bearing position created in the draft }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Draft is not editable }
+        '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/positions/{itemId}:
     patch:
@@ -1152,6 +1228,7 @@ paths:
       operationId: updateOrganizationPosition
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
         - name: itemId
           in: path
           required: true
@@ -1165,13 +1242,13 @@ paths:
         '200': { description: Structural position updated within the draft }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Draft is not editable }
+        '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/memberships:
     put:
       tags: [Organization]
       operationId: replaceOrganizationMemberships
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1192,7 +1269,7 @@ paths:
     put:
       tags: [Organization]
       operationId: replaceOrganizationIncumbencies
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1216,7 +1293,7 @@ paths:
     post:
       tags: [Organization]
       operationId: createOrganizationAuthorityBinding
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1231,7 +1308,7 @@ paths:
     post:
       tags: [Organization]
       operationId: createOrganizationReportingOverride
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
         content:
@@ -1514,6 +1591,16 @@ components:
       required: true
       schema: { type: string, format: uuid }
 
+    DraftRevisionIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: >
+        ORG-008-3b. The change set revision the client last read. When it no longer matches, the
+        mutation is refused with 409 ORGANIZATION_DRAFT_CHANGED instead of overwriting another
+        operator's work. Omitting it keeps the previous behaviour for clients not yet updated.
+      schema: { type: integer }
+
   responses:
     Unauthenticated:
       description: Authentication required
@@ -1721,11 +1808,16 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         effectiveOn: { type: string, format: date }
-        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED, DISCARDED] }
         validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
         createdAt: { type: string, format: date-time }
         validatedAt: { type: [string, 'null'], format: date-time }
         publishedAt: { type: [string, 'null'], format: date-time }
+        revision:
+          description: >
+            ORG-008-3b. Increments on every mutation of the change set. Send it back as If-Match on a
+            mutation so a concurrent edit is refused with 409 instead of overwriting the other person.
+          type: integer
 
     OrganizationNodeInput:
       type: object
@@ -1810,6 +1902,21 @@ components:
         unresolvedEmployees: { type: array, items: { type: object } }
         visualOnlyChanges: { type: array, items: { type: object } }
         noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDraftConflict:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details:
+          type: object
+          properties:
+            changeSetId: { type: string, format: uuid }
+            name: { type: string }
+            effectiveOn: { type: string, format: date }
+            status: { type: string }
+            revision: { type: integer }
 
     OrganizationStaleBase:
       type: object

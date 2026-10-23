@@ -12,6 +12,11 @@ import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
 } from "./domain.js";
+import {
+  applyOrganizationCommand,
+  OrganizationCommandError,
+  type OrganizationCommand,
+} from "./commands.js";
 import { OrganizationDraftService } from "./draft-service.js";
 import {
   buildOrganizationPeopleView,
@@ -968,6 +973,135 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!item) return;
     return reply.status(201).send(item);
+  });
+
+  const commandInput = z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("ADD_UNIT"),
+      name: z.string().trim().min(1).max(160),
+      nodeType: z.string().trim().min(1).max(80),
+      parentNodeKey: uuid.nullable().default(null),
+      leader: z.object({
+        title: z.string().trim().min(1).max(160),
+        employeeId: uuid.nullable().optional(),
+        vacancyPolicy: vacancyPolicy.optional(),
+        alsoUnitApprover: z.boolean().optional(),
+      }).optional(),
+    }),
+    z.object({
+      type: z.literal("PLACE_EMPLOYEES"),
+      nodeKey: uuid,
+      employeeIds: z.array(uuid).min(1).max(500),
+      move: z.boolean().optional(),
+    }),
+    z.object({
+      type: z.literal("APPOINT_ACTING"),
+      positionKey: uuid,
+      employeeId: uuid,
+      effectiveFrom: date,
+      effectiveTo: date,
+      reason: z.string().trim().min(1).max(500),
+      mandateNumber: z.string().trim().min(1).max(120).nullable().optional(),
+    }),
+    z.object({
+      type: z.literal("SET_REPORTS_TO"),
+      positionKey: uuid,
+      parentPositionKey: uuid.nullable(),
+    }),
+    z.object({ type: z.literal("SET_UNIT_LEADER"), nodeKey: uuid, positionKey: uuid }),
+    z.object({ type: z.literal("SET_UNIT_APPROVER"), nodeKey: uuid, positionKey: uuid }),
+    z.object({
+      type: z.literal("SET_OVERRIDE"),
+      employeeId: uuid,
+      managerPositionKey: uuid,
+      reason: z.string().trim().min(1).max(500),
+      effectiveFrom: date.optional(),
+      effectiveTo: date.nullable().optional(),
+    }),
+  ]);
+
+  /**
+   * ORG-008-4a: a command is refused unless the session may write every primitive it creates.
+   *
+   * Composing a unit or placing employees needs organization.manage, as those endpoints do today.
+   * A command that records an incumbent, an authority binding, or a reporting exception additionally
+   * needs approvals.policy.manage, exactly like the primitive endpoints it replaces. Decision O-1
+   * moves that second requirement to organization.manage in ORG-008-8; until then a combined action
+   * may not grant what its parts do not.
+   */
+  function commandWritesAuthority(command: OrganizationCommand): boolean {
+    if (command.type === "ADD_UNIT") return command.leader !== undefined;
+    return command.type !== "PLACE_EMPLOYEES";
+  }
+
+  app.post("/admin/organization/designer/drafts/:draftId/commands", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    const body = commandInput.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return invalid(reply, "INVALID_ORGANIZATION_COMMAND", "Invalid organization command.");
+    }
+    const command = body.data as OrganizationCommand;
+    if (commandWritesAuthority(command)) {
+      const context = await resolveAuthorizationContext(pool, principal);
+      if (!context.organizationPermissions.includes("approvals.policy.manage")) {
+        return reply.status(403).send({
+          code: "FORBIDDEN",
+          message: "This command records authority and needs the approval policy permission.",
+          details: { commandType: command.type, requires: "approvals.policy.manage" },
+        });
+      }
+    }
+
+    const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository);
+      if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
+
+      let result;
+      try {
+        result = applyOrganizationCommand(snapshot, command);
+      } catch (error) {
+        if (error instanceof OrganizationCommandError) {
+          await reply.status(error.statusCode).send({
+            code: error.code,
+            message: error.message,
+            ...(error.details ? { details: error.details } : {}),
+          });
+          return null;
+        }
+        throw error;
+      }
+
+      await transaction.repository.replaceDraftSnapshot(result.snapshot);
+      // One audit event per primitive record, as ORG-004 requires, plus one summary event naming the
+      // command. They share this transaction with the write, so they roll back together (I-10).
+      for (const event of result.events) {
+        await transaction.audit(event.action, event.entityType, event.entityId, snapshot.changeSet.id, event.payload);
+      }
+      const seq = await transaction.repository.appendJournalEntry({
+        changeSetId: snapshot.changeSet.id,
+        commandType: command.type,
+        payload: command as unknown as Record<string, unknown>,
+        summary: result.summary,
+        actorAccountId: principal.id,
+      });
+      await transaction.audit("organization.command.applied", "organization_change_set",
+        snapshot.changeSet.id, snapshot.changeSet.id,
+        { commandType: command.type, primitives: result.events.length, seq });
+      return { seq, summary: result.summary, primitives: result.events.length };
+    });
+    if (!outcome) return;
+    return reply.status(201).send({ commandType: command.type, ...outcome });
+  });
+
+  app.get("/admin/organization/designer/drafts/:draftId/journal", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const params = draftParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
+    if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    return reply.send({ items: await repository.listJournal(params.data.draftId) });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/validate", async (request, reply) => {

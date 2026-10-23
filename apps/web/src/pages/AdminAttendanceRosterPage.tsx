@@ -40,7 +40,7 @@ export function AdminAttendanceRosterPage() {
   useEffect(() => {
     void getAttendanceRosterWeek(weekStart)
       .then(setData)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Roster tidak dapat dimuat."));
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Jadwal per tanggal tidak dapat dimuat."));
   }, [weekStart]);
 
   const draft = data?.rosters.find((item) => item.status === "DRAFT") ?? null;
@@ -61,7 +61,7 @@ export function AdminAttendanceRosterPage() {
   const run = async (key: string, operation: () => Promise<unknown>, message: string) => {
     setBusy(key); setError(null); setNotice(null);
     try { await operation(); await load(); setNotice(message); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Operasi roster gagal."); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Perubahan jadwal gagal disimpan."); }
     finally { setBusy(null); }
   };
 
@@ -70,7 +70,7 @@ export function AdminAttendanceRosterPage() {
     const key = employeeId + ":" + workDate;
     if (value === "inherit") {
       if (!entryMap.has(key)) return;
-      await run(key, () => removeAttendanceRosterEntry(draft.id, employeeId, workDate), "Cell kembali mengikuti jadwal default.");
+      await run(key, () => removeAttendanceRosterEntry(draft.id, employeeId, workDate), "Tanggal ini kembali mengikuti pola jadwal.");
       return;
     }
     const isOff = value === "off";
@@ -83,12 +83,12 @@ export function AdminAttendanceRosterPage() {
         isOff,
         note: null,
       }]),
-      "Perubahan roster disimpan sebagai draft.",
+      "Perubahan disimpan. Terapkan agar berlaku.",
     );
   };
 
   return (
-    <AttendanceWorkforceShell section="roster" title="Roster Shift Mingguan" description="Grid Senin–Minggu dengan draft, inherit default, libur, shift override, dan publish eksplisit.">
+    <AttendanceWorkforceShell tab="dates" title="Jadwal per tanggal" description="Ganti shift atau liburkan pegawai pada tanggal tertentu dalam satu minggu, lalu terapkan. Tanggal yang tidak diubah mengikuti pola jadwal.">
       {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
       {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
 
@@ -97,7 +97,7 @@ export function AdminAttendanceRosterPage() {
           <div>
             <h2 className="font-bold text-brand-heading">Minggu {weekStart}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {draft ? "Ada draft versi " + draft.version + ". Perubahan belum memengaruhi engine sampai dipublish." : published ? "Published versi " + published.version + " aktif. Buat draft untuk melakukan perubahan." : "Belum ada roster published; pegawai mengikuti assignment default."}
+              {draft ? "Ada perubahan yang belum diterapkan. Perubahan baru berlaku setelah Anda menekan Terapkan." : published ? "Jadwal minggu ini sudah diterapkan. Tekan Ubah jadwal minggu ini untuk mengubahnya." : "Belum ada perubahan untuk minggu ini; semua pegawai mengikuti pola jadwal."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -105,11 +105,11 @@ export function AdminAttendanceRosterPage() {
             <input className="h-10 rounded-xl border px-3 text-sm" type="date" value={weekStart} onChange={(e) => setWeekStart(mondayOf(new Date(e.target.value + "T12:00:00")))} />
             <button type="button" className="h-10 rounded-xl border px-3" onClick={() => setWeekStart(shiftDate(weekStart, 7))}><ChevronRight className="h-4 w-4" /></button>
             {!draft ? (
-              <button type="button" disabled={busy !== null} onClick={() => void run("create", () => createAttendanceRoster(weekStart), "Draft roster dibuat.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Buat draft</button>
+              <button type="button" disabled={busy !== null} onClick={() => void run("create", () => createAttendanceRoster(weekStart), "Silakan ubah jadwal, lalu tekan Terapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Ubah jadwal minggu ini</button>
             ) : (
               <>
-                <button type="button" disabled={busy !== null} onClick={() => void run("copy", () => copyPreviousAttendanceRoster(draft.id), "Roster minggu lalu disalin ke draft.")} className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">{busy === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Salin minggu lalu</button>
-                <button type="button" disabled={busy !== null} onClick={() => void run("publish", () => publishAttendanceRoster(draft.id), "Roster dipublikasikan dan menjadi authoritative.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish</button>
+                <button type="button" disabled={busy !== null} onClick={() => void run("copy", () => copyPreviousAttendanceRoster(draft.id), "Jadwal minggu lalu disalin. Periksa, lalu tekan Terapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">{busy === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Salin minggu lalu</button>
+                <button type="button" disabled={busy !== null} onClick={() => void run("publish", () => publishAttendanceRoster(draft.id), "Jadwal minggu ini diterapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Terapkan</button>
               </>
             )}
           </div>
@@ -129,7 +129,7 @@ export function AdminAttendanceRosterPage() {
                   <td className="p-3 align-top">
                     <p className="font-semibold text-brand-heading">{employee.employeeName}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeNumber}{employee.unitName ? " · " + employee.unitName : ""}</p>
-                    <p className="mt-1 text-[10px] text-muted-foreground">Default: {data?.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">Pola: {data?.schedules.find((item) => item.id === employee.defaultScheduleId)?.name ?? "belum ada"}</p>
                   </td>
                   {dates.map((workDate) => {
                     const entry = entryMap.get(employee.id + ":" + workDate);
@@ -143,12 +143,12 @@ export function AdminAttendanceRosterPage() {
                           disabled={!draft || busy !== null}
                           onChange={(event) => void changeCell(employee.id, workDate, event.target.value)}
                         >
-                          <option value="inherit">Ikuti default</option>
-                          <option value="off">Libur / OFF</option>
+                          <option value="inherit">Ikuti pola jadwal</option>
+                          <option value="off">Libur</option>
                           {data?.schedules.filter((item) => item.active).map((schedule) => <option key={schedule.id} value={"schedule:" + schedule.id}>{schedule.name}</option>)}
                         </select>
                         <div className="mt-1 text-[10px]">
-                          {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-warning-ink">DRAFT</span> : published ? <span className="text-success-ink">Published</span> : <span className="text-muted-foreground">Default</span>}
+                          {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-warning-ink">Belum diterapkan</span> : published ? <span className="text-success-ink">Berlaku</span> : <span className="text-muted-foreground">Pola jadwal</span>}
                         </div>
                       </td>
                     );

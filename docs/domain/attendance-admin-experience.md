@@ -33,33 +33,30 @@ Landing Back Office ADMS harus memperlihatkan fleet secara keseluruhan:
 - PIN belum terhubung;
 - mesin terdeteksi tetapi belum di-claim;
 - shortcut ke device detail;
-- keterkaitan yang jelas ke Operasional Kehadiran.
+- keterkaitan yang jelas ke Waktu & Kehadiran.
 
 ## Operasional Kehadiran
 
-Workspace Human Capital dipecah menjadi tab/route:
+Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Kehadiran** (`attendance-operational-simplification-spec.md` §3):
 
-- Ringkasan;
-- Lokasi;
-- Jadwal;
-- Assignment;
-- Roster mingguan;
-- Klarifikasi;
-- Evidence mobile;
-- Laporan.
+| Menu | Route | Permission data |
+|---|---|---|
+| Ringkasan | `/admin/attendance` | salah satu permission kehadiran; tiap kartu hanya tampil bila datanya bisa dimuat |
+| Shift | `/admin/attendance/shifts` | `attendance.schedule.manage` |
+| Jadwal → Pola jadwal | `/admin/attendance/schedules` | `attendance.schedule.manage` |
+| Jadwal → Jadwal per tanggal | `/admin/attendance/schedules/dates` | `attendance.schedule.manage` |
+| Jadwal → Tukar shift | `/admin/attendance/schedules/swaps` | `attendance.shift_swap.manage` |
+| Kehadiran → Harian | `/admin/attendance/daily` | `attendance.reports.read` |
+| Kehadiran → Klarifikasi | `/admin/attendance/clarifications` | `attendance.clarification.manage` |
+| Kehadiran → Bukti HP | `/admin/attendance/mobile-evidence` | `attendance.clarification.manage` |
+| Kehadiran → Koreksi HC | `/admin/attendance/corrections` | `attendance.records.manage` |
+| Kehadiran → Laporan | `/admin/attendance/reports` | `attendance.reports.read` |
+| Lembur | `/admin/attendance/overtime` | `attendance.overtime.manage` |
+| Mesin Fingerprint | `/admin/attendance/adms` | `attendance.devices.read` |
+| Pengaturan → Lokasi kerja | `/admin/attendance/settings/locations` | `attendance.schedule.manage` |
+| Pengaturan → Finalisasi ulang | `/admin/attendance/settings/recalculate` | `attendance.policy.manage` |
 
-Route utama:
-
-```text
-/admin/attendance/workforce
-/admin/attendance/workforce/locations
-/admin/attendance/workforce/schedules
-/admin/attendance/workforce/assignments
-/admin/attendance/workforce/roster
-/admin/attendance/workforce/clarifications
-/admin/attendance/workforce/mobile
-/admin/attendance/workforce/reports
-```
+Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis. `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Koreksi HC.
 
 Back Office ADMS:
 

@@ -1,7 +1,7 @@
+import { attendanceSectionHref, type AttendanceSectionKey } from "@/lib/attendanceNavigation";
 import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
-  ArrowLeftRight,
   Building2,
   CalendarDays,
   CalendarRange,
@@ -9,9 +9,11 @@ import {
   Clock3,
   Grid2X2,
   History,
+  Fingerprint,
   KeyRound,
   LayoutDashboard,
-  ServerCog,
+  Settings2,
+  TimerReset,
   Upload,
   UsersRound,
   WalletCards,
@@ -34,9 +36,12 @@ export type AdminNavKey =
   | "employment-consistency"
   | "organization"
   | "attendance"
+  | "attendance-shifts"
+  | "attendance-schedules"
+  | "attendance-records"
+  | "attendance-overtime"
   | "attendance-adms"
-  | "attendance-workforce"
-  | "attendance-shift-swaps"
+  | "attendance-settings"
   | "leave"
   | "leave-calendar"
   | "payslips"
@@ -49,6 +54,8 @@ type AdminNavItem = {
   href: string;
   icon: typeof LayoutDashboard;
   authorizationPath?: string;
+  /** ATT-011: the entry opens the first tab of this section the account can load. */
+  attendanceSection?: AttendanceSectionKey;
 };
 
 type AdminNavGroup = {
@@ -77,19 +84,16 @@ const navGroups: AdminNavGroup[] = [
     items: [{ key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 }],
   },
   {
-    label: "Kehadiran",
+    label: "Waktu & Kehadiran",
     category: "attendance",
     items: [
-      { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
-      { key: "attendance-workforce", label: "Operasional Kehadiran", href: "/admin/attendance/workforce", icon: CalendarRange },
-      { key: "attendance-shift-swaps", label: "Persetujuan Tukar Shift", href: "/admin/attendance/workforce/shift-swaps", icon: ArrowLeftRight },
-    ],
-  },
-  {
-    label: "Perangkat ADMS",
-    category: "attendance",
-    items: [
-      { key: "attendance-adms", label: "Manajemen ADMS", href: "/admin/attendance/adms", icon: ServerCog },
+      { key: "attendance", label: "Ringkasan", href: "/admin/attendance", icon: LayoutDashboard, attendanceSection: "summary" },
+      { key: "attendance-shifts", label: "Shift", href: "/admin/attendance/shifts", icon: Clock3, attendanceSection: "shifts" },
+      { key: "attendance-schedules", label: "Jadwal", href: "/admin/attendance/schedules", icon: CalendarRange, attendanceSection: "schedules" },
+      { key: "attendance-records", label: "Kehadiran", href: "/admin/attendance/daily", icon: ClipboardCheck, attendanceSection: "records" },
+      { key: "attendance-overtime", label: "Lembur", href: "/admin/attendance/overtime", icon: TimerReset, attendanceSection: "overtime" },
+      { key: "attendance-adms", label: "Mesin Fingerprint", href: "/admin/attendance/adms", icon: Fingerprint, attendanceSection: "devices" },
+      { key: "attendance-settings", label: "Pengaturan", href: "/admin/attendance/settings/locations", icon: Settings2, attendanceSection: "settings" },
     ],
   },
   {
@@ -118,7 +122,16 @@ const navGroups: AdminNavGroup[] = [
 
 function permittedGroups(session: AuthSession | null): AdminNavGroup[] {
   return navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => canAccessAdminPath(session, item.authorizationPath ?? item.href)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items.flatMap((item) => {
+        if (item.attendanceSection) {
+          const href = attendanceSectionHref(session, item.attendanceSection);
+          return href ? [{ ...item, href }] : [];
+        }
+        return canAccessAdminPath(session, item.authorizationPath ?? item.href) ? [item] : [];
+      }),
+    }))
     .filter((group) => group.items.length);
 }
 
@@ -127,13 +140,13 @@ function permittedGroups(session: AuthSession | null): AdminNavGroup[] {
  * the account can run attendance operations but cannot open the ADMS back office.
  */
 export function AdminDeviceAccessNote({ session }: { session: AuthSession | null }) {
-  const missingDeviceAccess = canAccessAdminPath(session, "/admin/attendance/workforce")
+  const missingDeviceAccess = canAccessAdminPath(session, "/admin/attendance")
     && !canAccessAdminPath(session, "/admin/attendance/adms");
   if (!missingDeviceAccess) return null;
   return (
     <div className="mb-5 rounded-xl border border-border bg-surface-raised p-3 text-xs leading-5 text-muted-foreground" role="note">
-      <p className="font-bold text-brand-heading">ADMS sudah terpasang</p>
-      <p>Akun ini belum memiliki permission perangkat yang dibutuhkan untuk membuka Back Office ADMS. Minta pengelola akses meninjau role/scope account ini.</p>
+      <p className="font-bold text-brand-heading">Mesin Fingerprint belum dapat dibuka dari akun ini</p>
+      <p>Pengelolaan mesin memerlukan izin perangkat. Minta pengelola akses meninjau peran akun ini bila Anda perlu membukanya.</p>
     </div>
   );
 }
@@ -163,7 +176,10 @@ export function AdminNavigation({ active, session, compact = false }: { active: 
   );
 }
 
-const attendanceKeys: AdminNavKey[] = ["attendance", "attendance-adms", "attendance-workforce", "attendance-shift-swaps"];
+const attendanceKeys: AdminNavKey[] = [
+  "attendance", "attendance-shifts", "attendance-schedules", "attendance-records",
+  "attendance-overtime", "attendance-adms", "attendance-settings",
+];
 // Phone bottom navigation in admin: Ringkasan, Pegawai, Kehadiran, Cuti, then "Lainnya".
 const mobileKeys: Array<{ key: AdminNavKey; shortLabel: string }> = [
   { key: "overview", shortLabel: "Ringkasan" },
@@ -242,7 +258,7 @@ export function AdminShell({ children, active, title, description, previewMode }
         <h1 className="text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
         {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
       </header>
-      {attendanceKeys.includes(active) ? <AdminDeviceAccessNote session={session} /> : null}
+      {active === "attendance" ? <AdminDeviceAccessNote session={session} /> : null}
       {session ? children : <p>Memuat izin administrasi...</p>}
     </CoreShell>
   );

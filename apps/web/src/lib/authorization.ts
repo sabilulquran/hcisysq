@@ -4,6 +4,27 @@ export function hasPermission(session: AuthSession | null, permission: string): 
   return session?.authorization?.organizationPermissions.includes(permission) === true;
 }
 
+const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
+  "/admin/attendance/shifts": "attendance.schedule.manage",
+  "/admin/attendance/schedules": "attendance.schedule.manage",
+  "/admin/attendance/schedules/dates": "attendance.schedule.manage",
+  "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
+  "/admin/attendance/daily": "attendance.reports.read",
+  "/admin/attendance/clarifications": "attendance.clarification.manage",
+  "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
+  "/admin/attendance/corrections": "attendance.records.manage",
+  "/admin/attendance/reports": "attendance.reports.read",
+  "/admin/attendance/overtime": "attendance.overtime.manage",
+  "/admin/attendance/settings/locations": "attendance.schedule.manage",
+  "/admin/attendance/settings/recalculate": "attendance.policy.manage",
+};
+
+// Ringkasan shows one card per area the account can load, so any attendance permission opens it.
+const ATTENDANCE_SUMMARY_PERMISSIONS = [
+  "attendance.reports.read", "attendance.clarification.manage", "attendance.overtime.manage",
+  "attendance.shift_swap.manage", "attendance.schedule.manage", "attendance.records.manage", "attendance.policy.manage",
+];
+
 // UI eligibility only. The API independently authorizes every operation.
 export function canAccessAdminPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType === "FOUNDATION_BOARD") return false;
@@ -23,26 +44,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"))
       && (!path.endsWith("/diagnostics") || hasPermission(session, "attendance.devices.technical"));
   }
-  if (path === "/admin/attendance") return hasPermission(session, "attendance.records.manage");
-  if (path === "/admin/attendance/workforce") return [
-    "attendance.schedule.manage", "attendance.policy.manage",
-    "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
-  ].some((permission) => hasPermission(session, permission));
-  if (/^\/admin\/attendance\/workforce\/(locations|schedules|assignments|roster)$/.test(path)) {
-    return hasPermission(session, "attendance.schedule.manage");
-  }
-  if (/^\/admin\/attendance\/workforce\/(clarifications|mobile)$/.test(path)) {
-    return hasPermission(session, "attendance.clarification.manage");
-  }
-  if (path === "/admin/attendance/workforce/overtime") {
-    return hasPermission(session, "attendance.overtime.manage");
-  }
-  if (path === "/admin/attendance/workforce/shift-swaps") {
-    return hasPermission(session, "attendance.shift_swap.manage");
-  }
-  if (path === "/admin/attendance/workforce/reports") {
-    return hasPermission(session, "attendance.reports.read");
-  }
+  // ATT-011-1: each screen is offered only to accounts whose permission loads its data (K-8).
+  const attendancePermission = ATTENDANCE_PATH_PERMISSIONS[path];
+  if (attendancePermission) return hasPermission(session, attendancePermission);
+  if (path === "/admin/attendance") return ATTENDANCE_SUMMARY_PERMISSIONS.some((permission) => hasPermission(session, permission));
   if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

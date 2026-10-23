@@ -2,13 +2,14 @@ import { AlertTriangle, Download, Loader2, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { listEmployees } from "@/lib/adminEmployees";
+import { ATTENDANCE_STATUSES, attendanceSourceLabel, attendanceStatusLabel, requestStatusLabel, scanEventLabel } from "@/lib/attendanceLabels";
 import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import { csvCell } from "@/lib/csv";
 import {
-  finalizeAttendanceDate,
   getAttendanceReportV2,
   listAttendanceSchedules,
   listAttendanceWorkLocations,
@@ -43,29 +44,8 @@ function formatMinutes(value: unknown) {
   if (rest === 0) return hours + " jam";
   return hours + " jam " + rest + " mnt";
 }
-function statusLabel(value: unknown) {
-  const labels: Record<string, string> = {
-    scheduled: "Terjadwal",
-    pending: "Belum check-in",
-    present: "Hadir",
-    late: "Terlambat",
-    incomplete: "Belum lengkap",
-    leave: "Cuti/Izin",
-    absent: "Tidak hadir",
-    off: "Libur",
-    configuration_error: "Konfigurasi bermasalah",
-    submitted: "Menunggu",
-    approved: "Disetujui",
-    rejected: "Ditolak",
-    cancelled: "Dibatalkan",
-  };
-  return labels[String(value)] ?? String(value ?? "—");
-}
-function sourceLabel(value: unknown): string {
-  if (Array.isArray(value)) return value.map(sourceLabel).join(", ");
-  const labels: Record<string, string> = { adms: "Fingerprint/ADMS", mobile: "Mobile", manual: "Manual" };
-  return labels[String(value)] ?? String(value ?? "—");
-}
+const REQUEST_STATUS_VALUES = ["submitted", "approved", "rejected", "cancelled"] as const;
+
 function renderValue(key: string, value: unknown) {
   if (value == null || value === "") return "—";
   if (["workedMinutes", "breakMinutes", "lateMinutes", "earlyLeaveMinutes", "overtimeMinutes", "requestedMinutes", "approvedMinutes"].includes(key)) {
@@ -74,8 +54,9 @@ function renderValue(key: string, value: unknown) {
   if (["scheduledStartAt", "scheduledEndAt", "firstCheckInAt", "lastCheckOutAt", "checkInAt", "checkOutAt", "occurredAt", "receivedAt", "createdAt", "decidedAt"].includes(key)) {
     return formatTimestamp(value);
   }
-  if (key === "status") return statusLabel(value);
-  if (key === "source" || key === "sources") return sourceLabel(value);
+  if (key === "status") return (REQUEST_STATUS_VALUES as readonly unknown[]).includes(value) ? requestStatusLabel(value) : attendanceStatusLabel(value);
+  if (key === "source" || key === "sources") return attendanceSourceLabel(value);
+  if (key === "eventKind") return scanEventLabel(value);
   if (typeof value === "boolean") return value ? "Ya" : "Tidak";
   if (Array.isArray(value)) return value.join(", ");
   return String(value);
@@ -92,12 +73,12 @@ const labels: Record<AttendanceReportType, string> = {
 };
 
 const descriptions: Record<AttendanceReportType, string> = {
-  detail: "Satu baris per pegawai dan hari kerja dari hasil canonical terbaru.",
+  detail: "Satu baris per pegawai per hari kerja, sesuai hasil perhitungan terakhir.",
   period: "Ringkasan kehadiran per pegawai pada periode terpilih.",
   unit: "Ringkasan operasional per unit kerja.",
-  sessions: "Rincian multi-punch per sesi masuk–pulang.",
-  scans: "Jejak evidence dari fingerprint/ADMS, mobile, dan manual.",
-  schedule: "Jadwal efektif historis termasuk versi roster yang dipublish.",
+  sessions: "Rincian setiap pasangan scan masuk–pulang dalam satu hari.",
+  scans: "Semua data scan dari mesin, HP, dan koreksi HC.",
+  schedule: "Jadwal yang berlaku per tanggal, termasuk perubahan jadwal per tanggal.",
   overtime: "Permintaan dan durasi lembur yang diajukan atau disetujui.",
 };
 
@@ -108,7 +89,7 @@ const columns: Record<AttendanceReportType, Array<[string, string]>> = {
     ["firstCheckInAt", "Masuk aktual"], ["lastCheckOutAt", "Pulang aktual"], ["workedMinutes", "Jam kerja"],
     ["breakMinutes", "Jeda"], ["lateMinutes", "Terlambat"], ["lateJustified", "Telat beralasan"],
     ["earlyLeaveMinutes", "Pulang awal"], ["earlyLeaveJustified", "Pulang awal beralasan"],
-    ["overtimeMinutes", "Lembur"], ["sources", "Sumber"], ["resultVersion", "Versi hasil"],
+    ["overtimeMinutes", "Lembur"], ["sources", "Sumber"],
   ],
   period: [
     ["employeeNumber", "NIP"], ["employeeName", "Nama"], ["unitName", "Unit"], ["expectedDays", "Hari kerja"],
@@ -124,17 +105,17 @@ const columns: Record<AttendanceReportType, Array<[string, string]>> = {
   sessions: [
     ["workDate", "Tanggal"], ["employeeNumber", "NIP"], ["employeeName", "Nama"], ["unitName", "Unit"],
     ["sequence", "Sesi ke"], ["checkInAt", "Masuk sesi"], ["checkOutAt", "Pulang sesi"],
-    ["workedMinutes", "Durasi"], ["complete", "Lengkap"], ["sourceSummary", "Sumber"], ["resultVersion", "Versi hasil"],
+    ["workedMinutes", "Durasi"], ["complete", "Lengkap"],
   ],
   scans: [
     ["occurredAt", "Waktu kejadian"], ["receivedAt", "Diterima server"], ["employeeNumber", "NIP"],
     ["employeeName", "Nama"], ["unitName", "Unit"], ["source", "Sumber"], ["eventKind", "Jenis"],
-    ["deviceId", "Device ID"], ["sourceReference", "Referensi"],
+    ["deviceId", "Mesin"],
   ],
   schedule: [
     ["workDate", "Tanggal"], ["employeeNumber", "NIP"], ["employeeName", "Nama"], ["unitName", "Unit"],
     ["scheduledStartAt", "Masuk jadwal"], ["scheduledEndAt", "Pulang jadwal"], ["workLocationName", "Lokasi"],
-    ["status", "Status"], ["scheduleVersionId", "Versi jadwal"],
+    ["status", "Status"],
   ],
   overtime: [
     ["workDate", "Tanggal"], ["employeeNumber", "NIP"], ["employeeName", "Nama"], ["unitName", "Unit"],
@@ -142,17 +123,6 @@ const columns: Record<AttendanceReportType, Array<[string, string]>> = {
     ["note", "Catatan"], ["decisionNote", "Catatan keputusan"],
   ],
 };
-
-async function loadActiveEmployees() {
-  const first = await listEmployees({ page: 1, pageSize: 100, status: "active" });
-  if (first.pagination.pageCount <= 1) return { items: first.items, units: first.filters.units };
-  const rest = await Promise.all(
-    Array.from({ length: first.pagination.pageCount - 1 }, (_, index) =>
-      listEmployees({ page: index + 2, pageSize: 100, status: "active" }),
-    ),
-  );
-  return { items: [first, ...rest].flatMap((page) => page.items), units: first.filters.units };
-}
 
 type Filters = {
   employeeId: string;
@@ -174,7 +144,8 @@ export function AdminAttendanceReportsV2Page() {
   const [from, setFrom] = useState(monthStart(today));
   const [to, setTo] = useState(today);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
-  const [employees, setEmployees] = useState<AdminEmployeeListItem[]>([]);
+  const [employee, setEmployee] = useState<PickedEmployee | null>(null);
+  const [canFilterEmployees, setCanFilterEmployees] = useState(false);
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
   const [schedules, setSchedules] = useState<Array<{ id: string; name: string }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
@@ -182,23 +153,24 @@ export function AdminAttendanceReportsV2Page() {
   const [data, setData] = useState<{ summary?: Record<string, number>; items: Array<Record<string, unknown>> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [canFinalize, setCanFinalize] = useState(false);
-
+  // K-8: load only the filter catalogs this account may read; a missing one hides its filter.
   useEffect(() => {
-    void getCurrentSession().then((session) => setCanFinalize(hasPermission(session, "attendance.policy.manage")));
-    void Promise.all([
-      loadActiveEmployees(),
-      listAttendanceSchedules(),
-      listAttendanceWorkLocations(),
-      listAdmsDevices(),
-    ]).then(([employeeResult, scheduleResult, locationResult, deviceResult]) => {
-      setEmployees(employeeResult.items);
-      setUnits(employeeResult.units);
-      setSchedules(scheduleResult.items.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name })));
-      setLocations(locationResult.items.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name })));
-      setDevices(deviceResult.items);
-    }).catch(() => {
-      // Report data remains usable even if one option catalog is unavailable.
+    void getCurrentSession().then((session) => {
+      if (hasPermission(session, "employees.manage")) {
+        setCanFilterEmployees(true);
+        void listEmployees({ pageSize: 1, status: "active" }).then((page) => setUnits(page.filters.units)).catch(() => undefined);
+      }
+      if (hasPermission(session, "attendance.schedule.manage")) {
+        void listAttendanceSchedules()
+          .then((result) => setSchedules(result.items.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name }))))
+          .catch(() => undefined);
+        void listAttendanceWorkLocations()
+          .then((result) => setLocations(result.items.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name }))))
+          .catch(() => undefined);
+      }
+      if (hasPermission(session, "attendance.devices.read")) {
+        void listAdmsDevices().then((result) => setDevices(result.items)).catch(() => undefined);
+      }
     });
   }, []);
 
@@ -226,7 +198,10 @@ export function AdminAttendanceReportsV2Page() {
       .finally(() => setBusy(false));
   }, [request]);
 
-  const visibleColumns = columns[type];
+  const deviceNames = useMemo(() => new Map(devices.map((item) => [item.id, item.displayName ?? item.serialNumber])), [devices]);
+  // A device is shown by name; without the device catalog the column is left out rather than showing an id.
+  const visibleColumns = columns[type].filter(([key]) => key !== "deviceId" || devices.length > 0);
+  const cell = (key: string, value: unknown) => key === "deviceId" ? (deviceNames.get(String(value)) ?? "—") : renderValue(key, value);
   const scheduleFilters = ["detail", "period", "unit", "sessions", "schedule"].includes(type);
   const evidenceFilters = ["detail", "period", "unit", "sessions", "scans"].includes(type);
   const locationFilter = ["detail", "period", "unit", "sessions", "schedule"].includes(type);
@@ -247,7 +222,7 @@ export function AdminAttendanceReportsV2Page() {
     if (!data?.items.length) return;
     const csv = [
       visibleColumns.map(([, label]) => csvCell(label)).join(","),
-      ...data.items.map((row) => visibleColumns.map(([key]) => csvCell(renderValue(key, row[key]))).join(",")),
+      ...data.items.map((row) => visibleColumns.map(([key]) => csvCell(cell(key, row[key]))).join(",")),
     ].join("\r\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
@@ -257,22 +232,8 @@ export function AdminAttendanceReportsV2Page() {
     URL.revokeObjectURL(url);
   };
 
-  const finalize = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await finalizeAttendanceDate(from);
-      const refreshed = await getAttendanceReportV2(request);
-      setData({ summary: refreshed.summary, items: refreshed.items });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Finalisasi gagal.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
-    <AttendanceWorkforceShell section="reports" title="Laporan Kehadiran" description="Laporan canonical dari result version, sesi, scan, jadwal historis, dan lembur.">
+    <AttendanceWorkforceShell tab="reports" title="Laporan" description="Rekap kehadiran, data scan, jadwal, dan lembur untuk periode yang dipilih.">
       {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
 
       <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
@@ -288,31 +249,26 @@ export function AdminAttendanceReportsV2Page() {
           <label className="text-xs font-semibold text-muted-foreground">Sampai
             <input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
-          <label className="text-xs font-semibold text-muted-foreground">Pegawai
-            <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.employeeId} onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}>
-              <option value="">Semua pegawai</option>
-              {employees.map((item) => <option key={item.id} value={item.id}>{item.employeeNumber} · {item.fullName}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-semibold text-muted-foreground">Unit
+          {canFilterEmployees ? <EmployeeSearchField label="Pegawai (kosong = semua)" value={employee} onChange={(picked) => { setEmployee(picked); setFilters({ ...filters, employeeId: picked?.id ?? "" }); }} /> : null}
+          {units.length > 0 ? <label className="text-xs font-semibold text-muted-foreground">Unit
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.unitId} onChange={(e) => setFilters({ ...filters, unitId: e.target.value })}>
               <option value="">Semua unit</option>
               {units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
-          </label>
+          </label> : null}
           {type === "detail" ? <label className="text-xs font-semibold text-muted-foreground">Status
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
               <option value="">Semua status</option>
-              {["scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off", "configuration_error"].map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}
+              {ATTENDANCE_STATUSES.map((item) => <option key={item} value={item}>{attendanceStatusLabel(item)}</option>)}
             </select>
           </label> : null}
-          {scheduleFilters ? <label className="text-xs font-semibold text-muted-foreground">Jadwal
+          {scheduleFilters && schedules.length > 0 ? <label className="text-xs font-semibold text-muted-foreground">Shift
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.scheduleId} onChange={(e) => setFilters({ ...filters, scheduleId: e.target.value })}>
-              <option value="">Semua jadwal</option>
+              <option value="">Semua shift</option>
               {schedules.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label> : null}
-          {locationFilter ? <label className="text-xs font-semibold text-muted-foreground">Lokasi
+          {locationFilter && locations.length > 0 ? <label className="text-xs font-semibold text-muted-foreground">Lokasi
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.locationId} onChange={(e) => setFilters({ ...filters, locationId: e.target.value })}>
               <option value="">Semua lokasi</option>
               {locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -320,10 +276,10 @@ export function AdminAttendanceReportsV2Page() {
           </label> : null}
           {evidenceFilters ? <label className="text-xs font-semibold text-muted-foreground">Sumber
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value as Filters["source"] })}>
-              <option value="">Semua sumber</option><option value="adms">Fingerprint/ADMS</option><option value="mobile">Mobile</option><option value="manual">Manual</option>
+              <option value="">Semua sumber</option><option value="adms">{attendanceSourceLabel("adms")}</option><option value="mobile">{attendanceSourceLabel("mobile")}</option><option value="manual">{attendanceSourceLabel("manual")}</option>
             </select>
           </label> : null}
-          {evidenceFilters ? <label className="text-xs font-semibold text-muted-foreground">Mesin
+          {evidenceFilters && devices.length > 0 ? <label className="text-xs font-semibold text-muted-foreground">Mesin
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.deviceId} onChange={(e) => setFilters({ ...filters, deviceId: e.target.value })}>
               <option value="">Semua mesin</option>
               {devices.map((item) => <option key={item.id} value={item.id}>{item.displayName ?? item.serialNumber}</option>)}
@@ -340,16 +296,15 @@ export function AdminAttendanceReportsV2Page() {
           <button type="button" className="h-10 rounded-xl border px-3 text-xs font-bold" onClick={() => { setFrom(shiftDate(today, -6)); setTo(today); }}>7 hari terakhir</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={exportCsv}><Download className="h-4 w-4" /> Ekspor CSV</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={() => window.print()}><Printer className="h-4 w-4" /> Cetak / PDF</button>
-          {canFinalize && from === to ? <button type="button" disabled={busy} className="h-10 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50" onClick={() => void finalize()}>Finalisasi tanggal</button> : null}
         </div>
 
-        {data?.summary ? <div className="mt-4 flex flex-wrap gap-2">{Object.entries(data.summary).map(([key, value]) => <span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{statusLabel(key)}: {value}</span>)}</div> : null}
+        {data?.summary ? <div className="mt-4 flex flex-wrap gap-2">{Object.entries(data.summary).map(([key, value]) => <span key={key} className="rounded-full bg-surface px-3 py-1.5 text-xs font-bold">{attendanceStatusLabel(key)}: {value}</span>)}</div> : null}
       </section>
 
       <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="border-b p-4"><h2 className="font-bold text-brand-heading">{labels[type]}</h2><p className="mt-1 text-xs text-muted-foreground">{from} → {to} · {data?.items.length ?? 0} baris</p></header>
         {busy ? <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat laporan…</div> :
-          <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr>{visibleColumns.map(([key, label]) => <th key={key} className="p-3 whitespace-nowrap">{label}</th>)}</tr></thead><tbody className="divide-y">{(data?.items ?? []).map((row, index) => <tr key={String(row.id ?? row.employeeId ?? index) + ":" + String(row.workDate ?? index)}>{visibleColumns.map(([key]) => <td key={key} className="p-3 whitespace-nowrap">{renderValue(key, row[key])}</td>)}</tr>)}{data && data.items.length === 0 ? <tr><td colSpan={visibleColumns.length} className="p-8 text-center text-muted-foreground">Tidak ada data pada filter ini.</td></tr> : null}</tbody></table></div>}
+          <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr>{visibleColumns.map(([key, label]) => <th key={key} className="p-3 whitespace-nowrap">{label}</th>)}</tr></thead><tbody className="divide-y">{(data?.items ?? []).map((row, index) => <tr key={String(row.id ?? row.employeeId ?? index) + ":" + String(row.workDate ?? index)}>{visibleColumns.map(([key]) => <td key={key} className="p-3 whitespace-nowrap">{cell(key, row[key])}</td>)}</tr>)}{data && data.items.length === 0 ? <tr><td colSpan={visibleColumns.length} className="p-8 text-center text-muted-foreground">Tidak ada data pada filter ini.</td></tr> : null}</tbody></table></div>}
       </section>
     </AttendanceWorkforceShell>
   );

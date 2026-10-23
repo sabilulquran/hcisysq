@@ -524,7 +524,21 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1); paket lain belum dimulai.
+
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
+
+### 10.1 Catatan implementasi ATT-011-1 (2026-10-23)
+
+- Menu sidebar "Waktu & Kehadiran" menggantikan grup "Kehadiran" + "Perangkat ADMS". Section, tab, dan redirect didefinisikan sekali di `apps/web/src/lib/attendanceNavigation.ts`; permission per route di `apps/web/src/lib/authorization.ts` sama dengan guard API di manifest AUTH-011.
+- Kamus §3 ada di `apps/web/src/lib/attendanceLabels.ts`. Nilai yang tidak dikenal tampil sebagai kata netral ("Tidak diketahui"/"Lainnya"), tidak pernah sebagai kode.
+- Dihapus dari layar: versi hasil ("v3"/"live"), ID mesin, referensi sumber, ID roster hasil tukar shift, kolom "Versi jadwal", dan teks `source_summary` teknis di laporan sesi.
+- Ringkasan menampilkan kartu "Hari ini" dan "Perlu tindakan" (klarifikasi, bukti HP, lembur, tukar shift), masing-masing hanya bila akun dapat memuat datanya.
+- Laporan hanya memuat katalog filter (pegawai/unit, shift/lokasi, mesin) yang boleh dibaca akun; filter tanpa katalog disembunyikan (K-8).
+- Finalisasi tanggal pindah dari Laporan ke Pengaturan → Finalisasi ulang (`attendance.policy.manage`), perilaku API tidak berubah, sampai ATT-011-2 menggantinya dengan hitung ulang otomatis.
+- Lembur, Koreksi HC, dan filter Laporan memakai pencarian pegawai server-side (`GET /admin/employees?q=`), bukan 100 pegawai pertama (L-4). Form "Catat lembur atas nama pegawai" hanya tampil dengan `employees.manage`.
+- Belum termasuk (paket berikutnya): panel detail dan kartu mobile Kehadiran (ATT-011-3), planner Jadwal (ATT-011-5); Assignment/Roster lama masih menjadi tab Pola jadwal dan Jadwal per tanggal sampai ATT-011-5 diterima.
+- Tidak ada perubahan API, migration, atau permission.
 
 ## 11. Keputusan owner
 

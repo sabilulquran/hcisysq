@@ -31,7 +31,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
         expect(canAccessAdminPath(actor, path)).toBe(true);
       }
       expect(html).toContain('href="/admin/attendance/adms"');
-      expect(html).toContain("Manajemen ADMS");
+      expect(html).toContain("Mesin Fingerprint");
       expect(html).not.toContain('href="/admin/attendance/devices"');
       expect(html).not.toContain("Transaksi Lintas Mesin");
     }
@@ -67,20 +67,26 @@ describe("AUTH-011 backend-derived admin navigation", () => {
   it("exposes attendance workspace child routes and ADMS back office by explicit permissions", () => {
     const workforce = session("EMPLOYEE", workforcePermissions);
     for (const path of [
-      "/admin/attendance/workforce",
-      "/admin/attendance/workforce/locations",
-      "/admin/attendance/workforce/schedules",
-      "/admin/attendance/workforce/assignments",
-      "/admin/attendance/workforce/roster",
-      "/admin/attendance/workforce/clarifications",
-      "/admin/attendance/workforce/mobile",
-      "/admin/attendance/workforce/overtime",
-      "/admin/attendance/workforce/shift-swaps",
-      "/admin/attendance/workforce/reports",
+      "/admin/attendance",
+      "/admin/attendance/shifts",
+      "/admin/attendance/schedules",
+      "/admin/attendance/schedules/dates",
+      "/admin/attendance/schedules/swaps",
+      "/admin/attendance/daily",
+      "/admin/attendance/clarifications",
+      "/admin/attendance/mobile-evidence",
+      "/admin/attendance/reports",
+      "/admin/attendance/overtime",
+      "/admin/attendance/settings/locations",
+      "/admin/attendance/settings/recalculate",
     ]) {
       expect(canAccessAdminPath(workforce, path)).toBe(true);
     }
+    // Koreksi HC needs attendance.records.manage, which these permissions do not include.
+    expect(canAccessAdminPath(workforce, "/admin/attendance/corrections")).toBe(false);
     expect(canAccessAdminPath(workforce, "/admin/attendance/adms")).toBe(false);
+    // Pre-ATT-011 paths are redirects now, never screens of their own.
+    expect(canAccessAdminPath(workforce, "/admin/attendance/workforce/reports")).toBe(false);
 
     const deviceOperator = session("EMPLOYEE", ["attendance.devices.read"]);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);

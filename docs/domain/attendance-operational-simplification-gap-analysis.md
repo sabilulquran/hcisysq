@@ -127,4 +127,4 @@ Legenda dampak: **K** = kritis (hasil salah/menyesatkan), **T** = tinggi (banyak
 ## 5. Temuan di luar scope ATT-011
 
 - **K-5** bug filter Evidence Mobile — patch terpisah dengan test API.
-- File mati: `AdminAttendanceWorkforcePage.tsx` dan `AdminAttendanceReportsPage` (tidak di-route). Dibersihkan saat paket ATT-011-1, bukan refactor terpisah.
+- File mati: `AdminAttendanceWorkforcePage.tsx` dan `AdminAttendanceReportsPage` (tidak di-route). **Dihapus di ATT-011-1.**

@@ -8,6 +8,7 @@ import {
   type ParsedLocation,
 } from "@tanstack/react-router";
 
+import { legacyAttendanceRedirects } from "@/lib/attendanceNavigation";
 import { getCurrentSession, landingPath, loginSearch, type LoginSearch } from "@/lib/auth";
 import { canAccessAdminPath, canAccessBoard, canAccessEmployeeHcPath } from "@/lib/authorization";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
@@ -34,11 +35,13 @@ import { AdminAdmsUsersManagementPage } from "@/pages/AdminAdmsUsersManagementPa
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
+import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
+import { AdminAttendanceRecalculatePage } from "@/pages/AdminAttendanceRecalculatePage";
 import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
-import { AdminAttendanceWorkforceOverviewPage } from "@/pages/AdminAttendanceWorkforceOverviewPage";
+import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
@@ -289,83 +292,106 @@ const adminOrganizationRoute = createRoute({
   component: AdminOrganizationPage,
 });
 
+// ATT-011-1: "Waktu & Kehadiran" sections (docs/domain/attendance-operational-simplification-spec.md §3).
 const adminAttendanceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance"),
-  component: AdminAttendancePage,
+  component: AdminAttendanceSummaryPage,
 });
 
-const adminAttendanceWorkforceRoute = createRoute({
+const adminAttendanceShiftsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce"),
-  component: AdminAttendanceWorkforceOverviewPage,
-});
-
-const adminAttendanceLocationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/locations",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/locations"),
-  component: AdminAttendanceLocationsPage,
-});
-
-const adminAttendanceSchedulesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/schedules",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/schedules"),
+  path: "/admin/attendance/shifts",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/shifts"),
   component: AdminAttendanceSchedulesPage,
 });
 
-const adminAttendanceAssignmentsRoute = createRoute({
+const adminAttendanceSchedulePatternsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/assignments",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/assignments"),
+  path: "/admin/attendance/schedules",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules"),
   component: AdminAttendanceAssignmentsPage,
 });
 
-const adminAttendanceRosterRoute = createRoute({
+const adminAttendanceScheduleDatesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/roster",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/roster"),
+  path: "/admin/attendance/schedules/dates",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules/dates"),
   component: AdminAttendanceRosterPage,
+});
+
+const adminAttendanceShiftSwapsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/schedules/swaps",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules/swaps"),
+  component: AdminAttendanceShiftSwapsPage,
+});
+
+const adminAttendanceDailyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/daily",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/daily"),
+  component: AdminAttendanceDailyPage,
 });
 
 const adminAttendanceClarificationsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/clarifications",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/clarifications"),
+  path: "/admin/attendance/clarifications",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/clarifications"),
   component: AdminAttendanceClarificationsPage,
 });
 
 const adminAttendanceMobileRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/mobile",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/mobile"),
+  path: "/admin/attendance/mobile-evidence",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/mobile-evidence"),
   component: AdminAttendanceMobileEvidencePage,
 });
 
-
-const adminAttendanceOvertimeRoute = createRoute({
+const adminAttendanceCorrectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/overtime",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/overtime"),
-  component: AdminAttendanceOvertimePage,
-});
-
-const adminAttendanceShiftSwapsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/shift-swaps",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/shift-swaps"),
-  component: AdminAttendanceShiftSwapsPage,
+  path: "/admin/attendance/corrections",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/corrections"),
+  component: AdminAttendancePage,
 });
 
 const adminAttendanceReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/workforce/reports",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/workforce/reports"),
+  path: "/admin/attendance/reports",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/reports"),
   component: AdminAttendanceReportsV2Page,
 });
+
+const adminAttendanceOvertimeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/overtime",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/overtime"),
+  component: AdminAttendanceOvertimePage,
+});
+
+const adminAttendanceLocationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/settings/locations",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/locations"),
+  component: AdminAttendanceLocationsPage,
+});
+
+const adminAttendanceRecalculateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/settings/recalculate",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/recalculate"),
+  component: AdminAttendanceRecalculatePage,
+});
+
+// Routes before ATT-011 stay reachable for at least one release and forward to their new home.
+const adminAttendanceLegacyRoutes = Object.entries(legacyAttendanceRedirects).map(([path, target]) => createRoute({
+  getParentRoute: () => rootRoute,
+  path,
+  beforeLoad: () => {
+    throw redirect({ href: target, replace: true });
+  },
+}));
 
 const adminAdmsBackOfficeRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -563,16 +589,19 @@ const routeTree = rootRoute.addChildren([
   adminEmploymentConsistencyRoute,
   adminOrganizationRoute,
   adminAttendanceRoute,
-  adminAttendanceWorkforceRoute,
-  adminAttendanceLocationsRoute,
-  adminAttendanceSchedulesRoute,
-  adminAttendanceAssignmentsRoute,
-  adminAttendanceRosterRoute,
+  adminAttendanceShiftsRoute,
+  adminAttendanceSchedulePatternsRoute,
+  adminAttendanceScheduleDatesRoute,
+  adminAttendanceShiftSwapsRoute,
+  adminAttendanceDailyRoute,
   adminAttendanceClarificationsRoute,
   adminAttendanceMobileRoute,
-  adminAttendanceOvertimeRoute,
-  adminAttendanceShiftSwapsRoute,
+  adminAttendanceCorrectionsRoute,
   adminAttendanceReportsRoute,
+  adminAttendanceOvertimeRoute,
+  adminAttendanceLocationsRoute,
+  adminAttendanceRecalculateRoute,
+  ...adminAttendanceLegacyRoutes,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,
   adminAdmsUsersManagementRoute,

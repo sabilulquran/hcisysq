@@ -15,12 +15,12 @@ describe("admin module catalog", () => {
     expect(getAdminService("sites")?.featureIds).toContain("ORG-005");
     expect(getAdminService("mobile-attendance")?.featureIds).toContain("ATT-006");
     expect(getAdminService("mobile-attendance")?.stage).toBe("available");
-    expect(getAdminService("mobile-attendance")?.href).toBe("/admin/attendance/workforce/mobile");
+    expect(getAdminService("mobile-attendance")?.href).toBe("/admin/attendance/mobile-evidence");
     expect(getAdminService("mobile-attendance")?.details ?? []).not.toContain("Face recognition");
     expect(getAdminService("schedules")?.stage).toBe("available");
-    expect(getAdminService("schedules")?.href).toBe("/admin/attendance/workforce/schedules");
+    expect(getAdminService("schedules")?.href).toBe("/admin/attendance/schedules");
     expect(getAdminService("shift-exchange")?.stage).toBe("available");
-    expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/workforce/shift-swaps");
+    expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/schedules/swaps");
     expect(getAdminService("adms")?.stage).toBe("available");
     expect(getAdminService("adms")?.href).toBe("/admin/attendance/adms");
   });

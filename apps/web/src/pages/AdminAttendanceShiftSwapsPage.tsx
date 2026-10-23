@@ -77,7 +77,7 @@ export function AdminAttendanceShiftSwapsPage() {
       if (decision === "approve") {
         setNotice(
           result.roster
-            ? `Tukar shift disetujui. Roster minggu ${result.roster.weekStart} dipublish sebagai versi ${result.roster.version}.`
+            ? `Tukar shift disetujui. Jadwal minggu ${dateLabel(result.roster.weekStart)} sudah diperbarui.`
             : "Tukar shift disetujui.",
         );
       } else {
@@ -93,9 +93,9 @@ export function AdminAttendanceShiftSwapsPage() {
 
   return (
     <AttendanceWorkforceShell
-      section="shift-swaps"
-      title="Tukar Shift"
-      description="Keputusan final Human Capital setelah rekan kerja menyetujui pertukaran shift."
+      tab="swaps"
+      title="Tukar shift"
+      description="Keputusan akhir Human Capital setelah rekan kerja menyetujui pertukaran shift."
     >
       {error ? (
         <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
@@ -115,7 +115,7 @@ export function AdminAttendanceShiftSwapsPage() {
             <div>
               <h2 className="font-bold text-brand-heading">Antrean & riwayat</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Approval akan membuat roster version baru; roster historis tidak diubah.
+                Persetujuan memperbarui jadwal tanggal itu. Riwayat jadwal sebelumnya tetap tersimpan.
               </p>
             </div>
           </div>
@@ -153,7 +153,7 @@ export function AdminAttendanceShiftSwapsPage() {
 
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     <div className="rounded-2xl bg-surface p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Requester</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pengaju</p>
                       <p className="mt-1 font-bold text-brand-heading">{item.requesterName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.requesterEmployeeNumber} · {item.requesterScheduleName}
@@ -163,7 +163,7 @@ export function AdminAttendanceShiftSwapsPage() {
                       </p>
                     </div>
                     <div className="rounded-2xl bg-surface p-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Counterpart</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Rekan tukar</p>
                       <p className="mt-1 font-bold text-brand-heading">{item.counterpartName}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {item.counterpartEmployeeNumber} · {item.counterpartScheduleName}
@@ -174,17 +174,12 @@ export function AdminAttendanceShiftSwapsPage() {
                     </div>
                   </div>
 
-                  {item.note ? <p className="mt-3 text-sm">Catatan requester: {item.note}</p> : null}
+                  {item.note ? <p className="mt-3 text-sm">Catatan pengaju: {item.note}</p> : null}
                   {item.counterpartDecisionNote ? (
                     <p className="mt-1 text-xs text-muted-foreground">Catatan rekan: {item.counterpartDecisionNote}</p>
                   ) : null}
                   {item.hcDecisionNote ? (
                     <p className="mt-1 text-xs text-muted-foreground">Catatan HC: {item.hcDecisionNote}</p>
-                  ) : null}
-                  {item.publishedRosterId ? (
-                    <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                      published roster: {item.publishedRosterId}
-                    </p>
                   ) : null}
                 </div>
 

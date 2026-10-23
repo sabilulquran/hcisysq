@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
 import { AdminDeviceAccessNote, AdminNavigation } from "@/layouts/AdminShell";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
-import { AttendanceWorkforceNavigation } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { AttendanceSectionTabs } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
 import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import { getEmployeeService } from "@/lib/employeeServices";
@@ -72,7 +72,7 @@ describe("employee attendance discoverability", () => {
 describe("HC and device-operator navigation", () => {
   it("keeps implemented admin attendance modules out of Coming Soon", () => {
     expect(getAdminService("shift-exchange")?.stage).toBe("available");
-    expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/workforce/shift-swaps");
+    expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/schedules/swaps");
     expect(getAdminService("adms")?.stage).toBe("available");
     expect(getAdminService("adms")?.href).toBe("/admin/attendance/adms");
     expect(getAdminService("mobile-attendance")?.details ?? []).not.toContain("Face recognition");
@@ -124,7 +124,7 @@ describe("HC and device-operator navigation", () => {
   it("keeps available admin modules linked to operational GUI and permission-aware", () => {
     const shift = getAdminService("shift-exchange")!;
     const open = renderToStaticMarkup(<AdminServiceTile service={shift} canOpen />);
-    expect(open).toContain('href="/admin/attendance/workforce/shift-swaps"');
+    expect(open).toContain('href="/admin/attendance/schedules/swaps"');
     expect(open).toContain("Tersedia");
     expect(open).not.toContain("Belum tersedia");
 
@@ -144,11 +144,13 @@ describe("HC and device-operator navigation", () => {
   });
 
   it.each([false, true])("shows HC shift approval in compact=%s without granting ADMS", (compact) => {
-    const html = renderToStaticMarkup(<AdminNavigation active="attendance-shift-swaps" session={session(["attendance.shift_swap.manage"])} compact={compact} />);
-    expect(html).toContain('href="/admin/attendance/workforce/shift-swaps"');
-    // Sidebars hold navigation only; the ADMS note is shown in page content instead.
-    expect(html).not.toContain("ADMS sudah terpasang");
-    expect(renderToStaticMarkup(<AdminDeviceAccessNote session={session(["attendance.shift_swap.manage"])} />)).toContain("ADMS sudah terpasang");
+    const html = renderToStaticMarkup(<AdminNavigation active="attendance-schedules" session={session(["attendance.shift_swap.manage"])} compact={compact} />);
+    // ATT-011: the Jadwal entry opens the only tab this account can load.
+    expect(html).toContain('href="/admin/attendance/schedules/swaps"');
+    expect(html).not.toContain('href="/admin/attendance/schedules"');
+    // Sidebars hold navigation only; the device note is shown in page content instead.
+    expect(html).not.toContain("Mesin Fingerprint belum dapat dibuka");
+    expect(renderToStaticMarkup(<AdminDeviceAccessNote session={session(["attendance.shift_swap.manage"])} />)).toContain("Mesin Fingerprint belum dapat dibuka");
     expect(renderToStaticMarkup(<AdminDeviceAccessNote session={session(["attendance.devices.read"])} />)).toBe("");
     expect(html).not.toContain('href="/admin/attendance/devices"');
     expect(html).not.toContain('href="/admin/attendance/adms"');
@@ -156,18 +158,22 @@ describe("HC and device-operator navigation", () => {
   it("offers one ADMS management entry to a device reader", () => {
     const html = renderToStaticMarkup(<AdminNavigation active="attendance-adms" session={session(["attendance.devices.read"])} />);
     expect(html).toContain('href="/admin/attendance/adms"');
-    expect(html).toContain("Manajemen ADMS");
+    expect(html).toContain("Mesin Fingerprint");
     expect(html).not.toContain('href="/admin/attendance/devices"');
     expect(html).not.toContain('href="/admin/attendance/adms/transactions"');
-    expect(html).not.toContain('href="/admin/attendance/workforce/shift-swaps"');
+    expect(html).not.toContain('href="/admin/attendance/schedules/swaps"');
+    expect(html).not.toContain('href="/admin/attendance"');
   });
   it("wraps permitted workspace links and fails closed before session resolution", () => {
-    const unresolved = renderToStaticMarkup(<AttendanceWorkforceNavigation section="shift-swaps" session={null} />);
+    const unresolved = renderToStaticMarkup(<AttendanceSectionTabs tab="swaps" session={null} />);
     expect(unresolved).not.toContain("href=");
-    const html = renderToStaticMarkup(<AttendanceWorkforceNavigation section="shift-swaps" session={session(["attendance.shift_swap.manage"])} />);
+    // A single reachable tab needs no sub-navigation.
+    expect(renderToStaticMarkup(<AttendanceSectionTabs tab="swaps" session={session(["attendance.shift_swap.manage"])} />)).toBe("");
+    const html = renderToStaticMarkup(<AttendanceSectionTabs tab="swaps" session={session(["attendance.shift_swap.manage", "attendance.schedule.manage"])} />);
     expect(html).toContain("flex-wrap");
     expect(html).not.toContain("overflow-x-auto");
-    expect(html).toContain('href="/admin/attendance/workforce/shift-swaps"');
-    expect(html).not.toContain('href="/admin/attendance/workforce/locations"');
+    expect(html).toContain('href="/admin/attendance/schedules/swaps"');
+    expect(html).toContain('href="/admin/attendance/schedules/dates"');
+    expect(html).not.toContain('href="/admin/attendance/settings/locations"');
   });
 });

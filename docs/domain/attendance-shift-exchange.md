@@ -184,8 +184,10 @@ Employee dapat:
 Route:
 
 ```text
-/admin/attendance/workforce/shift-swaps
+/admin/attendance/schedules/swaps
 ```
+
+Sejak ATT-011-1 layar ini ada di Waktu & Kehadiran → Jadwal → Tukar shift; route lama `/admin/attendance/workforce/shift-swaps` dialihkan ke sana.
 
 HC dapat:
 

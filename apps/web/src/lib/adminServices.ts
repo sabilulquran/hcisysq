@@ -58,7 +58,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-003"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce/schedules",
+    href: "/admin/attendance/schedules",
   },
   {
     key: "mobile-attendance",
@@ -67,7 +67,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-006"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce/mobile",
+    href: "/admin/attendance/mobile-evidence",
     details: ["GPS", "Geotagging / geofence", "Foto kehadiran"],
   },
   {
@@ -77,7 +77,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-007"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce",
+    href: "/admin/attendance/daily",
   },
   {
     key: "shift-exchange",
@@ -86,7 +86,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-008"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/workforce/shift-swaps",
+    href: "/admin/attendance/schedules/swaps",
   },
   {
     key: "adms",

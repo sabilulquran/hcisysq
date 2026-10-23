@@ -181,9 +181,10 @@ Pegawai
 Organisasi
   - Struktur Organisasi
 
-Kehadiran
-  - Rekaman Kehadiran
+Waktu & Kehadiran (ATT-011-1)
+  - Ringkasan, Shift, Jadwal, Kehadiran, Lembur
   - Mesin Fingerprint
+  - Pengaturan
 
 Cuti
   - Kebijakan Cuti

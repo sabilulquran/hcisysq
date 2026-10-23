@@ -7,11 +7,20 @@ import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
+import { resolveAuthorizationContext } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
 } from "./domain.js";
 import { OrganizationDraftService } from "./draft-service.js";
+import {
+  buildOrganizationPeopleView,
+  computeOrganizationReadiness,
+  explainPerson,
+  RequestScopedEligibilityValidator,
+  type OrganizationPersonEmployee,
+  type OrganizationPersonRow,
+} from "./read-model.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
@@ -242,6 +251,312 @@ export async function registerOrganizationAdminRoutes(
     return true;
   }
 
+  /**
+   * ORG-008-2 read model. One snapshot, one employee query, one resolver, one eligibility cache.
+   * Nothing here writes: not a snapshot row, not a rollout row, not an approval snapshot.
+   */
+  async function peopleContext(input: {
+    asOf?: string | undefined;
+    draftId?: string | undefined;
+    includeLegacy: boolean;
+  }) {
+    const asOf = input.asOf ?? jakartaBusinessDate();
+    const snapshot = input.draftId
+      ? await repository.loadChangeSetSnapshot(input.draftId)
+      : await repository.loadEffectiveSnapshot(asOf);
+    if (input.draftId && !snapshot) return null;
+    // Only the fields the screens show: number, name, unit, and the legacy manager/approver pair.
+    // No identity number, address, salary, or document content is read here.
+    const employees = await pool.query<OrganizationPersonEmployee>(
+      `SELECT e.id,
+              e.employee_number AS "employeeNumber",
+              e.full_name AS "fullName",
+              unit.id AS "legacyUnitId",
+              unit.name AS "legacyUnitName",
+              e.direct_manager_employee_id AS "legacyDirectManagerEmployeeId",
+              manager.full_name AS "legacyDirectManagerName",
+              unit.leave_approver_employee_id AS "legacyUnitApproverEmployeeId",
+              approver.full_name AS "legacyUnitApproverName"
+       FROM employees e
+       LEFT JOIN organizational_units unit ON unit.id = e.organizational_unit_id
+       LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
+       LEFT JOIN employees approver ON approver.id = unit.leave_approver_employee_id
+       WHERE e.status = 'active'
+       ORDER BY e.full_name, e.employee_number`,
+    );
+    const eligibility = new RequestScopedEligibilityValidator(repository);
+    const rows = await buildOrganizationPeopleView({
+      snapshot,
+      employees: employees.rows,
+      eligibility,
+      asOf,
+      includeLegacy: input.includeLegacy,
+    });
+    return { asOf, snapshot, rows, eligibility };
+  }
+
+  /** A unit and everything under it, so filtering by unit includes its sub-units. */
+  function nodeWithDescendants(
+    snapshot: { nodes: Array<{ stableKey: string; parentNodeKey: string | null }> } | null,
+    nodeKey: string,
+  ): Set<string> {
+    const keys = new Set([nodeKey]);
+    if (!snapshot) return keys;
+    let added = true;
+    while (added) {
+      added = false;
+      for (const node of snapshot.nodes) {
+        if (node.parentNodeKey && keys.has(node.parentNodeKey) && !keys.has(node.stableKey)) {
+          keys.add(node.stableKey);
+          added = true;
+        }
+      }
+    }
+    return keys;
+  }
+
+  function matchesIssueFilter(row: OrganizationPersonRow, issue: string): boolean {
+    if (issue === "ANY") return row.issues.length > 0;
+    if (issue === "NO_UNIT") return row.unit === null && row.position === null;
+    if (issue === "UNRESOLVED_MANAGER") return row.directManager === null;
+    if (issue === "DIFFERENT_FROM_LEGACY") return row.legacy?.comparison === "DIFFERENT";
+    return row.issues.some((item) => item.code === issue);
+  }
+
+  /**
+   * ORG-008-2 approval check. Workflows the operator can pick, mapped to what the resolver needs.
+   *
+   * Annual and unpaid leave use the capability Leave already requires. The overtime approver
+   * capability is set by ATT-011-6b and is not decided yet, so overtime resolves on the structural
+   * line without demanding a capability and is returned marked as a preview (spec 4.6, gap X-5).
+   * There is no second resolver here: this is the one approvals use.
+   */
+  const PREVIEW_WORKFLOWS = {
+    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
+    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
+    OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, preview: true },
+  } as const;
+
+  async function resolutionPreview(input: {
+    employeeId: string;
+    workflow: keyof typeof PREVIEW_WORKFLOWS;
+    effectiveDate: string;
+    draftId?: string | undefined;
+  }) {
+    const plan = PREVIEW_WORKFLOWS[input.workflow];
+    const snapshot = input.draftId
+      ? await repository.loadChangeSetSnapshot(input.draftId)
+      : await repository.loadEffectiveSnapshot(input.effectiveDate);
+    if (!snapshot) return { notFound: true } as const;
+
+    const eligibility = new RequestScopedEligibilityValidator(repository);
+    const resolver = new OrganizationAuthorityResolver(
+      { loadEffectiveSnapshot: async () => snapshot },
+      { eligibilityValidator: eligibility },
+    );
+    const resolutionInputs = {
+      requesterEmployeeId: input.employeeId,
+      effectiveDate: input.effectiveDate,
+      workflowKey: plan.workflowKey,
+      ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+    };
+
+    const warnings: Array<{ code: string; details?: Record<string, unknown> }> = [];
+    if (plan.preview) warnings.push({ code: "OVERTIME_CAPABILITY_PENDING" });
+
+    let line;
+    try {
+      line = await resolver.resolveLineAuthorities(resolutionInputs);
+    } catch (error) {
+      const item = error as { code?: string; message?: string; details?: Record<string, unknown> };
+      return {
+        failed: {
+          code: item.code ?? "ORGANIZATION_RESOLUTION_FAILED",
+          message: item.message ?? "Authority cannot be resolved.",
+          ...(item.details ? { details: item.details } : {}),
+        },
+        warnings,
+      } as const;
+    }
+
+    // ORG-008-2 fills what the old preview always left null: who is told after the final approval.
+    // It is only acted on under STRUCTURE, so the mode it applies in travels with it.
+    let oversight = null;
+    const finalApprover = line.authorities[line.authorities.length - 1];
+    if (finalApprover) {
+      try {
+        oversight = await resolver.resolveOversightAbove({
+          approverEmployeeId: finalApprover.employeeId,
+          effectiveDate: input.effectiveDate,
+          workflowKey: plan.workflowKey,
+          ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+        });
+      } catch (error) {
+        warnings.push({
+          code: (error as { code?: string }).code ?? "OVERSIGHT_UNRESOLVED",
+        });
+      }
+    }
+
+    const employeeIds = [...new Set([
+      input.employeeId,
+      ...line.authorities.map((item) => item.employeeId),
+      ...(oversight ? [oversight.employeeId] : []),
+    ])];
+    const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
+      `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
+       FROM employees WHERE id = ANY($1::uuid[])`,
+      [employeeIds],
+    );
+    const byId = new Map(employees.rows.map((item) => [item.id, item]));
+    const titleOf = (positionKey: string | null) =>
+      positionKey ? snapshot.positions.find((item) => item.stableKey === positionKey)?.title ?? null : null;
+
+    return {
+      result: {
+        employee: byId.get(input.employeeId) ?? { id: input.employeeId, fullName: "" },
+        effectiveDate: line.effectiveDate,
+        workflow: input.workflow,
+        workflowKey: plan.workflowKey,
+        changeSetId: snapshot.changeSet.id,
+        preview: plan.preview,
+        governanceApplied: line.governanceApplied,
+        steps: line.authorities.map((item) => ({
+          employeeId: item.employeeId,
+          employeeName: byId.get(item.employeeId)?.fullName ?? "",
+          positionTitle: titleOf(item.positionKey),
+          authorityType: (item.sources ?? [item.source]).join(" + "),
+          source: item.incumbentKind,
+        })),
+        oversight: oversight
+          ? {
+              employeeId: oversight.employeeId,
+              employeeName: byId.get(oversight.employeeId)?.fullName ?? "",
+              positionTitle: titleOf(oversight.positionKey),
+              appliesInMode: "STRUCTURE",
+            }
+          : null,
+        warnings,
+      },
+    } as const;
+  }
+
+  app.post("/admin/organization/resolution-preview", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const body = z.object({
+      employeeId: uuid,
+      workflow: z.enum(["LEAVE_ANNUAL", "LEAVE_UNPAID", "OVERTIME"]).default("LEAVE_ANNUAL"),
+      date: date.optional(),
+      draftId: uuid.optional(),
+    }).safeParse(request.body);
+    if (!body.success) return invalid(reply, "INVALID_RESOLUTION_PREVIEW", "Invalid resolution preview input.");
+    const outcome = await resolutionPreview({
+      employeeId: body.data.employeeId,
+      workflow: body.data.workflow,
+      effectiveDate: body.data.date ?? jakartaBusinessDate(),
+      draftId: body.data.draftId,
+    });
+    if ("notFound" in outcome) {
+      return reply.status(404).send({
+        code: body.data.draftId ? "ORGANIZATION_DRAFT_NOT_FOUND" : "ORGANIZATION_STRUCTURE_NOT_FOUND",
+        message: "No organization structure is effective for that date.",
+      });
+    }
+    if ("failed" in outcome) {
+      return reply.status(409).send({ ...outcome.failed, warnings: outcome.warnings });
+    }
+    return reply.send(outcome.result);
+  });
+
+  app.get("/admin/organization/capabilities", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    // ORG-008-2: the screen hides what the API would refuse instead of offering a button that ends
+    // in 403. Every endpoint still authorizes its own call; this only drives what is shown.
+    const context = await resolveAuthorizationContext(pool, principal);
+    const can = (permission: string) => context.organizationPermissions.includes(permission);
+    return reply.send({
+      viewStructure: can("organization.manage"),
+      composeChange: can("organization.manage"),
+      discardChange: can("organization.manage"),
+      assignIncumbents: can("approvals.policy.manage"),
+      manageAuthority: can("approvals.policy.manage"),
+      publish: can("approvals.policy.manage"),
+      manageRollout: can("approvals.policy.manage"),
+    });
+  });
+
+  app.get("/admin/organization/people", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      asOf: date.optional(),
+      draftId: uuid.optional(),
+      nodeKey: uuid.optional(),
+      issue: z.string().trim().min(1).max(60).optional(),
+      q: z.string().trim().max(120).optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).default(50),
+      withLegacy: z.enum(["true", "false"]).default("false"),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_PEOPLE_QUERY", "Invalid people query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf,
+      draftId: query.data.draftId,
+      includeLegacy: query.data.withLegacy === "true",
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+
+    let rows = context.rows;
+    if (query.data.nodeKey) {
+      const keys = nodeWithDescendants(context.snapshot, query.data.nodeKey);
+      rows = rows.filter((row) => row.unit !== null && keys.has(row.unit.nodeKey));
+    }
+    const issue = query.data.issue;
+    if (issue) rows = rows.filter((row) => matchesIssueFilter(row, issue));
+    if (query.data.q) {
+      const needle = query.data.q.toLowerCase();
+      rows = rows.filter((row) =>
+        row.fullName.toLowerCase().includes(needle) || row.employeeNumber.toLowerCase().includes(needle));
+    }
+    const start = (query.data.page - 1) * query.data.pageSize;
+    return reply.send({
+      asOf: context.asOf,
+      changeSetId: context.snapshot?.changeSet.id ?? null,
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+      total: rows.length,
+      items: rows.slice(start, start + query.data.pageSize),
+    });
+  });
+
+  app.get("/admin/organization/readiness", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({ asOf: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_READINESS_QUERY", "Invalid readiness query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf, draftId: query.data.draftId, includeLegacy: true,
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    return reply.send(computeOrganizationReadiness({
+      rows: context.rows, snapshot: context.snapshot, asOf: context.asOf,
+    }));
+  });
+
+  app.get("/admin/organization/explanation", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      employeeId: uuid, asOf: date.optional(), draftId: uuid.optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_EXPLANATION_QUERY", "Invalid explanation query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf, draftId: query.data.draftId, includeLegacy: true,
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    const row = context.rows.find((item) => item.employeeId === query.data.employeeId);
+    if (!row) return reply.status(404).send({ code: "ORGANIZATION_EMPLOYEE_NOT_FOUND" });
+    // Codes and parameters only; the sentences are composed in the web app (ORG-008-1 vocabulary).
+    return reply.send({ asOf: context.asOf, employeeId: row.employeeId, person: row, steps: explainPerson(row) });
+  });
+
   app.get("/admin/organization/designer", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const query = z.object({ effectiveDate: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
@@ -354,13 +669,31 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/designer/employees", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
+    // ORG-008-2 adds search and a status filter (gaps P-1, P-4). The default stays every employee so
+    // a seat already held by someone no longer active can still show that person's name; the new
+    // screens ask for status=active.
+    const query = z.object({
+      q: z.string().trim().max(120).optional(),
+      status: z.enum(["active", "all"]).default("all"),
+      limit: z.coerce.number().int().min(1).max(1000).optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_EMPLOYEE_QUERY", "Invalid employee query.");
     const result = await pool.query(
       `SELECT e.id, e.employee_number AS "employeeNumber", e.full_name AS "fullName",
         e.status, u.name AS "unitName", p.name AS "positionName"
        FROM employees e
        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
        LEFT JOIN positions p ON p.id = e.position_id
-       ORDER BY (e.status = 'active') DESC, e.full_name`,
+       WHERE ($1::text IS NULL OR e.status = $1::text)
+         AND ($2::text IS NULL OR e.full_name ILIKE '%' || $2::text || '%'
+              OR e.employee_number ILIKE '%' || $2::text || '%')
+       ORDER BY (e.status = 'active') DESC, e.full_name
+       LIMIT $3::int`,
+      [
+        query.data.status === "active" ? "active" : null,
+        query.data.q && query.data.q.length > 0 ? query.data.q : null,
+        query.data.limit ?? 5000,
+      ],
     );
     return reply.send({ items: result.rows });
   });
@@ -728,12 +1061,34 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/rollout", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
-    const result = await pool.query(
+    const latest = await pool.query(
       `SELECT mode, workflow_key AS "workflowKey", node_key AS "organizationalNodeKey",
         effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason, updated_at AS "updatedAt"
        FROM organization_rollout_settings ORDER BY created_at DESC LIMIT 1`,
     );
-    return reply.send(result.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null });
+    // ORG-008-2: the single newest row cannot say which mode applies, because the resolver picks the
+    // row effective for that workflow and that unit. So the effective rows travel with the answer,
+    // and the count lets a screen state LEGACY as a fact exactly when there is no configuration at
+    // all. The top-level fields are unchanged for clients already reading them.
+    const today = jakartaBusinessDate();
+    const effective = await pool.query(
+      `SELECT workflow_key AS "workflowKey", node_key AS "organizationalNodeKey", mode,
+        effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
+       FROM organization_rollout_settings
+       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)
+       ORDER BY workflow_key, node_key NULLS FIRST, effective_from DESC`,
+      [today],
+    );
+    const total = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM organization_rollout_settings",
+    );
+    const configuredRowCount = Number(total.rows[0]?.count ?? "0");
+    return reply.send({
+      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null }),
+      asOf: today,
+      configuredRowCount,
+      settings: effective.rows,
+    });
   });
 
   app.patch("/admin/organization/rollout", async (request, reply) => {

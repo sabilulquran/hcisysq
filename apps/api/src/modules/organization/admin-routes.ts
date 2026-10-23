@@ -24,6 +24,7 @@ import {
   type OrganizationItemUse,
 } from "./corrections.js";
 import { OrganizationDraftService } from "./draft-service.js";
+import { replayJournal } from "./replay.js";
 import {
   buildOrganizationPeopleView,
   computeOrganizationReadiness,
@@ -1249,6 +1250,110 @@ export async function registerOrganizationAdminRoutes(
       vacancyPolicy: updated.vacancyPolicy,
       effectiveFrom: updated.effectiveFrom, effectiveTo: updated.effectiveTo,
     });
+  });
+
+  /**
+   * ORG-008-4c: rebuild a change set from the newest published structure, or without one of its
+   * lines, by replaying the journal.
+   *
+   * It previews by default. Only `apply: true` writes, and even then a line that no longer fits is
+   * reported rather than resolved: the operator sees exactly what was dropped and can redo it.
+   */
+  async function replayDraft(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    input: { draftId: string; apply: boolean; skipSeq?: number | undefined; auditAction: string },
+    principal: AuthPrincipal,
+  ) {
+    const preview = !input.apply;
+    if (preview) {
+      const snapshot = await repository.loadChangeSetSnapshot(input.draftId);
+      if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+      if (snapshot.changeSet.status !== "DRAFT") {
+        return reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_EDITABLE",
+          message: "Only a change set that is still being composed can be rebuilt.",
+        });
+      }
+      const base = await repository.loadEffectiveSnapshot(snapshot.changeSet.effectiveOn);
+      const entries = await repository.loadJournalForReplay(input.draftId);
+      const result = replayJournal({
+        changeSet: snapshot.changeSet, base, entries, skipSeq: input.skipSeq,
+      });
+      return reply.send({
+        applied: false,
+        baseChangeSetId: base?.changeSet.id ?? null,
+        kept: result.applied.map((entry) => ({ seq: entry.seq, commandType: entry.commandType, summary: entry.summary })),
+        skipped: result.skipped,
+      });
+    }
+
+    const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(input.draftId, reply, transaction.repository);
+      if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
+      const base = await transaction.repository.loadEffectiveSnapshot(snapshot.changeSet.effectiveOn);
+      const entries = await transaction.repository.loadJournalForReplay(input.draftId);
+      const result = replayJournal({
+        changeSet: snapshot.changeSet, base, entries, skipSeq: input.skipSeq,
+      });
+
+      await transaction.repository.replaceDraftSnapshot(result.snapshot);
+      await transaction.repository.setBaseChangeSet(input.draftId, base?.changeSet.id ?? null);
+      await transaction.repository.replaceJournal(
+        input.draftId,
+        result.applied.map((entry) => ({
+          seq: entry.seq, commandType: entry.commandType, payload: entry.payload, summary: entry.summary,
+        })),
+        principal.id,
+      );
+      for (const event of result.events) {
+        await transaction.audit(event.action, event.entityType, event.entityId, snapshot.changeSet.id, event.payload);
+      }
+      await transaction.audit(input.auditAction, "organization_change_set", input.draftId, input.draftId, {
+        baseChangeSetId: base?.changeSet.id ?? null,
+        kept: result.applied.length,
+        skipped: result.skipped.map((item) => ({ seq: item.seq, code: item.code })),
+        ...(input.skipSeq === undefined ? {} : { undoneSeq: input.skipSeq }),
+      });
+      return {
+        applied: true,
+        baseChangeSetId: base?.changeSet.id ?? null,
+        kept: result.applied.map((entry) => ({ seq: entry.seq, commandType: entry.commandType, summary: entry.summary })),
+        skipped: result.skipped,
+      };
+    });
+    if (!outcome) return;
+    return reply.send(outcome);
+  }
+
+  app.post("/admin/organization/designer/drafts/:draftId/rebase", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    const body = z.object({ apply: z.boolean().default(false) }).safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid rebase request.");
+    return replayDraft(request, reply, {
+      draftId: params.data.draftId,
+      apply: body.data.apply,
+      auditAction: "organization.draft.rebased",
+    }, principal);
+  });
+
+  app.post("/admin/organization/designer/drafts/:draftId/journal/:seq/undo", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = z.object({ draftId: uuid, seq: z.coerce.number().int().min(1) }).safeParse(request.params);
+    const body = z.object({ apply: z.boolean().default(false) }).safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "INVALID_JOURNAL_ENTRY", "Invalid undo request.");
+    const entries = await repository.loadJournalForReplay(params.data.draftId);
+    if (!entries.some((entry) => entry.seq === params.data.seq)) {
+      return reply.status(404).send({ code: "ORGANIZATION_JOURNAL_ENTRY_NOT_FOUND" });
+    }
+    return replayDraft(request, reply, {
+      draftId: params.data.draftId,
+      apply: body.data.apply,
+      skipSeq: params.data.seq,
+      auditAction: "organization.draft.journal_undone",
+    }, principal);
   });
 
   app.get("/admin/organization/designer/drafts/:draftId/journal", async (request, reply) => {

@@ -33,6 +33,15 @@ export class OrganizationCommandError extends Error {
   }
 }
 
+/**
+ * ORG-008-4c: the stable keys a command created when it was first applied. Replaying a journal reuses
+ * them so commands that referred to those keys still match.
+ */
+export interface OrganizationCommandKeys {
+  nodeKey?: string | undefined;
+  positionKey?: string | undefined;
+}
+
 export interface OrganizationCommandAudit {
   action: string;
   entityType: string;
@@ -180,11 +189,14 @@ function applyAddUnit(
   command: Extract<OrganizationCommand, { type: "ADD_UNIT" }>,
   effectiveOn: string,
   events: OrganizationCommandAudit[],
+  reuseKeys?: OrganizationCommandKeys,
 ): Record<string, unknown> {
   if (command.parentNodeKey) requireNode(snapshot, command.parentNodeKey);
   const node = {
     id: randomUUID(),
-    stableKey: randomUUID(),
+    // ORG-008-4c: on replay the keys this command minted the first time are reused, so a later
+    // command that referred to them still finds them. A fresh application mints new ones.
+    stableKey: reuseKeys?.nodeKey ?? randomUUID(),
     name: command.name.trim(),
     nodeType: command.nodeType.trim(),
     parentNodeKey: command.parentNodeKey,
@@ -207,7 +219,7 @@ function applyAddUnit(
 
   const position = {
     id: randomUUID(),
-    stableKey: randomUUID(),
+    stableKey: reuseKeys?.positionKey ?? randomUUID(),
     nodeKey: node.stableKey,
     title: command.leader.title.trim(),
     parentPositionKey: null,
@@ -549,6 +561,7 @@ function applySetOverride(
 export function applyOrganizationCommand(
   snapshot: OrganizationSnapshot,
   command: OrganizationCommand,
+  reuseKeys?: OrganizationCommandKeys,
 ): OrganizationCommandResult {
   const effectiveOn = snapshot.changeSet.effectiveOn;
   const events: OrganizationCommandAudit[] = [];
@@ -556,7 +569,7 @@ export function applyOrganizationCommand(
 
   switch (command.type) {
     case "ADD_UNIT":
-      summary = applyAddUnit(snapshot, command, effectiveOn, events);
+      summary = applyAddUnit(snapshot, command, effectiveOn, events, reuseKeys);
       break;
     case "PLACE_EMPLOYEES":
       summary = applyPlaceEmployees(snapshot, command, effectiveOn, events);

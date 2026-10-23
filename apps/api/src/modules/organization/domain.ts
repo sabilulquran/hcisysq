@@ -253,8 +253,22 @@ export class OrganizationDraftError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    /** Item identifiers the caller turns into an operator sentence; never employee-sensitive data. */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "OrganizationDraftError";
   }
+}
+
+/**
+ * ORG-008-3a: a published change set that the draft cannot contain, because it was published after
+ * the draft cloned its base and takes effect no later than the draft does. Publishing the draft would
+ * replace that content with the older snapshot it was built from.
+ */
+export interface OrganizationStaleBaseConflict {
+  changeSetId: string;
+  name: string;
+  effectiveOn: string;
+  publishedAt: string;
 }

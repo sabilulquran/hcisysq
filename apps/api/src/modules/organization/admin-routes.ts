@@ -217,6 +217,7 @@ export async function registerOrganizationAdminRoutes(
     if (!snapshot) {
       return reply.send({
         viewDate,
+        staleBase: null,
         mode: viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT",
         draft: null,
         nodes: [], positions: [], memberships: [], assignments: [], bindings: [], reportingOverrides: [],
@@ -259,8 +260,14 @@ export async function registerOrganizationAdminRoutes(
       assignmentType: item.kind,
       isPrimaryStructural: item.isPrimaryStructural ?? false,
     }));
+    // ORG-008-3a: only for a change set the operator opened by id; the plain by-date view keeps its
+    // single query. The marker lets the screen warn before publish instead of only at the 409.
+    const staleBase = query.data.draftId
+      ? await draftService.findStaleBaseConflict(snapshot.changeSet)
+      : null;
     return reply.send({
       viewDate,
+      staleBase,
       mode: snapshot.changeSet.status === "PUBLISHED"
         ? viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT"
         : "DRAFT",
@@ -576,6 +583,17 @@ export async function registerOrganizationAdminRoutes(
       if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
       if (snapshot.changeSet.status !== "VALIDATED") {
         await reply.status(409).send({ code: "ORGANIZATION_DRAFT_NOT_VALIDATED", message: "Validate the draft before publishing." });
+        return null;
+      }
+      // ORG-008-3a: refuse a draft whose base another publication has already replaced, so publishing
+      // cannot silently drop that publication's content on the draft's effective date.
+      const stale = await transaction.draftService.findStaleBaseConflict(snapshot.changeSet);
+      if (stale) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_BASE_STALE",
+          message: "Structure was changed by another publication after this draft was created.",
+          details: stale,
+        });
         return null;
       }
       await transaction.draftService.publish(snapshot.changeSet.id, principal.id);

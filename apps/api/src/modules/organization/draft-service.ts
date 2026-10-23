@@ -1,6 +1,8 @@
 import type {
+  OrganizationChangeSet,
   OrganizationImpactPreview,
   OrganizationSnapshot,
+  OrganizationStaleBaseConflict,
   OrganizationValidationIssue,
   OrganizationValidationReport,
 } from "./domain.js";
@@ -103,6 +105,44 @@ export class OrganizationDraftService {
     };
   }
 
+  /**
+   * ORG-008-3a stale-base guard.
+   *
+   * A change set stores a complete snapshot, and `loadEffectiveSnapshot` picks one by
+   * `effective_on DESC, published_at DESC`. A draft clones its base once, when it is created, and is
+   * never refreshed. So a change set published after that clone, taking effect no later than the
+   * draft, is absent from the draft's snapshot and would be replaced by it on its effective date —
+   * silently, because nothing today compares the two.
+   *
+   * The rule, finalized here and recorded in the ORG-008 spec: another PUBLISHED change set that is
+   * not this one's base, whose `publishedAt` is later than this one's `createdAt`, and whose
+   * `effectiveOn` is on or before this one's. `effectiveOn` is compared with `<=` and not `<`,
+   * because on an equal effective date the second ordering key `published_at DESC` still makes the
+   * later publication win, so the earlier one is shadowed just the same.
+   *
+   * Returns the most recently published conflict, or null when the base is still current. This is a
+   * read-only comparison: it does not touch snapshots, the resolver, effective dating, or rollout.
+   */
+  async findStaleBaseConflict(changeSet: OrganizationChangeSet): Promise<OrganizationStaleBaseConflict | null> {
+    const others = await this.repository.listChangeSets();
+    const conflicts = others.filter((candidate): candidate is OrganizationChangeSet & { publishedAt: string } =>
+      candidate.status === "PUBLISHED"
+      && candidate.id !== changeSet.id
+      && candidate.id !== changeSet.baseChangeSetId
+      && candidate.publishedAt !== null
+      && candidate.publishedAt > changeSet.createdAt
+      && candidate.effectiveOn <= changeSet.effectiveOn);
+    if (conflicts.length === 0) return null;
+    const latest = conflicts.reduce((newest, candidate) =>
+      candidate.publishedAt > newest.publishedAt ? candidate : newest);
+    return {
+      changeSetId: latest.id,
+      name: latest.name,
+      effectiveOn: latest.effectiveOn,
+      publishedAt: latest.publishedAt,
+    };
+  }
+
   async publish(changeSetId: string, actorAccountId: string): Promise<void> {
     const snapshot = await this.repository.loadChangeSetSnapshot(changeSetId);
     if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
@@ -110,6 +150,14 @@ export class OrganizationDraftService {
       throw new OrganizationDraftError(
         "CHANGE_SET_NOT_VALIDATED",
         "Organization change set must pass validation before publish.",
+      );
+    }
+    const stale = await this.findStaleBaseConflict(snapshot.changeSet);
+    if (stale) {
+      throw new OrganizationDraftError(
+        "CHANGE_SET_BASE_STALE",
+        "Organization change set was built from a base that another publication has already replaced.",
+        { ...stale },
       );
     }
     await this.repository.publishValidated(changeSetId, actorAccountId);

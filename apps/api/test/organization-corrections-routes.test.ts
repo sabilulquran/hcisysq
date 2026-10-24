@@ -234,10 +234,18 @@ describe("ORG-008-4b correcting authority inside a change set (gap W-1)", () => 
     expect(response.json()).toMatchObject({ code: "ORGANIZATION_BINDING_PERIOD_INVALID" });
   });
 
-  it("needs the approval policy permission, like every other authority write", async () => {
+  it("lets an HC admin correct authority inside a change set (ORG-008-8, decision O-1)", async () => {
     const { response } = await call("DELETE", bindingUrl, {
       bindings: [draftBinding],
       permissions: ["organization.manage"],
+    });
+    expect(response.statusCode).toBe(204);
+  });
+
+  it("refuses a session without organization.manage", async () => {
+    const { response } = await call("DELETE", bindingUrl, {
+      bindings: [draftBinding],
+      permissions: ["approvals.policy.manage"],
     });
     expect(response.statusCode).toBe(403);
   });

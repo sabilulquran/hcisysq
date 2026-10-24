@@ -8,6 +8,7 @@ import {
   FoldVertical,
   Plus,
   Search,
+  Sparkles,
   UserCheck,
   UsersRound,
   ZoomIn,
@@ -407,6 +408,7 @@ export function OrganizationChart({
   onSelect,
   canEdit,
   onStart,
+  onSeedFromLegacy,
 }: {
   nodes: OrganizationNode[];
   positions: OrganizationPosition[];
@@ -414,6 +416,8 @@ export function OrganizationChart({
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   canEdit: boolean;
   onStart: () => void;
+  /** ORG-008-7 (O-3): offered only when the session may also write incumbents and authority. */
+  onSeedFromLegacy?: (() => void) | undefined;
 }) {
   const [query, setQuery] = useState("");
   const [focusNodeKey, setFocusNodeKey] = useState("");
@@ -453,16 +457,35 @@ export function OrganizationChart({
           </span>
           <h2 className="mt-5 text-xl font-bold text-brand-heading">Belum ada struktur</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Mulai dari unit paling atas, lalu tambahkan unit, jabatan, dan anggota secara bertahap.
+            {onSeedFromLegacy
+              ? "Mulai dari unit, penempatan, dan atasan yang sudah tercatat di HCIS, lalu tinjau; atau susun sendiri dari unit paling atas."
+              : "Mulai dari unit paling atas, lalu tambahkan unit, jabatan, dan anggota secara bertahap."}
           </p>
-          <button
-            type="button"
-            onClick={onStart}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-sm hover:bg-brand-primary-deep"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            {canEdit ? "Tambah unit pertama" : "Mulai perubahan struktur"}
-          </button>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            {onSeedFromLegacy ? (
+              <button
+                type="button"
+                onClick={onSeedFromLegacy}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-sm hover:bg-brand-primary-deep"
+              >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                Mulai dari data yang sudah ada
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onStart}
+              className={cn(
+                "inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold",
+                onSeedFromLegacy
+                  ? "border border-border bg-surface-raised hover:bg-muted"
+                  : "bg-brand-primary text-brand-foreground shadow-sm hover:bg-brand-primary-deep",
+              )}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {onSeedFromLegacy ? "Mulai dari kosong" : canEdit ? "Tambah unit pertama" : "Mulai perubahan struktur"}
+            </button>
+          </div>
         </div>
       </div>
     );

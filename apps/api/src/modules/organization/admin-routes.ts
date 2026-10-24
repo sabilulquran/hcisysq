@@ -7,11 +7,25 @@ import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
+import { resolveAuthorizationContext } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
 } from "./domain.js";
+import {
+  applyOrganizationCommand,
+  OrganizationCommandError,
+  type OrganizationCommand,
+} from "./commands.js";
 import { OrganizationDraftService } from "./draft-service.js";
+import {
+  buildOrganizationPeopleView,
+  computeOrganizationReadiness,
+  explainPerson,
+  RequestScopedEligibilityValidator,
+  type OrganizationPersonEmployee,
+  type OrganizationPersonRow,
+} from "./read-model.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
@@ -203,6 +217,351 @@ export async function registerOrganizationAdminRoutes(
     return snapshot;
   }
 
+  /**
+   * ORG-008-3b concurrency guard (If-Match).
+   *
+   * The header carries the draft revision the operator last saw. When it is present and no longer
+   * matches, the mutation is refused with 409 ORGANIZATION_DRAFT_CHANGED instead of overwriting the
+   * other person's work. The revision is bumped in the same transaction as the mutation.
+   *
+   * A request without the header still proceeds and still bumps the revision. Rejecting those would
+   * lock out any client that has not been updated yet; the Perubahan screen sends the header, and
+   * making it mandatory is a separate, deliberate step once no client is left without it.
+   */
+  async function claimDraftRevision(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    snapshot: { changeSet: { id: string; revision: number } },
+    activeRepository: PostgresOrganizationRepository,
+  ): Promise<boolean> {
+    const header = request.headers["if-match"];
+    const raw = Array.isArray(header) ? header[0] : header;
+    const expected = raw === undefined ? snapshot.changeSet.revision : Number(raw.replace(/"/g, "").trim());
+    if (!Number.isInteger(expected)) {
+      await reply.status(400).send({
+        code: "INVALID_DRAFT_REVISION",
+        message: "If-Match must carry the draft revision the client last read.",
+      });
+      return false;
+    }
+    const bumped = await activeRepository.bumpDraftRevision(snapshot.changeSet.id, expected);
+    if (bumped === null) {
+      await reply.status(409).send({
+        code: "ORGANIZATION_DRAFT_CHANGED",
+        message: "This change was modified by someone else; reload before saving.",
+        details: { revision: snapshot.changeSet.revision },
+      });
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * ORG-008-2 read model. One snapshot, one employee query, one resolver, one eligibility cache.
+   * Nothing here writes: not a snapshot row, not a rollout row, not an approval snapshot.
+   */
+  async function peopleContext(input: {
+    asOf?: string | undefined;
+    draftId?: string | undefined;
+    includeLegacy: boolean;
+  }) {
+    const asOf = input.asOf ?? jakartaBusinessDate();
+    const snapshot = input.draftId
+      ? await repository.loadChangeSetSnapshot(input.draftId)
+      : await repository.loadEffectiveSnapshot(asOf);
+    if (input.draftId && !snapshot) return null;
+    // Only the fields the screens show: number, name, unit, and the legacy manager/approver pair.
+    // No identity number, address, salary, or document content is read here.
+    const employees = await pool.query<OrganizationPersonEmployee>(
+      `SELECT e.id,
+              e.employee_number AS "employeeNumber",
+              e.full_name AS "fullName",
+              unit.id AS "legacyUnitId",
+              unit.name AS "legacyUnitName",
+              e.direct_manager_employee_id AS "legacyDirectManagerEmployeeId",
+              manager.full_name AS "legacyDirectManagerName",
+              unit.leave_approver_employee_id AS "legacyUnitApproverEmployeeId",
+              approver.full_name AS "legacyUnitApproverName"
+       FROM employees e
+       LEFT JOIN organizational_units unit ON unit.id = e.organizational_unit_id
+       LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
+       LEFT JOIN employees approver ON approver.id = unit.leave_approver_employee_id
+       WHERE e.status = 'active'
+       ORDER BY e.full_name, e.employee_number`,
+    );
+    const eligibility = new RequestScopedEligibilityValidator(repository);
+    const rows = await buildOrganizationPeopleView({
+      snapshot,
+      employees: employees.rows,
+      eligibility,
+      asOf,
+      includeLegacy: input.includeLegacy,
+    });
+    return { asOf, snapshot, rows, eligibility };
+  }
+
+  /** A unit and everything under it, so filtering by unit includes its sub-units. */
+  function nodeWithDescendants(
+    snapshot: { nodes: Array<{ stableKey: string; parentNodeKey: string | null }> } | null,
+    nodeKey: string,
+  ): Set<string> {
+    const keys = new Set([nodeKey]);
+    if (!snapshot) return keys;
+    let added = true;
+    while (added) {
+      added = false;
+      for (const node of snapshot.nodes) {
+        if (node.parentNodeKey && keys.has(node.parentNodeKey) && !keys.has(node.stableKey)) {
+          keys.add(node.stableKey);
+          added = true;
+        }
+      }
+    }
+    return keys;
+  }
+
+  function matchesIssueFilter(row: OrganizationPersonRow, issue: string): boolean {
+    if (issue === "ANY") return row.issues.length > 0;
+    if (issue === "NO_UNIT") return row.unit === null && row.position === null;
+    if (issue === "UNRESOLVED_MANAGER") return row.directManager === null;
+    if (issue === "DIFFERENT_FROM_LEGACY") return row.legacy?.comparison === "DIFFERENT";
+    return row.issues.some((item) => item.code === issue);
+  }
+
+  /**
+   * ORG-008-2 approval check. Workflows the operator can pick, mapped to what the resolver needs.
+   *
+   * Annual and unpaid leave use the capability Leave already requires. The overtime approver
+   * capability is set by ATT-011-6b and is not decided yet, so overtime resolves on the structural
+   * line without demanding a capability and is returned marked as a preview (spec 4.6, gap X-5).
+   * There is no second resolver here: this is the one approvals use.
+   */
+  const PREVIEW_WORKFLOWS = {
+    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
+    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
+    OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, preview: true },
+  } as const;
+
+  async function resolutionPreview(input: {
+    employeeId: string;
+    workflow: keyof typeof PREVIEW_WORKFLOWS;
+    effectiveDate: string;
+    draftId?: string | undefined;
+  }) {
+    const plan = PREVIEW_WORKFLOWS[input.workflow];
+    const snapshot = input.draftId
+      ? await repository.loadChangeSetSnapshot(input.draftId)
+      : await repository.loadEffectiveSnapshot(input.effectiveDate);
+    if (!snapshot) return { notFound: true } as const;
+
+    const eligibility = new RequestScopedEligibilityValidator(repository);
+    const resolver = new OrganizationAuthorityResolver(
+      { loadEffectiveSnapshot: async () => snapshot },
+      { eligibilityValidator: eligibility },
+    );
+    const resolutionInputs = {
+      requesterEmployeeId: input.employeeId,
+      effectiveDate: input.effectiveDate,
+      workflowKey: plan.workflowKey,
+      ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+    };
+
+    const warnings: Array<{ code: string; details?: Record<string, unknown> }> = [];
+    if (plan.preview) warnings.push({ code: "OVERTIME_CAPABILITY_PENDING" });
+
+    let line;
+    try {
+      line = await resolver.resolveLineAuthorities(resolutionInputs);
+    } catch (error) {
+      const item = error as { code?: string; message?: string; details?: Record<string, unknown> };
+      return {
+        failed: {
+          code: item.code ?? "ORGANIZATION_RESOLUTION_FAILED",
+          message: item.message ?? "Authority cannot be resolved.",
+          ...(item.details ? { details: item.details } : {}),
+        },
+        warnings,
+      } as const;
+    }
+
+    // ORG-008-2 fills what the old preview always left null: who is told after the final approval.
+    // It is only acted on under STRUCTURE, so the mode it applies in travels with it.
+    let oversight = null;
+    const finalApprover = line.authorities[line.authorities.length - 1];
+    if (finalApprover) {
+      try {
+        oversight = await resolver.resolveOversightAbove({
+          approverEmployeeId: finalApprover.employeeId,
+          effectiveDate: input.effectiveDate,
+          workflowKey: plan.workflowKey,
+          ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+        });
+      } catch (error) {
+        warnings.push({
+          code: (error as { code?: string }).code ?? "OVERSIGHT_UNRESOLVED",
+        });
+      }
+    }
+
+    const employeeIds = [...new Set([
+      input.employeeId,
+      ...line.authorities.map((item) => item.employeeId),
+      ...(oversight ? [oversight.employeeId] : []),
+    ])];
+    const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
+      `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
+       FROM employees WHERE id = ANY($1::uuid[])`,
+      [employeeIds],
+    );
+    const byId = new Map(employees.rows.map((item) => [item.id, item]));
+    const titleOf = (positionKey: string | null) =>
+      positionKey ? snapshot.positions.find((item) => item.stableKey === positionKey)?.title ?? null : null;
+
+    return {
+      result: {
+        employee: byId.get(input.employeeId) ?? { id: input.employeeId, fullName: "" },
+        effectiveDate: line.effectiveDate,
+        workflow: input.workflow,
+        workflowKey: plan.workflowKey,
+        changeSetId: snapshot.changeSet.id,
+        preview: plan.preview,
+        governanceApplied: line.governanceApplied,
+        steps: line.authorities.map((item) => ({
+          employeeId: item.employeeId,
+          employeeName: byId.get(item.employeeId)?.fullName ?? "",
+          positionTitle: titleOf(item.positionKey),
+          authorityType: (item.sources ?? [item.source]).join(" + "),
+          source: item.incumbentKind,
+        })),
+        oversight: oversight
+          ? {
+              employeeId: oversight.employeeId,
+              employeeName: byId.get(oversight.employeeId)?.fullName ?? "",
+              positionTitle: titleOf(oversight.positionKey),
+              appliesInMode: "STRUCTURE",
+            }
+          : null,
+        warnings,
+      },
+    } as const;
+  }
+
+  app.post("/admin/organization/resolution-preview", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const body = z.object({
+      employeeId: uuid,
+      workflow: z.enum(["LEAVE_ANNUAL", "LEAVE_UNPAID", "OVERTIME"]).default("LEAVE_ANNUAL"),
+      date: date.optional(),
+      draftId: uuid.optional(),
+    }).safeParse(request.body);
+    if (!body.success) return invalid(reply, "INVALID_RESOLUTION_PREVIEW", "Invalid resolution preview input.");
+    const outcome = await resolutionPreview({
+      employeeId: body.data.employeeId,
+      workflow: body.data.workflow,
+      effectiveDate: body.data.date ?? jakartaBusinessDate(),
+      draftId: body.data.draftId,
+    });
+    if ("notFound" in outcome) {
+      return reply.status(404).send({
+        code: body.data.draftId ? "ORGANIZATION_DRAFT_NOT_FOUND" : "ORGANIZATION_STRUCTURE_NOT_FOUND",
+        message: "No organization structure is effective for that date.",
+      });
+    }
+    if ("failed" in outcome) {
+      return reply.status(409).send({ ...outcome.failed, warnings: outcome.warnings });
+    }
+    return reply.send(outcome.result);
+  });
+
+  app.get("/admin/organization/capabilities", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    // ORG-008-2: the screen hides what the API would refuse instead of offering a button that ends
+    // in 403. Every endpoint still authorizes its own call; this only drives what is shown.
+    const context = await resolveAuthorizationContext(pool, principal);
+    const can = (permission: string) => context.organizationPermissions.includes(permission);
+    return reply.send({
+      viewStructure: can("organization.manage"),
+      composeChange: can("organization.manage"),
+      discardChange: can("organization.manage"),
+      assignIncumbents: can("approvals.policy.manage"),
+      manageAuthority: can("approvals.policy.manage"),
+      publish: can("approvals.policy.manage"),
+      manageRollout: can("approvals.policy.manage"),
+    });
+  });
+
+  app.get("/admin/organization/people", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      asOf: date.optional(),
+      draftId: uuid.optional(),
+      nodeKey: uuid.optional(),
+      issue: z.string().trim().min(1).max(60).optional(),
+      q: z.string().trim().max(120).optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).default(50),
+      withLegacy: z.enum(["true", "false"]).default("false"),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_PEOPLE_QUERY", "Invalid people query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf,
+      draftId: query.data.draftId,
+      includeLegacy: query.data.withLegacy === "true",
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+
+    let rows = context.rows;
+    if (query.data.nodeKey) {
+      const keys = nodeWithDescendants(context.snapshot, query.data.nodeKey);
+      rows = rows.filter((row) => row.unit !== null && keys.has(row.unit.nodeKey));
+    }
+    const issue = query.data.issue;
+    if (issue) rows = rows.filter((row) => matchesIssueFilter(row, issue));
+    if (query.data.q) {
+      const needle = query.data.q.toLowerCase();
+      rows = rows.filter((row) =>
+        row.fullName.toLowerCase().includes(needle) || row.employeeNumber.toLowerCase().includes(needle));
+    }
+    const start = (query.data.page - 1) * query.data.pageSize;
+    return reply.send({
+      asOf: context.asOf,
+      changeSetId: context.snapshot?.changeSet.id ?? null,
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+      total: rows.length,
+      items: rows.slice(start, start + query.data.pageSize),
+    });
+  });
+
+  app.get("/admin/organization/readiness", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({ asOf: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_READINESS_QUERY", "Invalid readiness query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf, draftId: query.data.draftId, includeLegacy: true,
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    return reply.send(computeOrganizationReadiness({
+      rows: context.rows, snapshot: context.snapshot, asOf: context.asOf,
+    }));
+  });
+
+  app.get("/admin/organization/explanation", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      employeeId: uuid, asOf: date.optional(), draftId: uuid.optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_EXPLANATION_QUERY", "Invalid explanation query.");
+    const context = await peopleContext({
+      asOf: query.data.asOf, draftId: query.data.draftId, includeLegacy: true,
+    });
+    if (!context) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    const row = context.rows.find((item) => item.employeeId === query.data.employeeId);
+    if (!row) return reply.status(404).send({ code: "ORGANIZATION_EMPLOYEE_NOT_FOUND" });
+    // Codes and parameters only; the sentences are composed in the web app (ORG-008-1 vocabulary).
+    return reply.send({ asOf: context.asOf, employeeId: row.employeeId, person: row, steps: explainPerson(row) });
+  });
+
   app.get("/admin/organization/designer", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const query = z.object({ effectiveDate: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
@@ -217,6 +576,7 @@ export async function registerOrganizationAdminRoutes(
     if (!snapshot) {
       return reply.send({
         viewDate,
+        staleBase: null,
         mode: viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT",
         draft: null,
         nodes: [], positions: [], memberships: [], assignments: [], bindings: [], reportingOverrides: [],
@@ -259,8 +619,14 @@ export async function registerOrganizationAdminRoutes(
       assignmentType: item.kind,
       isPrimaryStructural: item.isPrimaryStructural ?? false,
     }));
+    // ORG-008-3a: only for a change set the operator opened by id; the plain by-date view keeps its
+    // single query. The marker lets the screen warn before publish instead of only at the 409.
+    const staleBase = query.data.draftId
+      ? await draftService.findStaleBaseConflict(snapshot.changeSet)
+      : null;
     return reply.send({
       viewDate,
+      staleBase,
       mode: snapshot.changeSet.status === "PUBLISHED"
         ? viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT"
         : "DRAFT",
@@ -308,13 +674,31 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/designer/employees", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
+    // ORG-008-2 adds search and a status filter (gaps P-1, P-4). The default stays every employee so
+    // a seat already held by someone no longer active can still show that person's name; the new
+    // screens ask for status=active.
+    const query = z.object({
+      q: z.string().trim().max(120).optional(),
+      status: z.enum(["active", "all"]).default("all"),
+      limit: z.coerce.number().int().min(1).max(1000).optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_EMPLOYEE_QUERY", "Invalid employee query.");
     const result = await pool.query(
       `SELECT e.id, e.employee_number AS "employeeNumber", e.full_name AS "fullName",
         e.status, u.name AS "unitName", p.name AS "positionName"
        FROM employees e
        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
        LEFT JOIN positions p ON p.id = e.position_id
-       ORDER BY (e.status = 'active') DESC, e.full_name`,
+       WHERE ($1::text IS NULL OR e.status = $1::text)
+         AND ($2::text IS NULL OR e.full_name ILIKE '%' || $2::text || '%'
+              OR e.employee_number ILIKE '%' || $2::text || '%')
+       ORDER BY (e.status = 'active') DESC, e.full_name
+       LIMIT $3::int`,
+      [
+        query.data.status === "active" ? "active" : null,
+        query.data.q && query.data.q.length > 0 ? query.data.q : null,
+        query.data.limit ?? 5000,
+      ],
     );
     return reply.send({ items: result.rows });
   });
@@ -324,6 +708,18 @@ export async function registerOrganizationAdminRoutes(
     const parsed = draftInput.safeParse(request.body);
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
+    // ORG-008-3b (O-7): one change set is composed at a time for the whole foundation, so a second
+    // one cannot be built from a base the first will replace. The existing one is named in the reply
+    // so the screen can offer to continue it. This is checked here rather than by a unique index,
+    // because how many open change sets production already holds has not been verified.
+    const open = await repository.findOpenChangeSet();
+    if (open) {
+      return reply.status(409).send({
+        code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
+        message: "Another organization change is still open.",
+        details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
+      });
+    }
     const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await transaction.repository.createDraft({ ...parsed.data, actorAccountId: principal.id });
       await transaction.audit("organization.draft.created", "organization_change_set", snapshot.changeSet.id, snapshot.changeSet.id, {
@@ -333,6 +729,68 @@ export async function registerOrganizationAdminRoutes(
       return snapshot.changeSet;
     });
     return reply.status(201).send(changeSet);
+  });
+
+  app.get("/admin/organization/designer/drafts", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      status: z.enum(["DRAFT", "VALIDATED", "PUBLISHED", "DISCARDED"]).optional(),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_DRAFT_FILTER", "Invalid change status filter.");
+    const items = await repository.listChangeSets(query.data.status ? [query.data.status] : undefined);
+    return reply.send({ items });
+  });
+
+  app.post("/admin/organization/designer/drafts/:draftId/reopen", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      // Only a checked change goes back to being composed; published history stays immutable.
+      if (!(await transaction.repository.markReopened(snapshot.changeSet.id))) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_REOPENABLE",
+          message: "Only a validated change set can be reopened for editing.",
+        });
+        return null;
+      }
+      await transaction.audit("organization.draft.reopened", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
+  });
+
+  app.post("/admin/organization/designer/drafts/:draftId/discard", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    const body = z.object({ reason: z.string().trim().min(1).max(500).optional() })
+      .safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "INVALID_DRAFT_DISCARD", "Invalid discard request.");
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      // Discarding keeps every row and the audit trail; a published change set is never discarded.
+      if (!(await transaction.repository.markDiscarded(snapshot.changeSet.id))) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_DISCARDABLE",
+          message: "Only a change set that has not been published can be discarded.",
+        });
+        return null;
+      }
+      await transaction.audit("organization.draft.discarded", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, {
+          effectiveOn: snapshot.changeSet.effectiveOn,
+          previousStatus: snapshot.changeSet.status,
+          ...(body.data.reason ? { reason: body.data.reason } : {}),
+        });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
   });
 
   app.get("/admin/organization/designer/drafts/:draftId", async (request, reply) => {
@@ -349,6 +807,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, integrationCode: body.data.integrationCode ?? null,
         active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -365,6 +824,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group update.");
     const result = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const item = snapshot.nodes.find((entry) => entry.id === params.data.itemId);
       if (!item) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
       Object.assign(item, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -383,6 +843,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid organization position.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, active: true,
         effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.positions.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -399,6 +860,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid position update.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const updated = snapshot.positions.find((entry) => entry.id === params.data.itemId);
       if (!updated) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return null; }
       Object.assign(updated, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -416,6 +878,7 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_MEMBERSHIP", "Invalid membership assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return false;
       snapshot.memberships = snapshot.memberships.filter((item) => item.nodeKey !== body.data.nodeKey);
       snapshot.memberships.push(...body.data.employeeIds.map((employeeId) => ({ id: randomUUID(), employeeId,
         nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: true,
@@ -437,6 +900,7 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_INCUMBENCY", "Invalid primary or acting assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return false;
       const position = snapshot.positions.find((item) => item.stableKey === body.data.positionKey);
       const existingForPosition = snapshot.incumbencies.filter(
         (item) => item.positionKey === body.data.positionKey,
@@ -478,6 +942,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_AUTHORITY_BINDING", "Invalid authority relationship.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), subjectKind: body.data.sourceType, subjectKey: body.data.sourceKey,
         bindingType: body.data.authorityType as AuthorityBindingType, targetPositionKey: body.data.targetPositionKey,
         vacancyPolicy: body.data.vacancyPolicy, effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
@@ -498,6 +963,7 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const created = { id: randomUUID(), ...body.data, managerEmployeeId: null, effectiveTo: body.data.effectiveTo ?? null };
       snapshot.reportingOverrides.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.reporting_override.created", "organization_reporting_override", created.id,
@@ -507,6 +973,135 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!item) return;
     return reply.status(201).send(item);
+  });
+
+  const commandInput = z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("ADD_UNIT"),
+      name: z.string().trim().min(1).max(160),
+      nodeType: z.string().trim().min(1).max(80),
+      parentNodeKey: uuid.nullable().default(null),
+      leader: z.object({
+        title: z.string().trim().min(1).max(160),
+        employeeId: uuid.nullable().optional(),
+        vacancyPolicy: vacancyPolicy.optional(),
+        alsoUnitApprover: z.boolean().optional(),
+      }).optional(),
+    }),
+    z.object({
+      type: z.literal("PLACE_EMPLOYEES"),
+      nodeKey: uuid,
+      employeeIds: z.array(uuid).min(1).max(500),
+      move: z.boolean().optional(),
+    }),
+    z.object({
+      type: z.literal("APPOINT_ACTING"),
+      positionKey: uuid,
+      employeeId: uuid,
+      effectiveFrom: date,
+      effectiveTo: date,
+      reason: z.string().trim().min(1).max(500),
+      mandateNumber: z.string().trim().min(1).max(120).nullable().optional(),
+    }),
+    z.object({
+      type: z.literal("SET_REPORTS_TO"),
+      positionKey: uuid,
+      parentPositionKey: uuid.nullable(),
+    }),
+    z.object({ type: z.literal("SET_UNIT_LEADER"), nodeKey: uuid, positionKey: uuid }),
+    z.object({ type: z.literal("SET_UNIT_APPROVER"), nodeKey: uuid, positionKey: uuid }),
+    z.object({
+      type: z.literal("SET_OVERRIDE"),
+      employeeId: uuid,
+      managerPositionKey: uuid,
+      reason: z.string().trim().min(1).max(500),
+      effectiveFrom: date.optional(),
+      effectiveTo: date.nullable().optional(),
+    }),
+  ]);
+
+  /**
+   * ORG-008-4a: a command is refused unless the session may write every primitive it creates.
+   *
+   * Composing a unit or placing employees needs organization.manage, as those endpoints do today.
+   * A command that records an incumbent, an authority binding, or a reporting exception additionally
+   * needs approvals.policy.manage, exactly like the primitive endpoints it replaces. Decision O-1
+   * moves that second requirement to organization.manage in ORG-008-8; until then a combined action
+   * may not grant what its parts do not.
+   */
+  function commandWritesAuthority(command: OrganizationCommand): boolean {
+    if (command.type === "ADD_UNIT") return command.leader !== undefined;
+    return command.type !== "PLACE_EMPLOYEES";
+  }
+
+  app.post("/admin/organization/designer/drafts/:draftId/commands", async (request, reply) => {
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    const body = commandInput.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return invalid(reply, "INVALID_ORGANIZATION_COMMAND", "Invalid organization command.");
+    }
+    const command = body.data as OrganizationCommand;
+    if (commandWritesAuthority(command)) {
+      const context = await resolveAuthorizationContext(pool, principal);
+      if (!context.organizationPermissions.includes("approvals.policy.manage")) {
+        return reply.status(403).send({
+          code: "FORBIDDEN",
+          message: "This command records authority and needs the approval policy permission.",
+          details: { commandType: command.type, requires: "approvals.policy.manage" },
+        });
+      }
+    }
+
+    const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository);
+      if (!snapshot) return null;
+      if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
+
+      let result;
+      try {
+        result = applyOrganizationCommand(snapshot, command);
+      } catch (error) {
+        if (error instanceof OrganizationCommandError) {
+          await reply.status(error.statusCode).send({
+            code: error.code,
+            message: error.message,
+            ...(error.details ? { details: error.details } : {}),
+          });
+          return null;
+        }
+        throw error;
+      }
+
+      await transaction.repository.replaceDraftSnapshot(result.snapshot);
+      // One audit event per primitive record, as ORG-004 requires, plus one summary event naming the
+      // command. They share this transaction with the write, so they roll back together (I-10).
+      for (const event of result.events) {
+        await transaction.audit(event.action, event.entityType, event.entityId, snapshot.changeSet.id, event.payload);
+      }
+      const seq = await transaction.repository.appendJournalEntry({
+        changeSetId: snapshot.changeSet.id,
+        commandType: command.type,
+        payload: command as unknown as Record<string, unknown>,
+        summary: result.summary,
+        actorAccountId: principal.id,
+      });
+      await transaction.audit("organization.command.applied", "organization_change_set",
+        snapshot.changeSet.id, snapshot.changeSet.id,
+        { commandType: command.type, primitives: result.events.length, seq });
+      return { seq, summary: result.summary, primitives: result.events.length };
+    });
+    if (!outcome) return;
+    return reply.status(201).send({ commandType: command.type, ...outcome });
+  });
+
+  app.get("/admin/organization/designer/drafts/:draftId/journal", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const params = draftParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
+    if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+    return reply.send({ items: await repository.listJournal(params.data.draftId) });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/validate", async (request, reply) => {
@@ -578,6 +1173,17 @@ export async function registerOrganizationAdminRoutes(
         await reply.status(409).send({ code: "ORGANIZATION_DRAFT_NOT_VALIDATED", message: "Validate the draft before publishing." });
         return null;
       }
+      // ORG-008-3a: refuse a draft whose base another publication has already replaced, so publishing
+      // cannot silently drop that publication's content on the draft's effective date.
+      const stale = await transaction.draftService.findStaleBaseConflict(snapshot.changeSet);
+      if (stale) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_BASE_STALE",
+          message: "Structure was changed by another publication after this draft was created.",
+          details: stale,
+        });
+        return null;
+      }
       await transaction.draftService.publish(snapshot.changeSet.id, principal.id);
       await transaction.audit("organization.draft.published", "organization_change_set", snapshot.changeSet.id,
         snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
@@ -589,12 +1195,34 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/rollout", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
-    const result = await pool.query(
+    const latest = await pool.query(
       `SELECT mode, workflow_key AS "workflowKey", node_key AS "organizationalNodeKey",
         effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason, updated_at AS "updatedAt"
        FROM organization_rollout_settings ORDER BY created_at DESC LIMIT 1`,
     );
-    return reply.send(result.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null });
+    // ORG-008-2: the single newest row cannot say which mode applies, because the resolver picks the
+    // row effective for that workflow and that unit. So the effective rows travel with the answer,
+    // and the count lets a screen state LEGACY as a fact exactly when there is no configuration at
+    // all. The top-level fields are unchanged for clients already reading them.
+    const today = jakartaBusinessDate();
+    const effective = await pool.query(
+      `SELECT workflow_key AS "workflowKey", node_key AS "organizationalNodeKey", mode,
+        effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
+       FROM organization_rollout_settings
+       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)
+       ORDER BY workflow_key, node_key NULLS FIRST, effective_from DESC`,
+      [today],
+    );
+    const total = await pool.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM organization_rollout_settings",
+    );
+    const configuredRowCount = Number(total.rows[0]?.count ?? "0");
+    return reply.send({
+      ...(latest.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null }),
+      asOf: today,
+      configuredRowCount,
+      settings: effective.rows,
+    });
   });
 
   app.patch("/admin/organization/rollout", async (request, reply) => {

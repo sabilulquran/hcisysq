@@ -47,7 +47,14 @@ Separately grantable, excluded permissions are:
   bindings, reporting overrides, incumbencies, publishing structure and changing
   resolver rollout. Draft editing stays available to HC administrators; publishing
   any draft requires this separate permission, since hierarchy itself affects
-  approval resolution. This avoids indirect self-elevation via draft publication;
+  approval resolution. This avoids indirect self-elevation via draft publication.
+  **ORG-008-8 (decision O-1):** inside an unpublished change set, incumbencies,
+  authority bindings and reporting overrides are draft editing and need only
+  `organization.manage`; the permission now guards exactly what takes effect —
+  publishing, rollout, live direct managers and live unit leave approvers. It is held
+  by the **Kepala HC** role `human_capital_lead` (owner decision 2026-10-24), which
+  carries `organization.manage` and this permission and nothing else, is granted only
+  by Super Admin with organization scope and a mandate, and is outside every HC bundle;
 - `attendance.devices.read`, `attendance.devices.configure`,
   `attendance.devices.operate`, `attendance.devices.export`,
   `attendance.devices.destructive`, `attendance.devices.firmware`,

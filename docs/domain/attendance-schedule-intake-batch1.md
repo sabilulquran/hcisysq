@@ -16,13 +16,18 @@ dan bukan ditebak saat input.
 
 | # | Hal | Keputusan |
 |---|---|---|
-| K-1 | **Toleransi telat** | **5 menit** untuk seluruh shift gelombang ini. Toleransi pulang cepat **0**. Draf SK tidak menyebut angka, jadi angka ini adalah kebijakan operasional, bukan kutipan SK; bila SK final nanti menyebut angka berbeda, shift diperbarui lewat versi baru. |
-| K-2 | **Lokasi kerja per shift** | Shift SDIT memakai lokasi **SDIT Tahfizh**. Shift **Yayasan Umum** dan **Taman Tahfizh dikosongkan** lokasinya. |
+| K-1 | **Toleransi telat** | **1 menit** untuk seluruh shift gelombang ini, sama dengan shift "Regular" yang sudah ada. Toleransi pulang cepat **0**. Draf SK tidak menyebut angka, jadi ini kebijakan operasional, bukan kutipan SK; bila SK final menyebut angka berbeda, shift diperbarui lewat versi baru. |
+| K-2 | **Lokasi kerja per shift** | **Dikosongkan untuk seluruh shift**, termasuk shift SDIT. Lokasi tidak menjadi perhatian pada tahap ini; yang dikejar adalah pengaturan jadwalnya. |
 
-Konsekuensi K-2 yang perlu diketahui HC: untuk shift tanpa lokasi, absen lewat **HP** selalu masuk
-antrean "perlu ditinjau" karena tidak ada titik yang dapat dicocokkan. Absen lewat **mesin
-fingerprint tidak terpengaruh**. Bila nanti lokasi kantor Yayasan dan Taman Tahfizh dibuat di menu
-Lokasi kerja, shift tinggal diperbarui dan statusnya ikut normal.
+Konsekuensi yang perlu diketahui HC:
+
+- **K-1.** Dengan toleransi 1 menit, scan pukul 07.01.30 pada shift 07.00 sudah tercatat
+  **Terlambat 1 menit**. Angka ini memang ketat; menaikkannya nanti cukup dengan membuat versi
+  shift baru, dan hasil kehadiran yang sudah terbentuk tidak berubah.
+- **K-2.** Untuk shift tanpa lokasi, absen lewat **HP** selalu masuk antrean "perlu ditinjau"
+  karena tidak ada titik yang dapat dicocokkan. Absen lewat **mesin fingerprint tidak
+  terpengaruh**, dan itu jalur yang dipakai sekarang. Bila kelak absen HP dipakai serius, lokasi
+  tinggal diisi di menu Lokasi kerja dan shift diperbarui.
 
 ## 2. Shift yang perlu dibuat (menu Shift)
 
@@ -30,11 +35,11 @@ Nilai di bawah sudah lengkap; tinggal disalin apa adanya.
 
 | Shift | Jam masuk | Jam pulang | Toleransi telat | Toleransi pulang cepat | Lokasi |
 |---|---|---|---|---|---|
-| Yayasan Umum — Reguler | 07.00 | 16.00 | 5 menit | 0 | *(kosongkan)* |
-| Yayasan Umum — Rabu | 07.00 | 17.00 | 5 menit | 0 | *(kosongkan)* |
-| Taman Tahfizh — Senin–Kamis | 07.45 | 12.00 | 5 menit | 0 | *(kosongkan)* |
-| Taman Tahfizh — Jumat | 07.45 | 13.00 | 5 menit | 0 | *(kosongkan)* |
-| SDIT — Hari Penuh | 07.00 | 16.00 | 5 menit | 0 | SDIT Tahfizh |
+| Yayasan Umum — Reguler | 07.00 | 16.00 | 1 menit | 0 | *(kosongkan)* |
+| Yayasan Umum — Rabu | 07.00 | 17.00 | 1 menit | 0 | *(kosongkan)* |
+| Taman Tahfizh — Senin–Kamis | 07.45 | 12.00 | 1 menit | 0 | *(kosongkan)* |
+| Taman Tahfizh — Jumat | 07.45 | 13.00 | 1 menit | 0 | *(kosongkan)* |
+| SDIT — Hari Penuh | 07.00 | 16.00 | 1 menit | 0 | *(kosongkan)* |
 
 Tidak ada yang melewati tengah malam, jadi semuanya shift biasa.
 

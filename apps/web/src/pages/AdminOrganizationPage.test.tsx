@@ -160,6 +160,33 @@ describe("ORG-008-1 bahasa operator di layar utama (acceptance ORG-008-J)", () =
   });
 });
 
+describe("ORG-008-4d daftar \"Yang berubah\" menyertai perubahan", () => {
+  it("shows the change list while a change is open", () => {
+    const text = visibleText(render({ actor: publisher }));
+    expect(text).toContain("Yang berubah");
+    expect(text).toContain("Belum ada yang diubah pada perubahan ini");
+  });
+
+  it("does not show the change list when no change is open", () => {
+    const text = visibleText(render({ actor: publisher, data: view({ draft: null, mode: "CURRENT" }) }));
+    expect(text).not.toContain("Yang berubah");
+  });
+
+  it("warns, and offers the way out, when another publication replaced the base", () => {
+    const stale = view({
+      staleBase: {
+        changeSetId: "other", name: "Koreksi Oktober",
+        effectiveOn: "2026-10-24", publishedAt: "2026-10-20T00:00:00Z",
+      },
+    });
+    const text = visibleText(render({ actor: publisher, data: stale }));
+
+    expect(text).toContain("Struktur sudah diubah oleh");
+    expect(text).toContain("Koreksi Oktober");
+    expect(text).toContain("Perbarui dari struktur terbaru");
+  });
+});
+
 describe("ORG-008-1 perubahan tidak hilang dan kegagalan tidak disamarkan", () => {
   it("replaces the date picker while a change is open, so switching dates cannot close it (gap D-1)", () => {
     const html = render({ actor: hcAdmin });

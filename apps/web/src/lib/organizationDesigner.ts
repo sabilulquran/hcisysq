@@ -1,7 +1,7 @@
 import { AdminApiError } from "@/lib/adminEmployees";
 
 export type OrganizationViewMode = "HISTORICAL" | "CURRENT" | "FUTURE" | "DRAFT";
-export type OrganizationDraftStatus = "DRAFT" | "VALIDATED" | "PUBLISHED";
+export type OrganizationDraftStatus = "DRAFT" | "VALIDATED" | "PUBLISHED" | "DISCARDED";
 export type OrganizationVacancyPolicy =
   | "CLIMB_TO_PARENT"
   | "REQUIRE_ACTING_OR_BLOCK"
@@ -16,6 +16,8 @@ export interface OrganizationDraft {
   createdAt: string;
   validatedAt: string | null;
   publishedAt: string | null;
+  /** ORG-008-3b: carried back as If-Match so a concurrent edit is refused, not overwritten. */
+  revision?: number;
 }
 
 export interface OrganizationIncumbent {
@@ -102,8 +104,17 @@ export interface OrganizationReportingOverride {
   effectiveTo: string | null;
 }
 
+export interface OrganizationStaleBase {
+  changeSetId: string;
+  name: string;
+  effectiveOn: string;
+  publishedAt: string;
+}
+
 export interface OrganizationDesignerView {
   viewDate: string;
+  /** ORG-008-3a: another publication has replaced the base this change set was built on. */
+  staleBase?: OrganizationStaleBase | null;
   mode: OrganizationViewMode;
   draft: OrganizationDraft | null;
   nodes: OrganizationNode[];

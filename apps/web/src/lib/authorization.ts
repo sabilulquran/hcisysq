@@ -10,19 +10,20 @@ const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/schedules/dates": "attendance.schedule.manage",
   "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
   "/admin/attendance/daily": "attendance.reports.read",
+  "/admin/attendance/calculation": "attendance.reports.read",
   "/admin/attendance/clarifications": "attendance.clarification.manage",
   "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
   "/admin/attendance/corrections": "attendance.records.manage",
   "/admin/attendance/reports": "attendance.reports.read",
   "/admin/attendance/overtime": "attendance.overtime.manage",
   "/admin/attendance/settings/locations": "attendance.schedule.manage",
-  "/admin/attendance/settings/recalculate": "attendance.policy.manage",
 };
 
 // Ringkasan shows one card per area the account can load, so any attendance permission opens it.
 const ATTENDANCE_SUMMARY_PERMISSIONS = [
   "attendance.reports.read", "attendance.clarification.manage", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.schedule.manage", "attendance.records.manage", "attendance.policy.manage",
+  "attendance.calculation.run",
 ];
 
 // UI eligibility only. The API independently authorizes every operation.
@@ -32,6 +33,7 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "employees.manage", "organization.manage", "access.manage", "attendance.records.manage",
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
+    "attendance.calculation.run",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   // EMP-005: HC-only; Super Admin legacy compatibility never carries employment.*.

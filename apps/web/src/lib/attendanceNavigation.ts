@@ -11,10 +11,10 @@ export type AttendanceTabKey =
   | "summary"
   | "shifts"
   | "patterns" | "dates" | "swaps"
-  | "daily" | "clarifications" | "mobile-evidence" | "corrections" | "reports"
+  | "daily" | "calculation" | "clarifications" | "mobile-evidence" | "corrections" | "reports"
   | "overtime"
   | "devices"
-  | "locations" | "recalculate";
+  | "locations";
 
 export interface AttendanceTab {
   key: AttendanceTabKey;
@@ -45,6 +45,7 @@ export const attendanceSections: AttendanceSection[] = [
     label: "Kehadiran",
     tabs: [
       { key: "daily", label: "Pantauan Hari Ini", href: "/admin/attendance/daily" },
+      { key: "calculation", label: "Kalkulasi", href: "/admin/attendance/calculation" },
       { key: "clarifications", label: "Klarifikasi", href: "/admin/attendance/clarifications" },
       { key: "mobile-evidence", label: "Bukti HP", href: "/admin/attendance/mobile-evidence" },
       { key: "corrections", label: "Koreksi HC", href: "/admin/attendance/corrections" },
@@ -58,7 +59,6 @@ export const attendanceSections: AttendanceSection[] = [
     label: "Pengaturan",
     tabs: [
       { key: "locations", label: "Lokasi kerja", href: "/admin/attendance/settings/locations" },
-      { key: "recalculate", label: "Finalisasi ulang", href: "/admin/attendance/settings/recalculate" },
     ],
   },
 ];
@@ -92,4 +92,6 @@ export const legacyAttendanceRedirects: Record<string, string> = {
   "/admin/attendance/workforce/overtime": "/admin/attendance/overtime",
   "/admin/attendance/workforce/shift-swaps": "/admin/attendance/schedules/swaps",
   "/admin/attendance/workforce/reports": "/admin/attendance/reports",
+  // ATT-014-2: Finalisasi ulang per tanggal became Kalkulasi per rentang.
+  "/admin/attendance/settings/recalculate": "/admin/attendance/calculation",
 };

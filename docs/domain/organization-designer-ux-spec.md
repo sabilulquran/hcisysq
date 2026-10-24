@@ -136,7 +136,7 @@ Dibanding data atasan lama                                               [Buka l
 
 - Setiap baris membuka tab terkait yang sudah difilter.
 - "Dibanding data atasan lama" = laporan read-only §4.6; **bukan** mode `SHADOW` dan tidak menyentuh rollout.
-- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3).
+- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3). **Selesai (ORG-008-7b).** Tombol pertama hanya tampil bagi sesi yang juga boleh menulis pejabat dan kewenangan, karena tanpa itu ia pasti berakhir 403 (acceptance ORG-008-J). Dialognya menyebutkan lebih dulu bahwa hasilnya usulan, bahwa tidak ada yang disimpulkan dari nama jabatan, bahwa susunannya datar sehingga menyusun tingkatan tetap pekerjaan operator, dan bahwa pegawai tanpa unit atau tanpa atasan dilaporkan jumlahnya alih-alih ditebak. Setelah selesai, hitungan hasilnya ditampilkan termasuk apa yang belum terjawab.
 - Forbidden: tanpa `organization.manage` menu tidak tampil; akses langsung → "Anda tidak punya akses ke Struktur Organisasi".
 
 ### 4.3 Bagan

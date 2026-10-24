@@ -44,7 +44,7 @@ export const attendanceSections: AttendanceSection[] = [
     key: "records",
     label: "Kehadiran",
     tabs: [
-      { key: "daily", label: "Harian", href: "/admin/attendance/daily" },
+      { key: "daily", label: "Pantauan Hari Ini", href: "/admin/attendance/daily" },
       { key: "clarifications", label: "Klarifikasi", href: "/admin/attendance/clarifications" },
       { key: "mobile-evidence", label: "Bukti HP", href: "/admin/attendance/mobile-evidence" },
       { key: "corrections", label: "Koreksi HC", href: "/admin/attendance/corrections" },

@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — menunggu penerimaan owner atas §15.
+**Status:** DRAFT — menunggu penerimaan owner atas §15. ATT-014-1 diimplementasikan 2026-10-24 (§17).
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -451,3 +451,24 @@ HC menekan **Finalisasi ulang** per tanggal untuk menghasilkan laporan resmi.
   dikalkulasi ulang.
 - ATT-014-I: Setiap ekspor tercatat di audit tanpa data pribadi di metadata.
 - ATT-014-J: Typecheck, lint, test, build, dan clean migration lulus; data sintetis saja.
+
+## 17. Catatan implementasi ATT-014-1 (2026-10-24)
+
+- Endpoint `GET /admin/attendance/today` (`attendance.reports.read`) di
+  `apps/api/src/modules/attendance/today.ts`. Inti klasifikasinya fungsi murni `classifyToday`
+  agar setiap aturan §5 teruji tanpa database. Endpoint ini hanya membaca; test memastikan tidak ada
+  pernyataan `INSERT/UPDATE/DELETE` dan respons tidak pernah memuat `absent`, `late`, atau `incomplete`.
+- Bukti dibaca langsung dari `attendance_adms_events` lewat mapping PIN yang berlaku pada saat scan,
+  ditambah `attendance_events` sumber HP dan koreksi. Event ADMS yang sudah dinormalisasi tidak dihitung
+  dua kali.
+- "Libur" dibedakan dari "Tanpa jadwal" dengan memeriksa apakah ada pola jadwal yang mencakup hari ini;
+  resolver ATT-007 sendiri tidak membedakan keduanya.
+- **Penyimpangan disengaja dari §4:** alamat halaman tetap `/admin/attendance/daily` dan isinya diganti
+  menjadi Pantauan Hari Ini, bukan dialihkan ke alamat baru. Alamat itu sudah dirujuk menu admin,
+  katalog layanan, dan pemetaan izin, sehingga mempertahankannya menghindari pengalihan dan tautan mati.
+  Label tab menjadi "Pantauan Hari Ini".
+- Kartu "Hari ini" di halaman Ringkasan memakai ringkasan Pantauan yang sama, sehingga tidak lagi
+  menampilkan angka "Tidak hadir" dari read model lama.
+- Endpoint `GET /admin/attendance/daily` lama **tidak dihapus**: laporan ATT-009 masih memakai read
+  model-nya sampai ATT-014-2/4 menggantikannya.
+- Manifest AUTH-011 dan `attendance-workforce.openapi.yaml` diperbarui.

@@ -449,6 +449,31 @@ paths:
       responses:
         '200': { description: All active employees for the work date, including transient scheduled/pending/absent states without materializing evidence }
 
+  /admin/attendance/today:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceTodayMonitor
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014-1 Pantauan Hari Ini. Today's (Asia/Jakarta) scan facts per active employee: schedule,
+        first/last scan, scan count, sources, and the neutral difference between the first scan and the
+        scheduled start. Reads raw machine scans through the employee PIN mapping plus mobile/manual
+        events. Never writes a result version and never returns an attendance verdict
+        (absent/late/incomplete); verdicts come from Kalkulasi (ATT-014 §6).
+      parameters:
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: >-
+            `{ date, generatedAt, summary, items }`. `summary` counts items per `card`
+            (scanned, not_scanned, not_connected, off, leave, unscheduled, unscheduled_with_scans,
+            configuration_error). Each item carries `dayKind`, `scheduleName`, `scheduledStartAt`,
+            `scheduledEndAt`, `firstScanAt`, `lastScanAt`, `scanCount`, `sources`, `deviceIds`,
+            `startDeltaMinutes`, `connected`, `fact`, and `card`.
+        '400': { description: Invalid filter (INVALID_ATTENDANCE_TODAY_QUERY) }
+        '403': { description: Missing attendance.reports.read }
+
 
   /attendance/shift-swaps/candidates:
     get:

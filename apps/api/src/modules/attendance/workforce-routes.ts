@@ -21,6 +21,7 @@ import {
   encryptMobileAttendancePhoto,
   restrictedMediaReady,
 } from "./restricted-media-crypto.js";
+import { attendanceTodayReadModel } from "./today.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const clockSchema = z.object({
@@ -1649,6 +1650,23 @@ export async function registerAttendanceWorkforceRoutes(
     }, {});
     reply.header("Cache-Control", "no-store");
     return reply.send({ date: query.data.date, summary, items });
+  });
+
+  // ATT-014-1 Pantauan Hari Ini: today's scan facts only; never writes results, never a verdict.
+  app.get("/admin/attendance/today", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    const query = z.object({
+      employeeId: z.string().uuid().optional(),
+      unitId: z.string().uuid().optional(),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_TODAY_QUERY", message: "Filter tidak valid." });
+    const result = await attendanceTodayReadModel(pool, {
+      ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+      ...(query.data.unitId ? { unitId: query.data.unitId } : {}),
+    });
+    reply.header("Cache-Control", "no-store");
+    return reply.send(result);
   });
 
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {

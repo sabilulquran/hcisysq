@@ -2,12 +2,12 @@ import { AlertTriangle, ArrowLeftRight, ClipboardCheck, Smartphone, TimerReset, 
 import { useEffect, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { attendanceStatusLabel } from "@/lib/attendanceLabels";
+import { todayCardLabel } from "@/lib/attendanceToday";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import { listShiftSwapsForHc } from "@/lib/shiftSwap";
 import {
-  getAttendanceDaily,
+  getAttendanceToday,
   listAttendanceClarificationsForHcByStatus,
   listAttendanceMobileEvidence,
   listAttendanceOvertime,
@@ -18,7 +18,8 @@ function todayJakarta() { return new Intl.DateTimeFormat("en-CA", { timeZone: "A
 
 type ActionCard = { key: string; label: string; href: string; icon: typeof UsersRound; count: number | null };
 
-const TODAY_STATUSES = ["present", "late", "pending", "incomplete", "absent", "leave"] as const;
+// ATT-014 §5: today's numbers are scan facts, not verdicts; verdicts come from Laporan & Kalkulasi.
+const TODAY_CARDS = ["scanned", "not_scanned", "not_connected", "off", "leave", "unscheduled"] as const;
 
 /** ATT-011 §3 Ringkasan: today's numbers and what waits for HC, each only when the account can load it. */
 export function AdminAttendanceSummaryPage() {
@@ -39,7 +40,7 @@ export function AdminAttendanceSummaryPage() {
         try { return (await load()).items.length; } catch { return null; }
       };
       const [daily, clarifications, mobile, overtime, swaps] = await Promise.all([
-        can("attendance.reports.read") ? getAttendanceDaily(date).then((value) => value.summary).catch(() => null) : Promise.resolve(undefined),
+        can("attendance.reports.read") ? getAttendanceToday().then((value) => value.summary as Record<string, number>).catch(() => null) : Promise.resolve(undefined),
         can("attendance.clarification.manage") ? count(() => listAttendanceClarificationsForHcByStatus("submitted")) : Promise.resolve(undefined),
         can("attendance.clarification.manage") ? count(() => listAttendanceMobileEvidence({ date, reviewState: "needs_review" })) : Promise.resolve(undefined),
         can("attendance.overtime.manage") ? count(() => listAttendanceOvertime("submitted")) : Promise.resolve(undefined),
@@ -70,13 +71,13 @@ export function AdminAttendanceSummaryPage() {
         <section aria-labelledby="attendance-today">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 id="attendance-today" className="font-bold text-brand-heading">Hari ini</h2>
-            <a href="/admin/attendance/daily" className="text-xs font-bold text-brand-primary-deep">Lihat kehadiran harian</a>
+            <a href="/admin/attendance/daily" className="text-xs font-bold text-brand-primary-deep">Buka pantauan hari ini</a>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
-            {TODAY_STATUSES.map((status) => (
-              <article key={status} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-                <p className="text-xs font-semibold text-muted-foreground">{attendanceStatusLabel(status)}</p>
-                <p className="mt-2 text-2xl font-bold text-brand-heading">{today ? today[status] ?? 0 : "…"}</p>
+            {TODAY_CARDS.map((key) => (
+              <article key={key} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
+                <p className="text-xs font-semibold text-muted-foreground">{todayCardLabel(key)}</p>
+                <p className="mt-2 text-2xl font-bold text-brand-heading">{today ? today[key] ?? 0 : "…"}</p>
               </article>
             ))}
           </div>

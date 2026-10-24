@@ -62,6 +62,13 @@ Kelompok yang terdampak:
 Rekomendasi: pilihan 3 sekarang, dengan pilihan 1 atau 2 diputuskan dalam forum pembahasan SK,
 karena pilihan 1 mengubah makna SK dan pilihan 2 menambah paket pekerjaan.
 
+> **Keputusan owner 2026-10-24: pilihan 2 — HCIS yang menyesuaikan.** SK tidak diubah; HCIS
+> mendapat dukungan Blok Kerja ganda. Spesifikasinya **ATT-013**
+> (`attendance-multi-block-schedule.md`), dan non-goal "multi-shift per pegawai per hari" di
+> ATT-011 §1 dibatalkan. Keputusan ini **tidak memblokir** pengisian jadwal gelombang 1: kelompok
+> satu blok tetap dapat diisi sekarang (`attendance-schedule-intake-batch1.md`). Empat kelompok
+> dua blok di tabel §3 terbuka setelah ATT-013-1 dirilis.
+
 ## 3. Pemetaan 17 kelompok draf ke HCIS
 
 Status: **Siap** = satu blok per hari, jam jelas, pegawai dapat diidentifikasi.

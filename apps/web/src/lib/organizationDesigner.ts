@@ -48,6 +48,8 @@ export interface OrganizationNode {
   effectiveTo: string | null;
   visualRankOffset: number;
   integrationCode: string | null;
+  /** ORG-008-6 (O-9): the imported unit this one stands for; null leaves it unlinked. */
+  legacyUnitId?: string | null;
   memberCount: number;
   leaderPositionKey: string | null;
 }
@@ -289,6 +291,7 @@ export function updateOrganizationNode(
       | "active"
       | "visualRankOffset"
       | "integrationCode"
+      | "legacyUnitId"
       | "leaderPositionKey"
     >
   >,

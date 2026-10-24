@@ -208,3 +208,47 @@ export async function previewOrganizationApproval(input: {
   });
   return readJson<OrganizationApprovalPreview>(response);
 }
+
+export interface OrganizationUnitHcStaff {
+  asOf: string;
+  nodeKey: string;
+  /** The linked imported units, this unit first and then upwards. */
+  linkedUnitIds: string[];
+  /** True when nothing up the branch is linked, so ATT-011 keeps its wider recipients. */
+  fallback: boolean;
+  items: Array<{
+    employeeId: string;
+    fullName: string;
+    roleKey: string;
+    unitId: string;
+    unitName: string;
+  }>;
+}
+
+export function getOrganizationUnitHcStaff(input: {
+  nodeKey: string;
+  asOf?: string;
+  draftId?: string | null;
+}): Promise<OrganizationUnitHcStaff> {
+  return read<OrganizationUnitHcStaff>(`units/${input.nodeKey}/hc-staff`, {
+    asOf: input.asOf,
+    draftId: input.draftId ?? undefined,
+  });
+}
+
+export interface OrganizationPositionSearchResult {
+  asOf: string;
+  items: Array<{ stableKey: string; title: string; nodeKey: string; unitPath: string[] }>;
+}
+
+export function searchOrganizationPositions(input: {
+  q?: string;
+  asOf?: string;
+  draftId?: string | null;
+}): Promise<OrganizationPositionSearchResult> {
+  return read<OrganizationPositionSearchResult>("positions/search", {
+    q: input.q,
+    asOf: input.asOf,
+    draftId: input.draftId ?? undefined,
+  });
+}

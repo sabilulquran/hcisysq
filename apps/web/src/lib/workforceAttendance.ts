@@ -260,12 +260,6 @@ export async function publishAttendanceRoster(rosterId: string) {
   }));
 }
 
-export async function finalizeAttendanceDate(date: string) {
-  return readJson<{ date: string; materialized: number }>(await fetch(`/api/admin/attendance/finalize/${date}`, {
-    method: "POST", credentials: "include", headers: { Accept: "application/json" },
-  }));
-}
-
 export async function getAttendanceReport(date: string, status?: string) {
   const params = new URLSearchParams({ date });
   if (status) params.set("status", status);

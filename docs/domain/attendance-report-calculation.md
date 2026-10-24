@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — menunggu penerimaan owner atas §15. ATT-014-1 diimplementasikan 2026-10-24 (§17).
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18).
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -316,7 +316,8 @@ CREATE TABLE attendance_calculation_runs (
   processed_pairs integer NOT NULL DEFAULT 0 CHECK (processed_pairs >= 0),
   failed_pairs integer NOT NULL DEFAULT 0 CHECK (failed_pairs >= 0),
   uncovered_pairs integer NOT NULL DEFAULT 0 CHECK (uncovered_pairs >= 0),
-  error_code text NULL CHECK (error_code IS NULL OR char_length(error_code) <= 80),
+  cancel_requested_at timestamptz NULL,   -- pembatalan saat running, dibaca di titik progres
+  error_code text NULL CHECK (error_code IS NULL OR error_code ~ '^[A-Z][A-Z0-9_]{0,79}$'),
   created_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz NULL,
   finished_at timestamptz NULL,
@@ -327,6 +328,8 @@ CREATE UNIQUE INDEX attendance_calculation_runs_one_running
   ON attendance_calculation_runs ((true)) WHERE status = 'running';
 CREATE INDEX attendance_calculation_runs_queue_idx
   ON attendance_calculation_runs (created_at) WHERE status = 'queued';
+CREATE INDEX attendance_calculation_runs_recent_idx
+  ON attendance_calculation_runs (created_at DESC);
 
 CREATE TABLE attendance_report_views (
   id uuid PRIMARY KEY,
@@ -427,10 +430,10 @@ HC menekan **Finalisasi ulang** per tanggal untuk menghasilkan laporan resmi.
 
 | # | Pertanyaan | Usulan |
 |---|---|---|
-| D-14-1 | Kalkulasi memakai permission baru `attendance.calculation.run` untuk HC Admin dan HC Operator, terpisah dari izin membaca laporan? | Ya. Kalkulasi menulis data dan memakai sumber daya server. |
-| D-14-2 | Satu kali Kalkulasi maksimal 93 hari (batas sekali tekan, bukan batas data)? | Ya; sama dengan batas laporan sekarang. Setahun = empat kali Kalkulasi. |
-| D-14-3 | Tanggal sebelum pegawai terhubung ke mesin (dan tanpa absen HP) tidak dihitung dan tampil "Tidak tercatat", bukan "Tidak hadir"? | Ya; ini aturan yang dibahas 2026-10-24. |
-| D-14-4 | Hari ini boleh dikalkulasi sebagai hasil sementara? | Ya, dengan tanda "Hari berjalan". |
+| D-14-1 | Kalkulasi memakai permission baru `attendance.calculation.run` untuk HC Admin dan HC Operator, terpisah dari izin membaca laporan? | **Diterima 2026-10-24.** Kalkulasi menulis data dan memakai sumber daya server. |
+| D-14-2 | Satu kali Kalkulasi maksimal 93 hari (batas sekali tekan, bukan batas data)? | **Diterima 2026-10-24.** Sama dengan batas laporan sekarang. Setahun = empat kali Kalkulasi. |
+| D-14-3 | Tanggal sebelum pegawai terhubung ke mesin (dan tanpa absen HP) tidak dihitung dan tampil "Tidak tercatat", bukan "Tidak hadir"? | **Diterima 2026-10-24.** |
+| D-14-4 | Hari ini boleh dikalkulasi sebagai hasil sementara? | **Diterima 2026-10-24**, dengan tanda "Hari berjalan". |
 | D-14-5 | Legenda simbol §6.6. | Terima; dapat diubah sebelum ATT-014-4. |
 | D-14-6 | Tampilan tersimpan pribadi secara bawaan; hanya HC Admin yang boleh membagikan. | Terima. |
 | D-14-7 | Pantauan Hari Ini hanya menampilkan fakta (jam scan dan selisih dari jadwal) tanpa label Terlambat/Tidak hadir. | Terima; vonis resmi hanya dari Kalkulasi. |
@@ -472,3 +475,60 @@ HC menekan **Finalisasi ulang** per tanggal untuk menghasilkan laporan resmi.
 - Endpoint `GET /admin/attendance/daily` lama **tidak dihapus**: laporan ATT-009 masih memakai read
   model-nya sampai ATT-014-2/4 menggantikannya.
 - Manifest AUTH-011 dan `attendance-workforce.openapi.yaml` diperbarui.
+
+## 18. Catatan implementasi ATT-014-2 (2026-10-24)
+
+Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1 sampai D-14-4".
+
+- **Migration `0061_attendance_calculation_runs.sql`** menambah permission `attendance.calculation.run`
+  (role `human_capital_admin` dan `human_capital`) dan tabel `attendance_calculation_runs` sesuai §9,
+  ditambah kolom `cancel_requested_at` agar pembatalan saat `running` tidak perlu status baru. Aditif;
+  rollback di header migration.
+- **Runner** `apps/api/src/modules/attendance/calculation-runner.ts`, di dalam proses API, tanpa
+  interval: permintaan baru memulai antrean; saat API siap, run `running` sisa proses lama ditandai
+  `failed`/`INTERRUPTED` lalu antrean `queued` dilanjutkan. Slot tunggal dijaga indeks unik
+  `status = 'running'` dan `FOR UPDATE SKIP LOCKED`. Setiap pasangan memanggil
+  `materializeAttendanceResult` tanpa perubahan, dengan jeda `setImmediate` antarpasangan. Progres dan
+  pemeriksaan pembatalan tiap 25 pasangan.
+- **Aturan cakupan (D-14-3)** dihitung set-based dalam satu query: pasangan tercakup bila ada mapping PIN
+  yang berlaku pada hari itu (WIB), event HP/koreksi pada hari itu, atau klarifikasi disetujui untuk
+  tanggal itu. Pasangan "berstatus kerja" memakai `started_on`/`ended_on`; pegawai nonaktif hanya
+  sampai `ended_on`.
+- **Hari ini (D-14-4)** dihitung dengan jam server saat pasangan diproses. Saat dibaca, hasil hari ini
+  tanpa scan masuk dan tanpa keputusan cuti/penyelesaian dievaluasi ulang menurut jam
+  (`scheduled` → `pending` → `absent`), aturan yang sama dengan engine.
+- **`GET /admin/attendance/calculation-rows`** hanya membaca dan **berhalaman** (`page`, `pageSize`
+  10–200, bawaan 50; `summary` dan `changedCount` mencakup semua halaman), sejalan dengan usulan aturan
+  daftar panjang ENG-LIST-001. Paket ini hanya mengisi tab Detail Harian (`tab=detail`); lima tab lain
+  di ATT-014-3.
+- **Kesegaran (§6.5)** paket pertama: scan mesin (`attendance_adms_events.created_at`), event
+  kehadiran, pola jadwal baru (`attendance_schedule_assignments.created_at`), dan roster terbit
+  (`published_at`) setelah waktu kalkulasi terakhir. Waktu kalkulasi = yang terbaru dari `created_at`
+  versi hasil dan `started_at` run `completed` yang mencakup pasangan itu, sehingga kalkulasi ulang yang
+  memakai ulang versi lama (input sama) tetap menghapus tanda. **Belum terdeteksi (DRAFT):** pola
+  jadwal yang hanya diakhiri (`effective_to` diubah tanpa baris baru), keputusan cuti/klarifikasi,
+  koreksi HC, dan keputusan lembur.
+- **Normal/Riil** mengikuti §6.3: Normal 1 untuk hari terjadwal; Riil 1 hadir/terlambat, 0 tidak
+  hadir, kosong untuk tidak lengkap, cuti, dan hari yang belum selesai.
+- **Alias `POST /admin/attendance/finalize/{date}`** sekarang membuat run untuk satu tanggal dan
+  menjawab `202` seperti `POST /calculations`, dengan permission `attendance.calculation.run`
+  (sebelumnya `attendance.policy.manage` dan sinkron). Dihapus setelah satu rilis.
+- **Pembatalan** oleh pemohon, atau akun lain yang juga memegang `attendance.policy.manage`. Run
+  `queued` langsung `cancelled`; run `running` berhenti di titik progres berikutnya.
+- **Web:** tab baru **Kehadiran → Kalkulasi** (`/admin/attendance/calculation`, dibaca dengan
+  `attendance.reports.read`; tombol Kalkulasi hanya untuk `attendance.calculation.run`) dengan unit,
+  rentang + pintasan, bilah progres (polling 2 detik), batal, banner "Berubah sejak dikalkulasi", filter
+  status, dan tabel berhalaman (kartu di layar < 768px). Tab "Pengaturan → Finalisasi ulang" dihapus;
+  alamat lamanya dialihkan ke Kalkulasi. Layar penuh "Laporan & Kalkulasi" dan pemindahan menu tetap di
+  ATT-014-3.
+- **Audit:** `attendance.calculation.requested`, `.completed`, `.failed` (termasuk `INTERRUPTED`),
+  `.cancelled` di `access_audit_events`, metadata hanya id, rentang, hitungan, durasi, dan `error_code`.
+  Log aplikasi hanya id run dan hitungan.
+- **Test:** `apps/api/test/attendance-calculation.test.ts` (rentang, hari ini sementara, runner: cakupan,
+  gagal sebagian, batal, antrean, gagal total, INTERRUPTED; route: 202/400/422/403, alias, batal,
+  409) dan `attendance-calculation.postgres.test.ts` (PostgreSQL nyata di CI: cakupan dan "Tidak
+  tercatat", tanpa mapping tidak ditulis, I-2/I-3/I-4, idempoten, kesegaran setelah scan baru dan
+  jadwal baru, paginasi, INTERRUPTED dan antrean berurutan). I-5 (cuti belum final tidak dihitung)
+  tetap dijamin engine ATT-007 yang tidak diubah dan test engine yang ada.
+- Manifest AUTH-011 (4 route baru, finalize pindah permission; jumlah route permission 184) dan
+  `attendance-workforce.openapi.yaml` diperbarui.

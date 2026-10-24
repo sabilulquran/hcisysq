@@ -519,8 +519,9 @@ export async function registerOrganizationAdminRoutes(
       viewStructure: can("organization.manage"),
       composeChange: can("organization.manage"),
       discardChange: can("organization.manage"),
-      assignIncumbents: can("approvals.policy.manage"),
-      manageAuthority: can("approvals.policy.manage"),
+      // ORG-008-8 (O-1): composing incumbents and authority inside a change set.
+      assignIncumbents: can("organization.manage"),
+      manageAuthority: can("organization.manage"),
       publish: can("approvals.policy.manage"),
       manageRollout: can("approvals.policy.manage"),
     });
@@ -963,9 +964,8 @@ export async function registerOrganizationAdminRoutes(
    * is the honest answer there.
    */
   app.post("/admin/organization/designer/drafts/from-legacy", async (request, reply) => {
-    // It writes incumbents, authority and reporting exceptions, so it needs what those writes need.
-    const principal = await authenticate(request, reply,
-      ["organization.manage", "approvals.policy.manage"]); if (!principal) return;
+    // ORG-008-8 (O-1): it only composes a change set; publishing it still needs approvals.policy.manage.
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const parsed = draftInput.safeParse(request.body);
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
@@ -1142,7 +1142,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.put("/admin/organization/designer/drafts/:draftId/incumbencies", async (request, reply) => {
-    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = incumbencyInput.safeParse(request.body);
     if (!params.success || !body.success || (body.data.actingEmployeeId && (!body.data.actingFrom || !body.data.actingTo))
       || (body.data.actingFrom && body.data.actingTo && body.data.actingTo < body.data.actingFrom))
@@ -1186,7 +1186,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/authority-bindings", async (request, reply) => {
-    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = bindingInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_AUTHORITY_BINDING", "Invalid authority relationship.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -1207,7 +1207,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/reporting-overrides", async (request, reply) => {
-    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = overrideInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -1269,20 +1269,6 @@ export async function registerOrganizationAdminRoutes(
     }),
   ]);
 
-  /**
-   * ORG-008-4a: a command is refused unless the session may write every primitive it creates.
-   *
-   * Composing a unit or placing employees needs organization.manage, as those endpoints do today.
-   * A command that records an incumbent, an authority binding, or a reporting exception additionally
-   * needs approvals.policy.manage, exactly like the primitive endpoints it replaces. Decision O-1
-   * moves that second requirement to organization.manage in ORG-008-8; until then a combined action
-   * may not grant what its parts do not.
-   */
-  function commandWritesAuthority(command: OrganizationCommand): boolean {
-    if (command.type === "ADD_UNIT") return command.leader !== undefined;
-    return command.type !== "PLACE_EMPLOYEES";
-  }
-
   app.post("/admin/organization/designer/drafts/:draftId/commands", async (request, reply) => {
     const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params);
@@ -1290,17 +1276,10 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) {
       return invalid(reply, "INVALID_ORGANIZATION_COMMAND", "Invalid organization command.");
     }
+    // ORG-008-8 (O-1): every command composes inside an unpublished change set, so organization.manage
+    // is enough — the same as each primitive endpoint it combines. Nothing takes effect until a holder
+    // of approvals.policy.manage publishes, which is what keeps this from being self-elevation.
     const command = body.data as OrganizationCommand;
-    if (commandWritesAuthority(command)) {
-      const context = await resolveAuthorizationContext(pool, principal);
-      if (!context.organizationPermissions.includes("approvals.policy.manage")) {
-        return reply.status(403).send({
-          code: "FORBIDDEN",
-          message: "This command records authority and needs the approval policy permission.",
-          details: { commandType: command.type, requires: "approvals.policy.manage" },
-        });
-      }
-    }
 
     const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository);
@@ -1395,8 +1374,8 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.delete("/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId", async (request, reply) => {
-    // Authority, so the same permission the binding endpoints require today.
-    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    // ORG-008-8 (O-1): composing inside an unpublished change set; publishing stays separate.
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = itemParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid identifier.");
     const removed = await atomicOrganizationMutation(pool, principal, async (transaction) => {
@@ -1425,7 +1404,7 @@ export async function registerOrganizationAdminRoutes(
   });
 
   app.patch("/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId", async (request, reply) => {
-    const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = itemParams.safeParse(request.params);
     const body = z.object({ effectiveTo: date }).safeParse(request.body);
     if (!params.success || !body.success) {

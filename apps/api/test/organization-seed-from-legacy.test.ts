@@ -302,8 +302,13 @@ describe("ORG-008-7 at the route", () => {
     expect(response.json()).toMatchObject({ code: "ORGANIZATION_STRUCTURE_EXISTS" });
   });
 
-  it("needs the approval permission, because it writes incumbents and authority", async () => {
+  it("lets an HC admin build the proposal, which publishes nothing (ORG-008-8, decision O-1)", async () => {
     const { response } = await call({ permissions: ["organization.manage"] });
+    expect(response.statusCode).toBe(201);
+  });
+
+  it("refuses a session without organization.manage", async () => {
+    const { response } = await call({ permissions: ["approvals.policy.manage"] });
     expect(response.statusCode).toBe(403);
   });
 });

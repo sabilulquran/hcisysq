@@ -1,6 +1,6 @@
 # Jadwal Siap Input — Gelombang 1
 
-**Status:** SIAP DIINPUT HC. Toleransi telat dan lokasi kerja sudah ditetapkan owner (§1).
+**Status:** **DIINPUT ke production 2026-10-24** (§7). Toleransi telat dan lokasi kerja ditetapkan owner (§1).
 **Tanggal:** 2026-10-23
 **Sumber:** DRAF 01–08 SK Jadwal Kerja per Unit YSQ dan "RINGKASAN - Daftar Jadwal Kerja Pegawai YSQ".
 **Analisis lengkap:** `attendance-schedule-intake-feasibility.md`
@@ -102,3 +102,48 @@ lampau yang berubah sebelum SK sah.
 Pola jadwal dapat diakhiri dari layar dengan mengisi tanggal akhir; tidak ada data kehadiran yang
 hilang karena bukti scan tidak tersentuh. Shift yang terlanjur dibuat tidak bisa dihapus bila sudah
 dipakai, tetapi dapat dinonaktifkan setelah pola jadwalnya diakhiri.
+
+## 7. Pelaksanaan 2026-10-24
+
+Diinput lewat layar HCIS production (`/admin/attendance/shifts` dan `/admin/attendance/schedules`)
+oleh agen di panel browser yang login-nya dilakukan owner sendiri; agen tidak memegang kredensial.
+Seluruh perubahan tercatat di audit aplikasi atas nama akun yang login (Administrator HCIS).
+Tidak ada akses database langsung.
+
+**Shift dibuat (5):** Yayasan Umum — Reguler 07.00–16.00, Yayasan Umum — Rabu 07.00–17.00,
+Taman Tahfizh — Senin–Kamis 07.45–12.00, Taman Tahfizh — Jumat 07.45–13.00, SDIT — Hari Penuh
+07.00–16.00. Semua toleransi telat 1 menit, pulang cepat 0, tanpa lokasi, selesai hari yang sama.
+
+**Pola jadwal dibuat (49), berlaku mulai 2026-10-24 tanpa tanggal akhir:**
+
+| Kelompok | Shift | Hari | Pegawai | Pola |
+|---|---|---|---|---|
+| SDIT Guru Kelas + Guru PAI/PJOK | SDIT — Hari Penuh | Sen–Jum | 15 | 15 |
+| Taman Tahfizh | Senin–Kamis / Jumat | Sen–Kam / Jum | 9 | 18 |
+| Yayasan Umum (5 unit, dikonfirmasi owner) | Reguler / Rabu | Sen, Sel, Kam, Jum / Rab | 8 | 16 |
+| **Total** | | | **32** | **49** |
+
+**Pola lama diakhiri (1):** satu pegawai unit Human Capital Management memakai shift "Regular"
+08.00–16.00 sejak 2023-01-21. Pola itu diakhiri pada **2026-10-23** sebelum pola Yayasan Umum
+dibuat, agar hari kerjanya tidak tumpang tindih ("Jadwal bermasalah"). Riwayat sebelum 24 Oktober
+tetap memakai shift lama. Shift "Regular" kini tidak dipakai pola aktif mana pun dan dibiarkan.
+
+**Verifikasi dari data aplikasi (bukan dari tampilan):**
+
+- 49 pola baru; tidak ada duplikat; **0 pasangan pola yang tumpang tindih** untuk pegawai mana pun.
+- Kehadiran harian: Sabtu 2026-10-24 → 99 Libur (benar, tidak ada kelompok yang bekerja Sabtu).
+  Senin 26, Rabu 28, dan Jumat 30 Oktober → masing-masing **32 Terjadwal, 67 Libur**.
+- Contoh jam terjadwal sesuai: Yayasan Umum Rabu 07.00–17.00 dan Jumat 07.00–16.00; Taman Tahfizh
+  Rabu 07.45–12.00 dan Jumat 07.45–13.00; SDIT 07.00–16.00.
+
+**Yang harus diketahui HC mulai Senin 2026-10-26.** Sebelum hari ini masalah K-1 hampir tidak
+terlihat karena hanya 1 pegawai yang terjadwal. Sekarang 32 pegawai terjadwal, dan engine masih
+**belum** menghitung scan secara otomatis (ATT-011-2 belum dirilis). Akibatnya pegawai yang sudah
+scan akan tampil **"Tidak hadir" setelah jam pulangnya lewat**, sampai HC menekan
+**Pengaturan → Finalisasi ulang** untuk tanggal itu. Sementara ATT-011-2 belum ada, jalankan
+Finalisasi ulang setiap sore untuk hari tersebut. Setelah finalisasi, hari dengan satu scan saja
+akan tampil **Tidak lengkap** — itu benar menurut aturan.
+
+67 pegawai lain tetap tampil Libur sampai kelompoknya diisi: guru tahfizh SDIT (menunggu pemisahan
+putra/putri), Pesantren (menunggu ATT-013 untuk Blok Kerja ganda dan roster), dan General Affair
+(menunggu data jabatan dan jadwal final).

@@ -26,6 +26,11 @@ import {
 import { OrganizationDraftService } from "./draft-service.js";
 import { replayJournal } from "./replay.js";
 import {
+  buildSeedFromLegacy,
+  type LegacyEmployeeRow,
+  type LegacyUnitRow,
+} from "./seed-from-legacy.js";
+import {
   buildOrganizationPeopleView,
   computeOrganizationReadiness,
   explainPerson,
@@ -944,6 +949,82 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!changeSet) return;
     return reply.send(changeSet);
+  });
+
+  /**
+   * ORG-008-7 (decision O-3): a first change set built from the data HCIS already holds.
+   *
+   * Standing the structure up otherwise means retyping every unit, placement and manager that is
+   * already recorded (gap S-1). Everything here comes from recorded relationships; nothing is
+   * inferred from a job title (invariant I-7), nothing is published, and rollout is not touched.
+   *
+   * Only offered when no structure is effective on that date. Merging a proposal into a structure
+   * that already exists would mean inventing rules about what to keep; composing a change by hand
+   * is the honest answer there.
+   */
+  app.post("/admin/organization/designer/drafts/from-legacy", async (request, reply) => {
+    // It writes incumbents, authority and reporting exceptions, so it needs what those writes need.
+    const principal = await authenticate(request, reply,
+      ["organization.manage", "approvals.policy.manage"]); if (!principal) return;
+    const parsed = draftInput.safeParse(request.body);
+    if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
+    try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
+
+    const open = await repository.findOpenChangeSet();
+    if (open) {
+      return reply.status(409).send({
+        code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
+        message: "Another organization change is still open.",
+        details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
+      });
+    }
+    const existing = await repository.loadEffectiveSnapshot(parsed.data.effectiveOn);
+    if (existing) {
+      return reply.status(409).send({
+        code: "ORGANIZATION_STRUCTURE_EXISTS",
+        message: "A structure is already effective on that date; compose a change instead of seeding.",
+        details: { changeSetId: existing.changeSet.id, effectiveOn: existing.changeSet.effectiveOn },
+      });
+    }
+
+    const [units, employees] = await Promise.all([
+      pool.query<LegacyUnitRow>(
+        `SELECT id, name, leave_approver_employee_id AS "leaveApproverEmployeeId"
+         FROM organizational_units ORDER BY name`,
+      ),
+      pool.query<LegacyEmployeeRow>(
+        `SELECT id, organizational_unit_id AS "organizationalUnitId",
+           direct_manager_employee_id AS "directManagerEmployeeId"
+         FROM employees WHERE status = 'active' ORDER BY full_name`,
+      ),
+    ]);
+
+    const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const created = await transaction.repository.createDraft({
+        ...parsed.data, actorAccountId: principal.id,
+      });
+      const seeded = buildSeedFromLegacy({
+        changeSet: created.changeSet,
+        units: units.rows,
+        employees: employees.rows,
+      });
+      await transaction.repository.replaceDraftSnapshot(seeded.snapshot);
+      await transaction.audit("organization.draft.created", "organization_change_set",
+        created.changeSet.id, created.changeSet.id,
+        { effectiveOn: created.changeSet.effectiveOn, baseChangeSetId: created.changeSet.baseChangeSetId });
+      await transaction.audit("organization.draft.seeded_from_legacy", "organization_change_set",
+        created.changeSet.id, created.changeSet.id, { ...seeded.summary });
+      // Recorded as one line of the change list, so the reviewer sees where this content came from.
+      await transaction.repository.appendJournalEntry({
+        changeSetId: created.changeSet.id,
+        commandType: "SEED_FROM_LEGACY",
+        payload: { source: "ORG-002" },
+        summary: { ...seeded.summary },
+        actorAccountId: principal.id,
+      });
+      return { changeSet: created.changeSet, summary: seeded.summary };
+    });
+    return reply.status(201).send({ ...outcome.changeSet, summary: outcome.summary, proposal: true });
   });
 
   app.get("/admin/organization/designer/drafts/:draftId", async (request, reply) => {

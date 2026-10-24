@@ -17,7 +17,7 @@ dan bukan ditebak saat input.
 | # | Hal | Keputusan |
 |---|---|---|
 | K-1 | **Toleransi telat** | **1 menit** untuk seluruh shift gelombang ini, sama dengan shift "Regular" yang sudah ada. Toleransi pulang cepat **0**. Draf SK tidak menyebut angka, jadi ini kebijakan operasional, bukan kutipan SK; bila SK final menyebut angka berbeda, shift diperbarui lewat versi baru. |
-| K-2 | **Lokasi kerja per shift** | **Dikosongkan untuk seluruh shift**, termasuk shift SDIT. Lokasi tidak menjadi perhatian pada tahap ini; yang dikejar adalah pengaturan jadwalnya. |
+| K-2 | **Lokasi kerja per shift** | **Dikosongkan untuk seluruh shift**, termasuk shift SDIT. Aturan owner: **tempat scan tetap tercatat, tetapi shift tidak mengikat tempat absen** — pegawai shift SDIT boleh scan di mesin mana pun. HCIS sudah memenuhi ini tanpa perubahan: setiap scan mesin menyimpan mesin asalnya, dan kolom "Sumber"/mesin di Kehadiran harian serta laporan Data Scan menampilkannya. Lokasi pada shift hanya dipakai untuk mencocokkan titik GPS absen lewat HP. |
 
 Konsekuensi yang perlu diketahui HC:
 

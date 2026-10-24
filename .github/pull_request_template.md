@@ -45,6 +45,7 @@ Jelaskan masalah, outcome, dan perubahan utama.
 - [ ] OpenAPI/contract validation
 - [ ] Build
 - [ ] E2E/visual verification bila relevan
+- [ ] Daftar/tabel/dropdown baru atau yang diubah mengikuti ENG-LIST-001 (pagination server-side atau pengecualian tertulis)
 - [ ] Synthetic data only
 
 Command dan hasil:

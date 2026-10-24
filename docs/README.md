@@ -51,6 +51,11 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 - `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2;
 - `api/attendance-adms-wave3.openapi.yaml` untuk kontrak API operasi Package 3 yang tetap fail-closed terhadap hardware yang belum terverifikasi.
 
+## Engineering standards
+
+- `development/list-pagination-standard.md` — ENG-LIST-001 (DIUSULKAN): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar SQ Core.
+- `development/list-pagination-audit-2026-10-24.md` — audit daftar panjang di HCIS, SQ Hub, Aset, Karir, SPMB, dan Keluarga SQ beserta paket perbaikan berprioritas.
+
 ## Deployment dan repository operations
 
 - `development/vps-deployment.md` — active production runbook untuk exact-SHA GHCR cutover + verification; release image tidak dibangun sebagai langkah normal di VPS.

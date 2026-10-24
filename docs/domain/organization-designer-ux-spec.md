@@ -325,6 +325,7 @@ Read model menghitung per pegawai secara batch (satu snapshot dimuat sekali). Ba
 ### 5.4 Keterkaitan ATT-011
 
 - **Unit HC (D-11):** tambah kolom nullable `organization_nodes.legacy_unit_id → organizational_units(id)` (O-9) agar "unit pegawai atau unit induknya" dapat dihitung dari struktur bertingkat, sementara scope role tetap menunjuk `organizational_units`. Panel unit menampilkan staf HC yang scope-nya cocok (read-only, link ke Akses). Tanpa tautan: notifikasi ATT-011 mengikuti fallback organisasi (sudah DRAFT di ATT-011 §7.4).
+  Layar tautannya ada di panel unit sebagai **"Unit lama & staf HC"** (ORG-008-6b): memilih unit lama yang diwakili, dan menampilkan staf HC yang sudah berwenang atas unit itu atau unit di atasnya. Daftar stafnya **read-only** — penugasannya tetap dilakukan di layar Akses. Daftar unit lama diambil dari `GET /admin/organization` yang sudah ada, sehingga tidak ada endpoint baru. Keadaan "belum tertaut" dan "tertaut tetapi belum ada staf" ditampilkan sebagai dua pesan berbeda, karena akibatnya berbeda.
 - **Direktur (D-10):** aturan tetap dikelola di **Pengaturan → Aturan lembur** (ATT-011) dengan pemilih jabatan ORG-008 (cari jabatan dengan jalur unit). ORG-008 hanya menampilkan "aturan yang memakai jabatan ini" dan memperingatkan saat jabatan tersebut dinonaktifkan/dipindah di perubahan (O-8).
 - **Atasan lembur (D-5):** Cek persetujuan memakai resolver yang sama dengan ATT-011-6b; tidak ada resolver kedua di ORG-008.
 

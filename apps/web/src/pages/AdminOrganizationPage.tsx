@@ -11,6 +11,7 @@ import {
   Eye,
   GitBranchPlus,
   Info,
+  Link2,
   LoaderCircle,
   Lock,
   Network,
@@ -70,6 +71,7 @@ import {
 import {
   getOrganizationExplanation,
   getOrganizationPeople,
+  getOrganizationUnitHcStaff,
   getOrganizationReadiness,
   previewOrganizationApproval,
   type OrganizationApprovalPreview,
@@ -77,12 +79,15 @@ import {
   type OrganizationPeoplePage,
   type OrganizationPreviewWorkflow,
   type OrganizationReadiness,
+  type OrganizationUnitHcStaff,
 } from "@/lib/organizationReadModel";
 import {
   OrganizationAdvancedAuthority,
   type OrganizationAdvancedBindingType,
 } from "@/components/organization/OrganizationAdvancedAuthority";
 import { OrganizationChangeList } from "@/components/organization/OrganizationChangeList";
+import { OrganizationUnitLink } from "@/components/organization/OrganizationUnitLink";
+import { getOrganizationAdmin, type OrganizationUnitSummary } from "@/lib/adminOrgAccess";
 import {
   applyOrganizationCommand,
   deleteOrganizationNode,
@@ -125,7 +130,9 @@ type EditorAction =
   | { type: "appointActing"; position: OrganizationPosition }
   | { type: "reportsTo"; position: OrganizationPosition }
   | { type: "unitAuthority"; node: OrganizationNode; bindingType: "LEADER" | "UNIT_APPROVER" }
-  | { type: "override" };
+  | { type: "override" }
+  // ORG-008-6b: which imported unit this one stands for, and who is told about its overtime.
+  | { type: "unitLink"; node: OrganizationNode };
 
 /** ORG-008-1 §4.8: every irreversible-looking action is confirmed with its effect spelled out. */
 type ConfirmAction = {
@@ -404,6 +411,11 @@ export function OrganizationDesignerWorkspace({
   const [journalError, setJournalError] = useState<string | null>(null);
   const [replayPreview, setReplayPreview] = useState<OrganizationReplayReport | null>(null);
   const [replayFor, setReplayFor] = useState<number | null>(null);
+  const [legacyUnits, setLegacyUnits] = useState<OrganizationUnitSummary[]>([]);
+  const [legacyUnitsError, setLegacyUnitsError] = useState<string | null>(null);
+  const [unitStaff, setUnitStaff] = useState<OrganizationUnitHcStaff | null>(null);
+  const [unitStaffLoading, setUnitStaffLoading] = useState(false);
+  const [unitStaffError, setUnitStaffError] = useState<string | null>(null);
 
   const data = view;
   const today = jakartaToday();
@@ -606,6 +618,27 @@ export function OrganizationDesignerWorkspace({
         ? endOrganizationBinding(draft.id, binding.id, draft.effectiveOn, draft.revision)
         : deleteOrganizationBinding(draft.id, binding.id, draft.revision),
     });
+  };
+
+  const loadUnitStaff = (nodeKey: string) => {
+    setUnitStaffLoading(true);
+    setUnitStaffError(null);
+    void getOrganizationUnitHcStaff({ nodeKey, asOf: effectiveDate, draftId })
+      .then(setUnitStaff)
+      .catch((cause: unknown) => setUnitStaffError(errorMessage(cause, "Staf HC unit ini tidak dapat dimuat.")))
+      .finally(() => setUnitStaffLoading(false));
+  };
+
+  const openUnitLink = (node: OrganizationNode) => {
+    setAction({ type: "unitLink", node });
+    setUnitStaff(null);
+    loadUnitStaff(node.stableKey);
+    // The imported unit list is the same one the access screens use; it needs organization.manage,
+    // which anyone reaching this screen already holds.
+    setLegacyUnitsError(null);
+    void getOrganizationAdmin()
+      .then((result) => setLegacyUnits(result.units))
+      .catch(() => setLegacyUnitsError("Daftar unit lama tidak dapat dimuat, jadi tautan belum bisa dipilih."));
   };
 
   const askDeleteNode = (node: OrganizationNode) => {
@@ -909,6 +942,7 @@ export function OrganizationDesignerWorkspace({
                 <ActionButton onClick={() => setAction({ type: "unitAuthority", node: selectedNode, bindingType: "UNIT_APPROVER" })} icon={<Network />}>Penyetuju cuti unit</ActionButton>
                 <ActionButton onClick={() => setAction({ type: "override" })} icon={<UserCog />}>Atasan khusus</ActionButton>
               </> : null}
+              <ActionButton onClick={() => openUnitLink(selectedNode)} icon={<Link2 />}>Unit lama &amp; staf HC</ActionButton>
               <ActionButton onClick={() => askDeleteNode(selectedNode)} icon={<Trash2 />}>Hapus unit</ActionButton>
             </> : selectedPosition ? <>
               <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedPosition.nodeKey, parentPositionKey: selectedPosition.stableKey })} icon={<GitBranchPlus />}>Jabatan di bawah</ActionButton>
@@ -1008,6 +1042,34 @@ export function OrganizationDesignerWorkspace({
       </Modal> : null}
 
       {action?.type === "draft" ? <Modal title="Mulai perubahan struktur" description="Perubahan disusun terpisah. Struktur yang sudah terbit dan riwayatnya tidak pernah ditimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama perubahan"><input name="name" required defaultValue={`Perubahan struktur ${effectiveDate}`} className={inputClass} /></Field><Field label="Berlaku mulai" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Mulai perubahan" /></form></Modal> : null}
+
+      {action?.type === "unitLink" ? <Modal
+        title={`Unit lama & staf HC \u2014 ${action.node.name}`}
+        description="Menautkan unit ini ke unit lama membuat pemberitahuan lembur bisa menemukan staf HC yang tepat, termasuk lewat unit di atasnya."
+        onClose={() => setAction(null)}
+      >
+        <OrganizationUnitLink
+          node={action.node}
+          units={legacyUnits}
+          unitsError={legacyUnitsError}
+          staff={unitStaff}
+          staffLoading={unitStaffLoading}
+          staffError={unitStaffError}
+          canEdit={Boolean(canEdit)}
+          saving={saving}
+          onLink={(legacyUnitId) => {
+            if (!data?.draft) return;
+            void mutate(
+              () => updateOrganizationNode(data.draft!.id, action.node.id, { legacyUnitId }),
+              legacyUnitId ? "Tautan unit disimpan." : "Tautan unit dilepas.",
+            );
+          }}
+          onRetryStaff={() => loadUnitStaff(action.node.stableKey)}
+        />
+        <div className="mt-6 flex justify-end border-t border-border/70 pt-4">
+          <button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Tutup</button>
+        </div>
+      </Modal> : null}
 
       {action?.type === "addUnit" ? <Modal
         title={action.parent ? `Tambah unit di bawah ${action.parent.name}` : "Tambah unit"}

@@ -1307,7 +1307,22 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OrganizationDraft' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Draft has not passed validation }
+        '409':
+          description: >
+            ORGANIZATION_DRAFT_NOT_VALIDATED when the draft has not passed validation, or
+            ORGANIZATION_DRAFT_BASE_STALE (ORG-008-3a) when another change set was published after
+            this draft cloned its base and takes effect on or before this draft's effective date.
+            Publishing is refused because the draft's snapshot does not contain that publication and
+            would replace it. Published snapshots are not modified by the refusal.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string, enum: [ORGANIZATION_DRAFT_NOT_VALIDATED, ORGANIZATION_DRAFT_BASE_STALE] }
+                  message: { type: string }
+                  details: { $ref: '#/components/schemas/OrganizationStaleBase' }
 
   /admin/organization/rollout:
     get:
@@ -1796,11 +1811,29 @@ components:
         visualOnlyChanges: { type: array, items: { type: object } }
         noApprovalRoutingImpact: { type: boolean }
 
+    OrganizationStaleBase:
+      type: object
+      description: >
+        ORG-008-3a. The published change set that the opened change set cannot contain, because it was
+        published after that change set cloned its base and takes effect on or before it. Identifiers
+        and names only; no employee data.
+      required: [changeSetId, name, effectiveOn, publishedAt]
+      properties:
+        changeSetId: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        publishedAt: { type: string, format: date-time }
+
     OrganizationDesignerView:
       type: object
       required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
       properties:
         viewDate: { type: string, format: date }
+        staleBase:
+          description: >
+            Present only when the view was opened by draftId. Null while that change set's base is
+            still the newest publication.
+          oneOf: [{ $ref: '#/components/schemas/OrganizationStaleBase' }, { type: 'null' }]
         mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
         draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
         nodes: { type: array, items: { type: object } }

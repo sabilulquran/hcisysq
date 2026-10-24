@@ -324,6 +324,12 @@ Status backend ATT-007 tidak berubah. Label pengecualian (bukan status): Terlamb
 
 ### 6.4 Hitung ulang otomatis (baru, backend)
 
+> **Diganti 2026-10-24 (keputusan owner):** kehadiran tidak dihitung otomatis di latar belakang.
+> HCIS memakai model **Laporan & Kalkulasi** — operator memilih unit dan rentang lalu menekan
+> Kalkulasi — dan layar harian menjadi **Pantauan Hari Ini** yang hanya menampilkan fakta scan.
+> Spesifikasinya **ATT-014** (`attendance-report-calculation.md`). Kontrak di bawah dipertahankan
+> sebagai riwayat; bagian antrean, worker, dan pemicu otomatis tidak dikerjakan.
+
 Masalah K-1/K-2/J-8: hasil tidak mengikuti scan mesin, publish jadwal, dan keputusan cuti.
 
 **Kontrak:**
@@ -524,7 +530,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1); paket lain belum dimulai.
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 

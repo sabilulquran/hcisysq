@@ -1,6 +1,12 @@
 # ATT-011-2 — Hitung Ulang Otomatis: Rencana Implementasi
 
-**Status:** RENCANA — menunggu persetujuan owner. Belum ada kode yang ditulis.
+**Status:** **DIGANTIKAN SEBAGIAN 2026-10-24** oleh ATT-014 (`attendance-report-calculation.md`).
+Owner memutuskan kehadiran dihitung lewat tombol **Kalkulasi** per unit dan rentang, bukan otomatis
+di latar belakang. Antrean `attendance_recompute_requests`, worker interval, sweeper, dan pemicu
+otomatis (§1–§3) **tidak dikerjakan**. Yang dibawa ke ATT-014: hitung ulang rentang sebagai proses
+yang dapat dipantau, alias `finalize/{date}`, idempotensi engine (§6 butir 3–4), aturan status hari
+berjalan (§5.1(b)), dan temuan data production (R9/R10). Dokumen ini dipertahankan sebagai riwayat
+analisis. Tidak ada kode yang ditulis.
 **Specification:** ATT-011 §6.4, tabel paket §10 baris ATT-011-2
 **Menutup gap:** K-1, K-2, J-8 (`attendance-operational-simplification-gap-analysis.md`)
 **Invariant yang dijaga:** I-1 … I-8 (§1 spec), khususnya I-2 (bukti immutable), I-3 (missing punch tetap `incomplete`), I-4 (jadwal bukan bukti), I-5 (cuti belum final tidak mengubah hasil)

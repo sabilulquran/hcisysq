@@ -1418,6 +1418,14 @@
   },
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/today",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/admin/attendance/finalize/:date",
     "permissions": [

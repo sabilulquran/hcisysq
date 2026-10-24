@@ -1780,6 +1780,69 @@ paths:
                   message: { type: string }
                   details: { type: object }
 
+  /admin/organization/designer/drafts/from-legacy:
+    post:
+      tags: [Organization]
+      operationId: seedOrganizationDraftFromLegacy
+      summary: Build a first change set from the data HCIS already records (ORG-008-7, decision O-3)
+      description: >
+        Reads organizational_units, employees.organizational_unit_id, the ORG-002 unit leave
+        approver, and employees.direct_manager_employee_id. Nothing is inferred from a job title
+        (invariant I-7): the only titles it creates are derived from the unit's own name and are
+        marked as proposals. A unit where everyone shares one manager gets that manager as its
+        leader; anything else stays a per-employee exception pointing at the person, exactly as
+        ORG-002 records it. The result is a change set to review; nothing is published and rollout
+        is not touched.
+
+
+        Offered only when no structure is effective on that date and no other change is open.
+        Merging a proposal into an existing structure would mean inventing rules about what to keep.
+
+
+        Needs organization.manage and approvals.policy.manage, because it writes incumbents,
+        authority bindings and reporting exceptions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, effectiveOn]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 160 }
+                effectiveOn: { type: string, format: date }
+      responses:
+        '201':
+          description: The change set, with counts of what was proposed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/OrganizationDraft' }
+                  - type: object
+                    properties:
+                      proposal: { type: boolean }
+                      summary:
+                        type: object
+                        properties:
+                          units: { type: integer }
+                          placements: { type: integer }
+                          unitApprovers: { type: integer }
+                          unitLeaders: { type: integer }
+                          reportingExceptions: { type: integer }
+                          employeesWithoutUnit: { type: integer }
+                          employeesWithoutManager: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: >
+            ORGANIZATION_DRAFT_ALREADY_OPEN when another change is open (decision O-7), or
+            ORGANIZATION_STRUCTURE_EXISTS when a structure is already effective on that date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraftConflict' }
+
   /admin/organization/designer/drafts/{draftId}/rebase:
     post:
       tags: [Organization]

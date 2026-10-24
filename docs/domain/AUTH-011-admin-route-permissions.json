@@ -2181,5 +2181,14 @@
     "permissions": [
       "organization.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/from-legacy",
+    "permissions": [
+      "organization.manage",
+      "approvals.policy.manage"
+    ]
   }
 ]

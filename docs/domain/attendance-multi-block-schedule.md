@@ -8,6 +8,7 @@
 "multi-shift per pegawai per hari" di ATT-011 §1.
 **Terkait:** ATT-003 (versi shift), ATT-007 (engine), ATT-008 (tukar shift), ATT-010 (konvergensi),
 ATT-011 (penyederhanaan operasional), ATT-011-2 (hitung ulang otomatis), PAY-003 (di luar scope)
+**Referensi vendor:** `attendance-solution-am-491-reference.md` (Solution Attendance Management 4.9.1)
 
 ## 1. Masalah
 
@@ -60,7 +61,9 @@ Invariant ATT-011 §1 yang **tetap berlaku tanpa perubahan**:
 
 **Non-goal ATT-013:** jam istirahat terjadwal di dalam blok (SK menyatakan istirahat tidak perlu
 presensi, jadi HCIS tidak perlu menyimpannya); blok yang berbeda antar pegawai dalam satu shift;
-blok yang dibuat otomatis dari pola scan.
+blok yang dibuat otomatis dari pola scan; jendela scan masuk/pulang eksplisit per blok seperti di
+Solution Attendance Management (aturan titik tengah §5.2 dipakai sebagai gantinya, tanpa
+pengaturan tambahan bagi operator).
 
 ## 3. Yang dilihat operator
 
@@ -74,11 +77,13 @@ Kamus istilah ATT-011 §3 bertambah satu baris:
 **Layar Shift.** Form shift mendapat daftar Blok Kerja. Shift satu blok tampil persis seperti
 sekarang (satu baris jam masuk dan jam pulang); tombol "Tambah Blok Kerja" muncul di bawahnya.
 Contoh tampilan daftar: `Guru Tahfizh Pesantren | 04.00–08.30, 14.30–19.30 | 2 blok | 37 jam/minggu`.
+Setiap blok punya isian **Hitungan hari** (misalnya 0,5) — istilah yang sama dengan aplikasi
+Solution Attendance Management yang sudah dikenal HC, agar tidak perlu belajar ulang.
 
 **Layar Kehadiran harian.** Kolom Masuk dan Pulang tetap ada dan berisi scan **pertama** dan scan
 **terakhir** hari itu, sehingga tabel tidak melebar. Baris dengan lebih dari satu blok mendapat
 teks kecil per blok, misalnya `Blok 1 04.02–08.28 · Blok 2 14.35–19.31`. Blok yang tidak dihadiri
-ditulis `Blok 2 tidak hadir`.
+ditulis `Blok 2 tidak hadir`, dan baris itu menampilkan **Hari kerja 0,5 dari 1**.
 
 **Panel detail satu hari** (ATT-011-3) menampilkan tiap blok sebagai bagian tersendiri dengan jam
 jadwal, scan, dan label pengecualiannya.
@@ -101,6 +106,8 @@ CREATE TABLE attendance_schedule_version_blocks (
   start_time time NOT NULL,
   end_time time NOT NULL,
   end_day_offset integer NOT NULL DEFAULT 0 CHECK (end_day_offset IN (0, 1)),
+  workday_weight numeric(3,2) NOT NULL DEFAULT 1.00
+    CHECK (workday_weight > 0 AND workday_weight <= 1),
   UNIQUE (schedule_version_id, sequence)
 );
 CREATE INDEX attendance_schedule_version_blocks_version_idx
@@ -115,7 +122,10 @@ Aturan yang ditegakkan di server saat menyimpan versi shift:
 - blok diurutkan menaik menurut waktu mulai absolut (setelah `end_day_offset` diperhitungkan);
 - blok tidak boleh saling tumpang tindih, dan Jeda Antarblok minimal **30 menit** — jeda lebih
   pendek berarti itu istirahat di dalam satu blok, bukan dua blok (sejalan dengan SK);
-- total durasi seluruh blok dalam satu hari ≤ 20 jam.
+- total durasi seluruh blok dalam satu hari ≤ 20 jam;
+- jumlah `workday_weight` seluruh blok dalam satu versi = **1,00** (D-13-6): satu hari terjadwal
+  bernilai satu hari kerja. Shift satu blok otomatis 1,00; shift dua blok diisi operator, misalnya
+  0,50 + 0,50. Ini padanan "Hitungan hari" pada Jam Kerja di Solution Attendance Management.
 
 Pelanggaran → `400 INVALID_SCHEDULE_BLOCKS` dengan pesan yang menyebut blok ke berapa.
 
@@ -134,7 +144,7 @@ membuat perubahan ini menyentuh terlalu banyak tempat dalam satu PR. Kolom terse
 ### 4.3 Backfill
 
 Setiap `attendance_schedule_versions` yang ada mendapat tepat satu blok `sequence = 1` yang
-menyalin `start_time`, `end_time`, dan `end_day_offset`-nya. Backfill ini deterministik dan tidak
+menyalin `start_time`, `end_time`, dan `end_day_offset`-nya, dengan `workday_weight = 1.00`. Backfill ini deterministik dan tidak
 mengubah hasil perhitungan apa pun: shift satu blok sebelum dan sesudah migration menghasilkan
 jadwal yang identik.
 
@@ -162,6 +172,8 @@ CREATE TABLE attendance_result_blocks (
   late_minutes integer NOT NULL DEFAULT 0 CHECK (late_minutes >= 0),
   early_leave_minutes integer NOT NULL DEFAULT 0 CHECK (early_leave_minutes >= 0),
   incomplete_session boolean NOT NULL DEFAULT false,
+  expected_workday numeric(3,2) NOT NULL,
+  credited_workday numeric(3,2) NULL,
   UNIQUE (attendance_result_version_id, sequence)
 );
 CREATE INDEX attendance_result_blocks_employee_date_idx
@@ -222,6 +234,18 @@ Aturan ATT-007 diterapkan apa adanya **pada tiap blok**, memakai toleransi dari 
 `worked_minutes` hari = jumlah seluruh blok. `break_minutes` hari = jeda **di dalam** blok saja;
 Jeda Antarblok **tidak** dihitung sebagai istirahat maupun jam kerja, sesuai SK.
 
+**Hitungan hari per blok** (padanan kolom Normal dan Riil di Solution Attendance Management):
+
+- `expected_workday` = `workday_weight` blok itu (Normal).
+- `credited_workday` (Riil) = `workday_weight` bila blok berstatus `present` atau `late`;
+  **0** bila `absent`; **kosong (`NULL`)** bila `incomplete`, `scheduled`, atau `pending`.
+- Kosong untuk `incomplete` disengaja (D-13-7): pegawainya ada scan masuk sehingga 0 akan keliru,
+  tetapi memberi nilai penuh berarti mengisi bagian yang hilang dari jadwal — bertentangan dengan
+  I-3 dan I-4. Nilainya terisi setelah koreksi HC atau klarifikasi disetujui.
+
+Hari kerja satu tanggal = jumlah blok: Normal selalu 1,00 untuk hari terjadwal; Riil adalah jumlah
+`credited_workday` yang terisi, dan ditandai "belum lengkap" bila ada blok yang kosong.
+
 ### 5.4 Status hari
 
 Status hari diturunkan dari status blok dengan urutan tetap, dievaluasi dari atas:
@@ -245,6 +269,12 @@ dijelaskan oleh **label**, bukan status: baris itu menampilkan `Blok 2 tidak had
 pola label pengecualian ATT-011 §6.3. Alternatif yang **tidak** diambil: menambah status baru
 `partial`, karena status baru menyentuh read model, laporan, filter, dan PAY-003 sekaligus.
 Bila UAT menunjukkan HC bingung, penambahan status dibahas tersendiri.
+
+**Preseden vendor.** Solution Attendance Management, aplikasi yang sudah dikenal HC, tidak memaksa
+satu status untuk hari dua blok sama sekali: ia menghitung tiap Jam Kerja sebagai baris sendiri
+dengan kolom Normal dan Riil, lalu menjumlahkan hari kerja di rekap. Pegawai yang hanya hadir pagi
+tercatat **0,5 dari 1 hari**. ATT-013 mengambil pola yang sama untuk angka (§5.3), dan tetap
+menyediakan satu status hari karena layar Kehadiran harian HCIS membutuhkannya untuk kartu dan filter.
 
 **Tidak ada nilai enum status baru di ATT-013.**
 
@@ -283,7 +313,7 @@ dirancang agar dapat dibaca langsung. Tidak ada perhitungan payroll di ATT-013.
 
 | Paket | Isi | Migration | Test minimum |
 |---|---|---|---|
-| **ATT-013-1** Model dan engine | Tabel blok shift dan blok hasil, backfill, validasi simpan, resolver `blocks`, pembagian scan, penilaian per blok, status hari §5.4, `block_sequence` pada sesi. API shift menerima `blocks[]`; daily read menambah `blocks[]`. OpenAPI. | Aditif: 2 tabel baru, 1 kolom nullable, backfill 1 blok per versi. Rollback: rilis lama mengabaikan tabel baru dan tetap membaca `start_time`/`end_time` versi, sehingga shift satu blok tetap benar; shift dua blok akan dinilai rilis lama sebagai satu rentang panjang — **risiko perilaku yang harus diberitahukan sebelum rollback**. | Shift 1 blok sebelum/sesudah migration menghasilkan hasil identik (property test); blok tumpang tindih → 400; jeda < 30 menit → 400; > 3 blok → 400; scan dibagi ke blok yang benar termasuk pada titik tengah jeda; terlambat dihitung per blok; blok 1 hadir blok 2 kosong → `incomplete` + label; missing punch di blok 2 → `incomplete` (I-3); jam blok tidak pernah menjadi jam scan (I-4); scan di Jeda Antarblok tidak menambah jam kerja; Jeda Antarblok bukan `break_minutes`; dua assignment tetap `configuration_error`; bukti tidak berubah (I-2); idempotensi hash; regresi ATT-007 dan ATT-008 lulus. |
+| **ATT-013-1** Model dan engine | Tabel blok shift dan blok hasil, backfill, validasi simpan, resolver `blocks`, pembagian scan, penilaian per blok, status hari §5.4, `block_sequence` pada sesi. API shift menerima `blocks[]`; daily read menambah `blocks[]`. OpenAPI. | Aditif: 2 tabel baru, 1 kolom nullable, backfill 1 blok per versi. Rollback: rilis lama mengabaikan tabel baru dan tetap membaca `start_time`/`end_time` versi, sehingga shift satu blok tetap benar; shift dua blok akan dinilai rilis lama sebagai satu rentang panjang — **risiko perilaku yang harus diberitahukan sebelum rollback**. | Shift 1 blok sebelum/sesudah migration menghasilkan hasil identik (property test); blok tumpang tindih → 400; jeda < 30 menit → 400; > 3 blok → 400; scan dibagi ke blok yang benar termasuk pada titik tengah jeda; terlambat dihitung per blok; blok 1 hadir blok 2 kosong → `incomplete` + label + Riil 0,5 dari Normal 1,00; jumlah Hitungan hari ≠ 1,00 → 400; blok tidak lengkap → Riil kosong sampai dikoreksi; missing punch di blok 2 → `incomplete` (I-3); jam blok tidak pernah menjadi jam scan (I-4); scan di Jeda Antarblok tidak menambah jam kerja; Jeda Antarblok bukan `break_minutes`; dua assignment tetap `configuration_error`; bukti tidak berubah (I-2); idempotensi hash; regresi ATT-007 dan ATT-008 lulus. |
 | **ATT-013-2** UI | Form Shift dengan daftar Blok Kerja, daftar shift menampilkan jumlah blok, Kehadiran harian menampilkan rincian per blok, panel detail per blok. | Tidak ada. | Shift 2 blok dapat dibuat dan diubah; validasi tampil per blok; tabel tidak melebar di mobile; empty/forbidden state; label memakai kamus §3. |
 
 Urutan: ATT-013-1 lebih dulu dan dapat dirilis sendiri; sampai ATT-013-2 ada, shift dua blok dibuat
@@ -308,11 +338,13 @@ metadata. Tidak ada event audit baru.
 
 | # | Pertanyaan | Usulan |
 |---|---|---|
-| D-13-1 | Blok pagi hadir, blok sore tidak hadir sama sekali → "Tidak lengkap" dengan label "Blok 2 tidak hadir", atau status baru "Hadir sebagian"? | "Tidak lengkap" + label (§5.4). Status baru menyentuh laporan dan PAY-003 sekaligus. |
+| D-13-1 | Blok pagi hadir, blok sore tidak hadir sama sekali → "Tidak lengkap" dengan label "Blok 2 tidak hadir", atau status baru "Hadir sebagian"? | "Tidak lengkap" + label, **ditambah hari kerja 0,5 dari 1** (§5.3–5.4), mengikuti pola Normal/Riil di Solution Attendance Management. Status baru tetap tidak diusulkan karena menyentuh laporan dan PAY-003 sekaligus. |
 | D-13-2 | Jeda Antarblok minimal 30 menit sebagai pembeda "dua blok" dari "istirahat panjang". | Terima 30 menit. Draf SK tidak menyebut angka; yang terpendek di draf adalah 3,5 jam, jadi angka ini hanya pagar. |
 | D-13-3 | Batas 3 blok per hari. | Terima. Draf hanya butuh 2. |
 | D-13-4 | Toleransi telat berlaku sama untuk semua blok, bukan per blok. | Terima. |
 | D-13-5 | Scan di Jeda Antarblok tidak dihitung sebagai jam kerja dan tidak otomatis menjadi lembur. | Terima; sejalan dengan I-7 dan diktum KEDUA SK. |
+| D-13-6 | Jumlah Hitungan hari seluruh blok dalam satu shift wajib 1,00. | Terima. Vendor tidak memaksanya, tetapi tanpa aturan ini satu hari terjadwal bisa bernilai 0,7 atau 1,3 hari dan rekap bulanan jadi sulit dibaca. |
+| D-13-7 | Blok yang tidak lengkap (ada scan masuk, tidak ada scan pulang): hari kerja Riil dibiarkan kosong sampai dikoreksi, bukan 0 dan bukan penuh. | Terima. Vendor mengubah scan yang hilang menjadi terlambat/absen; HCIS tidak boleh (I-3). |
 
 Butir di atas tidak memblokir penulisan kode ATT-013-1 kecuali **D-13-1**, yang menentukan status
 yang dilihat HC dan ikut menentukan test.
@@ -324,7 +356,7 @@ yang dilihat HC dan ikut menentukan test.
   "Jadwal bermasalah".
 - ATT-013-C: terlambat di blok sore saja menghasilkan status Terlambat dengan label pada blok itu.
 - ATT-013-D: hadir blok pagi dan tidak hadir blok sore menghasilkan Tidak lengkap dengan label
-  "Blok 2 tidak hadir" (bergantung D-13-1).
+  "Blok 2 tidak hadir" dan hari kerja 0,5 dari 1 (bergantung D-13-1).
 - ATT-013-E: missing punch di salah satu blok tetap Tidak lengkap; jam jadwal tidak pernah menjadi
   jam scan.
 - ATT-013-F: shift satu blok yang sudah ada menghasilkan hasil yang sama persis seperti sebelum

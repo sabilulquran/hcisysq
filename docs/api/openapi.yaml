@@ -1064,6 +1064,94 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/units/{nodeKey}/hc-staff:
+    get:
+      tags: [Organization]
+      operationId: getOrganizationUnitHcStaff
+      summary: HC staff whose scope covers this unit or a unit above it (ORG-008-6)
+      description: >
+        Decision O-9, ATT-011 D-11. Role scopes point at organizational_units, a flat list with no
+        parent; the hierarchy lives in the ORG-004 structure. This walks up the structure from the
+        unit, collecting each linked imported unit, and returns the HC staff assigned to any of them.
+        Read-only: it reports who is already assigned, never who should be. Assignment stays in Akses.
+
+
+        When nothing up the branch is linked, linkedUnitIds is empty and fallback is true: ATT-011
+        keeps its organisation-wide recipients rather than a narrower guess.
+      parameters:
+        - { name: nodeKey, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { name: draftId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The linked imported units and the HC staff assigned to them
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asOf, nodeKey, linkedUnitIds, fallback, items]
+                properties:
+                  asOf: { type: string, format: date }
+                  nodeKey: { type: string, format: uuid }
+                  linkedUnitIds:
+                    description: The unit itself first, then upwards; only units that carry a link
+                    type: array
+                    items: { type: string, format: uuid }
+                  fallback:
+                    description: True when nothing up the branch is linked
+                    type: boolean
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        fullName: { type: string }
+                        roleKey: { type: string }
+                        unitId: { type: string, format: uuid }
+                        unitName: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: No structure for that date, or the unit is not in it }
+
+  /admin/organization/positions/search:
+    get:
+      tags: [Organization]
+      operationId: searchOrganizationPositions
+      summary: Find a position by title or unit path, for rules that point at a seat (ORG-008-6)
+      description: >
+        Decision O-8, ATT-011 D-10. The overtime rule names a position by its stable key, which
+        survives a rename and a restructure. The unit path comes back so two seats with the same
+        title in different schools can be told apart (gap S-4).
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { name: draftId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Matching positions effective on that date
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asOf, items]
+                properties:
+                  asOf: { type: string, format: date }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stableKey: { type: string, format: uuid }
+                        title: { type: string }
+                        nodeKey: { type: string, format: uuid }
+                        unitPath: { type: array, items: { type: string } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/organization/people:
     get:
       tags: [Organization]
@@ -2288,6 +2376,13 @@ components:
       type: object
       required: [name, nodeType]
       properties:
+        legacyUnitId:
+          description: >
+            ORG-008-6 (O-9). The imported unit this structural unit stands for, so HC notification
+            can resolve "the employee's unit or the unit above it". Null leaves it unlinked, and an
+            unlinked branch falls back to the organisation-wide recipients.
+          type: [string, 'null']
+          format: uuid
         name: { type: string, minLength: 1, maxLength: 160 }
         nodeType: { type: string, minLength: 1, maxLength: 80 }
         parentNodeKey: { type: [string, 'null'], format: uuid }

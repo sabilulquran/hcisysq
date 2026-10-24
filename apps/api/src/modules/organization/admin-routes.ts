@@ -35,7 +35,7 @@ import {
 } from "./read-model.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
-import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
+import { assertIsoDate, isEffective as isEffectiveOn, jakartaBusinessDate } from "./jakarta-date.js";
 
 const uuid = z.string().uuid();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -53,6 +53,9 @@ const nodeInput = z.object({
   parentNodeKey: uuid.nullable().default(null),
   visualRankOffset: z.number().int().min(0).max(10).default(0),
   integrationCode: z.string().trim().min(1).max(100).nullable().optional(),
+  // ORG-008-6 (O-9): which imported unit this structural unit stands for, so HC notification can
+  // find "the employee's unit or the unit above it" through the structure's own hierarchy.
+  legacyUnitId: uuid.nullable().optional(),
 });
 const nodePatch = nodeInput.partial().extend({ active: z.boolean().optional() });
 const positionInput = z.object({
@@ -518,6 +521,128 @@ export async function registerOrganizationAdminRoutes(
     });
   });
 
+  /**
+   * ORG-008-6 (O-9, ATT-011 D-11): the imported units this structural unit stands for, itself first
+   * and then upwards.
+   *
+   * Role scopes point at organizational_units, a flat list with no parent. The hierarchy lives in
+   * the structure. Walking up the structure and collecting each linked imported unit is what turns
+   * "the employee's unit or the unit above it" into something that can actually be resolved.
+   * A unit with no link contributes nothing, so an unlinked branch falls back to the
+   * organisation-wide recipients ATT-011 already uses rather than guessing.
+   */
+  function linkedUnitChain(
+    nodes: Array<{ stableKey: string; parentNodeKey: string | null; legacyUnitId?: string | null }>,
+    nodeKey: string,
+  ): string[] {
+    const byKey = new Map(nodes.map((node) => [node.stableKey, node]));
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let current: string | null = nodeKey;
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const node = byKey.get(current);
+      if (!node) break;
+      if (node.legacyUnitId) chain.push(node.legacyUnitId);
+      current = node.parentNodeKey;
+    }
+    return chain;
+  }
+
+  app.get("/admin/organization/units/:nodeKey/hc-staff", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const params = z.object({ nodeKey: uuid }).safeParse(request.params);
+    const query = z.object({ asOf: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
+    if (!params.success || !query.success) return invalid(reply, "INVALID_UNIT_QUERY", "Invalid unit query.");
+    const asOf = query.data.asOf ?? jakartaBusinessDate();
+    const snapshot = query.data.draftId
+      ? await repository.loadChangeSetSnapshot(query.data.draftId)
+      : await repository.loadEffectiveSnapshot(asOf);
+    if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_STRUCTURE_NOT_FOUND" });
+    if (!snapshot.nodes.some((node) => node.stableKey === params.data.nodeKey)) {
+      return reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" });
+    }
+
+    const chain = linkedUnitChain(snapshot.nodes, params.data.nodeKey);
+    if (chain.length === 0) {
+      // Honest empty answer: no link anywhere up the branch, so ATT-011 keeps its existing
+      // organisation-wide fallback instead of a narrower guess.
+      return reply.send({ asOf, nodeKey: params.data.nodeKey, linkedUnitIds: [], fallback: true, items: [] });
+    }
+    // Read-only: who is already assigned, never who should be. Assignment stays in Akses.
+    const staff = await pool.query(
+      `SELECT DISTINCT employee.id AS "employeeId", employee.full_name AS "fullName",
+         role.role_key AS "roleKey", unit.id AS "unitId", unit.name AS "unitName"
+       FROM account_role_assignments assignment
+       JOIN accounts account ON account.id = assignment.account_id
+       JOIN employees employee ON employee.id = account.employee_id
+       JOIN roles role ON role.id = assignment.role_id
+       JOIN organizational_units unit ON unit.id = assignment.organizational_unit_id
+       WHERE assignment.scope_type = 'unit'
+         AND assignment.organizational_unit_id = ANY($1::uuid[])
+         AND account.status = 'active' AND employee.status = 'active'
+         AND (assignment.starts_on IS NULL OR assignment.starts_on <= $2::date)
+         AND (assignment.ends_on IS NULL OR assignment.ends_on >= $2::date)
+       ORDER BY employee.full_name`,
+      [chain, asOf],
+    );
+    return reply.send({
+      asOf,
+      nodeKey: params.data.nodeKey,
+      linkedUnitIds: chain,
+      fallback: false,
+      items: staff.rows,
+    });
+  });
+
+  app.get("/admin/organization/positions/search", async (request, reply) => {
+    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const query = z.object({
+      q: z.string().trim().max(120).optional(),
+      asOf: date.optional(),
+      draftId: uuid.optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_POSITION_QUERY", "Invalid position query.");
+    const asOf = query.data.asOf ?? jakartaBusinessDate();
+    const snapshot = query.data.draftId
+      ? await repository.loadChangeSetSnapshot(query.data.draftId)
+      : await repository.loadEffectiveSnapshot(asOf);
+    if (!snapshot) return reply.send({ asOf, items: [] });
+
+    // ORG-008-6 (O-8, ATT-011 D-10): the overtime rule points at a position by its stable key, which
+    // survives renames and restructuring. The unit path is here so two seats with the same title in
+    // different schools can be told apart (gap S-4).
+    const nodeByKey = new Map(snapshot.nodes.map((node) => [node.stableKey, node]));
+    const pathOf = (nodeKey: string) => {
+      const names: string[] = [];
+      const seen = new Set<string>();
+      let current: string | null = nodeKey;
+      while (current && !seen.has(current)) {
+        seen.add(current);
+        const node = nodeByKey.get(current);
+        if (!node) break;
+        names.unshift(node.name);
+        current = node.parentNodeKey;
+      }
+      return names;
+    };
+    const needle = query.data.q?.toLowerCase() ?? "";
+    const items = snapshot.positions
+      .filter((position) => position.active && isEffectiveOn(position.effectiveFrom, position.effectiveTo, asOf))
+      .map((position) => ({
+        stableKey: position.stableKey,
+        title: position.title,
+        nodeKey: position.nodeKey,
+        unitPath: pathOf(position.nodeKey),
+      }))
+      .filter((item) => !needle
+        || item.title.toLowerCase().includes(needle)
+        || item.unitPath.join(" ").toLowerCase().includes(needle))
+      .slice(0, query.data.limit);
+    return reply.send({ asOf, items });
+  });
+
   app.get("/admin/organization/people", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const query = z.object({
@@ -836,7 +961,9 @@ export async function registerOrganizationAdminRoutes(
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
       if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
-      const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, integrationCode: body.data.integrationCode ?? null,
+      const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data,
+        integrationCode: body.data.integrationCode ?? null,
+        legacyUnitId: body.data.legacyUnitId ?? null,
         active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.node.created", "organization_node", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });

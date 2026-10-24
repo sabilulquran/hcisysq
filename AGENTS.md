@@ -83,6 +83,7 @@ Sebelum merge:
 - migration memiliki rollback/recovery plan;
 - kontrak API dan client tetap sinkron;
 - error, loading, empty, forbidden, dan mobile state diperiksa;
+- setiap daftar, tabel, dan dropdown record baru atau yang diubah mengikuti `docs/development/list-pagination-standard.md` (ENG-LIST-001): data yang bertumbuh memakai pagination server-side (`page`/`pageSize` default 25 maks 100 dengan `total`, atau kursor untuk log bervolume tinggi), tidak ada `LIMIT`/`slice` yang memotong diam-diam, filter dan scope otorisasi dijalankan sebelum `LIMIT`, dropdown di atas 50 opsi atau berisi pegawai memakai pencarian typeahead, dan setiap pengecualian ditulis di specification;
 - dokumentasi diperbarui;
 - tidak ada secret atau data pribadi pada diff.
 

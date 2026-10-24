@@ -134,6 +134,72 @@ adanya / ke atas), "hitung berapa kali", simbol di laporan, dan apakah ijin ikut
   langsung. HCIS menjaga bukti mentah immutable (I-2); koreksi adalah event terpisah beralasan.
 - Scan yang hilang **diubah menjadi terlambat/pulang cepat/absen** menurut aturan. HCIS
   mempertahankan "Tidak lengkap" sampai ada koreksi atau klarifikasi (I-3).
+- Waktu di luar jam kerja **otomatis dihitung lembur** (di data operasional owner terlihat
+  "Lembur 00:45" hampir setiap hari). HCIS hanya mengakui lembur dari pengajuan yang disetujui (I-7);
+  scan di luar jadwal tampil sebagai fakta.
+
+Contoh nyata dari tangkapan layar owner (data operasional aplikasi lama, April–Mei 2026, tidak
+disalin ke repo): hari tanpa scan pulang tampil **Plg. Cepat 01:00** dengan latar hijau, dan hari
+tanpa scan masuk tampil **Terlambat 01:00**. Di HCIS kedua hari itu akan tampil **Tidak lengkap**.
+
+### 4.4 Layar "Laporan dan Kalkulasi Transaksi" — alur kerja
+
+Alur yang dipakai HC sehari-hari (dikonfirmasi tangkapan layar owner 2026-10-24):
+
+1. **Pilih** Departemen, Nama (atau `<Semua>`), dan Rentang Waktu (dengan pintasan Kemarin, Hari ini,
+   Minggu ini/lalu, Bulan ini/lalu).
+2. Tekan **Kalkulasi**. Aplikasi menghitung rentang itu saat itu juga (dengan bilah proses) — tidak
+   ada perhitungan otomatis di latar belakang.
+3. Hasilnya tampil sebagai **tabel setengah mentah** dalam beberapa tab, belum berbentuk laporan.
+4. Dari tabel itu operator memilih **Laporan** (format bawaan), **Ekspor Data**, atau mencentang
+   **Desain Laporan** untuk menyunting templat.
+
+Tab dan kolomnya:
+
+| Tab | Satu baris = | Kolom utama |
+|---|---|---|
+| **Data Transaksi** | satu scan | Waktu, Status (masuk/keluar), Status baru, Pengecualian, Shift, Operasi. Ada aksi ubah status / tambah / hapus scan (tidak boleh ditiru, §4.3). |
+| **Shift** | pegawai × tanggal × Jam Kerja | Jadwal, Auto-Assign, Tanggal, Jam Kerja, Jam Masuk/Pulang, Scan Masuk/Pulang, **Normal, Riil**, Tidak C/In, Tidak C/Out, Terlambat, Plg. Cepat, Absent, Lembur, Jml Jam Kerja, Pengecualian, Simbol, Harus C/In/Out, Hari Normal/Akhir Pekan/Hari Libur, Jml Kehadiran, Lembur per jenis hari. |
+| **Pengecualian** | ijin/dinas luar/koreksi | Jam mulai/akhir, Pengecualian, Diaudit, Jam shift, Total jam, Waktu valid, Tanggal, Hari kerja. Ada alur setujui/batalkan audit. |
+| **Rekapitulasi** | pegawai | **Kolom dinamis** dari daftar "Item" yang dapat ditambah, diubah, diurutkan (Normal, Riil, Absen, Terlambat, Pulang Cepat, Lembur, tiap jenis ijin, Tidak C/In/Out, dsb.). |
+| **Laporan Lembur** | pegawai × tanggal | Jam masuk/pulang, Scan masuk/pulang, Waktu kerja, Lembur awal/akhir, Lembur hari normal/akhir pekan/libur, Jml lembur, Memo. |
+| **Tidak Ada Shift** | pegawai × tanggal tanpa jadwal | Scan Masuk/Pulang 1–5, Total jam kerja. |
+
+Alat pada tabel: filter status (Normal, Terlambat, Pulang Cepat, Tidak C/In, Tidak C/Out, Absen,
+Auto-assigned), filter jam kerja, ganti warna, cari, urutkan (Dep., No. ID, Nama, Jam, Z→A),
+pilih kolom yang tampil, **kolom tetap** (bekukan 0–6 kolom kiri), **simpan/buka layout**,
+**Ekspor Data** dan Ekspor lanjutan, **Buat Laporan dari Tampilan Aktif**, dan **Simpan sebagai
+templat laporan**. Cetak bisa potret/lanskap; keluaran ke layar, printer, atau file teks.
+
+### 4.5 Format laporan bawaan
+
+Menu **Laporan** (tangkapan layar owner) dipetakan ke templat FastReport yang terkirim bersama aplikasi:
+
+| Menu | Templat | Bentuk |
+|---|---|---|
+| **Laporan Harian** | `attdaily.rpt` | **Grid bulanan** per departemen: baris = pegawai (nama + No. ID), kolom = tanggal 1–31 berjudul tanggal + nama hari, isi = **simbol** status hari itu; akhir pekan abu-abu, hari libur kuning; kolom total Normal, Riil, Absen, Terlambat, Pulang Cepat, Lembur, Jml Ijin, Dinas Luar; legenda simbol di kepala laporan. |
+| **Laporan Rekapitulasi** | `atttotal.rpt` | Baris = pegawai, dikelompokkan per departemen dengan **subtotal** dan total: Normal, Riil, Absen, Terlambat, Pulang Cepat, Lembur, jenis-jenis ijin, Tidak scan masuk, Tidak scan pulang, Waktu kerja, **Presensi %** (= Riil ÷ Normal). |
+| **Laporan Per Departemen** | `depttotal.rpt` | Item yang sama dengan Rekapitulasi, tetapi satu baris per departemen. |
+| **Data Scan Karyawan** | `empattrec.rpt` | Per pegawai, blok mingguan; tiap kolom tanggal (`mm/dd ddd`) berisi **semua jam scan** hari itu. |
+| **Jadwal Harian Karyawan** | `attDailySch.rpt` | **Grid bulanan** pegawai × tanggal berisi nama Jam Kerja hari itu, dengan legenda warna. |
+| **Laporan Detail Harian** | `attdailyOT.rpt` | Per pegawai, satu baris per tanggal: Jam Masuk, Jam Pulang, Scan Masuk, Scan Keluar, Terlambat, Pulang Cepat, Lembur, Pengecualian, Jml Hadir; jumlah baris per pegawai. |
+| **Data Transaksi Karyawan** | `SummaryOFOvertime.rpt` (judul di templat: "Data Transaksi Karyawan") | Grid pegawai × tanggal, tiap sel berisi jam-jam scan hari itu. |
+| **Laporan Lembur Harian** | `attOverTime.rpt` | Grid pegawai × tanggal berisi lembur per hari, lalu Total lembur, Lembur hari normal, Lembur akhir pekan + libur. |
+| **Buat laporan dari tampilan aktif** | dinamis (`attcust.rpt`) | Mencetak kolom dan filter tabel yang sedang tampil, dikelompokkan per departemen dengan jumlah orang. |
+
+Laporan pendukung lain: Pengecualian per departemen (`exc.rpt`), Ijin/Dinas luar beserta ringkasan
+per jenis (`attleave.rpt`), Jadwal kerja per pegawai (`schs.rpt`), dan **Log perubahan data
+presensi** — siapa mengubah apa, kapan, dan alasannya (`recmodi.rpt`).
+
+Semua laporan memakai kepala yang sama: judul, rentang tanggal, "oleh: <pengguna>", tanggal cetak,
+dan nomor halaman.
+
+### 4.6 Desain laporan sendiri
+
+Centang **Desain Laporan** membuka perancang FastReport (band, memo, ekspresi data, skrip warna).
+Templat hasil suntingan disimpan dan muncul sebagai "Laporan yang dibuat sendiri". Dalam praktik,
+kebanyakan kebutuhan kustom dipenuhi oleh kombinasi **pilih kolom + filter + simpan layout +
+laporan dari tampilan aktif**, dan perancang penuh hanya untuk tata letak cetak khusus.
 
 ## 5. Struktur menu
 

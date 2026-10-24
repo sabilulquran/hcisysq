@@ -50,6 +50,7 @@ import {
   updateOrganizationNode,
   updateOrganizationPosition,
   validateOrganizationDraft,
+  type OrganizationAuthorityBinding,
   type OrganizationDesignerView,
   type OrganizationEmployeeOption,
   type OrganizationImpactPreview,
@@ -77,11 +78,17 @@ import {
   type OrganizationPreviewWorkflow,
   type OrganizationReadiness,
 } from "@/lib/organizationReadModel";
+import {
+  OrganizationAdvancedAuthority,
+  type OrganizationAdvancedBindingType,
+} from "@/components/organization/OrganizationAdvancedAuthority";
 import { OrganizationChangeList } from "@/components/organization/OrganizationChangeList";
 import {
   applyOrganizationCommand,
   deleteOrganizationNode,
+  deleteOrganizationBinding,
   deleteOrganizationPosition,
+  endOrganizationBinding,
   listOrganizationJournal,
   OrganizationCommandRefused,
   rebaseOrganizationDraft,
@@ -559,6 +566,48 @@ export function OrganizationDesignerWorkspace({
     } finally { setSaving(false); }
   };
 
+  const addAdvancedRule = (
+    position: OrganizationPosition,
+    bindingType: OrganizationAdvancedBindingType,
+    targetPositionKey: string,
+  ) => {
+    if (!data?.draft) return;
+    void mutate(
+      () => createOrganizationAuthorityBinding(data.draft!.id, {
+        sourceType: "POSITION",
+        sourceKey: position.stableKey,
+        authorityType: bindingType,
+        targetPositionKey,
+        // The rule follows the seat; when that seat is empty the next authority above answers.
+        vacancyPolicy: "CLIMB_TO_PARENT",
+        effectiveFrom: data.draft!.effectiveOn,
+        effectiveTo: null,
+      }),
+      "Aturan disimpan.",
+    );
+  };
+
+  /**
+   * ORG-008-4b: a rule created inside this change set is removed; one that came from published
+   * structure is ended instead, so the record of it stays.
+   */
+  const removeAdvancedRule = (binding: OrganizationAuthorityBinding) => {
+    if (!data?.draft) return;
+    const draft = data.draft;
+    const fromPublished = binding.effectiveFrom < draft.effectiveOn;
+    setConfirmation({
+      title: fromPublished ? "Akhiri aturan ini?" : "Hapus aturan ini?",
+      body: fromPublished
+        ? "Aturan ini berasal dari struktur yang sudah terbit, jadi ia diakhiri dan catatannya tetap tersimpan. Berlaku setelah perubahan ini diterbitkan."
+        : "Aturan ini dibuat di dalam perubahan ini dan belum pernah terbit, jadi menghapusnya tidak menghilangkan riwayat apa pun.",
+      confirmLabel: fromPublished ? "Akhiri aturan" : "Hapus aturan",
+      success: fromPublished ? "Aturan diakhiri." : "Aturan dihapus.",
+      run: () => fromPublished
+        ? endOrganizationBinding(draft.id, binding.id, draft.effectiveOn, draft.revision)
+        : deleteOrganizationBinding(draft.id, binding.id, draft.revision),
+    });
+  };
+
   const askDeleteNode = (node: OrganizationNode) => {
     if (!draftId) return;
     setConfirmation({
@@ -708,24 +757,6 @@ export function OrganizationDesignerWorkspace({
     void mutate(
       () => editor.kind === "node" ? updateOrganizationNode(data.draft!.id, editor.item.id, { visualRankOffset: offset }) : updateOrganizationPosition(data.draft!.id, editor.item.id, { visualRankOffset: offset }),
       "Tampilan kotak diperbarui; persetujuan tidak berubah.",
-    );
-  };
-
-  const handleAuthority = (event: FormEvent<HTMLFormElement>, editor: Extract<EditorAction, { type: "authority" }>) => {
-    event.preventDefault();
-    if (!data?.draft) return;
-    const form = new FormData(event.currentTarget);
-    void mutate(
-      () => createOrganizationAuthorityBinding(data.draft!.id, {
-        sourceType: editor.kind === "node" ? "NODE" : "POSITION",
-        sourceKey: editor.item.stableKey,
-        authorityType: String(form.get("authorityType")) as "SUPERVISORY_PARENT" | "LEADER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER" | "OVERSIGHT_PARENT",
-        targetPositionKey: String(form.get("targetPositionKey")),
-        vacancyPolicy: String(form.get("vacancyPolicy")) as OrganizationVacancyPolicy,
-        effectiveFrom: data.draft!.effectiveOn,
-        effectiveTo: null,
-      }),
-      "Kewenangan disimpan.",
     );
   };
 
@@ -1195,7 +1226,25 @@ export function OrganizationDesignerWorkspace({
 
       {action?.type === "visual" ? <Modal title="Atur tampilan kotak" description="Pengaturan ini hanya memindahkan kotak pada bagan. Atasan langsung, penyetuju cuti, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm font-bold text-info-ink">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Sejajar dengan tingkat sebenarnya" : `Turunkan ${offset} tingkat`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis penghubung tetap menunjuk ke unit induk yang sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
 
-      {action?.type === "authority" ? <Modal title="Atur pemimpin, penyetuju, dan atasan" description="Pilih peran dan jabatan yang memegangnya. Judul jabatan tidak pernah dipakai sebagai aturan." onClose={() => setAction(null)}><form onSubmit={(event) => handleAuthority(event, action)} className="space-y-4"><Field label="Peran"><select name="authorityType" className={inputClass}>{action.kind === "position" ? <><option value="SUPERVISORY_PARENT">Melapor ke</option><option value="GOVERNANCE_APPROVER">Penyetuju khusus untuk jabatan ini</option><option value="OVERSIGHT_PARENT">Diberi tahu setelah disetujui</option></> : <><option value="LEADER">Pemimpin unit (atasan langsung anggota unit)</option><option value="UNIT_APPROVER">Penyetuju cuti unit</option></>}</select></Field><Field label="Dipegang jabatan"><select name="targetPositionKey" required className={inputClass}><option value="">Pilih jabatan...</option>{data?.positions.map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan itu kosong"><select name="vacancyPolicy" defaultValue="CLIMB_TO_PARENT" className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan" /></form></Modal> : null}
+      {action?.type === "authority" && action.kind === "position" ? <Modal
+        title={`Pengaturan lanjutan \u2014 ${(action.item as OrganizationPosition).title}`}
+        description="Ditulis sebagai kalimat, bukan istilah teknis. Dipakai untuk jabatan yang pengajuannya tidak mengikuti jalur biasa."
+        onClose={() => setAction(null)}
+      >
+        <OrganizationAdvancedAuthority
+          position={action.item as OrganizationPosition}
+          bindings={data?.bindings ?? []}
+          positions={data?.positions ?? []}
+          canManage={canAssignIncumbents}
+          saving={saving}
+          onAdd={(bindingType, targetPositionKey) =>
+            addAdvancedRule(action.item as OrganizationPosition, bindingType, targetPositionKey)}
+          onRemove={removeAdvancedRule}
+        />
+        <div className="mt-6 flex justify-end border-t border-border/70 pt-4">
+          <button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Tutup</button>
+        </div>
+      </Modal> : null}
     </>
   );
 }

@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { attendanceCalculationRows } from "../src/modules/attendance/calculation-rows.js";
 import { createCalculationRunner, type CalculationRunner } from "../src/modules/attendance/calculation-runner.js";
+import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -41,12 +42,12 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     );
   }
 
-  async function queueRun(scope: { employeeId?: string; from: string; to: string }) {
+  async function queueRun(scope: { employeeId?: string; from: string; to: string }, createdAt?: string) {
     const id = randomUUID();
     await client.query(
-      `INSERT INTO attendance_calculation_runs (id, requested_by_account_id, employee_id, date_from, date_to, status)
-       VALUES ($1, $2, $3, $4::date, $5::date, 'queued')`,
-      [id, accountId, scope.employeeId ?? null, scope.from, scope.to],
+      `INSERT INTO attendance_calculation_runs (id, requested_by_account_id, employee_id, date_from, date_to, status, created_at)
+       VALUES ($1, $2, $3, $4::date, $5::date, 'queued', coalesce($6::timestamptz, now()))`,
+      [id, accountId, scope.employeeId ?? null, scope.from, scope.to, createdAt ?? null],
     );
     return id;
   }
@@ -251,12 +252,23 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     const recovered = await client.query("SELECT status, error_code FROM attendance_calculation_runs WHERE id = $1", [stuck]);
     expect(recovered.rows[0]).toEqual({ status: "failed", error_code: "INTERRUPTED" });
 
-    const first = await queueRun({ employeeId: mapped, from: "2026-08-26", to: "2026-08-27" });
-    const second = await queueRun({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
-    runner.kick();
-    await runner.idle();
+    // now() is constant inside the test transaction, so the queue order comes from explicit created_at
+    // values; the later request is inserted first to show that insertion order does not matter.
+    const second = await queueRun({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" }, new Date(Date.now() - 60_000).toISOString());
+    const first = await queueRun({ employeeId: mapped, from: "2026-08-26", to: "2026-08-27" }, new Date(Date.now() - 120_000).toISOString());
+    const order: string[] = [];
+    const ordered = createCalculationRunner(transactionPool, {
+      pause: async () => undefined,
+      materialize: (db, employeeId, workDate, now) => {
+        order.push(workDate);
+        return materializeAttendanceResult(db, employeeId, workDate, now);
+      },
+    });
+    ordered.kick();
+    await ordered.idle();
+    expect(order).toEqual(["2026-08-26", "2026-08-27", "2026-08-28"]);
     const runs = await client.query(
-      "SELECT id, status FROM attendance_calculation_runs WHERE id = ANY($1::uuid[]) ORDER BY started_at",
+      "SELECT id, status FROM attendance_calculation_runs WHERE id = ANY($1::uuid[]) ORDER BY created_at",
       [[first, second]],
     );
     expect(runs.rows).toEqual([{ id: first, status: "completed" }, { id: second, status: "completed" }]);

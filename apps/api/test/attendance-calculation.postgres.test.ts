@@ -35,8 +35,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
       `INSERT INTO attendance_adms_events (
          id, device_id, source_request_id, event_identity_hash, pin,
          occurred_at_raw, occurred_at, raw_line, raw_fields, raw_line_sha256, received_at, created_at
-       ) VALUES ($1, $2, $3, $1::text, 'CALC-1', $4, $4::timestamptz, 'synthetic', '[]'::jsonb, $1::text, $4::timestamptz,
-                 coalesce($5::timestamptz, now()))`,
+       ) VALUES ($1::uuid, $2, $3, $1::uuid::text, 'CALC-1', $4::text, $4::text::timestamptz, 'synthetic', '[]'::jsonb,
+                 $1::uuid::text, $4::text::timestamptz, coalesce($5::timestamptz, now()))`,
       [id, deviceId, requestId, at, createdAt ?? null],
     );
   }
@@ -222,8 +222,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
 
     await client.query(
       `INSERT INTO attendance_schedule_assignments (id, employee_id, schedule_template_id, weekday_mask, effective_from, effective_to, created_by_account_id, created_at)
-       SELECT $1, $2, schedule_template_id, 127, '2026-08-28', '2026-08-28', $3, now() + interval '1 hour'
-       FROM attendance_schedule_assignments WHERE employee_id = $2 LIMIT 1`,
+       SELECT $1::uuid, $2::uuid, schedule_template_id, 127, '2026-08-28'::date, '2026-08-28'::date, $3::uuid, now() + interval '1 hour'
+       FROM attendance_schedule_assignments WHERE employee_id = $2::uuid LIMIT 1`,
       [randomUUID(), mapped, accountId],
     );
     rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-26", to: "2026-08-28" });

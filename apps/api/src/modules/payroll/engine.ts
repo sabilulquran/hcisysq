@@ -71,6 +71,11 @@ export type PayrollBlockerCode =
   | "EDUCATION_NOT_MAPPED"
   | "SERVICE_NOT_STARTED"
   | "SERVICE_ALREADY_ENDED"
+  // Raised by the calculation layer, which knows about employment records:
+  // the employment has ended but on a date nobody has resolved yet, and the
+  // compensation profile, category or start date is missing.
+  | "SERVICE_END_UNRESOLVED"
+  | "PROFILE_MISSING"
   | "UNIT_NOT_MAPPED"
   | "WORK_PATTERN_NOT_MAPPED"
   | "POSITION_NOT_MAPPED"

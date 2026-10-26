@@ -672,6 +672,16 @@
       "list": "single"
     },
     {
+      "url": "/payroll/periods/:periodId/inputs",
+      "list": "bounded",
+      "reason": "Input satu periode payroll, dibatasi jumlah pegawai aktif."
+    },
+    {
+      "url": "/payroll/periods/:periodId/results",
+      "list": "bounded",
+      "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."
+    },
+    {
       "url": "/payslips",
       "list": "debt",
       "reason": "Semua slip gaji pegawai tanpa LIMIT (sekitar 12 per tahun).",

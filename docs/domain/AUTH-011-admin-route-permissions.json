@@ -2372,5 +2372,45 @@
       "payroll.calculate",
       "payroll.submit"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/inputs",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "PUT",
+    "url": "/payroll/periods/:periodId/inputs",
+    "permissions": [
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "DELETE",
+    "url": "/payroll/periods/:periodId/inputs/:employmentId/:inputKey",
+    "permissions": [
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/results",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
   }
 ]

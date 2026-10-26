@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S2B and S4–S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 implemented (not yet released); S2B and S5–S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -93,6 +93,15 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 - **Rollback:** revert PR; routes hidden while mode `OFF`.
 
 ## S4 — Perjanjian Kerja & SK register (EMP-010)
+
+**Status:** IMPLEMENTED on branch `feat/emp-s4-decision-document-register`. Delivered without a migration (the tables came with S1): pure validation `apps/api/src/modules/employment/domain/decision-documents.ts`; store `infrastructure/postgres-decision-document-store.ts`; routes `decision-document-routes.ts` (`GET/POST /admin/decision-documents`, `GET/PATCH /admin/decision-documents/{documentId}`, `POST .../corrections`); `docs/api/employment.openapi.yaml` 0.3.0; AUTH-011 manifest entries; admin screen **Pegawai → Perjanjian Kerja & SK** (`/admin/decision-documents`). Tests: 12 domain, 19 route, 10 web.
+
+Two decisions this step settled, both DRAFT until the owner says otherwise:
+
+- the register follows the employment rollout mode and answers `EMPLOYMENT_HISTORY_DISABLED` while it is `OFF`, so no document is recorded before HC starts the SHADOW review;
+- a document that no action uses yet is edited in place with `employment.manage` (`PATCH`); the audited correction path (`employment.correct`) is for a document already linked, which is what the spec locks. Neither path ever rewrites the kind, nor the employee of a Perjanjian Kerja: those make a different document.
+
+New error code beyond spec §12: `DECISION_DOCUMENT_NUMBER_TAKEN` (409) for the unique (kind, number, signing year) series, and `DECISION_DOCUMENT_INVALID` (400) which carries the offending `field`.
 
 **Spec:** EMP-010-A/B/C, §4.5, §13.5.  
 **Prerequisite decisions:** D-08 (accepted: PK and SK are separate kinds), D-09 (accepted).

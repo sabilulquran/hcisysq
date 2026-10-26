@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiConfig } from "../src/config/env.js";
-import { ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, HC_ADMIN_PERMISSIONS } from "../src/modules/auth/permissions.js";
+import { ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, EMPLOYMENT_PERMISSIONS, HC_ADMIN_PERMISSIONS } from "../src/modules/auth/permissions.js";
 
 // AUTH-011 / SEC-02: every route registered by createApp must be either explicitly public
 // or listed in the route-permission manifest, so a new unguarded route fails CI.
@@ -115,7 +115,8 @@ describe("AUTH-011 route manifest coverage", () => {
   });
 
   it("declares a known guard for every manifest entry", async () => {
-    const known = new Set<string>([...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve"]);
+    // EMP-010: employment.correct is a real guard that no bundle carries by default (D-16).
+    const known = new Set<string>([...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, "leave.hc.approve"]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;
       // ORG-010: board access is FOUNDATION_BOARD, or EMPLOYEE with board.read; never an admin permission.

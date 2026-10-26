@@ -31,6 +31,7 @@ import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-em
 import { registerStaffIdentityRoutes } from "./modules/employees/staff-identity-routes.js";
 import { registerGovernanceSummaryRoutes } from "./modules/governance/routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
+import { registerDecisionDocumentRoutes } from "./modules/employment/decision-document-routes.js";
 import { registerEmploymentAdminRoutes } from "./modules/employment/admin-routes.js";
 import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-access-routes.js";
 import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
@@ -145,6 +146,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   registerStaffIdentityRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerEmploymentAdminRoutes(app, pool, config);
+  await registerDecisionDocumentRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
   await registerAttendanceWorkforceRoutes(app, pool, config);
   await registerAttendanceShiftSwapRoutes(app, pool, config);

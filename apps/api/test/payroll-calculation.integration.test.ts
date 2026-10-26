@@ -71,13 +71,17 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     const employeeId = randomUUID();
     const employmentId = randomUUID();
     const actionId = randomUUID();
-    await pool.query(
+    // employments and employment_actions reference each other, and migration 0056
+    // defers both constraints, so the pair has to be written in one transaction.
+    const client = await pool.connect();
+    await client.query("BEGIN");
+    await client.query(
       "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Payroll', 'active')",
       [employeeId, `EMP-CALC-${employeeId}`],
     );
     const endedOn = options.endedOn ?? null;
     const endBasis = options.endBasis ?? null;
-    await pool.query(
+    await client.query(
       `INSERT INTO employments(
          id, employee_id, started_on, start_basis, ended_on, end_basis, end_precision, end_reason,
          source, opened_by_action_id)
@@ -93,24 +97,26 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
         actionId,
       ],
     );
-    await pool.query(
+    await client.query(
       `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on)
        VALUES ($1, $2, $3, 'BASELINE', $4::date)`,
       [actionId, employeeId, employmentId, options.startedOn ?? "2016-07-01"],
     );
-    await pool.query(
+    await client.query(
       `INSERT INTO employment_terms(id, employment_id, sequence, category, effective_from, opened_by_action_id)
        VALUES ($1, $2, 1, $3, $4::date, $5)`,
       [randomUUID(), employmentId, options.category, options.startedOn ?? "2016-07-01", actionId],
     );
     if (options.withProfile !== false) {
-      await pool.query(
+      await client.query(
         `INSERT INTO payroll_compensation_profiles(
            id, employment_id, effective_from, education, bank_account_number, bank_account_name)
          VALUES ($1, $2, DATE '2016-07-01', 'S1', '0000000001', 'Pegawai Uji')`,
         [randomUUID(), employmentId],
       );
     }
+    await client.query("COMMIT");
+    client.release();
     return { employmentId, employeeId };
   }
 

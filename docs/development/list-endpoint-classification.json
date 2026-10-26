@@ -317,6 +317,12 @@
       "package": "PAG-10"
     },
     {
+      "url": "/admin/attendance/unscheduled",
+      "list": "debt",
+      "reason": "Berhalaman di SQL dengan total (pegawai dan PIN), tetapi pageSize maks 200 (standar: 100).",
+      "package": "PAG-10"
+    },
+    {
       "url": "/admin/attendance/work-locations",
       "list": "bounded",
       "reason": "Data master lokasi kerja (2 hari ini)."

@@ -870,3 +870,36 @@ Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi ko
   data scan, jadwal, lembur) tetap tersedia di bagian "Format lama" yang tertutup secara bawaan untuk
   satu rilis.
 - Manifest AUTH-011 (+1 route, jumlah 186) dan `attendance-workforce.openapi.yaml` diperbarui.
+
+### 19.12 Catatan implementasi ATT-011-3R (2026-10-26)
+
+D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordinasi).
+
+- **Perbaikan Absen** (`/admin/attendance/corrections`) menggantikan tab Klarifikasi dan Koreksi HC:
+  satu daftar berhalaman, tab status (Menunggu keputusan dengan jumlahnya, Disetujui, Ditolak,
+  Dibatalkan, Semua), penyaring asal, jenis, rentang tanggal kerja, cari nama/NIP. Kolom **Asal**
+  ("Diajukan pegawai"/"Diinput HC") diturunkan dari event `submitted` yang sudah ada, tanpa migration.
+  Panel detail: alasan, usulan jam, status dan pemutus, **absen tercatat hari itu** (komponen Data
+  Transaksi), serta tombol Setujui/Tolak untuk pengajuan yang menunggu (`attendance.clarification.manage`).
+  Tombol **Input koreksi** (`attendance.records.manage`) membuka form satu tanggal kerja + jam dari
+  ATT-FIX-1. Daftar dibaca dengan salah satu dari dua permission itu; setiap aksi tetap memeriksa
+  permission-nya sendiri di API.
+- **Bukti HP dilebur ke Data Transaksi:** kolom Sumber tetap, absen HP dengan `needs_review` diberi
+  lencana **"Perlu ditinjau"** yang terlihat semua pembaca, dan tombol cepat "Perlu ditinjau (N)" tampil
+  selama ada baris seperti itu. Klik baris membuka detail: alasan tinjauan, panel GPS (posisi terhadap
+  lokasi kerja, jarak, akurasi, koordinat) dan tombol **Lihat foto**, serta **Buat koreksi** langsung di
+  tempat (`attendance.records.manage`). API hanya mengirim field GPS dan id bukti bila pemanggil memegang
+  `attendance.clarification.manage`; foto diambil satu per satu lewat endpoint foto yang ada dan setiap
+  pembukaan tetap teraudit. Tidak ada foto atau thumbnail di daftar.
+- **Navigasi akhir (D-14-16):** Kehadiran = Pantauan Hari Ini | Perbaikan Absen | Laporan. Pengalihan:
+  `/admin/attendance/clarifications` → Perbaikan Absen, `/admin/attendance/mobile-evidence` dan
+  `/admin/attendance/workforce/mobile` → `/admin/attendance/reports?tab=transactions&source=mobile`,
+  `/admin/attendance/workforce/clarifications` → Perbaikan Absen. Kartu Ringkasan dan katalog layanan
+  ikut diarahkan ulang.
+- **Backend:** `GET /admin/attendance/clarifications` kini berhalaman dengan penyaring asal/jenis/rentang/
+  cari dan `submittedCount` (sebelumnya `LIMIT 500`); helper `requireAnyPermissionFromCookie` baru di
+  modul otorisasi (perlu review tambahan). `GET /admin/attendance/transactions` menambah `reviewState`,
+  `geofenceStatus`, `needsReviewTotal`, penyaring `reviewState=needs_review`, dan `evidence` bersyarat.
+  Endpoint daftar bukti HP lama tetap ada untuk kartu Ringkasan. Tidak ada migration dan tidak ada
+  permission baru.
+

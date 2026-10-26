@@ -73,21 +73,20 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       "/admin/attendance/schedules/dates",
       "/admin/attendance/schedules/swaps",
       "/admin/attendance/daily",
-      "/admin/attendance/clarifications",
-      "/admin/attendance/mobile-evidence",
+      "/admin/attendance/corrections",
       "/admin/attendance/reports",
       "/admin/attendance/overtime",
       "/admin/attendance/settings/locations",
     ]) {
       expect(canAccessAdminPath(workforce, path)).toBe(true);
     }
-    // Koreksi HC needs attendance.records.manage, which these permissions do not include.
-    expect(canAccessAdminPath(workforce, "/admin/attendance/corrections")).toBe(false);
     expect(canAccessAdminPath(workforce, "/admin/attendance/adms")).toBe(false);
     // Pre-ATT-011 paths are redirects now, never screens of their own.
     expect(canAccessAdminPath(workforce, "/admin/attendance/workforce/reports")).toBe(false);
     expect(canAccessAdminPath(workforce, "/admin/attendance/settings/recalculate")).toBe(false);
     expect(canAccessAdminPath(workforce, "/admin/attendance/calculation")).toBe(false);
+    expect(canAccessAdminPath(workforce, "/admin/attendance/clarifications")).toBe(false);
+    expect(canAccessAdminPath(workforce, "/admin/attendance/mobile-evidence")).toBe(false);
 
     const deviceOperator = session("EMPLOYEE", ["attendance.devices.read"]);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);

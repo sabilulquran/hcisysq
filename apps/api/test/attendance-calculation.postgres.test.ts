@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { attendanceCalculationRows } from "../src/modules/attendance/calculation-rows.js";
 import { createCalculationRunner, type CalculationRunner } from "../src/modules/attendance/calculation-runner.js";
+import { listAttendanceCorrections } from "../src/modules/attendance/corrections.js";
 import { attendanceTransactions } from "../src/modules/attendance/transactions.js";
 import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
 
@@ -254,6 +255,44 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     expect(paged.items).toHaveLength(1);
     const none = await attendanceTransactions(transactionPool, { ...scope, source: "mobile" });
     expect(none.total).toBe(0);
+  });
+
+  it("lists employee requests and HC corrections together with their origin (ATT-011-3R)", async () => {
+    const employeeRequest = randomUUID();
+    const hcCorrection = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_clarifications (id, employee_id, work_date, kind, mode, reason, proposed_check_out_at, status)
+       VALUES ($1, $2, '2026-08-27', 'missing_check_out', 'correction', 'Lupa scan pulang', '2026-08-27T16:00:00+07:00', 'submitted')`,
+      [employeeRequest, mapped],
+    );
+    await client.query(
+      `INSERT INTO attendance_clarification_events (id, clarification_id, actor_account_id, event_type, payload)
+       VALUES ($1, $2, $3, 'submitted', '{}'::jsonb)`,
+      [randomUUID(), employeeRequest, accountId],
+    );
+    await client.query(
+      `INSERT INTO attendance_clarifications (
+         id, employee_id, work_date, kind, mode, reason, proposed_check_in_at, status, decided_by_account_id, decided_at
+       ) VALUES ($1, $2, '2026-08-28', 'other', 'correction', 'Mesin mati', '2026-08-28T07:00:00+07:00', 'approved', $3, now())`,
+      [hcCorrection, mapped, accountId],
+    );
+    await client.query(
+      `INSERT INTO attendance_clarification_events (id, clarification_id, actor_account_id, event_type, payload)
+       VALUES ($1, $3, $4, 'submitted', '{"administrativeCorrection": true}'::jsonb),
+              ($2, $3, $4, 'approved', '{"administrativeCorrection": true}'::jsonb)`,
+      [randomUUID(), randomUUID(), hcCorrection, accountId],
+    );
+    const base = { status: "all" as const, origin: "all" as const, mode: "all" as const, q: "Calculation Mapped", page: 1, pageSize: 50 };
+    const all = await listAttendanceCorrections(transactionPool, base);
+    expect(all.items.map((item) => [item.id, item.origin])).toEqual([[hcCorrection, "hc"], [employeeRequest, "employee"]]);
+    expect(all.submittedCount).toBeGreaterThanOrEqual(1);
+    const hcOnly = await listAttendanceCorrections(transactionPool, { ...base, origin: "hc" });
+    expect(hcOnly.items.map((item) => item.id)).toEqual([hcCorrection]);
+    const waiting = await listAttendanceCorrections(transactionPool, { ...base, status: "submitted", from: "2026-08-27", to: "2026-08-27" });
+    expect(waiting).toMatchObject({ total: 1 });
+    // The approved HC correction shows up in Data Transaksi as a "Koreksi HC" punch.
+    const punches = await attendanceTransactions(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28", source: "correction", page: 1, pageSize: 50 });
+    expect(punches.items.map((item) => [item.correctionBy, item.boundary])).toEqual([["hc", "check_in"]]);
   });
 
   it("paginates rows while the summary counts every row", async () => {

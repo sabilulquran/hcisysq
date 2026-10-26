@@ -129,7 +129,7 @@ describe("ORG-008-1 tombol mengikuti izin yang benar-benar dipakai API", () => {
     const own = view();
     own.publishBlockedForSelf = true;
     const text = visibleText(render({ actor: publisher, data: own }));
-    expect(text).toContain("Anda ikut menyusun — terbitkan oleh Kepala HC lain");
+    expect(text).toContain("Anda ikut menyusun — terbitkan oleh Kepala HC lain atau Super Admin");
     expect(text).not.toMatch(/ Terbitkan /);
   });
 

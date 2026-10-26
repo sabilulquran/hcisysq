@@ -90,13 +90,15 @@ export async function planMappingAlignment(
         WHERE event.device_id = base.device_id AND event.pin = base.pin
           AND base.target_from > base.effective_from
           AND event.occurred_at >= base.effective_from AND event.occurred_at < base.target_from) AS "scansRemoved",
-       EXISTS (
-         SELECT 1 FROM attendance_adms_employee_mappings other
-         WHERE other.id <> base.id AND other.device_id = base.device_id AND other.pin = base.pin
-           AND base.target_from IS NOT NULL
-           AND tstzrange(other.effective_from, coalesce(other.effective_to, 'infinity'::timestamptz), '[)')
-             && tstzrange(base.target_from, coalesce(base.effective_to, 'infinity'::timestamptz), '[)')
-       ) AS overlaps
+       -- CASE, not AND: a target after the mapping's end would make tstzrange() raise.
+       CASE WHEN base.target_from IS NOT NULL AND base.target_from < coalesce(base.effective_to, 'infinity'::timestamptz)
+         THEN EXISTS (
+           SELECT 1 FROM attendance_adms_employee_mappings other
+           WHERE other.id <> base.id AND other.device_id = base.device_id AND other.pin = base.pin
+             AND tstzrange(other.effective_from, coalesce(other.effective_to, 'infinity'::timestamptz), '[)')
+               && tstzrange(base.target_from, coalesce(base.effective_to, 'infinity'::timestamptz), '[)')
+         )
+         ELSE false END AS overlaps
      FROM base
      ORDER BY base.device_name, base.pin`,
     [mappingIds],
@@ -224,6 +226,8 @@ export async function revertMappingAlignment(
        aligned.after_state->>'effectiveFrom' AS "alignedFrom"
      FROM attendance_adms_admin_audit_events aligned
      WHERE aligned.mapping_id = $1 AND aligned.action = 'mapping_aligned_to_start_date'
+       -- The alignment that produced the current start; two audits in one transaction share created_at.
+       AND (aligned.after_state->>'effectiveFrom')::timestamptz = $2
        AND NOT EXISTS (
          SELECT 1 FROM attendance_adms_admin_audit_events reverted
          WHERE reverted.mapping_id = $1 AND reverted.action = 'mapping_alignment_reverted'
@@ -231,10 +235,10 @@ export async function revertMappingAlignment(
        )
      ORDER BY aligned.created_at DESC, aligned.id DESC
      LIMIT 1`,
-    [mappingId],
+    [mappingId, mapping.effectiveFrom],
   );
   const last = audit.rows[0];
-  if (!last || new Date(last.alignedFrom).getTime() !== mapping.effectiveFrom.getTime()) {
+  if (!last) {
     return { status: "not_aligned" as const };
   }
   const previous = new Date(last.previousFrom);

@@ -9,6 +9,13 @@ import type { ApiConfig } from "../../../config/env.js";
 import { requirePermissionsFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import { normalizeDeviceSerial } from "./protocol.js";
+import {
+  alignmentProjectionTargets,
+  applyMappingAlignment,
+  planMappingAlignment,
+  reprojectAlignment,
+  summarizeAlignment,
+} from "./mapping-alignment.js";
 import { projectAdmsAttendanceDay } from "./projection.js";
 
 const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
@@ -29,11 +36,19 @@ const updateDeviceSchema = z
   .refine((value) => Object.values(value).some((item) => item !== undefined), {
     message: "Minimal satu field harus diubah.",
   });
+// ADMS-R2c: the start is the employee's TMT, never a free field (§20.5 rule 2).
 const createMappingSchema = z.object({
   pin: z.string().trim().min(1).max(128),
   employeeId: z.string().uuid(),
-  effectiveFrom: z.string().datetime({ offset: true }).optional(),
 });
+const alignMappingsSchema = z
+  .object({
+    mappingIds: z.array(z.string().uuid()).min(1).max(500),
+    apply: z.boolean().default(false),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .refine((value) => !value.apply || Boolean(value.reason), { message: "Alasan wajib diisi." });
+const revertAlignmentSchema = z.object({ reason: z.string().trim().min(1).max(500) });
 
 export class AdmsAdminError extends Error {
   constructor(
@@ -95,6 +110,12 @@ function sendAdminError(reply: FastifyReply, error: unknown) {
     return reply.status(409).send({
       code: "ADMS_PIN_ALREADY_MAPPED",
       message: "PIN tersebut sudah mempunyai mapping aktif pada mesin ini.",
+    });
+  }
+  if (databaseError.code === "23514" && /overlaps existing mapping/.test(databaseError.message)) {
+    return reply.status(409).send({
+      code: "ADMS_MAPPING_OVERLAP",
+      message: "Masa berlaku mapping bertumpuk dengan mapping lain untuk PIN yang sama.",
     });
   }
   throw error;
@@ -540,19 +561,6 @@ export async function registerAdmsAdminRoutes(
       return reply.status(400).send({ code: "INVALID_ADMS_MAPPING", message: "Mapping PIN tidak valid." });
     }
     try {
-      const effectiveFrom = body.data.effectiveFrom ? new Date(body.data.effectiveFrom) : new Date();
-      const now = new Date();
-      const oldestAllowed = now.getTime() - 62 * 86_400_000;
-      if (
-        effectiveFrom.getTime() < oldestAllowed ||
-        effectiveFrom.getTime() > now.getTime() + 5 * 60_000
-      ) {
-        throw new AdmsAdminError(
-          400,
-          "ADMS_MAPPING_EFFECTIVE_RANGE_INVALID",
-          "Awal mapping harus berada dalam 62 hari terakhir dan tidak jauh di masa depan.",
-        );
-      }
       const client = await pool.connect();
       let mappingId = "";
       let mapping: unknown = null;
@@ -560,8 +568,8 @@ export async function registerAdmsAdminRoutes(
         await client.query("BEGIN");
         const device = await loadDevice(client, params.data.deviceId);
         if (!device) throw new AdmsAdminError(404, "ADMS_DEVICE_NOT_FOUND", "Mesin tidak ditemukan.");
-        const employee = await client.query<{ id: string; status: string }>(
-          `SELECT id, status FROM employees WHERE id = $1 FOR UPDATE`,
+        const employee = await client.query<{ id: string; status: string; startedOn: string | null }>(
+          `SELECT id, status, started_on::text AS "startedOn" FROM employees WHERE id = $1 FOR UPDATE`,
           [body.data.employeeId],
         );
         if (!employee.rows[0]) {
@@ -570,6 +578,22 @@ export async function registerAdmsAdminRoutes(
         if (employee.rows[0].status !== "active") {
           throw new AdmsAdminError(409, "EMPLOYEE_NOT_ACTIVE", "Mapping hanya dapat dibuat ke pegawai aktif.");
         }
+        if (!employee.rows[0].startedOn) {
+          throw new AdmsAdminError(
+            409,
+            "EMPLOYEE_START_DATE_MISSING",
+            "Isi TMT pegawai lebih dulu di data pegawai; mapping PIN berlaku sejak TMT.",
+          );
+        }
+        // From TMT 00:00 WIB, but never before an earlier holder of the same PIN let go (recycled PIN).
+        const start = await client.query<{ effectiveFrom: Date }>(
+          `SELECT greatest(
+             ($1::date::timestamp AT TIME ZONE 'Asia/Jakarta'),
+             (SELECT max(effective_to) FROM attendance_adms_employee_mappings WHERE device_id = $2 AND pin = $3)
+           ) AS "effectiveFrom"`,
+          [employee.rows[0].startedOn, device.id, body.data.pin],
+        );
+        const effectiveFrom = start.rows[0]!.effectiveFrom;
         mappingId = randomUUID();
         const inserted = await client.query(
           `INSERT INTO attendance_adms_employee_mappings (
@@ -610,6 +634,108 @@ export async function registerAdmsAdminRoutes(
       }
       reply.header("Cache-Control", "no-store");
       return reply.status(201).send({ item: mapping, projection });
+    } catch (error) {
+      return sendAdminError(reply, error);
+    }
+  });
+
+  app.post("/admin/attendance/adms/mappings/align-to-start-date", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
+    if (!principal) return;
+    const body = alignMappingsSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_MAPPING_ALIGNMENT", message: "Permintaan penyesuaian tidak valid." });
+    }
+    const mappingIds = [...new Set(body.data.mappingIds)];
+    reply.header("Cache-Control", "no-store");
+    if (!body.data.apply) {
+      const items = await planMappingAlignment(pool, mappingIds);
+      return reply.send({ applied: false, summary: summarizeAlignment(items), items });
+    }
+    try {
+      const client = await pool.connect();
+      let items;
+      try {
+        await client.query("BEGIN");
+        items = await applyMappingAlignment(client, mappingIds, principal.id, body.data.reason!);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+      const targets = await alignmentProjectionTargets(pool, items);
+      // The engine reads raw scans; only the legacy daily projection is refreshed, after the reply.
+      void reprojectAlignment(pool, targets).then(
+        (outcome) => request.log.info({ ...outcome }, "ADMS mapping alignment re-projection finished"),
+        (error: unknown) => request.log.error({ err: error }, "ADMS mapping alignment re-projection failed"),
+      );
+      return reply.send({ applied: true, summary: summarizeAlignment(items), items, reprojectionQueued: targets.length });
+    } catch (error) {
+      return sendAdminError(reply, error);
+    }
+  });
+
+  app.post("/admin/attendance/adms/mappings/:mappingId/revert-alignment", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.devices.operate");
+    if (!principal) return;
+    const params = mappingIdSchema.safeParse(request.params);
+    const body = revertAlignmentSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_MAPPING", message: "Permintaan pemulihan tidak valid." });
+    }
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT id FROM attendance_adms_employee_mappings WHERE id = $1 FOR UPDATE", [params.data.mappingId]);
+        const before = await loadMapping(client, params.data.mappingId);
+        if (!before) throw new AdmsAdminError(404, "ADMS_MAPPING_NOT_FOUND", "Mapping tidak ditemukan.");
+        const audit = await client.query<{ previousFrom: string; alignedFrom: string }>(
+          `SELECT before_state->>'effectiveFrom' AS "previousFrom", after_state->>'effectiveFrom' AS "alignedFrom"
+           FROM attendance_adms_admin_audit_events
+           WHERE mapping_id = $1 AND action = 'mapping_aligned_to_start_date'
+             AND NOT coalesce((after_state->>'reverted')::boolean, false)
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1`,
+          [before.id],
+        );
+        const last = audit.rows[0];
+        if (!last || new Date(last.alignedFrom).getTime() !== before.effectiveFrom.getTime()) {
+          throw new AdmsAdminError(
+            409,
+            "ADMS_MAPPING_NOT_ALIGNED",
+            "Awal mapping ini tidak berasal dari penyesuaian TMT terakhir, jadi tidak ada yang dipulihkan.",
+          );
+        }
+        await client.query(
+          "UPDATE attendance_adms_employee_mappings SET effective_from = $2, updated_at = now() WHERE id = $1",
+          [before.id, new Date(last.previousFrom)],
+        );
+        const after = await loadMapping(client, before.id);
+        await client.query(
+          `INSERT INTO attendance_adms_admin_audit_events (
+             id, actor_account_id, action, device_id, mapping_id, before_state, after_state
+           ) VALUES ($1, $2, 'mapping_aligned_to_start_date', $3, $4, $5::jsonb, $6::jsonb)`,
+          [
+            randomUUID(),
+            principal.id,
+            before.deviceId,
+            before.id,
+            JSON.stringify({ effectiveFrom: before.effectiveFrom.toISOString() }),
+            JSON.stringify({ effectiveFrom: after!.effectiveFrom.toISOString(), reverted: true, reason: body.data.reason }),
+          ],
+        );
+        await client.query("COMMIT");
+        reply.header("Cache-Control", "no-store");
+        return reply.send({ item: after });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       return sendAdminError(reply, error);
     }

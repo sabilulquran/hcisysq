@@ -530,7 +530,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (lihat §10.3); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -562,6 +562,32 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - Tautan "Klarifikasi" di navigasi pegawai menuju bagian Klarifikasi saya, bukan anchor di halaman lain.
 - Lembur Tim dan perintah lembur atasan (butir 5–6 §8) menunggu ATT-011-6b.
 - Tidak ada migration atau permission baru.
+
+### 10.3 Catatan implementasi ATT-011-3 (2026-10-27)
+
+- **Perlu Tindakan** (`/admin/attendance/action-queue`) menjadi tab kedua di **Ringkasan** (§3), bukan di
+  Kehadiran, karena Kehadiran tetap tiga tab (ATT-014 §19.8). Antrean `GET /admin/attendance/action-queue`
+  menggabungkan, urut tanggal terlama: klarifikasi menunggu dan absen HP perlu ditinjau
+  (`attendance.clarification.manage`), hari Tidak lengkap yang sudah lewat lebih dari 1 hari
+  (`attendance.records.manage` atau `attendance.reports.read`), dan Jadwal bermasalah
+  (`attendance.reports.read` atau `attendance.schedule.manage`). Setiap jenis hanya tampil untuk akun yang
+  bisa menindaklanjutinya. Bawaan 31 hari terakhir, berhalaman standar, jumlah per jenis.
+- Aturan antrean (`DRAFT`): absen HP perlu ditinjau keluar dari antrean setelah ada klarifikasi yang
+  diputuskan untuk hari itu (belum ada aksi "Tandai sudah ditinjau" karena status tinjauan belum disimpan;
+  itu butuh migration terpisah). Hari Tidak lengkap keluar dari antrean selama klarifikasi pegawai untuk
+  hari itu menunggu, dan saat versi hasil terbaru tidak lagi Tidak lengkap.
+- **Panel detail satu hari** (`GET /admin/attendance/daily/{employeeId}/{workDate}`) dibuka dari baris
+  antrean dan dari baris tab Harian di Laporan: jadwal (nama shift, jam, toleransi), status, scan per
+  sumber (GPS dan foto hanya untuk `attendance.clarification.manage`, foto tetap lewat endpoint bukti yang
+  diaudit), sesi (jam hilang tampil "?", tidak pernah diisi dari jadwal), cuti, lembur, klarifikasi, dan
+  detail teknis yang terlipat. Aksi: **Setujui/Tolak** klarifikasi, **Perbaiki jam** (koreksi HC),
+  **Minta klarifikasi pegawai**, dan **Buka di Jadwal** untuk jadwal bermasalah.
+- **Minta klarifikasi pegawai** (`POST …/request-clarification`): notifikasi in-app satu kali per pegawai
+  dan tanggal, audit `attendance.clarification.requested`, hanya untuk tanggal yang masih bisa
+  diklarifikasi pegawai (D-7).
+- `TBD`: penyelesaian cuti (LEAVE-007) tetap di halaman HC-nya sendiri; izinnya bukan izin admin sehingga
+  belum masuk antrean.
+- Manifest AUTH-011 +3 route. Tidak ada migration atau permission baru.
 
 ## 11. Keputusan owner
 

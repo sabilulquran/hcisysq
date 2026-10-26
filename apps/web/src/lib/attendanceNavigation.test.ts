@@ -98,6 +98,7 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/overtime": "attendance.overtime.manage",
       "/admin/attendance/settings/locations": "attendance.schedule.manage",
       "/admin/attendance/adms": "attendance.devices.read",
+      "/admin/attendance/action-queue": "attendance.clarification.manage",
     };
     const tabs = attendanceSections.flatMap((section) => section.tabs).filter((tab) => tab.href !== "/admin/attendance");
     expect(tabs.map((tab) => tab.href).sort()).toEqual(Object.keys(expected).sort());

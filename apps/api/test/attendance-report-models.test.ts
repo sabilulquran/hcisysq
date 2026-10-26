@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   attendancePercent,
+  buildPunchTable,
   buildReportTable,
   daySymbol,
   reportCsv,
   reportXlsx,
+  type ReportPunchRow,
   type ReportSourceRow,
 } from "../src/modules/attendance/report-models.js";
 
@@ -118,5 +120,45 @@ describe("ATT-014 report exports", () => {
     expect(sheet.pageSetup.orientation).toBe("landscape");
     const header = sheet.getRow(6).values as unknown[];
     expect(header.slice(1, 4)).toEqual(["Unit", "NIP", "Nama"]);
+  });
+});
+
+describe("ATT-014-R2d report models", () => {
+  it("builds Per Unit with one row per unit and a grand total", () => {
+    const table = buildReportTable("unit_summary", rows, "2026-10-01", "2026-10-03");
+    expect(table.groups).toHaveLength(1);
+    expect(table.groups[0]!.rows.map((item) => item.unit)).toEqual(["SDIT", "SMPIT"]);
+    expect(table.groups[0]!.rows[0]).toMatchObject({ employees: 1 });
+    expect(table.total).toMatchObject({ unit: "Jumlah seluruhnya", employees: 2 });
+  });
+
+  it("builds Jadwal Harian with the schedule, or the reason when a day has none", () => {
+    const table = buildReportTable("daily_schedule", [row("a", "2026-10-03", "unscheduled"), ...rows], "2026-10-01", "2026-10-03");
+    const flat = table.groups.flatMap((group) => group.rows);
+    expect(flat.find((item) => item.date === "2026-10-01" && item.employeeName === "Pegawai A")).toMatchObject({ start: "07:00", end: "16:00", status: null });
+    expect(flat.find((item) => item.date === "2026-10-03" && item.employeeName === "Pegawai A")).toMatchObject({ start: null, status: "Tanpa jadwal" });
+  });
+
+  it("builds Lembur Harian from days with overtime minutes only", () => {
+    const table = buildReportTable("daily_overtime", [row("b", "2026-10-02", "present", { overtimeMinutes: 45 }), ...rows], "2026-10-01", "2026-10-03");
+    expect(table.groups.flatMap((group) => group.rows)).toEqual([expect.objectContaining({ employeeName: "Pegawai B", overtimeMinutes: 45 })]);
+    expect(table.total).toMatchObject({ overtimeMinutes: 45 });
+  });
+
+  it("builds Data Transaksi with every source and Data Scan with machine scans only", () => {
+    const punch = (source: ReportPunchRow["source"], at: string): ReportPunchRow => ({
+      employeeId: "a", employeeNumber: "SYN-1", employeeName: "Pegawai A", unitName: "SDIT", occurredAt: at, workDate: at.slice(0, 10),
+      source, correctionBy: source === "correction" ? "hc" : null, boundary: "check_in", deviceName: source === "adms" ? "Mesin SD" : null,
+      usedInResult: true, reviewState: null,
+    });
+    const punches = [punch("mobile", "2026-10-02T00:05:00.000Z"), punch("adms", "2026-10-01T00:01:00.000Z"), punch("correction", "2026-10-03T00:00:00.000Z")];
+    const transactions = buildPunchTable("transactions", punches);
+    expect(transactions.groups[0]!.rows.map((item) => [item.date, item.time, item.source])).toEqual([
+      ["2026-10-01", "07:01", "Mesin"], ["2026-10-02", "07:05", "HP"], ["2026-10-03", "07:00", "Koreksi HC"],
+    ]);
+    const scans = buildPunchTable("scans", punches);
+    expect(scans.groups[0]!.rows).toHaveLength(1);
+    expect(scans.total).toMatchObject({ time: "1 baris" });
+    expect(() => buildReportTable("scans", rows, "2026-10-01", "2026-10-03")).toThrow();
   });
 });

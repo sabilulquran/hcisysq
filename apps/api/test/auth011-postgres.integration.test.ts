@@ -522,6 +522,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
 
   it("ORG-008-8: Super Admin grants Kepala HC only with organization scope and a mandate", async () => {
     // Owner decision 2026-10-24: Kepala HC holds approvals.policy.manage in full, as AUTH-011 defines it.
+    // PAY-003 adds the payroll permissions up to submission; approval and payment stay elsewhere.
     const leadRoleId = (await pool.query<{ id: string }>(
       "SELECT id FROM roles WHERE role_key = $1", [HC_LEAD_ROLE_KEY],
     )).rows[0]!.id;

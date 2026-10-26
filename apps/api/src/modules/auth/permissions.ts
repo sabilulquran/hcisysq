@@ -22,7 +22,48 @@ export const HC_ADMIN_PERMISSIONS = [
  * holds approvals.policy.manage in full as AUTH-011 defines it; it holds no operational HC permission.
  */
 export const HC_LEAD_ROLE_KEY = "human_capital_lead";
-export const HC_LEAD_PERMISSIONS = ["organization.manage", "approvals.policy.manage"] as const;
+
+/**
+ * PAY-003: Kepala HC runs payroll up to submission. The approval, the payment
+ * confirmation and the reopen approval stay with other roles, so no account can
+ * carry a period from input to approval on its own.
+ */
+export const PAYROLL_HC_LEAD_PERMISSIONS = [
+  "payroll.policies.manage",
+  "payroll.profiles.manage",
+  "payroll.periods.manage",
+  "payroll.inputs.manage",
+  "payroll.calculate",
+  "payroll.submit",
+] as const;
+
+/**
+ * PAY-003: every payroll permission, and the roles that carry the ones Kepala HC
+ * does not. Listed here so role assignment recognises them; Super Admin receives
+ * none of them through legacy compatibility (ADR-0003).
+ */
+export const PAYROLL_PERMISSIONS = [
+  "payroll.policies.manage",
+  "payroll.profiles.manage",
+  "payroll.periods.manage",
+  "payroll.inputs.manage",
+  "payroll.calculate",
+  "payroll.submit",
+  "payroll.approve",
+  "payroll.reopen.approve",
+  "payroll.loans.manage",
+  "payroll.payments.confirm",
+  "payroll.reports.read.organization",
+  "payroll.transfers.read.organization",
+] as const;
+
+export const PAYROLL_ROLE_KEYS = ["finance_officer", "finance_lead", "director"] as const;
+
+export const HC_LEAD_PERMISSIONS = [
+  "organization.manage",
+  "approvals.policy.manage",
+  ...PAYROLL_HC_LEAD_PERMISSIONS,
+] as const;
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;

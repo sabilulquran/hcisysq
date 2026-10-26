@@ -175,6 +175,8 @@ function createPool(options: { permissions?: string[]; openDraft?: boolean; publ
   const query = vi.fn(async (sql: string) => {
     sqlLog.push(sql);
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    // O-7: the open-change-set check runs under a transaction-scoped advisory lock.
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
     if (sql.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) {
       return { rows: permissions.map((permissionKey) => ({ permissionKey })), rowCount: permissions.length };
     }
@@ -302,8 +304,13 @@ describe("ORG-008-7 at the route", () => {
     expect(response.json()).toMatchObject({ code: "ORGANIZATION_STRUCTURE_EXISTS" });
   });
 
-  it("needs the approval permission, because it writes incumbents and authority", async () => {
+  it("lets an HC admin build the proposal, which publishes nothing (ORG-008-8, decision O-1)", async () => {
     const { response } = await call({ permissions: ["organization.manage"] });
+    expect(response.statusCode).toBe(201);
+  });
+
+  it("refuses a session without organization.manage", async () => {
+    const { response } = await call({ permissions: ["approvals.policy.manage"] });
     expect(response.statusCode).toBe(403);
   });
 });

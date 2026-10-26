@@ -234,11 +234,42 @@ describe("ORG-008-4b correcting authority inside a change set (gap W-1)", () => 
     expect(response.json()).toMatchObject({ code: "ORGANIZATION_BINDING_PERIOD_INVALID" });
   });
 
-  it("needs the approval policy permission, like every other authority write", async () => {
+  it("lets an HC admin correct authority inside a change set (ORG-008-8, decision O-1)", async () => {
     const { response } = await call("DELETE", bindingUrl, {
       bindings: [draftBinding],
       permissions: ["organization.manage"],
     });
+    expect(response.statusCode).toBe(204);
+  });
+
+  it("refuses a session without organization.manage", async () => {
+    const { response } = await call("DELETE", bindingUrl, {
+      bindings: [draftBinding],
+      permissions: ["approvals.policy.manage"],
+    });
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe("ORG-008 review: manual edits and refusals", () => {
+  it("records a manual edit as a line of the change list, so a rebuild cannot drop it silently", async () => {
+    const { response, query } = await call("PATCH", nodeUrl, { payload: { name: "Bidang Diganti" } });
+
+    expect(response.statusCode).toBe(200);
+    const line = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO organization_change_set_journal"));
+    const params = line?.[1] as unknown[];
+    expect(params[2]).toBe("MANUAL_EDIT");
+    expect(JSON.parse(params[3] as string)).toEqual({ replayable: false });
+    expect(JSON.parse(params[4] as string)).toMatchObject({ action: "node.updated", nodeKey: NODE_KEY, fields: ["name"] });
+  });
+
+  it("rolls a refusal back, so the revision it claimed does not move", async () => {
+    const { response, query } = await call("DELETE", nodeUrl, { positions: [POSITION_ROW] });
+
+    expect(response.statusCode).toBe(409);
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    expect(statements.some((sql) => sql.includes("SET revision = revision + 1"))).toBe(true);
+    expect(statements).toContain("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
   });
 });

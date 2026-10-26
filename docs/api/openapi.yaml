@@ -1615,6 +1615,9 @@ paths:
     put:
       tags: [Organization]
       operationId: replaceOrganizationIncumbencies
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1639,6 +1642,9 @@ paths:
     post:
       tags: [Organization]
       operationId: createOrganizationAuthorityBinding
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1702,6 +1708,9 @@ paths:
     post:
       tags: [Organization]
       operationId: createOrganizationReportingOverride
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1733,10 +1742,8 @@ paths:
         organization.command.applied summary event in the same transaction.
 
 
-        Permission: the route needs organization.manage. A command that records an incumbent, an
-        authority binding or a reporting exception additionally needs approvals.policy.manage,
-        exactly like the primitive endpoints it replaces, and answers 403 naming what it needs. That
-        second requirement moves to organization.manage with decision O-1 in ORG-008-8.
+        Permission (ORG-008-8, decision O-1): organization.manage, for every command. Composing inside
+        an unpublished change set takes effect nowhere; publishing it needs approvals.policy.manage.
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
         - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
@@ -1799,8 +1806,8 @@ paths:
         Merging a proposal into an existing structure would mean inventing rules about what to keep.
 
 
-        Needs organization.manage and approvals.policy.manage, because it writes incumbents,
-        authority bindings and reporting exceptions.
+        Needs organization.manage (ORG-008-8, decision O-1): it only composes a change set, and
+        publishing that change set still needs approvals.policy.manage.
       requestBody:
         required: true
         content:
@@ -1853,7 +1860,10 @@ paths:
         is what the stale-base guard asks for before publishing (gap D-2). It previews by default:
         only apply=true writes. A line that no longer fits the newer structure is reported in
         `skipped` and dropped from the journal, never resolved on the operator's behalf, so they can
-        see what was lost and redo it.
+        see what was lost and redo it. A line replay cannot reproduce at all (a MANUAL_EDIT made
+        through a single-record endpoint, or SEED_FROM_LEGACY) is listed in `blocked`, and apply is
+        refused with 409 ORGANIZATION_DRAFT_NOT_REPLAYABLE while any remains, so a rebuild never
+        drops such an edit silently.
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
         - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
@@ -1874,7 +1884,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Change set not found }
-        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or ORGANIZATION_DRAFT_CHANGED on apply }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or on apply ORGANIZATION_DRAFT_CHANGED or ORGANIZATION_DRAFT_NOT_REPLAYABLE (details.blocked) }
 
   /admin/organization/designer/drafts/{draftId}/journal/{seq}/undo:
     post:
@@ -1883,7 +1893,9 @@ paths:
       summary: Undo one line of the change list (ORG-008-4c)
       description: >
         Rebuilds the change set from its base with that line left out. Lines that depended on it are
-        reported in `skipped` rather than silently dropped. Previews by default, like rebase.
+        reported in `skipped` rather than silently dropped. Previews by default, like rebase. Other
+        lines replay cannot reproduce are listed in `blocked` and refuse apply with
+        409 ORGANIZATION_DRAFT_NOT_REPLAYABLE; undoing a MANUAL_EDIT line itself is allowed.
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
         - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
@@ -1905,7 +1917,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Change set or journal line not found }
-        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or ORGANIZATION_DRAFT_CHANGED on apply }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or on apply ORGANIZATION_DRAFT_CHANGED or ORGANIZATION_DRAFT_NOT_REPLAYABLE (details.blocked) }
 
   /admin/organization/designer/drafts/{draftId}/journal:
     get:
@@ -1915,7 +1927,12 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
-          description: Applied commands, oldest first
+          description: >
+            Applied commands, oldest first. Besides the command types, a line may be SEED_FROM_LEGACY
+            or MANUAL_EDIT: an edit made through a single-record endpoint, whose summary.action names
+            it (node.created, node.updated, node.deleted, position.created, position.updated,
+            position.deleted, memberships.replaced, incumbencies.replaced, authority_binding.created,
+            authority_binding.deleted, authority_binding.ended, reporting_override.created).
           content:
             application/json:
               schema:
@@ -1987,6 +2004,10 @@ paths:
     post:
       tags: [Organization]
       operationId: publishOrganizationDraft
+      description: >
+        Needs approvals.policy.manage, held by the Kepala HC role (ORG-008-8, decision O-1). Composing
+        a change set needs only organization.manage; publishing is the separate second pair of eyes,
+        because hierarchy decides approval routing once it takes effect.
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
@@ -2653,6 +2674,17 @@ components:
               commandType: { type: string }
               code: { type: string }
               message: { type: string }
+        blocked:
+          description: >
+            Lines kept in the change set that replay cannot reproduce (MANUAL_EDIT, SEED_FROM_LEGACY).
+            While any is listed, apply is refused with 409 ORGANIZATION_DRAFT_NOT_REPLAYABLE.
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              summary: { type: object }
 
     OrganizationItemInUse:
       type: object

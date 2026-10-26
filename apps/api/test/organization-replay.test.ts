@@ -206,3 +206,38 @@ describe("ORG-008-4c staleness is measured from the base a change set carries", 
     expect(conflict?.changeSetId).toBe("correction");
   });
 });
+
+describe("ORG-008 review: lines replay cannot reproduce", () => {
+  const manualEdit: OrganizationJournalEntry = {
+    id: "journal-3", seq: 3, commandType: "MANUAL_EDIT",
+    payload: { replayable: false },
+    summary: { action: "node.updated", nodeKey: BASE_UNIT, name: "Yayasan Baru", fields: ["name"] },
+  };
+
+  it("reports a manual edit as blocking instead of dropping it", () => {
+    const result = replayJournal({ changeSet: CHANGE_SET, base: baseSnapshot(), entries: [...journal(), manualEdit] });
+
+    expect(result.blocked).toEqual([{ seq: 3, commandType: "MANUAL_EDIT", summary: manualEdit.summary }]);
+    expect(result.applied.map((entry) => entry.seq)).toEqual([1, 2]);
+  });
+
+  it("reports the legacy seed as blocking, because the old data cannot be read back into it", () => {
+    const seed: OrganizationJournalEntry = {
+      id: "journal-0", seq: 1, commandType: "SEED_FROM_LEGACY",
+      payload: { source: "ORG-002" }, summary: { units: 12, placements: 140 },
+    };
+    const result = replayJournal({ changeSet: CHANGE_SET, base: null, entries: [seed] });
+
+    expect(result.blocked).toMatchObject([{ seq: 1, commandType: "SEED_FROM_LEGACY" }]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("does not block when the line being undone is the manual edit itself", () => {
+    const result = replayJournal({
+      changeSet: CHANGE_SET, base: baseSnapshot(), entries: [...journal(), manualEdit], skipSeq: 3,
+    });
+
+    expect(result.blocked).toEqual([]);
+    expect(result.applied).toHaveLength(2);
+  });
+});

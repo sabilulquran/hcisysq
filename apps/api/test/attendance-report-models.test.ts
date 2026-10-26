@@ -69,18 +69,21 @@ describe("ATT-014 report models", () => {
     const table = buildReportTable("daily_grid", rows, "2026-10-01", "2026-10-04");
     expect(table.orientation).toBe("landscape");
     const dayColumns = table.columns.filter((column) => column.key.startsWith("d:"));
-    expect(dayColumns.map((column) => column.label)).toEqual(["1 Kam", "2 Jum", "3 Sab", "4 Min"]);
+    expect(dayColumns.map((column) => column.label)).toEqual(["1", "2", "3", "4"]);
     expect(dayColumns.map((column) => Boolean(column.weekend))).toEqual([false, false, true, true]);
     expect(table.groups.map((group) => group.unitName)).toEqual(["SDIT", "SMPIT"]);
-    expect(table.groups[0]!.rows[0]).toMatchObject({ "d:2026-10-01": "H", "d:2026-10-02": "T", "d:2026-10-03": "L", normal: 2, actual: 2, percent: 100 });
-    expect(table.groups[1]!.rows[0]).toMatchObject({ "d:2026-10-01": "A", "d:2026-10-02": "TL", "d:2026-10-04": "·", absent: 1, incomplete: 1, percent: 0 });
-    expect(table.total).toMatchObject({ normal: 4, actual: 2, percent: 50 });
+    expect(table.groups[0]!.rows[0]).toMatchObject({ "d:2026-10-01": "H", "d:2026-10-02": "T", "d:2026-10-03": "L", present: 2, late: 1 });
+    expect(table.groups[1]!.rows[0]).toMatchObject({ "d:2026-10-01": "A", "d:2026-10-02": "TL", "d:2026-10-04": "·", absent: 1, incomplete: 1, present: 0 });
+    expect(table.total).toMatchObject({ present: 2, late: 1, absent: 1, incomplete: 1 });
+    expect(table.printTitle).toBe("Laporan Kehadiran Harian");
+    expect(table.notes[0]).toMatch(/^Tidak lengkap berarti/);
     expect(table.legend?.map((item) => item.symbol)).toContain("TL");
   });
 
   it("builds the employee summary with subtotals per unit and a grand total", () => {
     const table = buildReportTable("employee_summary", rows, "2026-10-01", "2026-10-04");
-    expect(table.groups[0]!.rows[0]).toMatchObject({ employeeName: "Pegawai A", present: 2, late: 1, lateMinutes: 12, workedMinutes: 948 });
+    expect(table.columns.map((column) => column.label)).toEqual(["NIP", "Nama", "Hari kerja", "Hadir", "Terlambat", "Menit telat", "Tidak lengkap", "Cuti/Izin", "Tidak hadir", "Lembur (mnt)", "Presensi %"]);
+    expect(table.groups[0]!.rows[0]).toMatchObject({ employeeName: "Pegawai A", normal: 2, present: 2, late: 1, lateMinutes: 12, percent: 100 });
     expect(table.groups[1]!.subtotal).toMatchObject({ employeeNumber: "Jumlah SMPIT", absent: 1, incomplete: 1, notCaptured: 1 });
     expect(table.total).toMatchObject({ employeeNumber: "Jumlah seluruhnya", normal: 4, actual: 2, percent: 50 });
   });
@@ -100,7 +103,7 @@ describe("ATT-014 report exports", () => {
     const csv = reportCsv(table);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
     const lines = csv.slice(1).split("\r\n");
-    expect(lines[0]!.startsWith("Unit,NIP,Nama,Normal,Riil,Presensi %")).toBe(true);
+    expect(lines[0]!.startsWith("Unit,NIP,Nama,Hari kerja,Hadir,Terlambat")).toBe(true);
     expect(lines[1]).toContain("'=HYPERLINK(1)");
     expect(lines.at(-1)).toContain("Jumlah seluruhnya");
   });
@@ -111,7 +114,7 @@ describe("ATT-014 report exports", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
     const sheet = workbook.worksheets[0]!;
-    expect(sheet.getRow(1).getCell(1).value).toBe("Laporan Harian (Grid Bulanan)");
+    expect(sheet.getRow(1).getCell(1).value).toBe("Laporan Kehadiran Harian");
     expect(sheet.pageSetup.orientation).toBe("landscape");
     const header = sheet.getRow(6).values as unknown[];
     expect(header.slice(1, 4)).toEqual(["Unit", "NIP", "Nama"]);

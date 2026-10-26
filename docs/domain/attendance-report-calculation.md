@@ -839,16 +839,32 @@ Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi ko
   `purpose=view|print`, maks 93 hari dan 50 000 pegawai-hari (`422 EXPORT_TOO_LARGE`, DRAFT). Setiap
   **cetak** (`purpose=print`) dan **ekspor** (csv/xlsx) diaudit `attendance.report.exported` dengan model,
   format, tujuan, lingkup, rentang, dan jumlah baris saja. Pratinjau di layar tidak diaudit.
-- **Dokumen cetak** (`/admin/attendance/reports/print`, tab baru, tanpa kerangka admin): kop, judul,
-  lingkup, periode, "Dicetak oleh <email akun> pada <tanggal jam> WIB", peringatan bila ada data belum
-  ditarik/berubah/hari berjalan, tabel per unit, legenda simbol. CSS cetak: A4 sesuai orientasi model,
-  `thead { display: table-header-group }` agar judul kolom berulang, baris tidak terpotong, unit kedua dan
-  seterusnya mulai di halaman baru, nomor halaman lewat `@page` (peramban yang mendukung). Dialog cetak
-  terbuka otomatis; "Simpan sebagai PDF" dari dialog yang sama.
-- **Kop sementara (D-14-10):** logo bintang YSQ yang sudah ada di aplikasi dan teks "Yayasan Sabilul
-  Qur'an · Human Capital Information System (HCIS)". Semua nilai kop ada di satu berkas
-  (`apps/web/src/lib/reportLetterhead.ts`); kop resmi menyusul dari owner. Kolom tanda tangan
-  "Mengetahui" mati secara bawaan dan dapat dinyalakan di berkas yang sama.
+- **Dokumen cetak mengikuti mock-up yang disetujui owner (2026-10-26):** halaman tersendiri
+  `/admin/attendance/reports/print` di tab baru, hanya lembar kertas (tanpa kerangka admin), lalu dialog
+  cetak terbuka otomatis. Kop: lambang di kiri, nama yayasan dan satu baris alamat, garis 1,4pt. Judul di
+  tengah, huruf besar, serif, dengan baris periode. Blok identitas (unit, jumlah pegawai, penyaring, hari
+  kerja) dan kotak meta bergaris kiri tebal berisi **Data dihitung**, **Dicetak**, **Dicetak oleh**
+  secara terpisah. Tabel: kolom Pegawai 48mm (nama + NIP), kolom tanggal 5,4mm, rekap 9mm, libur berlatar
+  abu sangat tipis, angka `tabular-nums`, judul kolom berulang di tiap halaman, baris tidak terpotong,
+  unit berikutnya mulai di halaman baru, jumlah seluruhnya sekali di akhir. Legenda di bawah tabel, dan
+  "Tidak lengkap" serta "Tidak tercatat" dijelaskan satu kalimat di lembarnya.
+- **Kolom mengikuti mock-up:** grid bulanan merekap Hadir, Telat, Tdk lengkap, Cuti/Izin, Tdk hadir;
+  Rekapitulasi Pegawai memuat Hari kerja, Hadir, Terlambat, Menit telat, Tidak lengkap, Cuti/Izin, Tidak
+  hadir, Lembur, ditambah Presensi % (§6.3). Judul di kertas: "Laporan Kehadiran Harian", "Rekapitulasi
+  Kehadiran Pegawai", "Detail Kehadiran Harian".
+- **Orientasi** memakai named page (`page: lanskap | potret`). **Nomor halaman "Halaman n dari N"**
+  dan kalimat pembuat netral di kaki memakai *page margin box* CSS (`@bottom-left`, `@bottom-right`,
+  `counter(pages)`). Keputusan teknis: tanpa pustaka paged media dan tanpa PDF dari server. Margin box
+  hanya tampil di margin halaman yang tidak nol, sehingga padding lembar pada mock-up (10/12mm lanskap,
+  14mm potret) dipakai sebagai margin `@page`; hasil visualnya sama. **Diverifikasi 2026-10-26** dengan
+  mencetak lembar sintetis ke PDF memakai Chrome 155: nomor halaman, kalimat kaki, judul kolom berulang,
+  dan campuran lanskap/potret tampil. Chrome dan Edge versi 131 ke atas mendukungnya; Firefox dan Safari
+  mencetak tanpa nomor halaman, dan hal itu disebutkan di bilah layar dokumen cetak.
+- **Kop sementara (D-14-10):** lambang placeholder bertinta gelap dan baris alamat
+  "hcis.sabilulquran.or.id", sampai owner mengirim berkas logo versi tinta gelap dan baris alamat resmi.
+  Semua nilai kop dan kalimat kaki ada di satu berkas (`apps/web/src/lib/reportLetterhead.ts`). Blok tanda
+  tangan "Mengetahui" opsional di kanan bawah, mati secara bawaan, dinyalakan di berkas yang sama. Tanpa
+  QR atau tautan verifikasi.
 - **Langkah ④** kini memakai model baru (Tampilkan, Cetak, Excel, CSV). Format ATT-009 lama (sesi kerja,
   data scan, jadwal, lembur) tetap tersedia di bagian "Format lama" yang tertutup secara bawaan untuk
   satu rilis.

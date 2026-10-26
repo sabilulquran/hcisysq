@@ -17,12 +17,17 @@ export type ReportCell = string | number | null;
 export interface AttendanceReportTable {
   model: AttendanceReportModel;
   title: string;
+  printTitle: string;
   orientation: "landscape" | "portrait";
   columns: Array<{ key: string; label: string; align?: "right" | "center"; weekend?: boolean }>;
   groups: Array<{ unitName: string; rows: Array<Record<string, ReportCell>>; subtotal: Record<string, ReportCell> | null }>;
   total: Record<string, ReportCell> | null;
   legend: Array<{ symbol: string; label: string }> | null;
-  header: { scope: string; period: string; printedBy: string; printedAt: string };
+  notes: string[];
+  header: {
+    scope: string; unit: string; employeeCount: number; filter: string; workDays: number;
+    period: string; calculatedAt: string; printedBy: string; printedAt: string;
+  };
   warnings: { notCalculated: number; changed: number; provisional: boolean };
   from: string;
   to: string;

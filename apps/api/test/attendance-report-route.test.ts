@@ -75,7 +75,10 @@ describe("GET /admin/attendance/reports/:model", () => {
     expect(response.statusCode, response.body).toBe(200);
     const body = response.json();
     expect(body).toMatchObject({ model: "daily_grid", orientation: "landscape", warnings: { notCalculated: 1, changed: 0 } });
-    expect(body.header).toMatchObject({ scope: "Unit: Semua unit", period: "Periode 2026-10-01 s/d 2026-10-02", printedBy: "hc-report@example.invalid" });
+    expect(body.header).toMatchObject({
+      scope: "Unit: Semua unit", unit: "Semua unit", employeeCount: 1, workDays: 0, calculatedAt: "Belum ditarik",
+      period: "Periode 1 Oktober 2026 – 2 Oktober 2026", printedBy: "hc-report@example.invalid",
+    });
     expect(body.groups[0].rows[0]).toMatchObject({ "d:2026-10-01": "·", "d:2026-10-02": "·" });
     expect(audits()).toHaveLength(0);
   });

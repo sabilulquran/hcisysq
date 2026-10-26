@@ -1926,11 +1926,23 @@ export async function registerAttendanceWorkforceRoutes(
     }
     const table = buildReportTable(params.data.model, data.items, scope.from, scope.to);
     const unitName = scope.unitId ? data.items.find((item) => item.unitId === scope.unitId)?.unitName ?? null : null;
+    const stamp = (value: Date) => new Intl.DateTimeFormat("id-ID", {
+      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta",
+    }).format(value);
+    const longDate = (value: string) => new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${value}T00:00:00Z`));
+    // Identity and meta of the owner-approved print mock-up: unit, employees, filter, work days, and
+    // when the data was calculated, separate from when and by whom it was printed.
     const header = {
       scope: scope.employeeId ? `Pegawai: ${data.items[0]?.employeeName ?? "-"}` : `Unit: ${unitName ?? "Semua unit"}`,
-      period: `Periode ${scope.from} s/d ${scope.to}`,
+      unit: unitName ?? (scope.unitId ? "-" : "Semua unit"),
+      employeeCount: new Set(data.items.map((item) => item.employeeId)).size,
+      filter: scope.employeeId ? `Satu pegawai (${data.items[0]?.employeeName ?? "-"})` : "Semua pegawai, semua sumber",
+      workDays: new Set(data.items.filter((item) => item.normal === 1).map((item) => item.workDate)).size,
+      period: `Periode ${longDate(scope.from)} – ${longDate(scope.to)}`,
+      calculatedAt: data.lastCalculatedAt ? `${stamp(new Date(data.lastCalculatedAt))} WIB` : "Belum ditarik",
       printedBy: principal.email,
-      printedAt: new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date()),
+      printedAt: `${stamp(new Date())} WIB`,
     };
     const warnings = {
       notCalculated: data.summary.not_calculated ?? 0,

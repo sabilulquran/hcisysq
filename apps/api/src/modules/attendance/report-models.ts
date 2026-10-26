@@ -6,11 +6,18 @@ import type { CalculationRowStatus } from "./calculation-rows.js";
 // and Detail Harian. Pure builders over the stored-result rows of calculation-rows; nothing here
 // calculates attendance. The same table feeds the screen preview, the print document, CSV and XLSX.
 
+// printTitle is the heading on paper (owner-approved print mock-up, 2026-10-26).
 export const REPORT_MODELS = {
-  daily_grid: { title: "Laporan Harian (Grid Bulanan)", orientation: "landscape" },
-  employee_summary: { title: "Rekapitulasi Pegawai", orientation: "portrait" },
-  daily_detail: { title: "Detail Harian", orientation: "landscape" },
+  daily_grid: { title: "Laporan Harian (Grid Bulanan)", printTitle: "Laporan Kehadiran Harian", orientation: "landscape" },
+  employee_summary: { title: "Rekapitulasi Pegawai", printTitle: "Rekapitulasi Kehadiran Pegawai", orientation: "portrait" },
+  daily_detail: { title: "Detail Harian", printTitle: "Detail Kehadiran Harian", orientation: "landscape" },
 } as const;
+
+/** Terms that are easy to misread, explained on the sheet itself. */
+export const REPORT_NOTES = [
+  "Tidak lengkap berarti ada scan masuk tanpa scan pulang, atau sebaliknya. Jam jadwal tidak pernah dipakai sebagai pengganti jam yang hilang.",
+  "Tidak tercatat berarti tanggal itu belum tercakup mesin atau absen HP bagi pegawai tersebut, bukan berarti tidak hadir.",
+];
 
 export type ReportModel = keyof typeof REPORT_MODELS;
 
@@ -40,11 +47,13 @@ export type ReportColumn = { key: string; label: string; align?: "right" | "cent
 export type ReportTable = {
   model: ReportModel;
   title: string;
+  printTitle: string;
   orientation: "landscape" | "portrait";
   columns: ReportColumn[];
   groups: Array<{ unitName: string; rows: Array<Record<string, ReportCell>>; subtotal: Record<string, ReportCell> | null }>;
   total: Record<string, ReportCell> | null;
   legend: Array<{ symbol: string; label: string }> | null;
+  notes: string[];
 };
 
 /** §6.6 symbols, plain letters so a black-and-white print stays readable. */
@@ -156,21 +165,17 @@ function summaryCells(totals: Totals): Record<string, ReportCell> {
   };
 }
 
+// Columns of the owner-approved mock-up, plus Presensi % (§6.3); fits A4 portrait.
 const SUMMARY_COLUMNS: ReportColumn[] = [
-  { key: "normal", label: "Normal", align: "right" },
-  { key: "actual", label: "Riil", align: "right" },
-  { key: "percent", label: "Presensi %", align: "right" },
-  { key: "present", label: "Hadir", align: "right" },
-  { key: "late", label: "Terlambat (kali)", align: "right" },
-  { key: "lateMinutes", label: "Terlambat (mnt)", align: "right" },
-  { key: "early", label: "Pulang cepat (kali)", align: "right" },
-  { key: "earlyMinutes", label: "Pulang cepat (mnt)", align: "right" },
-  { key: "incomplete", label: "Tidak lengkap", align: "right" },
-  { key: "absent", label: "Tidak hadir", align: "right" },
-  { key: "leave", label: "Cuti/Izin", align: "right" },
-  { key: "overtimeMinutes", label: "Lembur (mnt)", align: "right" },
-  { key: "workedMinutes", label: "Jam kerja (mnt)", align: "right" },
-  { key: "notCaptured", label: "Tidak tercatat", align: "right" },
+  { key: "normal", label: "Hari kerja", align: "center" },
+  { key: "present", label: "Hadir", align: "center" },
+  { key: "late", label: "Terlambat", align: "center" },
+  { key: "lateMinutes", label: "Menit telat", align: "center" },
+  { key: "incomplete", label: "Tidak lengkap", align: "center" },
+  { key: "leave", label: "Cuti/Izin", align: "center" },
+  { key: "absent", label: "Tidak hadir", align: "center" },
+  { key: "overtimeMinutes", label: "Lembur (mnt)", align: "center" },
+  { key: "percent", label: "Presensi %", align: "center" },
 ];
 
 function groupByUnitAndEmployee(rows: ReportSourceRow[]) {
@@ -241,7 +246,7 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
       };
     });
     return {
-      model, title: meta.title, orientation: meta.orientation, columns, groups,
+      model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups, notes: REPORT_NOTES,
       total: {
         date: "Jumlah seluruhnya", lateMinutes: grand.lateMinutes, earlyMinutes: grand.earlyMinutes,
         workedMinutes: grand.workedMinutes, overtimeMinutes: grand.overtimeMinutes, normalActual: `${grand.normal}/${grand.actual}`,
@@ -264,7 +269,7 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
       return { unitName, rows: groupRows, subtotal: { employeeNumber: `Jumlah ${unitName}`, ...summaryCells(unitTotals) } };
     });
     return {
-      model, title: meta.title, orientation: meta.orientation, columns, groups,
+      model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups, notes: REPORT_NOTES,
       total: { employeeNumber: "Jumlah seluruhnya", ...summaryCells(grand) }, legend: null,
     };
   }
@@ -275,12 +280,11 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
     { key: "employeeNumber", label: "NIP" }, { key: "employeeName", label: "Nama" },
     ...dates.map((date) => {
       const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-      return { key: `d:${date}`, label: `${Number(date.slice(8, 10))} ${WEEKDAY[weekday]}`, align: "center" as const, weekend: weekday === 0 || weekday === 6 };
+      return { key: `d:${date}`, label: String(Number(date.slice(8, 10))), align: "center" as const, weekend: weekday === 0 || weekday === 6 };
     }),
-    { key: "normal", label: "Normal", align: "right" }, { key: "actual", label: "Riil", align: "right" },
-    { key: "percent", label: "Presensi %", align: "right" }, { key: "absent", label: "A", align: "right" },
-    { key: "late", label: "T", align: "right" }, { key: "incomplete", label: "TL", align: "right" },
-    { key: "leave", label: "C", align: "right" }, { key: "overtimeMinutes", label: "Lembur (mnt)", align: "right" },
+    { key: "present", label: "Hadir", align: "center" }, { key: "late", label: "Telat", align: "center" },
+    { key: "incomplete", label: "Tdk lengkap", align: "center" }, { key: "leave", label: "Cuti/Izin", align: "center" },
+    { key: "absent", label: "Tdk hadir", align: "center" },
   ];
   const groups = grouped.map(({ unitName, employees }) => {
     const unitTotals = emptyTotals();
@@ -295,8 +299,8 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
       const summary = summaryCells(totals);
       return {
         employeeNumber: list[0]?.employeeNumber ?? null, employeeName: list[0]?.employeeName ?? null, ...cells,
-        normal: summary.normal!, actual: summary.actual!, percent: summary.percent!, absent: summary.absent!,
-        late: summary.late!, incomplete: summary.incomplete!, leave: summary.leave!, overtimeMinutes: summary.overtimeMinutes!,
+        present: summary.present!, late: summary.late!, incomplete: summary.incomplete!, leave: summary.leave!,
+        absent: summary.absent!,
       };
     });
     mergeTotals(grand, unitTotals);
@@ -305,19 +309,17 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
       unitName,
       rows: groupRows,
       subtotal: {
-        employeeNumber: `Jumlah ${unitName}`, normal: summary.normal!, actual: summary.actual!, percent: summary.percent!,
-        absent: summary.absent!, late: summary.late!, incomplete: summary.incomplete!, leave: summary.leave!,
-        overtimeMinutes: summary.overtimeMinutes!,
+        employeeNumber: `Jumlah ${unitName}`, present: summary.present!, late: summary.late!,
+        incomplete: summary.incomplete!, leave: summary.leave!, absent: summary.absent!,
       },
     };
   });
   const summary = summaryCells(grand);
   return {
-    model, title: meta.title, orientation: meta.orientation, columns, groups,
+    model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups, notes: REPORT_NOTES,
     total: {
-      employeeNumber: "Jumlah seluruhnya", normal: summary.normal!, actual: summary.actual!, percent: summary.percent!,
-      absent: summary.absent!, late: summary.late!, incomplete: summary.incomplete!, leave: summary.leave!,
-      overtimeMinutes: summary.overtimeMinutes!,
+      employeeNumber: "Jumlah seluruhnya", present: summary.present!, late: summary.late!,
+      incomplete: summary.incomplete!, leave: summary.leave!, absent: summary.absent!,
     },
     legend: SYMBOL_LEGEND,
   };
@@ -350,16 +352,19 @@ export function reportCsv(table: ReportTable): string {
   return `${BOM}${lines.join("\r\n")}`;
 }
 
-export async function reportXlsx(table: ReportTable, header: { scope: string; period: string; printedBy: string; printedAt: string }) {
+export async function reportXlsx(
+  table: ReportTable,
+  header: { scope: string; period: string; printedBy: string; printedAt: string; calculatedAt?: string },
+) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(table.title.slice(0, 31), {
     pageSetup: { paperSize: 9, orientation: table.orientation, fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
   });
   const columns = [{ key: "unitName", label: "Unit" }, ...table.columns];
-  sheet.addRow([table.title]).font = { bold: true, size: 14 };
+  sheet.addRow([table.printTitle]).font = { bold: true, size: 14 };
   sheet.addRow([header.scope]);
   sheet.addRow([header.period]);
-  sheet.addRow([`Dicetak oleh ${header.printedBy} pada ${header.printedAt}`]);
+  sheet.addRow([`Data dihitung: ${header.calculatedAt ?? "-"} · Dicetak: ${header.printedAt} oleh ${header.printedBy}`]);
   sheet.addRow([]);
   const headerRow = sheet.addRow(columns.map((column) => column.label));
   headerRow.font = { bold: true };
@@ -368,9 +373,8 @@ export async function reportXlsx(table: ReportTable, header: { scope: string; pe
     const added = sheet.addRow(columns.map((column) => row[column.key] ?? null));
     if (String(row.employeeNumber ?? row.date ?? "").startsWith("Jumlah")) added.font = { bold: true };
   }
-  if (table.legend) {
-    sheet.addRow([]);
-    sheet.addRow([`Keterangan: ${table.legend.map((item) => `${item.symbol} = ${item.label}`).join("; ")}`]);
-  }
+  sheet.addRow([]);
+  if (table.legend) sheet.addRow([`Keterangan: ${table.legend.map((item) => `${item.symbol} = ${item.label}`).join("; ")}`]);
+  for (const note of table.notes) sheet.addRow([note]);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

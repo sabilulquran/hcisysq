@@ -1,6 +1,8 @@
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, DownloadCloud, Loader2, RefreshCw, Square } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
+import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
+import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
 import { LegacyReportSection } from "@/components/attendance/reports/LegacyReportSection";
 import { ReportModelSection } from "@/components/attendance/reports/ReportModelSection";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
@@ -22,9 +24,11 @@ import {
   type AttendanceCalculationRowStatus,
   type AttendanceCalculationRows,
   type AttendanceCalculationRun,
+  type AttendanceTransaction,
   type AttendanceTransactionSource,
   type AttendanceTransactions,
 } from "@/lib/attendanceCalculation";
+import { mobileReviewLabel } from "@/lib/attendanceLabels";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
@@ -85,13 +89,21 @@ export function AdminAttendanceReportsPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const canRun = hasPermission(session, "attendance.calculation.run");
   const canPickEmployee = hasPermission(session, "employees.manage");
+  const canEnterCorrection = hasPermission(session, "attendance.records.manage");
+  // Old links (Bukti HP) land here with ?tab=transactions&source=mobile.
+  const initialSearch = new URLSearchParams(window.location.search);
   const [range, setRange] = useState(() => calculationRange("this_month"));
   const [unitId, setUnitId] = useState("");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
-  const [tab, setTab] = useState<"transactions" | "detail">("transactions");
+  const [tab, setTab] = useState<"transactions" | "detail">(initialSearch.get("tab") === "detail" ? "detail" : "transactions");
   const [status, setStatus] = useState<AttendanceCalculationRowStatus | "">("");
-  const [source, setSource] = useState<AttendanceTransactionSource | "">("");
+  const [source, setSource] = useState<AttendanceTransactionSource | "">(
+    SOURCE_FILTERS.some((item) => item.value === initialSearch.get("source")) ? initialSearch.get("source") as AttendanceTransactionSource : "",
+  );
+  const [needsReview, setNeedsReview] = useState(false);
+  const [selectedPunch, setSelectedPunch] = useState<AttendanceTransaction | null>(null);
+  const [correcting, setCorrecting] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
   const [detailPage, setDetailPage] = useState(1);
   const [transactionPage, setTransactionPage] = useState(1);
@@ -120,7 +132,7 @@ export function AdminAttendanceReportsPage() {
     try {
       const [detail, punches] = await Promise.all([
         getAttendanceCalculationRows({ ...scope, ...(status ? { status } : {}), changedOnly, page: detailPage }),
-        getAttendanceTransactions({ ...scope, ...(source ? { source } : {}), page: transactionPage }),
+        getAttendanceTransactions({ ...scope, ...(source ? { source } : {}), needsReview, page: transactionPage }),
       ]);
       setRows(detail);
       setTransactions(punches);
@@ -131,7 +143,7 @@ export function AdminAttendanceReportsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, unitId, employeeId, status, source, changedOnly, detailPage, transactionPage]);
+  }, [range.from, range.to, unitId, employeeId, status, source, needsReview, changedOnly, detailPage, transactionPage]);
 
   useEffect(() => { void loadRows(); }, [loadRows]);
 
@@ -169,7 +181,7 @@ export function AdminAttendanceReportsPage() {
   };
 
   // Changing the scope clears the previous run and starts both tables from page 1.
-  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setRun(null); };
+  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setRun(null); setSelectedPunch(null); };
   const changeRange = (next: { from: string; to: string }) => { setRange(next); resetPages(); };
   const active = isCalculationActive(run);
   const pending = rows ? (rows.summary.not_calculated ?? 0) : 0;
@@ -267,11 +279,17 @@ export function AdminAttendanceReportsPage() {
           {tab === "transactions" ? (
             <div role="tabpanel">
               <div className="flex flex-wrap items-center gap-3 p-3">
-                <select aria-label="Filter sumber" className="h-9 rounded-xl border px-3 text-sm" value={source} onChange={(event) => { setSource(event.target.value as AttendanceTransactionSource | ""); setTransactionPage(1); }}>
+                <select aria-label="Filter sumber" className="h-9 rounded-xl border px-3 text-sm" value={source} onChange={(event) => { setSource(event.target.value as AttendanceTransactionSource | ""); setTransactionPage(1); setSelectedPunch(null); }}>
                   <option value="">Semua sumber</option>
                   {SOURCE_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
-                <p className="text-xs text-muted-foreground">Satu baris = satu absen. "Dipakai" berarti jam itu dipakai pada hasil terakhir.</p>
+                {(transactions?.needsReviewTotal ?? 0) > 0 || needsReview ? (
+                  <button type="button" aria-pressed={needsReview} onClick={() => { setNeedsReview(!needsReview); setTransactionPage(1); setSelectedPunch(null); }}
+                    className={`h-9 rounded-xl border px-3 text-xs font-bold ${needsReview ? "border-warning-line bg-warning-soft text-warning-ink" : "text-warning-ink"}`}>
+                    Perlu ditinjau ({transactions?.needsReviewTotal ?? 0})
+                  </button>
+                ) : null}
+                <p className="text-xs text-muted-foreground">Satu baris = satu absen. "Dipakai" berarti jam itu dipakai pada hasil terakhir. Pilih baris untuk detailnya.</p>
               </div>
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[860px] text-left text-sm">
@@ -280,12 +298,16 @@ export function AdminAttendanceReportsPage() {
                   </thead>
                   <tbody className="divide-y">
                     {transactions?.items.map((item) => (
-                      <tr key={`${item.source}:${item.id}:${item.boundary ?? ""}`}>
+                      <tr key={`${item.source}:${item.id}:${item.boundary ?? ""}`} onClick={() => { setSelectedPunch(item); setCorrecting(false); }}
+                        className={`cursor-pointer hover:bg-surface ${selectedPunch?.id === item.id && selectedPunch.boundary === item.boundary ? "bg-brand-primary-pale" : ""}`}>
                         <td className="p-3 tabular-nums">{time(item.occurredAt)}{item.boundary ? <span className="ml-1 text-xs text-muted-foreground">({item.boundary === "check_in" ? "masuk" : "pulang"})</span> : null}</td>
                         <td className="p-3"><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{item.employeeNumber}</p></td>
                         <td className="p-3">{item.unitName ?? "—"}</td>
                         <td className="p-3 tabular-nums">{shortDate(item.workDate)}</td>
-                        <td className="p-3"><span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold">{transactionSourceLabel(item)}</span></td>
+                        <td className="p-3">
+                          <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold">{transactionSourceLabel(item)}</span>
+                          {item.reviewState === "needs_review" ? <span className="ml-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-ink">{mobileReviewLabel(item.reviewState)}</span> : null}
+                        </td>
                         <td className="p-3">{item.usedInResult ? "Ya" : "Belum"}</td>
                       </tr>
                     ))}
@@ -295,16 +317,44 @@ export function AdminAttendanceReportsPage() {
               </div>
               <ul className="divide-y md:hidden">
                 {transactions?.items.map((item) => (
-                  <li key={`${item.source}:${item.id}:${item.boundary ?? ""}`} className="p-4">
+                  <li key={`${item.source}:${item.id}:${item.boundary ?? ""}`} className="cursor-pointer p-4" onClick={() => { setSelectedPunch(item); setCorrecting(false); }}>
                     <div className="flex items-start justify-between gap-3">
                       <div><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{shortDate(item.workDate)} · {time(item.occurredAt)}</p></div>
                       <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{transactionSourceLabel(item)}</span>
                     </div>
+                    {item.reviewState === "needs_review" ? <p className="mt-1 text-xs font-semibold text-warning-ink">{mobileReviewLabel(item.reviewState)}</p> : null}
                   </li>
                 ))}
                 {transactions && transactions.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada absen pada lingkup ini.</li> : null}
               </ul>
-              {transactions ? <Pager page={transactions.page} totalPages={transactions.totalPages} total={transactions.total} loading={loading} onPage={setTransactionPage} /> : null}
+              {transactions ? <Pager page={transactions.page} totalPages={transactions.totalPages} total={transactions.total} loading={loading} onPage={(next) => { setTransactionPage(next); setSelectedPunch(null); }} /> : null}
+              {selectedPunch ? (
+                <div className="border-t bg-surface/50 p-4 text-sm" aria-label="Detail absen">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-bold text-brand-heading">{selectedPunch.employeeName} · {time(selectedPunch.occurredAt)}</p>
+                      <p className="text-xs text-muted-foreground">{shortDate(selectedPunch.workDate)} · {transactionSourceLabel(selectedPunch)} · {selectedPunch.usedInResult ? "dipakai pada hasil terakhir" : "belum dipakai pada hasil"}</p>
+                    </div>
+                    <button type="button" onClick={() => setSelectedPunch(null)} className="rounded-lg border px-2 py-1 text-xs">Tutup</button>
+                  </div>
+                  {selectedPunch.reviewState === "needs_review" ? <p className="mt-2 text-xs font-semibold text-warning-ink">Perlu ditinjau: absen HP di luar lokasi kerja atau dengan GPS kurang akurat. Absen tetap tersimpan; perbaikan dilakukan lewat koreksi beralasan.</p> : null}
+                  {selectedPunch.evidence ? <div className="mt-3 max-w-md"><MobileEvidencePanel evidence={selectedPunch.evidence} /></div> : null}
+                  {canEnterCorrection ? (
+                    correcting ? (
+                      <div className="mt-3 max-w-xl rounded-xl border bg-surface-raised p-3">
+                        <CorrectionEntryForm
+                          employee={{ id: selectedPunch.employeeId, fullName: selectedPunch.employeeName, employeeNumber: selectedPunch.employeeNumber }}
+                          initialDate={selectedPunch.workDate}
+                          onSaved={() => void loadRows()}
+                          onCancel={() => setCorrecting(false)}
+                        />
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setCorrecting(true)} className="mt-3 h-9 rounded-xl border px-3 text-xs font-bold">Buat koreksi</button>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div role="tabpanel">

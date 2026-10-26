@@ -10,9 +10,6 @@ const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/schedules/dates": "attendance.schedule.manage",
   "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
   "/admin/attendance/daily": "attendance.reports.read",
-  "/admin/attendance/clarifications": "attendance.clarification.manage",
-  "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
-  "/admin/attendance/corrections": "attendance.records.manage",
   "/admin/attendance/reports": "attendance.reports.read",
   "/admin/attendance/reports/print": "attendance.reports.read",
   "/admin/attendance/overtime": "attendance.overtime.manage",
@@ -45,6 +42,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       && (!path.endsWith("/biometrics") || hasPermission(session, "attendance.devices.biometrics"))
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"))
       && (!path.endsWith("/diagnostics") || hasPermission(session, "attendance.devices.technical"));
+  }
+  // ATT-011-3R Perbaikan Absen: deciding requests or entering corrections each open it.
+  if (path === "/admin/attendance/corrections") {
+    return hasPermission(session, "attendance.clarification.manage") || hasPermission(session, "attendance.records.manage");
   }
   // ATT-011-1: each screen is offered only to accounts whose permission loads its data (K-8).
   const attendancePermission = ATTENDANCE_PATH_PERMISSIONS[path];

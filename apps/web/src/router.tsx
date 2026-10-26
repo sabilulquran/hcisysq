@@ -32,9 +32,8 @@ import { AdminAdmsAuditPage } from "@/pages/AdminAdmsAuditPage";
 import { AdminAdmsHealthPage } from "@/pages/AdminAdmsHealthPage";
 import { AdminAdmsJobsPage } from "@/pages/AdminAdmsJobsPage";
 import { AdminAdmsUsersManagementPage } from "@/pages/AdminAdmsUsersManagementPage";
-import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
+import { AdminAttendanceCorrectionsPage } from "@/pages/AdminAttendanceCorrectionsPage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
-import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
 import { AdminAttendanceReportPrintPage } from "@/pages/AdminAttendanceReportPrintPage";
 import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
@@ -335,25 +334,11 @@ const adminAttendanceDailyRoute = createRoute({
   component: AdminAttendanceDailyPage,
 });
 
-const adminAttendanceClarificationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/clarifications",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/clarifications"),
-  component: AdminAttendanceClarificationsPage,
-});
-
-const adminAttendanceMobileRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/mobile-evidence",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/mobile-evidence"),
-  component: AdminAttendanceMobileEvidencePage,
-});
-
 const adminAttendanceCorrectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/corrections",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/corrections"),
-  component: AdminAttendancePage,
+  component: AdminAttendanceCorrectionsPage,
 });
 
 const adminAttendanceReportsRoute = createRoute({
@@ -595,8 +580,6 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceScheduleDatesRoute,
   adminAttendanceShiftSwapsRoute,
   adminAttendanceDailyRoute,
-  adminAttendanceClarificationsRoute,
-  adminAttendanceMobileRoute,
   adminAttendanceCorrectionsRoute,
   adminAttendanceReportsRoute,
   adminAttendanceReportPrintRoute,

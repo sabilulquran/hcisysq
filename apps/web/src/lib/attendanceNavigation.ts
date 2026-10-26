@@ -11,7 +11,7 @@ export type AttendanceTabKey =
   | "summary"
   | "shifts"
   | "patterns" | "dates" | "swaps"
-  | "daily" | "clarifications" | "mobile-evidence" | "corrections" | "reports"
+  | "daily" | "corrections" | "reports"
   | "overtime"
   | "devices"
   | "locations";
@@ -45,9 +45,7 @@ export const attendanceSections: AttendanceSection[] = [
     label: "Kehadiran",
     tabs: [
       { key: "daily", label: "Pantauan Hari Ini", href: "/admin/attendance/daily" },
-      { key: "clarifications", label: "Klarifikasi", href: "/admin/attendance/clarifications" },
-      { key: "mobile-evidence", label: "Bukti HP", href: "/admin/attendance/mobile-evidence" },
-      { key: "corrections", label: "Koreksi HC", href: "/admin/attendance/corrections" },
+      { key: "corrections", label: "Perbaikan Absen", href: "/admin/attendance/corrections" },
       { key: "reports", label: "Laporan", href: "/admin/attendance/reports" },
     ],
   },
@@ -86,12 +84,15 @@ export const legacyAttendanceRedirects: Record<string, string> = {
   "/admin/attendance/workforce/schedules": "/admin/attendance/shifts",
   "/admin/attendance/workforce/assignments": "/admin/attendance/schedules",
   "/admin/attendance/workforce/roster": "/admin/attendance/schedules/dates",
-  "/admin/attendance/workforce/clarifications": "/admin/attendance/clarifications",
-  "/admin/attendance/workforce/mobile": "/admin/attendance/mobile-evidence",
+  "/admin/attendance/workforce/clarifications": "/admin/attendance/corrections",
+  "/admin/attendance/workforce/mobile": "/admin/attendance/reports?tab=transactions&source=mobile",
   "/admin/attendance/workforce/overtime": "/admin/attendance/overtime",
   "/admin/attendance/workforce/shift-swaps": "/admin/attendance/schedules/swaps",
   "/admin/attendance/workforce/reports": "/admin/attendance/reports",
   // ATT-014 §19.1 (R1): Kalkulasi is the "Tarik data" step inside Laporan.
   "/admin/attendance/settings/recalculate": "/admin/attendance/reports",
   "/admin/attendance/calculation": "/admin/attendance/reports",
+  // ATT-014 §19.8 (R1): Klarifikasi and Koreksi HC became Perbaikan Absen; Bukti HP lives in Data Transaksi.
+  "/admin/attendance/clarifications": "/admin/attendance/corrections",
+  "/admin/attendance/mobile-evidence": "/admin/attendance/reports?tab=transactions&source=mobile",
 };

@@ -115,13 +115,25 @@ paths:
       tags: [Attendance]
       operationId: listAttendanceClarificationsForHc
       x-required-permission: attendance.clarification.manage
+      description: >-
+        ATT-011-3R Perbaikan Absen. Employee requests and HC corrections in one paginated list, newest
+        work date first. Readable with attendance.clarification.manage **or** attendance.records.manage;
+        deciding and entering corrections keep their own permission. `origin` is `employee` or `hc`
+        (an HC correction's submitted event carries administrativeCorrection). `submittedCount` counts
+        all open requests regardless of the filter.
       parameters:
-        - name: status
-          in: query
-          required: false
-          schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted } }
+        - { name: origin, in: query, required: false, schema: { type: string, enum: [all, employee, hc], default: all } }
+        - { name: mode, in: query, required: false, schema: { type: string, enum: [all, correction, justification], default: all } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 120 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
       responses:
-        '200': { description: Clarification queue or history filtered by status }
+        '200': { description: '`{ page, pageSize, total, totalPages, submittedCount, items }`; each item adds `origin` and `decidedByEmail`.' }
+        '400': { description: INVALID_CLARIFICATION_FILTER }
+        '403': { description: Neither attendance.clarification.manage nor attendance.records.manage }
 
   /admin/attendance/clarifications/{clarificationId}/decision:
     post:
@@ -374,13 +386,18 @@ paths:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual, correction] } }
+        - { name: reviewState, in: query, required: false, schema: { type: string, enum: [needs_review] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
       responses:
         '200':
           description: >-
-            `{ from, to, page, pageSize, total, totalPages, items }`; each item has `id`, employee and
-            unit, `occurredAt`, `workDate`, `source`, `correctionBy`, `boundary`, `deviceName`, `usedInResult`.
+            `{ from, to, page, pageSize, total, totalPages, needsReviewTotal, items }`; each item has `id`,
+            employee and unit, `occurredAt`, `workDate`, `source`, `correctionBy`, `boundary`, `deviceName`,
+            `usedInResult`, `reviewState` and `geofenceStatus` (mobile punches). ATT-011-3R: `evidence`
+            (evidenceId, coordinates, accuracy, distance, work location) is included only for callers with
+            attendance.clarification.manage; the photo is fetched one at a time from the mobile-evidence
+            photo endpoint, which audits every opening.
         '400': { description: INVALID_TRANSACTIONS_QUERY or INVALID_CALCULATION_RANGE }
         '403': { description: Missing attendance.reports.read }
         '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }

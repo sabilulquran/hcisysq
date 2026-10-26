@@ -207,6 +207,20 @@ export interface AttendanceTransaction {
   boundary: "check_in" | "check_out" | null;
   deviceName: string | null;
   usedInResult: boolean;
+  /** Mobile punches only: "Perlu ditinjau" when outside the work location or GPS is poor. */
+  reviewState: "accepted" | "needs_review" | null;
+  geofenceStatus: "inside" | "outside" | "uncertain_accuracy" | "unassigned_location" | null;
+  /** Present only for accounts with attendance.clarification.manage (ATT-006). */
+  evidence?: {
+    evidenceId: string;
+    latitude: number;
+    longitude: number;
+    accuracyMeters: number;
+    distanceMeters: number | null;
+    geofenceStatus: "inside" | "outside" | "uncertain_accuracy" | "unassigned_location";
+    workLocationName: string | null;
+    radiusMeters: number | null;
+  } | null;
 }
 
 export interface AttendanceTransactions {
@@ -216,16 +230,18 @@ export interface AttendanceTransactions {
   pageSize: number;
   total: number;
   totalPages: number;
+  needsReviewTotal: number;
   items: AttendanceTransaction[];
 }
 
 export async function getAttendanceTransactions(
-  scope: AttendanceCalculationScope & { source?: AttendanceTransactionSource; page?: number; pageSize?: number },
+  scope: AttendanceCalculationScope & { source?: AttendanceTransactionSource; needsReview?: boolean; page?: number; pageSize?: number },
 ) {
   const params = new URLSearchParams({ from: scope.from, to: scope.to });
   if (scope.unitId) params.set("unitId", scope.unitId);
   if (scope.employeeId) params.set("employeeId", scope.employeeId);
   if (scope.source) params.set("source", scope.source);
+  if (scope.needsReview) params.set("reviewState", "needs_review");
   params.set("page", String(scope.page ?? 1));
   params.set("pageSize", String(scope.pageSize ?? 50));
   return readJson<AttendanceTransactions>(await fetch(`/api/admin/attendance/transactions?${params.toString()}`, {

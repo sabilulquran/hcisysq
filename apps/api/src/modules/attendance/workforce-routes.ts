@@ -5,7 +5,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
+import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
 import type { AdminPermission } from "../auth/permissions.js";
@@ -23,6 +23,7 @@ import {
   type CalculationRun,
   type CalculationRunner,
 } from "./calculation-runner.js";
+import { listAttendanceCorrections } from "./corrections.js";
 import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildReportTable, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -110,6 +111,13 @@ const scheduleRangeSchema = z.object({ from: dateSchema, to: dateSchema });
 const rosterQuerySchema = z.object({ weekStart: dateSchema });
 const clarificationAdminQuerySchema = z.object({
   status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+  origin: z.enum(["all", "employee", "hc"]).default("all"),
+  mode: z.enum(["all", "correction", "justification"]).default("all"),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+  q: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(10).max(200).default(50),
 });
 const mobileEvidenceQuerySchema = z.object({
   date: dateSchema.optional(),
@@ -715,36 +723,22 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+  // ATT-011-3R Perbaikan Absen: employee requests and HC corrections in one paginated list, readable
+  // by whoever may decide requests or enter corrections. Each action keeps its own permission.
   app.get("/admin/attendance/clarifications", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.clarification.manage");
-    if (!principal) return;
+    try {
+      await requireAnyPermissionFromCookie(auth, request.headers.cookie, ["attendance.clarification.manage", "attendance.records.manage"]);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+    reply.header("Cache-Control", "no-store");
     const query = clarificationAdminQuerySchema.safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_CLARIFICATION_FILTER", message: "Filter klarifikasi tidak valid." });
-    const values: unknown[] = [];
-    let statusClause = "";
-    if (query.data.status !== "all") {
-      values.push(query.data.status);
-      statusClause = "WHERE clarification.status = $1";
-    }
-    const rows = await pool.query(
-      `SELECT clarification.id, clarification.work_date::text AS "workDate",
-         clarification.kind, clarification.mode, clarification.reason, clarification.status,
-         clarification.proposed_check_in_at AS "proposedCheckInAt",
-         clarification.proposed_check_out_at AS "proposedCheckOutAt",
-         clarification.decision_note AS "decisionNote", clarification.decided_at AS "decidedAt",
-         employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
-         employee.full_name AS "employeeName", unit.name AS "unitName",
-         clarification.created_at AS "createdAt"
-       FROM attendance_clarifications clarification
-       JOIN employees employee ON employee.id = clarification.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       ${statusClause}
-       ORDER BY clarification.work_date DESC, clarification.created_at DESC
-       LIMIT 500`,
-      values,
-    );
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ items: rows.rows });
+    return reply.send(await listAttendanceCorrections(pool, query.data));
   });
 
   app.post("/admin/attendance/clarifications/:clarificationId/decision", async (request, reply) => {
@@ -1903,6 +1897,7 @@ export async function registerAttendanceWorkforceRoutes(
       from: dateSchema,
       to: dateSchema,
       source: z.enum(["adms", "mobile", "manual", "correction"]).optional(),
+      reviewState: z.enum(["needs_review"]).optional(),
       page: z.coerce.number().int().min(1).default(1),
       pageSize: z.coerce.number().int().min(10).max(200).default(50),
     }).safeParse(request.query);
@@ -1918,6 +1913,9 @@ export async function registerAttendanceWorkforceRoutes(
       unitId: query.data.unitId ?? null,
       employeeId: query.data.employeeId ?? null,
       source: query.data.source ?? null,
+      reviewState: query.data.reviewState ?? null,
+      // ATT-006: GPS and the photo handle only for accounts that may review mobile evidence.
+      includeEvidence: (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("attendance.clarification.manage"),
       page: query.data.page,
       pageSize: query.data.pageSize,
     }));

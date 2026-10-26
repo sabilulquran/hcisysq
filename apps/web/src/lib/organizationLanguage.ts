@@ -440,6 +440,13 @@ export function organizationJournalSentence(entry: {
       return "Penyetuju cuti unit diganti.";
     case "SET_OVERRIDE":
       return "Atasan khusus ditetapkan untuk satu pegawai.";
+    case "SEED_FROM_LEGACY": {
+      const units = count("units");
+      const placements = count("placements");
+      return units !== null && placements !== null
+        ? `Disusun dari data lama: ${units} unit, ${placements} penempatan pegawai. Semuanya usulan — tinjau sebelum diterbitkan.`
+        : "Disusun dari data lama sebagai usulan — tinjau sebelum diterbitkan.";
+    }
     default:
       return "Satu perubahan tercatat.";
   }
@@ -511,6 +518,7 @@ const COMMAND_LABELS: Record<string, string> = {
   SET_UNIT_LEADER: "Pemimpin unit",
   SET_UNIT_APPROVER: "Penyetuju cuti unit",
   SET_OVERRIDE: "Atasan khusus",
+  SEED_FROM_LEGACY: "Usulan dari data lama",
 };
 
 /** ORG-008-4d: the short name of an action, for a line that could not be replayed. */

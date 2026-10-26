@@ -88,7 +88,7 @@ describe("ORG-008-5 aturan khusus ditulis sebagai kalimat (gap W-2)", () => {
     expect(text).toContain("akun Dewan");
   });
 
-  it("hides the editing form from someone without the approval permission", () => {
+  it("hides the editing form from someone who may not compose structure", () => {
     const html = renderToStaticMarkup(
       <OrganizationAdvancedAuthority
         position={director} bindings={[]} positions={[director, secretary]}
@@ -96,7 +96,7 @@ describe("ORG-008-5 aturan khusus ditulis sebagai kalimat (gap W-2)", () => {
       />,
     );
     expect(html).not.toContain("Simpan aturan");
-    expect(visibleText(html)).toContain("diatur oleh pemegang izin persetujuan");
+    expect(visibleText(html)).toContain("berlaku setelah diterbitkan Kepala HC");
   });
 
   it("says when there is no special rule at all", () => {

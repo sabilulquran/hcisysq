@@ -136,7 +136,7 @@ Dibanding data atasan lama                                               [Buka l
 
 - Setiap baris membuka tab terkait yang sudah difilter.
 - "Dibanding data atasan lama" = laporan read-only §4.6; **bukan** mode `SHADOW` dan tidak menyentuh rollout.
-- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3).
+- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3). **Selesai (ORG-008-7b).** Tombol pertama hanya tampil bagi sesi yang juga boleh menulis pejabat dan kewenangan, karena tanpa itu ia pasti berakhir 403 (acceptance ORG-008-J). Dialognya menyebutkan lebih dulu bahwa hasilnya usulan, bahwa tidak ada yang disimpulkan dari nama jabatan, bahwa susunannya datar sehingga menyusun tingkatan tetap pekerjaan operator, dan bahwa pegawai tanpa unit atau tanpa atasan dilaporkan jumlahnya alih-alih ditebak. Setelah selesai, hitungan hasilnya ditampilkan termasuk apa yang belum terjawab.
 - Forbidden: tanpa `organization.manage` menu tidak tampil; akses langsung → "Anda tidak punya akses ke Struktur Organisasi".
 
 ### 4.3 Bagan
@@ -275,6 +275,7 @@ Aturan lain yang terkena: Direktur (lembur tidak berlaku) — jabatan tetap akti
 - Bila struktur dasar sudah berubah sejak perubahan ini dibuat (ada terbitan lain): "Struktur sudah diubah oleh 'Koreksi Oktober' (terbit 20 Okt). [Perbarui perubahan ini dari struktur terbaru]" — **Terbitkan** ditolak sampai diperbarui (§5.2).
 - **Buang perubahan** (konfirmasi, alasan opsional): status Dibuang, tetap tercatat di riwayat dan audit.
 - Setelah terbit: "Struktur terbit, berlaku 1 Jan 2027. Persetujuan masih memakai data atasan lama." Tidak ada `window.confirm`; konfirmasi memakai dialog dengan ringkasan dampak.
+- **Siapa menekan Terbitkan (ORG-008-8, layar):** HC Admin melihat semua tombol penyusunan, termasuk pejabat, Plt, kewenangan, atasan khusus, dan "Mulai dari data yang sudah ada". Sebagai ganti tombol Terbitkan, ia melihat "Diterbitkan oleh Kepala HC", dan setelah perubahan lulus pemeriksaan: "Siap diterbitkan — menunggu Kepala HC". Tombol Terbitkan hanya tampil bagi pemegang `approvals.policy.manage` (role Kepala HC). Ini perubahan sisi layar untuk keputusan O-1; aturan sisi API ada di baris ORG-008-8 §9.
 
 ### 4.8 Kegagalan, empty, forbidden, mobile, lambat
 

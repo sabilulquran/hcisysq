@@ -97,6 +97,7 @@ import {
   listOrganizationJournal,
   OrganizationCommandRefused,
   rebaseOrganizationDraft,
+  seedOrganizationDraftFromLegacy,
   undoOrganizationJournalEntry,
   type OrganizationCommand,
   type OrganizationJournalEntry,
@@ -132,7 +133,9 @@ type EditorAction =
   | { type: "unitAuthority"; node: OrganizationNode; bindingType: "LEADER" | "UNIT_APPROVER" }
   | { type: "override" }
   // ORG-008-6b: which imported unit this one stands for, and who is told about its overtime.
-  | { type: "unitLink"; node: OrganizationNode };
+  | { type: "unitLink"; node: OrganizationNode }
+  // ORG-008-7 (O-3): propose a first change set from what HCIS already records.
+  | { type: "seedFromLegacy" };
 
 /** ORG-008-1 §4.8: every irreversible-looking action is confirmed with its effect spelled out. */
 type ConfirmAction = {
@@ -424,10 +427,11 @@ export function OrganizationDesignerWorkspace({
     pending: !rollout && !rolloutFailed,
   });
 
-  // UI eligibility only; every endpoint authorizes independently. ORG-008-8 will move composing
-  // incumbents, Plt, and authority to organization.manage; publishing stays with approvals.policy.manage.
+  // UI eligibility only; every endpoint authorizes independently. ORG-008-8 (decision O-1): HC
+  // administrators compose every part of a change set, including incumbents, acting holders and
+  // authority. Publishing is the separate second pair of eyes, held by the Kepala HC role.
   const canCompose = hasPermission(session, "organization.manage");
-  const canAssignIncumbents = hasPermission(session, "approvals.policy.manage");
+  const canAssignIncumbents = canCompose;
   const canPublish = hasPermission(session, "approvals.policy.manage");
 
   const selectedNode = useMemo(
@@ -639,6 +643,31 @@ export function OrganizationDesignerWorkspace({
     void getOrganizationAdmin()
       .then((result) => setLegacyUnits(result.units))
       .catch(() => setLegacyUnitsError("Daftar unit lama tidak dapat dimuat, jadi tautan belum bisa dipilih."));
+  };
+
+  const seedFromLegacy = (name: string, effectiveOn: string) => {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    void seedOrganizationDraftFromLegacy({ name, effectiveOn })
+      .then((result) => {
+        onDraftIdChange(result.id);
+        onEffectiveDateChange(result.effectiveOn);
+        setAction(null);
+        // The counts are the point: the operator has to know what to review, and what the old data
+        // could not answer, before any of this is published.
+        setNotice(
+          `Usulan dibuat dari data lama: ${result.summary.units} unit, `
+          + `${result.summary.placements} penempatan pegawai, `
+          + `${result.summary.unitApprovers} penyetuju cuti unit, `
+          + `${result.summary.unitLeaders} pemimpin unit, `
+          + `${result.summary.reportingExceptions} atasan khusus. `
+          + `Belum terjawab: ${result.summary.employeesWithoutUnit} pegawai tanpa unit, `
+          + `${result.summary.employeesWithoutManager} tanpa atasan. Tinjau sebelum diterbitkan.`,
+        );
+      })
+      .catch((cause: unknown) => setError(errorMessage(cause, "Usulan dari data lama tidak dapat dibuat.")))
+      .finally(() => setSaving(false));
   };
 
   const askDeleteNode = (node: OrganizationNode) => {
@@ -916,7 +945,7 @@ export function OrganizationDesignerWorkspace({
                 {canPublish ? (
                   <button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={askPublish} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-4 w-4" /> Terbitkan</button>
                 ) : (
-                  <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> Terbitkan: menunggu Kepala HC</span>
+                  <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> {data?.draft?.status === "VALIDATED" ? "Siap diterbitkan — menunggu Kepala HC" : "Diterbitkan oleh Kepala HC"}</span>
                 )}
               </>
             )}
@@ -928,7 +957,6 @@ export function OrganizationDesignerWorkspace({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p>
             <p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p>
             {selectedSeat?.reason ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">{selectedSeat.reason}</p> : null}
-            {!canAssignIncumbents ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">Pejabat, Plt, dan kewenangan diisi oleh pemegang izin persetujuan (Kepala HC atau owner).</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {selectedNode ? <>
@@ -964,7 +992,8 @@ export function OrganizationDesignerWorkspace({
 
         <div className="relative min-h-[34rem] overflow-auto bg-surface">
           {loading ? <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised/70 text-sm font-semibold text-muted-foreground"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Memuat struktur...</div> : null}
-          <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty} />
+          <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty}
+            onSeedFromLegacy={!hasActiveDraft && canAssignIncumbents ? () => setAction({ type: "seedFromLegacy" }) : undefined} />
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-surface-raised px-5 py-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" /> Jabatan terisi</span>
@@ -1042,6 +1071,39 @@ export function OrganizationDesignerWorkspace({
       </Modal> : null}
 
       {action?.type === "draft" ? <Modal title="Mulai perubahan struktur" description="Perubahan disusun terpisah. Struktur yang sudah terbit dan riwayatnya tidak pernah ditimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama perubahan"><input name="name" required defaultValue={`Perubahan struktur ${effectiveDate}`} className={inputClass} /></Field><Field label="Berlaku mulai" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Mulai perubahan" /></form></Modal> : null}
+
+      {action?.type === "seedFromLegacy" ? <Modal
+        title="Mulai dari data yang sudah ada"
+        description="Menyusun usulan dari unit, penempatan pegawai, penyetuju cuti unit, dan atasan langsung yang sudah tercatat di HCIS."
+        onClose={() => setAction(null)}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            seedFromLegacy(String(form.get("name")), String(form.get("effectiveOn")));
+          }}
+          className="space-y-4"
+        >
+          <div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm leading-6 text-info-ink">
+            <p className="font-bold">Yang perlu Anda tahu sebelum menekan ini</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>Hasilnya <span className="font-semibold">usulan</span>, bukan struktur yang berlaku. Tidak ada yang diterbitkan.</li>
+              <li>Tidak ada yang disimpulkan dari nama jabatan. Judul yang dibuat hanya diturunkan dari nama unitnya.</li>
+              <li>Susunannya datar, karena daftar unit lama memang tidak punya induk. Menyusun tingkatannya tetap pekerjaan Anda.</li>
+              <li>Pegawai tanpa unit atau tanpa atasan tidak ditebak — jumlahnya dilaporkan untuk Anda bereskan.</li>
+            </ul>
+          </div>
+          <Field label="Nama perubahan">
+            <input name="name" required defaultValue="Usulan struktur dari data lama" className={inputClass} />
+          </Field>
+          <Field label="Berlaku mulai" hint="Asia/Jakarta">
+            <input name="effectiveOn" type="date" required min={jakartaToday()}
+              defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} />
+          </Field>
+          <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Buat usulan" />
+        </form>
+      </Modal> : null}
 
       {action?.type === "unitLink" ? <Modal
         title={`Unit lama & staf HC \u2014 ${action.node.name}`}

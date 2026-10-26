@@ -267,7 +267,8 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
        incomplete_session AS "incompleteSession", justified,
        late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
        outside_geofence_justified AS "outsideGeofenceJustified",
-       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
+       overtime_minutes AS "overtimeMinutes", day_type AS "dayType",
+       holiday_scheduled_work AS "holidayScheduledWork", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,

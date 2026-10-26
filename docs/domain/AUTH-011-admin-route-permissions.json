@@ -1509,10 +1509,7 @@
     "method": "GET",
     "url": "/admin/attendance/action-queue",
     "permissions": [
-      "attendance.clarification.manage",
-      "attendance.records.manage",
-      "attendance.reports.read",
-      "attendance.schedule.manage"
+      "attendance.reports.read"
     ]
   },
   {
@@ -1520,9 +1517,7 @@
     "method": "GET",
     "url": "/admin/attendance/daily/:employeeId/:workDate",
     "permissions": [
-      "attendance.reports.read",
-      "attendance.records.manage",
-      "attendance.clarification.manage"
+      "attendance.reports.read"
     ]
   },
   {
@@ -1530,8 +1525,7 @@
     "method": "POST",
     "url": "/admin/attendance/daily/:employeeId/:workDate/request-clarification",
     "permissions": [
-      "attendance.clarification.manage",
-      "attendance.records.manage"
+      "attendance.clarification.manage"
     ]
   },
   {

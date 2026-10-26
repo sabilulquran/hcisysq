@@ -24,7 +24,7 @@ describe.skipIf(!allowed)("ATT-011-3 action queue (PostgreSQL)", () => {
   async function result(workDate: string, status: string, version = 1) {
     await client.query(
       `INSERT INTO attendance_result_versions (id, employee_id, work_date, version, status, input_hash)
-       VALUES ($1, $2, $3::date, $4, $5, repeat('a', 64))`,
+       VALUES ($1::uuid, $2, $3::date, $4, $5, encode(sha256($1::uuid::text::bytea), 'hex'))`,
       [randomUUID(), employee, workDate, version, status],
     );
   }

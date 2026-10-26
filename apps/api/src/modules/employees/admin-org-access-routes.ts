@@ -777,7 +777,8 @@ export async function registerOrgAccessAdminRoutes(
          FROM access_role_position_links WHERE role_key = $1`,
         [roleKey],
       ),
-      // Exactly the assignments the permission engine honours on that date.
+      // Exactly the assignments the permission engine honours right now, including its use of the
+      // database's current_date, so the warning never disagrees with who can actually publish.
       pool.query<RoleSeatHolder>(
         `SELECT DISTINCT a.id AS "accountId", a.employee_id AS "employeeId", coalesce(e.full_name, a.email) AS name
          FROM account_role_assignments ara
@@ -787,10 +788,10 @@ export async function registerOrgAccessAdminRoutes(
          WHERE r.role_key = $1
            AND a.principal_type = 'EMPLOYEE' AND a.status = 'active' AND e.status = 'active'
            AND ara.scope_type = 'organization' AND ara.organizational_unit_id IS NULL
-           AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
-           AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+           AND (ara.starts_on IS NULL OR ara.starts_on <= current_date)
+           AND (ara.ends_on IS NULL OR ara.ends_on >= current_date)
          ORDER BY name`,
-        [roleKey, asOf],
+        [roleKey],
       ),
       new PostgresOrganizationRepository(pool).loadEffectiveSnapshot(asOf),
     ]);

@@ -27,7 +27,8 @@ export function RoleSeatPanel({
   /** Super Admin only, like granting the role itself. */
   canSetSeat: boolean;
   busy: boolean;
-  onSetSeat: (roleKey: string, positionKey: string | null, reason: string) => void;
+  /** Resolves true when saved, so the form stays open with its input after a refusal. */
+  onSetSeat: (roleKey: string, positionKey: string | null, reason: string) => Promise<boolean>;
   onSearchPositions: (query: string) => Promise<Array<{ stableKey: string; title: string; unitPath: string[] }>>;
 }) {
   if (error) {
@@ -54,7 +55,8 @@ function RoleSeatCard({
   check: RoleSeatCheck;
   canSetSeat: boolean;
   busy: boolean;
-  onSetSeat: (roleKey: string, positionKey: string | null, reason: string) => void;
+  /** Resolves true when saved, so the form stays open with its input after a refusal. */
+  onSetSeat: (roleKey: string, positionKey: string | null, reason: string) => Promise<boolean>;
   onSearchPositions: (query: string) => Promise<Array<{ stableKey: string; title: string; unitPath: string[] }>>;
 }) {
   const role = roleSeatLabel(check.roleKey);
@@ -82,7 +84,8 @@ function RoleSeatCard({
       <h2 className="text-base font-bold text-brand-heading">Peran {role} dan jabatannya</h2>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
         Peran {role} tetap diberikan manual oleh Super Admin. Bagian ini hanya menunjukkan bila pemegang peran
-        berbeda dengan pemegang jabatan {role} di struktur; Plt dihitung sebagai pemegang jabatan.
+        berbeda dengan pemegang jabatan {role} di struktur; Plt dihitung sebagai pemegang jabatan. Super Admin tetap
+        dapat menerbitkan struktur di luar perbandingan ini.
       </p>
       <p className="mt-3 text-sm">
         <span className="font-semibold">Jabatan acuan:</span>{" "}
@@ -151,13 +154,13 @@ function RoleSeatCard({
               aria-label="Alasan jabatan acuan" className="h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm" />
             <div className="flex flex-wrap gap-2">
               <button type="button" disabled={busy || !chosen || !reason.trim()}
-                onClick={() => { onSetSeat(check.roleKey, chosen, reason.trim()); setEditing(false); }}
+                onClick={() => void onSetSeat(check.roleKey, chosen, reason.trim()).then((saved) => { if (saved) setEditing(false); })}
                 className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
                 Simpan jabatan acuan
               </button>
               {check.seat ? (
                 <button type="button" disabled={busy || !reason.trim()}
-                  onClick={() => { onSetSeat(check.roleKey, null, reason.trim()); setEditing(false); }}
+                  onClick={() => void onSetSeat(check.roleKey, null, reason.trim()).then((saved) => { if (saved) setEditing(false); })}
                   className="h-10 rounded-xl border border-danger-line px-4 text-sm font-bold text-danger-ink disabled:opacity-50">
                   Lepas jabatan acuan
                 </button>

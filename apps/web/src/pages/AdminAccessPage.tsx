@@ -259,8 +259,10 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
       const check = await setRoleSeatLink(roleKey, { positionKey, reason: seatReason });
       setSeatChecks((current) => (current ?? []).map((item) => item.roleKey === roleKey ? check : item));
       setNotice(positionKey ? "Jabatan acuan disimpan." : "Jabatan acuan dilepas.");
+      return true;
     } catch (cause) {
       setError(cause instanceof AdminApiError ? cause.message : "Jabatan acuan gagal disimpan.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -324,7 +326,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
         error={seatError}
         canSetSeat={canManageRoles}
         busy={busy}
-        onSetSeat={(roleKey, positionKey, seatReason) => void setSeat(roleKey, positionKey, seatReason)}
+        onSetSeat={setSeat}
         onSearchPositions={async (query) => (await searchOrganizationPositions({ q: query || undefined })).items}
       />
 

@@ -614,8 +614,9 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       expect(check.mismatches).toContainEqual(expect.objectContaining({ kind: "HOLDER_NOT_SEATED", accountId: holder.accountId }));
     }
     expect((await pool.query(
-      `SELECT count(*)::int AS count FROM account_role_assignments ara JOIN accounts a ON a.id = ara.account_id
-       WHERE a.employee_id = $1`, [seatHolder],
+      `SELECT count(*)::int AS count FROM account_role_assignments ara
+       JOIN accounts a ON a.id = ara.account_id JOIN roles r ON r.id = ara.role_id
+       WHERE a.employee_id = $1 AND r.role_key = $2`, [seatHolder, HC_LEAD_ROLE_KEY],
     )).rows[0].count).toBe(0);
     expect((await pool.query(
       "SELECT payload FROM access_audit_events WHERE action = 'role.seat_link.set' ORDER BY occurred_at DESC LIMIT 1",

@@ -93,6 +93,16 @@ describe("ORG-008-9 the Kepala HC role against the Kepala HC seat", () => {
     expect(suspended.mismatches).toMatchObject([{ kind: "SEATED_WITHOUT_ROLE", reason: "ACCOUNT_NOT_ACTIVE" }]);
   });
 
+  it("lists a person once when the seat records them twice", () => {
+    const result = check({
+      snapshot: snapshot([{ employeeId: "emp-budi", kind: "ACTING" }, { employeeId: "emp-budi", kind: "PRIMARY" }]),
+      holders: [],
+      accounts: [account("emp-budi")],
+    });
+    expect(result.incumbents).toMatchObject([{ employeeId: "emp-budi", kind: "PRIMARY" }]);
+    expect(result.mismatches).toHaveLength(1);
+  });
+
   it("ignores an incumbency that has already ended", () => {
     const result = check({
       snapshot: snapshot([{ employeeId: "emp-siti", kind: "PRIMARY", effectiveTo: "2026-10-26" }]),

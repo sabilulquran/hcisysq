@@ -106,10 +106,16 @@ export function computeRoleSeatCheck(input: {
   const seat = { ...seatBase, title: position.title, unitName };
 
   const holderEmployeeIds = new Set(input.holders.flatMap((holder) => holder.employeeId ? [holder.employeeId] : []));
-  const incumbents: RoleSeatIncumbent[] = input.snapshot.incumbencies
-    .filter((item) => item.positionKey === position.stableKey
-      && item.employeeId
-      && isEffective(item.effectiveFrom, item.effectiveTo, input.asOf))
+  // One entry per person: someone recorded twice on the seat (primary and Plt, or overlapping rows)
+  // is one holder, named by the primary record when there is one.
+  const seated = new Map<string, OrganizationSnapshot["incumbencies"][number]>();
+  for (const item of input.snapshot.incumbencies) {
+    if (item.positionKey !== position.stableKey || !item.employeeId
+      || !isEffective(item.effectiveFrom, item.effectiveTo, input.asOf)) continue;
+    const existing = seated.get(item.employeeId);
+    if (!existing || (existing.kind === "ACTING" && item.kind === "PRIMARY")) seated.set(item.employeeId, item);
+  }
+  const incumbents: RoleSeatIncumbent[] = [...seated.values()]
     .map((item) => {
       const account = input.accounts.find((candidate) => candidate.employeeId === item.employeeId!);
       return {

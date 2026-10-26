@@ -25,7 +25,7 @@ function visibleText(html: string) {
 const render = (checks: RoleSeatCheck[] | null, canSetSeat = false, error: string | null = null) =>
   renderToStaticMarkup(
     <RoleSeatPanel checks={checks} error={error} canSetSeat={canSetSeat} busy={false}
-      onSetSeat={() => undefined} onSearchPositions={async () => []} />,
+      onSetSeat={async () => true} onSearchPositions={async () => []} />,
   );
 
 describe("ORG-008-9 Kepala HC role against the Kepala HC seat", () => {

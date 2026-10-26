@@ -21,8 +21,16 @@ export const POLICY_KEYS = [
   "BPJS_KESEHATAN",
   "CONTRACT_RATES",
   "EARLY_SERVICE",
-  "VARIANCE_THRESHOLD",
 ] as const;
+
+/**
+ * The review threshold is guidance for a human, not a statutory rule, so its
+ * absence must not refuse a calculation the way a missing BPJS policy does
+ * (specification section 10 item 6).
+ */
+export const OPTIONAL_POLICY_KEYS = ["VARIANCE_THRESHOLD"] as const;
+
+export const DEFAULT_VARIANCE_THRESHOLD = { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 };
 
 export type PolicyKey = (typeof POLICY_KEYS)[number];
 
@@ -157,7 +165,12 @@ export function resolvePolicy(rows: readonly PolicyVersionRow[]): PolicyResoluti
   const bpjs = parsed.BPJS_KESEHATAN as z.infer<typeof PAYLOAD_SCHEMAS.BPJS_KESEHATAN>;
   const contract = parsed.CONTRACT_RATES as z.infer<typeof PAYLOAD_SCHEMAS.CONTRACT_RATES>;
   const earlyService = parsed.EARLY_SERVICE as z.infer<typeof PAYLOAD_SCHEMAS.EARLY_SERVICE>;
-  const variance = parsed.VARIANCE_THRESHOLD as z.infer<typeof PAYLOAD_SCHEMAS.VARIANCE_THRESHOLD>;
+  const varianceRow = (byKey.get("VARIANCE_THRESHOLD") ?? [])[0];
+  const varianceParsed = varianceRow
+    ? PAYLOAD_SCHEMAS.VARIANCE_THRESHOLD.safeParse(varianceRow.payload)
+    : null;
+  const variance = varianceParsed?.success ? varianceParsed.data : DEFAULT_VARIANCE_THRESHOLD;
+  if (varianceRow && varianceParsed?.success) versionIds.push(varianceRow.id);
 
   const policy: PayrollPolicy = {
     salaryScale: scale.scale as Partial<Record<EducationLevel, readonly number[]>>,

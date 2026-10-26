@@ -80,8 +80,62 @@ const inputsBody = z.object({
       }),
     )
     .min(1)
-    .max(2000),
+    .max(2000)
+    .superRefine((inputs, ctx) => {
+      for (const [index, input] of inputs.entries()) {
+        // Mirrors payroll_period_inputs_proration_range in migration 0069, so a
+        // value out of range comes back as a 400 rather than a failed INSERT.
+        if (input.inputKey === "PRORATION_FACTOR" && !(input.value > 0 && input.value <= 1)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: "Faktor prorata harus berada pada rentang 0 < f <= 1.",
+          });
+        }
+        if (input.inputKey === "FULL_PAY_DESPITE_LEAVING" && input.value !== 0 && input.value !== 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: "Pernyataan dibayar penuh bernilai 0 atau 1.",
+          });
+        }
+        if (NON_NEGATIVE_INPUTS.includes(input.inputKey) && input.value < 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: `Input ${input.inputKey} tidak boleh bernilai negatif.`,
+          });
+        }
+      }
+    }),
 });
+
+/** Only an adjustment may be negative; the rest are counts, hours or amounts. */
+const NON_NEGATIVE_INPUTS: readonly string[] = [
+  "OVERTIME_HOURS",
+  "CONTRACT_ATTENDANCE_DAYS",
+  "CONTRACT_TEACHING_HOURS",
+  "CHILD_EDUCATION",
+  "PJ_MEDIA",
+  "ARREARS",
+  "OTHER_INCOME",
+  "TEACHING_HOURS_PER_WEEK_OVERRIDE",
+  "ANNUAL_PERFORMANCE_OVERRIDE",
+  "MONTHLY_PERFORMANCE_OVERRIDE",
+];
+
+/** Report readers see a period's figures only from this state onwards (section 6). */
+const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
+const RUNNER_PERMISSIONS: readonly string[] = [
+  "payroll.periods.manage",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
+
+function runsPeriods(actor: TransitionActor): boolean {
+  return RUNNER_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
+}
 
 /** Section 4: these inputs change pay by hand, so they carry a reason. */
 const REASON_REQUIRED: readonly string[] = [
@@ -345,7 +399,20 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       });
     }
 
-    await saveInputs(pool, period.id, body.data.inputs as PeriodInputWrite[], actor.accountId);
+    try {
+      await saveInputs(pool, period.id, body.data.inputs as PeriodInputWrite[], actor.accountId);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      // A check or foreign key the request violated is the caller's mistake, not
+      // a server fault: an unknown employment, or a value the schema refuses.
+      if (code === "23514") {
+        return send(reply, 400, { code: "PAYROLL_INVALID_INPUT", message: "Nilai input ditolak oleh aturan periode." });
+      }
+      if (code === "23503") {
+        return send(reply, 404, { code: "PAYROLL_INPUT_NOT_FOUND", message: "Employment tidak ditemukan." });
+      }
+      throw error;
+    }
     return send(reply, 200, { inputs: await listInputs(pool, period.id) });
   });
 
@@ -399,6 +466,16 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     const period = await getPeriod(pool, params.data.periodId);
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+
+    // Section 6: the payroll report becomes visible to report readers only once
+    // the period is approved. Before that, only the people running the period
+    // see the figures they are still working on.
+    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+      return send(reply, 403, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Hasil periode baru dapat dibaca setelah periode disahkan.",
+      });
     }
 
     const { results, lines } = await listResults(pool, period.id);
@@ -457,7 +534,14 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
           payDate: period.payDate,
         },
         actor.accountId,
+        period.version,
       );
+      if (outcome.conflict) {
+        return send(reply, 409, {
+          code: "PAYROLL_STATE_CONFLICT",
+          message: "Periode berubah saat perhitungan dimulai; muat ulang lalu coba lagi.",
+        });
+      }
       if (outcome.policyProblems.length > 0) {
         return send(reply, 409, {
           code: "PAYROLL_POLICY_MISSING",

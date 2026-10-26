@@ -252,7 +252,10 @@ paths:
       summary: Read the latest calculation of every employee in the period
       description: >-
         Per-person pay, so every read is recorded as a sensitive access
-        (payroll.report.read). Same read permissions as the period itself.
+        (payroll.report.read). Same read permissions as the period itself, with
+        one gate: report readers see the figures only once the period is
+        approved, while the people running it see them throughout
+        (specification section 6).
       parameters:
         - name: periodId
           in: path
@@ -378,8 +381,18 @@ components:
             - PAYROLL_OWN_RECORD
             - PAYROLL_INPUT_NOT_FOUND
             - PAYROLL_POLICY_MISSING
+            - PAYROLL_NOT_APPROVED_YET
             - UNAUTHENTICATED
         message: { type: string }
+        problems:
+          type: array
+          description: Present on PAYROLL_POLICY_MISSING; one entry per policy that is missing, duplicated or malformed.
+          items:
+            type: object
+            properties:
+              policyKey: { type: string }
+              code: { type: string, enum: [MISSING, DUPLICATE, INVALID] }
+              message: { type: string }
 
     PayrollInputKey:
       type: string

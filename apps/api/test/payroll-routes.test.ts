@@ -156,6 +156,12 @@ function createPool(
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes("FOR UPDATE")) {
+      return { rows: [{ state: current.state ?? "DRAFT", version: current.version ?? 0 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_loans")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FROM payroll_period_transitions")) {
       return { rows: transitions, rowCount: transitions.length };
     }
@@ -723,15 +729,25 @@ describe("PAY-003 period inputs", () => {
 });
 
 describe("PAY-003 calculation", () => {
-  it("calculates a collecting period and audits aggregates only", async () => {
+  it("calculates a collecting period and writes one audit event, with aggregates only", async () => {
     const { response, audits } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
       period: { state: "COLLECTING" },
       payload: { action: "calculate" },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().period.state).toBe("CALCULATED");
-    expect(audits).toEqual(["payroll.period.calculated", "payroll.period.calculated"]);
+    expect(audits).toEqual(["payroll.period.calculated"]);
   });
+
+  it("refuses to calculate a period that has already left its working phase", async () => {
+    for (const state of ["SUBMITTED", "APPROVED", "PUBLISHED"]) {
+      const { response } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+        period: { state },
+        payload: { action: "calculate" },
+      });
+      expect(response.statusCode).toBe(409);
+    }
+  }, 20_000);
 
   it("refuses to calculate when no policy covers the pay date", async () => {
     const { response, audits } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
@@ -757,15 +773,74 @@ describe("PAY-003 calculation", () => {
 
 describe("PAY-003 results", () => {
   it("records every read of per-person pay", async () => {
-    const { response, audits } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`);
+    const { response, audits } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+      period: { state: "APPROVED" },
+    });
     expect(response.statusCode).toBe(200);
     expect(audits).toEqual(["payroll.report.read"]);
   });
 
   it("refuses a reader with no payroll permission", async () => {
     for (const persona of ["employee", "board", "super_admin"] as const) {
-      const { response } = await call(persona, "GET", `/payroll/periods/${PERIOD_ID}/results`);
+      const { response } = await call(persona, "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+        period: { state: "APPROVED" },
+      });
       expect(response.statusCode).toBe(403);
     }
   }, 20_000);
+
+  it("keeps the figures from report readers until the period is approved", async () => {
+    for (const state of ["DRAFT", "COLLECTING", "CALCULATED", "SUBMITTED"]) {
+      const { response } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+        period: { state },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().code).toBe("PAYROLL_NOT_APPROVED_YET");
+    }
+  }, 20_000);
+
+  it("still shows them to the people running the period", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+      period: { state: "CALCULATED" },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+});
+
+describe("PAY-003 input ranges", () => {
+  it("refuses a proration factor the database would reject anyway", async () => {
+    for (const value of [0, 1.5, -0.5]) {
+      const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: { state: "COLLECTING" },
+        payload: {
+          inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "PRORATION_FACTOR", value, reason: "masuk pertengahan bulan" }],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+    }
+  }, 20_000);
+
+  it("refuses a negative count, hour or amount", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: -4 }] },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("accepts a negative adjustment, which is the one input that may be", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: {
+        inputs: [{
+          employmentId: EMPLOYMENT_ID,
+          inputKey: "ADJUSTMENT",
+          value: -500_000,
+          reason: "koreksi kualifikasi khusus",
+          decisionReference: "SK-UJI-001",
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+  });
 });

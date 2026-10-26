@@ -34,6 +34,7 @@ import {
 } from "./restricted-media-crypto.js";
 import { attendanceTodayReadModel } from "./today.js";
 import { attendanceTransactions } from "./transactions.js";
+import { unattributedPins, unscheduledEmployees } from "./unscheduled.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // §13: a print or export larger than this asks the operator to narrow the scope (DRAFT, tune on Mi8VPS).
@@ -1861,7 +1862,7 @@ export async function registerAttendanceWorkforceRoutes(
       to: dateSchema,
       status: z.enum([
         "scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off",
-        "configuration_error", "not_captured", "not_calculated",
+        "configuration_error", "unscheduled", "not_captured", "not_calculated",
       ]).optional(),
       changedOnly: z.enum(["true", "false"]).optional(),
       page: z.coerce.number().int().min(1).default(1),
@@ -1884,6 +1885,40 @@ export async function registerAttendanceWorkforceRoutes(
       },
     );
     return reply.send(result);
+  });
+
+  // ATT-014 §20.3 Tanpa Jadwal (R2a): who scans without a schedule, and which machine scans cannot be
+  // attributed to an employee yet. Read-only; the PIN part only for attendance.devices.read.
+  app.get("/admin/attendance/unscheduled", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      page: z.coerce.number().int().min(1).default(1),
+      pinPage: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_UNSCHEDULED_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const scope = {
+      from: query.data.from, to: query.data.to,
+      unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null,
+      pageSize: query.data.pageSize,
+    };
+    const canSeePins = (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("attendance.devices.read");
+    const [employees, pins] = await Promise.all([
+      unscheduledEmployees(pool, { ...scope, page: query.data.page }),
+      canSeePins ? unattributedPins(pool, { ...scope, page: query.data.pinPage }) : Promise.resolve(null),
+    ]);
+    return reply.send({ from: scope.from, to: scope.to, employees, pins });
   });
 
   // ATT-014 §19.1 step ③ Data Transaksi: every punch in scope, read-only and paginated.

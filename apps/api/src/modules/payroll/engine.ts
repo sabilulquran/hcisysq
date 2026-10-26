@@ -58,7 +58,11 @@ export type PayrollLine = {
   code: ComponentCode;
   category: ComponentCategory;
   amount: Rupiah;
-  /** Set when the amount is derived from something a reviewer needs to see. */
+  /**
+   * Set when the amount is derived from something a reviewer needs to see. It
+   * can carry a per-person figure, so it belongs on the slip and the review
+   * screen but never in a log line or an audit payload (specification 8).
+   */
   basis?: string;
 };
 
@@ -66,6 +70,11 @@ export type PayrollBlockerCode =
   | "MKG_OUT_OF_SCALE"
   | "EDUCATION_NOT_MAPPED"
   | "SERVICE_NOT_STARTED"
+  | "SERVICE_ALREADY_ENDED"
+  | "UNIT_NOT_MAPPED"
+  | "WORK_PATTERN_NOT_MAPPED"
+  | "POSITION_NOT_MAPPED"
+  | "INPUT_INVALID"
   | "SPECIAL_QUALIFICATION_NEGATIVE"
   | "PRORATION_FACTOR_INVALID"
   | "LEAVING_WITHOUT_PRORATION"
@@ -91,6 +100,11 @@ export type PayrollPolicy = {
   salaryScale: Readonly<Partial<Record<EducationLevel, readonly Rupiah[]>>>;
   /** Multiplier per organization unit reference, e.g. Taman Tahfizh 0.5. */
   unitBasicMultipliers: Readonly<Record<string, number>>;
+  /**
+   * Every unit the policy knows, multiplier or not. A unit outside this list is
+   * unmapped and blocks the period rather than falling back to 1 (section 5.4).
+   */
+  knownUnitRefs: readonly string[];
   /** Multiplier per work pattern, e.g. Half Day 0.6, Half Day II 0.65. */
   workPatternBasicMultipliers: Readonly<Record<string, number>>;
   teaching: {
@@ -105,16 +119,25 @@ export type PayrollPolicy = {
     baseByPosition: Readonly<Record<string, Rupiah>>;
     annualShare: number;
     monthlyShare: number;
+    /**
+     * Rates for someone below a year of service who has no appraisal yet
+     * (section 10 item 3). Applied only when the profile carries neither rate.
+     */
+    unratedBelowOneYear: { annualRate: number; monthlyRate: number };
   };
   family: { spouseRate: number; childRate: number };
   functionalAllowance: {
     byPosition: Readonly<Record<string, Rupiah>>;
     concurrentStructuralFactor: number;
     excludedUnits: readonly string[];
+    /** Positions the policy deliberately pays no functional allowance for. */
+    positionsWithoutAllowance: readonly string[];
   };
   positionalAllowance: {
     byPosition: Readonly<Record<string, Rupiah>>;
     unitMultipliers: Readonly<Record<string, number>>;
+    /** Positions the policy deliberately pays no positional allowance for. */
+    positionsWithoutAllowance: readonly string[];
   };
   overtime: { monthlyHourDivisor: number };
   bpjsKesehatan: {
@@ -222,7 +245,7 @@ export type EmployeePayrollResult = {
   blockers: PayrollBlocker[];
 };
 
-export const EMPTY_PERIOD_INPUTS: PeriodInputs = {
+export const EMPTY_PERIOD_INPUTS: Readonly<PeriodInputs> = Object.freeze({
   overtimeHours: 0,
   contractAttendanceDays: 0,
   contractTeachingHours: 0,
@@ -238,16 +261,28 @@ export const EMPTY_PERIOD_INPUTS: PeriodInputs = {
   teachingHoursPerWeekOverride: null,
   annualPerformanceRateOverride: null,
   monthlyPerformanceRateOverride: null,
-};
+});
+
+/**
+ * Binary floating point turns 0.07 * 100000 * 0.4 into 2800.0000000000005, and
+ * rounding that up would invent a rupiah the spreadsheet never charged. Excel
+ * keeps 15 significant digits before rounding; so do we, which is what the
+ * parallel-run gate compares against (specification section 9.2).
+ */
+function clean(value: number): number {
+  return Number.isFinite(value) ? Number(value.toPrecision(15)) : value;
+}
 
 /** Excel ROUNDUP with no digits: away from zero to a whole rupiah. */
 export function roundUpRupiah(value: number): Rupiah {
-  return value < 0 ? -Math.ceil(Math.abs(value)) : Math.ceil(value);
+  const exact = clean(value);
+  return exact < 0 ? -Math.ceil(Math.abs(exact)) : Math.ceil(exact);
 }
 
 /** Excel ROUND with no digits: half away from zero. */
 export function roundRupiah(value: number): Rupiah {
-  return value < 0 ? -Math.round(Math.abs(value)) : Math.round(value);
+  const exact = clean(value);
+  return exact < 0 ? -Math.round(Math.abs(exact)) : Math.round(exact);
 }
 
 function parseJakartaDate(iso: string): { year: number; month: number; day: number } | null {
@@ -348,10 +383,17 @@ function performanceAllowance(
   profile: CompensationProfile,
   inputs: PeriodInputs,
   policy: PayrollPolicy,
+  months: number,
 ): Rupiah {
-  const annualRate = inputs.annualPerformanceRateOverride ?? profile.annualPerformanceRate;
-  const monthlyRate = inputs.monthlyPerformanceRateOverride ?? profile.monthlyPerformanceRate;
-  if (annualRate === null && monthlyRate === null) return 0;
+  let annualRate = inputs.annualPerformanceRateOverride ?? profile.annualPerformanceRate;
+  let monthlyRate = inputs.monthlyPerformanceRateOverride ?? profile.monthlyPerformanceRate;
+  if (annualRate === null && monthlyRate === null) {
+    // Below a year of service there is no annual appraisal cycle yet, so the
+    // policy default applies rather than a silent zero (section 10 item 3).
+    if (months >= 12) return 0;
+    annualRate = policy.performance.unratedBelowOneYear.annualRate;
+    monthlyRate = policy.performance.unratedBelowOneYear.monthlyRate;
+  }
   const base =
     (profile.structuralPositionRef
       ? policy.performance.baseByPosition[profile.structuralPositionRef]
@@ -372,23 +414,75 @@ function teachingHoursPerMonth(
   return perWeek * policy.teaching.weeksPerMonth;
 }
 
-function functionalAllowance(profile: CompensationProfile, policy: PayrollPolicy): Rupiah {
-  if (!profile.functionalPositionRef) return 0;
-  if (profile.unitRef && policy.functionalAllowance.excludedUnits.includes(profile.unitRef)) return 0;
-  const base = policy.functionalAllowance.byPosition[profile.functionalPositionRef];
-  if (base === undefined) return 0;
+type AllowanceResolution = { amount: Rupiah; blocker?: PayrollBlocker };
+
+function functionalAllowance(
+  profile: CompensationProfile,
+  policy: PayrollPolicy,
+): AllowanceResolution {
+  const ref = profile.functionalPositionRef;
+  if (!ref) return { amount: 0 };
+  if (profile.unitRef && policy.functionalAllowance.excludedUnits.includes(profile.unitRef)) {
+    return { amount: 0 };
+  }
+  const base = policy.functionalAllowance.byPosition[ref];
+  if (base === undefined) {
+    if (policy.functionalAllowance.positionsWithoutAllowance.includes(ref)) return { amount: 0 };
+    return {
+      amount: 0,
+      blocker: {
+        code: "POSITION_NOT_MAPPED",
+        message: `Jabatan fungsional ${ref} tidak terpetakan ke tabel tunjangan.`,
+      },
+    };
+  }
   const factor = profile.structuralPositionRef ? policy.functionalAllowance.concurrentStructuralFactor : 1;
-  return roundUpRupiah(base * factor);
+  return { amount: roundUpRupiah(base * factor) };
 }
 
-function positionalAllowance(profile: CompensationProfile, policy: PayrollPolicy): Rupiah {
-  if (!profile.structuralPositionRef) return 0;
-  const base = policy.positionalAllowance.byPosition[profile.structuralPositionRef];
-  if (base === undefined) return 0;
+function positionalAllowance(
+  profile: CompensationProfile,
+  policy: PayrollPolicy,
+): AllowanceResolution {
+  const ref = profile.structuralPositionRef;
+  if (!ref) return { amount: 0 };
+  const base = policy.positionalAllowance.byPosition[ref];
+  if (base === undefined) {
+    if (policy.positionalAllowance.positionsWithoutAllowance.includes(ref)) return { amount: 0 };
+    return {
+      amount: 0,
+      blocker: {
+        code: "POSITION_NOT_MAPPED",
+        message: `Jabatan struktural ${ref} tidak terpetakan ke tabel tunjangan.`,
+      },
+    };
+  }
   const multiplier = profile.unitRef
     ? policy.positionalAllowance.unitMultipliers[profile.unitRef] ?? 1
     : 1;
-  return roundUpRupiah(base * multiplier);
+  return { amount: roundUpRupiah(base * multiplier) };
+}
+
+/**
+ * A unit or work pattern the policy does not know must block the period: falling
+ * back to a multiplier of 1 would quietly overpay someone on a half-day pattern
+ * or in a half-rate unit (specification section 5.4).
+ */
+function mappingBlockers(profile: CompensationProfile, policy: PayrollPolicy): PayrollBlocker[] {
+  const blockers: PayrollBlocker[] = [];
+  if (profile.unitRef && !policy.knownUnitRefs.includes(profile.unitRef)) {
+    blockers.push({
+      code: "UNIT_NOT_MAPPED",
+      message: `Unit ${profile.unitRef} tidak terpetakan ke kebijakan payroll.`,
+    });
+  }
+  if (profile.workPattern && policy.workPatternBasicMultipliers[profile.workPattern] === undefined) {
+    blockers.push({
+      code: "WORK_PATTERN_NOT_MAPPED",
+      message: `Pola kerja ${profile.workPattern} tidak terpetakan ke kebijakan payroll.`,
+    });
+  }
+  return blockers;
 }
 
 /**
@@ -396,7 +490,9 @@ function positionalAllowance(profile: CompensationProfile, policy: PayrollPolicy
  * marks as fixed allowances, clamped to the regional minimum wage and the ceiling.
  */
 export function bpjsContributionBase(lines: readonly PayrollLine[], policy: PayrollPolicy): Rupiah {
-  const marked = new Set<ComponentCode>(policy.bpjsKesehatan.fixedAllowanceComponents);
+  // BASIC is part of the base by regulation, whether or not a policy row happens
+  // to list it among the fixed allowances (specification section 5.1).
+  const marked = new Set<ComponentCode>([...policy.bpjsKesehatan.fixedAllowanceComponents, "BASIC"]);
   const raw = lines
     .filter((line) => line.category === "EARNING" && marked.has(line.code))
     .reduce((total, line) => total + line.amount, 0);
@@ -411,14 +507,21 @@ function bpjsIsActive(profile: CompensationProfile, payDate: string): boolean {
   return profile.bpjs.activeFrom <= payDate;
 }
 
-function pushLine(lines: PayrollLine[], line: PayrollLine): void {
-  if (line.amount !== 0) lines.push(line);
+/**
+ * A zero line is dropped, because a slip should not list what was not paid. The
+ * teaching components are the exception: when the hour rule applies, a zero is a
+ * real result and must stay visible, so callers pass renderZero (section 5.1).
+ */
+function pushLine(lines: PayrollLine[], line: PayrollLine, renderZero = false): void {
+  if (line.amount !== 0 || renderZero) lines.push(line);
 }
 
 function computePermanent(input: EmployeePayrollInput): EmployeePayrollResult {
   const { profile, inputs, policy, payDate } = input;
   const lines: PayrollLine[] = [];
   const blockers: PayrollBlocker[] = [];
+
+  blockers.push(...mappingBlockers(profile, policy));
 
   const basic = resolveBasicSalary(profile, policy, payDate);
   if (!basic.ok) blockers.push(basic.blocker);
@@ -440,12 +543,16 @@ function computePermanent(input: EmployeePayrollInput): EmployeePayrollResult {
     teachOver = Math.max(0, monthlyHours - limit) * policy.teaching.overRatePerHour;
     teachShort = Math.max(0, limit - monthlyHours) * policy.teaching.shortRatePerHour;
   }
-  pushLine(lines, { code: "TEACH_OVER", category: "EARNING", amount: roundUpRupiah(teachOver) });
+  pushLine(
+    lines,
+    { code: "TEACH_OVER", category: "EARNING", amount: roundUpRupiah(teachOver) },
+    monthlyHours !== null,
+  );
 
   pushLine(lines, {
     code: "PERF",
     category: "EARNING",
-    amount: performanceAllowance(profile, inputs, policy),
+    amount: performanceAllowance(profile, inputs, policy, monthsOfService(profile.serviceStartDate, payDate)),
   });
   pushLine(lines, {
     code: "SPOUSE",
@@ -457,19 +564,28 @@ function computePermanent(input: EmployeePayrollInput): EmployeePayrollResult {
     category: "EARNING",
     amount: roundUpRupiah(basicAmount * profile.childCount * policy.family.childRate),
   });
-  pushLine(lines, { code: "FUNC", category: "EARNING", amount: functionalAllowance(profile, policy) });
-  pushLine(lines, { code: "POS", category: "EARNING", amount: positionalAllowance(profile, policy) });
+  const functional = functionalAllowance(profile, policy);
+  if (functional.blocker) blockers.push(functional.blocker);
+  pushLine(lines, { code: "FUNC", category: "EARNING", amount: functional.amount });
+
+  const positional = positionalAllowance(profile, policy);
+  if (positional.blocker) blockers.push(positional.blocker);
+  pushLine(lines, { code: "POS", category: "EARNING", amount: positional.amount });
 
   if (profile.specialQualificationTarget !== null) {
     const covered = lines
       .filter((line) => line.category === "EARNING")
       .reduce((total, line) => total + line.amount, 0);
     const topUp = profile.specialQualificationTarget - covered;
-    if (topUp < 0 && inputs.adjustment === 0) {
+    // D1: the shortfall becomes an explicit salary adjustment. A positive
+    // adjustment, or one too small to absorb it, leaves the employee overpaid,
+    // so only a deduction that covers the whole shortfall clears the blocker.
+    const absorbed = inputs.adjustment < 0 && Math.abs(inputs.adjustment) >= Math.abs(topUp);
+    if (topUp < 0 && !absorbed) {
       blockers.push({
         code: "SPECIAL_QUALIFICATION_NEGATIVE",
         message:
-          "Target kualifikasi khusus lebih rendah dari komponen yang sudah dihitung; tetapkan penyesuaian gaji dengan alasan.",
+          "Target kualifikasi khusus lebih rendah dari komponen yang sudah dihitung; tetapkan penyesuaian gaji sebesar selisihnya dengan alasan.",
       });
     }
     pushLine(lines, {
@@ -509,12 +625,16 @@ function computePermanent(input: EmployeePayrollInput): EmployeePayrollResult {
   pushLine(lines, { code: "BPJS_KES", category: "DEDUCTION", amount: bpjsContribution });
   pushLine(lines, { code: "BPJS_KES_EXTRA", category: "DEDUCTION", amount: bpjsExtra });
   pushLine(lines, { code: "CHILD_EDU", category: "DEDUCTION", amount: inputs.childEducationDeduction });
-  pushLine(lines, { code: "TEACH_SHORT", category: "DEDUCTION", amount: roundUpRupiah(teachShort) });
+  pushLine(
+    lines,
+    { code: "TEACH_SHORT", category: "DEDUCTION", amount: roundUpRupiah(teachShort) },
+    monthlyHours !== null,
+  );
   if (inputs.adjustment < 0) {
     pushLine(lines, { code: "ADJUST_DEDUCT", category: "DEDUCTION", amount: -inputs.adjustment });
   }
 
-  return finalize({ input, lines, blockers, bpjsBase, extraFamilyMembers, earlyServiceApplies: true });
+  return finalize({ input, lines, blockers, bpjsBase, extraFamilyMembers, payFactorApplies: true });
 }
 
 function computeContract(input: EmployeePayrollInput): EmployeePayrollResult {
@@ -553,24 +673,27 @@ function computeContract(input: EmployeePayrollInput): EmployeePayrollResult {
     blockers: [],
     bpjsBase: 0,
     extraFamilyMembers: 0,
-    earlyServiceApplies: false,
+    payFactorApplies: false,
   });
 }
 
 /**
  * Proration and the early-service rate are mutually exclusive: proration replaces
- * it rather than compounding with it (specification section 5.1).
+ * it rather than compounding with it (specification section 5.1). Neither applies
+ * to a PKWT employee, whose pay already follows real attendance and real teaching
+ * hours, so payFactorApplies turns both off at once (section 5.2).
  */
 function resolvePayFactor(
   input: EmployeePayrollInput,
   months: number,
-  earlyServiceApplies: boolean,
+  payFactorApplies: boolean,
 ): { factor: number; reason: EmployeePayrollResult["payFactorReason"] } {
   const { inputs, policy } = input;
+  if (!payFactorApplies) return { factor: 1, reason: "none" };
   if (inputs.prorationFactor !== null) {
     return { factor: inputs.prorationFactor, reason: "proration" };
   }
-  if (earlyServiceApplies && months < policy.earlyService.months) {
+  if (months < policy.earlyService.months) {
     return { factor: policy.earlyService.netRate, reason: "early_service" };
   }
   return { factor: 1, reason: "none" };
@@ -582,9 +705,9 @@ function finalize(args: {
   blockers: PayrollBlocker[];
   bpjsBase: Rupiah;
   extraFamilyMembers: number;
-  earlyServiceApplies: boolean;
+  payFactorApplies: boolean;
 }): EmployeePayrollResult {
-  const { input, lines, blockers, bpjsBase, extraFamilyMembers, earlyServiceApplies } = args;
+  const { input, lines, blockers, bpjsBase, extraFamilyMembers, payFactorApplies } = args;
   const { profile, inputs, payDate, periodStart, periodEnd } = input;
 
   const gross = lines
@@ -599,9 +722,33 @@ function finalize(args: {
   const net = gross - deductions;
 
   const months = monthsOfService(profile.serviceStartDate, payDate);
-  const { factor, reason } = resolvePayFactor(input, months, earlyServiceApplies);
+  const { factor, reason } = resolvePayFactor(input, months, payFactorApplies);
   const payable = factor === 1 ? net : roundUpRupiah(net * factor);
 
+  for (const [name, value] of [
+    ["jam lembur", inputs.overtimeHours],
+    ["kehadiran PKWT", inputs.contractAttendanceDays],
+    ["jam mengajar PKWT", inputs.contractTeachingHours],
+    ["potongan pendidikan anak", inputs.childEducationDeduction],
+    ["potongan kasbon", inputs.loanDeduction],
+    ["sisa kasbon", inputs.loanOutstanding],
+    ["rapel", inputs.arrears],
+    ["insentif Pj. Media", inputs.pjMediaIncentive],
+    ["pemasukan lain", inputs.otherIncome],
+  ] as const) {
+    if (value < 0 || !Number.isFinite(value)) {
+      blockers.push({ code: "INPUT_INVALID", message: `Input ${name} bernilai tidak sah (${value}).` });
+    }
+  }
+  if (!Number.isInteger(inputs.adjustment)) {
+    blockers.push({ code: "INPUT_INVALID", message: "Penyesuaian gaji harus rupiah bulat." });
+  }
+  if (profile.serviceEndDate !== null && profile.serviceEndDate < periodStart) {
+    blockers.push({
+      code: "SERVICE_ALREADY_ENDED",
+      message: "Masa kerja berakhir sebelum periode dimulai; pegawai tidak boleh masuk periode ini.",
+    });
+  }
   if (profile.serviceStartDate > payDate) {
     blockers.push({
       code: "SERVICE_NOT_STARTED",

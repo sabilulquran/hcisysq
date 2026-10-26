@@ -29,6 +29,7 @@ const scale = (base: number) => Array.from({ length: 28 }, (_, mkg) => base + mk
 const POLICY: PayrollPolicy = {
   salaryScale: { S1: scale(2_000_000), SLTA: scale(1_500_000) },
   unitBasicMultipliers: { "unit-taman": 0.5 },
+  knownUnitRefs: ["unit-taman", "unit-pesantren", "unit-pusat"],
   workPatternBasicMultipliers: { HALF_DAY: 0.6, HALF_DAY_II: 0.65 },
   teaching: { monthlyHourLimit: 96, overRatePerHour: 10_000, shortRatePerHour: 10_000, weeksPerMonth: 4 },
   performance: {
@@ -36,14 +37,20 @@ const POLICY: PayrollPolicy = {
     baseByPosition: { "pos-ga": 150_000 },
     annualShare: 0.6,
     monthlyShare: 0.4,
+    unratedBelowOneYear: { annualRate: 0, monthlyRate: 1 },
   },
   family: { spouseRate: 0.05, childRate: 0.02 },
   functionalAllowance: {
     byPosition: { "func-guru": 400_000 },
     concurrentStructuralFactor: 0.7,
     excludedUnits: ["unit-pesantren"],
+    positionsWithoutAllowance: ["func-tanpa-tunjangan"],
   },
-  positionalAllowance: { byPosition: { "pos-ga": 600_000 }, unitMultipliers: { "unit-taman": 0.5 } },
+  positionalAllowance: {
+    byPosition: { "pos-ga": 600_000 },
+    unitMultipliers: { "unit-taman": 0.5 },
+    positionsWithoutAllowance: ["pos-tanpa-tunjangan"],
+  },
   overtime: { monthlyHourDivisor: 173 },
   bpjsKesehatan: {
     contributionRate: 0.05,
@@ -173,16 +180,20 @@ describe("PAY-003 basic salary", () => {
 
 describe("PAY-003 teaching hours", () => {
   it("renders neither component when the profile has no teaching hours", () => {
-    const result = run();
-    expect(result.lines.some((line) => line.code === "TEACH_OVER" || line.code === "TEACH_SHORT")).toBe(
-      false,
-    );
+    for (const profile of [{}, { teachingHoursPerWeek: 0 }]) {
+      const result = run(profile);
+      expect(result.lines.some((line) => line.code === "TEACH_OVER" || line.code === "TEACH_SHORT")).toBe(
+        false,
+      );
+    }
   });
 
-  it("pays nothing extra and deducts nothing at exactly the monthly limit", () => {
+  it("still shows both components as zero at exactly the monthly limit", () => {
     const result = run({ teachingHoursPerWeek: 24 });
     expect(amountOf(result, "TEACH_OVER")).toBe(0);
     expect(amountOf(result, "TEACH_SHORT")).toBe(0);
+    expect(result.lines.filter((line) => line.code === "TEACH_OVER")).toHaveLength(1);
+    expect(result.lines.filter((line) => line.code === "TEACH_SHORT")).toHaveLength(1);
   });
 
   it("pays the excess above the limit", () => {
@@ -249,16 +260,26 @@ describe("PAY-003 special qualification top-up", () => {
     expect(amountOf(result, "SPECIAL_QUAL")).toBe(5_000_000 - basic);
   });
 
+  it("keeps blocking when the adjustment adds pay instead of absorbing the shortfall", () => {
+    const result = run({ specialQualificationTarget: 1_000_000 }, { adjustment: 200_000 });
+    expect(blockerCodes(result)).toContain("SPECIAL_QUALIFICATION_NEGATIVE");
+  });
+
+  it("keeps blocking when the adjustment is too small to cover the shortfall", () => {
+    const result = run({ specialQualificationTarget: 1_000_000 }, { adjustment: -100_000 });
+    expect(blockerCodes(result)).toContain("SPECIAL_QUALIFICATION_NEGATIVE");
+  });
+
   it("blocks a negative top-up until an adjustment is set", () => {
     const result = run({ specialQualificationTarget: 1_000_000 });
     expect(blockerCodes(result)).toContain("SPECIAL_QUALIFICATION_NEGATIVE");
     expect(amountOf(result, "SPECIAL_QUAL")).toBe(0);
   });
 
-  it("clears the blocker once an adjustment carries the difference", () => {
-    const result = run({ specialQualificationTarget: 1_000_000 }, { adjustment: -500_000 });
+  it("clears the blocker once an adjustment carries the whole difference", () => {
+    const result = run({ specialQualificationTarget: 1_000_000 }, { adjustment: -2_000_000 });
     expect(blockerCodes(result)).not.toContain("SPECIAL_QUALIFICATION_NEGATIVE");
-    expect(amountOf(result, "ADJUST_DEDUCT")).toBe(500_000);
+    expect(amountOf(result, "ADJUST_DEDUCT")).toBe(2_000_000);
   });
 });
 
@@ -322,7 +343,22 @@ describe("PAY-003 BPJS Kesehatan", () => {
 
   it("charges one percent of the base per extra family member", () => {
     const result = run({ ...insured, spouseCount: 1, childCount: 4, registeredDependants: 5 });
-    expect(amountOf(result, "BPJS_KES_EXTRA")).toBe(Math.round(result.bpjsBase * 0.01));
+    // The base here is basic salary plus the 5 percent spouse and 8 percent child
+    // allowances: 3,000,000 + 150,000 + 240,000.
+    expect(result.bpjsBase).toBe(3_390_000);
+    expect(amountOf(result, "BPJS_KES_EXTRA")).toBe(33_900);
+  });
+
+  it("lifts a whole calculation up to the minimum wage floor", () => {
+    const result = run({ ...insured, unitRef: "unit-taman", workPattern: "HALF_DAY" });
+    expect(result.bpjsBase).toBe(POLICY.bpjsKesehatan.floor);
+    expect(amountOf(result, "BPJS_KES")).toBe(Math.round(POLICY.bpjsKesehatan.floor * 0.05));
+  });
+
+  it("caps a whole calculation at the ceiling", () => {
+    const result = run({ ...insured, serviceStartDate: "2000-01-01", specialQualificationTarget: 30_000_000 });
+    expect(result.bpjsBase).toBe(POLICY.bpjsKesehatan.ceiling);
+    expect(amountOf(result, "BPJS_KES")).toBe(600_000);
   });
 });
 
@@ -331,6 +367,11 @@ describe("PAY-003 pay factor", () => {
     const result = run({ serviceStartDate: "2026-09-01" });
     expect(result.payFactorReason).toBe("early_service");
     expect(result.payable).toBe(Math.ceil(result.net * 0.8));
+  });
+
+  it("pays 80 percent at one month and the full net at three", () => {
+    expect(run({ serviceStartDate: "2026-08-20" }).payFactorReason).toBe("early_service");
+    expect(run({ serviceStartDate: "2026-06-20" }).payFactorReason).toBe("none");
   });
 
   it("pays the full net from the third month", () => {
@@ -379,6 +420,19 @@ describe("PAY-003 blockers", () => {
 
   it("blocks a missing bank account for anyone who is paid", () => {
     expect(blockerCodes(run({ bankAccountNumber: null }))).toContain("BANK_ACCOUNT_MISSING");
+    expect(blockerCodes(run({ bankAccountName: null }))).toContain("BANK_ACCOUNT_MISSING");
+  });
+
+  it("blocks an education level the policy does not map, through the whole calculation", () => {
+    expect(blockerCodes(run({ education: "S2_S3" }))).toContain("EDUCATION_NOT_MAPPED");
+  });
+
+  it("blocks a negative payable, not only a negative net", () => {
+    const result = run(
+      { serviceStartDate: "2026-09-01" },
+      { childEducationDeduction: 9_000_000, loanOutstanding: 0, adjustment: 0 },
+    );
+    expect(blockerCodes(result)).toContain("NEGATIVE_PAYABLE");
   });
 });
 
@@ -405,6 +459,13 @@ describe("PAY-003 contract employees", () => {
     expect(result.payable).toBe(result.net);
   });
 
+  it("never applies proration either, for the same reason", () => {
+    const result = run(contract, { contractAttendanceDays: 20, prorationFactor: 0.5 });
+    expect(result.payFactorReason).toBe("none");
+    expect(result.payable).toBe(result.net);
+    expect(result.payable).toBe(20 * 15_000);
+  });
+
   it("still blocks a loan deduction above the balance", () => {
     const result = run(contract, {
       contractAttendanceDays: 20,
@@ -412,6 +473,67 @@ describe("PAY-003 contract employees", () => {
       loanOutstanding: 50_000,
     });
     expect(blockerCodes(result)).toContain("LOAN_EXCEEDS_BALANCE");
+  });
+});
+
+describe("PAY-003 unmapped references", () => {
+  it("blocks a unit the policy does not know instead of paying the full scale", () => {
+    const result = run({ unitRef: "unit-tidak-dikenal" });
+    expect(blockerCodes(result)).toContain("UNIT_NOT_MAPPED");
+  });
+
+  it("blocks a work pattern the policy does not know", () => {
+    const result = run({ workPattern: "QUARTER_DAY" });
+    expect(blockerCodes(result)).toContain("WORK_PATTERN_NOT_MAPPED");
+  });
+
+  it("blocks a position that is in neither the allowance table nor the no-allowance list", () => {
+    expect(blockerCodes(run({ functionalPositionRef: "func-asing" }))).toContain("POSITION_NOT_MAPPED");
+    expect(blockerCodes(run({ structuralPositionRef: "pos-asing" }))).toContain("POSITION_NOT_MAPPED");
+  });
+
+  it("accepts a position the policy deliberately pays no allowance for", () => {
+    const result = run({
+      functionalPositionRef: "func-tanpa-tunjangan",
+      structuralPositionRef: "pos-tanpa-tunjangan",
+    });
+    expect(blockerCodes(result)).not.toContain("POSITION_NOT_MAPPED");
+    expect(amountOf(result, "FUNC")).toBe(0);
+    expect(amountOf(result, "POS")).toBe(0);
+  });
+
+  it("accepts a mapped unit that simply has no multiplier", () => {
+    const result = run({ unitRef: "unit-pusat" });
+    expect(blockerCodes(result)).toEqual([]);
+    expect(amountOf(result, "BASIC")).toBe(scale(2_000_000)[10]);
+  });
+});
+
+describe("PAY-003 invalid input", () => {
+  it("blocks a negative amount instead of quietly reducing the pay", () => {
+    expect(blockerCodes(run({}, { arrears: -500_000 }))).toContain("INPUT_INVALID");
+    expect(blockerCodes(run({}, { loanDeduction: -100_000 }))).toContain("INPUT_INVALID");
+    expect(blockerCodes(run({}, { overtimeHours: -4 }))).toContain("INPUT_INVALID");
+  });
+
+  it("blocks a fractional rupiah adjustment", () => {
+    expect(blockerCodes(run({}, { adjustment: 1_000.5 }))).toContain("INPUT_INVALID");
+  });
+
+  it("blocks someone whose service ended before the period began", () => {
+    expect(blockerCodes(run({ serviceEndDate: "2026-08-15" }))).toContain("SERVICE_ALREADY_ENDED");
+  });
+});
+
+describe("PAY-003 performance default below one year of service", () => {
+  it("pays the policy default when no appraisal exists yet", () => {
+    const result = run({ serviceStartDate: "2026-03-01" });
+    expect(amountOf(result, "PERF")).toBe(Math.ceil(0 * 100_000 * 0.6 + 1 * 100_000 * 0.4));
+  });
+
+  it("pays nothing for an unrated profile past a year, where an appraisal is expected", () => {
+    const result = run({ serviceStartDate: "2020-01-01" });
+    expect(amountOf(result, "PERF")).toBe(0);
   });
 });
 
@@ -460,6 +582,8 @@ describe("PAY-003 golden case", () => {
       { code: "BPJS_KES", category: "DEDUCTION", amount: 214_700 },
       { code: "BPJS_KES_EXTRA", category: "DEDUCTION", amount: 42_940 },
       { code: "CHILD_EDU", category: "DEDUCTION", amount: 400_000 },
+      // The hour rule applies here, so a zero shortfall is a real result and stays visible.
+      { code: "TEACH_SHORT", category: "DEDUCTION", amount: 0 },
     ]);
     expect(result.bpjsBase).toBe(4_294_000);
     expect(result.extraFamilyMembers).toBe(1);
@@ -473,9 +597,12 @@ describe("PAY-003 golden case", () => {
 
 describe("PAY-003 period summary and variance", () => {
   it("adds up only aggregate totals", () => {
-    const totals = summarizePeriod([run(), run({ employmentId: "employment-2" })]);
+    const one = run();
+    const other = run({ employmentId: "employment-2", spouseCount: 1 });
+    const totals = summarizePeriod([one, other]);
     expect(totals.employeeCount).toBe(2);
-    expect(totals.gross).toBe(run().gross * 2);
+    expect(totals.gross).toBe(6_150_000);
+    expect(totals.payable).toBe(6_150_000);
     expect(totals.blockerCount).toBe(0);
   });
 

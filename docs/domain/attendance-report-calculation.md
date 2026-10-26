@@ -860,9 +860,10 @@ Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi ko
   mencetak lembar sintetis ke PDF memakai Chrome 155: nomor halaman, kalimat kaki, judul kolom berulang,
   dan campuran lanskap/potret tampil. Chrome dan Edge versi 131 ke atas mendukungnya; Firefox dan Safari
   mencetak tanpa nomor halaman, dan hal itu disebutkan di bilah layar dokumen cetak.
-- **Kop sementara (D-14-10):** lambang placeholder bertinta gelap dan baris alamat
-  "hcis.sabilulquran.or.id", sampai owner mengirim berkas logo versi tinta gelap dan baris alamat resmi.
-  Semua nilai kop dan kalimat kaki ada di satu berkas (`apps/web/src/lib/reportLetterhead.ts`). Blok tanda
+- **Kop (D-14-10, ditetapkan owner 2026-10-26):** lambang lengkap yayasan yang sudah ada di repo
+  (`apps/web/src/assets/brand/ysq-mark.png`, berlatar sendiri sehingga tetap terbaca di kertas putih dan
+  cetak hitam putih) dengan nama yayasan sebagai teks serif dan baris "hcis.sabilulquran.or.id". Wordmark
+  emas dan logo putih tidak dipakai di kertas. Semua nilai kop dan kalimat kaki ada di satu berkas (`apps/web/src/lib/reportLetterhead.ts`). Blok tanda
   tangan "Mengetahui" opsional di kanan bawah, mati secara bawaan, dinyalakan di berkas yang sama. Tanpa
   QR atau tautan verifikasi.
 - **Langkah ④** kini memakai model baru (Tampilkan, Cetak, Excel, CSV). Format ATT-009 lama (sesi kerja,

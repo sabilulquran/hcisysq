@@ -13,6 +13,9 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   availableActions,
   decideTransition,
+  defaultCutoffWindow,
+  mayReadPeriods,
+  monthEnd,
   PERIOD_ACTIONS,
   type PeriodSnapshot,
   type PeriodState,
@@ -24,6 +27,7 @@ import {
   getPeriod,
   hasCurrentCalculation,
   listPeriods,
+  listTransitions,
   type PeriodWithCalculation,
 } from "./store.js";
 
@@ -115,6 +119,32 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     return authenticated.actor;
   }
 
+  /**
+   * Reading a period is open to everyone who has a decision to make about it, not
+   * only to whoever runs it. The check comes before the period is looked up, so a
+   * 404 never tells an outsider which periods exist.
+   */
+  async function requireReader(request: FastifyRequest, reply: FastifyReply): Promise<TransitionActor | null> {
+    const authenticated = await authenticate(request, reply);
+    if (!authenticated) return null;
+    if (!mayReadPeriods(authenticated.actor)) {
+      await send(reply, 403, {
+        code: "PAYROLL_FORBIDDEN",
+        message: "Anda tidak memiliki akses untuk tindakan ini.",
+      });
+      return null;
+    }
+    return authenticated.actor;
+  }
+
+  function periodView(period: PeriodWithCalculation, actor: TransitionActor) {
+    return {
+      ...period,
+      hasCurrentCalculation: hasCurrentCalculation(period),
+      availableActions: availableActions(snapshotOf(period), actor),
+    };
+  }
+
   app.post("/payroll/periods", async (request, reply) => {
     const actor = await requirePermission(request, reply, "payroll.periods.manage");
     if (!actor) return;
@@ -128,10 +158,22 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     }
 
     const { periodMonth, payDate, cutoffStart, cutoffEnd, legalEntityKey } = parsed.data;
-    if (cutoffStart && cutoffEnd && cutoffEnd < cutoffStart) {
+
+    // Validate the window that will actually be stored, defaults included: giving
+    // only one end would otherwise reach the database and fail its check there.
+    const fallback = defaultCutoffWindow(periodMonth);
+    const effectiveCutoffStart = cutoffStart ?? fallback.start;
+    const effectiveCutoffEnd = cutoffEnd ?? fallback.end;
+    if (effectiveCutoffEnd < effectiveCutoffStart) {
       return send(reply, 400, {
         code: "PAYROLL_INVALID_PERIOD",
         message: "Akhir cutoff mendahului awalnya.",
+      });
+    }
+    if (payDate && (payDate < periodMonth || payDate > monthEnd(periodMonth))) {
+      return send(reply, 400, {
+        code: "PAYROLL_INVALID_PERIOD",
+        message: "Tanggal gajian berada di luar bulan periode.",
       });
     }
 
@@ -159,7 +201,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods", async (request, reply) => {
-    const actor = await requirePermission(request, reply, "payroll.periods.manage");
+    const actor = await requireReader(request, reply);
     if (!actor) return;
 
     const parsed = listQuery.safeParse(request.query ?? {});
@@ -171,16 +213,12 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     return send(reply, 200, {
       page,
       pageSize,
-      periods: periods.map((period) => ({
-        ...period,
-        hasCurrentCalculation: hasCurrentCalculation(period),
-        availableActions: availableActions(snapshotOf(period), actor),
-      })),
+      periods: periods.map((period) => periodView(period, actor)),
     });
   });
 
   app.get("/payroll/periods/:periodId", async (request, reply) => {
-    const actor = await requirePermission(request, reply, "payroll.periods.manage");
+    const actor = await requireReader(request, reply);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -192,18 +230,14 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
     return send(reply, 200, {
-      period: {
-        ...period,
-        hasCurrentCalculation: hasCurrentCalculation(period),
-        availableActions: availableActions(snapshotOf(period), actor),
-      },
+      period: periodView(period, actor),
+      transitions: await listTransitions(pool, period.id),
     });
   });
 
   app.post("/payroll/periods/:periodId/transitions", async (request, reply) => {
-    const authenticated = await authenticate(request, reply);
-    if (!authenticated) return;
-    const actor = authenticated.actor;
+    const actor = await requireReader(request, reply);
+    if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
     const body = transitionBody.safeParse(request.body ?? {});
@@ -226,11 +260,6 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, status, decision.refusal);
     }
 
-    // Repeating an action that already happened returns the period unchanged.
-    if (decision.alreadyThere) {
-      return send(reply, 200, { period, applied: false });
-    }
-
     const result = await applyTransition(pool, {
       periodId: period.id,
       action: body.data.action,
@@ -240,6 +269,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       reason,
       expectedVersion: period.version,
       blockerCount: period.blockerCount,
+      fromState: period.state,
     });
 
     if (!result.applied) {
@@ -249,6 +279,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       });
     }
 
-    return send(reply, 200, { period: result.period, applied: true });
+    const refreshed = await getPeriod(pool, period.id);
+    return send(reply, 200, {
+      period: refreshed ? periodView(refreshed, actor) : result.period,
+      applied: true,
+    });
   });
 }

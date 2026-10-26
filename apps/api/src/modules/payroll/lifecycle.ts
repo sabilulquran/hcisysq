@@ -36,6 +36,23 @@ export const PERIOD_ACTIONS = [
 
 export type PeriodAction = (typeof PERIOD_ACTIONS)[number];
 
+/**
+ * Reading a period is not the same as running one. The director and the finance
+ * lead must see the state, the blockers and what they may do, although neither
+ * holds payroll.periods.manage (specification section 2).
+ */
+export const PERIOD_READ_PERMISSIONS = [
+  "payroll.periods.manage",
+  "payroll.approve",
+  "payroll.reopen.approve",
+  "payroll.payments.confirm",
+  "payroll.reports.read.organization",
+] as const;
+
+export function mayReadPeriods(actor: TransitionActor): boolean {
+  return PERIOD_READ_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
+}
+
 export type PeriodPermission =
   | "payroll.periods.manage"
   | "payroll.calculate"
@@ -53,8 +70,10 @@ export type TransitionRule = {
   auditAction: string;
   /** The actor must not be the account that submitted the period. */
   forbidsSubmitter?: true;
-  /** The period must carry a calculation with no blocker. */
-  requiresCleanCalculation?: true;
+  /** The calculation must be newer than every input. */
+  requiresCurrentCalculation?: true;
+  /** No blocker may stand. */
+  requiresNoBlockers?: true;
 };
 
 /**
@@ -83,7 +102,8 @@ export const TRANSITIONS: Readonly<Record<PeriodAction, TransitionRule>> = {
     permission: "payroll.submit",
     reasonRequired: false,
     auditAction: "payroll.period.submitted",
-    requiresCleanCalculation: true,
+    requiresCurrentCalculation: true,
+    requiresNoBlockers: true,
   },
   return: {
     from: ["SUBMITTED"],
@@ -99,7 +119,10 @@ export const TRANSITIONS: Readonly<Record<PeriodAction, TransitionRule>> = {
     reasonRequired: false,
     auditAction: "payroll.period.approved",
     forbidsSubmitter: true,
-    requiresCleanCalculation: true,
+    // Not a staleness check: inputs cannot be edited from SUBMITTED, and asking
+    // for a fresh calculation here would leave the director with no way forward
+    // except returning the period. Standing blockers still refuse approval.
+    requiresNoBlockers: true,
   },
   confirm_payment: {
     from: ["APPROVED"],
@@ -165,7 +188,7 @@ export type TransitionRefusal = {
 };
 
 export type TransitionDecision =
-  | { allowed: true; nextState: PeriodState; auditAction: string; alreadyThere: boolean }
+  | { allowed: true; nextState: PeriodState; auditAction: string }
   | { allowed: false; refusal: TransitionRefusal };
 
 /**
@@ -217,25 +240,24 @@ export function decideTransition(
     };
   }
 
-  if (rule.requiresCleanCalculation) {
-    if (!period.hasCurrentCalculation) {
-      return {
-        allowed: false,
-        refusal: {
-          code: "PAYROLL_CALCULATION_STALE",
-          message: "Input berubah setelah perhitungan terakhir; hitung ulang periode lebih dulu.",
-        },
-      };
-    }
-    if (period.blockerCount > 0) {
-      return {
-        allowed: false,
-        refusal: {
-          code: "PAYROLL_BLOCKERS_PRESENT",
-          message: `Periode masih memiliki ${period.blockerCount} blocker yang harus diselesaikan.`,
-        },
-      };
-    }
+  if (rule.requiresCurrentCalculation && !period.hasCurrentCalculation) {
+    return {
+      allowed: false,
+      refusal: {
+        code: "PAYROLL_CALCULATION_STALE",
+        message: "Input berubah setelah perhitungan terakhir; hitung ulang periode lebih dulu.",
+      },
+    };
+  }
+
+  if (rule.requiresNoBlockers && period.blockerCount > 0) {
+    return {
+      allowed: false,
+      refusal: {
+        code: "PAYROLL_BLOCKERS_PRESENT",
+        message: `Periode masih memiliki ${period.blockerCount} blocker yang harus diselesaikan.`,
+      },
+    };
   }
 
   let nextState: PeriodState;
@@ -254,15 +276,12 @@ export function decideTransition(
     nextState = rule.to;
   }
 
-  // Recalculating a period that is already CALCULATED is the one transition that
-  // legitimately ends where it started, and repeating any other action must not
-  // move the period twice (specification section 6: operations are idempotent).
-  return {
-    allowed: true,
-    nextState,
-    auditAction: rule.auditAction,
-    alreadyThere: period.state === nextState && action !== "calculate",
-  };
+  // Idempotency does not live here. Repeating an action that already happened is
+  // refused above, because the period has left the state the action starts from;
+  // repeating one that is still in flight is refused by the version check in the
+  // store. Recalculating a CALCULATED period is the one transition that
+  // legitimately ends where it started.
+  return { allowed: true, nextState, auditAction: rule.auditAction };
 }
 
 /** The actions this actor could take on this period right now, for the UI. */

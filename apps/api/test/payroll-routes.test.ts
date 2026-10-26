@@ -22,16 +22,20 @@ const PERIOD_ID = "50000000-0000-4000-8000-000000000001";
 const HC_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 const DIRECTOR_ACCOUNT = "00000000-0000-4000-8000-000000000002";
 
-type Persona = "anonymous" | "employee" | "hc" | "director" | "finance" | "super_admin";
+type Persona = "anonymous" | "employee" | "hc" | "director" | "finance" | "super_admin" | "board";
 
 const PERMISSIONS: Record<Persona, string[]> = {
   anonymous: [],
   employee: ["payslips.read.own"],
-  hc: ["payroll.periods.manage", "payroll.calculate", "payroll.submit"],
-  director: ["payroll.approve", "payroll.reopen.approve", "payroll.periods.manage"],
-  finance: ["payroll.payments.confirm", "payroll.periods.manage"],
+  // Exactly what migration 0069 grants each role: the director and the finance
+  // lead never hold payroll.periods.manage.
+  hc: ["payroll.policies.manage", "payroll.profiles.manage", "payroll.periods.manage", "payroll.inputs.manage", "payroll.calculate", "payroll.submit"],
+  director: ["payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization"],
+  finance: ["payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization"],
   // Legacy Super Admin compatibility grants no payroll permission (ADR-0003).
   super_admin: [],
+  // ORG-003-F and ORG-010-F forbid the Foundation Board payroll figures entirely.
+  board: [],
 };
 
 const ACCOUNTS: Record<Persona, string> = {
@@ -41,6 +45,7 @@ const ACCOUNTS: Record<Persona, string> = {
   director: DIRECTOR_ACCOUNT,
   finance: "00000000-0000-4000-8000-000000000003",
   super_admin: "00000000-0000-4000-8000-000000000004",
+  board: "00000000-0000-4000-8000-000000000005",
 };
 
 type PeriodOverrides = {
@@ -49,7 +54,10 @@ type PeriodOverrides = {
   blockerCount?: number;
   resultCount?: number;
   lastCalculatedAt?: string | null;
+  inputCount?: number;
   lastInputRecordedAt?: string | null;
+  calculatedInputCount?: number | null;
+  calculatedLastInputRecordedAt?: string | null;
   stateBeforeReopenRequest?: string | null;
   version?: number;
 };
@@ -77,13 +85,20 @@ function periodRow(overrides: PeriodOverrides = {}) {
     resultCount: overrides.resultCount ?? 0,
     blockerCount: overrides.blockerCount ?? 0,
     lastCalculatedAt: overrides.lastCalculatedAt ?? null,
+    inputCount: overrides.inputCount ?? 0,
     lastInputRecordedAt: overrides.lastInputRecordedAt ?? null,
+    calculatedInputCount: overrides.calculatedInputCount ?? null,
+    calculatedLastInputRecordedAt: overrides.calculatedLastInputRecordedAt ?? null,
   };
 }
 
 function createPool(persona: Persona, overrides: PeriodOverrides, options: { versionRace?: boolean } = {}) {
   const audits: string[] = [];
   const updates: string[] = [];
+  const transitions: Array<{ action: string; fromState: string; toState: string; reason: string | null }> = [];
+  // The route reads the period again after a transition, so the fake has to move
+  // with it rather than keep answering with the state before the write.
+  let current = { ...overrides };
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
     if (sql.includes("FROM auth_sessions s")) {
       if (persona === "anonymous") return { rows: [], rowCount: 0 };
@@ -92,7 +107,8 @@ function createPool(persona: Persona, overrides: PeriodOverrides, options: { ver
           sessionId: "00000000-0000-4000-8000-000000000100",
           accountId: ACCOUNTS[persona],
           email: `${persona}@example.invalid`,
-          principalType: persona === "super_admin" ? "SUPER_ADMIN" : "EMPLOYEE",
+          principalType:
+            persona === "super_admin" ? "SUPER_ADMIN" : persona === "board" ? "FOUNDATION_BOARD" : "EMPLOYEE",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         }],
         rowCount: 1,
@@ -104,20 +120,30 @@ function createPool(persona: Persona, overrides: PeriodOverrides, options: { ver
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes("FROM payroll_periods p WHERE p.id = $1")) {
-      return { rows: [periodRow(overrides)], rowCount: 1 };
+    if (sql.includes("FROM payroll_period_transitions")) {
+      return { rows: transitions, rowCount: transitions.length };
     }
     if (sql.includes("FROM payroll_periods p")) {
-      return { rows: [periodRow(overrides)], rowCount: 1 };
+      return { rows: [periodRow(current)], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO payroll_periods")) {
-      return { rows: [periodRow(overrides)], rowCount: 1 };
+      return { rows: [periodRow(current)], rowCount: 1 };
     }
     if (sql.includes("UPDATE payroll_periods SET")) {
       updates.push(sql.replace(/\s+/g, " ").trim());
       if (options.versionRace) return { rows: [], rowCount: 0 };
       const nextState = String(values?.[1] ?? "");
-      return { rows: [{ ...periodRow(overrides), state: nextState, version: 1 }], rowCount: 1 };
+      current = { ...current, state: nextState, version: (current.version ?? 0) + 1 };
+      return { rows: [{ ...periodRow(current), state: nextState }], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO payroll_period_transitions")) {
+      transitions.push({
+        action: String(values?.[2] ?? ""),
+        fromState: String(values?.[3] ?? ""),
+        toState: String(values?.[4] ?? ""),
+        reason: (values?.[5] ?? null) as string | null,
+      });
+      return { rows: [], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO payroll_audit_events")) {
       audits.push(String(values?.[2] ?? ""));
@@ -126,7 +152,7 @@ function createPool(persona: Persona, overrides: PeriodOverrides, options: { ver
     throw new Error(`Unexpected SQL in payroll routes test: ${sql}`);
   });
   const pool = { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Pool;
-  return { pool, audits, updates };
+  return { pool, audits, updates, transitions };
 }
 
 async function call(
@@ -135,7 +161,7 @@ async function call(
   url: string,
   options: { payload?: object; period?: PeriodOverrides; versionRace?: boolean } = {},
 ) {
-  const { pool, audits, updates } = createPool(persona, options.period ?? {}, {
+  const { pool, audits, updates, transitions } = createPool(persona, options.period ?? {}, {
     ...(options.versionRace === undefined ? {} : { versionRace: options.versionRace }),
   });
   const app = Fastify({ logger: false });
@@ -147,7 +173,7 @@ async function call(
     ...(options.payload ? { payload: options.payload } : {}),
   });
   await app.close();
-  return { response, audits, updates };
+  return { response, audits, updates, transitions };
 }
 
 const READ_ROUTES = ["/payroll/periods", `/payroll/periods/${PERIOD_ID}`];
@@ -159,10 +185,46 @@ describe("PAY-003 route authorization", () => {
     expect((await call("super_admin", "GET", url)).response.statusCode).toBe(403);
   }, 20_000);
 
+  it("gives the Foundation Board nothing at all", async () => {
+    for (const url of READ_ROUTES) {
+      expect((await call("board", "GET", url)).response.statusCode).toBe(403);
+    }
+    const write = await call("board", "POST", "/payroll/periods", {
+      payload: { periodMonth: "2026-09-01" },
+    });
+    expect(write.response.statusCode).toBe(403);
+    const transition = await call("board", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      payload: { action: "approve" },
+    });
+    expect(transition.response.statusCode).toBe(403);
+  }, 20_000);
+
   it("lets human capital read periods", async () => {
     const { response } = await call("hc", "GET", "/payroll/periods");
     expect(response.statusCode).toBe(200);
     expect(response.json().periods).toHaveLength(1);
+  });
+
+  it("lets the director and the finance lead read a period they must decide on", async () => {
+    for (const persona of ["director", "finance"] as const) {
+      const { response } = await call(persona, "GET", `/payroll/periods/${PERIOD_ID}`);
+      expect(response.statusCode).toBe(200);
+    }
+  }, 20_000);
+
+  it("offers each reader only the actions they hold", async () => {
+    const period = { state: "SUBMITTED", submittedByAccountId: HC_ACCOUNT, resultCount: 1, lastCalculatedAt: "2026-09-20T00:00:00.000Z" };
+    const director = await call("director", "GET", `/payroll/periods/${PERIOD_ID}`, { period });
+    expect(director.response.json().period.availableActions).toEqual(["return", "approve"]);
+    const hc = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, { period });
+    expect(hc.response.json().period.availableActions).toEqual([]);
+  }, 20_000);
+
+  it("checks the permission before looking the period up, so a 404 tells an outsider nothing", async () => {
+    const { response } = await call("employee", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      payload: { action: "approve" },
+    });
+    expect(response.statusCode).toBe(403);
   });
 
   it("answers every payroll response with no-store", async () => {
@@ -198,10 +260,24 @@ describe("PAY-003 period creation", () => {
   });
 
   it("refuses creation to the director, who may approve but not run periods", async () => {
-    const { response } = await call("employee", "POST", "/payroll/periods", {
+    const { response } = await call("director", "POST", "/payroll/periods", {
       payload: { periodMonth: "2026-09-01" },
     });
     expect(response.statusCode).toBe(403);
+  });
+
+  it("refuses a cutoff end that would precede the default start", async () => {
+    const { response } = await call("hc", "POST", "/payroll/periods", {
+      payload: { periodMonth: "2026-09-01", cutoffEnd: "2026-08-01" },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("refuses a pay date outside the period month", async () => {
+    const { response } = await call("hc", "POST", "/payroll/periods", {
+      payload: { periodMonth: "2026-09-01", payDate: "2026-10-05" },
+    });
+    expect(response.statusCode).toBe(400);
   });
 });
 
@@ -246,6 +322,10 @@ describe("PAY-003 transitions", () => {
         resultCount: 5,
         blockerCount: 2,
         lastCalculatedAt: "2026-09-20T00:00:00.000Z",
+        inputCount: 3,
+        calculatedInputCount: 3,
+        lastInputRecordedAt: "2026-09-19T00:00:00.000Z",
+        calculatedLastInputRecordedAt: "2026-09-19T00:00:00.000Z",
       },
     });
     expect(response.statusCode).toBe(409);
@@ -259,7 +339,26 @@ describe("PAY-003 transitions", () => {
         state: "CALCULATED",
         resultCount: 5,
         lastCalculatedAt: "2026-09-20T00:00:00.000Z",
+        inputCount: 4,
+        calculatedInputCount: 3,
         lastInputRecordedAt: "2026-09-21T00:00:00.000Z",
+        calculatedLastInputRecordedAt: "2026-09-19T00:00:00.000Z",
+      },
+    });
+    expect(response.json().code).toBe("PAYROLL_CALCULATION_STALE");
+  });
+
+  it("refuses submission when an input was deleted after the last calculation", async () => {
+    const { response } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      ...transition("submit"),
+      period: {
+        state: "CALCULATED",
+        resultCount: 5,
+        lastCalculatedAt: "2026-09-20T00:00:00.000Z",
+        inputCount: 2,
+        calculatedInputCount: 3,
+        lastInputRecordedAt: "2026-09-19T00:00:00.000Z",
+        calculatedLastInputRecordedAt: "2026-09-19T00:00:00.000Z",
       },
     });
     expect(response.json().code).toBe("PAYROLL_CALCULATION_STALE");
@@ -295,6 +394,29 @@ describe("PAY-003 transitions", () => {
     expect(updates[0]).toContain("approved_by_account_id");
   });
 
+  it("lets the director approve although an input arrived while the period was submitted", async () => {
+    const { response } = await call("director", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      ...transition("approve"),
+      period: {
+        state: "SUBMITTED",
+        submittedByAccountId: HC_ACCOUNT,
+        resultCount: 5,
+        lastCalculatedAt: "2026-09-20T00:00:00.000Z",
+        inputCount: 9,
+        calculatedInputCount: 3,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("still refuses approval while a blocker stands", async () => {
+    const { response } = await call("director", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      ...transition("approve"),
+      period: { state: "SUBMITTED", submittedByAccountId: HC_ACCOUNT, resultCount: 5, blockerCount: 1 },
+    });
+    expect(response.json().code).toBe("PAYROLL_BLOCKERS_PRESENT");
+  });
+
   it("requires a reason to return a submitted period", async () => {
     const period = { state: "SUBMITTED", submittedByAccountId: HC_ACCOUNT };
     const without = await call("director", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
@@ -308,8 +430,14 @@ describe("PAY-003 transitions", () => {
       period,
     });
     expect(withReason.response.json().period.state).toBe("COLLECTING");
-    // The reason itself is the actor's words; the audit records only that one was given.
     expect(withReason.updates[0]).toContain("submitted_by_account_id = NULL");
+    // The reason is kept where human capital can read it, not only counted.
+    expect(withReason.transitions[0]).toMatchObject({
+      action: "return",
+      fromState: "SUBMITTED",
+      toState: "COLLECTING",
+      reason: "Jam mengajar belum diperbarui",
+    });
   });
 
   it("clears the submission when a period is returned, so the next submitter is recorded afresh", async () => {
@@ -342,6 +470,10 @@ describe("PAY-003 transitions", () => {
     });
     expect(response.json().period.state).toBe("COLLECTING");
     expect(updates[0]).toContain("reopen_count = reopen_count + 1");
+    // A period back in COLLECTING must not still read as approved and paid.
+    for (const column of ["approved_by_account_id = NULL", "payment_confirmed_at = NULL", "published_at = NULL"]) {
+      expect(updates[0]).toContain(column);
+    }
   });
 
   it("puts a rejected reopen back where the period was", async () => {
@@ -352,12 +484,13 @@ describe("PAY-003 transitions", () => {
     expect(response.json().period.state).toBe("PAYMENT_CONFIRMED");
   });
 
-  it("treats a repeated action as a no-op instead of moving the period twice", async () => {
-    const { response, updates, audits } = await call("finance", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+  it("refuses a repeated action rather than moving the period twice", async () => {
+    const { response, updates, audits } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
       ...transition("publish"),
       period: { state: "PUBLISHED" },
     });
     expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_STATE_CONFLICT");
     expect(updates).toEqual([]);
     expect(audits).toEqual([]);
   });

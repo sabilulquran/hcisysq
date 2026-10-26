@@ -111,10 +111,11 @@ describe("PAY-003 lifecycle order", () => {
 
   it("lets a calculated period be calculated again, and nothing else repeat itself", () => {
     const recalculate = decideTransition("calculate", period({ state: "CALCULATED" }), actor(HC), null);
-    expect(recalculate.allowed && recalculate.alreadyThere).toBe(false);
+    expect(recalculate.allowed && recalculate.nextState).toBe("CALCULATED");
 
     const republish = decideTransition("publish", period({ state: "PUBLISHED" }), actor(HC), null);
     expect(republish.allowed).toBe(false);
+    expect(!republish.allowed && republish.refusal.code).toBe("PAYROLL_STATE_CONFLICT");
   });
 });
 
@@ -132,6 +133,12 @@ describe("PAY-003 submission guards", () => {
   it("refuses approval of a period whose blockers reappeared", () => {
     const snapshot = period({ state: "SUBMITTED", hasCurrentCalculation: true, blockerCount: 1 });
     expect(refusalOf("approve", snapshot, actor(DIRECTOR))).toBe("PAYROLL_BLOCKERS_PRESENT");
+  });
+
+  it("does not ask the director for a fresh calculation, which only the submitter can run", () => {
+    const snapshot = period({ state: "SUBMITTED", hasCurrentCalculation: false });
+    const decision = decideTransition("approve", snapshot, actor(DIRECTOR), null);
+    expect(decision.allowed).toBe(true);
   });
 
   it("requires a reason to return a submitted period", () => {

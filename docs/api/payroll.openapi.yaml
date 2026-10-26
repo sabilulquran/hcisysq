@@ -15,6 +15,11 @@ paths:
       tags: [Payroll]
       operationId: listPayrollPeriods
       summary: List payroll periods, newest month first
+      description: >-
+        Open to everyone who has a decision to make about a period, not only to
+        whoever runs it: payroll.periods.manage, payroll.approve,
+        payroll.reopen.approve, payroll.payments.confirm or
+        payroll.reports.read.organization.
       parameters:
         - name: page
           in: query
@@ -36,6 +41,7 @@ paths:
                   periods:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollPeriod' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
     post:
@@ -89,7 +95,10 @@ paths:
     get:
       tags: [Payroll]
       operationId: getPayrollPeriod
-      summary: Read one payroll period
+      summary: Read one payroll period and its decision history
+      description: >-
+        Same read permissions as the list. The transition log carries the reasons
+        given when a period was returned, reopened or had a reopen rejected.
       parameters:
         - name: periodId
           in: path
@@ -97,14 +106,17 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         '200':
-          description: The period, with the actions available to this actor
+          description: The period, the actions available to this actor, and its transitions
           content:
             application/json:
               schema:
                 type: object
-                required: [period]
+                required: [period, transitions]
                 properties:
                   period: { $ref: '#/components/schemas/PayrollPeriod' }
+                  transitions:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPeriodTransition' }
         '400': { $ref: '#/components/responses/PayrollBadRequest' }
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
@@ -121,8 +133,12 @@ paths:
         payroll.submit, return and approve need payroll.approve, confirm_payment
         needs payroll.payments.confirm, and the reopen decisions need
         payroll.reopen.approve. The account that submitted a period cannot approve
-        it. Submission and approval require a calculation newer than every input
-        and no blocker. Repeating an action that already happened changes nothing.
+        it. Submission requires a calculation newer than every input and no
+        blocker; approval requires no blocker, and does not ask for a fresh
+        calculation the director could not run. Repeating an action that already
+        happened is refused with PAYROLL_STATE_CONFLICT, since the period has
+        left the state that action starts from, and a transition written against
+        a stale version is refused the same way rather than applied twice.
       parameters:
         - name: periodId
           in: path
@@ -155,7 +171,7 @@ paths:
                   description: Required for return, request_reopen and reject_reopen.
       responses:
         '200':
-          description: The period after the transition, or unchanged when the action had already happened
+          description: The period after the transition
           content:
             application/json:
               schema:
@@ -201,6 +217,19 @@ components:
             - UNAUTHENTICATED
         message: { type: string }
 
+    PayrollPeriodTransition:
+      type: object
+      required: [action, fromState, toState, occurredAt]
+      properties:
+        action: { type: string }
+        fromState: { type: string }
+        toState: { type: string }
+        reason:
+          type: [string, 'null']
+          description: Required for return, request_reopen and reject_reopen.
+        actorAccountId: { type: [string, 'null'], format: uuid }
+        occurredAt: { type: string, format: date-time }
+
     PayrollPeriod:
       type: object
       required: [id, periodMonth, payDate, periodStart, periodEnd, cutoffStart, cutoffEnd, state, version]
@@ -235,8 +264,13 @@ components:
         publishedAt: { type: [string, 'null'], format: date-time }
         reopenCount: { type: integer }
         version: { type: integer }
-        resultCount: { type: integer }
-        blockerCount: { type: integer }
+        resultCount:
+          type: integer
+          description: Employees in the latest revision of the calculation.
+        blockerCount:
+          type: integer
+          description: Blockers standing in the latest revision.
+        inputCount: { type: integer }
         hasCurrentCalculation:
           type: boolean
           description: A calculation exists and no input was recorded after it.

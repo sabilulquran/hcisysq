@@ -45,7 +45,7 @@ export function AdminAttendanceSummaryPage() {
           ? listAttendanceCorrections({ status: "submitted", origin: "all", mode: "all", page: 1 }).then((value) => value.submittedCount ?? value.total).catch(() => null)
           : Promise.resolve(undefined),
         can("attendance.clarification.manage") ? count(() => listAttendanceMobileEvidence({ date, reviewState: "needs_review" })) : Promise.resolve(undefined),
-        can("attendance.overtime.manage") ? count(() => listAttendanceOvertime("submitted")) : Promise.resolve(undefined),
+        can("attendance.overtime.manage") ? listAttendanceOvertime("submitted").then((value) => value.total).catch(() => null) : Promise.resolve(undefined),
         can("attendance.shift_swap.manage") ? count(() => listShiftSwapsForHc("awaiting_hc")) : Promise.resolve(undefined),
       ]);
       if (!active) return;

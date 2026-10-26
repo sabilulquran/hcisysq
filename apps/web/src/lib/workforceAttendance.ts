@@ -602,6 +602,20 @@ export interface AttendanceOvertimeItem {
   decisionNote: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** ATT-011-6a HC list only. */
+  initiatedBy?: "employee" | "hc";
+  dayType?: "working_day" | "rest_day" | "public_holiday" | null;
+  /** Scan time outside the schedule (all scans on a day without one); information only. */
+  scanOutsideScheduleMinutes?: number | null;
+}
+
+export type OvertimeStatusFilter = "all" | "submitted" | "approved" | "rejected" | "cancelled" | "closed";
+
+export function dayTypeLabel(value: AttendanceOvertimeItem["dayType"]): string {
+  if (value === "working_day") return "Hari kerja";
+  if (value === "rest_day") return "Hari istirahat";
+  if (value === "public_holiday") return "Libur nasional";
+  return "Belum dihitung";
 }
 
 export async function listMyAttendanceOvertime() {
@@ -670,11 +684,11 @@ export async function cancelAttendanceOvertime(overtimeId: string) {
   await readJson<never>(response);
 }
 
-export async function listAttendanceOvertime(
-  status: "all" | "submitted" | "approved" | "rejected" | "cancelled" = "submitted",
-) {
-  return readJson<{ items: AttendanceOvertimeItem[] }>(
-    await fetch(`/api/admin/attendance/overtime?status=${encodeURIComponent(status)}`, {
+export async function listAttendanceOvertime(status: OvertimeStatusFilter = "submitted", page = 1, unitId?: string) {
+  const params = new URLSearchParams({ status, page: String(page) });
+  if (unitId) params.set("unitId", unitId);
+  return readJson<{ page: number; pageSize: number; total: number; pageCount: number; items: AttendanceOvertimeItem[] }>(
+    await fetch(`/api/admin/attendance/overtime?${params.toString()}`, {
       credentials: "include", headers: { Accept: "application/json" },
     }),
   );

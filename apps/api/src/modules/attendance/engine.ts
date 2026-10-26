@@ -106,6 +106,8 @@ type ResultRow = {
   outsideGeofenceJustified: boolean;
   overtimeMinutes: number;
   inputHash: string;
+  dayType: DayType | null;
+  holidayScheduledWork: boolean | null;
   createdAt: Date;
 };
 

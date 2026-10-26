@@ -1099,7 +1099,7 @@ adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (�
 |---|---|---|---|
 | 1 | **ATT-014-R2a** Kenapa kosong | Status "Tanpa jadwal" vs "Libur" di Detail Harian/laporan; tab **Tanpa Jadwal** bagian A (dikelompokkan per jabatan, dengan Pasang ke shift yang ada / Buat shift baru / Pasang jadwal) dan B (Petakan PIN). | Tidak. |
 | 2 | **ATT-014-R2b** Satu jendela | Bar kontrol tunggal, enam tab, popup progres Kalkulasi, menu Laporan → jendela baru, hapus "Format lama". Tab Pengecualian dan Lembur read-only. | Tidak. |
-| 3 | **ADMS-R2c** Pemetaan sejak TMT | Pemetaan baru otomatis sejak TMT (dan berakhir di tanggal berhenti), penolakan tumpang tindih PIN didaur ulang di server, aksi "Sesuaikan dengan TMT" (satuan dan banyak) dengan dry-run jumlah scan terdampak, audit `mapping_aligned_to_start_date`, tawaran Kalkulasi. Koreksi 43 pemetaan dijalankan terpisah dengan persetujuan owner. | Tidak. |
+| 3 | **ADMS-R2c** Pemetaan sejak TMT | Pemetaan baru otomatis sejak TMT (dan berakhir di tanggal berhenti), penolakan tumpang tindih PIN didaur ulang di server, aksi "Sesuaikan dengan TMT" (satuan dan banyak) dengan dry-run jumlah scan terdampak, audit `mapping_aligned_to_start_date`, tawaran Kalkulasi. Koreksi 43 pemetaan dijalankan terpisah dengan persetujuan owner. | Ya, kecil: `0067` menambah aksi audit ke constraint (§20.11). |
 | 4 | **ATT-014-R2d** Model tambahan | Per Unit, Data Scan, Jadwal Harian, Data Transaksi, Lembur Harian, Dari tampilan aktif. | Tidak. |
 
 R2a disarankan lebih dulu karena langsung menjawab "kenapa kosong", dan bisa dirilis sendiri. Setiap paket
@@ -1164,3 +1164,32 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
 - Halaman Shift menampilkan kolom **Berlaku sejak**, isian tanggal pada form tambah, dan aksi **Mundurkan
   awal berlaku** per shift. Tidak ada migration dan tidak ada permission baru.
 
+### 20.11 Catatan implementasi ADMS-R2c (2026-10-27)
+
+- **Pemetaan baru** memakai TMT sebagai awal berlaku (00.00 WIB), atau akhir pemetaan terdahulu PIN itu di
+  mesin itu bila lebih akhir. Isian awal berlaku dan batas 62 hari dihapus. Pegawai tanpa TMT ditolak
+  (`EMPLOYEE_START_DATE_MISSING`). Tumpang tindih tetap ditolak trigger `0023` dan kini dijawab `409
+  ADMS_MAPPING_OVERLAP`.
+- **Sesuaikan dengan TMT** (`POST /admin/attendance/adms/mappings/align-to-start-date`,
+  `attendance.devices.operate`): pratinjau per pemetaan (awal sekarang → TMT, scan bertambah/lepas,
+  keadaan `change`/`unchanged`/`missing_start_date`/`invalid_range`/`overlap`), lalu terapkan dengan alasan.
+  Baris dikunci dan rencana dihitung ulang di bawah kunci sebelum diubah. Audit
+  `mapping_aligned_to_start_date` menyimpan awal lama. Proyeksi harian lama diperbarui sesudah respons;
+  engine membaca scan mentah dan hanya berubah setelah Kalkulasi.
+- **Pemulihan:** `POST /admin/attendance/adms/mappings/{id}/revert-alignment` mengembalikan awal sebelum
+  penyesuaian terakhir yang belum dipulihkan, diaudit `mapping_alignment_reverted` (merujuk audit yang
+  dipulihkan dan jumlah scan yang berpindah). Rantai A→B→C dipulihkan C→B lalu B→A.
+- `DRAFT`: TMT yang **lebih akhir** dari awal sekarang dan membuat scan lepas dari pegawainya dilaporkan
+  `removes_scans` dan **tidak diterapkan**, karena proyeksi harian lama belum bisa mengosongkan hari yang
+  kehilangan scan. Bila tidak ada scan yang lepas, pergeseran ke belakang tetap diterapkan.
+- Proyeksi harian lama (tabel lama, bukan engine) dijalankan setelah respons, satu antrean per proses API,
+  dengan kegagalan per pegawai-hari dicatat di log. Pembuatan pemetaan baru juga memakai antrean ini
+  karena riwayat sejak TMT bisa bertahun-tahun.
+- **Tab Tanpa Jadwal bagian B** memberi tombol **Sesuaikan dengan TMT** per PIN dan **Sesuaikan semua
+  dengan TMT** untuk PIN berpemetaan di halaman itu, keduanya dengan pratinjau sebelum diterapkan.
+- **Migration `0067`** (aditif) menambah aksi audit `mapping_aligned_to_start_date` dan `mapping_alignment_reverted` ke constraint
+  `attendance_adms_admin_audit_events_action_check`. Rilis lama tidak menulis aksi itu, jadi aman berjalan di
+  skema baru. Rollback: pasang kembali daftar `0055` setelah tidak ada baris beraksi baru.
+- `TBD`: aturan 1 bagian "berakhir di akhir tanggal berhenti" belum diterapkan otomatis; pemetaan tetap
+  diakhiri lewat aksi Akhiri yang ada. Pemetaan hanya bisa dibuat untuk pegawai aktif.
+- Manifest AUTH-011 +2 route (209). Tidak ada permission baru.

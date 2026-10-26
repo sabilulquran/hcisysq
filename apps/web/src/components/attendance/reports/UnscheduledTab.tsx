@@ -3,11 +3,14 @@ import { useEffect, useState } from "react";
 
 import type { AttendanceCalculationScope } from "@/lib/attendanceCalculation";
 import {
+  alignAdmsMappingsToStartDate,
+  alignmentStatusLabel,
   groupByPosition,
   planAssignments,
   unattributedStatusLabel,
   unscheduledReason,
   type AttendanceUnscheduled,
+  type MappingAlignmentResult,
   type UnscheduledEmployee,
 } from "@/lib/attendanceUnscheduled";
 import {
@@ -138,6 +141,81 @@ function AssignToShift({ employees, defaultFrom, onDone, onCancel }: {
 }
 
 /**
+ * ADMS-R2c "Sesuaikan dengan TMT" (attendance.devices.operate): a dry run first, listing each mapping's
+ * current start, the TMT target and the scans that change owner; HC then applies it with a reason.
+ */
+function AlignToStartDate({ mappingIds, onDone, onCancel }: {
+  mappingIds: string[];
+  onDone: (message: string) => void;
+  onCancel: () => void;
+}) {
+  const [preview, setPreview] = useState<MappingAlignmentResult | null>(null);
+  const [reason, setReason] = useState("Pemetaan PIN berlaku sejak TMT pegawai (§20.5)");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void alignAdmsMappingsToStartDate({ mappingIds, apply: false })
+      .then(setPreview)
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Pratinjau tidak dapat dimuat."));
+  }, [mappingIds]);
+
+  const apply = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await alignAdmsMappingsToStartDate({ mappingIds, apply: true, reason: reason.trim() });
+      onDone(`${result.summary.change} pemetaan disesuaikan ke TMT; ${result.summary.scansAdded} scan kini milik pegawainya. Jalankan Kalkulasi untuk rentang yang terdampak.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Penyesuaian gagal.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 grid gap-3 rounded-xl border bg-surface-raised p-3 text-sm">
+      {error ? <p className="flex gap-2 text-xs font-semibold text-danger-ink" role="alert"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</p> : null}
+      {!preview ? <p className="text-xs text-muted-foreground">{error ? "" : "Menghitung pratinjau…"}</p> : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Pratinjau: {preview.summary.change} dari {preview.summary.mappings} pemetaan akan mulai berlaku sejak TMT pegawai,
+            {" "}{preview.summary.scansAdded} scan ikut tercakup. Data belum diubah.
+            {preview.summary.removesScans ? ` ${preview.summary.removesScans} pemetaan dengan TMT lebih akhir tidak diterapkan karena scan akan lepas dari pegawainya.` : ""}
+          </p>
+          <div className="max-h-72 overflow-auto rounded-lg border">
+            <table className="w-full min-w-[640px] text-left text-xs">
+              <thead className="bg-surface text-muted-foreground"><tr><th className="p-2">Pegawai</th><th className="p-2">Mesin · PIN</th><th className="p-2">Berlaku sekarang</th><th className="p-2">Sejak TMT</th><th className="p-2">Scan</th><th className="p-2">Keadaan</th></tr></thead>
+              <tbody className="divide-y">
+                {preview.items.map((item) => (
+                  <tr key={item.mappingId}>
+                    <td className="p-2"><p className="font-semibold">{item.employeeName}</p><p className="text-muted-foreground">{item.employeeNumber}</p></td>
+                    <td className="p-2">{item.deviceName} · <span className="font-mono">{item.pin}</span></td>
+                    <td className="p-2 tabular-nums">{stamp(item.currentFrom)}</td>
+                    <td className="p-2 tabular-nums">{item.targetFrom ? stamp(item.targetFrom) : "—"}</td>
+                    <td className="p-2 tabular-nums">{item.scansAdded ? `+${item.scansAdded}` : item.scansRemoved ? `−${item.scansRemoved}` : "0"}</td>
+                    <td className="p-2">{alignmentStatusLabel(item.status)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <label className="text-xs font-semibold text-muted-foreground">Alasan
+            <input className="mt-1 h-9 w-full rounded-xl border px-3 text-sm" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+          </label>
+        </>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={saving || !preview || preview.summary.change === 0 || !reason.trim()} onClick={() => void apply()} className="inline-flex h-9 items-center gap-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Terapkan
+        </button>
+        <button type="button" onClick={onCancel} className="h-9 rounded-xl border px-3 text-xs font-bold">Batal</button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * ATT-014 §20.3 Tanpa Jadwal. Part A: employees who scan on dates without a schedule, grouped by
  * position with shortcuts to assign an existing shift or create one. Part B: machine scans that cannot
  * be attributed yet (shown only when the API returns them, i.e. with attendance.devices.read).
@@ -153,9 +231,12 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
   onChanged: () => void;
 }) {
   const [assigning, setAssigning] = useState<{ key: string; employees: UnscheduledEmployee[] } | null>(null);
+  const [aligning, setAligning] = useState<string[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   if (!data) return <p className="p-4 text-sm text-muted-foreground">{loading ? "Memuat…" : "Data tanpa jadwal belum dimuat."}</p>;
   const groups = groupByPosition(data.employees.items);
+  // A mapped PIN whose scans fall outside its mapping can be moved to the holder's TMT (§20.5).
+  const alignable = [...new Set((data.pins?.items ?? []).filter((pin) => pin.status !== "unmapped" && pin.mappingId).map((pin) => pin.mappingId!))];
 
   return (
     <div className="grid gap-4 p-3">
@@ -219,7 +300,11 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
       {data.pins ? (
         <section>
           <h3 className="text-sm font-bold text-brand-heading">Scan mesin yang belum bisa dikaitkan ke pegawai ({data.pins.total})</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Scan ini tersimpan di HCIS tetapi belum menjadi milik pegawai mana pun, sehingga tidak ikut dihitung.</p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">Scan ini tersimpan di HCIS tetapi belum menjadi milik pegawai mana pun, sehingga tidak ikut dihitung.</p>
+            {canMapPins && alignable.length > 0 ? <button type="button" onClick={() => setAligning(alignable)} className="h-8 rounded-lg border px-3 text-xs font-bold">Sesuaikan semua di halaman ini dengan TMT ({alignable.length})</button> : null}
+          </div>
+          {aligning ? <AlignToStartDate mappingIds={aligning} onCancel={() => setAligning(null)} onDone={(message) => { setAligning(null); setNotice(message); onChanged(); }} /> : null}
           <div className="mt-2 overflow-x-auto rounded-xl border">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="bg-surface text-xs text-muted-foreground">
@@ -242,6 +327,7 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
                     </td>
                     <td className="p-2">
                       {canMapPins && pin.status === "unmapped" ? <a href={`/admin/attendance/devices/${pin.deviceId}/users`} className="inline-flex h-8 items-center rounded-lg border px-2 text-xs font-bold">Petakan PIN</a> : null}
+                      {canMapPins && pin.status !== "unmapped" && pin.mappingId ? <button type="button" onClick={() => setAligning([pin.mappingId!])} className="h-8 rounded-lg border px-2 text-xs font-bold">Sesuaikan dengan TMT</button> : null}
                     </td>
                   </tr>
                 ))}
@@ -256,7 +342,6 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
               <button type="button" aria-label="Halaman PIN berikutnya" disabled={data.pins.page >= data.pins.totalPages} onClick={() => onPinPage(data.pins!.page + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
             </div>
           ) : null}
-          <p className="mt-2 text-xs text-muted-foreground">Menyesuaikan awal pemetaan ke TMT pegawai tersedia di paket berikutnya (§20.5).</p>
         </section>
       ) : null}
     </div>

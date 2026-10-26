@@ -47,6 +47,8 @@ export type UnattributedPin = {
   lastScanAt: string;
   /** unmapped: no employee holds the PIN; before_mapping: scans precede the holder's mapping; outside_mapping: other gaps (e.g. after a mapping ended). */
   status: "unmapped" | "before_mapping" | "outside_mapping";
+  /** The mapping that holds the PIN now (or most recently); target of "Sesuaikan dengan TMT". */
+  mappingId: string | null;
   mappedEmployeeId: string | null;
   mappedEmployeeName: string | null;
   mappedEmployeeStartedOn: string | null;
@@ -157,13 +159,13 @@ export async function unattributedPins(pool: Pick<Pool, "query">, filter: Unsche
        GROUP BY event.device_id, event.pin
      ), described AS (
        SELECT pins.*, coalesce(device.display_name, device.serial_number) AS device_name,
-         holder.employee_id, holder.effective_from, employee.full_name, employee.started_on,
+         holder.mapping_id, holder.employee_id, holder.effective_from, employee.full_name, employee.started_on,
          employee.organizational_unit_id
        FROM pins
        JOIN attendance_adms_devices device ON device.id = pins.device_id
        LEFT JOIN LATERAL (
          -- The mapping that holds this PIN now (or most recently); scans before it are unattributed.
-         SELECT mapping.employee_id, mapping.effective_from
+         SELECT mapping.id AS mapping_id, mapping.employee_id, mapping.effective_from
          FROM attendance_adms_employee_mappings mapping
          WHERE mapping.device_id = pins.device_id AND mapping.pin = pins.pin
          ORDER BY (mapping.effective_to IS NULL) DESC, mapping.effective_from DESC
@@ -176,7 +178,7 @@ export async function unattributedPins(pool: Pick<Pool, "query">, filter: Unsche
        CASE WHEN employee_id IS NULL THEN 'unmapped'
             WHEN last_scan < effective_from THEN 'before_mapping'
             ELSE 'outside_mapping' END AS status,
-       employee_id AS "mappedEmployeeId", full_name AS "mappedEmployeeName",
+       mapping_id AS "mappingId", employee_id AS "mappedEmployeeId", full_name AS "mappedEmployeeName",
        started_on::text AS "mappedEmployeeStartedOn", effective_from AS "mappingEffectiveFrom",
        count(*) OVER ()::int AS total
      FROM described

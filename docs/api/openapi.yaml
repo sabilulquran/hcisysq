@@ -1013,7 +1013,10 @@ paths:
               properties:
                 pin: { type: string, minLength: 1, maxLength: 128, description: Leading zeroes are significant. }
                 employeeId: { type: string, format: uuid }
-                effectiveFrom: { type: string, format: date-time, description: Must be within the last 62 days and not materially in the future. }
+      description: >-
+        ADMS-R2c (ATT-014 §20.5): the mapping starts at the employee's TMT (`started_on`, 00:00 WIB), or at
+        the end of an earlier mapping of the same PIN on the same device if that is later. The start is not
+        a request field; an `effectiveFrom` in the body is ignored.
       responses:
         '201':
           description: Mapping created and eligible raw history re-projected on a bounded basis
@@ -1021,7 +1024,100 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Active or effective-window mapping conflict }
+        '409': { description: "Active or effective-window mapping conflict (ADMS_PIN_ALREADY_MAPPED, ADMS_MAPPING_OVERLAP), inactive employee, or EMPLOYEE_START_DATE_MISSING" }
+
+  /admin/attendance/adms/mappings/align-to-start-date:
+    post:
+      tags: [Attendance]
+      operationId: alignAdmsMappingsToStartDate
+      summary: Sesuaikan dengan TMT — dry run or apply moving mapping starts to the employee's TMT (ADMS-R2c)
+      description: >-
+        Requires attendance.devices.operate. Without `apply` nothing is written. With `apply` (reason
+        required) the mappings are locked, the plan is recomputed, every `change` row is updated and audited
+        as `mapping_aligned_to_start_date` with the previous start. The legacy daily projection is refreshed
+        after the reply; attendance results change only after Kalkulasi runs again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mappingIds]
+              properties:
+                mappingIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                apply: { type: boolean, default: false }
+                reason: { type: string, maxLength: 500, description: Required when apply is true. }
+      responses:
+        '200':
+          description: Per-mapping plan (and result when applied)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [applied, summary, items]
+                properties:
+                  applied: { type: boolean }
+                  reprojectionQueued: { type: integer, description: Employee-days queued for legacy re-projection (apply only). }
+                  summary:
+                    type: object
+                    properties:
+                      mappings: { type: integer }
+                      change: { type: integer }
+                      unchanged: { type: integer }
+                      missingStartDate: { type: integer }
+                      invalidRange: { type: integer }
+                      overlap: { type: integer }
+                      scansAdded: { type: integer }
+                      scansRemoved: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        mappingId: { type: string, format: uuid }
+                        deviceId: { type: string, format: uuid }
+                        deviceName: { type: string }
+                        pin: { type: string }
+                        employeeId: { type: string, format: uuid }
+                        employeeNumber: { type: string }
+                        employeeName: { type: string }
+                        startedOn: { type: string, format: date, nullable: true }
+                        currentFrom: { type: string, format: date-time }
+                        targetFrom: { type: string, format: date-time, nullable: true }
+                        effectiveTo: { type: string, format: date-time, nullable: true }
+                        scansAdded: { type: integer }
+                        scansRemoved: { type: integer }
+                        status: { type: string, enum: [change, unchanged, missing_start_date, invalid_range, overlap, removes_scans], description: removes_scans (TMT later and scans would lose their owner) is never applied. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/mappings/{mappingId}/revert-alignment:
+    post:
+      tags: [Attendance]
+      operationId: revertAdmsMappingAlignment
+      summary: Restore the start a mapping had before its latest TMT alignment (ADMS-R2c recovery)
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200': { description: Start restored and audited as mapping_alignment_reverted (references the alignment audit it undoes) }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment that is not reverted yet" }
 
   /admin/attendance/adms/mappings/{mappingId}:
     delete:

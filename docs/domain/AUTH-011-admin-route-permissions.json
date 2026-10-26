@@ -2302,5 +2302,51 @@
     "permissions": [
       "access.roles.assign"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods",
+    "permissions": [
+      "payroll.periods.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods/:periodId/transitions",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization",
+      "payroll.calculate",
+      "payroll.submit"
+    ]
   }
 ]

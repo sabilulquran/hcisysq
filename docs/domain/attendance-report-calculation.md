@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17 … D-14-21.**
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17 … D-14-22.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -905,7 +905,7 @@ D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordin
 
 ## 20. Revisi R2 — halaman Laporan satu jendela, tab "Tanpa Jadwal", dan kenapa data kosong (DRAFT, menunggu owner)
 
-**Status:** usulan, **belum ada kode**. Menunggu keputusan D-14-17 … D-14-21.
+**Status:** usulan, **belum ada kode**. Menunggu keputusan D-14-17 … D-14-22.
 **Pemicu:** owner mencoba rilis R1 `hcis-b1657745-20261026` (2026-10-26, diteruskan sesi koordinasi):
 halaman Laporan membingungkan, format lama masih terlipat di bawah, owner meminta pola software
 Solution Attendance Management (satu bar menu di atas, sedikit tabel, laporan terbuka sebagai popup), dan
@@ -989,8 +989,24 @@ pertama–terakhir, dan alasan:
 - "Pola jadwal mulai 24 Okt; scan sebelumnya tidak dinilai".
 
 Sumbernya scan mentah lewat pemetaan PIN, seperti Data Transaksi, sehingga tidak bergantung pada
-Kalkulasi. Tombol **Pasang jadwal** (hanya `attendance.schedule.manage`) membuka Jadwal → Pola jadwal
-dengan pegawai terpilih sudah terisi. Jumlah baris tampil di judul tab.
+Kalkulasi. Jumlah baris tampil di judul tab.
+
+Daftar ini **dikelompokkan menurut jabatan** (lalu unit), karena penyebab yang paling mungkin adalah
+**tidak adanya shift yang cocok** untuk satu kelompok jabatan, bukan kelalaian per orang. Fakta production
+2026-10-26: 21 dari 28 pegawai SDIT Tahfizh tanpa jadwal berjabatan "Guru Tahfizh (Half Day)" atau
+"(Half Day) II", sedangkan shift SDIT hanya "SDIT — Hari Penuh" 07.00–16.00. Memasang mereka ke shift
+hari penuh akan membuat semuanya "pulang cepat" setiap hari. Setiap kelompok menampilkan jumlah pegawai,
+jabatan, dan rentang jam scan terakhir yang **hanya sebagai keterangan**, tidak dipakai untuk menebak jam
+shift. Aksi per kelompok (hanya `attendance.schedule.manage`):
+
+- **Pasang ke shift yang ada**: memilih shift dan hari, lalu membuat pola jadwal untuk pegawai terpilih
+  di kelompok itu, mulai tanggal yang dipilih HC. Ini memakai alur Pola jadwal yang ada, dengan pratinjau
+  "N pegawai, mulai <tanggal>".
+- **Buat shift baru**: membuka Shift → tambah, lalu kembali ke kelompok ini. Jam masuk/pulang **wajib
+  diisi HC**; HCIS tidak pernah mengusulkan jam dari data scan (I-4).
+
+Per pegawai juga tersedia tombol **Pasang jadwal**, yang membuka Jadwal → Pola jadwal dengan pegawai
+terpilih sudah terisi.
 
 **B. Scan yang belum bisa dikaitkan ke pegawai.**
 Satu baris per mesin + PIN: jumlah scan dalam rentang, tanggal scan pertama–terakhir, dan statusnya:
@@ -1056,12 +1072,13 @@ adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (�
 | D-14-19 | Tab "Tanpa Jadwal" dengan dua bagian (§20.3) dan tombol Pasang jadwal / Petakan PIN. | Ya. |
 | D-14-20 | HC boleh memberlakukan mundur pemetaan PIN yang sudah ada (maks 62 hari, tolak tumpang tindih, wajib alasan, diaudit). | Ya, dengan aturan §20.5. |
 | D-14-21 | Scan pada hari tanpa jadwal tetap tidak disalin engine dan cukup dibaca dari scan mentah; label "Libur" untuk hari tanpa pola diganti "Tanpa jadwal". | Ya. |
+| D-14-22 | Jam shift setengah hari SDIT Tahfizh untuk jabatan "Guru Tahfizh (Half Day)" dan "(Half Day) II" (21 pegawai). | **Ditetapkan owner/HC**, tidak ditebak dari jam scan. Setelah ditetapkan, HC membuat shift itu lalu memakai "Pasang ke shift yang ada". |
 
 ### 20.8 Paket setelah disetujui
 
 | Urutan | Paket | Isi | Migration |
 |---|---|---|---|
-| 1 | **ATT-014-R2a** Kenapa kosong | Status "Tanpa jadwal" vs "Libur" di Detail Harian/laporan; tab **Tanpa Jadwal** bagian A dan B (read-only) dengan tombol Pasang jadwal / Petakan PIN. | Tidak. |
+| 1 | **ATT-014-R2a** Kenapa kosong | Status "Tanpa jadwal" vs "Libur" di Detail Harian/laporan; tab **Tanpa Jadwal** bagian A (dikelompokkan per jabatan, dengan Pasang ke shift yang ada / Buat shift baru / Pasang jadwal) dan B (Petakan PIN). | Tidak. |
 | 2 | **ATT-014-R2b** Satu jendela | Bar kontrol tunggal, enam tab, popup progres Kalkulasi, menu Laporan → jendela baru, hapus "Format lama". Tab Pengecualian dan Lembur read-only. | Tidak. |
 | 3 | **ADMS-R2c** Berlakukan mundur | Aksi "Berlakukan sejak …" satu per satu dan dalam jumlah banyak, cek tumpang tindih, audit, tawaran Kalkulasi. | Tidak. |
 | 4 | **ATT-014-R2d** Model tambahan | Per Unit, Data Scan, Jadwal Harian, Data Transaksi, Lembur Harian, Dari tampilan aktif. | Tidak. |
@@ -1071,7 +1088,8 @@ satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.
 
 **Langkah operasional yang tidak butuh kode** dan bisa dilakukan HC sekarang:
 
-- pasang pola jadwal untuk 28 pegawai SDIT Tahfizh yang belum punya;
+- tetapkan jam shift setengah hari SDIT (D-14-22), buat shift-nya, lalu pasang pola jadwal untuk 28
+  pegawai SDIT Tahfizh yang belum punya (21 di antaranya Guru Tahfizh half day);
 - petakan 7 PIN yang belum dipetakan;
 - bila D-14-20 disetujui, berlakukan mundur 43 pemetaan agar scan September–Oktober ikut terhitung.
 

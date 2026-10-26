@@ -41,9 +41,11 @@ Perubahan registry/lifecycle menghasilkan immutable admin audit event.
 
 ## PIN mapping
 
-UI menampilkan PIN yang benar-benar pernah terlihat pada raw ATTLOG. Super Admin memilih employee dan effective start secara eksplisit.
+UI menampilkan PIN yang benar-benar pernah terlihat pada raw ATTLOG. Super Admin memilih employee secara eksplisit.
 
-Default UI untuk mapping baru adalah awal hari berjalan `Asia/Jakarta`, agar punch pertama hari itu dapat segera diproyeksikan setelah mapping dikonfirmasi. API membatasi backfill mapping baru maksimum 62 hari dan tidak mengizinkan effective start jauh di masa depan.
+**ADMS-R2c (ATT-014 §20.5, sejak 2026-10-27):** awal berlaku mapping baru adalah **TMT pegawai** (`employees.started_on`, 00.00 WIB), atau akhir mapping terdahulu untuk PIN yang sama di mesin yang sama bila itu lebih akhir (PIN didaur ulang). Awal berlaku bukan lagi isian; batas 62 hari dihapus. Pegawai tanpa TMT ditolak (`EMPLOYEE_START_DATE_MISSING`). Tumpang tindih ditolak trigger database (`ADMS_MAPPING_OVERLAP`).
+
+**Sesuaikan dengan TMT** (`POST /admin/attendance/adms/mappings/align-to-start-date`, `attendance.devices.operate`) memindahkan awal mapping yang sudah ada ke TMT dengan aturan yang sama. Tanpa `apply` hanya pratinjau (jumlah scan yang berpindah pemilik). Dengan `apply` dan alasan, setiap perubahan diaudit `mapping_aligned_to_start_date` berisi awal lama; `POST /admin/attendance/adms/mappings/:mappingId/revert-alignment` memulihkannya. Hasil kehadiran baru berubah setelah Kalkulasi dijalankan lagi.
 
 Setelah mapping berhasil dibuat, HCIS melakukan bounded re-projection untuk raw event yang termasuk effective window tersebut. Ini adalah aksi eksplisit akibat mapping admin, bukan auto-guess `PIN = employee_number`.
 
@@ -56,6 +58,8 @@ Mengakhiri mapping berarti menutup mapping aktif pada waktu server saat aksi dil
 - `GET /admin/attendance/adms/devices/:deviceId`
 - `PATCH /admin/attendance/adms/devices/:deviceId`
 - `POST /admin/attendance/adms/devices/:deviceId/mappings`
+- `POST /admin/attendance/adms/mappings/align-to-start-date`
+- `POST /admin/attendance/adms/mappings/:mappingId/revert-alignment`
 - `DELETE /admin/attendance/adms/mappings/:mappingId`
 
 Semua response operasional menggunakan `Cache-Control: no-store`.

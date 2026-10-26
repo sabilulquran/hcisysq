@@ -181,6 +181,10 @@ Setiap paket satu PR (atau satu PR per repository), dengan specification ID send
 | **PAG-10 Sisa HCIS** | P3 | HCIS | Akses admin (riwayat penugasan), slip gaji saya, konsistensi kepegawaian ke kontrak standar, `PaginationBar` di daftar pegawai. | |
 | **PAG-11 Keluarga dan sisa SPMB** | P3 | Keluarga SQ, SPMB SQ | Peta migrasi internal berhalaman atau streaming; leads/pembayaran/keringanan SPMB berhalaman. | |
 
+**Status 26 Oktober 2026:** PAG-2 selesai (sabilulquran/spmb-sq#32, commit 9854c8a). PAG-0 selesai lewat PR fondasi
+HCIS: helper offset, komponen OpenAPI, dan klasifikasi seluruh 127 rute `GET` di
+[list-endpoint-classification.json](list-endpoint-classification.json); 56 rute tercatat sebagai `debt` per paket.
+
 Urutan yang disarankan: PAG-0 → PAG-2 (repository lain, bisa paralel) → PAG-1 → PAG-4 → PAG-3, lalu P2 sesuai
 jadwal peluncuran aplikasi masing-masing.
 

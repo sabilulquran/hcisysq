@@ -1,0 +1,660 @@
+{
+  "$comment": "ENG-LIST-001 §5: klasifikasi setiap rute GET HCIS, ditegakkan oleh apps/api/test/list-endpoint-classification.test.ts. Nilai list: paged, typeahead, range, bounded, aggregate, single, export, snapshot, debt (pelanggaran tercatat dengan paket PAG). Lihat docs/development/list-pagination-standard.md.",
+  "routes": [
+    {
+      "url": "/admin/access",
+      "list": "debt",
+      "reason": "Semua akun dan seluruh riwayat penugasan role tanpa batas.",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/attendance/adms/biometric-control-plane",
+      "list": "aggregate"
+    },
+    {
+      "url": "/admin/attendance/adms/biometric-control-plane/credentials",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/attendance/adms/biometrics",
+      "list": "debt",
+      "reason": "LIMIT 1000 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/detected-devices",
+      "list": "bounded",
+      "reason": "Mesin terdeteksi yang belum didaftarkan; dibatasi jumlah mesin di jaringan."
+    },
+    {
+      "url": "/admin/attendance/adms/devices",
+      "list": "bounded",
+      "reason": "Mesin absensi yayasan; jumlah mesin dibatasi lokasi (2 hari ini)."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId",
+      "list": "debt",
+      "reason": "Detail mesin menyertakan seluruh riwayat mapping tanpa batas dan daftar PIN/scan terpotong 100/50.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/attendance/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/biometric-collection-policy",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/biometric-inventory",
+      "list": "debt",
+      "reason": "Seluruh status biometrik per mesin tanpa batas; tumbuh dengan jumlah pegawai.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/commands",
+      "list": "debt",
+      "reason": "LIMIT 100 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/health",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/logs",
+      "list": "debt",
+      "reason": "Empat daftar log masing-masing LIMIT 100.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/mapping-assistant",
+      "list": "debt",
+      "reason": "Seluruh PIN teramati dan semua pegawai aktif tanpa batas.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/mapping-lifecycle-summary",
+      "list": "aggregate"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/mappings/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/messages",
+      "list": "debt",
+      "reason": "Pesan mesin tanpa LIMIT.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/offline-attlog-imports",
+      "list": "debt",
+      "reason": "LIMIT 50 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/operations",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/physical-capabilities",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/physical/audit/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/physical/operations",
+      "list": "debt",
+      "reason": "limit maks 500 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/physical/operations/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/reconciliation",
+      "list": "debt",
+      "reason": "LIMIT 25 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/recovery-jobs",
+      "list": "debt",
+      "reason": "LIMIT 20 tanpa halaman.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/roster",
+      "list": "debt",
+      "reason": "Roster dan riwayat mapping tanpa LIMIT.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/telemetry",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/transactions",
+      "list": "debt",
+      "reason": "LIMIT 200 tanpa parameter tanggal; scan lebih lama tidak terjangkau.",
+      "package": "PAG-3"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/transactions/export.csv",
+      "list": "debt",
+      "reason": "CSV transaksi berhenti diam-diam di LIMIT 50000.",
+      "package": "PAG-3"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/user-corrections",
+      "list": "debt",
+      "reason": "Riwayat koreksi pengguna tanpa LIMIT.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/wdms-evidence",
+      "list": "aggregate"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/wdms-profile",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/work-codes",
+      "list": "bounded",
+      "reason": "Kode kerja satu mesin; data master kecil."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/:deviceId/work-codes/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/devices/export.csv",
+      "list": "export",
+      "reason": "CSV lengkap tanpa LIMIT."
+    },
+    {
+      "url": "/admin/attendance/adms/firmware-packages",
+      "list": "bounded",
+      "reason": "Paket firmware yang diunggah admin; batas pengaman LIMIT 100."
+    },
+    {
+      "url": "/admin/attendance/adms/job-codes",
+      "list": "bounded",
+      "reason": "Data master kode kerja; batas pengaman LIMIT 1000."
+    },
+    {
+      "url": "/admin/attendance/adms/management/audit",
+      "list": "debt",
+      "reason": "limit maks 250 atas audit yang terus bertambah.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/management/health",
+      "list": "bounded",
+      "reason": "Satu baris per mesin."
+    },
+    {
+      "url": "/admin/attendance/adms/management/jobs",
+      "list": "debt",
+      "reason": "limit maks 250 tanpa halaman berikutnya.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/management/summary",
+      "list": "aggregate"
+    },
+    {
+      "url": "/admin/attendance/adms/management/user-sync",
+      "list": "debt",
+      "reason": "limit maks 250 tanpa halaman berikutnya.",
+      "package": "PAG-6"
+    },
+    {
+      "url": "/admin/attendance/adms/saved-filters",
+      "list": "bounded",
+      "reason": "Saringan tersimpan milik satu admin."
+    },
+    {
+      "url": "/admin/attendance/adms/transactions",
+      "list": "debt",
+      "reason": "Scan mesin LIMIT 1000 tanpa total; rentang panjang terpotong diam-diam.",
+      "package": "PAG-3"
+    },
+    {
+      "url": "/admin/attendance/calculation-rows",
+      "list": "debt",
+      "reason": "Berhalaman di SQL dengan total, tetapi pageSize maks 200 (standar: 100).",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/attendance/calculations/:id",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/clarifications",
+      "list": "debt",
+      "reason": "LIMIT 500 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/admin/attendance/daily",
+      "list": "range",
+      "reason": "Satu tanggal; satu baris per pegawai aktif."
+    },
+    {
+      "url": "/admin/attendance/employees/:employeeId",
+      "list": "range",
+      "reason": "Satu pegawai, rentang maks 62 hari."
+    },
+    {
+      "url": "/admin/attendance/mobile-evidence",
+      "list": "debt",
+      "reason": "LIMIT 500 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/admin/attendance/mobile-evidence/:evidenceId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/admin/attendance/overtime",
+      "list": "debt",
+      "reason": "LIMIT 1000 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/admin/attendance/report",
+      "list": "debt",
+      "reason": "Laporan lama tanpa halaman: hari x pegawai aktif hingga sekitar 9.200 baris per respons.",
+      "package": "PAG-1"
+    },
+    {
+      "url": "/admin/attendance/reports/:model",
+      "list": "export",
+      "reason": "Laporan/ekspor lengkap sampai 50.000 baris; di atasnya ditolak 422 EXPORT_TOO_LARGE."
+    },
+    {
+      "url": "/admin/attendance/rosters",
+      "list": "range",
+      "reason": "Satu minggu; satu baris per pegawai aktif (99 hari ini)."
+    },
+    {
+      "url": "/admin/attendance/schedule-assignments",
+      "list": "debt",
+      "reason": "Seluruh riwayat Pola jadwal semua pegawai tanpa LIMIT dan tanpa filter.",
+      "package": "PAG-1"
+    },
+    {
+      "url": "/admin/attendance/schedules",
+      "list": "bounded",
+      "reason": "Data master template shift (6 hari ini)."
+    },
+    {
+      "url": "/admin/attendance/shift-swaps",
+      "list": "debt",
+      "reason": "LIMIT 500 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/admin/attendance/today",
+      "list": "range",
+      "reason": "Hari ini; satu baris per pegawai aktif."
+    },
+    {
+      "url": "/admin/attendance/transactions",
+      "list": "debt",
+      "reason": "Berhalaman di SQL dengan total, tetapi pageSize maks 200 (standar: 100).",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/attendance/unscheduled",
+      "list": "debt",
+      "reason": "Berhalaman di SQL dengan total (pegawai dan PIN), tetapi pageSize maks 200 (standar: 100).",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/attendance/work-locations",
+      "list": "bounded",
+      "reason": "Data master lokasi kerja (2 hari ini)."
+    },
+    {
+      "url": "/admin/employee-imports",
+      "list": "debt",
+      "reason": "Riwayat import LIMIT 50 tanpa halaman.",
+      "package": "PAG-4"
+    },
+    {
+      "url": "/admin/employee-imports/:importId",
+      "list": "debt",
+      "reason": "Seluruh baris import dalam satu respons; UI memotong 200.",
+      "package": "PAG-4"
+    },
+    {
+      "url": "/admin/employees",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employees/:employeeId",
+      "list": "debt",
+      "reason": "Detail pegawai menyertakan semua pegawai aktif sebagai kandidat atasan; ganti typeahead.",
+      "package": "PAG-1"
+    },
+    {
+      "url": "/admin/employees/:employeeId/employment",
+      "list": "bounded",
+      "reason": "Riwayat kepegawaian satu pegawai."
+    },
+    {
+      "url": "/admin/employees/:employeeId/employment/timeline",
+      "list": "bounded",
+      "reason": "Linimasa kepegawaian satu pegawai."
+    },
+    {
+      "url": "/admin/employment/consistency",
+      "list": "debt",
+      "reason": "page/pageSize maks 200 dan dipotong di memori setelah memuat semua sumber.",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/employment/rollout",
+      "list": "single"
+    },
+    {
+      "url": "/admin/leave/calendar",
+      "list": "range",
+      "reason": "Pengecualian kalender satu tahun."
+    },
+    {
+      "url": "/admin/leave/configuration",
+      "list": "debt",
+      "reason": "Setiap baris unit membawa dropdown semua pegawai aktif; ganti typeahead.",
+      "package": "PAG-1"
+    },
+    {
+      "url": "/admin/leave/employees/:employeeId/preview",
+      "list": "single"
+    },
+    {
+      "url": "/admin/organization",
+      "list": "bounded",
+      "reason": "Unit dan jabatan legacy dengan hitungan (17 unit, 47 jabatan)."
+    },
+    {
+      "url": "/admin/organization/capabilities",
+      "list": "single"
+    },
+    {
+      "url": "/admin/organization/designer",
+      "list": "bounded",
+      "reason": "Struktur organisasi satu draf untuk bagan; dibatasi ukuran organisasi."
+    },
+    {
+      "url": "/admin/organization/designer/drafts",
+      "list": "debt",
+      "reason": "Semua change set tanpa LIMIT.",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/organization/designer/drafts/:draftId",
+      "list": "bounded",
+      "reason": "Struktur organisasi satu draf untuk bagan; dibatasi ukuran organisasi."
+    },
+    {
+      "url": "/admin/organization/designer/drafts/:draftId/impact",
+      "list": "bounded",
+      "reason": "Dampak satu draf, diturunkan dari struktur draf."
+    },
+    {
+      "url": "/admin/organization/designer/drafts/:draftId/journal",
+      "list": "debt",
+      "reason": "Jurnal satu draf tanpa LIMIT; tumbuh dengan setiap suntingan.",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/organization/designer/employees",
+      "list": "debt",
+      "reason": "Pemilih pegawai designer: limit opsional, bawaan 5000, termasuk pegawai resign.",
+      "package": "PAG-1"
+    },
+    {
+      "url": "/admin/organization/explanation",
+      "list": "single"
+    },
+    {
+      "url": "/admin/organization/people",
+      "list": "debt",
+      "reason": "Berhalaman dengan total, tetapi pageSize maks 200 dan dipotong di memori.",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/admin/organization/positions/search",
+      "list": "typeahead",
+      "reason": "Pencarian jabatan dengan q dan limit (bawaan 50)."
+    },
+    {
+      "url": "/admin/organization/readiness",
+      "list": "aggregate"
+    },
+    {
+      "url": "/admin/organization/rollout",
+      "list": "single"
+    },
+    {
+      "url": "/admin/organization/units/:nodeKey/hc-staff",
+      "list": "bounded",
+      "reason": "Staf HC satu unit."
+    },
+    {
+      "url": "/admin/payslip-imports",
+      "list": "debt",
+      "reason": "Riwayat batch LIMIT 50 tanpa halaman.",
+      "package": "PAG-4"
+    },
+    {
+      "url": "/admin/payslip-imports/:batchId",
+      "list": "debt",
+      "reason": "Seluruh baris batch dalam satu respons (5.299 baris di production).",
+      "package": "PAG-4"
+    },
+    {
+      "url": "/attendance/clarifications/me",
+      "list": "debt",
+      "reason": "LIMIT 100 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/attendance/me",
+      "list": "range",
+      "reason": "Kehadiran saya, rentang maks 62 hari."
+    },
+    {
+      "url": "/attendance/me/schedule",
+      "list": "range",
+      "reason": "Jadwal saya, rentang maks 31 hari."
+    },
+    {
+      "url": "/attendance/me/workforce",
+      "list": "single"
+    },
+    {
+      "url": "/attendance/mobile/evidence/:evidenceId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/attendance/overtime/me",
+      "list": "debt",
+      "reason": "LIMIT 100 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/attendance/resolutions/hc",
+      "list": "debt",
+      "reason": "Antrean resolusi HC tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/attendance/resolutions/me",
+      "list": "debt",
+      "reason": "Seluruh riwayat resolusi pegawai tanpa LIMIT.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/attendance/shift-swaps/candidates",
+      "list": "bounded",
+      "reason": "Pegawai aktif satu unit pada satu tanggal."
+    },
+    {
+      "url": "/attendance/shift-swaps/me",
+      "list": "debt",
+      "reason": "LIMIT 200 tanpa halaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/auth/callback",
+      "list": "single"
+    },
+    {
+      "url": "/auth/launcher",
+      "list": "bounded",
+      "reason": "Aplikasi SQ Core yang boleh dibuka pengguna; registry aplikasi kecil."
+    },
+    {
+      "url": "/auth/me",
+      "list": "single"
+    },
+    {
+      "url": "/auth/mode",
+      "list": "single"
+    },
+    {
+      "url": "/auth/oidc/start",
+      "list": "single"
+    },
+    {
+      "url": "/board/dashboard",
+      "list": "aggregate"
+    },
+    {
+      "url": "/governance/summary",
+      "list": "snapshot",
+      "reason": "Ringkasan governance untuk SQ Hub (bearer); tidak dipakai layar manusia."
+    },
+    {
+      "url": "/health",
+      "list": "single"
+    },
+    {
+      "url": "/iclock/*",
+      "list": "single"
+    },
+    {
+      "url": "/iclock/file",
+      "list": "single"
+    },
+    {
+      "url": "/internal/v1/organization-directory/snapshot",
+      "list": "snapshot",
+      "reason": "Kontrak machine-to-machine untuk SQ Hub; snapshot penuh per asOf."
+    },
+    {
+      "url": "/leave/approvals",
+      "list": "debt",
+      "reason": "Antrean approval tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/hc/administration-queue",
+      "list": "debt",
+      "reason": "Antrean HC tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/hc/requests/:requestId/evidence/:evidenceId",
+      "list": "single"
+    },
+    {
+      "url": "/leave/hc/validation-queue",
+      "list": "debt",
+      "reason": "Antrean HC tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/me/requests",
+      "list": "debt",
+      "reason": "Semua pengajuan cuti pegawai tanpa LIMIT.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/me/summary",
+      "list": "debt",
+      "reason": "Riwayat cuti saya LIMIT 10; riwayat lama tidak terjangkau.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/planned/hc/approval-queue",
+      "list": "debt",
+      "reason": "Antrean HC tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/planned/hc/requests/:requestId/evidence/:evidenceId",
+      "list": "single"
+    },
+    {
+      "url": "/leave/planned/hc/validation-queue",
+      "list": "debt",
+      "reason": "Antrean HC tanpa batas pengaman.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/planned/me/requests/:requestId/evidence/:evidenceId",
+      "list": "single"
+    },
+    {
+      "url": "/leave/planned/me/summary",
+      "list": "debt",
+      "reason": "Cuti terencana saya tanpa LIMIT.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/leave/special/me/requests/:requestId/evidence/:evidenceId",
+      "list": "single"
+    },
+    {
+      "url": "/leave/special/me/summary",
+      "list": "debt",
+      "reason": "Cuti khusus saya LIMIT 20; riwayat lama tidak terjangkau.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/notifications/me",
+      "list": "debt",
+      "reason": "limit maks 100 tanpa offset/kursor; notifikasi lama tidak terjangkau.",
+      "package": "PAG-5"
+    },
+    {
+      "url": "/payslips",
+      "list": "debt",
+      "reason": "Semua slip gaji pegawai tanpa LIMIT (sekitar 12 per tahun).",
+      "package": "PAG-10"
+    },
+    {
+      "url": "/payslips/:id",
+      "list": "single"
+    },
+    {
+      "url": "/ready",
+      "list": "single"
+    }
+  ]
+}

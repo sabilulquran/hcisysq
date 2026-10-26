@@ -174,7 +174,8 @@ export function resolveWorkLocation(
     const node = snapshot.nodes.find(
       (item) => item.stableKey === current && isEffective(item.effectiveFrom, item.effectiveTo, asOf),
     );
-    if (!node) return null;
+    // A switched-off unit names nothing and passes nothing down.
+    if (!node || !node.active) return null;
     if (node.workLocationId) {
       return {
         id: node.workLocationId,

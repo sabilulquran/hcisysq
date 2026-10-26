@@ -45,6 +45,7 @@ Di luar v1 (TBD): beberapa lokasi untuk satu unit, penugasan sementara ke lokasi
 - **Transisi:** `organization_nodes.work_location_id` pada draft diisi atau dikosongkan.
 - **Audit dan jurnal:** `organization.node.updated` (field `workLocationId`) dan baris jurnal `MANUAL_EDIT`.
 - **Kegagalan:** lokasi tidak ada atau nonaktif → 400 `INVALID_WORK_LOCATION`. Draft tidak bisa diubah → 409 seperti biasa.
+- **Pemeriksaan:** unit aktif yang memakai lokasi yang dinonaktifkan sesudahnya ditolak saat Periksa dengan isu `WORK_LOCATION_INACTIVE`. Unit nonaktif tidak mewariskan lokasi. Pemilih lokasi hanya tampil bagi pemegang `attendance.schedule.manage` (D-5-5); yang lain hanya melihat lokasi saat ini.
 
 **4.2 Membaca lokasi pegawai**
 - Read model ORG-008-2 menambah `workLocation` pada setiap baris pegawai: `{ id, name, inheritedFromNodeKey | null }`, atau `null` bila tidak ada sampai ke akar.

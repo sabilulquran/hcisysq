@@ -448,6 +448,8 @@ export function OrganizationDesignerWorkspace({
   );
   const selectedSeat = selectedPosition ? organizationSeatEditability(selectedPosition) : null;
   const canEdit = data?.draft?.status === "DRAFT";
+  // ORG-005-1 (D-5-5): the location list belongs to schedule management, which Kepala HC does not hold.
+  const canPickWorkLocation = Boolean(canEdit) && hasPermission(session, "attendance.schedule.manage");
   const hasActiveDraft = data?.draft?.status === "DRAFT" || data?.draft?.status === "VALIDATED";
   const status = statusCopy(data?.mode ?? "CURRENT");
 
@@ -650,9 +652,11 @@ export function OrganizationDesignerWorkspace({
     // ORG-005-1: the work-location list belongs to schedule management (D-5-5); a session without
     // that permission still sees the unit's current location, only not the picker.
     setWorkLocationsError(null);
-    void listAttendanceWorkLocations()
-      .then((result) => setWorkLocations(result.items))
-      .catch(() => setWorkLocationsError("Daftar lokasi kerja tidak dapat dimuat, jadi lokasi belum bisa dipilih."));
+    if (canPickWorkLocation) {
+      void listAttendanceWorkLocations()
+        .then((result) => setWorkLocations(result.items))
+        .catch(() => setWorkLocationsError("Daftar lokasi kerja tidak dapat dimuat, jadi lokasi belum bisa dipilih."));
+    }
   };
 
   const seedFromLegacy = (name: string, effectiveOn: string) => {
@@ -1128,7 +1132,7 @@ export function OrganizationDesignerWorkspace({
             node={action.node}
             locations={workLocations}
             locationsError={workLocationsError}
-            canEdit={Boolean(canEdit)}
+            canEdit={canPickWorkLocation}
             saving={saving}
             onSave={(workLocationId) => {
               if (!data?.draft) return;

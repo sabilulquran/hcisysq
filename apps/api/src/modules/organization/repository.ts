@@ -310,6 +310,15 @@ export class PostgresOrganizationRepository {
     return result.rows.map((row) => row.accountId);
   }
 
+  /** ORG-005-1: which of these work locations have been switched off since a unit named them. */
+  async inactiveWorkLocationIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const result = await this.db.query<{ id: string }>(
+      "SELECT id FROM attendance_work_locations WHERE id = ANY($1::uuid[]) AND active = false", [ids],
+    );
+    return result.rows.map((row) => row.id);
+  }
+
   /** ORG-008-3b (O-7): the one change set that is still being composed, if any. */
   async findOpenChangeSet(): Promise<OrganizationChangeSet | null> {
     const open = await this.listChangeSets(["DRAFT", "VALIDATED"]);

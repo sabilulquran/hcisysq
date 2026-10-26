@@ -355,3 +355,15 @@ describe("ORG-005-1 where a person works", () => {
     expect(resolveWorkLocation(snapshot, "office", "2026-10-27", names)).toBeNull();
   });
 });
+
+describe("ORG-005-1 review: a switched-off unit passes no location down", () => {
+  it("stops at an inactive ancestor", () => {
+    const snapshot = { nodes: [
+      { id: "a", stableKey: "old", name: "Lama", nodeType: "UNIT", parentNodeKey: null, active: false,
+        effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, workLocationId: "loc-old" },
+      { id: "b", stableKey: "child", name: "Anak", nodeType: "UNIT", parentNodeKey: "old", active: true,
+        effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null },
+    ] } as unknown as Parameters<typeof resolveWorkLocation>[0];
+    expect(resolveWorkLocation(snapshot, "child", "2026-10-27", new Map())).toBeNull();
+  });
+});

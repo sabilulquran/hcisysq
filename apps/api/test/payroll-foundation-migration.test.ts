@@ -1,4 +1,4 @@
-// 0068 PAY-003 payroll schema, role and permission guards against real PostgreSQL.
+// 0069 PAY-003 payroll schema, role and permission guards against real PostgreSQL.
 // Runs only against the loopback CI database; every write is rolled back.
 
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ const allowed = (() => {
   return ["127.0.0.1", "localhost"].includes(url.hostname) && url.pathname === "/hcis_pr";
 })();
 
-describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
+describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
   let pool: Pool;
   let client: PoolClient;
   let employeeId: string;

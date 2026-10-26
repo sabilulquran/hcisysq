@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17 … D-14-22.**
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17, D-14-18, D-14-19, D-14-21; D-14-20 dan jam pulang D-14-22 sudah diputuskan owner.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -905,7 +905,7 @@ D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordin
 
 ## 20. Revisi R2 — halaman Laporan satu jendela, tab "Tanpa Jadwal", dan kenapa data kosong (DRAFT, menunggu owner)
 
-**Status:** usulan, **belum ada kode**. Menunggu keputusan D-14-17 … D-14-22.
+**Status:** usulan, **belum ada kode**. Menunggu D-14-17, D-14-18, D-14-19, D-14-21, dan jam masuk D-14-22. D-14-20 (direvisi) dan jam pulang D-14-22 sudah diputuskan owner 2026-10-26.
 **Pemicu:** owner mencoba rilis R1 `hcis-b1657745-20261026` (2026-10-26, diteruskan sesi koordinasi):
 halaman Laporan membingungkan, format lama masih terlipat di bawah, owner meminta pola software
 Solution Attendance Management (satu bar menu di atas, sedikit tabel, laporan terbuka sebagai popup), dan
@@ -1013,8 +1013,8 @@ Satu baris per mesin + PIN: jumlah scan dalam rentang, tanggal scan pertama–te
 
 - **"PIN belum dipetakan"** (7 PIN saat ini), dengan tombol **Petakan PIN** ke asisten pemetaan ADMS
   yang sudah ada (`attendance.devices.operate`);
-- **"Scan sebelum pemetaan berlaku"**, berisi nama pegawai yang kini memegang PIN itu dan tanggal
-  pemetaan berlaku (mis. 19 Okt 11.38), dengan tombol **Berlakukan sejak …** bila D-14-20 disetujui.
+- **"Scan sebelum pemetaan berlaku"**, berisi nama pegawai yang kini memegang PIN itu, TMT-nya, dan
+  tanggal pemetaan berlaku (mis. 19 Okt 11.38), dengan tombol **Sesuaikan dengan TMT** (§20.5).
 
 Bagian B hanya tampil untuk pemegang `attendance.devices.read`, karena PIN adalah data mesin.
 
@@ -1029,29 +1029,48 @@ Bagian B hanya tampil untuk pemegang `attendance.devices.read`, karena PIN adala
 memakai jendela yang sama. Di atas lembar ada bilah alat layar: Cetak, Simpan PDF (dialog cetak), Excel,
 CSV, dan Tutup. Penunjuk halaman di layar memerlukan pustaka paged media; itu tidak termasuk usulan ini.
 
-### 20.5 Memberlakukan mundur pemetaan PIN (D-14-20)
+### 20.5 Pemetaan PIN berlaku sejak tanggal mulai aktif pegawai (D-14-20, direvisi owner 2026-10-26)
 
-Pembuatan pemetaan **baru** sudah boleh berlaku mundur sampai 62 hari
-(`ADMS_MAPPING_EFFECTIVE_RANGE_INVALID`). Yang belum ada adalah **memajukan awal berlaku pemetaan yang
-sudah ada**. Itu yang dibutuhkan 43 pemetaan tanggal 19 Okt.
+**Keputusan owner:** pemetaan PIN adalah urusan pengelolaan kehadiran, sedangkan scan di mesin tetap ada.
+Selama PIN cocok, semua scan PIN itu di mesin itu milik pegawai tersebut. Batasnya adalah **tanggal mulai
+aktif pegawai (TMT, `employees.started_on`)**, bukan tanggal pemetaan dibuat. Ini menggantikan usulan
+lama (mundur maksimal 62 hari dan alasan per kasus).
 
-Usulan aksi **"Berlakukan sejak …"** pada pemetaan aktif (pemegang `attendance.devices.operate`):
+**Aturan baru:**
 
-1. Tanggal baru tidak boleh lebih awal dari 62 hari lalu, dan tidak lebih awal dari akhir pemetaan
-   sebelumnya untuk mesin + PIN yang sama.
-2. **Peringatan tumpang tindih** sebelum simpan:
-   - bila PIN itu pernah dipegang pegawai lain dalam rentang baru, aksi **ditolak**;
-   - bila pegawai itu sudah punya PIN lain di mesin yang sama dalam rentang itu, aksi diperingatkan.
-   Ringkasannya ditampilkan: "N scan dari 1 Sep–19 Okt akan menjadi milik <nama>".
-3. Wajib alasan, dicatat sebagai audit `mapping_backdated` dengan keadaan sebelum/sesudah. Pemetaan
-   tetap satu baris yang sama: `effective_from` diubah, riwayatnya ada di audit.
-4. Setelah disimpan, layar menawarkan **Kalkulasi** untuk rentang yang baru tercakup. Tidak ada hitung
-   otomatis.
-5. Tersedia juga dalam jumlah banyak dari tab Tanpa Jadwal bagian B: pilih beberapa PIN, lalu
-   "Berlakukan sejak tanggal scan pertama", dengan ringkasan dan konfirmasi sekali.
+1. Pemetaan berlaku untuk semua scan PIN itu di mesin itu **sejak TMT pegawai pukul 00.00 WIB**. Bila
+   pegawai sudah keluar, pemetaan berakhir di **akhir tanggal berhenti** (`ended_on` + 1 hari, 00.00 WIB).
+2. Pemetaan baru **otomatis** memakai TMT sebagai awal berlaku. Field "awal berlaku" di asisten pemetaan
+   tidak lagi diisi bebas dan bawaannya tidak lagi `now()`. Pegawai tanpa TMT tidak bisa dipetakan; layar
+   meminta TMT diisi lebih dulu di data pegawai. Saat ini ke-46 pegawai berpemetaan aktif sudah punya TMT.
+3. **Pengaman PIN didaur ulang tetap wajib.** Bila PIN yang sama di mesin yang sama pernah dipetakan ke
+   pegawai lain, periode pemetaan lama yang menang. Pemetaan baru berlaku mulai yang lebih akhir antara
+   TMT dan akhir pemetaan lama. Tumpang tindih ditolak oleh server, tidak sekadar diperingatkan.
+4. **Mengubah TMT** pegawai menggeser awal pemetaannya hanya lewat aksi yang sama: tombol **"Sesuaikan
+   dengan TMT"**, dengan pratinjau jumlah scan terdampak. Tidak ada pergeseran diam-diam saat data pegawai
+   diubah.
+5. Setiap pembuatan dan penyesuaian pemetaan tercatat di audit ADMS yang ada (`mapping_created`,
+   `mapping_aligned_to_start_date`) dengan keadaan sebelum dan sesudah.
 
-Ini menyentuh aturan pemetaan ATT-005/ATT-012 yang berbasis tanggal berlaku, sehingga butuh review
-tambahan. Tidak ada migration (audit memakai tabel audit ADMS yang ada).
+**Koreksi satu kali untuk 43 pemetaan tanggal 19 Okt** (perubahan data production, butuh persetujuan
+owner terpisah):
+
+- Lewat jalur aplikasi yang diaudit: aksi "Sesuaikan dengan TMT" dalam jumlah banyak di tab Tanpa Jadwal
+  bagian B, atau skrip operator yang memanggil logika yang sama. Tidak ada `UPDATE` SQL manual.
+- **Dry-run lebih dulu**, berupa daftar per pemetaan: pegawai (id), mesin, PIN, awal berlaku sekarang →
+  TMT, dan jumlah scan yang ikut tercakup. Angka read-only production 2026-10-26: **2.599 scan tambahan**,
+  di atas 560 yang sudah tercakup. Tidak ada scan sebelum TMT, dan **0 PIN** pernah dipegang dua pegawai.
+- **Pemulihan:** audit menyimpan `effective_from` lama per pemetaan. Rollback mengembalikan nilai itu
+  lewat aksi yang sama. Hasil kehadiran yang sudah dihitung tidak berubah sampai Kalkulasi dijalankan lagi.
+  Versi hasil lama tetap tersimpan sebagai riwayat.
+- Sebelum koreksi, ambil backup database pra-perubahan seperti pola rilis OPS-MI8-REL-001.
+
+**Mencocokkan PIN saja belum menghasilkan kehadiran.** Setelah scan September–Oktober menjadi milik
+pegawai, hari-hari itu baru dinilai bila pegawai punya **jadwal** pada tanggal tersebut (I-4: jadwal tidak
+pernah disintesis). Pola jadwal SDIT saat ini baru berlaku **24 Okt 2026**. Agar 1 Sep–23 Okt bisa
+dihitung, HC juga perlu **memundurkan tanggal mulai pola jadwal**, misalnya ke 1 Sep 2026 bila jadwal itu
+memang berlaku sejak saat itu. Tanpa itu, hari-hari tersebut tampil di tab Tanpa Jadwal, bukan sebagai
+hadir atau tidak hadir.
 
 ### 20.6 Scan pada hari tanpa jadwal (D-14-21)
 
@@ -1070,9 +1089,9 @@ adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (�
 | D-14-17 | Bentuk halaman Laporan mengikuti §20.2 (satu bar kontrol, enam tab, Kalkulasi dengan popup progres), dan bagian "Format lama" dihapus seluruhnya. | Ya. Popup progres tanpa nama pegawai dulu; nama pegawai bisa ditambah kemudian dengan migration kecil. |
 | D-14-18 | Laporan terbuka di jendela baru ke route cetak, atau modal di halaman. | **Jendela baru** (§20.4). |
 | D-14-19 | Tab "Tanpa Jadwal" dengan dua bagian (§20.3) dan tombol Pasang jadwal / Petakan PIN. | Ya. |
-| D-14-20 | HC boleh memberlakukan mundur pemetaan PIN yang sudah ada (maks 62 hari, tolak tumpang tindih, wajib alasan, diaudit). | Ya, dengan aturan §20.5. |
+| D-14-20 | Pemetaan PIN berlaku sejak TMT pegawai (sampai tanggal berhenti), pemetaan baru otomatis memakai TMT, PIN didaur ulang tidak boleh tumpang tindih. | **Diputuskan owner 2026-10-26** (§20.5). Koreksi satu kali 43 pemetaan 19 Okt butuh persetujuan owner terpisah setelah dry-run. |
 | D-14-21 | Scan pada hari tanpa jadwal tetap tidak disalin engine dan cukup dibaca dari scan mentah; label "Libur" untuk hari tanpa pola diganti "Tanpa jadwal". | Ya. |
-| D-14-22 | Jam shift setengah hari SDIT Tahfizh untuk jabatan "Guru Tahfizh (Half Day)" dan "(Half Day) II" (21 pegawai). | **Ditetapkan owner/HC**, tidak ditebak dari jam scan. Setelah ditetapkan, HC membuat shift itu lalu memakai "Pasang ke shift yang ada". |
+| D-14-22 | Jam shift setengah hari SDIT Tahfizh untuk jabatan "Guru Tahfizh (Half Day)" dan "(Half Day) II" (21 pegawai). | **Jam pulang diputuskan owner 2026-10-26: Half Day 12.00, Half Day II 12.30.** Jam masuk **belum** ditetapkan dan tidak diisi sendiri. Setelah lengkap, HC membuat dua shift itu lalu memakai "Pasang ke shift yang ada". |
 
 ### 20.8 Paket setelah disetujui
 
@@ -1080,7 +1099,7 @@ adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (�
 |---|---|---|---|
 | 1 | **ATT-014-R2a** Kenapa kosong | Status "Tanpa jadwal" vs "Libur" di Detail Harian/laporan; tab **Tanpa Jadwal** bagian A (dikelompokkan per jabatan, dengan Pasang ke shift yang ada / Buat shift baru / Pasang jadwal) dan B (Petakan PIN). | Tidak. |
 | 2 | **ATT-014-R2b** Satu jendela | Bar kontrol tunggal, enam tab, popup progres Kalkulasi, menu Laporan → jendela baru, hapus "Format lama". Tab Pengecualian dan Lembur read-only. | Tidak. |
-| 3 | **ADMS-R2c** Berlakukan mundur | Aksi "Berlakukan sejak …" satu per satu dan dalam jumlah banyak, cek tumpang tindih, audit, tawaran Kalkulasi. | Tidak. |
+| 3 | **ADMS-R2c** Pemetaan sejak TMT | Pemetaan baru otomatis sejak TMT (dan berakhir di tanggal berhenti), penolakan tumpang tindih PIN didaur ulang di server, aksi "Sesuaikan dengan TMT" (satuan dan banyak) dengan dry-run jumlah scan terdampak, audit `mapping_aligned_to_start_date`, tawaran Kalkulasi. Koreksi 43 pemetaan dijalankan terpisah dengan persetujuan owner. | Tidak. |
 | 4 | **ATT-014-R2d** Model tambahan | Per Unit, Data Scan, Jadwal Harian, Data Transaksi, Lembur Harian, Dari tampilan aktif. | Tidak. |
 
 R2a disarankan lebih dulu karena langsung menjawab "kenapa kosong", dan bisa dirilis sendiri. Setiap paket
@@ -1088,9 +1107,12 @@ satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.
 
 **Langkah operasional yang tidak butuh kode** dan bisa dilakukan HC sekarang:
 
-- tetapkan jam shift setengah hari SDIT (D-14-22), buat shift-nya, lalu pasang pola jadwal untuk 28
-  pegawai SDIT Tahfizh yang belum punya (21 di antaranya Guru Tahfizh half day);
+- lengkapi jam masuk shift setengah hari SDIT (jam pulang 12.00 dan 12.30 sudah ditetapkan), buat kedua
+  shift itu, lalu pasang pola jadwal untuk 28 pegawai SDIT Tahfizh yang belum punya (21 di antaranya
+  Guru Tahfizh half day);
+- **mundurkan tanggal mulai pola jadwal SDIT** dari 24 Okt ke tanggal jadwal itu memang mulai berlaku
+  (mis. 1 Sep 2026), karena tanpa jadwal hari-hari September–Oktober tidak dinilai;
 - petakan 7 PIN yang belum dipetakan;
-- bila D-14-20 disetujui, berlakukan mundur 43 pemetaan agar scan September–Oktober ikut terhitung.
+- koreksi 43 pemetaan 19 Okt ke TMT menunggu paket ADMS-R2c, dry-run, dan persetujuan owner (§20.5).
 
 Setelah itu, jalankan Kalkulasi lagi untuk rentang yang diperlukan.

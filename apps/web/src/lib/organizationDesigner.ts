@@ -1,7 +1,7 @@
 import { AdminApiError } from "@/lib/adminEmployees";
 
 export type OrganizationViewMode = "HISTORICAL" | "CURRENT" | "FUTURE" | "DRAFT";
-export type OrganizationDraftStatus = "DRAFT" | "VALIDATED" | "PUBLISHED";
+export type OrganizationDraftStatus = "DRAFT" | "VALIDATED" | "PUBLISHED" | "DISCARDED";
 export type OrganizationVacancyPolicy =
   | "CLIMB_TO_PARENT"
   | "REQUIRE_ACTING_OR_BLOCK"
@@ -16,6 +16,8 @@ export interface OrganizationDraft {
   createdAt: string;
   validatedAt: string | null;
   publishedAt: string | null;
+  /** ORG-008-3b: carried back as If-Match so a concurrent edit is refused, not overwritten. */
+  revision?: number;
 }
 
 export interface OrganizationIncumbent {
@@ -27,6 +29,12 @@ export interface OrganizationIncumbent {
   effectiveFrom: string;
   effectiveTo: string | null;
   assignmentType?: "PRIMARY" | "ACTING";
+  /** ORG-004 migrations 0020-0023: a Dewan account holder, or a holder of several structural seats.
+   *  The API already sends these; ORG-008-1 uses them to mark a seat read-only before it is edited. */
+  accountId?: string | null;
+  accountEmail?: string | null;
+  accountStatus?: string | null;
+  isPrimaryStructural?: boolean;
 }
 
 export interface OrganizationNode {
@@ -40,6 +48,8 @@ export interface OrganizationNode {
   effectiveTo: string | null;
   visualRankOffset: number;
   integrationCode: string | null;
+  /** ORG-008-6 (O-9): the imported unit this one stands for; null leaves it unlinked. */
+  legacyUnitId?: string | null;
   memberCount: number;
   leaderPositionKey: string | null;
 }
@@ -56,6 +66,7 @@ export interface OrganizationPosition {
   effectiveFrom: string;
   effectiveTo: string | null;
   visualRankOffset: number;
+  holderSource?: "EMPLOYEE" | "ACCOUNT";
   primaryIncumbent: OrganizationIncumbent | null;
   actingIncumbent: OrganizationIncumbent | null;
 }
@@ -95,8 +106,17 @@ export interface OrganizationReportingOverride {
   effectiveTo: string | null;
 }
 
+export interface OrganizationStaleBase {
+  changeSetId: string;
+  name: string;
+  effectiveOn: string;
+  publishedAt: string;
+}
+
 export interface OrganizationDesignerView {
   viewDate: string;
+  /** ORG-008-3a: another publication has replaced the base this change set was built on. */
+  staleBase?: OrganizationStaleBase | null;
   mode: OrganizationViewMode;
   draft: OrganizationDraft | null;
   nodes: OrganizationNode[];
@@ -162,8 +182,20 @@ export interface OrganizationResolutionPreview {
   warnings: Array<{ code: string; message: string }>;
 }
 
+export interface OrganizationRolloutSetting {
+  workflowKey: string;
+  organizationalNodeKey: string | null;
+  mode: "LEGACY" | "SHADOW" | "STRUCTURE";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
 export interface OrganizationRolloutConfiguration {
   mode: "LEGACY" | "SHADOW" | "STRUCTURE";
+  /** ORG-008-2: how many rollout rows exist at all, and the rows effective today. */
+  configuredRowCount?: number;
+  asOf?: string;
+  settings?: OrganizationRolloutSetting[];
   workflowKey?: string | null;
   organizationalNodeKey?: string | null;
   effectiveFrom?: string;
@@ -259,6 +291,7 @@ export function updateOrganizationNode(
       | "active"
       | "visualRankOffset"
       | "integrationCode"
+      | "legacyUnitId"
       | "leaderPositionKey"
     >
   >,

@@ -8,6 +8,7 @@ import { listAttendanceCorrections } from "../src/modules/attendance/corrections
 import { attendanceTransactions } from "../src/modules/attendance/transactions.js";
 import { unattributedPins, unscheduledEmployees } from "../src/modules/attendance/unscheduled.js";
 import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
+import { listOvertimeForHc } from "../src/modules/attendance/overtime-list.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -239,6 +240,100 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
       [mapped],
     );
     expect(blocks.rows).toEqual([{ sequence: 1, status: "present" }, { sequence: 2, status: "absent" }]);
+  it("sums every approved overtime request and stores the kind of day (ATT-011-6a)", async () => {
+    for (const [minutes, status] of [[60, "approved"], [45, "approved"], [30, "rejected"]] as const) {
+      await client.query(
+        `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, approved_minutes, status, requested_by_account_id, decided_by_account_id, decided_at)
+         VALUES ($1, $2, '2026-08-28', $3, $4, $5, $6, $6, now())`,
+        [randomUUID(), mapped, minutes, status === "approved" ? minutes : null, status, accountId],
+      );
+    }
+    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    const day = await client.query(
+      `SELECT overtime_minutes, day_type, holiday_scheduled_work FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-28' ORDER BY version DESC LIMIT 1`,
+      [mapped],
+    );
+    expect(day.rows[0]).toMatchObject({ overtime_minutes: 105, day_type: "working_day", holiday_scheduled_work: false });
+
+    // A calendar holiday with no roster override: the day is a holiday, not scheduled work (§5.6).
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ('2026-08-27', false, 'Synthetic holiday')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+    );
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    const holiday = await client.query(
+      `SELECT status, day_type, holiday_scheduled_work FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-27' ORDER BY version DESC LIMIT 1`,
+      [mapped],
+    );
+    expect(holiday.rows[0]).toMatchObject({ status: "off", day_type: "public_holiday", holiday_scheduled_work: false });
+  });
+
+  it("returns to the earlier result when a holiday is added and removed again (latest version only)", async () => {
+    const latest = async () => (await client.query(
+      `SELECT version, status, day_type FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-27' ORDER BY version DESC LIMIT 1`, [mapped])).rows[0];
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    const working = await latest();
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ('2026-08-27', false, 'Synthetic holiday')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+    );
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    expect(await latest()).toMatchObject({ status: "off", day_type: "public_holiday" });
+    await client.query("DELETE FROM leave_calendar_exceptions WHERE calendar_date = '2026-08-27'");
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    const back = await latest();
+    expect(back).toMatchObject({ status: working.status, day_type: "working_day" });
+    expect(back.version).toBeGreaterThan(working.version + 1);
+    // And it is stable again afterwards.
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    expect((await latest()).version).toBe(back.version);
+  });
+
+  it("marks a holiday that a published roster schedules as holiday work (§5.6)", async () => {
+    const template = (await client.query(
+      "SELECT schedule_template_id AS id FROM attendance_schedule_assignments WHERE employee_id = $1 LIMIT 1", [mapped])).rows[0].id;
+    const version = (await client.query(
+      "SELECT id FROM attendance_schedule_versions WHERE schedule_template_id = $1 ORDER BY version DESC LIMIT 1", [template])).rows[0].id;
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ('2026-08-27', false, 'Synthetic holiday')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+    );
+    const roster = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_rosters (id, week_start, version, status, created_by_account_id, published_by_account_id, published_at)
+       VALUES ($1, date_trunc('week', '2026-08-27'::date)::date, 1000, 'PUBLISHED', $2, $2, now())`,
+      [roster, accountId],
+    );
+    await client.query(
+      `INSERT INTO attendance_roster_entries (roster_id, employee_id, work_date, schedule_template_id, schedule_version_id)
+       VALUES ($1, $2, '2026-08-27', $3, $4)`,
+      [roster, mapped, template, version],
+    );
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    const day = await client.query(
+      `SELECT day_type, holiday_scheduled_work FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-27' ORDER BY version DESC LIMIT 1`, [mapped]);
+    expect(day.rows[0]).toMatchObject({ day_type: "public_holiday", holiday_scheduled_work: true });
+  });
+
+  it("lists overtime for HC with the kind of day and the scan time outside the schedule (ATT-011-6a §7.4)", async () => {
+    await admsScan("2026-08-28T06:30:00+07:00");
+    await admsScan("2026-08-28T17:15:00+07:00");
+    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    const id = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, status, requested_by_account_id, decided_by_account_id, decided_at)
+       VALUES ($1, $2, '2026-08-28', 60, 'rejected', $3, $3, now())`,
+      [id, mapped, accountId],
+    );
+    const page = await listOvertimeForHc(client, { page: 1, pageSize: 100, statuses: ["rejected", "cancelled"], unitId: null });
+    const row = page.items.find((item: Record<string, unknown>) => item.id === id) as Record<string, unknown>;
+    // Schedule 07:00–16:00: 30 minutes before plus 75 after.
+    expect(row).toMatchObject({ dayType: "working_day", scanOutsideScheduleMinutes: 105, initiatedBy: "employee" });
+    expect(page.total).toBeGreaterThanOrEqual(1);
   });
 
   it("is idempotent: calculating unchanged data again writes no new version (ATT-014-C)", async () => {

@@ -762,8 +762,18 @@ export async function registerOrganizationAdminRoutes(
     return reply.send({ asOf: context.asOf, employeeId: row.employeeId, person: row, steps: explainPerson(row) });
   });
 
+  /** ORG-008-10: true when this principal composed the change set and so may not publish it. */
+  async function publishNeedsSecondPerson(
+    principal: AuthPrincipal,
+    changeSetId: string,
+    activeRepository: PostgresOrganizationRepository = repository,
+  ): Promise<boolean> {
+    if (principal.principalType === "SUPER_ADMIN") return false;
+    return (await activeRepository.listChangeSetComposers(changeSetId)).includes(principal.id);
+  }
+
   app.get("/admin/organization/designer", async (request, reply) => {
-    if (!(await authenticate(request, reply, "organization.manage"))) return;
+    const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const query = z.object({ effectiveDate: date.optional(), draftId: uuid.optional() }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_ORGANIZATION_VIEW", "Invalid date or draft identifier.");
     const viewDate = query.data.effectiveDate ?? jakartaBusinessDate();
@@ -824,9 +834,14 @@ export async function registerOrganizationAdminRoutes(
     const staleBase = query.data.draftId
       ? await draftService.findStaleBaseConflict(snapshot.changeSet)
       : null;
+    // ORG-008-10: lets the screen explain, instead of offering a Terbitkan that ends in 409.
+    const publishBlockedForSelf = query.data.draftId && snapshot.changeSet.status !== "PUBLISHED"
+      ? await publishNeedsSecondPerson(principal, snapshot.changeSet.id)
+      : false;
     return reply.send({
       viewDate,
       staleBase,
+      publishBlockedForSelf,
       mode: snapshot.changeSet.status === "PUBLISHED"
         ? viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT"
         : "DRAFT",
@@ -1691,6 +1706,15 @@ export async function registerOrganizationAdminRoutes(
           code: "ORGANIZATION_DRAFT_BASE_STALE",
           message: "Structure was changed by another publication after this draft was created.",
           details: stale,
+        });
+        return null;
+      }
+      // ORG-008-10 (decision O-1, "empat mata"; DRAFT default 2026-10-27): the person who publishes is
+      // not one who composed the change. Super Admin stays exempt as the audited break-glass account.
+      if (await publishNeedsSecondPerson(principal, snapshot.changeSet.id, transaction.repository)) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON",
+          message: "You composed this change set; another holder of the publish permission must publish it.",
         });
         return null;
       }

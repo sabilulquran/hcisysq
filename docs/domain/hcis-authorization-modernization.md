@@ -54,7 +54,12 @@ Separately grantable, excluded permissions are:
   publishing, rollout, live direct managers and live unit leave approvers. It is held
   by the **Kepala HC** role `human_capital_lead` (owner decision 2026-10-24), which
   carries `organization.manage` and this permission and nothing else, is granted only
-  by Super Admin with organization scope and a mandate, and is outside every HC bundle;
+  by Super Admin with organization scope and a mandate, and is outside every HC bundle.
+  **ORG-008-9 (owner decision 2026-10-27):** the role does not follow the Kepala HC seat
+  automatically, because a position never grants administrative permission. Super Admin
+  names the seat once, and the Akses screen warns when today's role holders and today's
+  seat holders (primary or Plt) differ, in either direction. Granting stays manual;
+  `PUT /admin/access/role-seat-links/:roleKey` is Super Admin only;
 - `attendance.devices.read`, `attendance.devices.configure`,
   `attendance.devices.operate`, `attendance.devices.export`,
   `attendance.devices.destructive`, `attendance.devices.firmware`,

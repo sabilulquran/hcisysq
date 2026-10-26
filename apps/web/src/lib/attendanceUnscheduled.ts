@@ -26,6 +26,7 @@ export interface UnattributedPin {
   firstScanAt: string;
   lastScanAt: string;
   status: "unmapped" | "before_mapping" | "outside_mapping";
+  mappingId: string | null;
   mappedEmployeeId: string | null;
   mappedEmployeeName: string | null;
   mappedEmployeeStartedOn: string | null;
@@ -53,6 +54,54 @@ export async function getAttendanceUnscheduled(scope: AttendanceCalculationScope
     throw new WorkforceAttendanceApiError(response.status, error?.code ?? "ATTENDANCE_UNSCHEDULED_FAILED", error?.message ?? "Data tanpa jadwal tidak dapat dimuat.");
   }
   return body as AttendanceUnscheduled;
+}
+
+export type MappingAlignmentStatus = "change" | "unchanged" | "missing_start_date" | "invalid_range" | "overlap" | "removes_scans";
+
+export interface MappingAlignmentItem {
+  mappingId: string;
+  deviceName: string;
+  pin: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  startedOn: string | null;
+  currentFrom: string;
+  targetFrom: string | null;
+  scansAdded: number;
+  scansRemoved: number;
+  status: MappingAlignmentStatus;
+}
+
+export interface MappingAlignmentResult {
+  applied: boolean;
+  summary: { mappings: number; change: number; unchanged: number; missingStartDate: number; invalidRange: number; overlap: number; removesScans: number; scansAdded: number; scansRemoved: number };
+  items: MappingAlignmentItem[];
+}
+
+/** ADMS-R2c "Sesuaikan dengan TMT": without apply it is a dry run that changes nothing. */
+export async function alignAdmsMappingsToStartDate(input: { mappingIds: string[]; apply: boolean; reason?: string }) {
+  const response = await fetch("/api/admin/attendance/adms/mappings/align-to-start-date", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json().catch(() => null)) as MappingAlignmentResult | { code?: string; message?: string } | null;
+  if (!response.ok) {
+    const error = body as { code?: string; message?: string } | null;
+    throw new WorkforceAttendanceApiError(response.status, error?.code ?? "ADMS_MAPPING_ALIGNMENT_FAILED", error?.message ?? "Penyesuaian pemetaan tidak dapat diproses.");
+  }
+  return body as MappingAlignmentResult;
+}
+
+export function alignmentStatusLabel(status: MappingAlignmentStatus): string {
+  if (status === "change") return "Akan disesuaikan";
+  if (status === "unchanged") return "Sudah sesuai TMT";
+  if (status === "missing_start_date") return "TMT pegawai belum diisi";
+  if (status === "invalid_range") return "TMT setelah pemetaan berakhir";
+  if (status === "removes_scans") return "TMT lebih akhir; scan akan lepas, tidak diterapkan";
+  return "Bertumpuk dengan pemegang PIN lain";
 }
 
 export interface PositionGroup {

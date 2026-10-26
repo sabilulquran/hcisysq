@@ -48,6 +48,22 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/mappings/align-to-start-date",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/adms/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/adms/mappings/:mappingId/revert-alignment",
+    "permissions": [
+      "attendance.devices.operate"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/attendance/adms/biometric-control-plane-routes.ts",
     "method": "GET",
     "url": "/admin/attendance/adms/biometric-control-plane/credentials",
@@ -2268,6 +2284,23 @@
     "url": "/admin/organization/designer/drafts/from-legacy",
     "permissions": [
       "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "GET",
+    "url": "/admin/access/role-seat-checks",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "PUT",
+    "url": "/admin/access/role-seat-links/:roleKey",
+    "access": "super-admin",
+    "permissions": [
+      "access.roles.assign"
     ]
   }
 ]

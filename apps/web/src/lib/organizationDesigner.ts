@@ -117,6 +117,8 @@ export interface OrganizationDesignerView {
   viewDate: string;
   /** ORG-008-3a: another publication has replaced the base this change set was built on. */
   staleBase?: OrganizationStaleBase | null;
+  /** ORG-008-10: this session composed the change set, so another person must publish it. */
+  publishBlockedForSelf?: boolean;
   mode: OrganizationViewMode;
   draft: OrganizationDraft | null;
   nodes: OrganizationNode[];

@@ -1013,7 +1013,10 @@ paths:
               properties:
                 pin: { type: string, minLength: 1, maxLength: 128, description: Leading zeroes are significant. }
                 employeeId: { type: string, format: uuid }
-                effectiveFrom: { type: string, format: date-time, description: Must be within the last 62 days and not materially in the future. }
+      description: >-
+        ADMS-R2c (ATT-014 §20.5): the mapping starts at the employee's TMT (`started_on`, 00:00 WIB), or at
+        the end of an earlier mapping of the same PIN on the same device if that is later. The start is not
+        a request field; an `effectiveFrom` in the body is ignored.
       responses:
         '201':
           description: Mapping created and eligible raw history re-projected on a bounded basis
@@ -1021,7 +1024,100 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Active or effective-window mapping conflict }
+        '409': { description: "Active or effective-window mapping conflict (ADMS_PIN_ALREADY_MAPPED, ADMS_MAPPING_OVERLAP), inactive employee, or EMPLOYEE_START_DATE_MISSING" }
+
+  /admin/attendance/adms/mappings/align-to-start-date:
+    post:
+      tags: [Attendance]
+      operationId: alignAdmsMappingsToStartDate
+      summary: Sesuaikan dengan TMT — dry run or apply moving mapping starts to the employee's TMT (ADMS-R2c)
+      description: >-
+        Requires attendance.devices.operate. Without `apply` nothing is written. With `apply` (reason
+        required) the mappings are locked, the plan is recomputed, every `change` row is updated and audited
+        as `mapping_aligned_to_start_date` with the previous start. The legacy daily projection is refreshed
+        after the reply; attendance results change only after Kalkulasi runs again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mappingIds]
+              properties:
+                mappingIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                apply: { type: boolean, default: false }
+                reason: { type: string, maxLength: 500, description: Required when apply is true. }
+      responses:
+        '200':
+          description: Per-mapping plan (and result when applied)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [applied, summary, items]
+                properties:
+                  applied: { type: boolean }
+                  reprojectionQueued: { type: integer, description: Employee-days queued for legacy re-projection (apply only). }
+                  summary:
+                    type: object
+                    properties:
+                      mappings: { type: integer }
+                      change: { type: integer }
+                      unchanged: { type: integer }
+                      missingStartDate: { type: integer }
+                      invalidRange: { type: integer }
+                      overlap: { type: integer }
+                      scansAdded: { type: integer }
+                      scansRemoved: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        mappingId: { type: string, format: uuid }
+                        deviceId: { type: string, format: uuid }
+                        deviceName: { type: string }
+                        pin: { type: string }
+                        employeeId: { type: string, format: uuid }
+                        employeeNumber: { type: string }
+                        employeeName: { type: string }
+                        startedOn: { type: string, format: date, nullable: true }
+                        currentFrom: { type: string, format: date-time }
+                        targetFrom: { type: string, format: date-time, nullable: true }
+                        effectiveTo: { type: string, format: date-time, nullable: true }
+                        scansAdded: { type: integer }
+                        scansRemoved: { type: integer }
+                        status: { type: string, enum: [change, unchanged, missing_start_date, invalid_range, overlap, removes_scans], description: removes_scans (TMT later and scans would lose their owner) is never applied. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/mappings/{mappingId}/revert-alignment:
+    post:
+      tags: [Attendance]
+      operationId: revertAdmsMappingAlignment
+      summary: Restore the start a mapping had before its latest TMT alignment (ADMS-R2c recovery)
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200': { description: Start restored and audited as mapping_alignment_reverted (references the alignment audit it undoes) }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment that is not reverted yet" }
 
   /admin/attendance/adms/mappings/{mappingId}:
     delete:
@@ -1039,6 +1135,63 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/access/role-seat-checks:
+    get:
+      tags: [Access]
+      operationId: listRoleSeatChecks
+      summary: Compare role holders with the holders of the seat the role follows (ORG-008-9)
+      description: >
+        For each role that follows a structural seat (today only human_capital_lead, Kepala HC), compares
+        the accounts whose assignment is effective today with the primary and acting holders (Plt) of
+        that seat in the structure effective today. Read-only: a position never grants administrative
+        permission (AUTH-011), so nothing is granted, revoked or suggested.
+      responses:
+        '200':
+          description: One check per seat-linked role
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoleSeatCheck' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/access/role-seat-links/{roleKey}:
+    put:
+      tags: [Access]
+      operationId: setRoleSeatLink
+      summary: Choose or clear the seat a role follows (ORG-008-9, Super Admin only)
+      description: >
+        Super Admin only, like granting the role; every other actor gets 403 ROLE_GRANT_SUPER_ADMIN_ONLY
+        before input is read. The seat must be a position stable key that has appeared in a published
+        change set. positionKey null clears it. Audited as role.seat_link.set or role.seat_link.cleared.
+      parameters:
+        - { name: roleKey, in: path, required: true, schema: { type: string, enum: [human_capital_lead] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positionKey, reason]
+              properties:
+                positionKey: { type: [string, 'null'], format: uuid }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: The check after the change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleSeatCheck' }
+        '400': { description: INVALID_ROLE_SEAT_LINK }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: ROLE_GRANT_SUPER_ADMIN_ONLY }
+        '404': { description: ORGANIZATION_POSITION_NOT_PUBLISHED }
 
   /admin/organization/capabilities:
     get:
@@ -2023,6 +2176,9 @@ paths:
             this draft cloned its base and takes effect on or before this draft's effective date.
             Publishing is refused because the draft's snapshot does not contain that publication and
             would replace it. Published snapshots are not modified by the refusal.
+            ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON (ORG-008-10, DRAFT default) when the caller
+            created the change set or appears in its organization audit trail other than for checking,
+            reopening or publishing; Super Admin is exempt as the audited break-glass account.
           content:
             application/json:
               schema:
@@ -2726,6 +2882,56 @@ components:
             properties:
               code: { type: string }
 
+    RoleSeatCheck:
+      type: object
+      description: >
+        ORG-008-9. status is SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE or SEAT_VACANT when
+        nothing (or nobody) could be compared, otherwise CHECKED. mismatches lists role holders who do not
+        hold the seat (HOLDER_NOT_SEATED) and seat holders without the role (SEATED_WITHOUT_ROLE, reason
+        NO_ACCOUNT, ACCOUNT_NOT_ACTIVE or NO_ROLE). An acting holder counts like the primary holder.
+      required: [roleKey, asOf, seat, status, holders, incumbents, mismatches]
+      properties:
+        roleKey: { type: string }
+        asOf: { type: string, format: date }
+        seat:
+          type: [object, 'null']
+          properties:
+            positionKey: { type: string, format: uuid }
+            title: { type: [string, 'null'] }
+            unitName: { type: [string, 'null'] }
+            reason: { type: string }
+            setAt: { type: string, format: date-time }
+        status: { type: string, enum: [SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE, SEAT_VACANT, CHECKED] }
+        holders:
+          type: array
+          items:
+            type: object
+            properties:
+              accountId: { type: string, format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              name: { type: string }
+        incumbents:
+          type: array
+          items:
+            type: object
+            properties:
+              employeeId: { type: string, format: uuid }
+              name: { type: string }
+              kind: { type: string, enum: [PRIMARY, ACTING] }
+              accountId: { type: [string, 'null'], format: uuid }
+              hasRole: { type: boolean }
+        mismatches:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [HOLDER_NOT_SEATED, SEATED_WITHOUT_ROLE] }
+              accountId: { type: string, format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              name: { type: string }
+              incumbentKind: { type: string, enum: [PRIMARY, ACTING] }
+              reason: { type: string, enum: [NO_ACCOUNT, ACCOUNT_NOT_ACTIVE, NO_ROLE] }
+
     OrganizationReplayReport:
       type: object
       description: ORG-008-4c. What a rebuild kept and what no longer fits.
@@ -2908,6 +3114,11 @@ components:
             Present only when the view was opened by draftId. Null while that change set's base is
             still the newest publication.
           oneOf: [{ $ref: '#/components/schemas/OrganizationStaleBase' }, { type: 'null' }]
+        publishBlockedForSelf:
+          description: >
+            ORG-008-10. True when the view was opened by draftId and this session composed that change
+            set, so publish would answer 409 ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON.
+          type: boolean
         mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
         draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
         nodes: { type: array, items: { type: object } }

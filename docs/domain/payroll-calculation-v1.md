@@ -237,6 +237,8 @@ Periode tidak dapat diajukan bila ada blocker:
 - satu rekening dipakai lebih dari satu pegawai;
 - input periode berubah setelah perhitungan terakhir.
 
+Tiga blocker terakhir bersifat **tingkat periode**, bukan per pegawai, sehingga diperiksa pada lapisan periode saat perhitungan dijalankan, bukan di fungsi perhitungan per pegawai: satu rekening dipakai lebih dari satu pegawai, kebijakan statutori tidak tersedia untuk tanggal periode, dan input berubah setelah perhitungan terakhir (dibandingkan lewat `input_snapshot` hasil terakhir).
+
 Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang §10 butir 6, pegawai baru/keluar, input manual bernilai besar.
 
 ## 6. Lifecycle periode

@@ -50,6 +50,8 @@ function createPool(options: {
   published?: boolean;
   positions?: unknown[];
   bindings?: unknown[];
+  /** ORG-005-1: null when the work location does not exist. */
+  workLocationActive?: boolean | null;
 } = {}) {
   const permissions = options.permissions ?? ["organization.manage", "approvals.policy.manage"];
   const query = vi.fn(async (sql: string) => {
@@ -70,6 +72,11 @@ function createPool(options: {
       };
     }
     if (sql.includes("UPDATE auth_sessions SET last_seen_at")) return { rows: [], rowCount: 1 };
+    if (sql.includes("SELECT active FROM attendance_work_locations")) {
+      return options.workLocationActive === null || options.workLocationActive === undefined
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ active: options.workLocationActive }], rowCount: 1 };
+    }
     if (sql.includes("AS published")) return { rows: [{ published: options.published === true }], rowCount: 1 };
     if (sql.includes("INSERT INTO organization_audit_events")) return { rows: [], rowCount: 1 };
     if (sql.includes("SET revision = revision + 1")) return { rows: [{ revision: 2 }], rowCount: 1 };
@@ -271,5 +278,37 @@ describe("ORG-008 review: manual edits and refusals", () => {
     expect(statements.some((sql) => sql.includes("SET revision = revision + 1"))).toBe(true);
     expect(statements).toContain("ROLLBACK");
     expect(statements).not.toContain("COMMIT");
+  });
+});
+
+describe("ORG-005-1 a unit names the work location it works at", () => {
+  const LOCATION = "00000000-0000-4000-8000-000000000070";
+
+  it("links an active location and records it in the change list", async () => {
+    const { response, query } = await call("PATCH", nodeUrl, {
+      workLocationActive: true, payload: { workLocationId: LOCATION },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ workLocationId: LOCATION });
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO organization_nodes"));
+    expect((insert?.[1] as unknown[])[12]).toBe(LOCATION);
+    const line = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO organization_change_set_journal"));
+    expect(JSON.parse((line?.[1] as unknown[])[4] as string)).toMatchObject({ action: "node.updated", fields: ["workLocationId"] });
+  });
+
+  it("refuses an inactive or unknown location, and rolls back", async () => {
+    for (const workLocationActive of [false, null]) {
+      const { response, query } = await call("PATCH", nodeUrl, { workLocationActive, payload: { workLocationId: LOCATION } });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ code: "INVALID_WORK_LOCATION" });
+      expect(query.mock.calls.map(([sql]) => String(sql))).toContain("ROLLBACK");
+    }
+  });
+
+  it("clears the link without looking the location up", async () => {
+    const { response, query } = await call("PATCH", nodeUrl, { payload: { workLocationId: null } });
+    expect(response.statusCode).toBe(200);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("attendance_work_locations"))).toBe(false);
   });
 });

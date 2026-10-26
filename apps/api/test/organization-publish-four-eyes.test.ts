@@ -56,7 +56,8 @@ function createPool(options: { composers: string[]; principalType?: "EMPLOYEE" |
     }
     if (sql.includes("SET status = 'PUBLISHED'")) return { rows: [], rowCount: 1 };
     if (sql.includes("FROM organization_change_sets")) return { rows: [DRAFT_ROW], rowCount: 1 };
-    if (sql.includes("FROM organization_") || sql.includes("FROM employees") || sql.includes("FROM accounts")) {
+    if (sql.includes("FROM organization_") || sql.includes("FROM employees") || sql.includes("FROM accounts")
+      || sql.includes("FROM attendance_work_locations")) {
       return { rows: [], rowCount: 0 };
     }
     throw new Error(`Unexpected four-eyes SQL: ${sql}`);

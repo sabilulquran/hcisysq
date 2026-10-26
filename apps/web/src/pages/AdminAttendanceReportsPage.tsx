@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, DownloadCloud, 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { LegacyReportSection } from "@/components/attendance/reports/LegacyReportSection";
+import { ReportModelSection } from "@/components/attendance/reports/ReportModelSection";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
 import { listEmployees } from "@/lib/adminEmployees";
@@ -368,11 +369,16 @@ export function AdminAttendanceReportsPage() {
         </div>
       </Step>
 
-      <Step number="4" title="Laporan" hint="Pilih model laporan untuk lingkup di atas. Format sementara; model baru dan dokumen cetak menyusul.">
+      <Step number="4" title="Laporan" hint="Pilih model laporan untuk lingkup di atas, tampilkan, lalu cetak atau ekspor.">
         {pending || (rows?.changedCount ?? 0) > 0 ? (
           <p className="mb-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-xs text-warning-ink">Sebagian data belum ditarik atau berubah sejak ditarik. Tarik data dulu agar laporan memakai hasil terbaru.</p>
         ) : null}
-        <LegacyReportSection from={range.from} to={range.to} unitId={unitId} employeeId={employeeId} />
+        <ReportModelSection scope={scope} />
+        <details className="mt-6 border-t pt-4">
+          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Format lama (sesi kerja, data scan, jadwal, lembur)</summary>
+          <p className="mt-2 text-xs text-muted-foreground">Format ATT-009 untuk satu rilis lagi, sampai model baru menggantikannya.</p>
+          <div className="mt-3"><LegacyReportSection from={range.from} to={range.to} unitId={unitId} employeeId={employeeId} /></div>
+        </details>
       </Step>
     </AttendanceWorkforceShell>
   );

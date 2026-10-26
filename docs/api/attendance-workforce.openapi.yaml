@@ -326,6 +326,37 @@ paths:
         '404': { description: CALCULATION_NOT_FOUND }
         '409': { description: CALCULATION_ALREADY_FINISHED }
 
+  /admin/attendance/reports/{model}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceReportModel
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §7/§19.2 report models built from stored results only (D-14-11): `daily_grid`
+        (Laporan Harian grid, symbols §6.6, landscape), `employee_summary` (Rekapitulasi Pegawai with
+        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian). `format=json`
+        feeds the preview and, with `purpose=print`, the print document; `csv` (UTF-8 BOM) and `xlsx`
+        are downloads. Every print and export is audited as `attendance.report.exported` with model,
+        format, purpose, scope, range and row count only. At most 93 days and 50 000 employee-days.
+      parameters:
+        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail] } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, required: false, schema: { type: string, enum: [json, csv, xlsx], default: json } }
+        - { name: purpose, in: query, required: false, schema: { type: string, enum: [view, print], default: view } }
+      responses:
+        '200':
+          description: >-
+            json: `{ model, title, orientation, columns, groups[{ unitName, rows, subtotal }], total,
+            legend, header{ scope, period, printedBy, printedAt }, warnings{ notCalculated, changed,
+            provisional }, from, to }`; csv/xlsx: file attachment.
+        '400': { description: INVALID_REPORT_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '404': { description: REPORT_MODEL_NOT_FOUND }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE, CALCULATION_DATE_IN_FUTURE, or EXPORT_TOO_LARGE }
+
   /admin/attendance/transactions:
     get:
       tags: [Attendance]

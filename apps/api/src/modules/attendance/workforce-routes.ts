@@ -24,6 +24,7 @@ import {
   type CalculationRunner,
 } from "./calculation-runner.js";
 import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
+import { REPORT_MODELS, buildReportTable, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
@@ -34,6 +35,8 @@ import { attendanceTodayReadModel } from "./today.js";
 import { attendanceTransactions } from "./transactions.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// §13: a print or export larger than this asks the operator to narrow the scope (DRAFT, tune on Mi8VPS).
+const REPORT_ROW_LIMIT = 50_000;
 const clockSchema = z.object({
   action: z.enum(["check_in", "check_out"]),
   latitude: z.number().min(-90).max(90),
@@ -1918,6 +1921,78 @@ export async function registerAttendanceWorkforceRoutes(
       page: query.data.page,
       pageSize: query.data.pageSize,
     }));
+  });
+
+  // ATT-014 §7/§19.2 report models from stored results: preview (json), print document (json,
+  // purpose=print), CSV and XLSX. Every print and export is audited without personal data.
+  app.get("/admin/attendance/reports/:model", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ model: z.enum(Object.keys(REPORT_MODELS) as [ReportModel, ...ReportModel[]]) }).safeParse(request.params);
+    if (!params.success) return reply.status(404).send({ code: "REPORT_MODEL_NOT_FOUND", message: "Model laporan tidak dikenal." });
+    const query = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      format: z.enum(["json", "csv", "xlsx"]).default("json"),
+      purpose: z.enum(["view", "print"]).default("view"),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_REPORT_QUERY", message: "Filter laporan tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const scope = { unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null, from: query.data.from, to: query.data.to };
+    const data = await attendanceCalculationRows(pool, scope, { page: 1, pageSize: REPORT_ROW_LIMIT + 1 });
+    if (data.total > REPORT_ROW_LIMIT) {
+      return reply.status(422).send({ code: "EXPORT_TOO_LARGE", message: "Laporan terlalu besar. Persempit unit atau rentang tanggal." });
+    }
+    const table = buildReportTable(params.data.model, data.items, scope.from, scope.to);
+    const unitName = scope.unitId ? data.items.find((item) => item.unitId === scope.unitId)?.unitName ?? null : null;
+    const stamp = (value: Date) => new Intl.DateTimeFormat("id-ID", {
+      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta",
+    }).format(value);
+    const longDate = (value: string) => new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${value}T00:00:00Z`));
+    // Identity and meta of the owner-approved print mock-up: unit, employees, filter, work days, and
+    // when the data was calculated, separate from when and by whom it was printed.
+    const header = {
+      scope: scope.employeeId ? `Pegawai: ${data.items[0]?.employeeName ?? "-"}` : `Unit: ${unitName ?? "Semua unit"}`,
+      unit: unitName ?? (scope.unitId ? "-" : "Semua unit"),
+      employeeCount: new Set(data.items.map((item) => item.employeeId)).size,
+      filter: scope.employeeId ? `Satu pegawai (${data.items[0]?.employeeName ?? "-"})` : "Semua pegawai, semua sumber",
+      workDays: new Set(data.items.filter((item) => item.normal === 1).map((item) => item.workDate)).size,
+      period: `Periode ${longDate(scope.from)} – ${longDate(scope.to)}`,
+      calculatedAt: data.lastCalculatedAt ? `${stamp(new Date(data.lastCalculatedAt))} WIB` : "Belum ditarik",
+      printedBy: principal.email,
+      printedAt: `${stamp(new Date())} WIB`,
+    };
+    const warnings = {
+      notCalculated: data.summary.not_calculated ?? 0,
+      changed: data.changedCount,
+      provisional: data.items.some((item) => item.provisional),
+    };
+    if (query.data.format !== "json" || query.data.purpose === "print") {
+      await insertAudit(pool, principal.id, "attendance.report.exported", "attendance_report", null, {
+        model: params.data.model, format: query.data.format, purpose: query.data.purpose,
+        unitId: scope.unitId, employeeId: scope.employeeId, from: scope.from, to: scope.to, rows: data.total,
+      });
+    }
+    const filename = `hcis-kehadiran-${params.data.model}-${scope.from}-${scope.to}`;
+    if (query.data.format === "csv") {
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      return reply.send(reportCsv(table));
+    }
+    if (query.data.format === "xlsx") {
+      reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      reply.header("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      return reply.send(await reportXlsx(table, header));
+    }
+    return reply.send({ ...table, header, warnings, from: scope.from, to: scope.to });
   });
 
   // Kept for one release (ATT-014 §10): queues a calculation of every employee for one date.

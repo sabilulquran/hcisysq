@@ -827,3 +827,46 @@ Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi ko
 - **Tab Kalkulasi dihapus**; `/admin/attendance/calculation` dan `/admin/attendance/settings/recalculate`
   dialihkan langsung ke `/admin/attendance/reports`. Endpoint ATT-014-2 tidak berubah.
 - Manifest AUTH-011 (+1 route, jumlah 185) dan `attendance-workforce.openapi.yaml` diperbarui.
+
+### 19.11 Catatan implementasi ATT-014-4R (2026-10-26)
+
+- **Tiga model laporan pertama (D-14-11)** dibuat di server dari hasil tersimpan (`report-models.ts`):
+  **Laporan Harian (Grid Bulanan)** (simbol §6.6, kolom per tanggal dengan tanda akhir pekan, total
+  Normal, Riil, Presensi %, A, T, TL, C, lembur; lanskap), **Rekapitulasi Pegawai** (subtotal per unit
+  dan jumlah seluruhnya; Presensi % = Riil ÷ Normal, satu desimal), dan **Detail Harian**. Satu tabel
+  yang sama dipakai pratinjau, dokumen cetak, CSV, dan XLSX.
+- **Endpoint** `GET /admin/attendance/reports/{model}` (`attendance.reports.read`), `format=json|csv|xlsx`,
+  `purpose=view|print`, maks 93 hari dan 50 000 pegawai-hari (`422 EXPORT_TOO_LARGE`, DRAFT). Setiap
+  **cetak** (`purpose=print`) dan **ekspor** (csv/xlsx) diaudit `attendance.report.exported` dengan model,
+  format, tujuan, lingkup, rentang, dan jumlah baris saja. Pratinjau di layar tidak diaudit.
+- **Dokumen cetak mengikuti mock-up yang disetujui owner (2026-10-26):** halaman tersendiri
+  `/admin/attendance/reports/print` di tab baru, hanya lembar kertas (tanpa kerangka admin), lalu dialog
+  cetak terbuka otomatis. Kop: lambang di kiri, nama yayasan dan satu baris alamat, garis 1,4pt. Judul di
+  tengah, huruf besar, serif, dengan baris periode. Blok identitas (unit, jumlah pegawai, penyaring, hari
+  kerja) dan kotak meta bergaris kiri tebal berisi **Data dihitung**, **Dicetak**, **Dicetak oleh**
+  secara terpisah. Tabel: kolom Pegawai 48mm (nama + NIP), kolom tanggal 5,4mm, rekap 9mm, libur berlatar
+  abu sangat tipis, angka `tabular-nums`, judul kolom berulang di tiap halaman, baris tidak terpotong,
+  unit berikutnya mulai di halaman baru, jumlah seluruhnya sekali di akhir. Legenda di bawah tabel, dan
+  "Tidak lengkap" serta "Tidak tercatat" dijelaskan satu kalimat di lembarnya.
+- **Kolom mengikuti mock-up:** grid bulanan merekap Hadir, Telat, Tdk lengkap, Cuti/Izin, Tdk hadir;
+  Rekapitulasi Pegawai memuat Hari kerja, Hadir, Terlambat, Menit telat, Tidak lengkap, Cuti/Izin, Tidak
+  hadir, Lembur, ditambah Presensi % (§6.3). Judul di kertas: "Laporan Kehadiran Harian", "Rekapitulasi
+  Kehadiran Pegawai", "Detail Kehadiran Harian".
+- **Orientasi** memakai named page (`page: lanskap | potret`). **Nomor halaman "Halaman n dari N"**
+  dan kalimat pembuat netral di kaki memakai *page margin box* CSS (`@bottom-left`, `@bottom-right`,
+  `counter(pages)`). Keputusan teknis: tanpa pustaka paged media dan tanpa PDF dari server. Margin box
+  hanya tampil di margin halaman yang tidak nol, sehingga padding lembar pada mock-up (10/12mm lanskap,
+  14mm potret) dipakai sebagai margin `@page`; hasil visualnya sama. **Diverifikasi 2026-10-26** dengan
+  mencetak lembar sintetis ke PDF memakai Chrome 155: nomor halaman, kalimat kaki, judul kolom berulang,
+  dan campuran lanskap/potret tampil. Chrome dan Edge versi 131 ke atas mendukungnya; Firefox dan Safari
+  mencetak tanpa nomor halaman, dan hal itu disebutkan di bilah layar dokumen cetak.
+- **Kop (D-14-10, ditetapkan owner 2026-10-26):** lambang lengkap yayasan yang sudah ada di repo
+  (`apps/web/src/assets/brand/ysq-mark.png`, berlatar sendiri sehingga tetap terbaca di kertas putih dan
+  cetak hitam putih) dengan nama yayasan sebagai teks serif dan baris "hcis.sabilulquran.or.id". Wordmark
+  emas dan logo putih tidak dipakai di kertas. Semua nilai kop dan kalimat kaki ada di satu berkas (`apps/web/src/lib/reportLetterhead.ts`). Blok tanda
+  tangan "Mengetahui" opsional di kanan bawah, mati secara bawaan, dinyalakan di berkas yang sama. Tanpa
+  QR atau tautan verifikasi.
+- **Langkah ④** kini memakai model baru (Tampilkan, Cetak, Excel, CSV). Format ATT-009 lama (sesi kerja,
+  data scan, jadwal, lembur) tetap tersedia di bagian "Format lama" yang tertutup secara bawaan untuk
+  satu rilis.
+- Manifest AUTH-011 (+1 route, jumlah 186) dan `attendance-workforce.openapi.yaml` diperbarui.

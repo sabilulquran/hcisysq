@@ -533,9 +533,9 @@ Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1
 - Manifest AUTH-011 (4 route baru, finalize pindah permission; jumlah route permission 184) dan
   `attendance-workforce.openapi.yaml` diperbarui.
 
-## 19. Revisi R1 — Kalkulasi sebagai langkah di dalam Laporan, dan cetak yang rapi (DRAFT, menunggu owner)
+## 19. Revisi R1 — Laporan, cetak, perbaikan absen (DRAFT, menunggu owner)
 
-**Status:** usulan. Tidak ada kode yang ditulis untuk revisi ini sampai owner menyetujui D-14-8 … D-14-11.
+**Status:** usulan. Owner meminta **tidak ada kode** untuk butir mana pun sampai rencana ini disetujui (D-14-8 … D-14-15).
 **Pemicu:** umpan balik owner setelah mencoba rilis `hcis-254caa95` (diteruskan sesi koordinasi,
 2026-10-26), dalam kata-kata spesifikasi ini:
 
@@ -544,6 +544,10 @@ Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1
    → pilih model laporan → tampilkan.
 2. Cetak saat ini mencetak satu halaman web utuh (`window.print()` pada halaman admin). Yang
    dibutuhkan adalah dokumen cetak yang manusiawi.
+3. Koreksi HC: tanggal sudah dipilih, tetapi saat mengisi jam, tanggal harus dipilih ulang (§19.5).
+4. Klarifikasi dan Koreksi HC sebaiknya satu tab: pegawai mengajukan lewat HCIS, HC menginput dari
+   panel admin (§19.6).
+5. Istilah "Bukti HP" tidak jelas (§19.7).
 
 Arah ATT-014 tidak berubah: kehadiran tetap **tidak dihitung otomatis**, hasil resmi tetap dari
 engine ATT-007 lewat run Kalkulasi, dan D-14-1 … D-14-4 tetap berlaku. Yang berubah adalah **di mana**
@@ -623,3 +627,141 @@ uji render); setiap cetak dan ekspor teraudit.
 | D-14-9 | Tab Kalkulasi dihapus dan alamatnya dialihkan ke Laporan; halaman Laporan ATT-009 lama digantikan alur §19.1. | Ya. |
 | D-14-10 | Kop cetak: nama yayasan dan logo yang dipakai; perlu kolom tanda tangan "Mengetahui"? | Kirim teks kop dan berkas logo resmi; tanda tangan opsional, mati secara bawaan. |
 | D-14-11 | Model laporan yang dibuat pertama. | **Laporan Harian (Grid Bulanan)**, **Rekapitulasi Pegawai**, **Detail Harian**; sisanya menyusul. |
+| D-14-12 | PR #170 (perbaikan form HC, sudah terlanjur dibuat, kini draft): dipakai sebagai dasar atau ditutup? | Dipakai sebagai dasar, ditambah form pegawai (§19.5). |
+| D-14-13 | Pemeriksaan read-only data koreksi lama di production, dan bila ada baris: status `superseded` dengan migration aditif kecil. | Ya untuk pemeriksaan; `superseded` hanya bila pemeriksaan menemukan baris. |
+| D-14-14 | Nama tab gabungan Klarifikasi + Koreksi HC. | **"Perbaikan Absen"**. Alternatif: "Klarifikasi & Koreksi". |
+| D-14-15 | "Bukti HP": ganti nama menjadi "Absen dari HP", hapus tab sendiri, tampil sebagai bukti pendukung, filter tinjauan tersembunyi selama absen HP mati. | Ya. |
+
+### 19.5 Butir 3 — bug tanggal pada Koreksi HC dan pengajuan pegawai
+
+**Masalah (diverifikasi di `main` 2026-10-26).** Form Koreksi HC (`AdminAttendancePage.tsx`) mengirim
+`workDate` dari field Tanggal, tetapi jam masuk/pulang berasal dari input `datetime-local` yang membawa
+tanggalnya sendiri (bawaan hari ini). Form pengajuan klarifikasi pegawai
+(`EmployeeMobileAttendancePage.tsx`, mode koreksi) memakai pola `datetime-local` yang sama. API
+(`manualCorrectionSchema`, `clarificationSchema`) hanya memeriksa format. Akibatnya koreksi untuk
+20 Oktober bisa tersimpan dengan stempel 26 Oktober dan ikut dihitung engine.
+
+**Rencana perbaikan:**
+
+1. Form HC dan form pegawai memakai satu **Tanggal kerja** plus jam saja (`type="time"`), dengan
+   centang eksplisit "Pulang keesokan hari (+1 hari)" untuk shift yang berakhir lewat tengah malam.
+2. API menolak dengan `422` **sebelum menulis apa pun**, untuk koreksi HC, pengajuan pegawai, dan
+   keputusan HC atas pengajuan:
+   `CHECK_IN_OUTSIDE_WORK_DATE` (jam masuk bukan pada tanggal kerja, WIB),
+   `CHECK_OUT_OUTSIDE_WORK_DATE` (jam pulang bukan pada tanggal kerja atau keesokan harinya),
+   `CHECK_OUT_BEFORE_CHECK_IN` (jam pulang tidak setelah jam masuk, atau lebih dari 24 jam sesudahnya).
+3. Test unit untuk jendela (termasuk 00:30 WIB dan shift malam), test route (422 tanpa query database,
+   permission tetap diperiksa lebih dulu), test form web.
+
+**Yang sudah terlanjur dibuat sebelum instruksi "jangan koding":** branch `claude/att-hc-correction-date`,
+commit `fix(attendance): keep Koreksi HC times on the selected work date`, PR #170 — kini **draft** dan
+tidak akan di-merge tanpa keputusan owner. Isinya butir 1–3 di atas **untuk form HC saja** (belum form
+pegawai). Pilihan untuk owner (D-14-12): (a) pakai PR #170 sebagai dasar lalu tambah form pegawai, atau
+(b) tutup PR #170 dan kerjakan ulang setelah seluruh rencana disetujui. Usulan: (a).
+
+**Data yang mungkin sudah tersimpan keliru.**
+
+*Pemeriksaan read-only* (dijalankan hanya dengan persetujuan owner, lewat `ssh mi8vps`, di dalam
+`BEGIN TRANSACTION READ ONLY`, keluaran hanya id, tanggal, dan hitungan — tanpa nama atau NIP):
+
+```sql
+BEGIN TRANSACTION READ ONLY;
+SELECT c.id, c.work_date, c.status, c.mode, c.kind,
+       (c.proposed_check_in_at  AT TIME ZONE 'Asia/Jakarta')::date AS check_in_date,
+       (c.proposed_check_out_at AT TIME ZONE 'Asia/Jakarta')::date AS check_out_date,
+       EXISTS (SELECT 1 FROM attendance_clarification_events e
+               WHERE e.clarification_id = c.id
+                 AND e.payload->>'administrativeCorrection' = 'true') AS by_hc
+FROM attendance_clarifications c
+WHERE c.mode = 'correction'
+  AND (
+    (c.proposed_check_in_at IS NOT NULL
+      AND (c.proposed_check_in_at AT TIME ZONE 'Asia/Jakarta')::date <> c.work_date)
+    OR (c.proposed_check_out_at IS NOT NULL
+      AND (c.proposed_check_out_at AT TIME ZONE 'Asia/Jakarta')::date NOT IN (c.work_date, c.work_date + 1))
+    OR (c.proposed_check_in_at IS NOT NULL AND c.proposed_check_out_at IS NOT NULL
+      AND c.proposed_check_out_at <= c.proposed_check_in_at)
+  )
+ORDER BY c.work_date;
+ROLLBACK;
+```
+
+*Bila tidak ada baris:* catat hasilnya di catatan rilis, tidak ada tindakan data.
+
+*Bila ada baris:* data scan asli dan baris klarifikasi **tidak dihapus atau diubah** (append-only).
+Yang diusulkan (D-14-13):
+
+1. Laporkan daftar id + tanggal kepada owner dan HC; HC memastikan jam yang benar untuk tiap kasus.
+2. Tambah transisi status baru **`superseded`** ("Digantikan") untuk klarifikasi `approved`, hanya oleh
+   pemegang `attendance.records.manage`, wajib alasan, tercatat di `attendance_clarification_events`
+   dan audit `attendance.clarification.superseded`. Engine mengabaikan klarifikasi `superseded`
+   (input hasil berubah, sehingga versi hasil baru terbentuk dan versi lama tetap sebagai riwayat).
+   Ini butuh migration aditif kecil (memperluas CHECK status) dan review tambahan.
+3. HC memasukkan koreksi baru yang benar untuk tanggal yang tepat, lalu **Tarik data** untuk rentang itu.
+4. Kasus `submitted` (belum diputuskan) cukup ditolak HC dengan catatan "tanggal dan jam tidak
+   sejalan; ajukan ulang".
+
+Alternatif tanpa migration: biarkan baris lama dan hanya tambahkan koreksi benar. **Tidak
+disarankan**, karena koreksi lama tetap dipakai engine pada tanggal yang salah.
+
+### 19.6 Butir 4 — Klarifikasi dan Koreksi HC menjadi satu tab
+
+**Pengamatan.** Keduanya sudah satu model di backend: koreksi HC disimpan sebagai baris
+`attendance_clarifications` (`mode='correction'`, `kind='other'`, langsung `approved`) dengan event
+`submitted` + `approved` berpayload `administrativeCorrection: true`. Yang terpisah hanya layar dan
+permission: daftar klarifikasi butuh `attendance.clarification.manage`, input koreksi HC butuh
+`attendance.records.manage`. Daftar admin sekarang dibatasi `LIMIT 500` tanpa halaman (melanggar
+usulan ENG-LIST-001).
+
+**Usulan:**
+
+| Aspek | Rencana |
+|---|---|
+| Nama tab | **"Perbaikan Absen"** (D-14-14; alternatif "Klarifikasi & Koreksi"). Tab "Koreksi HC" dihapus; alamatnya dialihkan. |
+| Satu daftar | Semua klarifikasi dan koreksi, berhalaman, terbaru dulu. Filter: status (Menunggu, Disetujui, Ditolak, Dibatalkan, Digantikan), asal, jenis (koreksi jam / alasan), unit, rentang tanggal kerja, cari pegawai. Bawaan: Menunggu. |
+| Asal pengajuan | Kolom **Asal**: "Diajukan pegawai" atau "Diinput HC", diturunkan dari event `submitted` yang sudah ada (tanpa kolom baru). Koreksi HC tampil langsung "Disetujui" dengan nama penginput. |
+| Input HC | Tombol **"Input koreksi"** di tab yang sama (hanya untuk `attendance.records.manage`), membuka form §19.5. |
+| Keputusan | Pengajuan pegawai diputuskan dari panel detail (setujui/tolak + catatan), seperti sekarang. |
+| Bukti pendukung | Panel detail menampilkan scan asli hari itu, hasil terakhir, dan — bila ada — bukti absen HP (§19.7). |
+| Permission | Tab terlihat dengan `attendance.clarification.manage` **atau** `attendance.records.manage`; tiap aksi tetap memeriksa permission-nya sendiri di API. Tidak ada permission baru. |
+| Backend | Model data **sudah cukup**; tidak perlu disatukan. Yang ditambah: daftar admin berhalaman + filter asal, dan validasi §19.5. `POST /admin/attendance/manual-corrections` tetap sebagai jalur input HC. |
+
+Batas tetap: data scan asli tidak pernah diubah; setiap perbaikan adalah fakta baru dengan alasan dan
+jejak keputusan.
+
+### 19.7 Butir 5 — "Bukti HP"
+
+**Fakta production (diperiksa read-only oleh sesi koordinasi 2026-10-26):** `MOBILE_ATTENDANCE_ENABLED`
+tidak ada di `final.env` (absen dari HP mati), dan `attendance_mobile_evidence` hanya berisi 3 baris
+lama. Tab itu praktis kosong.
+
+**Usulan (D-14-15):**
+
+1. Label diganti menjadi **"Absen dari HP"** di mana pun tampil; isinya dijelaskan sebagai "lokasi GPS
+   dan foto saat pegawai absen lewat HP".
+2. Tab sendiri **dihapus**. Bukti absen HP tampil sebagai **bukti pendukung** di panel detail Perbaikan
+   Absen dan di baris Data Transaksi Laporan (sumber "HP"), dengan tombol "Lihat foto" per bukti.
+3. Selama absen HP mati, filter "Absen HP perlu ditinjau" di Perbaikan Absen disembunyikan. Saat aktif,
+   filter itu menggantikan fungsi tab lama (bukti di luar radius yang perlu ditinjau).
+4. Aturan ATT-006 tetap: foto dibuka satu per satu lewat endpoint yang sudah ada, setiap pembukaan
+   tercatat `attendance.mobile.photo.read`, tidak ada galeri atau unduhan massal.
+5. Alamat lama `/admin/attendance/mobile-evidence` dialihkan ke Perbaikan Absen.
+
+### 19.8 Menu Kehadiran setelah R1
+
+```text
+Kehadiran:  Pantauan Hari Ini | Laporan | Perbaikan Absen
+            (sebelumnya: Pantauan Hari Ini | Kalkulasi | Klarifikasi | Bukti HP | Koreksi HC | Laporan)
+```
+
+### 19.9 Urutan paket setelah disetujui
+
+| Urutan | Paket | Isi | Migration |
+|---|---|---|---|
+| 1 | **ATT-FIX-1** Tanggal koreksi | §19.5 butir 1–3 (form HC + form pegawai + validasi API). | Tidak. |
+| 2 | **ATT-FIX-2** Pemeriksaan data lama | Jalankan kueri read-only §19.5 dengan persetujuan owner; laporkan. Bila ada baris: status `superseded` + alur penggantian. | Hanya bila ada baris (aditif). |
+| 3 | **ATT-014-3R** Alur Laporan | §19.1. | Tidak. |
+| 4 | **ATT-011-3R** Perbaikan Absen | §19.6 + §19.7. | Tidak. |
+| 5 | **ATT-014-4R** Cetak + model laporan | §19.2, model sesuai D-14-11. | Tidak. |
+
+Setiap paket satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.

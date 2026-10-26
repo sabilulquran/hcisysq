@@ -46,17 +46,16 @@ Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Keha
 | Jadwal → Pola jadwal | `/admin/attendance/schedules` | `attendance.schedule.manage` |
 | Jadwal → Jadwal per tanggal | `/admin/attendance/schedules/dates` | `attendance.schedule.manage` |
 | Jadwal → Tukar shift | `/admin/attendance/schedules/swaps` | `attendance.shift_swap.manage` |
-| Kehadiran → Harian | `/admin/attendance/daily` | `attendance.reports.read` |
-| Kehadiran → Klarifikasi | `/admin/attendance/clarifications` | `attendance.clarification.manage` |
-| Kehadiran → Bukti HP | `/admin/attendance/mobile-evidence` | `attendance.clarification.manage` |
-| Kehadiran → Koreksi HC | `/admin/attendance/corrections` | `attendance.records.manage` |
-| Kehadiran → Laporan | `/admin/attendance/reports` | `attendance.reports.read` |
+| Kehadiran → Pantauan Hari Ini | `/admin/attendance/daily` | `attendance.reports.read` |
+| Kehadiran → Perbaikan Absen (ATT-011-3R) | `/admin/attendance/corrections` | `attendance.clarification.manage` (memutuskan pengajuan) atau `attendance.records.manage` (input koreksi) |
+| Kehadiran → Laporan (ATT-014 §19.1) | `/admin/attendance/reports` | `attendance.reports.read`; tombol Tarik data butuh `attendance.calculation.run` |
 | Lembur | `/admin/attendance/overtime` | `attendance.overtime.manage` |
 | Mesin Fingerprint | `/admin/attendance/adms` | `attendance.devices.read` |
 | Pengaturan → Lokasi kerja | `/admin/attendance/settings/locations` | `attendance.schedule.manage` |
-| Pengaturan → Finalisasi ulang | `/admin/attendance/settings/recalculate` | `attendance.policy.manage` |
 
-Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis. `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Koreksi HC.
+Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis; `/admin/attendance/settings/recalculate` (Finalisasi ulang) dan `/admin/attendance/calculation` (Kalkulasi) dialihkan ke Laporan sejak ATT-014-3R; Kalkulasi kini langkah "Tarik data" di dalam Laporan. Sejak ATT-011-3R, `/admin/attendance/clarifications` dialihkan ke Perbaikan Absen dan `/admin/attendance/mobile-evidence` ke Laporan → Data Transaksi dengan penyaring sumber HP; GPS dan foto absen HP dibuka dari detail baris (hanya `attendance.clarification.manage`). `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Perbaikan Absen.
+
+**Koreksi HC — tanggal kerja (perbaikan 2026-10-26).** Form memakai satu **Tanggal kerja** dan jam saja (`type="time"`), sehingga tanggal tidak bisa berbeda antar-field. Jam pulang lewat tengah malam ditandai eksplisit "Pulang keesokan hari (+1 hari)". Form pengajuan klarifikasi pegawai (mode koreksi) memakai pola yang sama: tanggal kerja tetap dari hari kerja, pegawai hanya mengisi jam. API `POST /admin/attendance/manual-corrections` dan `POST /attendance/clarifications` (mode koreksi) menolak dengan `422` sebelum menulis apa pun bila jam masuk tidak jatuh pada tanggal kerja (WIB), jam pulang tidak pada tanggal kerja atau keesokan harinya, atau jam pulang tidak setelah jam masuk / lebih dari 24 jam sesudahnya. Menyetujui pengajuan lama yang jamnya tidak sejalan dengan tanggal kerjanya juga ditolak `422`; pengajuan seperti itu hanya bisa ditolak. Rencana: ATT-014 §19.5 (D-14-12). Sebelumnya field jam memakai `datetime-local` dengan tanggal terpisah (default hari ini), sehingga koreksi untuk 20 Oktober bisa tersimpan dengan stempel 26 Oktober dan ikut dihitung engine.
 
 Back Office ADMS:
 

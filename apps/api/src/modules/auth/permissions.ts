@@ -13,9 +13,16 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
-  "attendance.devices.operate", "attendance.devices.export",
+  "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
 ] as const;
+
+/**
+ * ORG-008-8 (O-1, owner decision 2026-10-24): the second pair of eyes. It reads the structure and
+ * holds approvals.policy.manage in full as AUTH-011 defines it; it holds no operational HC permission.
+ */
+export const HC_LEAD_ROLE_KEY = "human_capital_lead";
+export const HC_LEAD_PERMISSIONS = ["organization.manage", "approvals.policy.manage"] as const;
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;
@@ -38,7 +45,7 @@ export const ADMIN_PERMISSIONS = [
   "attendance.devices.technical",
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
-  "attendance.shift_swap.manage",
+  "attendance.shift_swap.manage", "attendance.calculation.run",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 

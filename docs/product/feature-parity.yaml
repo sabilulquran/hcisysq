@@ -449,11 +449,11 @@ features:
   - id: PAY-003
     module: payroll
     name: Payroll calculation, review, reconciliation, payment handoff, and publication
-    legacy_evidence: none recorded for the new engine; product owner accepted payroll calculation in HCIS scope on 2026-09-18
-    target_status: planned
-    priority: later
+    legacy_evidence: legacy payroll flow audited 2026-10-23 (seven spreadsheets, three Apps Script projects); product owner decided payroll is calculated in HCIS on 2026-10-23
+    target_status: specified
+    priority: now
     risk: critical
-    planning_note: Payroll is an explicit HCIS roadmap item but remains discovery. Direction now requires component catalog, effective-dated recurring compensation, period adjustments, resolved attendance/overtime/leave inputs, composable processors, exact-money arithmetic, versioned statutory policies/profiles, employee deductions separated from employer/company cost, review/reconciliation/finalization, controlled reopen/revision, payment handoff, publication, history, and cutover from PAY-001/PAY-002. PAY-001/PAY-002 remain authoritative until PAY-003 is separately implemented and accepted.
+    planning_note: Payroll is an explicit HCIS roadmap item but remains discovery. Direction now requires component catalog, effective-dated recurring compensation, period adjustments, resolved attendance/overtime/leave inputs, composable processors, exact-money arithmetic, versioned statutory policies/profiles, employee deductions separated from employer/company cost, review/reconciliation/finalization, controlled reopen/revision, payment handoff, publication, history, and cutover from PAY-001/PAY-002. ADR-0003 is ACCEPTED (2026-10-27) and docs/domain/payroll-calculation-v1.md is the v1 specification, so staged implementation may start. PAY-001/PAY-002 remain authoritative until the PAY-003 parallel run passes.
     docs:
       - docs/domain/payroll-engine-discovery.md
       - docs/domain/payroll-legacy-flow-audit.md

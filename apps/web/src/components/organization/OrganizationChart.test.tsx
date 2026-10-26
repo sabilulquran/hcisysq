@@ -89,8 +89,9 @@ describe("Organization Designer chart", () => {
       />,
     );
 
-    expect(html).toContain("Start organization structure");
-    expect(html).toContain("Buat draft struktur");
+    // ORG-008-1 §3 kamus istilah: the guided empty state speaks the operator's language.
+    expect(html).toContain("Belum ada struktur");
+    expect(html).toContain("Mulai perubahan struktur");
   });
 
   it("keeps structural parentage unchanged when a child has a visual offset", () => {
@@ -184,7 +185,7 @@ describe("Organization Designer chart", () => {
       />,
     );
 
-    expect(html).toContain("VACANT · Belum ada pejabat");
-    expect(html).toContain("Tampilan 2 tingkat lebih rendah");
+    expect(html).toContain("Kosong · belum ada pejabat");
+    expect(html).toContain("Tampilan: turun 2 tingkat");
   });
 });

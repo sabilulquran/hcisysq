@@ -1,9 +1,6 @@
 import { AlertTriangle, Download, Loader2, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
-import { listEmployees } from "@/lib/adminEmployees";
 import { ATTENDANCE_STATUSES, attendanceSourceLabel, attendanceStatusLabel, requestStatusLabel, scanEventLabel } from "@/lib/attendanceLabels";
 import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
 import { getCurrentSession } from "@/lib/auth";
@@ -16,15 +13,6 @@ import {
   type AttendanceReportType,
 } from "@/lib/workforceAttendance";
 
-function todayJakarta() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
-}
-function monthStart(value: string) { return value.slice(0, 8) + "01"; }
-function shiftDate(value: string, days: number) {
-  const date = new Date(value + "T00:00:00Z");
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
 function formatTimestamp(value: unknown) {
   if (!value) return "—";
   const date = new Date(String(value));
@@ -125,8 +113,6 @@ const columns: Record<AttendanceReportType, Array<[string, string]>> = {
 };
 
 type Filters = {
-  employeeId: string;
-  unitId: string;
   scheduleId: string;
   locationId: string;
   source: "" | "adms" | "mobile" | "manual";
@@ -135,18 +121,16 @@ type Filters = {
 };
 
 const emptyFilters: Filters = {
-  employeeId: "", unitId: "", scheduleId: "", locationId: "", source: "", deviceId: "", status: "",
+  scheduleId: "", locationId: "", source: "", deviceId: "", status: "",
 };
 
-export function AdminAttendanceReportsV2Page() {
-  const today = todayJakarta();
+/**
+ * ATT-014 §19.1 step ④, interim: the ATT-009 report formats for the scope chosen in step ①, until the
+ * new report models and print documents of ATT-014-4R replace them.
+ */
+export function LegacyReportSection({ from, to, unitId, employeeId }: { from: string; to: string; unitId: string; employeeId: string }) {
   const [type, setType] = useState<AttendanceReportType>("detail");
-  const [from, setFrom] = useState(monthStart(today));
-  const [to, setTo] = useState(today);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
-  const [employee, setEmployee] = useState<PickedEmployee | null>(null);
-  const [canFilterEmployees, setCanFilterEmployees] = useState(false);
-  const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
   const [schedules, setSchedules] = useState<Array<{ id: string; name: string }>>([]);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [devices, setDevices] = useState<AdmsDevice[]>([]);
@@ -156,10 +140,6 @@ export function AdminAttendanceReportsV2Page() {
   // K-8: load only the filter catalogs this account may read; a missing one hides its filter.
   useEffect(() => {
     void getCurrentSession().then((session) => {
-      if (hasPermission(session, "employees.manage")) {
-        setCanFilterEmployees(true);
-        void listEmployees({ pageSize: 1, status: "active" }).then((page) => setUnits(page.filters.units)).catch(() => undefined);
-      }
       if (hasPermission(session, "attendance.schedule.manage")) {
         void listAttendanceSchedules()
           .then((result) => setSchedules(result.items.filter((item) => item.active).map((item) => ({ id: item.id, name: item.name }))))
@@ -179,13 +159,13 @@ export function AdminAttendanceReportsV2Page() {
     from,
     to,
     ...(filters.status && type === "detail" ? { status: filters.status } : {}),
-    ...(filters.employeeId ? { employeeId: filters.employeeId } : {}),
-    ...(filters.unitId ? { unitId: filters.unitId } : {}),
+    ...(employeeId ? { employeeId } : {}),
+    ...(unitId ? { unitId } : {}),
     ...(filters.scheduleId ? { scheduleId: filters.scheduleId } : {}),
     ...(filters.locationId ? { locationId: filters.locationId } : {}),
     ...(filters.source ? { source: filters.source } : {}),
     ...(filters.deviceId ? { deviceId: filters.deviceId } : {}),
-  }), [type, from, to, filters]);
+  }), [type, from, to, unitId, employeeId, filters]);
 
   useEffect(() => {
     setBusy(true);
@@ -233,29 +213,16 @@ export function AdminAttendanceReportsV2Page() {
   };
 
   return (
-    <AttendanceWorkforceShell tab="reports" title="Laporan" description="Rekap kehadiran, data scan, jadwal, dan lembur untuk periode yang dipilih.">
+    <>
       {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" />{error}</div> : null}
 
       <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="text-xs font-semibold text-muted-foreground">Jenis laporan
+          <label className="text-xs font-semibold text-muted-foreground">Model laporan
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={type} onChange={(e) => changeType(e.target.value as AttendanceReportType)}>
               {Object.entries(labels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
-          <label className="text-xs font-semibold text-muted-foreground">Dari
-            <input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="text-xs font-semibold text-muted-foreground">Sampai
-            <input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </label>
-          {canFilterEmployees ? <EmployeeSearchField label="Pegawai (kosong = semua)" value={employee} onChange={(picked) => { setEmployee(picked); setFilters({ ...filters, employeeId: picked?.id ?? "" }); }} /> : null}
-          {units.length > 0 ? <label className="text-xs font-semibold text-muted-foreground">Unit
-            <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.unitId} onChange={(e) => setFilters({ ...filters, unitId: e.target.value })}>
-              <option value="">Semua unit</option>
-              {units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label> : null}
           {type === "detail" ? <label className="text-xs font-semibold text-muted-foreground">Status
             <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
               <option value="">Semua status</option>
@@ -292,8 +259,6 @@ export function AdminAttendanceReportsV2Page() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" className="h-10 rounded-xl border px-3 text-xs font-bold" onClick={() => { setFrom(monthStart(today)); setTo(today); }}>Bulan ini</button>
-          <button type="button" className="h-10 rounded-xl border px-3 text-xs font-bold" onClick={() => { setFrom(shiftDate(today, -6)); setTo(today); }}>7 hari terakhir</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={exportCsv}><Download className="h-4 w-4" /> Ekspor CSV</button>
           <button type="button" className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50" disabled={!data?.items.length} onClick={() => window.print()}><Printer className="h-4 w-4" /> Cetak / PDF</button>
         </div>
@@ -306,6 +271,6 @@ export function AdminAttendanceReportsV2Page() {
         {busy ? <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat laporan…</div> :
           <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr>{visibleColumns.map(([key, label]) => <th key={key} className="p-3 whitespace-nowrap">{label}</th>)}</tr></thead><tbody className="divide-y">{(data?.items ?? []).map((row, index) => <tr key={String(row.id ?? row.employeeId ?? index) + ":" + String(row.workDate ?? index)}>{visibleColumns.map(([key]) => <td key={key} className="p-3 whitespace-nowrap">{cell(key, row[key])}</td>)}</tr>)}{data && data.items.length === 0 ? <tr><td colSpan={visibleColumns.length} className="p-8 text-center text-muted-foreground">Tidak ada data pada filter ini.</td></tr> : null}</tbody></table></div>}
       </section>
-    </AttendanceWorkforceShell>
+    </>
   );
 }

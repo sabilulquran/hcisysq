@@ -85,8 +85,13 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/AttendanceClarificationInput' }
+      description: >-
+        For mode `correction`, proposed times must belong to `workDate` (same rule as
+        POST /admin/attendance/manual-corrections); checked before any write.
       responses:
         '201': { description: Clarification submitted }
+        '400': { description: INVALID_CLARIFICATION }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /attendance/clarifications/me:
     get:
@@ -110,13 +115,25 @@ paths:
       tags: [Attendance]
       operationId: listAttendanceClarificationsForHc
       x-required-permission: attendance.clarification.manage
+      description: >-
+        ATT-011-3R Perbaikan Absen. Employee requests and HC corrections in one paginated list, newest
+        work date first. Readable with attendance.clarification.manage **or** attendance.records.manage;
+        deciding and entering corrections keep their own permission. `origin` is `employee` or `hc`
+        (an HC correction's submitted event carries administrativeCorrection). `submittedCount` counts
+        all open requests regardless of the filter.
       parameters:
-        - name: status
-          in: query
-          required: false
-          schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [all, submitted, approved, rejected, cancelled], default: submitted } }
+        - { name: origin, in: query, required: false, schema: { type: string, enum: [all, employee, hc], default: all } }
+        - { name: mode, in: query, required: false, schema: { type: string, enum: [all, correction, justification], default: all } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 120 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
       responses:
-        '200': { description: Clarification queue or history filtered by status }
+        '200': { description: '`{ page, pageSize, total, totalPages, submittedCount, items }`; each item adds `origin` and `decidedByEmail`.' }
+        '400': { description: INVALID_CLARIFICATION_FILTER }
+        '403': { description: Neither attendance.clarification.manage nor attendance.records.manage }
 
   /admin/attendance/clarifications/{clarificationId}/decision:
     post:
@@ -135,8 +152,13 @@ paths:
               properties:
                 decision: { type: string, enum: [approve, reject] }
                 note: { type: [string, 'null'], maxLength: 2000 }
+      description: >-
+        Approving a correction whose proposed times do not belong to its work date (submitted before
+        the work-date check existed) is refused with 422; such a request can only be rejected.
       responses:
         '200': { description: Decision stored and result recomputed }
+        '409': { description: CLARIFICATION_ALREADY_DECIDED }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /admin/attendance/work-locations:
     get:
@@ -175,6 +197,36 @@ paths:
             schema: { $ref: '#/components/schemas/AttendanceScheduleInput' }
       responses:
         '201': { description: Schedule template created }
+        '422': { description: SCHEDULE_EFFECTIVE_FROM_IN_FUTURE }
+
+  /admin/attendance/schedules/{scheduleId}/backdate:
+    post:
+      tags: [Attendance]
+      operationId: backdateAttendanceSchedule
+      x-required-permission: attendance.schedule.manage
+      description: >-
+        ATT-014 §20.10 "Mundurkan awal berlaku". Moves the start of the shift's first version to an
+        earlier date (00:00 WIB), so schedule patterns on earlier dates resolve to this shift. Only
+        earlier, never in the future; audited as `attendance.schedule.backdated` with the previous start
+        and the reason. Results already calculated change only when Kalkulasi runs again.
+      parameters:
+        - { name: scheduleId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effectiveFrom, reason]
+              properties:
+                effectiveFrom: { type: string, format: date }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200': { description: '`{ id, versionId, effectiveFrom }`' }
+        '400': { description: INVALID_SCHEDULE_BACKDATE }
+        '403': { description: Missing attendance.schedule.manage }
+        '404': { description: SCHEDULE_NOT_FOUND }
+        '409': { description: SCHEDULE_BACKDATE_NOT_EARLIER }
 
   /admin/attendance/schedule-assignments:
     get:
@@ -231,11 +283,221 @@ paths:
     post:
       tags: [Attendance]
       operationId: finalizeAttendanceDate
-      x-required-permission: attendance.policy.manage
+      x-required-permission: attendance.calculation.run
+      deprecated: true
+      description: >-
+        ATT-014-2 alias kept for one release. Queues a Kalkulasi of every employee for one date and
+        answers like POST /admin/attendance/calculations. Same range rules (no future date).
       parameters:
         - { name: date, in: path, required: true, schema: { type: string, format: date } }
       responses:
-        '200': { description: Versioned results materialized for active employees }
+        '202': { description: Calculation run queued (same body as POST /admin/attendance/calculations) }
+        '400': { description: Invalid date (INVALID_DATE) }
+        '403': { description: Missing attendance.calculation.run }
+        '422': { description: CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/calculations:
+    post:
+      tags: [Attendance]
+      operationId: requestAttendanceCalculation
+      x-required-permission: attendance.calculation.run
+      description: >-
+        ATT-014-2 Kalkulasi (D-14-1 … D-14-4). Queues a calculation for an optional unit or employee
+        and a date range of at most 93 days ending no later than today (Asia/Jakarta). One run is
+        processed at a time across the server, in the API process; other runs wait as `queued`.
+        Only employee-days covered by a machine PIN mapping, a mobile/manual event, or an approved
+        clarification are calculated; the rest are counted as `uncoveredPairs` and never written.
+        Today is calculated as a provisional result. Audited as `attendance.calculation.requested`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [from, to]
+              properties:
+                unitId: { type: string, format: uuid }
+                employeeId: { type: string, format: uuid }
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses:
+        '202':
+          description: Run queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '400': { description: Invalid body or reversed range (INVALID_CALCULATION_RANGE) }
+        '403': { description: Missing attendance.calculation.run }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE (over 93 days) or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/calculations/{id}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceCalculation
+      x-required-permission: attendance.reports.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Run status and progress
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '403': { description: Missing attendance.reports.read }
+        '404': { description: CALCULATION_NOT_FOUND }
+
+  /admin/attendance/calculations/{id}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelAttendanceCalculation
+      x-required-permission: attendance.calculation.run
+      description: >-
+        Allowed for the requester, or for another account that also holds attendance.policy.manage.
+        A queued run is cancelled at once; a running run stops at its next progress checkpoint
+        (every 25 employee-days). Results already calculated stay valid.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Run after the cancel request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '403': { description: Not the requester and missing attendance.policy.manage }
+        '404': { description: CALCULATION_NOT_FOUND }
+        '409': { description: CALCULATION_ALREADY_FINISHED }
+
+  /admin/attendance/reports/{model}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceReportModel
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §7/§19.2 report models built from stored results only (D-14-11): `daily_grid`
+        (Laporan Harian grid, symbols §6.6, landscape), `employee_summary` (Rekapitulasi Pegawai with
+        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian). `format=json`
+        feeds the preview and, with `purpose=print`, the print document; `csv` (UTF-8 BOM) and `xlsx`
+        are downloads. Every print and export is audited as `attendance.report.exported` with model,
+        format, purpose, scope, range and row count only. At most 93 days and 50 000 employee-days.
+      parameters:
+        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail] } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, required: false, schema: { type: string, enum: [json, csv, xlsx], default: json } }
+        - { name: purpose, in: query, required: false, schema: { type: string, enum: [view, print], default: view } }
+      responses:
+        '200':
+          description: >-
+            json: `{ model, title, orientation, columns, groups[{ unitName, rows, subtotal }], total,
+            legend, header{ scope, period, printedBy, printedAt }, warnings{ notCalculated, changed,
+            provisional }, from, to }`; csv/xlsx: file attachment.
+        '400': { description: INVALID_REPORT_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '404': { description: REPORT_MODEL_NOT_FOUND }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE, CALCULATION_DATE_IN_FUTURE, or EXPORT_TOO_LARGE }
+
+  /admin/attendance/unscheduled:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceUnscheduled
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §20.3 Tanpa Jadwal (R2a). `employees`: employees in scope with captured punches (raw
+        machine scans through the PIN mapping valid at scan time, plus mobile/manual events) on dates no
+        schedule pattern or published roster covers, with position, number of days, first/last date,
+        range of the last scan time per day (information only), and the earliest pattern start.
+        `pins`: machine scans that cannot be attributed (PIN unmapped, before the holder's mapping, or
+        outside it), per device and PIN; `null` unless the caller holds attendance.devices.read.
+        Read-only, paginated, at most 93 days.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pinPage, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: '`{ from, to, employees: { page, pageSize, total, totalPages, items }, pins: { … } | null }`' }
+        '400': { description: INVALID_UNSCHEDULED_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/transactions:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceTransactions
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §19.1 Data Transaksi. One row per punch in scope, newest first, read-only: machine
+        scans read raw through the PIN mapping valid at scan time (including scans not yet
+        normalised), mobile/manual events, and approved correction times (one row per boundary,
+        `correctionBy` hc or employee). `usedInResult` tells whether the latest result version uses
+        the punch. Paginated; at most 93 days, no future dates.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual, correction] } }
+        - { name: reviewState, in: query, required: false, schema: { type: string, enum: [needs_review] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: >-
+            `{ from, to, page, pageSize, total, totalPages, needsReviewTotal, items }`; each item has `id`,
+            employee and unit, `occurredAt`, `workDate`, `source`, `correctionBy`, `boundary`, `deviceName`,
+            `usedInResult`, `reviewState` and `geofenceStatus` (mobile punches). ATT-011-3R: `evidence`
+            (evidenceId, coordinates, accuracy, distance, work location) is included only for callers with
+            attendance.clarification.manage; the photo is fetched one at a time from the mobile-evidence
+            photo endpoint, which audits every opening.
+        '400': { description: INVALID_TRANSACTIONS_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/calculation-rows:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceCalculationRows
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014-2 Detail Harian rows for Laporan & Kalkulasi. Reads stored result versions only and
+        never calculates. One row per employed employee-day in scope: `not_captured` outside the
+        coverage rule ("Tidak tercatat"), `not_calculated` when covered but not calculated yet,
+        otherwise the latest result status. Today's rows are `provisional`; a scheduled day without a
+        check-in is re-evaluated by the clock on read. `changedSinceCalculated` is set when machine
+        scans, attendance events, schedule assignments, or published roster entries arrive after the
+        pair was last calculated. Paginated; `summary` and `changedCount` cover all pages.
+      parameters:
+        - { name: tab, in: query, required: false, schema: { type: string, enum: [detail], default: detail } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, unscheduled, not_captured, not_calculated]
+        - { name: changedOnly, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: >-
+            `{ from, to, today, generatedAt, lastCalculatedAt, changedCount, summary, page, pageSize,
+            total, totalPages, items }`. Each item carries employee and unit, `workDate`, `status`,
+            `provisional`, `changedSinceCalculated`, `resultVersion`, `calculatedAt`, scheduled and
+            scanned times, `workedMinutes`, `lateMinutes`, `earlyLeaveMinutes`, `overtimeMinutes`,
+            `incompleteSession`, `normal`, and `actual`.
+        '400': { description: INVALID_CALCULATION_ROWS_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
 
   /admin/attendance/report:
     get:
@@ -434,8 +696,16 @@ paths:
       tags: [Attendance]
       operationId: createCanonicalManualAttendanceCorrection
       x-required-permission: attendance.records.manage
+      description: >-
+        Koreksi HC. `checkInAt` must fall on `workDate` (Asia/Jakarta); `checkOutAt` on `workDate`
+        or the next day (shift ending after midnight); when both are given, check-out is after
+        check-in and at most 24 hours later. Checked before any write.
       responses:
         '201': { description: Audited append-only canonical correction created and result recomputed }
+        '400': { description: INVALID_MANUAL_CORRECTION }
+        '403': { description: Missing attendance.records.manage }
+        '404': { description: EMPLOYEE_NOT_FOUND }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /admin/attendance/daily:
     get:
@@ -587,6 +857,27 @@ paths:
 
 components:
   schemas:
+    AttendanceCalculationRun:
+      type: object
+      required: [id, status, position, from, to, totalPairs, processedPairs, failedPairs, uncoveredPairs, cancelRequested, errorCode, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+        position: { type: integer, nullable: true, description: Queue position while queued }
+        unitId: { type: string, format: uuid, nullable: true }
+        employeeId: { type: string, format: uuid, nullable: true }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        totalPairs: { type: integer, description: Covered employee-days to calculate }
+        processedPairs: { type: integer }
+        failedPairs: { type: integer }
+        uncoveredPairs: { type: integer, description: Employee-days outside the coverage rule (never written) }
+        cancelRequested: { type: boolean }
+        errorCode: { type: string, nullable: true, description: INTERRUPTED or CALCULATION_FAILED }
+        requestedByAccountId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
     AttendanceResult:
       type: [object, 'null']
       properties:
@@ -687,6 +978,10 @@ components:
         lateGraceMinutes: { type: integer, minimum: 0, maximum: 240 }
         earlyLeaveToleranceMinutes: { type: integer, minimum: 0, maximum: 240 }
         workLocationId: { type: [string, 'null'], format: uuid }
+        effectiveFrom:
+          type: string
+          format: date
+          description: Date (00:00 WIB) the first version applies from; default is the moment of creation. Not in the future.
 
     AttendanceOvertimeInput:
       type: object

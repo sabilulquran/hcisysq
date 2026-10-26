@@ -63,7 +63,8 @@ Dokumen `docs/development/vps-deployment.md`, `github-vps-production-deployment.
 
 - Reimbursement berada setelah MVP.
 - MVP payroll scope hanya import/validation data payslip dan employee read-only access.
-- Jangan membangun payroll calculation engine untuk memenuhi layar payslip MVP.
+- Jangan membangun payroll calculation engine untuk memenuhi layar payslip MVP. PAY-001/PAY-002 tidak boleh diam-diam menghitung ulang nilai impor.
+- **Pengecualian PAY-003:** payroll calculation engine pasca-MVP diizinkan sebagai modul tersendiri melalui ADR-0003 (ACCEPTED) dan `docs/domain/payroll-calculation-v1.md`. Sampai parallel run lulus, PAY-001/PAY-002 tetap jalur slip resmi.
 - Approval chain mengikuti snapshot-on-submit behavior di `docs/domain/workflows/approval-engine.md`.
 
 ## 6. AI-assisted workflow
@@ -83,6 +84,7 @@ Sebelum merge:
 - migration memiliki rollback/recovery plan;
 - kontrak API dan client tetap sinkron;
 - error, loading, empty, forbidden, dan mobile state diperiksa;
+- setiap daftar, tabel, dan dropdown record baru atau yang diubah mengikuti `docs/development/list-pagination-standard.md` (ENG-LIST-001): data yang bertumbuh memakai pagination server-side (`page`/`pageSize` default 25 maks 100 dengan `total`, atau kursor untuk log bervolume tinggi), tidak ada `LIMIT`/`slice` yang memotong diam-diam, filter dan scope otorisasi dijalankan sebelum `LIMIT`, dropdown di atas 50 opsi atau berisi pegawai memakai pencarian typeahead, dan setiap pengecualian ditulis di specification;
 - dokumentasi diperbarui;
 - tidak ada secret atau data pribadi pada diff.
 

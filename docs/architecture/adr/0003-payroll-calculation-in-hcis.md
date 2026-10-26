@@ -1,7 +1,7 @@
 # ADR-0003: HCIS Menghitung Payroll (PAY-003 v1)
 
-- **Status:** PROPOSED
-- **Date:** 2026-10-24
+- **Status:** ACCEPTED
+- **Date:** 2026-10-24 (PROPOSED), 2026-10-27 (ACCEPTED)
 - **Related:** PAY-001, PAY-002, PAY-003, PAYSLIP-001..006, ATT-010, EMP-005, AUTH-011, ORG-010; ADR-0001, ADR-0002
 - **Evidence:** `docs/domain/payroll-legacy-flow-audit.md`, `docs/domain/payroll-engine-discovery.md`, `docs/domain/payroll-calculation-v1.md`
 
@@ -16,14 +16,16 @@ Pada 2026-10-23 product owner memutuskan bahwa **HCIS akan menghitung payroll**.
 ## Decision
 
 1. **Batas MVP payroll diakhiri untuk PAY-003.** HCIS boleh memiliki payroll calculation engine sebagai modul pasca-MVP sesuai `docs/domain/payroll-calculation-v1.md`. Larangan di `AGENTS.md` §5 tetap berlaku untuk surface MVP yang sudah ada (PAY-001/PAY-002 tidak boleh diam-diam menghitung ulang nilai impor).
-2. **Cakupan v1** (keputusan owner 2026-10-24, default usulan untuk butir yang belum dipilih owner):
+2. **Cakupan v1** (`DRAFT`: default agent 2026-10-24 atas butir yang belum dipilih owner; `docs/domain/payroll-legacy-flow-audit.md` §6.3 butir 1 mencatat butir yang sama sebagai belum dipilih, dan keputusan owner 2026-10-24 di §6.2 mencakup D9/D10/D11 saja):
    - pegawai tetap, masa percobaan, dan PKWT/honorer;
    - insentif Pj. Media untuk pegawai aktif sebagai komponen pendapatan variabel;
    - **di luar v1:** penerima non-pegawai/pengabdian/honor lain, THR, reimbursement, dan pembayaran langsung ke bank.
 3. **Lokasi modul:** modul `payroll` di dalam modular monolith (ADR-0001), dengan aturan perhitungan di `packages/domain` sebagai fungsi murni tanpa ketergantungan HTTP/database (AGENTS.md §4). Integrasi luar (impor SPP, laporan PPh21) lewat adapter (ADR-0002).
 4. **Hasil payroll adalah fakta tersimpan per periode.** Finalisasi mengunci input snapshot, versi kebijakan, dan baris hasil. Nilai final tidak dihitung ulang diam-diam; koreksi hanya lewat reopen yang disetujui.
 5. **Publikasi slip memakai jalur PAY-001/PAY-002 yang ada.** Hasil final dipetakan ke baris slip (label/value) dan dipublikasikan lewat alur draft → publish yang sudah terverifikasi. Tampilan slip pegawai tidak berubah.
-6. **Serah bayar tanpa surat.** HCIS tidak membuat memorandum, PDF, share email, atau pesan WA untuk serah bayar. Laporan payroll final tampil di HCIS untuk Kepala Keuangan, Direktur, dan Pengurus Yayasan sesuai permission.
+6. **Serah bayar tanpa surat.** HCIS tidak membuat memorandum, PDF, share email, atau pesan WA untuk serah bayar. Laporan payroll final tampil di HCIS untuk Kepala Keuangan dan Direktur sesuai permission.
+
+   *Amandemen 2026-10-27:* akses Pengurus Yayasan **dikeluarkan dari v1**. ORG-003-F/ORG-010-F melarang Pengurus melihat agregat payroll dan PAYSLIP-001-F melarang slip perorangan; membuka akses itu adalah perubahan batas governance yang membutuhkan ADR tersendiri. Daftar transfer berisi nomor rekening dipisahkan dari laporan rekap (`docs/domain/payroll-calculation-v1.md` §7).
 7. **Pengesahan dua tahap.** Kepala HCM mengajukan finalisasi; Direktur mengesahkan. Reopen periode final membutuhkan persetujuan Direktur.
 8. **Kebijakan statutori berversi.** BPJS Kesehatan mengikuti peraturan (gaji pokok + tunjangan tetap, batas bawah UMK, batas atas Rp12.000.000); PPh21 ditanggung yayasan dan dilaporkan dari nominal yang benar-benar dibayar.
 9. **Portabilitas ke sistem payroll lain.** Input periode, hasil, dan baris komponen memakai kode komponen stabil dan dapat diekspor, sehingga perhitungan dapat dipindahkan ke sistem lain tanpa kehilangan histori.
@@ -37,9 +39,9 @@ Pada 2026-10-23 product owner memutuskan bahwa **HCIS akan menghitung payroll**.
 
 ## Consequences
 
-- `AGENTS.md` §5, `docs/product/mvp.md` §7, dan `docs/product/feature-parity.yaml` (PAY-003) diperbarui **setelah ADR ini ACCEPTED**, bukan sebelumnya.
-- Akses Pengurus Yayasan ke laporan payroll mengubah batas Foundation Board (PAYSLIP-001, ORG-010) dan membutuhkan permission baru, review keamanan, serta test otorisasi sebelum diaktifkan.
+- `AGENTS.md` §5, `docs/product/mvp.md` §7, dan `docs/product/feature-parity.yaml` (PAY-003) diperbarui bersama pengesahan ADR ini.
+- Batas Foundation Board (PAYSLIP-001-F, ORG-003-F, ORG-010-F) tidak berubah: v1 tidak memberi Pengurus Yayasan permission payroll. Test otorisasi harus membuktikan penolakannya.
 - Perubahan nilai dibanding spreadsheet yang disengaja (dasar BPJS, perbaikan lembur, pemisahan penyesuaian gaji, dasar PPh21) harus dijelaskan per pegawai saat parallel run.
 - Auth, permission, audit, payroll, dan migration masuk kategori review tambahan (AGENTS.md §8). Setiap tahap implementasi memiliki spesifikasi implementasi dan migration rollback plan sendiri.
 - Spreadsheet dibekukan hanya setelah parallel run minimal 2–3 periode lulus; sampai itu PAY-001/PAY-002 tetap jalur slip resmi.
-- ADR ini tidak mengizinkan perubahan production.
+- ADR ini tidak mengizinkan perubahan production. Rilis modul payroll ke Mi8VPS memerlukan gate kandidat, backup database sebelum migrasi, dan rollback bila verifikasi gagal (`docs/development/mi8vps-hcis-release.md`).

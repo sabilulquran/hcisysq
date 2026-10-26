@@ -207,12 +207,23 @@ export async function listAttendanceSchedules() {
     id: string; name: string; startTime: string; endTime: string; endDayOffset: number;
     lateGraceMinutes: number; earlyLeaveToleranceMinutes: number;
     active: boolean; workLocationId: string | null; workLocationName: string | null;
+    /** Date (WIB) the shift's first version applies from. */
+    effectiveFrom: string | null;
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
+}
+
+/** ATT-014 §20.10 "Mundurkan awal berlaku" for the first version of a shift; audited, reason required. */
+export async function backdateAttendanceSchedule(scheduleId: string, input: { effectiveFrom: string; reason: string }) {
+  return readJson<{ id: string; effectiveFrom: string }>(await fetch(`/api/admin/attendance/schedules/${scheduleId}/backdate`, {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  }));
 }
 
 export async function createAttendanceSchedule(input: {
   name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
-  earlyLeaveToleranceMinutes: number; workLocationId: string | null;
+  earlyLeaveToleranceMinutes: number; workLocationId: string | null; effectiveFrom?: string;
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
     method: "POST", credentials: "include",
@@ -256,12 +267,6 @@ export async function updateAttendanceRosterEntries(
 
 export async function publishAttendanceRoster(rosterId: string) {
   return readJson(await fetch(`/api/admin/attendance/rosters/${rosterId}/publish`, {
-    method: "POST", credentials: "include", headers: { Accept: "application/json" },
-  }));
-}
-
-export async function finalizeAttendanceDate(date: string) {
-  return readJson<{ date: string; materialized: number }>(await fetch(`/api/admin/attendance/finalize/${date}`, {
     method: "POST", credentials: "include", headers: { Accept: "application/json" },
   }));
 }

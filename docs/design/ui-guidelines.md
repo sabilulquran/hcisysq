@@ -46,7 +46,7 @@ Do not hardcode status meaning per page. Status needs label/icon/text and may us
 - One obvious primary action per task.
 - Destructive action requires confirmation appropriate to risk.
 - Validation error stays close to the field.
-- Tables support practical filter/sort/pagination when data volume needs it.
+- Tables support practical filter/sort/pagination. Lists of growing data are paginated server-side and record pickers above 50 options use typeahead search, per `docs/development/list-pagination-standard.md` (ENG-LIST-001).
 - Approval view shows requester, request summary, policy context, history, and decision consequence.
 - Do not reveal restricted data that is unnecessary for a decision.
 - Payslip employee views are read-only.

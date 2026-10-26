@@ -632,6 +632,14 @@ export async function registerAttendanceWorkforceRoutes(
     try {
       const body = clarificationSchema.safeParse(request.body);
       if (!body.success) throw new WorkforceAttendanceError(400, "INVALID_CLARIFICATION", "Klarifikasi tidak valid.");
+      if (body.data.mode === "correction") {
+        const windowError = manualCorrectionWindowError({
+          workDate: body.data.workDate,
+          checkInAt: body.data.proposedCheckInAt ?? null,
+          checkOutAt: body.data.proposedCheckOutAt ?? null,
+        });
+        if (windowError) throw new WorkforceAttendanceError(422, windowError, manualCorrectionWindowMessages[windowError]);
+      }
       const employee = await employeeForAccount(pool, principal.id);
       const id = randomUUID();
       const client = await pool.connect();
@@ -744,13 +752,28 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const current = await client.query<{ employeeId: string; workDate: string }>(
-        `SELECT employee_id AS "employeeId", work_date::text AS "workDate"
+      const current = await client.query<{
+        employeeId: string; workDate: string; mode: string; proposedCheckInAt: Date | null; proposedCheckOutAt: Date | null;
+      }>(
+        `SELECT employee_id AS "employeeId", work_date::text AS "workDate", mode,
+           proposed_check_in_at AS "proposedCheckInAt", proposed_check_out_at AS "proposedCheckOutAt"
          FROM attendance_clarifications WHERE id = $1 AND status = 'submitted' FOR UPDATE`,
         [params.data.clarificationId],
       );
       const item = current.rows[0];
       if (!item) throw new WorkforceAttendanceError(409, "CLARIFICATION_ALREADY_DECIDED", "Klarifikasi sudah diputuskan.");
+      // A request submitted before the work-date check existed may carry times from another date:
+      // it can only be rejected, so the engine never counts it.
+      if (body.data.decision === "approve" && item.mode === "correction") {
+        const windowError = manualCorrectionWindowError({
+          workDate: item.workDate,
+          checkInAt: item.proposedCheckInAt ? new Date(item.proposedCheckInAt).toISOString() : null,
+          checkOutAt: item.proposedCheckOutAt ? new Date(item.proposedCheckOutAt).toISOString() : null,
+        });
+        if (windowError) {
+          throw new WorkforceAttendanceError(422, windowError, `${manualCorrectionWindowMessages[windowError]} Tolak pengajuan ini dan minta pegawai mengajukan ulang.`);
+        }
+      }
       await client.query(
         `UPDATE attendance_clarifications
          SET status = $2, decided_by_account_id = $3, decision_note = $4,

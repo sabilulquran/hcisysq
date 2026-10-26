@@ -42,7 +42,7 @@ describe("Koreksi HC work-date window", () => {
   });
 });
 
-const granted = { permissions: [] as AdminPermission[] };
+const granted = { permissions: [] as AdminPermission[], principalType: "SUPER_ADMIN" as "SUPER_ADMIN" | "EMPLOYEE" };
 
 vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/modules/auth/service.js")>();
@@ -50,7 +50,7 @@ vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
     async getSession(token: string | null) {
       if (!token) return null;
       return {
-        principal: { id: "00000000-0000-4000-8000-000000015001", email: "hc-correction@example.invalid", principalType: "SUPER_ADMIN" },
+        principal: { id: "00000000-0000-4000-8000-000000015001", email: "hc-correction@example.invalid", principalType: granted.principalType },
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       };
     }
@@ -81,6 +81,7 @@ describe("POST /admin/attendance/manual-corrections window check", () => {
     query.mockClear();
     connect.mockClear();
     granted.permissions = ["attendance.records.manage"];
+    granted.principalType = "SUPER_ADMIN";
     app = Fastify({ logger: false });
     await registerAttendanceWorkforceRoutes(app, { query, connect } as unknown as Pool, config, {
       calculationRunner: { kick: vi.fn(), recoverInterrupted: vi.fn(async () => 0), idle: vi.fn(async () => undefined) },
@@ -129,5 +130,97 @@ describe("POST /admin/attendance/manual-corrections window check", () => {
     granted.permissions = ["attendance.reports.read"];
     const response = await post({ checkInAt: "2026-10-26T01:00:00.000Z" });
     expect(response.statusCode).toBe(403);
+  });
+});
+
+describe("Employee clarification and HC decision window check", () => {
+  let app: ReturnType<typeof Fastify>;
+  const statements: string[] = [];
+  let stored: Record<string, unknown> | null = null;
+  const clientQuery = vi.fn(async (sql: string) => {
+    statements.push(sql.trim().split(/\s+/).slice(0, 2).join(" "));
+    if (sql.includes("FOR UPDATE")) return { rows: stored ? [stored] : [] };
+    return { rows: [] };
+  });
+  const query = vi.fn(async () => ({ rows: [] }));
+  const connect = vi.fn(async () => ({ query: clientQuery, release: vi.fn() }));
+
+  beforeEach(async () => {
+    statements.length = 0;
+    clientQuery.mockClear();
+    query.mockClear();
+    connect.mockClear();
+    app = Fastify({ logger: false });
+    await registerAttendanceWorkforceRoutes(app, { query, connect } as unknown as Pool, config, {
+      calculationRunner: { kick: vi.fn(), recoverInterrupted: vi.fn(async () => 0), idle: vi.fn(async () => undefined) },
+    });
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it("rejects an employee correction whose time is on another date before any lookup", async () => {
+    granted.principalType = "EMPLOYEE";
+    granted.permissions = [];
+    const response = await app.inject({
+      method: "POST",
+      url: "/attendance/clarifications",
+      headers: { cookie: "hcis_session=test-token" },
+      payload: {
+        workDate: "2026-10-20", kind: "missing_check_in", mode: "correction", reason: "Lupa scan",
+        proposedCheckInAt: "2026-10-26T01:00:00.000Z", proposedCheckOutAt: null,
+      },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().code).toBe("CHECK_IN_OUTSIDE_WORK_DATE");
+    expect(query).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("does not check times on a justification, which carries none", async () => {
+    granted.principalType = "EMPLOYEE";
+    granted.permissions = [];
+    const response = await app.inject({
+      method: "POST",
+      url: "/attendance/clarifications",
+      headers: { cookie: "hcis_session=test-token" },
+      payload: { workDate: "2026-10-20", kind: "lateness", mode: "justification", reason: "Ban bocor" },
+    });
+    // Passes the window check and stops at the synthetic account lookup.
+    expect(response.statusCode).not.toBe(422);
+  });
+
+  it("refuses to approve an old request whose times are on another date, and writes nothing", async () => {
+    granted.principalType = "SUPER_ADMIN";
+    granted.permissions = ["attendance.clarification.manage"];
+    stored = {
+      employeeId: "00000000-0000-4000-8000-000000015002", workDate: "2026-10-20", mode: "correction",
+      proposedCheckInAt: new Date("2026-10-26T01:00:00.000Z"), proposedCheckOutAt: null,
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/attendance/clarifications/00000000-0000-4000-8000-000000015003/decision",
+      headers: { cookie: "hcis_session=test-token" },
+      payload: { decision: "approve" },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().code).toBe("CHECK_IN_OUTSIDE_WORK_DATE");
+    expect(statements).toContain("ROLLBACK");
+    expect(statements.some((statement) => statement.startsWith("UPDATE") || statement.startsWith("INSERT"))).toBe(false);
+  });
+
+  it("still lets HC reject such a request", async () => {
+    granted.principalType = "SUPER_ADMIN";
+    granted.permissions = ["attendance.clarification.manage"];
+    stored = {
+      employeeId: "00000000-0000-4000-8000-000000015002", workDate: "2026-10-20", mode: "correction",
+      proposedCheckInAt: new Date("2026-10-26T01:00:00.000Z"), proposedCheckOutAt: null,
+    };
+    await app.inject({
+      method: "POST",
+      url: "/admin/attendance/clarifications/00000000-0000-4000-8000-000000015003/decision",
+      headers: { cookie: "hcis_session=test-token" },
+      payload: { decision: "reject", note: "Tanggal dan jam tidak sejalan" },
+    });
+    expect(statements.some((statement) => statement.startsWith("UPDATE attendance_clarifications"))).toBe(true);
   });
 });

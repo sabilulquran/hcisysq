@@ -28,6 +28,26 @@ vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
   return { ...actual, AuthService: FakeAuthService };
 });
 
+// The punch read model is faked so the test sees what the route passes it (evidence on or off).
+const transactionCalls: Array<{ includeEvidence?: boolean; from: string; to: string }> = [];
+vi.mock("../src/modules/attendance/transactions.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/modules/attendance/transactions.js")>();
+  return {
+    ...actual,
+    attendanceTransactions: async (_pool: unknown, filter: { includeEvidence?: boolean; from: string; to: string }) => {
+      transactionCalls.push(filter);
+      const punch = {
+        id: "p", employeeId: "00000000-0000-4000-8000-000000024002", employeeNumber: "SYN-1", employeeName: "Pegawai Sintetis",
+        unitName: "SD", occurredAt: "2026-10-20T00:05:00.000Z", workDate: "2026-10-20", source: "mobile", correctionBy: null,
+        boundary: "check_in", deviceName: null, usedInResult: false, reviewState: "needs_review", geofenceStatus: "outside",
+        ...(filter.includeEvidence ? { evidence: { evidenceId: "e", latitude: -6.5, longitude: 106.8, accuracyMeters: 10, distanceMeters: 900, geofenceStatus: "outside", workLocationName: null, radiusMeters: 100 } } : {}),
+      };
+      const other = { ...punch, id: "q", workDate: "2026-10-21", occurredAt: "2026-10-21T02:00:00.000Z", evidence: undefined };
+      return { page: 1, pageSize: 200, total: 2, totalPages: 1, needsReviewTotal: 1, items: [punch, other] };
+    },
+  };
+});
+
 const { registerAttendanceWorkforceRoutes } = await import("../src/modules/attendance/workforce-routes.js");
 
 const config = {
@@ -52,12 +72,13 @@ describe("ATT-011-3 action queue kinds", () => {
 
 describe("ATT-011-3 routes", () => {
   let app: ReturnType<typeof Fastify>;
-  const query = vi.fn<(sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>>(async (sql) => {
+  const query = vi.fn<(sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>>(async (sql, values) => {
     if (sql.includes("GROUP BY kind")) return { rows: [{ kind: "clarification", n: 1 }] };
     if (sql.includes("joined AS")) {
       return { rows: [{ kind: "clarification", id: "c", employeeId: EMPLOYEE, employeeNumber: "SYN-1", employeeName: "Pegawai Sintetis", unitName: "SD", workDate: "2026-10-20", detail: "lateness", mode: "justification", reason: "Ban bocor", occurredAt: null, total: 1 }] };
     }
     if (sql.includes("FROM employees employee LEFT JOIN")) return { rows: [{ id: EMPLOYEE, employeeNumber: "SYN-1", fullName: "Pegawai Sintetis", unitName: "SD" }] };
+    if (sql.includes("SELECT 1 FROM employees WHERE id = $1")) return { rows: values?.[0] === EMPLOYEE ? [{ known: 1 }] : [] };
     return { rows: [] };
   });
   const clientQuery = vi.fn(async () => ({ rows: [] }));
@@ -97,14 +118,27 @@ describe("ATT-011-3 routes", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it("returns one day without technical provenance or photos", async () => {
+  it("returns one day; GPS only with attendance.clarification.manage, never provenance or photos", async () => {
+    transactionCalls.length = 0;
     granted.permissions = ["attendance.reports.read"];
     const response = await call("GET", `/admin/attendance/daily/${EMPLOYEE}/2026-10-20`);
     expect(response.statusCode, response.body).toBe(200);
     const body = response.json();
-    expect(body).toMatchObject({ employee: { fullName: "Pegawai Sintetis" }, workDate: "2026-10-20", result: null, punches: [], leave: [], overtime: [] });
-    expect(JSON.stringify(body)).not.toMatch(/ciphertext|photo_|sourceSummary/);
+    expect(body).toMatchObject({ employee: { fullName: "Pegawai Sintetis" }, workDate: "2026-10-20", result: null, leave: [], overtime: [] });
+    // The next day is read for overnight shifts, but an unrelated next-day punch is not shown.
+    expect(transactionCalls.at(-1)).toMatchObject({ from: "2026-10-20", to: "2026-10-21", includeEvidence: false });
+    expect(body.punches).toHaveLength(1);
+    expect(body.punches[0]).not.toHaveProperty("evidence");
+    expect(JSON.stringify(body)).not.toMatch(/latitude|ciphertext|photo_|sourceSummary/);
+
+    granted.permissions = ["attendance.clarification.manage"];
+    const reviewer = (await call("GET", `/admin/attendance/daily/${EMPLOYEE}/2026-10-20`)).json();
+    expect(transactionCalls.at(-1)).toMatchObject({ includeEvidence: true });
+    expect(reviewer.punches[0].evidence).toMatchObject({ latitude: -6.5 });
+
     expect((await call("GET", `/admin/attendance/daily/${EMPLOYEE}/20-10-2026`)).statusCode).toBe(400);
+    granted.permissions = ["attendance.overtime.manage"];
+    expect((await call("GET", `/admin/attendance/daily/${EMPLOYEE}/2026-10-20`)).statusCode).toBe(403);
   });
 
   it("asks the employee for a clarification within the window and audits it", async () => {
@@ -118,5 +152,10 @@ describe("ATT-011-3 routes", () => {
     expect((await call("POST", `/admin/attendance/daily/${EMPLOYEE}/2026-10-10/request-clarification`)).statusCode).toBe(422);
     granted.permissions = ["attendance.reports.read"];
     expect((await call("POST", `/admin/attendance/daily/${EMPLOYEE}/2026-10-20/request-clarification`)).statusCode).toBe(403);
+    granted.permissions = ["attendance.records.manage"];
+    clientQuery.mockClear();
+    const unknown = await call("POST", "/admin/attendance/daily/00000000-0000-4000-8000-000000024999/2026-10-20/request-clarification");
+    expect(unknown.statusCode).toBe(404);
+    expect(connect).toHaveBeenCalledTimes(1);
   });
 });

@@ -2095,8 +2095,9 @@ export async function registerAttendanceWorkforceRoutes(
     const [schedule, result, punches, clarifications, leave, overtime] = await Promise.all([
       resolveSchedule(pool, employeeId, workDate),
       latestResult(pool, employeeId, workDate),
+      // The next day too: a shift that ends after midnight has its check-out there.
       attendanceTransactions(pool, {
-        employeeId, from: workDate, to: workDate, page: 1, pageSize: 200,
+        employeeId, from: workDate, to: shiftDateText(workDate, 1), page: 1, pageSize: 200,
         includeEvidence: held.includes("attendance.clarification.manage"),
       }),
       pool.query(
@@ -2126,7 +2127,13 @@ export async function registerAttendanceWorkforceRoutes(
       schedule: { ...scheduleResponse(schedule), name: template },
       // source_summary is technical provenance (ATT-011-1 removed it from screens).
       result: result ? { ...stored, sessions: (sessions ?? []).map(({ sourceSummary, ...session }) => { void sourceSummary; return session; }) } : null,
-      punches: punches.items,
+      // Punches of the work date, plus next-day punches up to 6 hours after a shift's end (engine window).
+      punches: punches.items.filter((punch) => punch.workDate === workDate || (
+        schedule.scheduledEndAt !== null
+          && new Date(punch.occurredAt).getTime() <= schedule.scheduledEndAt.getTime() + 6 * 60 * 60_000
+          && shiftDateText(workDate, 1) === punch.workDate
+          && schedule.scheduledEndAt.getTime() > new Date(`${shiftDateText(workDate, 1)}T00:00:00+07:00`).getTime()
+      )),
       clarifications: clarifications.rows.map((row: Record<string, unknown>) => ({
         ...row,
         proposedCheckInAt: row.proposedCheckInAt instanceof Date ? row.proposedCheckInAt.toISOString() : null,
@@ -2154,6 +2161,8 @@ export async function registerAttendanceWorkforceRoutes(
     const params = z.object({ employeeId: z.string().uuid(), workDate: dateSchema }).safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_DAY", message: "Pegawai atau tanggal tidak valid." });
     const { employeeId, workDate } = params.data;
+    const known = await pool.query("SELECT 1 FROM employees WHERE id = $1", [employeeId]);
+    if (!known.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
     if (!clarificationDateAllowed(workDate)) {
       return reply.status(422).send({
         code: "CLARIFICATION_DATE_OUT_OF_RANGE",

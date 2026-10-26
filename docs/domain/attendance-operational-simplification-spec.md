@@ -572,11 +572,15 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   (`attendance.records.manage` atau `attendance.reports.read`), dan Jadwal bermasalah
   (`attendance.reports.read` atau `attendance.schedule.manage`). Setiap jenis hanya tampil untuk akun yang
   bisa menindaklanjutinya. Bawaan 31 hari terakhir, berhalaman standar, jumlah per jenis.
-- Aturan antrean (`DRAFT`): absen HP perlu ditinjau keluar dari antrean setelah ada klarifikasi yang
-  diputuskan untuk hari itu (belum ada aksi "Tandai sudah ditinjau" karena status tinjauan belum disimpan;
-  itu butuh migration terpisah). Hari Tidak lengkap keluar dari antrean selama klarifikasi pegawai untuk
+- Aturan antrean (`DRAFT`): absen HP perlu ditinjau keluar dari antrean begitu ada klarifikasi untuk hari
+  itu (yang menunggu sudah tampil sebagai klarifikasi; yang diputuskan sudah menyelesaikannya), dan
+  ditanggali menurut tanggal kalender scan, sehingga scan pulang lewat tengah malam pada shift malam
+  tercatat di hari berikutnya. Pemegang `attendance.reports.read` saja melihat hari Tidak lengkap dan Jadwal
+  bermasalah tetapi tidak dapat memperbaikinya. Belum ada aksi "Tandai sudah ditinjau", karena status
+  tinjauan belum disimpan; itu butuh migration terpisah. Hari Tidak lengkap keluar dari antrean selama klarifikasi pegawai untuk
   hari itu menunggu, dan saat versi hasil terbaru tidak lagi Tidak lengkap.
-- **Panel detail satu hari** (`GET /admin/attendance/daily/{employeeId}/{workDate}`) dibuka dari baris
+- **Panel detail satu hari** (`GET /admin/attendance/daily/{employeeId}/{workDate}`, termasuk scan hari
+  berikutnya sampai 6 jam setelah shift yang melewati tengah malam berakhir) dibuka dari baris
   antrean dan dari baris tab Harian di Laporan: jadwal (nama shift, jam, toleransi), status, scan per
   sumber (GPS dan foto hanya untuk `attendance.clarification.manage`, foto tetap lewat endpoint bukti yang
   diaudit), sesi (jam hilang tampil "?", tidak pernah diisi dari jadwal), cuti, lembur, klarifikasi, dan

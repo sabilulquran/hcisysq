@@ -4,8 +4,8 @@ import { pageOffset, pagination, type PageQuery } from "../../lib/pagination.js"
 import type { AdminPermission } from "../auth/permissions.js";
 
 // ATT-011-3 §6.1 "Perlu tindakan": one queue, oldest date first, of everything that waits for HC.
-// Each kind appears only for accounts holding the permission that acts on it, so the queue never shows
-// a task the reader cannot finish. Read-only; the actions use their existing endpoints. Leave
+// Each kind appears only for accounts holding a permission tied to it: the one that acts on it, or for
+// incomplete days and schedule problems also attendance.reports.read, which may see but not fix them (§6.1). Read-only; the actions use their existing endpoints. Leave
 // resolutions (LEAVE-007) keep their own HC page: their permission is not an admin permission (TBD).
 
 export type ActionKind = "clarification" | "mobile_review" | "incomplete" | "configuration_error";
@@ -71,7 +71,9 @@ const QUEUE = `WITH scoped AS (
        WHERE 'clarification' = ANY($4::text[]) AND clarification.status = 'submitted'
          AND clarification.work_date BETWEEN $1::date AND $2::date
        UNION ALL
-       -- A flagged phone punch leaves the queue once a clarification for that day was decided.
+       -- A flagged phone punch leaves the queue once a clarification for that day exists: a waiting one is
+       -- already listed as a clarification, a decided one settled it. Dated by the punch's calendar date
+       -- (DRAFT: a check-out after midnight on an overnight shift is dated the next day).
        SELECT 'mobile_review', evidence.id, evidence.employee_id, (event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date,
          evidence.geofence_status, evidence.action, NULL, event.occurred_at
        FROM attendance_mobile_evidence evidence
@@ -82,7 +84,7 @@ const QUEUE = `WITH scoped AS (
            SELECT 1 FROM attendance_clarifications decided
            WHERE decided.employee_id = evidence.employee_id
              AND decided.work_date = (event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date
-             AND decided.status IN ('approved', 'rejected')
+             AND decided.status IN ('submitted', 'approved', 'rejected')
          )
        UNION ALL
        SELECT latest.status, latest.id, latest.employee_id, latest.work_date, latest.status, NULL, NULL, NULL

@@ -17,6 +17,13 @@ export const HC_ADMIN_PERMISSIONS = [
   "employment.read", "employment.manage",
 ] as const;
 
+/**
+ * ORG-008-8 (O-1, owner decision 2026-10-24): the second pair of eyes. It reads the structure and
+ * holds approvals.policy.manage in full as AUTH-011 defines it; it holds no operational HC permission.
+ */
+export const HC_LEAD_ROLE_KEY = "human_capital_lead";
+export const HC_LEAD_PERMISSIONS = ["organization.manage", "approvals.policy.manage"] as const;
+
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;
 export type EmploymentPermission = (typeof EMPLOYMENT_PERMISSIONS)[number];

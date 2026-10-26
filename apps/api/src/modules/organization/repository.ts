@@ -217,6 +217,57 @@ export class PostgresOrganizationRepository {
     return result.rows[0]?.seq ?? 1;
   }
 
+  /** ORG-008-4c: the journal with payloads, which is what a replay needs. */
+  async loadJournalForReplay(changeSetId: string): Promise<Array<{
+    id: string; seq: number; commandType: string;
+    payload: Record<string, unknown>; summary: Record<string, unknown>;
+  }>> {
+    const result = await this.db.query<{
+      id: string; seq: number; commandType: string;
+      payload: Record<string, unknown>; summary: Record<string, unknown>;
+    }>(
+      `SELECT id, seq, command_type AS "commandType", payload, summary
+       FROM organization_change_set_journal
+       WHERE change_set_id = $1
+       ORDER BY seq`,
+      [changeSetId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * ORG-008-4c: replace the journal with the lines that survived a replay, renumbered.
+   * Lines that no longer fit are dropped here only after the caller has reported them.
+   */
+  async replaceJournal(
+    changeSetId: string,
+    entries: Array<{ seq: number; commandType: string; payload: Record<string, unknown>; summary: Record<string, unknown> }>,
+    actorAccountId: string,
+  ): Promise<void> {
+    await this.db.query("DELETE FROM organization_change_set_journal WHERE change_set_id = $1", [changeSetId]);
+    for (const entry of entries) {
+      await this.db.query(
+        `INSERT INTO organization_change_set_journal
+           (id, change_set_id, seq, command_type, payload, summary, actor_account_id)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)`,
+        [
+          randomUUID(), changeSetId, entry.seq, entry.commandType,
+          JSON.stringify(entry.payload), JSON.stringify(entry.summary), actorAccountId,
+        ],
+      );
+    }
+  }
+
+  /** ORG-008-4c: point a change set at the base it was rebuilt from. */
+  async setBaseChangeSet(changeSetId: string, baseChangeSetId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE organization_change_sets
+       SET base_change_set_id = $2, updated_at = now()
+       WHERE id = $1 AND status = 'DRAFT'`,
+      [changeSetId, baseChangeSetId],
+    );
+  }
+
   /** ORG-008-4a: the "Yang berubah" list for one change set, oldest first. */
   async listJournal(changeSetId: string): Promise<Array<{
     id: string;
@@ -368,11 +419,11 @@ export class PostgresOrganizationRepository {
       await this.db.query(
         `INSERT INTO organization_nodes
           (id, change_set_id, stable_key, name, node_type, parent_node_key, active,
-           effective_from, effective_to, visual_rank_offset, integration_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+           effective_from, effective_to, visual_rank_offset, integration_code, legacy_unit_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.name, item.nodeType,
           item.parentNodeKey, item.active, item.effectiveFrom, item.effectiveTo,
-          item.visualRankOffset, item.integrationCode],
+          item.visualRankOffset, item.integrationCode, item.legacyUnitId ?? null],
       );
     }
     for (const item of snapshot.jobProfiles) {
@@ -560,7 +611,7 @@ export class PostgresOrganizationRepository {
           `SELECT id, stable_key AS "stableKey", name, node_type AS "nodeType",
             parent_node_key AS "parentNodeKey", active, effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
-            integration_code AS "integrationCode"
+            integration_code AS "integrationCode", legacy_unit_id AS "legacyUnitId"
            FROM organization_nodes WHERE change_set_id = $1`, [id]),
         this.db.query<JobProfileRow>(
           `SELECT id, stable_key AS "stableKey", name, active,

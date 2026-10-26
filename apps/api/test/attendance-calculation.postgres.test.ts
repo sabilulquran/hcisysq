@@ -205,8 +205,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
   it("sums every approved overtime request and stores the kind of day (ATT-011-6a)", async () => {
     for (const [minutes, status] of [[60, "approved"], [45, "approved"], [30, "rejected"]] as const) {
       await client.query(
-        `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, approved_minutes, status, requested_by_account_id)
-         VALUES ($1, $2, '2026-08-28', $3, $4, $5, $6)`,
+        `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, approved_minutes, status, requested_by_account_id, decided_by_account_id, decided_at)
+         VALUES ($1, $2, '2026-08-28', $3, $4, $5, $6, $6, now())`,
         [randomUUID(), mapped, minutes, status === "approved" ? minutes : null, status, accountId],
       );
     }
@@ -287,8 +287,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
     const id = randomUUID();
     await client.query(
-      `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, status, requested_by_account_id)
-       VALUES ($1, $2, '2026-08-28', 60, 'rejected', $3)`,
+      `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, status, requested_by_account_id, decided_by_account_id, decided_at)
+       VALUES ($1, $2, '2026-08-28', 60, 'rejected', $3, $3, now())`,
       [id, mapped, accountId],
     );
     const page = await listOvertimeForHc(client, { page: 1, pageSize: 100, statuses: ["rejected", "cancelled"], unitId: null });

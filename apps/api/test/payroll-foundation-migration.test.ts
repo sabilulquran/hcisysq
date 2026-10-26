@@ -18,6 +18,7 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
   let client: PoolClient;
   let employeeId: string;
   let employmentId: string;
+  let submitterAccountId: string;
   let savepoint = 0;
 
   beforeAll(() => {
@@ -41,6 +42,12 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
       `INSERT INTO employments(id, employee_id, started_on, start_basis, source, opened_by_action_id)
        VALUES ($1, $2, DATE '2016-07-01', 'RECORDED', 'ACTION', $3)`,
       [employmentId, employeeId, randomUUID()],
+    );
+    submitterAccountId = randomUUID();
+    await client.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status)
+       VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
+      [submitterAccountId, employeeId, `payroll-${submitterAccountId}@example.invalid`],
     );
   });
 
@@ -85,10 +92,15 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
 
   describe("component catalog", () => {
     it("carries every v1 component with a stable code", async () => {
-      const { rows } = await client.query<{ count: string }>(
-        "SELECT count(*)::text AS count FROM payroll_components",
+      const { rows } = await client.query<{ code: string }>(
+        "SELECT code FROM payroll_components ORDER BY code",
       );
-      expect(Number(rows[0]!.count)).toBe(23);
+      expect(rows.map((row) => row.code)).toEqual([
+        "ADJUST_DEDUCT", "ADJUST_EARN", "ARREARS", "BASIC", "BPJS_KES", "BPJS_KES_ALLOW",
+        "BPJS_KES_EXTRA", "CHILD", "CHILD_EDU", "FUNC", "LOAN", "OTHER_INCOME", "OVERTIME",
+        "PERF", "PJ_MEDIA", "POS", "PPH21_EMPLOYER", "SPECIAL_QUAL", "SPOUSE", "TEACH_FEE",
+        "TEACH_OVER", "TEACH_SHORT", "TRANSPORT",
+      ]);
     });
 
     it("marks only the fixed allowances that feed the BPJS base", async () => {
@@ -228,13 +240,51 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
 
     it("refuses the same account as submitter and approver", async () => {
       const periodId = await insertPeriod("2026-09-01");
-      const { rows } = await client.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
-      const accountId = rows[0]?.id;
-      if (!accountId) return;
       await expectSqlError(
         `UPDATE payroll_periods SET submitted_by_account_id = $2, approved_by_account_id = $2 WHERE id = $1`,
-        [periodId, accountId],
+        [periodId, submitterAccountId],
         "23514",
+      );
+    });
+
+    it("accepts two different accounts as submitter and approver", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      const approverEmployeeId = randomUUID();
+      const approverAccountId = randomUUID();
+      await client.query(
+        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Approver', 'active')",
+        [approverEmployeeId, `EMP-PAY-APPROVER-${approverEmployeeId}`],
+      );
+      await client.query(
+        `INSERT INTO accounts(id, employee_id, email, principal_type, status)
+         VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
+        [approverAccountId, approverEmployeeId, `approver-${approverAccountId}@example.invalid`],
+      );
+      await client.query(
+        `UPDATE payroll_periods SET submitted_by_account_id = $2, approved_by_account_id = $3 WHERE id = $1`,
+        [periodId, submitterAccountId, approverAccountId],
+      );
+    });
+
+    it("lets two legal entities share one month", async () => {
+      await insertPeriod("2026-09-01");
+      await client.query(
+        `INSERT INTO payroll_periods(id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end)
+         VALUES ($1, $2, DATE '2026-09-01', DATE '2026-09-25', DATE '2026-09-01', DATE '2026-09-30', DATE '2026-08-23', DATE '2026-09-22')`,
+        [randomUUID(), randomUUID()],
+      );
+    });
+
+    it("ties the pre-reopen state to a pending reopen request", async () => {
+      const periodId = await insertPeriod("2026-09-01", "APPROVED");
+      await expectSqlError(
+        `UPDATE payroll_periods SET state_before_reopen_request = 'APPROVED' WHERE id = $1`,
+        [periodId],
+        "23514",
+      );
+      await client.query(
+        `UPDATE payroll_periods SET state = 'REOPEN_REQUESTED', state_before_reopen_request = 'APPROVED' WHERE id = $1`,
+        [periodId],
       );
     });
 
@@ -274,6 +324,21 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
       );
     });
 
+    it("requires the decision an adjustment rests on, not only a reason", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await expectSqlError(
+        `INSERT INTO payroll_period_inputs(id, period_id, employment_id, input_key, value, origin, reason)
+         VALUES ($1, $2, $3, 'ADJUSTMENT', -500000, 'MANUAL', 'koreksi kualifikasi khusus')`,
+        [randomUUID(), periodId, employmentId],
+        "23514",
+      );
+      await client.query(
+        `INSERT INTO payroll_period_inputs(id, period_id, employment_id, input_key, value, origin, reason, decision_reference)
+         VALUES ($1, $2, $3, 'ADJUSTMENT', -500000, 'MANUAL', 'koreksi kualifikasi khusus', 'SK-UJI-001')`,
+        [randomUUID(), periodId, employmentId],
+      );
+    });
+
     it("refuses a proration factor outside the allowed range", async () => {
       const periodId = await insertPeriod("2026-09-01");
       for (const value of [0, 1.5]) {
@@ -308,36 +373,84 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
     });
   });
 
+  async function insertResult(
+    periodId: string,
+    overrides: { revision?: number; previousResultId?: string | null } = {},
+  ) {
+    const id = randomUUID();
+    await client.query(
+      `INSERT INTO payroll_results(id, period_id, employment_id, revision, previous_result_id,
+                                   gross, deductions, net, payable, input_snapshot, policy_version_ids)
+       VALUES ($1, $2, $3, $4, $5, 5000000, 900000, 4100000, 4100000, '{}'::jsonb, jsonb_build_array($6::uuid))`,
+      [id, periodId, employmentId, overrides.revision ?? 1, overrides.previousResultId ?? null, randomUUID()],
+    );
+    return id;
+  }
+
   describe("results", () => {
     it("stores one revision per employment and keeps lineage to the previous one", async () => {
       const periodId = await insertPeriod("2026-09-01");
-      const first = randomUUID();
-      await client.query(
-        `INSERT INTO payroll_results(id, period_id, employment_id, revision, gross, deductions, net, payable)
-         VALUES ($1, $2, $3, 1, 5000000, 900000, 4100000, 4100000)`,
-        [first, periodId, employmentId],
-      );
+      const first = await insertResult(periodId);
       await expectSqlError(
-        `INSERT INTO payroll_results(id, period_id, employment_id, revision, gross, deductions, net, payable)
-         VALUES ($1, $2, $3, 1, 1, 0, 1, 1)`,
+        `INSERT INTO payroll_results(id, period_id, employment_id, revision, gross, deductions, net, payable,
+                                     input_snapshot, policy_version_ids)
+         VALUES ($1, $2, $3, 1, 1, 0, 1, 1, '{}'::jsonb, '["x"]'::jsonb)`,
         [randomUUID(), periodId, employmentId],
         "23505",
       );
-      await client.query(
-        `INSERT INTO payroll_results(id, period_id, employment_id, revision, previous_result_id, gross, deductions, net, payable)
-         VALUES ($1, $2, $3, 2, $4, 5000000, 900000, 4100000, 4100000)`,
-        [randomUUID(), periodId, employmentId, first],
+      await insertResult(periodId, { revision: 2, previousResultId: first });
+    });
+
+    it("refuses a later revision that does not say which result it replaces", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await insertResult(periodId);
+      await expectSqlError(
+        `INSERT INTO payroll_results(id, period_id, employment_id, revision, gross, deductions, net, payable,
+                                     input_snapshot, policy_version_ids)
+         VALUES ($1, $2, $3, 2, 1, 0, 1, 1, '{}'::jsonb, '["x"]'::jsonb)`,
+        [randomUUID(), periodId, employmentId],
+        "23514",
       );
+    });
+
+    it("refuses a result that names no policy version, since it could not be reproduced", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await expectSqlError(
+        `INSERT INTO payroll_results(id, period_id, employment_id, gross, deductions, net, payable,
+                                     input_snapshot, policy_version_ids)
+         VALUES ($1, $2, $3, 1, 0, 1, 1, '{}'::jsonb, '[]'::jsonb)`,
+        [randomUUID(), periodId, employmentId],
+        "23514",
+      );
+    });
+
+    it("refuses a pay factor outside its range or one that contradicts its reason", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await expectSqlError(
+        `INSERT INTO payroll_results(id, period_id, employment_id, gross, deductions, net, payable,
+                                     pay_factor, pay_factor_reason, input_snapshot, policy_version_ids)
+         VALUES ($1, $2, $3, 1, 0, 1, 1, 1.5, 'proration', '{}'::jsonb, '["x"]'::jsonb)`,
+        [randomUUID(), periodId, employmentId],
+        "23514",
+      );
+      await expectSqlError(
+        `INSERT INTO payroll_results(id, period_id, employment_id, gross, deductions, net, payable,
+                                     pay_factor, pay_factor_reason, input_snapshot, policy_version_ids)
+         VALUES ($1, $2, $3, 1, 0, 1, 1, 0.8, 'none', '{}'::jsonb, '["x"]'::jsonb)`,
+        [randomUUID(), periodId, employmentId],
+        "23514",
+      );
+    });
+
+    it("refuses deleting a period that already carries a result", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await insertResult(periodId);
+      await expectSqlError("DELETE FROM payroll_periods WHERE id = $1", [periodId], "23503");
     });
 
     it("refuses a result line for a component the catalog does not know", async () => {
       const periodId = await insertPeriod("2026-09-01");
-      const resultId = randomUUID();
-      await client.query(
-        `INSERT INTO payroll_results(id, period_id, employment_id, gross, deductions, net, payable)
-         VALUES ($1, $2, $3, 0, 0, 0, 0)`,
-        [resultId, periodId, employmentId],
-      );
+      const resultId = await insertResult(periodId);
       await expectSqlError(
         `INSERT INTO payroll_result_lines(id, result_id, component_code, category, amount, display_order)
          VALUES ($1, $2, 'NOT_A_COMPONENT', 'EARNING', 1, 1)`,
@@ -346,14 +459,20 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
       );
     });
 
+    it("refuses a deduction stored as an earning", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      const resultId = await insertResult(periodId);
+      await expectSqlError(
+        `INSERT INTO payroll_result_lines(id, result_id, component_code, category, amount, display_order)
+         VALUES ($1, $2, 'LOAN', 'EARNING', 300000, 200)`,
+        [randomUUID(), resultId],
+        "23503",
+      );
+    });
+
     it("holds one line per component", async () => {
       const periodId = await insertPeriod("2026-09-01");
-      const resultId = randomUUID();
-      await client.query(
-        `INSERT INTO payroll_results(id, period_id, employment_id, gross, deductions, net, payable)
-         VALUES ($1, $2, $3, 0, 0, 0, 0)`,
-        [resultId, periodId, employmentId],
-      );
+      const resultId = await insertResult(periodId);
       await client.query(
         `INSERT INTO payroll_result_lines(id, result_id, component_code, category, amount, display_order)
          VALUES ($1, $2, 'BASIC', 'EARNING', 3000000, 10)`,
@@ -365,6 +484,35 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
         [randomUUID(), resultId],
         "23505",
       );
+    });
+  });
+
+  describe("audit", () => {
+    it("accepts a payload of identifiers, counts and period aggregates", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await client.query(
+        `INSERT INTO payroll_audit_events(id, action, period_id, payload)
+         VALUES ($1, 'payroll.period.calculated', $2,
+                 jsonb_build_object('employee_count', 42, 'gross_total', 150000000, 'blocker_count', 0))`,
+        [randomUUID(), periodId],
+      );
+    });
+
+    it("refuses a per-person amount, a bank account or an identity number", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      for (const payload of [
+        `jsonb_build_object('amount', 4100000)`,
+        `jsonb_build_object('net', 4100000)`,
+        `jsonb_build_object('bank_account_number', '0000000001')`,
+        `jsonb_build_object('nik', '3209000000000000')`,
+        `jsonb_build_object('lines', '[]'::jsonb)`,
+      ]) {
+        await expectSqlError(
+          `INSERT INTO payroll_audit_events(id, action, period_id, payload) VALUES ($1, 'payroll.period.calculated', $2, ${payload})`,
+          [randomUUID(), periodId],
+          "23514",
+        );
+      }
     });
   });
 
@@ -428,6 +576,8 @@ describe.skipIf(!allowed)("0068 payroll foundation migration", () => {
       for (const [, keys] of byRole) {
         expect(keys).not.toEqual(expect.arrayContaining(["payroll.loans.manage", "payroll.payments.confirm"]));
       }
+      expect(byRole.get("finance_officer")).toEqual(["payroll.loans.manage"]);
+      expect(byRole.get("finance_lead")).toEqual(["payroll.payments.confirm"]);
     });
 
     it("gives the Foundation Board no payroll permission at all", async () => {

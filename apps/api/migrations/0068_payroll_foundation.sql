@@ -11,15 +11,28 @@
 -- payroll figures, so foundation_board_viewer receives no payroll permission
 -- here and must not be granted one without its own ADR.
 --
--- Down (safe while no period exists):
---   DROP TABLE payroll_audit_events, payroll_result_lines, payroll_results,
---     payroll_period_inputs, payroll_loan_deductions, payroll_loans,
---     payroll_compensation_profiles, payroll_periods, payroll_policy_versions,
---     payroll_components CASCADE;
---   DELETE FROM role_permissions WHERE permission_key LIKE 'payroll.%';
---   DELETE FROM permissions WHERE permission_key LIKE 'payroll.%';
---   DELETE FROM roles WHERE role_key IN ('finance_officer', 'finance_lead', 'director');
---   Audit rows are never deleted; the table only drops while it is still empty.
+-- Down, in this order:
+--   1. Revoke every assignment of the three new roles through the reviewed route
+--      (DELETE /admin/access/role-assignments/:assignmentId, which writes
+--      role.assignment.removed). Deleting the rows directly loses that audit.
+--   2. Confirm no payroll period exists and no payroll audit row was written:
+--        SELECT count(*) FROM payroll_periods;       -- must be 0
+--        SELECT count(*) FROM payroll_audit_events;  -- must be 0
+--      If either is non-zero, stop: payroll history is a fact and this migration
+--      does not come down. Keep the tables and withdraw the permissions instead.
+--   3. DROP TABLE payroll_audit_events, payroll_result_lines, payroll_results,
+--        payroll_period_inputs, payroll_loan_deductions, payroll_loans,
+--        payroll_compensation_profiles, payroll_periods, payroll_policy_versions,
+--        payroll_components;
+--      No CASCADE: a dependency a later migration created must surface as an
+--      error rather than be dropped silently.
+--   4. DELETE FROM role_permissions WHERE permission_key LIKE 'payroll.%';
+--      DELETE FROM permissions WHERE permission_key LIKE 'payroll.%';
+--   5. DELETE FROM roles WHERE role_key IN ('finance_officer', 'finance_lead', 'director')
+--        AND id IN ('10000000-0000-4000-8000-000000000012',
+--                   '10000000-0000-4000-8000-000000000013',
+--                   '10000000-0000-4000-8000-000000000014');
+--      The id match keeps a role this migration found already present untouched.
 
 -- The no-overlap guards below need btree_gist, as in 0021 and 0056. It is already
 -- installed in production and in CI, so this is a no-op there.
@@ -38,7 +51,12 @@ CREATE TABLE IF NOT EXISTS payroll_components (
   display_order integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT payroll_components_fixed_allowance_is_earning
-    CHECK (NOT is_fixed_allowance OR category = 'EARNING')
+    CHECK (NOT is_fixed_allowance OR category = 'EARNING'),
+  CONSTRAINT payroll_components_pph21_base_is_earning
+    CHECK (NOT in_pph21_base OR category = 'EARNING'),
+  -- Lets a result line reference the code and its category together, so a
+  -- deduction can never be stored as an earning.
+  CONSTRAINT payroll_components_code_category UNIQUE (code, category)
 );
 
 INSERT INTO payroll_components
@@ -107,7 +125,12 @@ CREATE TABLE IF NOT EXISTS payroll_compensation_profiles (
   effective_from date NOT NULL,
   effective_to date NULL,
   education text NULL CHECK (education IN ('SD', 'SMP', 'SLTA', 'D1_D2', 'D3_D4', 'S1', 'S2_S3')),
-  work_pattern text NULL,
+  work_pattern text NULL CHECK (work_pattern IS NULL OR work_pattern IN ('FULL', 'HALF_DAY', 'HALF_DAY_II')),
+  -- Stable references into the organization model (specification 3.3), not text
+  -- labels. They carry no foreign key yet: ORG-008 is still moving the node and
+  -- position tables, and a payroll profile must survive a structure revision
+  -- rather than block it. The period layer resolves them and raises
+  -- UNIT_NOT_MAPPED or POSITION_NOT_MAPPED when one no longer resolves.
   unit_ref uuid NULL,
   functional_position_ref uuid NULL,
   structural_position_ref uuid NULL,
@@ -153,7 +176,7 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   id uuid PRIMARY KEY,
   legal_entity_key uuid NULL,
   -- First day of the payroll month.
-  period_month date NOT NULL CHECK (date_trunc('month', period_month) = period_month),
+  period_month date NOT NULL CHECK (extract(day from period_month) = 1),
   pay_date date NOT NULL,
   period_start date NOT NULL,
   period_end date NOT NULL,
@@ -164,8 +187,12 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
     'DRAFT', 'COLLECTING', 'CALCULATED', 'SUBMITTED', 'APPROVED',
     'PAYMENT_CONFIRMED', 'PUBLISHED', 'REOPEN_REQUESTED'
   )),
-  -- The state a reopen request would return to if the director rejects it.
-  state_before_reopen_request text NULL,
+  -- The state a reopen request returns to if the director rejects it. It exists
+  -- exactly while the period waits on that answer.
+  state_before_reopen_request text NULL CHECK (
+    state_before_reopen_request IS NULL
+    OR state_before_reopen_request IN ('APPROVED', 'PAYMENT_CONFIRMED', 'PUBLISHED')
+  ),
   created_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   submitted_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   submitted_at timestamptz NULL,
@@ -178,6 +205,8 @@ CREATE TABLE IF NOT EXISTS payroll_periods (
   version integer NOT NULL DEFAULT 0 CHECK (version >= 0),
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT payroll_periods_date_order CHECK (period_end >= period_start),
+  CONSTRAINT payroll_periods_reopen_state_pairs_with_request
+    CHECK ((state = 'REOPEN_REQUESTED') = (state_before_reopen_request IS NOT NULL)),
   CONSTRAINT payroll_periods_cutoff_order CHECK (cutoff_end >= cutoff_start),
   -- No self-approval: whoever submits a period cannot approve the same one.
   CONSTRAINT payroll_periods_no_self_approval
@@ -209,6 +238,7 @@ CREATE TABLE IF NOT EXISTS payroll_loans (
 );
 
 CREATE INDEX IF NOT EXISTS payroll_loans_employee_idx ON payroll_loans (employee_id, granted_on DESC);
+CREATE INDEX IF NOT EXISTS payroll_loans_open_idx ON payroll_loans (employee_id) WHERE closed_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS payroll_loan_deductions (
   id uuid PRIMARY KEY,
@@ -221,11 +251,15 @@ CREATE TABLE IF NOT EXISTS payroll_loan_deductions (
   CONSTRAINT payroll_loan_deductions_once_per_period UNIQUE (loan_id, period_id)
 );
 
+-- Locking loans at CALCULATED and listing a period's deductions both read by period.
+CREATE INDEX IF NOT EXISTS payroll_loan_deductions_period_idx
+  ON payroll_loan_deductions (period_id);
+
 -- Period inputs. One row per employment per input key, with the actor and the
 -- reason where the specification requires one.
 CREATE TABLE IF NOT EXISTS payroll_period_inputs (
   id uuid PRIMARY KEY,
-  period_id uuid NOT NULL REFERENCES payroll_periods(id) ON DELETE CASCADE,
+  period_id uuid NOT NULL REFERENCES payroll_periods(id) ON DELETE RESTRICT,
   employment_id uuid NOT NULL REFERENCES employments(id) ON DELETE RESTRICT,
   input_key text NOT NULL CHECK (input_key IN (
     'OVERTIME_HOURS', 'CONTRACT_ATTENDANCE_DAYS', 'CONTRACT_TEACHING_HOURS',
@@ -249,6 +283,9 @@ CREATE TABLE IF NOT EXISTS payroll_period_inputs (
       input_key NOT IN ('ADJUSTMENT', 'ARREARS', 'PRORATION_FACTOR', 'FULL_PAY_DESPITE_LEAVING')
       OR length(trim(coalesce(reason, ''))) > 0
     ),
+  -- Specification 4: a salary adjustment carries a reason AND the decision it rests on.
+  CONSTRAINT payroll_period_inputs_adjustment_has_decision
+    CHECK (input_key <> 'ADJUSTMENT' OR length(trim(coalesce(decision_reference, ''))) > 0),
   CONSTRAINT payroll_period_inputs_proration_range
     CHECK (input_key <> 'PRORATION_FACTOR' OR (value > 0 AND value <= 1))
 );
@@ -260,16 +297,16 @@ CREATE INDEX IF NOT EXISTS payroll_period_inputs_period_idx
 -- after a reopen stores a new revision with lineage to the previous one.
 CREATE TABLE IF NOT EXISTS payroll_results (
   id uuid PRIMARY KEY,
-  period_id uuid NOT NULL REFERENCES payroll_periods(id) ON DELETE CASCADE,
+  period_id uuid NOT NULL REFERENCES payroll_periods(id) ON DELETE RESTRICT,
   employment_id uuid NOT NULL REFERENCES employments(id) ON DELETE RESTRICT,
   revision integer NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  previous_result_id uuid NULL REFERENCES payroll_results(id) ON DELETE SET NULL,
+  previous_result_id uuid NULL REFERENCES payroll_results(id) ON DELETE RESTRICT,
   gross bigint NOT NULL,
   deductions bigint NOT NULL,
   net bigint NOT NULL,
   payable bigint NOT NULL,
   employer_cost bigint NOT NULL DEFAULT 0,
-  pay_factor numeric(5, 4) NOT NULL DEFAULT 1,
+  pay_factor numeric(5, 4) NOT NULL DEFAULT 1 CHECK (pay_factor > 0 AND pay_factor <= 1),
   pay_factor_reason text NOT NULL DEFAULT 'none'
     CHECK (pay_factor_reason IN ('none', 'proration', 'early_service')),
   bpjs_base bigint NOT NULL DEFAULT 0,
@@ -280,23 +317,40 @@ CREATE TABLE IF NOT EXISTS payroll_results (
   blockers jsonb NOT NULL DEFAULT '[]'::jsonb,
   -- The exact input snapshot and policy versions the amounts came from, so the
   -- same result can be reproduced without reading today's tables.
-  input_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-  policy_version_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+  input_snapshot jsonb NOT NULL,
+  policy_version_ids jsonb NOT NULL,
   locked_at timestamptz NULL,
   calculated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT payroll_results_one_revision UNIQUE (period_id, employment_id, revision)
+  CONSTRAINT payroll_results_one_revision UNIQUE (period_id, employment_id, revision),
+  CONSTRAINT payroll_results_factor_pairs_with_reason
+    CHECK ((pay_factor = 1) = (pay_factor_reason = 'none')),
+  -- ADR-0003 decision 4: a result is a fact. It is only reproducible with the
+  -- snapshot and the policy versions it came from, and the period-level blocker
+  -- "inputs changed since the last calculation" compares against that snapshot.
+  -- An employee with no period input legitimately has an empty snapshot object,
+  -- but a result always rests on at least one policy version.
+  CONSTRAINT payroll_results_snapshot_present
+    CHECK (jsonb_typeof(input_snapshot) = 'object' AND jsonb_array_length(policy_version_ids) > 0),
+  -- A revision beyond the first must say which result it replaces.
+  CONSTRAINT payroll_results_revision_has_lineage
+    CHECK ((revision = 1) OR previous_result_id IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS payroll_results_period_idx ON payroll_results (period_id);
+-- The employee payslip and the previous-period variance both read by employment.
+CREATE INDEX IF NOT EXISTS payroll_results_employment_idx
+  ON payroll_results (employment_id, calculated_at DESC);
 
 CREATE TABLE IF NOT EXISTS payroll_result_lines (
   id uuid PRIMARY KEY,
-  result_id uuid NOT NULL REFERENCES payroll_results(id) ON DELETE CASCADE,
-  component_code text NOT NULL REFERENCES payroll_components(code) ON DELETE RESTRICT,
+  result_id uuid NOT NULL REFERENCES payroll_results(id) ON DELETE RESTRICT,
+  component_code text NOT NULL,
   category text NOT NULL CHECK (category IN ('EARNING', 'DEDUCTION', 'EMPLOYER_COST')),
   amount bigint NOT NULL,
   basis text NULL,
   display_order integer NOT NULL,
+  CONSTRAINT payroll_result_lines_component_fk
+    FOREIGN KEY (component_code, category) REFERENCES payroll_components(code, category) ON DELETE RESTRICT,
   CONSTRAINT payroll_result_lines_one_per_component UNIQUE (result_id, component_code)
 );
 
@@ -311,7 +365,18 @@ CREATE TABLE IF NOT EXISTS payroll_audit_events (
   period_id uuid NULL REFERENCES payroll_periods(id) ON DELETE SET NULL,
   employment_id uuid NULL REFERENCES employments(id) ON DELETE SET NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  occurred_at timestamptz NOT NULL DEFAULT now()
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  -- Specification 8 as a constraint rather than a comment: a per-person amount,
+  -- a bank account or an identity number must never reach an audit payload.
+  -- Period aggregates are allowed and carry their own names (gross_total, ...).
+  CONSTRAINT payroll_audit_events_payload_has_no_personal_amount
+    CHECK (
+      jsonb_typeof(payload) = 'object'
+      AND NOT (payload ?| ARRAY[
+        'amount', 'gross', 'net', 'payable', 'deductions', 'salary', 'basic',
+        'bank_account_number', 'bank_account_name', 'account_number', 'nik', 'lines'
+      ])
+    )
 );
 
 CREATE INDEX IF NOT EXISTS payroll_audit_events_time_idx ON payroll_audit_events (occurred_at DESC);

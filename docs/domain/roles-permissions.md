@@ -105,6 +105,29 @@ approvals.reassign
 activity_logs.read
 ```
 
+## Permission payroll (PAY-003 v1)
+
+Daftar final yang diimplementasikan migration `0068_payroll_foundation.sql`. Seluruhnya berscope organisasi.
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `payroll.policies.manage` | Kepala Human Capital | kebijakan berversi (skala gaji, tunjangan, statutori) |
+| `payroll.profiles.manage` | Kepala Human Capital | tidak boleh atas profil miliknya sendiri |
+| `payroll.periods.manage` | Kepala Human Capital | |
+| `payroll.inputs.manage` | Kepala Human Capital | tidak boleh atas input miliknya sendiri |
+| `payroll.calculate` | Kepala Human Capital | |
+| `payroll.submit` | Kepala Human Capital | pengaju tidak dapat menjadi pengesah |
+| `payroll.approve` | Direktur | |
+| `payroll.reopen.approve` | Direktur | `payroll.reopen` adalah resource, `approve` adalah action |
+| `payroll.loans.manage` | Keuangan | terpisah dari konfirmasi bayar; kasbon terkunci di `CALCULATED` |
+| `payroll.payments.confirm` | Kepala Keuangan | |
+| `payroll.reports.read.organization` | Kepala Keuangan, Direktur | laporan rekap, tanpa nomor rekening |
+| `payroll.transfers.read.organization` | Kepala Keuangan | daftar transfer berisi rekening; setiap baca dan ekspor dicatat |
+
+Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).
+
+Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
+
 ## Scope
 
 Baseline:

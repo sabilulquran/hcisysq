@@ -125,6 +125,14 @@ describe("ORG-008-1 tombol mengikuti izin yang benar-benar dipakai API", () => {
     expect(html).not.toContain("menunggu Kepala HC");
   });
 
+  it("explains instead of offering Terbitkan to a publisher who composed the change (ORG-008-10)", () => {
+    const own = view();
+    own.publishBlockedForSelf = true;
+    const text = visibleText(render({ actor: publisher, data: own }));
+    expect(text).toContain("Anda ikut menyusun — terbitkan oleh Kepala HC lain");
+    expect(text).not.toMatch(/ Terbitkan /);
+  });
+
   it("keeps composing available to an HC admin", () => {
     const html = render({ actor: hcAdmin });
     expect(html).toContain("Periksa");

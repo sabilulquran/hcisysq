@@ -291,6 +291,25 @@ export class PostgresOrganizationRepository {
     return result.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
   }
 
+  /**
+   * ORG-008-10 (DRAFT default, 2026-10-27): every account that composed this change set — the one
+   * that created it, and every actor of an organization audit event for it other than checking,
+   * reopening or publishing. Read from the audit trail rather than the journal so seeded and
+   * single-record edits count too.
+   */
+  async listChangeSetComposers(changeSetId: string): Promise<string[]> {
+    const result = await this.db.query<{ accountId: string }>(
+      `SELECT created_by_account_id AS "accountId" FROM organization_change_sets
+       WHERE id = $1 AND created_by_account_id IS NOT NULL
+       UNION
+       SELECT actor_account_id FROM organization_audit_events
+       WHERE change_set_id = $1 AND actor_account_id IS NOT NULL
+         AND action NOT IN ('organization.draft.validated', 'organization.draft.reopened', 'organization.draft.published')`,
+      [changeSetId],
+    );
+    return result.rows.map((row) => row.accountId);
+  }
+
   /** ORG-008-3b (O-7): the one change set that is still being composed, if any. */
   async findOpenChangeSet(): Promise<OrganizationChangeSet | null> {
     const open = await this.listChangeSets(["DRAFT", "VALIDATED"]);

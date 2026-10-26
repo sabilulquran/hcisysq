@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18).
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan dan cetak memakai dokumen tersendiri; menunggu D-14-8 … D-14-11.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -532,3 +532,94 @@ Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1
   tetap dijamin engine ATT-007 yang tidak diubah dan test engine yang ada.
 - Manifest AUTH-011 (4 route baru, finalize pindah permission; jumlah route permission 184) dan
   `attendance-workforce.openapi.yaml` diperbarui.
+
+## 19. Revisi R1 — Kalkulasi sebagai langkah di dalam Laporan, dan cetak yang rapi (DRAFT, menunggu owner)
+
+**Status:** usulan. Tidak ada kode yang ditulis untuk revisi ini sampai owner menyetujui D-14-8 … D-14-11.
+**Pemicu:** umpan balik owner setelah mencoba rilis `hcis-254caa95` (diteruskan sesi koordinasi,
+2026-10-26), dalam kata-kata spesifikasi ini:
+
+1. Kalkulasi terasa janggal sebagai menu sendiri. Kalkulasi adalah **bagian dari membuat laporan**:
+   Laporan → atur tanggal → tarik/hitung data → lihat data transaksi mentah (belum berbentuk laporan)
+   → pilih model laporan → tampilkan.
+2. Cetak saat ini mencetak satu halaman web utuh (`window.print()` pada halaman admin). Yang
+   dibutuhkan adalah dokumen cetak yang manusiawi.
+
+Arah ATT-014 tidak berubah: kehadiran tetap **tidak dihitung otomatis**, hasil resmi tetap dari
+engine ATT-007 lewat run Kalkulasi, dan D-14-1 … D-14-4 tetap berlaku. Yang berubah adalah **di mana**
+Kalkulasi muncul di layar dan **bagaimana** laporan dicetak. Backend ATT-014-2 (tabel run, runner,
+`POST/GET/cancel /calculations`, `calculation-rows`) dipakai apa adanya.
+
+### 19.1 Alur Laporan satu layar (menggantikan tab Kalkulasi)
+
+Menu Kehadiran menjadi: **Pantauan Hari Ini | Laporan | Klarifikasi | Bukti HP | Koreksi HC**.
+Tab Kalkulasi dihapus; `/admin/attendance/calculation` dialihkan ke `/admin/attendance/reports`
+minimal satu rilis.
+
+Halaman **Laporan** memandu empat langkah berurutan di satu layar (bukan wizard berpindah halaman):
+
+```text
+① Lingkup     Unit [Semua ▾]  Pegawai [Semua ▾]  Rentang [01-10-2026] s/d [26-10-2026]  [Bulan ini ▾]
+② Data        [Tarik data]  ← tombol utama; progres tampil di tempat
+              "Data 01–26 Okt sudah ditarik 26-10-2026 08:12. 3 baris berubah sejak itu. [Tarik ulang]"
+③ Data mentah [ Data Transaksi | Detail Harian ]   ← setengah mentah, berhalaman, belum laporan
+④ Laporan     Model [Laporan Harian (Grid Bulanan) ▾]  [Tampilkan]  → pratinjau  [Cetak] [Excel] [CSV]
+```
+
+| Langkah | Perilaku | Sumber |
+|---|---|---|
+| ① Lingkup | Unit, pegawai, rentang + pintasan §6.1. Mengubah lingkup mengosongkan ③ dan ④. | — |
+| ② Tarik data | Membuat run Kalkulasi untuk lingkup itu (`POST /admin/attendance/calculations`). Bila lingkup sudah ditarik dan tidak ada baris berubah, tombol menjadi sekunder dengan teks "Data sudah terbaru" tetapi tetap bisa ditekan. Antrean, progres, batal, dan `INTERRUPTED` sama seperti §6.2. Tanpa `attendance.calculation.run` tombol tidak tampil; ③ dan ④ tetap bisa dibaca dari hasil tersimpan (D-14-1). | §6.2, ATT-014-2 |
+| ③ Data mentah | Dua tab dulu: **Data Transaksi** (setiap scan: waktu, pegawai, sumber, mesin, tanggal kerja, dipakai/tidak; tanpa aksi edit) dan **Detail Harian** (baris `calculation-rows` yang sudah ada). Empat tab lain §6.3 menyusul. Tanda "Tidak tercatat", "Belum dikalkulasi", "Hari berjalan", "Berubah sejak dikalkulasi" tetap. | `calculation-rows`; endpoint transaksi baru (read-only, berhalaman) |
+| ④ Model laporan | Daftar model §7. Laporan dibuat dari hasil tersimpan untuk lingkup ①; bila ada pasangan belum ditarik atau berubah, pratinjau dan cetakan memuat peringatan di kepala. **Tampilkan** membuka pratinjau di halaman; **Cetak** membuka dokumen cetak §19.2. | §7 |
+
+Diksi tombol ② adalah keputusan owner (D-14-8). Usulan: **"Tarik data"**, dengan keterangan kecil
+"menghitung kehadiran dari scan, jadwal, klarifikasi, dan cuti yang sudah final". Kata "Kalkulasi"
+tidak lagi dipakai sebagai nama menu, hanya di riwayat/audit.
+
+Halaman Laporan ATT-009 yang sekarang (menghitung status secara live) **digantikan** halaman ini.
+Endpoint `GET /admin/attendance/report` tetap ada sampai model §7 yang setara selesai (§10).
+
+### 19.2 Dokumen cetak yang manusiawi
+
+Tombol **Cetak** tidak lagi memanggil `window.print()` pada halaman admin. Ia membuka **dokumen cetak
+tersendiri** di tab baru (`/admin/attendance/reports/print?model=…&from=…&to=…&unitId=…`), tanpa
+sidebar, menu, filter, atau tombol, lalu menawarkan dialog cetak peramban (Simpan sebagai PDF tersedia
+dari dialog yang sama).
+
+| Unsur | Aturan |
+|---|---|
+| Kop | Nama yayasan dan logo (TBD: teks dan berkas logo resmi dari owner, D-14-10), lalu judul laporan. |
+| Kepala | Model laporan, unit (atau "Semua unit"), periode, "Dicetak oleh <nama akun> pada <tanggal jam WIB>". Peringatan "N pegawai-hari belum ditarik/berubah sejak ditarik" bila ada. |
+| Isi | Hanya kolom model itu; angka rata kanan; tanggal dan jam format Indonesia; tidak ada warna yang wajib untuk dibaca (aman hitam-putih, simbol §6.6). |
+| Halaman | A4; orientasi mengikuti model (Grid Bulanan dan Jadwal Bulanan **lanskap**, lainnya potret). Judul kolom diulang di setiap halaman. Baris tidak terpotong di tengah. Pengelompokan per unit dimulai di halaman baru bila model mengelompokkan per unit. |
+| Kaki | Nomor halaman "Halaman x dari y" bila peramban mendukung; legenda simbol di halaman pertama untuk model bersimbol. |
+| Tanda tangan | Kolom "Mengetahui" opsional di akhir laporan (DRAFT; diaktifkan bila owner meminta, D-14-10). |
+
+PDF dari server, perancang tata letak, dan templat yang bisa diubah pengguna **tetap di luar scope**
+(§8.3). Ekspor Excel/CSV tidak berubah dari §7.
+
+### 19.3 Dampak pada paket implementasi
+
+| Paket | Isi setelah R1 |
+|---|---|
+| ATT-014-1 | Tetap (sudah dirilis). |
+| ATT-014-2 | Tetap; backend dipakai apa adanya. Halaman Kalkulasi sementara tetap ada sampai ATT-014-3R dirilis, lalu dialihkan. |
+| **ATT-014-3R** Alur Laporan | §19.1: halaman Laporan empat langkah, tab Data Transaksi + Detail Harian, endpoint transaksi read-only berhalaman, hapus tab Kalkulasi + redirect, pensiunkan halaman ATT-009 lama dari menu. Tanpa migration. |
+| **ATT-014-4R** Model laporan + cetak | §19.2 dan §7: dokumen cetak, lalu model bertahap (usulan urutan D-14-11), Excel/CSV, audit ekspor. Tanpa migration. |
+| ATT-014-5 | Tetap (tampilan tersimpan). |
+
+Test minimum tambahan: alur ①→④ tanpa `attendance.calculation.run` (tombol tidak tampil, data tetap
+terbaca); mengubah lingkup mengosongkan data dan pratinjau; `/admin/attendance/calculation` dialihkan;
+dokumen cetak tidak memuat elemen navigasi dan memuat kop, periode, lingkup, pencetak; orientasi
+sesuai model; judul kolom berulang (diperiksa lewat CSS `thead { display: table-header-group }` dan
+uji render); setiap cetak dan ekspor teraudit.
+
+### 19.4 Keputusan owner untuk R1
+
+| # | Pertanyaan | Usulan |
+|---|---|---|
+| D-14-8 | Nama tombol langkah ②. | **"Tarik data"** + keterangan kecil apa yang dihitung. Alternatif: "Proses data", "Hitung data". |
+| D-14-9 | Tab Kalkulasi dihapus dan alamatnya dialihkan ke Laporan; halaman Laporan ATT-009 lama digantikan alur §19.1. | Ya. |
+| D-14-10 | Kop cetak: nama yayasan dan logo yang dipakai; perlu kolom tanda tangan "Mengetahui"? | Kirim teks kop dan berkas logo resmi; tanda tangan opsional, mati secara bawaan. |
+| D-14-11 | Model laporan yang dibuat pertama. | **Laporan Harian (Grid Bulanan)**, **Rekapitulasi Pegawai**, **Detail Harian**; sisanya menyusul. |

@@ -1,4 +1,4 @@
-export type OrganizationChangeSetStatus = "DRAFT" | "VALIDATED" | "PUBLISHED";
+export type OrganizationChangeSetStatus = "DRAFT" | "VALIDATED" | "PUBLISHED" | "DISCARDED";
 export type VacancyPolicy = "CLIMB_TO_PARENT" | "REQUIRE_ACTING_OR_BLOCK" | "BLOCK";
 export type IncumbencyKind = "PRIMARY" | "ACTING";
 export type AuthoritySubjectKind = "NODE" | "POSITION";
@@ -31,10 +31,14 @@ export interface OrganizationChangeSet {
   createdAt: string;
   validatedAt: string | null;
   publishedAt: string | null;
+  /** ORG-008-3b: increments on every draft mutation; the If-Match value for concurrent edits. */
+  revision: number;
 }
 
 export interface OrganizationNode extends EffectivePeriod {
   id: string;
+  /** ORG-008-6 (O-9): the imported unit that role scopes point at, when this unit is linked. */
+  legacyUnitId?: string | null;
   stableKey: string;
   name: string;
   nodeType: string;

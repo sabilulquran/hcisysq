@@ -125,12 +125,21 @@ export class OrganizationDraftService {
    */
   async findStaleBaseConflict(changeSet: OrganizationChangeSet): Promise<OrganizationStaleBaseConflict | null> {
     const others = await this.repository.listChangeSets();
+    // The cutoff is when the base this change set carries was published, not when the change set was
+    // created. The two are the same until it is rebuilt from newer structure (ORG-008-4c): after a
+    // rebuild the contents are as new as the base, so only publications that landed after that base
+    // are missing from them. Measuring from createdAt would keep reporting a publication the rebuilt
+    // contents already contain. With no base at all, creation time is the only cutoff there is.
+    const base = changeSet.baseChangeSetId
+      ? others.find((candidate) => candidate.id === changeSet.baseChangeSetId)
+      : undefined;
+    const cutoff = base?.publishedAt ?? changeSet.createdAt;
     const conflicts = others.filter((candidate): candidate is OrganizationChangeSet & { publishedAt: string } =>
       candidate.status === "PUBLISHED"
       && candidate.id !== changeSet.id
       && candidate.id !== changeSet.baseChangeSetId
       && candidate.publishedAt !== null
-      && candidate.publishedAt > changeSet.createdAt
+      && candidate.publishedAt > cutoff
       && candidate.effectiveOn <= changeSet.effectiveOn);
     if (conflicts.length === 0) return null;
     const latest = conflicts.reduce((newest, candidate) =>
@@ -175,6 +184,10 @@ export class OrganizationDraftService {
     if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
     if (snapshot.changeSet.status === "PUBLISHED") {
       throw new OrganizationDraftError("CHANGE_SET_PUBLISHED", "Published organization history is immutable.");
+    }
+    // ORG-008-3b: a discarded change set keeps its rows for the history, but is never worked on again.
+    if (snapshot.changeSet.status === "DISCARDED") {
+      throw new OrganizationDraftError("CHANGE_SET_DISCARDED", "Discarded organization change set cannot be changed.");
     }
     return snapshot;
   }

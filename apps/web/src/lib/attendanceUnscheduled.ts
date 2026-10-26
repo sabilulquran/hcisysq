@@ -56,7 +56,7 @@ export async function getAttendanceUnscheduled(scope: AttendanceCalculationScope
   return body as AttendanceUnscheduled;
 }
 
-export type MappingAlignmentStatus = "change" | "unchanged" | "missing_start_date" | "invalid_range" | "overlap";
+export type MappingAlignmentStatus = "change" | "unchanged" | "missing_start_date" | "invalid_range" | "overlap" | "removes_scans";
 
 export interface MappingAlignmentItem {
   mappingId: string;
@@ -75,7 +75,7 @@ export interface MappingAlignmentItem {
 
 export interface MappingAlignmentResult {
   applied: boolean;
-  summary: { mappings: number; change: number; unchanged: number; missingStartDate: number; invalidRange: number; overlap: number; scansAdded: number; scansRemoved: number };
+  summary: { mappings: number; change: number; unchanged: number; missingStartDate: number; invalidRange: number; overlap: number; removesScans: number; scansAdded: number; scansRemoved: number };
   items: MappingAlignmentItem[];
 }
 
@@ -100,6 +100,7 @@ export function alignmentStatusLabel(status: MappingAlignmentStatus): string {
   if (status === "unchanged") return "Sudah sesuai TMT";
   if (status === "missing_start_date") return "TMT pegawai belum diisi";
   if (status === "invalid_range") return "TMT setelah pemetaan berakhir";
+  if (status === "removes_scans") return "TMT lebih akhir; scan akan lepas, tidak diterapkan";
   return "Bertumpuk dengan pemegang PIN lain";
 }
 

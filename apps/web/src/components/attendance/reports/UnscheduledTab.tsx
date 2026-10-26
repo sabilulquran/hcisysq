@@ -180,7 +180,8 @@ function AlignToStartDate({ mappingIds, onDone, onCancel }: {
         <>
           <p className="text-xs text-muted-foreground">
             Pratinjau: {preview.summary.change} dari {preview.summary.mappings} pemetaan akan mulai berlaku sejak TMT pegawai,
-            {" "}{preview.summary.scansAdded} scan ikut tercakup{preview.summary.scansRemoved ? `, ${preview.summary.scansRemoved} scan lepas` : ""}. Data belum diubah.
+            {" "}{preview.summary.scansAdded} scan ikut tercakup. Data belum diubah.
+            {preview.summary.removesScans ? ` ${preview.summary.removesScans} pemetaan dengan TMT lebih akhir tidak diterapkan karena scan akan lepas dari pegawainya.` : ""}
           </p>
           <div className="max-h-72 overflow-auto rounded-lg border">
             <table className="w-full min-w-[640px] text-left text-xs">
@@ -301,7 +302,7 @@ export function UnscheduledTab({ data, scope, canManageSchedules, canMapPins, lo
           <h3 className="text-sm font-bold text-brand-heading">Scan mesin yang belum bisa dikaitkan ke pegawai ({data.pins.total})</h3>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">Scan ini tersimpan di HCIS tetapi belum menjadi milik pegawai mana pun, sehingga tidak ikut dihitung.</p>
-            {canMapPins && alignable.length > 0 ? <button type="button" onClick={() => setAligning(alignable)} className="h-8 rounded-lg border px-3 text-xs font-bold">Sesuaikan semua dengan TMT ({alignable.length})</button> : null}
+            {canMapPins && alignable.length > 0 ? <button type="button" onClick={() => setAligning(alignable)} className="h-8 rounded-lg border px-3 text-xs font-bold">Sesuaikan semua di halaman ini dengan TMT ({alignable.length})</button> : null}
           </div>
           {aligning ? <AlignToStartDate mappingIds={aligning} onCancel={() => setAligning(null)} onDone={(message) => { setAligning(null); setNotice(message); onChanged(); }} /> : null}
           <div className="mt-2 overflow-x-auto rounded-xl border">

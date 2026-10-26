@@ -11,12 +11,13 @@ import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.j
 import { normalizeDeviceSerial } from "./protocol.js";
 import {
   alignmentProjectionTargets,
+  alignmentSpans,
   applyMappingAlignment,
   planMappingAlignment,
-  reprojectAlignment,
+  queueReprojection,
+  revertMappingAlignment,
   summarizeAlignment,
 } from "./mapping-alignment.js";
-import { projectAdmsAttendanceDay } from "./projection.js";
 
 const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
 const mappingIdSchema = z.object({ mappingId: z.string().uuid() });
@@ -233,7 +234,7 @@ function presentDevice<T extends {
   };
 }
 
-async function reprojectMapping(pool: Pool, mappingId: string) {
+async function mappingProjectionTargets(pool: Pool, mappingId: string) {
   const targets = await pool.query<{ employeeId: string; attendanceDate: string }>(
     `SELECT DISTINCT
        m.employee_id AS "employeeId",
@@ -248,13 +249,7 @@ async function reprojectMapping(pool: Pool, mappingId: string) {
      ORDER BY "attendanceDate"`,
     [mappingId],
   );
-  const results = [];
-  for (const target of targets.rows) {
-    results.push(
-      await projectAdmsAttendanceDay(pool, target.employeeId, target.attendanceDate),
-    );
-  }
-  return results;
+  return targets.rows;
 }
 
 export async function registerAdmsAdminRoutes(
@@ -626,14 +621,17 @@ export async function registerAdmsAdminRoutes(
         client.release();
       }
 
-      let projection: unknown = null;
+      // Since TMT the history can reach back years, so the legacy re-projection runs after the reply.
+      let reprojectionQueued = 0;
       try {
-        projection = await reprojectMapping(pool, mappingId);
+        const targets = await mappingProjectionTargets(pool, mappingId);
+        reprojectionQueued = targets.length;
+        queueReprojection(pool, targets, request.log);
       } catch (error) {
-        request.log.error({ err: error, mappingId }, "ADMS mapping re-projection failed");
+        request.log.error({ err: error, mappingId }, "ADMS mapping re-projection could not be queued");
       }
       reply.header("Cache-Control", "no-store");
-      return reply.status(201).send({ item: mapping, projection });
+      return reply.status(201).send({ item: mapping, projection: { queued: reprojectionQueued } });
     } catch (error) {
       return sendAdminError(reply, error);
     }
@@ -655,9 +653,12 @@ export async function registerAdmsAdminRoutes(
     try {
       const client = await pool.connect();
       let items;
+      let targets;
       try {
         await client.query("BEGIN");
         items = await applyMappingAlignment(client, mappingIds, principal.id, body.data.reason!);
+        // Read inside the transaction, so nothing can fail between COMMIT and the reply.
+        targets = await alignmentProjectionTargets(client, alignmentSpans(items));
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
@@ -665,12 +666,8 @@ export async function registerAdmsAdminRoutes(
       } finally {
         client.release();
       }
-      const targets = await alignmentProjectionTargets(pool, items);
       // The engine reads raw scans; only the legacy daily projection is refreshed, after the reply.
-      void reprojectAlignment(pool, targets).then(
-        (outcome) => request.log.info({ ...outcome }, "ADMS mapping alignment re-projection finished"),
-        (error: unknown) => request.log.error({ err: error }, "ADMS mapping alignment re-projection failed"),
-      );
+      queueReprojection(pool, targets, request.log);
       return reply.send({ applied: true, summary: summarizeAlignment(items), items, reprojectionQueued: targets.length });
     } catch (error) {
       return sendAdminError(reply, error);
@@ -687,55 +684,30 @@ export async function registerAdmsAdminRoutes(
     }
     try {
       const client = await pool.connect();
+      let outcome;
+      let targets: Array<{ employeeId: string; attendanceDate: string }> = [];
       try {
         await client.query("BEGIN");
-        await client.query("SELECT id FROM attendance_adms_employee_mappings WHERE id = $1 FOR UPDATE", [params.data.mappingId]);
-        const before = await loadMapping(client, params.data.mappingId);
-        if (!before) throw new AdmsAdminError(404, "ADMS_MAPPING_NOT_FOUND", "Mapping tidak ditemukan.");
-        const audit = await client.query<{ previousFrom: string; alignedFrom: string }>(
-          `SELECT before_state->>'effectiveFrom' AS "previousFrom", after_state->>'effectiveFrom' AS "alignedFrom"
-           FROM attendance_adms_admin_audit_events
-           WHERE mapping_id = $1 AND action = 'mapping_aligned_to_start_date'
-             AND NOT coalesce((after_state->>'reverted')::boolean, false)
-           ORDER BY created_at DESC, id DESC
-           LIMIT 1`,
-          [before.id],
-        );
-        const last = audit.rows[0];
-        if (!last || new Date(last.alignedFrom).getTime() !== before.effectiveFrom.getTime()) {
+        outcome = await revertMappingAlignment(client, params.data.mappingId, principal.id, body.data.reason);
+        if (outcome.status === "not_found") throw new AdmsAdminError(404, "ADMS_MAPPING_NOT_FOUND", "Mapping tidak ditemukan.");
+        if (outcome.status === "not_aligned") {
           throw new AdmsAdminError(
             409,
             "ADMS_MAPPING_NOT_ALIGNED",
-            "Awal mapping ini tidak berasal dari penyesuaian TMT terakhir, jadi tidak ada yang dipulihkan.",
+            "Awal mapping ini tidak berasal dari penyesuaian TMT yang belum dipulihkan, jadi tidak ada yang dipulihkan.",
           );
         }
-        await client.query(
-          "UPDATE attendance_adms_employee_mappings SET effective_from = $2, updated_at = now() WHERE id = $1",
-          [before.id, new Date(last.previousFrom)],
-        );
-        const after = await loadMapping(client, before.id);
-        await client.query(
-          `INSERT INTO attendance_adms_admin_audit_events (
-             id, actor_account_id, action, device_id, mapping_id, before_state, after_state
-           ) VALUES ($1, $2, 'mapping_aligned_to_start_date', $3, $4, $5::jsonb, $6::jsonb)`,
-          [
-            randomUUID(),
-            principal.id,
-            before.deviceId,
-            before.id,
-            JSON.stringify({ effectiveFrom: before.effectiveFrom.toISOString() }),
-            JSON.stringify({ effectiveFrom: after!.effectiveFrom.toISOString(), reverted: true, reason: body.data.reason }),
-          ],
-        );
+        targets = await alignmentProjectionTargets(client, [outcome.span]);
         await client.query("COMMIT");
-        reply.header("Cache-Control", "no-store");
-        return reply.send({ item: after });
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
       } finally {
         client.release();
       }
+      queueReprojection(pool, targets, request.log);
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ mappingId: params.data.mappingId, effectiveFrom: outcome.effectiveFrom, scansMoved: outcome.scansMoved, reprojectionQueued: targets.length });
     } catch (error) {
       return sendAdminError(reply, error);
     }

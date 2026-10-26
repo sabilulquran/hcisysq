@@ -15,7 +15,9 @@ export type MappingAlignmentStatus =
   | "unchanged"
   | "missing_start_date"
   | "invalid_range"
-  | "overlap";
+  | "overlap"
+  /** TMT is later than the current start and scans would lose their owner: not applied (DRAFT). */
+  | "removes_scans";
 
 export type MappingAlignmentItem = {
   mappingId: string;
@@ -105,6 +107,9 @@ export async function planMappingAlignment(
         : row.effectiveTo !== null && row.targetFrom.getTime() >= row.effectiveTo.getTime() ? "invalid_range"
         : row.overlaps ? "overlap"
         : row.targetFrom.getTime() === row.currentFrom.getTime() ? "unchanged"
+        // The legacy daily projection cannot clear a day whose scans leave the employee, so a later
+        // start that drops scans is reported, never applied (§20.11).
+        : row.scansRemoved > 0 ? "removes_scans"
         : "change";
     return {
       mappingId: row.mappingId,
@@ -134,6 +139,7 @@ export function summarizeAlignment(items: readonly MappingAlignmentItem[]) {
     missingStartDate: count("missing_start_date"),
     invalidRange: count("invalid_range"),
     overlap: count("overlap"),
+    removesScans: count("removes_scans"),
     scansAdded: items.reduce((sum, item) => sum + (item.status === "change" ? item.scansAdded : 0), 0),
     scansRemoved: items.reduce((sum, item) => sum + (item.status === "change" ? item.scansRemoved : 0), 0),
   };
@@ -184,12 +190,94 @@ export async function applyMappingAlignment(
   return items;
 }
 
+export type ProjectionSpan = { deviceId: string; pin: string; employeeId: string; from: string; to: string };
+
+export function alignmentSpans(items: readonly MappingAlignmentItem[]): ProjectionSpan[] {
+  return items.filter((item) => item.status === "change").map((item) => ({
+    deviceId: item.deviceId,
+    pin: item.pin,
+    employeeId: item.employeeId,
+    from: item.targetFrom! < item.currentFrom ? item.targetFrom! : item.currentFrom,
+    to: item.targetFrom! < item.currentFrom ? item.currentFrom : item.targetFrom!,
+  }));
+}
+
+/**
+ * Restores the start a mapping had before its latest alignment that is not reverted yet. Reverts
+ * reference the alignment audit they undo, so a chain A→B→C unwinds C→B then B→A.
+ */
+export async function revertMappingAlignment(
+  client: PoolClient,
+  mappingId: string,
+  actorAccountId: string,
+  reason: string,
+) {
+  const locked = await client.query<{ deviceId: string; pin: string; employeeId: string; effectiveFrom: Date }>(
+    `SELECT device_id AS "deviceId", pin, employee_id AS "employeeId", effective_from AS "effectiveFrom"
+     FROM attendance_adms_employee_mappings WHERE id = $1 FOR UPDATE`,
+    [mappingId],
+  );
+  const mapping = locked.rows[0];
+  if (!mapping) return { status: "not_found" as const };
+  const audit = await client.query<{ id: string; previousFrom: string; alignedFrom: string }>(
+    `SELECT aligned.id, aligned.before_state->>'effectiveFrom' AS "previousFrom",
+       aligned.after_state->>'effectiveFrom' AS "alignedFrom"
+     FROM attendance_adms_admin_audit_events aligned
+     WHERE aligned.mapping_id = $1 AND aligned.action = 'mapping_aligned_to_start_date'
+       AND NOT EXISTS (
+         SELECT 1 FROM attendance_adms_admin_audit_events reverted
+         WHERE reverted.mapping_id = $1 AND reverted.action = 'mapping_alignment_reverted'
+           AND reverted.after_state->>'revertedAuditId' = aligned.id::text
+       )
+     ORDER BY aligned.created_at DESC, aligned.id DESC
+     LIMIT 1`,
+    [mappingId],
+  );
+  const last = audit.rows[0];
+  if (!last || new Date(last.alignedFrom).getTime() !== mapping.effectiveFrom.getTime()) {
+    return { status: "not_aligned" as const };
+  }
+  const previous = new Date(last.previousFrom);
+  const current = mapping.effectiveFrom;
+  const moved = await client.query<{ scans: number }>(
+    `SELECT count(*)::int AS scans FROM attendance_adms_events
+     WHERE device_id = $1 AND pin = $2 AND occurred_at >= least($3::timestamptz, $4::timestamptz)
+       AND occurred_at < greatest($3::timestamptz, $4::timestamptz)`,
+    [mapping.deviceId, mapping.pin, previous, current],
+  );
+  await client.query(
+    "UPDATE attendance_adms_employee_mappings SET effective_from = $2, updated_at = now() WHERE id = $1",
+    [mappingId, previous],
+  );
+  await client.query(
+    `INSERT INTO attendance_adms_admin_audit_events (
+       id, actor_account_id, action, device_id, mapping_id, before_state, after_state
+     ) VALUES ($1, $2, 'mapping_alignment_reverted', $3, $4, $5::jsonb, $6::jsonb)`,
+    [
+      randomUUID(),
+      actorAccountId,
+      mapping.deviceId,
+      mappingId,
+      JSON.stringify({ effectiveFrom: current.toISOString() }),
+      JSON.stringify({ effectiveFrom: previous.toISOString(), revertedAuditId: last.id, scansMoved: moved.rows[0]!.scans, reason }),
+    ],
+  );
+  const span: ProjectionSpan = {
+    deviceId: mapping.deviceId,
+    pin: mapping.pin,
+    employeeId: mapping.employeeId,
+    from: (previous < current ? previous : current).toISOString(),
+    to: (previous < current ? current : previous).toISOString(),
+  };
+  return { status: "reverted" as const, effectiveFrom: previous.toISOString(), scansMoved: moved.rows[0]!.scans, span };
+}
+
 /** Employee-days whose legacy daily projection may change because scans moved between owners. */
 export async function alignmentProjectionTargets(
-  db: Pick<Pool, "query">,
-  items: readonly MappingAlignmentItem[],
+  db: Pick<PoolClient, "query">,
+  spans: readonly ProjectionSpan[],
 ) {
-  const changed = items.filter((item) => item.status === "change");
+  const changed = spans;
   if (changed.length === 0) return [];
   const result = await db.query<{ employeeId: string; attendanceDate: string }>(
     `SELECT DISTINCT span.employee_id AS "employeeId",
@@ -204,25 +292,48 @@ export async function alignmentProjectionTargets(
       changed.map((item) => item.deviceId),
       changed.map((item) => item.pin),
       changed.map((item) => item.employeeId),
-      changed.map((item) => (item.targetFrom! < item.currentFrom ? item.targetFrom! : item.currentFrom)),
-      changed.map((item) => (item.targetFrom! < item.currentFrom ? item.currentFrom : item.targetFrom!)),
+      changed.map((item) => item.from),
+      changed.map((item) => item.to),
     ],
   );
   return result.rows;
 }
 
+type ProjectionTarget = { employeeId: string; attendanceDate: string };
+
 /** Re-projects the legacy daily rows one by one. The attendance engine reads raw scans and does not need this. */
-export async function reprojectAlignment(
-  pool: Pool,
-  targets: readonly { employeeId: string; attendanceDate: string }[],
-) {
-  let failed = 0;
+export async function reprojectAlignment(pool: Pool, targets: readonly ProjectionTarget[]) {
+  const failed: ProjectionTarget[] = [];
   for (const target of targets) {
     try {
       await projectAdmsAttendanceDay(pool, target.employeeId, target.attendanceDate);
     } catch {
-      failed += 1;
+      failed.push(target);
     }
   }
   return { total: targets.length, failed };
+}
+
+// One background re-projection at a time per API process, so concurrent applies cannot exhaust the pool.
+let projectionQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs the legacy re-projection after the reply, serialized. Lost on restart; the attendance engine
+ * does not depend on it, and a later mapping change or the next ADMS punch re-projects those days.
+ */
+export function queueReprojection(
+  pool: Pool,
+  targets: readonly ProjectionTarget[],
+  log: { info: (data: object, message: string) => void; error: (data: object, message: string) => void },
+) {
+  if (targets.length === 0) return;
+  projectionQueue = projectionQueue.then(async () => {
+    try {
+      const outcome = await reprojectAlignment(pool, targets);
+      if (outcome.failed.length) log.error({ total: outcome.total, failed: outcome.failed }, "ADMS mapping re-projection had failures");
+      else log.info({ total: outcome.total }, "ADMS mapping re-projection finished");
+    } catch (error) {
+      log.error({ err: error }, "ADMS mapping re-projection failed");
+    }
+  });
 }

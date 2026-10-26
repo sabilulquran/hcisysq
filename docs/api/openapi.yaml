@@ -1087,7 +1087,7 @@ paths:
                         effectiveTo: { type: string, format: date-time, nullable: true }
                         scansAdded: { type: integer }
                         scansRemoved: { type: integer }
-                        status: { type: string, enum: [change, unchanged, missing_start_date, invalid_range, overlap] }
+                        status: { type: string, enum: [change, unchanged, missing_start_date, invalid_range, overlap, removes_scans], description: removes_scans (TMT later and scans would lose their owner) is never applied. }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1112,12 +1112,12 @@ paths:
               properties:
                 reason: { type: string, minLength: 1, maxLength: 500 }
       responses:
-        '200': { description: Start restored and audited (mapping_aligned_to_start_date with reverted true) }
+        '200': { description: Start restored and audited as mapping_alignment_reverted (references the alignment audit it undoes) }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment" }
+        '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment that is not reverted yet" }
 
   /admin/attendance/adms/mappings/{mappingId}:
     delete:

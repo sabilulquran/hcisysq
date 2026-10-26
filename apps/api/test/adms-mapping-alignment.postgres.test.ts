@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { applyMappingAlignment, planMappingAlignment, summarizeAlignment } from "../src/modules/attendance/adms/mapping-alignment.js";
+import {
+  alignmentProjectionTargets,
+  alignmentSpans,
+  applyMappingAlignment,
+  planMappingAlignment,
+  revertMappingAlignment,
+  summarizeAlignment,
+} from "../src/modules/attendance/adms/mapping-alignment.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -124,6 +131,54 @@ describe.skipIf(!allowed)("ADMS-R2c PIN mapping aligned to TMT (PostgreSQL)", ()
     })]);
     const again = await planMappingAlignment(client, [mapping]);
     expect(again[0]!.status).toBe("unchanged");
+  });
+
+  it("lists the employee-days whose legacy projection changes", async () => {
+    const items = await planMappingAlignment(client, [mapping]);
+    const targets = await alignmentProjectionTargets(client, alignmentSpans(items));
+    expect(targets).toEqual([
+      { employeeId: holder, attendanceDate: "2026-09-01" },
+      { employeeId: holder, attendanceDate: "2026-10-18" },
+    ]);
+  });
+
+  it("reverts a chain of alignments one step at a time, each audited", async () => {
+    await applyMappingAlignment(client, [mapping], accountId, "Pertama");
+    // TMT corrected later: a second alignment moves the start again.
+    await client.query("UPDATE employees SET started_on = '2026-09-15' WHERE id = $1", [holder]);
+    const second = await applyMappingAlignment(client, [mapping], accountId, "Kedua");
+    expect(second[0]).toMatchObject({ status: "removes_scans" });
+    await client.query("UPDATE employees SET started_on = '2026-08-15' WHERE id = $1", [holder]);
+    const third = await applyMappingAlignment(client, [mapping], accountId, "Ketiga");
+    expect(third[0]).toMatchObject({ status: "change", scansRemoved: 0 });
+
+    const first = await revertMappingAlignment(client, mapping, accountId, "Pulihkan");
+    expect(first).toMatchObject({ status: "reverted", effectiveFrom: "2026-07-31T17:00:00.000Z", scansMoved: 0 });
+    const second2 = await revertMappingAlignment(client, mapping, accountId, "Pulihkan lagi");
+    expect(second2).toMatchObject({ status: "reverted", effectiveFrom: "2026-10-19T04:38:00.000Z", scansMoved: 2 });
+    expect((await revertMappingAlignment(client, mapping, accountId, "Habis")).status).toBe("not_aligned");
+    const audit = await client.query(
+      "SELECT action, count(*)::int AS n FROM attendance_adms_admin_audit_events WHERE mapping_id = $1 GROUP BY action ORDER BY action",
+      [mapping],
+    );
+    expect(audit.rows).toEqual([
+      { action: "mapping_aligned_to_start_date", n: 2 },
+      { action: "mapping_alignment_reverted", n: 2 },
+    ]);
+  });
+
+  it("reports a later TMT that would drop scans, and a TMT after the mapping ended, without applying them", async () => {
+    await client.query("UPDATE employees SET started_on = '2026-10-21' WHERE id = $1", [holder]);
+    const [later] = await planMappingAlignment(client, [mapping]);
+    expect(later).toMatchObject({ status: "removes_scans", scansRemoved: 1 });
+    const applied = await applyMappingAlignment(client, [mapping], accountId, "Tidak boleh");
+    expect(applied[0]!.status).toBe("removes_scans");
+    const stored = await client.query("SELECT effective_from FROM attendance_adms_employee_mappings WHERE id = $1", [mapping]);
+    expect(stored.rows[0].effective_from.toISOString()).toBe("2026-10-19T04:38:00.000Z");
+
+    await client.query("UPDATE employees SET started_on = '2026-09-01' WHERE id = $1", [previousHolder]);
+    const [ended] = await planMappingAlignment(client, [earlierMapping]);
+    expect(ended).toMatchObject({ status: "invalid_range" });
   });
 
   it("starts after the latest earlier holder when the PIN was recycled more than once", async () => {

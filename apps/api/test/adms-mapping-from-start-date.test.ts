@@ -127,6 +127,14 @@ describe("ADMS-R2c mapping from TMT", () => {
     expect(sqls).toContain("COMMIT");
   });
 
+  it("refuses a revert when the start is not the result of an alignment", async () => {
+    const response = await post(`/admin/attendance/adms/mappings/${MAPPING}/revert-alignment`, { reason: "Kembalikan" });
+    // The mock returns no mapping row: 404 and nothing written.
+    expect(response.statusCode).toBe(404);
+    expect(statements.some((item) => item.sql.startsWith("UPDATE"))).toBe(false);
+    expect(statements.at(-1)?.sql).toBe("ROLLBACK");
+  });
+
   it("requires attendance.devices.operate", async () => {
     granted.permissions = ["attendance.devices.read"];
     expect((await post("/admin/attendance/adms/mappings/align-to-start-date", { mappingIds: [MAPPING] })).statusCode).toBe(403);

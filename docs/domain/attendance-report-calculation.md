@@ -1177,12 +1177,19 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
   `mapping_aligned_to_start_date` menyimpan awal lama. Proyeksi harian lama diperbarui sesudah respons;
   engine membaca scan mentah dan hanya berubah setelah Kalkulasi.
 - **Pemulihan:** `POST /admin/attendance/adms/mappings/{id}/revert-alignment` mengembalikan awal sebelum
-  penyesuaian terakhir, juga diaudit (`reverted: true`).
+  penyesuaian terakhir yang belum dipulihkan, diaudit `mapping_alignment_reverted` (merujuk audit yang
+  dipulihkan dan jumlah scan yang berpindah). Rantai A→B→C dipulihkan C→B lalu B→A.
+- `DRAFT`: TMT yang **lebih akhir** dari awal sekarang dan membuat scan lepas dari pegawainya dilaporkan
+  `removes_scans` dan **tidak diterapkan**, karena proyeksi harian lama belum bisa mengosongkan hari yang
+  kehilangan scan. Bila tidak ada scan yang lepas, pergeseran ke belakang tetap diterapkan.
+- Proyeksi harian lama (tabel lama, bukan engine) dijalankan setelah respons, satu antrean per proses API,
+  dengan kegagalan per pegawai-hari dicatat di log. Pembuatan pemetaan baru juga memakai antrean ini
+  karena riwayat sejak TMT bisa bertahun-tahun.
 - **Tab Tanpa Jadwal bagian B** memberi tombol **Sesuaikan dengan TMT** per PIN dan **Sesuaikan semua
   dengan TMT** untuk PIN berpemetaan di halaman itu, keduanya dengan pratinjau sebelum diterapkan.
-- **Migration `0066`** (aditif) menambah aksi audit `mapping_aligned_to_start_date` ke constraint
+- **Migration `0066`** (aditif) menambah aksi audit `mapping_aligned_to_start_date` dan `mapping_alignment_reverted` ke constraint
   `attendance_adms_admin_audit_events_action_check`. Rilis lama tidak menulis aksi itu, jadi aman berjalan di
   skema baru. Rollback: pasang kembali daftar `0055` setelah tidak ada baris beraksi baru.
-- `DRAFT`: aturan 1 bagian "berakhir di akhir tanggal berhenti" belum diterapkan otomatis; pemetaan tetap
+- `TBD`: aturan 1 bagian "berakhir di akhir tanggal berhenti" belum diterapkan otomatis; pemetaan tetap
   diakhiri lewat aksi Akhiri yang ada. Pemetaan hanya bisa dibuat untuk pegawai aktif.
 - Manifest AUTH-011 +2 route (209). Tidak ada permission baru.

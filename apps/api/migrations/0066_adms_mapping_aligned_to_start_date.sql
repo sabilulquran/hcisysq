@@ -1,6 +1,6 @@
--- ADMS-R2c (ATT-014 §20.5, D-14-20): audit action for "Sesuaikan dengan TMT".
+-- ADMS-R2c (ATT-014 §20.5, D-14-20): audit actions for "Sesuaikan dengan TMT" and its revert.
 -- Additive: the old release never writes this action, so it runs unchanged on the new constraint.
--- Rollback: re-add the previous list (0055) once no row uses the new action.
+-- Rollback: re-add the previous list (0055) once no row uses the new actions.
 ALTER TABLE attendance_adms_admin_audit_events
   DROP CONSTRAINT IF EXISTS attendance_adms_admin_audit_events_action_check;
 ALTER TABLE attendance_adms_admin_audit_events
@@ -16,5 +16,5 @@ ALTER TABLE attendance_adms_admin_audit_events
       'pending_commands_cleared', 'physical_operation_requested',
       'physical_capability_updated', 'firmware_package_uploaded',
       'wdms_device_profile_updated', 'job_code_saved', 'device_retired',
-      'mapping_aligned_to_start_date'
+      'mapping_aligned_to_start_date', 'mapping_alignment_reverted'
     ));

@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17, D-14-18, D-14-19, D-14-21; D-14-20 dan jam pulang D-14-22 sudah diputuskan owner.**
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu persetujuan D-14-17 … D-14-21; jam shift D-14-22 sudah ditetapkan owner.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -905,7 +905,7 @@ D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordin
 
 ## 20. Revisi R2 — halaman Laporan satu jendela, tab "Tanpa Jadwal", dan kenapa data kosong (DRAFT, menunggu owner)
 
-**Status:** usulan, **belum ada kode**. Menunggu D-14-17, D-14-18, D-14-19, D-14-21, dan jam masuk D-14-22. D-14-20 (direvisi) dan jam pulang D-14-22 sudah diputuskan owner 2026-10-26.
+**Status:** usulan, **belum ada kode**. Menunggu persetujuan owner atas D-14-17 … D-14-21 (D-14-20 dalam bentuk yang direvisi menurut arahan owner). Jam shift D-14-22 sudah ditetapkan owner 2026-10-26; toleransinya menunggu konfirmasi.
 **Pemicu:** owner mencoba rilis R1 `hcis-b1657745-20261026` (2026-10-26, diteruskan sesi koordinasi):
 halaman Laporan membingungkan, format lama masih terlipat di bawah, owner meminta pola software
 Solution Attendance Management (satu bar menu di atas, sedikit tabel, laporan terbuka sebagai popup), dan
@@ -1029,7 +1029,7 @@ Bagian B hanya tampil untuk pemegang `attendance.devices.read`, karena PIN adala
 memakai jendela yang sama. Di atas lembar ada bilah alat layar: Cetak, Simpan PDF (dialog cetak), Excel,
 CSV, dan Tutup. Penunjuk halaman di layar memerlukan pustaka paged media; itu tidak termasuk usulan ini.
 
-### 20.5 Pemetaan PIN berlaku sejak tanggal mulai aktif pegawai (D-14-20, direvisi owner 2026-10-26)
+### 20.5 Pemetaan PIN berlaku sejak tanggal mulai aktif pegawai (D-14-20, direvisi menurut arahan owner 2026-10-26)
 
 **Keputusan owner:** pemetaan PIN adalah urusan pengelolaan kehadiran, sedangkan scan di mesin tetap ada.
 Selama PIN cocok, semua scan PIN itu di mesin itu milik pegawai tersebut. Batasnya adalah **tanggal mulai
@@ -1089,9 +1089,9 @@ adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (�
 | D-14-17 | Bentuk halaman Laporan mengikuti §20.2 (satu bar kontrol, enam tab, Kalkulasi dengan popup progres), dan bagian "Format lama" dihapus seluruhnya. | Ya. Popup progres tanpa nama pegawai dulu; nama pegawai bisa ditambah kemudian dengan migration kecil. |
 | D-14-18 | Laporan terbuka di jendela baru ke route cetak, atau modal di halaman. | **Jendela baru** (§20.4). |
 | D-14-19 | Tab "Tanpa Jadwal" dengan dua bagian (§20.3) dan tombol Pasang jadwal / Petakan PIN. | Ya. |
-| D-14-20 | Pemetaan PIN berlaku sejak TMT pegawai (sampai tanggal berhenti), pemetaan baru otomatis memakai TMT, PIN didaur ulang tidak boleh tumpang tindih. | **Diputuskan owner 2026-10-26** (§20.5). Koreksi satu kali 43 pemetaan 19 Okt butuh persetujuan owner terpisah setelah dry-run. |
+| D-14-20 | Pemetaan PIN berlaku sejak TMT pegawai (sampai tanggal berhenti), pemetaan baru otomatis memakai TMT, PIN didaur ulang tidak boleh tumpang tindih. | Ya, sesuai arahan owner 2026-10-26 (§20.5); menunggu persetujuan rencana. Koreksi satu kali 43 pemetaan 19 Okt butuh persetujuan owner terpisah setelah dry-run. |
 | D-14-21 | Scan pada hari tanpa jadwal tetap tidak disalin engine dan cukup dibaca dari scan mentah; label "Libur" untuk hari tanpa pola diganti "Tanpa jadwal". | Ya. |
-| D-14-22 | Jam shift setengah hari SDIT Tahfizh untuk jabatan "Guru Tahfizh (Half Day)" dan "(Half Day) II" (21 pegawai). | **Jam pulang diputuskan owner 2026-10-26: Half Day 12.00, Half Day II 12.30.** Jam masuk **belum** ditetapkan dan tidak diisi sendiri. Setelah lengkap, HC membuat dua shift itu lalu memakai "Pasang ke shift yang ada". |
+| D-14-22 | Jam shift setengah hari SDIT Tahfizh untuk jabatan "Guru Tahfizh (Half Day)" dan "(Half Day) II" (21 pegawai). | **Ditetapkan owner 2026-10-26:** "Guru Tahfizh (Half Day)" **07.00–12.00**, "Guru Tahfizh (Half Day) II" **07.00–12.30** (jam masuk sama dengan hari penuh). **Toleransi terlambat dan pulang cepat belum disebut owner**: nilai bawaan diusulkan sama dengan "SDIT — Hari Penuh" (terlambat 1 menit, pulang cepat 0 menit), **menunggu konfirmasi**. Setelah dikonfirmasi, HC membuat dua shift itu lalu memakai "Pasang ke shift yang ada". |
 
 ### 20.8 Paket setelah disetujui
 
@@ -1107,8 +1107,8 @@ satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.
 
 **Langkah operasional yang tidak butuh kode** dan bisa dilakukan HC sekarang:
 
-- lengkapi jam masuk shift setengah hari SDIT (jam pulang 12.00 dan 12.30 sudah ditetapkan), buat kedua
-  shift itu, lalu pasang pola jadwal untuk 28 pegawai SDIT Tahfizh yang belum punya (21 di antaranya
+- konfirmasi toleransi, lalu buat shift "Guru Tahfizh (Half Day)" 07.00–12.00 dan "Guru Tahfizh (Half Day)
+  II" 07.00–12.30, dan pasang pola jadwal untuk 28 pegawai SDIT Tahfizh yang belum punya (21 di antaranya
   Guru Tahfizh half day);
 - **mundurkan tanggal mulai pola jadwal SDIT** dari 24 Okt ke tanggal jadwal itu memang mulai berlaku
   (mis. 1 Sep 2026), karena tanpa jadwal hari-hari September–Oktober tidak dinilai;

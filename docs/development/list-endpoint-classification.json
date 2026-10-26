@@ -663,6 +663,15 @@
       "package": "PAG-5"
     },
     {
+      "url": "/payroll/periods",
+      "list": "paged",
+      "reason": "Daftar periode payroll dengan page dan pageSize, urutan stabil."
+    },
+    {
+      "url": "/payroll/periods/:periodId",
+      "list": "single"
+    },
+    {
       "url": "/payslips",
       "list": "debt",
       "reason": "Semua slip gaji pegawai tanpa LIMIT (sekitar 12 per tahun).",

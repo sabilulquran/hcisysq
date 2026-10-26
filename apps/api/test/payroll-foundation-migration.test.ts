@@ -516,6 +516,53 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
     });
   });
 
+  describe("transition log", () => {
+    it("keeps the reason a period was returned with", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await client.query(
+        `INSERT INTO payroll_period_transitions(id, period_id, action, from_state, to_state, reason, actor_account_id)
+         VALUES ($1, $2, 'return', 'SUBMITTED', 'COLLECTING', 'Jam mengajar belum diperbarui', $3)`,
+        [randomUUID(), periodId, submitterAccountId],
+      );
+      const { rows } = await client.query<{ reason: string }>(
+        "SELECT reason FROM payroll_period_transitions WHERE period_id = $1",
+        [periodId],
+      );
+      expect(rows[0]!.reason).toBe("Jam mengajar belum diperbarui");
+    });
+
+    it("refuses a return, reopen request or rejection without one", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      for (const action of ["return", "request_reopen", "reject_reopen"]) {
+        await expectSqlError(
+          `INSERT INTO payroll_period_transitions(id, period_id, action, from_state, to_state)
+           VALUES ($1, $2, $3, 'SUBMITTED', 'COLLECTING')`,
+          [randomUUID(), periodId, action],
+          "23514",
+        );
+      }
+    });
+
+    it("accepts an action that needs no reason", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await client.query(
+        `INSERT INTO payroll_period_transitions(id, period_id, action, from_state, to_state)
+         VALUES ($1, $2, 'calculate', 'COLLECTING', 'CALCULATED')`,
+        [randomUUID(), periodId],
+      );
+    });
+
+    it("refuses deleting a period that carries transitions", async () => {
+      const periodId = await insertPeriod("2026-09-01");
+      await client.query(
+        `INSERT INTO payroll_period_transitions(id, period_id, action, from_state, to_state)
+         VALUES ($1, $2, 'calculate', 'COLLECTING', 'CALCULATED')`,
+        [randomUUID(), periodId],
+      );
+      await expectSqlError("DELETE FROM payroll_periods WHERE id = $1", [periodId], "23503");
+    });
+  });
+
   describe("roles and permissions", () => {
     it("registers every v1 payroll permission", async () => {
       const { rows } = await client.query<{ permission_key: string }>(

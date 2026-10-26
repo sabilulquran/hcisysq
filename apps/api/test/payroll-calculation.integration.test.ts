@@ -52,6 +52,10 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
   let pool: Pool;
   let periodId: string;
   let actorAccountId: string;
+  // Other suites leave employments behind in the shared CI database, and a
+  // payroll period pays everyone in its legal entity. Each test therefore gets
+  // its own entity key, which is exactly the filter the production query uses.
+  let legalEntityKey: string;
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: databaseUrl!, max: 2 });
@@ -83,9 +87,9 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     const endBasis = options.endBasis ?? null;
     await client.query(
       `INSERT INTO employments(
-         id, employee_id, started_on, start_basis, ended_on, end_basis, end_precision, end_reason,
-         source, opened_by_action_id)
-       VALUES ($1, $2, $3::date, 'RECORDED', $4::date, $5, $6, $7, 'ACTION', $8)`,
+         id, employee_id, legal_entity_key, started_on, start_basis, ended_on, end_basis,
+         end_precision, end_reason, source, opened_by_action_id)
+       VALUES ($1, $2, $9, $3::date, 'RECORDED', $4::date, $5, $6, $7, 'ACTION', $8)`,
       [
         employmentId,
         employeeId,
@@ -95,6 +99,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
         endBasis === "RECORDED" ? "DAY" : null,
         endBasis === null ? null : "RESIGN",
         actionId,
+        legalEntityKey,
       ],
     );
     await client.query(
@@ -142,10 +147,13 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     }
 
     periodId = randomUUID();
+    legalEntityKey = randomUUID();
     await pool.query(
-      `INSERT INTO payroll_periods(id, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
-       VALUES ($1, DATE '2026-09-01', $2::date, DATE '2026-09-01', DATE '2026-09-30', DATE '2026-08-23', DATE '2026-09-22', 'COLLECTING')`,
-      [periodId, PAY_DATE],
+      `INSERT INTO payroll_periods(
+         id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)
+       VALUES ($1, $3, DATE '2026-09-01', $2::date, DATE '2026-09-01', DATE '2026-09-30',
+               DATE '2026-08-23', DATE '2026-09-22', 'COLLECTING')`,
+      [periodId, PAY_DATE, legalEntityKey],
     );
 
     const { rows } = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
@@ -168,7 +176,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
 
   const period = () => ({
     id: periodId,
-    legalEntityKey: null,
+    legalEntityKey,
     periodStart: "2026-09-01",
     periodEnd: "2026-09-30",
     payDate: PAY_DATE,
@@ -181,7 +189,8 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     expect(outcome.employeeCount).toBe(1);
 
     const { rows } = await pool.query<{ employmentId: string; gross: string; payable: string; revision: number }>(
-      `SELECT employment_id AS "employmentId", gross, payable, revision FROM payroll_results`,
+      `SELECT employment_id AS "employmentId", gross, payable, revision FROM payroll_results WHERE period_id = $1`,
+      [periodId],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.employmentId).toBe(employmentId);
@@ -191,7 +200,10 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     expect(rows[0]!.payable).toBe("3000000");
 
     const lines = await pool.query<{ componentCode: string }>(
-      `SELECT component_code AS "componentCode" FROM payroll_result_lines`,
+      `SELECT l.component_code AS "componentCode"
+       FROM payroll_result_lines l JOIN payroll_results r ON r.id = l.result_id
+       WHERE r.period_id = $1`,
+      [periodId],
     );
     expect(lines.rows.map((row) => row.componentCode)).toEqual(["BASIC"]);
   });
@@ -207,7 +219,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
   it("blocks an employment that ended on a date nobody has resolved", async () => {
     await newEmployment({ category: "TETAP", endBasis: "UNKNOWN", endedOn: null });
     await calculatePeriod(pool, period(), actorAccountId, 0);
-    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results");
+    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows[0]!.blockers.map((blocker) => blocker.code)).toContain("SERVICE_END_UNRESOLVED");
   });
 
@@ -215,7 +227,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await newEmployment({ category: "TETAP", withProfile: false });
     const outcome = await calculatePeriod(pool, period(), actorAccountId, 0);
     expect(outcome.employeeCount).toBe(1);
-    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results");
+    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows[0]!.blockers.map((blocker) => blocker.code)).toContain("PROFILE_MISSING");
   });
 
@@ -258,7 +270,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       [randomUUID(), loanId, periodId],
     );
     await calculatePeriod(pool, period(), actorAccountId, 0);
-    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results");
+    const { rows } = await pool.query<{ blockers: Array<{ code: string }> }>("SELECT blockers FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows[0]!.blockers.map((blocker) => blocker.code)).toContain("LOAN_EXCEEDS_BALANCE");
   });
 
@@ -268,7 +280,9 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await calculatePeriod(pool, period(), actorAccountId, 0);
 
     const { rows } = await pool.query<{ revision: number; previousResultId: string | null }>(
-      `SELECT revision, previous_result_id AS "previousResultId" FROM payroll_results ORDER BY revision`,
+      `SELECT revision, previous_result_id AS "previousResultId"
+       FROM payroll_results WHERE period_id = $1 ORDER BY revision`,
+      [periodId],
     );
     expect(rows.map((row) => row.revision)).toEqual([1, 2]);
     expect(rows[0]!.previousResultId).toBeNull();
@@ -299,7 +313,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await pool.query("UPDATE payroll_periods SET state = 'APPROVED' WHERE id = $1", [periodId]);
     const outcome = await calculatePeriod(pool, period(), actorAccountId, 0);
     expect(outcome.conflict).toBe(true);
-    const { rows } = await pool.query("SELECT 1 FROM payroll_results");
+    const { rows } = await pool.query("SELECT 1 FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows).toHaveLength(0);
   });
 
@@ -315,7 +329,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await pool.query("DELETE FROM payroll_policy_versions WHERE policy_key = 'BPJS_KESEHATAN'");
     const outcome = await calculatePeriod(pool, period(), actorAccountId, 0);
     expect(outcome.policyProblems.map((problem) => problem.policyKey)).toEqual(["BPJS_KESEHATAN"]);
-    const { rows } = await pool.query("SELECT 1 FROM payroll_results");
+    const { rows } = await pool.query("SELECT 1 FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows).toHaveLength(0);
   });
 
@@ -323,7 +337,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await newEmployment({ category: "TETAP" });
     await calculatePeriod(pool, period(), actorAccountId, 0);
     const { rows } = await pool.query<{ action: string; payload: Record<string, unknown> }>(
-      "SELECT action, payload FROM payroll_audit_events",
+      "SELECT action, payload FROM payroll_audit_events WHERE period_id = $1", [periodId],
     );
     expect(rows.map((row) => row.action)).toEqual(["payroll.period.calculated"]);
     for (const forbidden of ["amount", "gross", "net", "payable", "bank_account_number", "nik", "lines"]) {
@@ -342,7 +356,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       [randomUUID(), periodId, employmentId, randomUUID()],
     );
     await calculatePeriod(pool, period(), actorAccountId, 0);
-    const { rows } = await pool.query<{ gross: string }>("SELECT gross FROM payroll_results");
+    const { rows } = await pool.query<{ gross: string }>("SELECT gross FROM payroll_results WHERE period_id = $1", [periodId]);
     expect(rows[0]!.gross).toBe(String(20 * 15_000 + 30 * 15_400));
   });
 });

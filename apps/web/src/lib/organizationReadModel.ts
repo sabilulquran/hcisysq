@@ -28,6 +28,8 @@ export interface OrganizationPerson {
   employeeNumber: string;
   fullName: string;
   unit: { nodeKey: string; name: string; path: string[] } | null;
+  /** ORG-005-1 (DRAFT): the unit's work location, or the nearest ancestor's; null when none names one. */
+  workLocation?: { id: string; name: string; inheritedFromNodeKey: string | null } | null;
   position: { stableKey: string; title: string } | null;
   directManager: OrganizationResolvedPerson | null;
   source: OrganizationAuthoritySource | null;
@@ -58,6 +60,8 @@ export interface OrganizationReadiness {
   changeSetId: string | null;
   activeEmployees: number;
   withoutUnit: number;
+  /** ORG-005-1: placed, but no unit up the branch names a work location. Informational only. */
+  withoutWorkLocation?: number;
   unresolvedManager: number;
   ineligibleManagers: number;
   vacantRequiringActing: number;

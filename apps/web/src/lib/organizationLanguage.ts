@@ -387,3 +387,141 @@ const PREVIEW_WARNINGS: Record<string, string> = {
 export function organizationWarningSentence(code: string): string {
   return PREVIEW_WARNINGS[code] ?? organizationIssueSentence({ code, itemKey: null });
 }
+
+/**
+ * ORG-008-4d: one line of the "Yang berubah" list, built from the command type and the identifiers
+ * the server recorded. A name the change set knows is preferred; otherwise the sentence stays
+ * general rather than inventing one.
+ */
+export function organizationJournalSentence(entry: {
+  commandType: string;
+  summary: Record<string, unknown>;
+}): string {
+  const text = (key: string) => {
+    const value = entry.summary[key];
+    return typeof value === "string" ? value : null;
+  };
+  const count = (key: string) => {
+    const value = entry.summary[key];
+    return typeof value === "number" ? value : null;
+  };
+
+  switch (entry.commandType) {
+    case "ADD_UNIT": {
+      const name = text("name");
+      const position = text("positionTitle");
+      const base = name ? `Unit "${name}" ditambahkan` : "Satu unit ditambahkan";
+      if (!position) return `${base}.`;
+      const approver = entry.summary.unitApprover === true
+        ? ", yang juga menyetujui cuti unit"
+        : "";
+      return `${base} dengan pimpinan ${position}${approver}.`;
+    }
+    case "PLACE_EMPLOYEES": {
+      const placed = count("placed") ?? 0;
+      const moved = count("moved") ?? 0;
+      if (moved > 0) return `${placed} pegawai ditempatkan, ${moved} di antaranya dipindahkan dari unit lain.`;
+      return `${placed} pegawai ditempatkan ke sebuah unit.`;
+    }
+    case "APPOINT_ACTING": {
+      const from = text("effectiveFrom");
+      const to = text("effectiveTo");
+      return from && to
+        ? `Plt ditunjuk untuk satu jabatan, ${from} sampai ${to}.`
+        : "Plt ditunjuk untuk satu jabatan.";
+    }
+    case "SET_REPORTS_TO":
+      return entry.summary.parentPositionKey === null
+        ? "Satu jabatan tidak lagi melapor ke jabatan tertentu; mengikuti pemimpin unit."
+        : "Hubungan \u201cmelapor ke\u201d satu jabatan diubah.";
+    case "SET_UNIT_LEADER":
+      return "Pemimpin unit diganti.";
+    case "SET_UNIT_APPROVER":
+      return "Penyetuju cuti unit diganti.";
+    case "SET_OVERRIDE":
+      return "Atasan khusus ditetapkan untuk satu pegawai.";
+    case "SEED_FROM_LEGACY": {
+      const units = count("units");
+      const placements = count("placements");
+      return units !== null && placements !== null
+        ? `Disusun dari data lama: ${units} unit, ${placements} penempatan pegawai. Semuanya usulan — tinjau sebelum diterbitkan.`
+        : "Disusun dari data lama sebagai usulan — tinjau sebelum diterbitkan.";
+    }
+    default:
+      return "Satu perubahan tercatat.";
+  }
+}
+
+const ITEM_USE_LABELS: Record<string, string> = {
+  MEMBERSHIP: "anggota",
+  POSITION: "jabatan di dalamnya",
+  CHILD_UNIT: "unit di bawahnya",
+  INCUMBENT: "pejabat",
+  ACTING_INCUMBENT: "Plt",
+  AUTHORITY_BINDING: "kewenangan yang menunjuk ke sini",
+  CHILD_POSITION: "jabatan yang melapor ke sini",
+  REPORTING_OVERRIDE: "atasan khusus yang menunjuk ke sini",
+};
+
+/**
+ * ORG-008-4d: why an item cannot be removed or switched off yet, naming what still points at it.
+ * Today this only appears later as a validation code with nothing attached.
+ */
+export function organizationItemInUseSentence(input: {
+  itemKind?: string | undefined;
+  uses?: Array<{ kind: string; name: string | null }> | undefined;
+}): string {
+  const uses = input.uses ?? [];
+  if (uses.length === 0) {
+    return "Item ini masih dipakai, jadi belum bisa dihapus atau dinonaktifkan.";
+  }
+  const counted = new Map<string, { count: number; names: string[] }>();
+  for (const use of uses) {
+    const label = ITEM_USE_LABELS[use.kind] ?? "catatan lain";
+    const bucket = counted.get(label) ?? { count: 0, names: [] };
+    bucket.count += 1;
+    if (use.name && bucket.names.length < 3) bucket.names.push(use.name);
+    counted.set(label, bucket);
+  }
+  const parts = [...counted].map(([label, bucket]) =>
+    bucket.names.length > 0
+      ? `${bucket.count} ${label} (${bucket.names.join(", ")})`
+      : `${bucket.count} ${label}`);
+  const subject = input.itemKind === "jabatan" ? "Jabatan ini" : "Unit ini";
+  return `${subject} masih dipakai: ${parts.join(", ")}. Bereskan itu dulu.`;
+}
+
+/** ORG-008-4d: the clash the operator has to confirm before employees are moved. */
+export function organizationMembershipConflictSentence(
+  conflicts: Array<{ nodeName: string | null }>,
+  nameOf?: (employeeId: string) => string | null,
+  rawConflicts?: Array<{ employeeId: string; nodeName: string | null }>,
+): string {
+  const items = rawConflicts ?? [];
+  const named = items
+    .map((item) => {
+      const person = nameOf?.(item.employeeId) ?? null;
+      return person && item.nodeName ? `${person} (sekarang di ${item.nodeName})` : person;
+    })
+    .filter((value): value is string => value !== null);
+  if (named.length > 0) {
+    return `${named.join(", ")} sudah tercatat di unit lain. Pindahkan ke unit ini?`;
+  }
+  return `${conflicts.length} pegawai sudah tercatat di unit lain. Pindahkan ke unit ini?`;
+}
+
+const COMMAND_LABELS: Record<string, string> = {
+  ADD_UNIT: "Tambah unit",
+  PLACE_EMPLOYEES: "Tempatkan pegawai",
+  APPOINT_ACTING: "Tunjuk Plt",
+  SET_REPORTS_TO: "Melapor ke",
+  SET_UNIT_LEADER: "Pemimpin unit",
+  SET_UNIT_APPROVER: "Penyetuju cuti unit",
+  SET_OVERRIDE: "Atasan khusus",
+  SEED_FROM_LEGACY: "Usulan dari data lama",
+};
+
+/** ORG-008-4d: the short name of an action, for a line that could not be replayed. */
+export function organizationCommandLabel(commandType: string): string {
+  return COMMAND_LABELS[commandType] ?? "Tindakan lain";
+}

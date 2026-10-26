@@ -530,7 +530,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2). **ATT-011-6a** diimplementasikan 2026-10-27 (lihat §10.4); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -562,6 +562,26 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - Tautan "Klarifikasi" di navigasi pegawai menuju bagian Klarifikasi saya, bukan anchor di halaman lain.
 - Lembur Tim dan perintah lembur atasan (butir 5–6 §8) menunggu ATT-011-6b.
 - Tidak ada migration atau permission baru.
+
+### 10.4 Catatan implementasi ATT-011-6a (2026-10-27)
+
+- **Engine (§7.5):** `overtime_minutes` = jumlah `approved_minutes` semua lembur disetujui pada tanggal itu,
+  bukan lagi yang terbaru saja. Hash input hari dengan nol atau satu lembur tidak berubah, sehingga
+  Kalkulasi ulang tidak membuat versi baru untuk hari yang tidak berubah.
+- **Jenis hari (§5.6):** migration `0071` menambah kolom nullable `day_type` (`working_day | rest_day |
+  public_holiday`) dan `holiday_scheduled_work` pada `attendance_result_versions`. Libur kalender tetap
+  `public_holiday` walaupun dijadwalkan masuk lewat jadwal per tanggal (`holiday_scheduled_work = true`).
+  Versi lama tetap `NULL` dan tidak di-backfill; versi berikutnya terisi saat inputnya berubah.
+- **Batas teknis 24 jam (§7.6):** total lembur menunggu + disetujui satu pegawai pada satu tanggal tidak
+  boleh lebih dari 24 jam, dicek saat pegawai mengajukan, HC mencatat atas nama pegawai, dan saat
+  persetujuan (`422 OVERTIME_DAY_TOTAL_INVALID`), di bawah kunci per pegawai-tanggal.
+- **Audit:** `attendance.overtime.submitted` (pegawai/HC), `attendance.overtime.approved`,
+  `attendance.overtime.rejected`, `attendance.overtime.cancelled` di `access_audit_events`.
+- **Layar HC (§7.4):** tab Menunggu · Disetujui · Ditolak/Dibatalkan, kolom Jenis hari, Dimulai oleh, Fakta
+  scan (selisih scan terhadap jadwal, atau seluruh scan pada hari tanpa jadwal; hanya informasi), kartu di
+  HP, dan halaman standar (`GET /admin/attendance/overtime` keluar dari daftar utang PAG-5). Siapa yang
+  memutuskan belum berubah (HC); persetujuan atasan, perintah lembur, peringatan PP 35/2021, jendela D-9,
+  dan aturan Direktur adalah ATT-011-6b.
 
 ## 11. Keputusan owner
 

@@ -278,9 +278,8 @@
     },
     {
       "url": "/admin/attendance/overtime",
-      "list": "debt",
-      "reason": "LIMIT 1000 tanpa halaman.",
-      "package": "PAG-5"
+      "list": "paged",
+      "reason": "Pemantauan lembur HC (ATT-011-6a); halaman standar dengan total."
     },
     {
       "url": "/admin/attendance/report",

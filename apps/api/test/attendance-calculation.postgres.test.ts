@@ -201,6 +201,36 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("sums every approved overtime request and stores the kind of day (ATT-011-6a)", async () => {
+    for (const [minutes, status] of [[60, "approved"], [45, "approved"], [30, "rejected"]] as const) {
+      await client.query(
+        `INSERT INTO attendance_overtime_requests (id, employee_id, work_date, requested_minutes, approved_minutes, status, requested_by_account_id)
+         VALUES ($1, $2, '2026-08-28', $3, $4, $5, $6)`,
+        [randomUUID(), mapped, minutes, status === "approved" ? minutes : null, status, accountId],
+      );
+    }
+    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    const day = await client.query(
+      `SELECT overtime_minutes, day_type, holiday_scheduled_work FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-28' ORDER BY version DESC LIMIT 1`,
+      [mapped],
+    );
+    expect(day.rows[0]).toMatchObject({ overtime_minutes: 105, day_type: "working_day", holiday_scheduled_work: false });
+
+    // A calendar holiday with no roster override: the day is a holiday, not scheduled work (§5.6).
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ('2026-08-27', false, 'Synthetic holiday')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+    );
+    await calculate({ employeeId: mapped, from: "2026-08-27", to: "2026-08-27" });
+    const holiday = await client.query(
+      `SELECT status, day_type, holiday_scheduled_work FROM attendance_result_versions
+       WHERE employee_id = $1 AND work_date = '2026-08-27' ORDER BY version DESC LIMIT 1`,
+      [mapped],
+    );
+    expect(holiday.rows[0]).toMatchObject({ status: "off", day_type: "public_holiday", holiday_scheduled_work: false });
+  });
+
   it("is idempotent: calculating unchanged data again writes no new version (ATT-014-C)", async () => {
     await calculate({ employeeId: mapped, from: "2026-08-25", to: "2026-08-28" });
     const first = await client.query("SELECT count(*)::int AS total FROM attendance_result_versions WHERE employee_id = $1", [mapped]);

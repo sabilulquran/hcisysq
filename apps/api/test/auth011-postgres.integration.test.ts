@@ -628,6 +628,27 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(cleared.json()).toMatchObject({ status: "SEAT_NOT_SET" });
     expect((await pool.query("SELECT 1 FROM access_audit_events WHERE action = 'role.seat_link.cleared'")).rowCount).toBe(1);
   }, 60000);
+
+  it("ORG-008-10: counts as composers the creator and every editor, never the checker", async () => {
+    const organization = new PostgresOrganizationRepository(pool);
+    const creator = actors.get("admin")!.principal.id;
+    const editor = actors.get("delegate")!.principal.id;
+    const checker = actors.get("hc")!.principal.id;
+    const draft = await organization.createDraft({
+      name: "Synthetic ORG-008-10", effectiveOn: "2027-03-01", actorAccountId: creator,
+    });
+    const event = (actor: string, action: string) => pool.query(
+      `INSERT INTO organization_audit_events (id, actor_account_id, action, entity_type, entity_id, change_set_id, payload)
+       VALUES ($1, $2, $3, 'organization_change_set', $4, $4, '{}'::jsonb)`,
+      [randomUUID(), actor, action, draft.changeSet.id],
+    );
+    await event(editor, "organization.node.updated");
+    await event(checker, "organization.draft.validated");
+    await event(checker, "organization.draft.reopened");
+
+    expect((await organization.listChangeSetComposers(draft.changeSet.id)).sort()).toEqual([creator, editor].sort());
+    await pool.query("UPDATE organization_change_sets SET status = 'DISCARDED' WHERE id = $1", [draft.changeSet.id]);
+  }, 60000);
 });
 
 const migrationCompatibilitySchema = `auth011_migration_${randomUUID().replaceAll("-", "")}`;

@@ -2080,6 +2080,9 @@ paths:
             this draft cloned its base and takes effect on or before this draft's effective date.
             Publishing is refused because the draft's snapshot does not contain that publication and
             would replace it. Published snapshots are not modified by the refusal.
+            ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON (ORG-008-10, DRAFT default) when the caller
+            created the change set or appears in its organization audit trail other than for checking,
+            reopening or publishing; Super Admin is exempt as the audited break-glass account.
           content:
             application/json:
               schema:
@@ -3015,6 +3018,11 @@ components:
             Present only when the view was opened by draftId. Null while that change set's base is
             still the newest publication.
           oneOf: [{ $ref: '#/components/schemas/OrganizationStaleBase' }, { type: 'null' }]
+        publishBlockedForSelf:
+          description: >
+            ORG-008-10. True when the view was opened by draftId and this session composed that change
+            set, so publish would answer 409 ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON.
+          type: boolean
         mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
         draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
         nodes: { type: array, items: { type: object } }

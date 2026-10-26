@@ -942,7 +942,10 @@ export function OrganizationDesignerWorkspace({
                 <button type="button" onClick={() => { onDraftIdChange(null); setSelection(null); }} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted"><X className="h-4 w-4" /> Tutup perubahan</button>
                 {canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-warning-line bg-surface-raised px-3 text-xs font-bold text-warning-ink hover:bg-warning-soft disabled:opacity-60"><ShieldCheck className="h-4 w-4" /> Periksa</button> : null}
                 <button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-4 w-4" /> Lihat dampak</button>
-                {canPublish ? (
+                {canPublish && data?.publishBlockedForSelf ? (
+                  // ORG-008-10: the person who composed a change does not also publish it ("empat mata").
+                  <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> Anda ikut menyusun — terbitkan oleh Kepala HC lain atau Super Admin</span>
+                ) : canPublish ? (
                   <button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={askPublish} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-4 w-4" /> Terbitkan</button>
                 ) : (
                   <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> {data?.draft?.status === "VALIDATED" ? "Siap diterbitkan — menunggu Kepala HC" : "Diterbitkan oleh Kepala HC"}</span>

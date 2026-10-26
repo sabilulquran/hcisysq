@@ -140,6 +140,8 @@ const ISSUE_SENTENCES: Record<string, (name: string | null) => string> = {
     name
       ? `Perubahan ini baru saja diubah ${name}. Muat ulang halaman.`
       : "Perubahan ini baru saja diubah orang lain. Muat ulang halaman.",
+  ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON: () =>
+    "Anda ikut menyusun perubahan ini, jadi yang menerbitkan harus Kepala HC lain (atau Super Admin).",
   ORGANIZATION_DRAFT_NOT_REPLAYABLE: () =>
     "Perubahan ini berisi suntingan langsung atau usulan dari data lama yang tidak bisa disusun ulang. Batalkan baris itu dulu, atau ulangi perubahannya sendiri.",
 };

@@ -79,10 +79,14 @@ describe("Organization Designer administration boundary", () => {
   it("keeps LEGACY as the safe rollout default when no setting exists", async () => {
     const { response } = await request("SUPER_ADMIN", "GET", "/admin/organization/rollout");
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    // ORG-008-2 added asOf, configuredRowCount and the effective rows; the fields clients already
+    // read are unchanged, and no configured row is still the one case LEGACY is a stated fact.
+    expect(response.json()).toMatchObject({
       mode: "LEGACY",
       workflowKey: "LEAVE",
       organizationalNodeKey: null,
+      configuredRowCount: 0,
+      settings: [],
     });
   });
 

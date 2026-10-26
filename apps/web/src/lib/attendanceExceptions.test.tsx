@@ -14,10 +14,11 @@ const run = {
 } as unknown as AttendanceCalculationRun;
 
 describe("R2b Laporan dan Kalkulasi", () => {
-  it("exports the server model behind the Harian and Rekapitulasi tabs only", () => {
+  it("exports the server model behind the active tab, none for Pengecualian and Tanpa Jadwal", () => {
     expect(exportModelForTab("detail")).toBe("daily_detail");
     expect(exportModelForTab("summary")).toBe("employee_summary");
-    for (const tab of ["transactions", "exceptions", "overtime", "unscheduled"]) expect(exportModelForTab(tab)).toBeNull();
+    expect(exportModelForTab("transactions")).toBe("transactions");
+    for (const tab of ["exceptions", "overtime", "unscheduled"]) expect(exportModelForTab(tab)).toBeNull();
   });
 
   it("shows progress with Batal while running and no close button", () => {

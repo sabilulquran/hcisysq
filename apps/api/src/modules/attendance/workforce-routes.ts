@@ -27,7 +27,7 @@ import {
 import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
 import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
-import { REPORT_MODELS, buildReportTable, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
+import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
@@ -2071,7 +2071,19 @@ export async function registerAttendanceWorkforceRoutes(
     if (data.total > REPORT_ROW_LIMIT) {
       return reply.status(422).send({ code: "EXPORT_TOO_LARGE", message: "Laporan terlalu besar. Persempit unit atau rentang tanggal." });
     }
-    const table = buildReportTable(params.data.model, data.items, scope.from, scope.to);
+    let table;
+    if (isPunchModel(params.data.model)) {
+      // Data Transaksi / Data Scan read punches; evidence (GPS, photo) never goes into a report.
+      const punches = await attendanceTransactions(pool, {
+        ...scope, ...(params.data.model === "scans" ? { source: "adms" as const } : {}), page: 1, pageSize: REPORT_ROW_LIMIT + 1,
+      });
+      if (punches.total > REPORT_ROW_LIMIT) {
+        return reply.status(422).send({ code: "EXPORT_TOO_LARGE", message: "Laporan terlalu besar. Persempit unit atau rentang tanggal." });
+      }
+      table = buildPunchTable(params.data.model, punches.items);
+    } else {
+      table = buildReportTable(params.data.model, data.items, scope.from, scope.to);
+    }
     const unitName = scope.unitId ? data.items.find((item) => item.unitId === scope.unitId)?.unitName ?? null : null;
     const stamp = (value: Date) => new Intl.DateTimeFormat("id-ID", {
       day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta",

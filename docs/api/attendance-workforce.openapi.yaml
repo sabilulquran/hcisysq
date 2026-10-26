@@ -376,12 +376,15 @@ paths:
       description: >-
         ATT-014 §7/§19.2 report models built from stored results only (D-14-11): `daily_grid`
         (Laporan Harian grid, symbols §6.6, landscape), `employee_summary` (Rekapitulasi Pegawai with
-        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian). `format=json`
+        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian); R2d (§20.13):
+        `unit_summary` (Per Unit), `daily_schedule` (Jadwal Harian), `daily_overtime` (Lembur Harian from
+        result minutes), `transactions` (Data Transaksi, every punch) and `scans` (Data Scan, machine scans
+        attributed to an employee); the last two read punches, never GPS or photos. `format=json`
         feeds the preview and, with `purpose=print`, the print document; `csv` (UTF-8 BOM) and `xlsx`
         are downloads. Every print and export is audited as `attendance.report.exported` with model,
         format, purpose, scope, range and row count only. At most 93 days and 50 000 employee-days.
       parameters:
-        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail] } }
+        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail, unit_summary, daily_schedule, daily_overtime, transactions, scans] } }
         - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }

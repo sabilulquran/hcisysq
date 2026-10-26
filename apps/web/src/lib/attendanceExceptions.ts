@@ -41,9 +41,13 @@ export async function getAttendanceExceptions(scope: AttendanceCalculationScope 
   return body as AttendanceExceptions;
 }
 
-/** Which server report model the "Ekspor" menu uses for a tab; null when the tab has none yet (R2d). */
-export function exportModelForTab(tab: string): "daily_detail" | "employee_summary" | null {
+/**
+ * Which server report model the "Ekspor" menu uses for a tab ("Dari tampilan aktif"); null when no model
+ * holds the same rows (Lembur lists requests, Lembur Harian holds result minutes; open it via Laporan).
+ */
+export function exportModelForTab(tab: string): "daily_detail" | "employee_summary" | "transactions" | null {
   if (tab === "detail") return "daily_detail";
   if (tab === "summary") return "employee_summary";
+  if (tab === "transactions") return "transactions";
   return null;
 }

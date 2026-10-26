@@ -1217,3 +1217,21 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
   urutan; urutan tetap bawaan server.
 - Manifest AUTH-011 +1 route. Tidak ada migration dan tidak ada permission baru.
 
+### 20.13 Catatan implementasi ATT-014-R2d (2026-10-27)
+
+- Lima model laporan baru di route yang sama (`GET /admin/attendance/reports/{model}`), dengan audit cetak
+  dan ekspor yang sama, terbuka lewat **Laporan ▾**:
+  - **Per Unit** (`unit_summary`): satu baris per unit, kolom Rekapitulasi Pegawai ditambah jumlah pegawai.
+  - **Jadwal Harian** (`daily_schedule`): jam masuk dan pulang jadwal per pegawai per tanggal; hari tanpa
+    jadwal menulis alasannya ("Tanpa jadwal", "Libur", ...), tidak pernah jam karangan (I-4).
+  - **Lembur Harian** (`daily_overtime`): hari dengan menit lembur pada hasil kehadiran.
+  - **Data Transaksi** (`transactions`): setiap absen dari mesin, HP, dan koreksi.
+  - **Data Scan** (`scans`): scan mesin yang sudah terkait ke pegawai. Scan yang belum terkait ada di tab
+    Tanpa Jadwal. Kedua model punch tidak pernah memuat GPS atau foto.
+- **Ekspor ▾ "dari tampilan aktif"**: Data Transaksi → `transactions`, Harian → `daily_detail`,
+  Rekapitulasi → `employee_summary`. Pengecualian, Lembur (daftar pengajuan), dan Tanpa Jadwal tidak punya
+  model dengan baris yang sama, jadi Ekspor nonaktif di tab itu; filter sumber/"Perlu ditinjau" di tab Data
+  Transaksi tidak ikut ke ekspor (`TBD`).
+- Batas 50 000 baris berlaku juga untuk model punch (`EXPORT_TOO_LARGE`). Tidak ada migration, route,
+  atau permission baru.
+

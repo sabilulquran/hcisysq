@@ -98,6 +98,13 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
            WHERE assignment.employee_id = checked.employee_id
              AND checked.work_date >= assignment.effective_from
              AND (assignment.effective_to IS NULL OR checked.work_date <= assignment.effective_to)
+             -- The pattern only gives a schedule when its shift has a version valid on that date (§20.10).
+             AND EXISTS (
+               SELECT 1 FROM attendance_schedule_versions version
+               WHERE version.schedule_template_id = assignment.schedule_template_id
+                 AND version.effective_from <= ((checked.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta')
+                 AND (version.effective_to IS NULL OR version.effective_to > ((checked.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta'))
+             )
          )
          OR EXISTS (
            SELECT 1

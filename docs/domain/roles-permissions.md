@@ -107,7 +107,7 @@ activity_logs.read
 
 ## Permission payroll (PAY-003 v1)
 
-Daftar final yang diimplementasikan migration `0068_payroll_foundation.sql`. Seluruhnya berscope organisasi.
+Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Seluruhnya berscope organisasi.
 
 | Permission | Pemegang | Catatan |
 |---|---|---|

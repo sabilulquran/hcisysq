@@ -106,6 +106,8 @@ type ResultRow = {
   outsideGeofenceJustified: boolean;
   overtimeMinutes: number;
   inputHash: string;
+  dayType: DayType | null;
+  holidayScheduledWork: boolean | null;
   createdAt: Date;
 };
 
@@ -473,6 +475,14 @@ async function normalizeAdmsForWindow(
   );
 }
 
+export type DayType = "working_day" | "rest_day" | "public_holiday";
+
+/** §5.6: a calendar holiday stays a holiday even when the employee is scheduled to work it. */
+export function dayTypeFor(state: ResolvedSchedule["state"], publicHoliday: boolean): DayType {
+  if (publicHoliday) return "public_holiday";
+  return state === "off" ? "rest_day" : "working_day";
+}
+
 export async function materializeAttendanceResult(
   pool: Pool,
   employeeId: string,
@@ -558,17 +568,28 @@ export async function materializeAttendanceResult(
     );
     const disposition = leaveDisposition.rows[0] ?? null;
 
+    // ATT-011-6a §7.5: every approved request of the day counts, summed (no longer the latest only).
     const overtime = await client.query<OvertimeRow>(
       `SELECT id, approved_minutes AS "approvedMinutes"
        FROM attendance_overtime_requests
        WHERE employee_id = $1
          AND work_date = $2::date
          AND status = 'approved'
-       ORDER BY decided_at DESC NULLS LAST, created_at DESC
-       LIMIT 1`,
+       ORDER BY decided_at NULLS LAST, created_at, id`,
       [employeeId, workDate],
     );
-    const overtimeMinutes = Number(overtime.rows[0]?.approvedMinutes ?? 0);
+    const overtimeMinutes = overtime.rows.reduce((sum, row) => sum + Number(row.approvedMinutes ?? 0), 0);
+    const overtimeIds = overtime.rows.map((row) => row.id);
+
+    // ATT-011-6a §5.6: the kind of day, stored so payroll can tell a holiday from a rest day without
+    // guessing. A holiday on which the employee is scheduled is a working day that is also a holiday.
+    const calendar = await client.query<{ isWorkingDay: boolean }>(
+      "SELECT is_working_day AS \"isWorkingDay\" FROM leave_calendar_exceptions WHERE calendar_date = $1::date",
+      [workDate],
+    );
+    const publicHoliday = calendar.rows[0]?.isWorkingDay === false;
+    const dayType = dayTypeFor(schedule.state, publicHoliday);
+    const holidayScheduledWork = publicHoliday && schedule.state === "scheduled";
 
     const events: AttendanceEventRow[] = [];
     if (schedule.scheduledStartAt && schedule.scheduledEndAt) {
@@ -615,7 +636,10 @@ export async function materializeAttendanceResult(
       clarifications: clarifications.rows.map((item) => item.id),
       leave: disposition?.leaveRequestId ?? null,
       resolutionCase: disposition?.resolutionCaseId ?? null,
-      overtime: overtime.rows[0]?.id ?? null,
+      overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
+      // The kind of day is part of the input: versions are immutable, so a day calculated before
+      // ATT-011-6a gets one new version carrying day_type on its next Kalkulasi, then stays stable.
+      dayType,
       computed: {
         status: computed.status,
         workedMinutes: computed.workedMinutes,
@@ -630,7 +654,7 @@ export async function materializeAttendanceResult(
         overtimeMinutes: computed.overtimeMinutes,
       },
     };
-    const inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    let inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
     const existing = await client.query<ResultRow>(
       `SELECT
@@ -644,15 +668,22 @@ export async function materializeAttendanceResult(
          late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
          outside_geofence_justified AS "outsideGeofenceJustified",
          overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
+         day_type AS "dayType", holiday_scheduled_work AS "holidayScheduledWork",
          created_at AS "createdAt"
        FROM attendance_result_versions
-       WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3
+       WHERE employee_id = $1 AND work_date = $2::date
+       ORDER BY version DESC
        LIMIT 1`,
-      [employeeId, workDate, inputHash],
+      [employeeId, workDate],
     );
-    if (existing.rows[0]) {
+    // Idempotent against the latest version only: inputs that return to an older state (a holiday added
+    // then removed) must produce a new latest version, not silently keep the newer one.
+    const latest = existing.rows[0];
+    const sameAsLatest = latest && (latest.inputHash === inputHash
+      || latest.inputHash === createHash("sha256").update(JSON.stringify({ ...input, recurrence: latest.version })).digest("hex"));
+    if (latest && sameAsLatest) {
       await client.query("COMMIT");
-      return existing.rows[0];
+      return latest;
     }
 
     const versionResult = await client.query<{ version: number }>(
@@ -661,6 +692,14 @@ export async function materializeAttendanceResult(
        WHERE employee_id = $1 AND work_date = $2::date`,
       [employeeId, workDate],
     );
+    // The hash is unique per day; an older version with the same inputs gets the new version number mixed in.
+    const repeated = await client.query(
+      "SELECT 1 FROM attendance_result_versions WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3",
+      [employeeId, workDate, inputHash],
+    );
+    if (repeated.rows[0]) {
+      inputHash = createHash("sha256").update(JSON.stringify({ ...input, recurrence: versionResult.rows[0]?.version ?? 1 })).digest("hex");
+    }
     const result = await client.query<ResultRow>(
       `INSERT INTO attendance_result_versions (
          id, employee_id, work_date, version, status, schedule_template_id, schedule_version_id, roster_id,
@@ -668,10 +707,12 @@ export async function materializeAttendanceResult(
          worked_minutes, break_minutes, late_minutes, early_leave_minutes,
          incomplete_session, justified, late_justified, early_leave_justified,
          outside_geofence_justified, overtime_minutes, input_hash, source_event_ids,
-         source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata
+         source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata,
+         day_type, holiday_scheduled_work
        ) VALUES (
          $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb
+         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb,
+         $29, $30
        )
        RETURNING
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
@@ -684,6 +725,7 @@ export async function materializeAttendanceResult(
          late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
          outside_geofence_justified AS "outsideGeofenceJustified",
          overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
+         day_type AS "dayType", holiday_scheduled_work AS "holidayScheduledWork",
          created_at AS "createdAt"`,
       [
         randomUUID(), employeeId, workDate, versionResult.rows[0]?.version ?? 1, computed.status,
@@ -695,7 +737,8 @@ export async function materializeAttendanceResult(
         computed.overtimeMinutes, inputHash, JSON.stringify(events.map((event) => event.id)),
         JSON.stringify(clarifications.rows.map((item) => item.id)), disposition?.leaveRequestId ?? null,
         disposition?.resolutionCaseId ?? null,
-        JSON.stringify({ overtimeRequestId: overtime.rows[0]?.id ?? null }),
+        JSON.stringify({ overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds }),
+        dayType, holidayScheduledWork,
       ],
     );
     const insertedResult = result.rows[0];

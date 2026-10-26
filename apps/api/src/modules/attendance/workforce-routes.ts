@@ -28,6 +28,7 @@ import {
 import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
 import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
+import { listOvertimeForHc } from "./overtime-list.js";
 import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -243,6 +244,31 @@ function datesBetween(from: string, to: string, maximum: number) {
   return items;
 }
 
+const OVERTIME_DAY_LIMIT_MINUTES = 24 * 60;
+
+/**
+ * ATT-011-6a §7.6: overtime of one employee on one day may not add up to more than 24 hours. Counts
+ * approved and waiting requests (other than `excludeId`) plus the minutes being added.
+ */
+async function assertOvertimeDayTotal(
+  db: Pick<PoolClient, "query">,
+  employeeId: string,
+  workDate: string,
+  addMinutes: number,
+  excludeId: string | null = null,
+) {
+  const total = await db.query<{ minutes: number }>(
+    `SELECT coalesce(sum(CASE WHEN status = 'approved' THEN coalesce(approved_minutes, 0) ELSE requested_minutes END), 0)::int AS minutes
+     FROM attendance_overtime_requests
+     WHERE employee_id = $1 AND work_date = $2::date AND status IN ('submitted', 'approved')
+       AND ($3::uuid IS NULL OR id <> $3)`,
+    [employeeId, workDate, excludeId],
+  );
+  if ((total.rows[0]?.minutes ?? 0) + addMinutes > OVERTIME_DAY_LIMIT_MINUTES) {
+    throw new WorkforceAttendanceError(422, "OVERTIME_DAY_TOTAL_INVALID", "Total lembur satu hari tidak boleh lebih dari 24 jam.");
+  }
+}
+
 function shiftDateText(date: string, days: number) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -275,7 +301,8 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
        incomplete_session AS "incompleteSession", justified,
        late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
        outside_geofence_justified AS "outsideGeofenceJustified",
-       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
+       overtime_minutes AS "overtimeMinutes", day_type AS "dayType",
+       holiday_scheduled_work AS "holidayScheduledWork", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,
@@ -1544,12 +1571,17 @@ export async function registerAttendanceWorkforceRoutes(
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${employee.id}:${body.data.workDate}`]);
+        await assertOvertimeDayTotal(client, employee.id, body.data.workDate, body.data.requestedMinutes);
         await client.query(
           `INSERT INTO attendance_overtime_requests (
              id, employee_id, work_date, requested_minutes, note, requested_by_account_id
            ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
           [id, employee.id, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
         );
+        await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+          workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "employee",
+        });
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1587,6 +1619,7 @@ export async function registerAttendanceWorkforceRoutes(
           [params.data.overtimeId, employee.id],
         );
         if (!changed.rows[0]) throw new WorkforceAttendanceError(409, "OVERTIME_NOT_CANCELLABLE", "Pengajuan lembur tidak dapat dibatalkan.");
+        await insertAudit(client, principal.id, "attendance.overtime.cancelled", "attendance_overtime_request", params.data.overtimeId, {});
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1606,32 +1639,22 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+  // ATT-011-6a §7.4: HC monitors overtime. Each row carries the kind of day of the stored result and the
+  // scan time outside the schedule, as information only: it never fills overtime minutes (I-7).
   app.get("/admin/attendance/overtime", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
     if (!principal) return;
-    const query = z.object({
-      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+    const query = pageQuerySchema.extend({
+      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled", "closed"]).default("submitted"),
+      unitId: z.string().uuid().optional(),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
-    const values: unknown[] = [];
-    const clause = query.data.status === "all" ? "" : (values.push(query.data.status), "WHERE request.status = $1");
-    const rows = await pool.query(
-      `SELECT request.id, request.employee_id AS "employeeId",
-         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
-         unit.name AS "unitName", request.work_date::text AS "workDate",
-         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
-         request.note, request.status, request.decision_note AS "decisionNote",
-         request.created_at AS "createdAt", request.decided_at AS "decidedAt"
-       FROM attendance_overtime_requests request
-       JOIN employees employee ON employee.id = request.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       ${clause}
-       ORDER BY request.work_date DESC, request.created_at DESC
-       LIMIT 1000`,
-      values,
-    );
+    const statuses = query.data.status === "all" ? null
+      : query.data.status === "closed" ? ["rejected", "cancelled"] : [query.data.status];
     reply.header("Cache-Control", "no-store");
-    return reply.send({ items: rows.rows });
+    return reply.send(await listOvertimeForHc(pool, {
+      page: query.data.page, pageSize: query.data.pageSize, statuses, unitId: query.data.unitId ?? null,
+    }));
   });
 
   app.post("/admin/attendance/overtime", async (request, reply) => {
@@ -1645,12 +1668,17 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${body.data.employeeId}:${body.data.workDate}`]);
+      await assertOvertimeDayTotal(client, body.data.employeeId, body.data.workDate, body.data.requestedMinutes);
       await client.query(
         `INSERT INTO attendance_overtime_requests (
            id, employee_id, work_date, requested_minutes, note, requested_by_account_id
          ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
         [id, body.data.employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
       );
+      await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+        workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "hc",
+      });
       await client.query(
         `INSERT INTO attendance_overtime_events (
            id, overtime_request_id, actor_account_id, event_type, payload
@@ -1661,7 +1689,7 @@ export async function registerAttendanceWorkforceRoutes(
       return reply.status(201).send({ id, status: "submitted" });
     } catch (error) {
       await client.query("ROLLBACK");
-      throw error;
+      return sendError(reply, error);
     } finally {
       client.release();
     }
@@ -1696,7 +1724,14 @@ export async function registerAttendanceWorkforceRoutes(
       if (approvedMinutes !== null && approvedMinutes > item.requestedMinutes) {
         throw new WorkforceAttendanceError(400, "OVERTIME_APPROVED_EXCEEDS_REQUEST", "Menit lembur disetujui tidak boleh melebihi pengajuan.");
       }
+      if (approvedMinutes !== null) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${item.employeeId}:${item.workDate}`]);
+        await assertOvertimeDayTotal(client, item.employeeId, item.workDate, approvedMinutes, params.data.overtimeId);
+      }
       const status = body.data.decision === "approve" ? "approved" : "rejected";
+      await insertAudit(client, principal.id, `attendance.overtime.${status}`, "attendance_overtime_request", params.data.overtimeId, {
+        workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes,
+      });
       await client.query(
         `UPDATE attendance_overtime_requests
          SET status = $2, approved_minutes = $3, decided_by_account_id = $4,

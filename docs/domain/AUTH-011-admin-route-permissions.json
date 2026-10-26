@@ -973,7 +973,7 @@
     "method": "POST",
     "url": "/admin/organization/designer/drafts/:draftId/authority-bindings",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -989,7 +989,7 @@
     "method": "PUT",
     "url": "/admin/organization/designer/drafts/:draftId/incumbencies",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -1045,7 +1045,7 @@
     "method": "POST",
     "url": "/admin/organization/designer/drafts/:draftId/reporting-overrides",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -2139,7 +2139,7 @@
     "method": "DELETE",
     "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -2147,7 +2147,7 @@
     "method": "PATCH",
     "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -2178,6 +2178,14 @@
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "GET",
     "url": "/admin/organization/positions/search",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/from-legacy",
     "permissions": [
       "organization.manage"
     ]

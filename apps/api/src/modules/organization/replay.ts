@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import {
   applyOrganizationCommand,
   OrganizationCommandError,
+  REPLAYABLE_COMMAND_TYPES,
   type OrganizationCommand,
   type OrganizationCommandAudit,
   type OrganizationCommandKeys,
@@ -37,12 +38,25 @@ export interface OrganizationReplaySkip {
   message: string;
 }
 
+/** A journal line that records a change replay cannot reproduce. */
+export interface OrganizationReplayBlock {
+  seq: number;
+  commandType: string;
+  summary: Record<string, unknown>;
+}
+
 export interface OrganizationReplayResult {
   snapshot: OrganizationSnapshot;
   /** Entries that applied cleanly, in order, with the sequence they will keep. */
   applied: OrganizationJournalEntry[];
   /** Entries that no longer fit the new base. Nothing was guessed on their behalf. */
   skipped: OrganizationReplaySkip[];
+  /**
+   * Lines kept in the change set that replay cannot reproduce: a manual edit through a single-record
+   * endpoint, or the legacy seed. Rebuilding would drop what they did, so the caller must refuse to
+   * write while any are present instead of losing them quietly.
+   */
+  blocked: OrganizationReplayBlock[];
   events: OrganizationCommandAudit[];
 }
 
@@ -95,10 +109,15 @@ export function replayJournal(input: {
   const snapshot = snapshotFromBase(input.changeSet, input.base);
   const applied: OrganizationJournalEntry[] = [];
   const skipped: OrganizationReplaySkip[] = [];
+  const blocked: OrganizationReplayBlock[] = [];
   const events: OrganizationCommandAudit[] = [];
 
   for (const entry of [...input.entries].sort((left, right) => left.seq - right.seq)) {
     if (input.skipSeq !== undefined && entry.seq === input.skipSeq) continue;
+    if (!REPLAYABLE_COMMAND_TYPES.has(entry.commandType)) {
+      blocked.push({ seq: entry.seq, commandType: entry.commandType, summary: entry.summary });
+      continue;
+    }
     const command = entry.payload as unknown as OrganizationCommand;
     try {
       const result = applyOrganizationCommand(snapshot, command, reuseKeysOf(entry));
@@ -118,5 +137,5 @@ export function replayJournal(input: {
     }
   }
 
-  return { snapshot, applied, skipped, events };
+  return { snapshot, applied, skipped, blocked, events };
 }

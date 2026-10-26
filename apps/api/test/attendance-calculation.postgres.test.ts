@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { attendanceCalculationRows } from "../src/modules/attendance/calculation-rows.js";
 import { createCalculationRunner, type CalculationRunner } from "../src/modules/attendance/calculation-runner.js";
+import { attendanceTransactions } from "../src/modules/attendance/transactions.js";
 import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -229,6 +230,30 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     );
     rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-26", to: "2026-08-28" });
     expect(rows.items.filter((item) => item.changedSinceCalculated).map((item) => item.workDate)).toEqual(["2026-08-27", "2026-08-28"]);
+  });
+
+  it("lists raw machine scans in Data Transaksi before and after calculation (ATT-014 §19.1)", async () => {
+    // A scan before the PIN was connected belongs to nobody and is not listed.
+    await admsScan("2026-08-25T07:00:00+07:00");
+    const scope = { employeeId: mapped, from: "2026-08-25", to: "2026-08-28", page: 1, pageSize: 50 };
+    let rows = await attendanceTransactions(transactionPool, scope);
+    expect(rows.total).toBe(3);
+    expect(rows.items.map((item) => [item.workDate, item.source, item.usedInResult])).toEqual([
+      ["2026-08-28", "adms", false],
+      ["2026-08-28", "adms", false],
+      ["2026-08-27", "adms", false],
+    ]);
+    expect(rows.items[0]?.deviceName).toBe("Synthetic Calculation Device");
+
+    await calculate({ employeeId: mapped, from: "2026-08-25", to: "2026-08-28" });
+    rows = await attendanceTransactions(transactionPool, scope);
+    expect(rows.items.every((item) => item.usedInResult)).toBe(true);
+
+    const paged = await attendanceTransactions(transactionPool, { ...scope, page: 2, pageSize: 2 });
+    expect(paged).toMatchObject({ total: 3, totalPages: 2 });
+    expect(paged.items).toHaveLength(1);
+    const none = await attendanceTransactions(transactionPool, { ...scope, source: "mobile" });
+    expect(none.total).toBe(0);
   });
 
   it("paginates rows while the summary counts every row", async () => {

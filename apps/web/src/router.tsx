@@ -36,8 +36,7 @@ import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
-import { AdminAttendanceCalculationPage } from "@/pages/AdminAttendanceCalculationPage";
-import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
+import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
@@ -360,7 +359,7 @@ const adminAttendanceReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/reports",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/reports"),
-  component: AdminAttendanceReportsV2Page,
+  component: AdminAttendanceReportsPage,
 });
 
 const adminAttendanceOvertimeRoute = createRoute({
@@ -375,13 +374,6 @@ const adminAttendanceLocationsRoute = createRoute({
   path: "/admin/attendance/settings/locations",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/locations"),
   component: AdminAttendanceLocationsPage,
-});
-
-const adminAttendanceCalculationRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/calculation",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/calculation"),
-  component: AdminAttendanceCalculationPage,
 });
 
 // Routes before ATT-011 stay reachable for at least one release and forward to their new home.
@@ -600,7 +592,6 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceReportsRoute,
   adminAttendanceOvertimeRoute,
   adminAttendanceLocationsRoute,
-  adminAttendanceCalculationRoute,
   ...adminAttendanceLegacyRoutes,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,

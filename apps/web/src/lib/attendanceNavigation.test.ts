@@ -93,7 +93,6 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/schedules/dates": "attendance.schedule.manage",
       "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
       "/admin/attendance/daily": "attendance.reports.read",
-      "/admin/attendance/calculation": "attendance.reports.read",
       "/admin/attendance/clarifications": "attendance.clarification.manage",
       "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
       "/admin/attendance/corrections": "attendance.records.manage",
@@ -119,6 +118,7 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
   it("forwards every pre-ATT-011 route to an existing new route", () => {
     const newPaths = new Set(attendanceSections.flatMap((section) => section.tabs.map((tab) => tab.href)));
     expect(Object.keys(legacyAttendanceRedirects).sort()).toEqual([
+      "/admin/attendance/calculation",
       "/admin/attendance/settings/recalculate",
       "/admin/attendance/workforce",
       "/admin/attendance/workforce/assignments",

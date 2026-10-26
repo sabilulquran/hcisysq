@@ -316,6 +316,34 @@ paths:
         '404': { description: CALCULATION_NOT_FOUND }
         '409': { description: CALCULATION_ALREADY_FINISHED }
 
+  /admin/attendance/transactions:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceTransactions
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §19.1 Data Transaksi. One row per punch in scope, newest first, read-only: machine
+        scans read raw through the PIN mapping valid at scan time (including scans not yet
+        normalised), mobile/manual events, and approved correction times (one row per boundary,
+        `correctionBy` hc or employee). `usedInResult` tells whether the latest result version uses
+        the punch. Paginated; at most 93 days, no future dates.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual, correction] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: >-
+            `{ from, to, page, pageSize, total, totalPages, items }`; each item has `id`, employee and
+            unit, `occurredAt`, `workDate`, `source`, `correctionBy`, `boundary`, `deviceName`, `usedInResult`.
+        '400': { description: INVALID_TRANSACTIONS_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
   /admin/attendance/calculation-rows:
     get:
       tags: [Attendance]

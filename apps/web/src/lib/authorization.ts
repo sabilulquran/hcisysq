@@ -10,7 +10,6 @@ const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/schedules/dates": "attendance.schedule.manage",
   "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
   "/admin/attendance/daily": "attendance.reports.read",
-  "/admin/attendance/calculation": "attendance.reports.read",
   "/admin/attendance/clarifications": "attendance.clarification.manage",
   "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
   "/admin/attendance/corrections": "attendance.records.manage",

@@ -802,3 +802,28 @@ navigasi memastikan setiap route lama berakhir di route yang ada.
 | 5 | **ATT-014-4R** Cetak + model laporan | §19.2, model sesuai D-14-11. | Tidak. |
 
 Setiap paket satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.
+
+### 19.10 Catatan implementasi ATT-014-3R (2026-10-26)
+
+Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi koordinasi).
+
+- **Halaman Laporan** (`/admin/attendance/reports`, `AdminAttendanceReportsPage.tsx`) memandu empat
+  langkah di satu layar: ① Lingkup (unit dan pegawai hanya tampil bila katalog pegawai boleh dibaca,
+  rentang + pintasan), ② **Tarik data** (run Kalkulasi yang sama; bila lingkup sudah lengkap dan tidak
+  ada baris berubah, tombol menjadi sekunder "Tarik ulang" dengan teks "Data sudah terbaru"; tanpa
+  `attendance.calculation.run` tombol tidak tampil), ③ **Data mentah** dengan tab Data Transaksi dan
+  Detail Harian, keduanya berhalaman, ④ **Laporan**.
+- **Mengubah lingkup** mengosongkan run yang tampil dan mengembalikan kedua tabel ke halaman 1.
+- **Data Transaksi** memakai endpoint baru `GET /admin/attendance/transactions`
+  (`attendance.reports.read`, read-only, berhalaman, maks 93 hari): scan mesin dibaca mentah lewat
+  mapping PIN yang berlaku saat scan (termasuk yang belum diproses engine), event HP/koreksi lama, dan
+  jam koreksi yang disetujui (satu baris per batas, asal HC atau pegawai). Kolom **Sumber** (Mesin ·
+  nama mesin, HP, Koreksi HC, Koreksi pegawai) dan **Dipakai** (dipakai versi hasil terakhir). Kolom
+  GPS/foto absen HP dan penanda "Perlu ditinjau" ada di paket ATT-011-3R (§19.7).
+- **Langkah ④ sementara** memakai format laporan ATT-009 yang lama (`LegacyReportSection`, lingkup dari
+  langkah ①) agar tidak ada laporan yang hilang sebelum ATT-014-4R. Format itu masih menghitung status
+  saat dibuka, dan tombol cetaknya masih mencetak halaman; keduanya digantikan model laporan dan dokumen
+  cetak §19.2 di ATT-014-4R. Peringatan tampil bila data belum ditarik atau berubah.
+- **Tab Kalkulasi dihapus**; `/admin/attendance/calculation` dan `/admin/attendance/settings/recalculate`
+  dialihkan langsung ke `/admin/attendance/reports`. Endpoint ATT-014-2 tidak berubah.
+- Manifest AUTH-011 (+1 route, jumlah 185) dan `attendance-workforce.openapi.yaml` diperbarui.

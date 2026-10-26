@@ -191,3 +191,55 @@ export function calculationRange(preset: CalculationRangePreset, now = new Date(
     }
   }
 }
+
+export type AttendanceTransactionSource = "adms" | "mobile" | "manual" | "correction";
+
+export interface AttendanceTransaction {
+  id: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitName: string | null;
+  occurredAt: string;
+  workDate: string;
+  source: AttendanceTransactionSource;
+  correctionBy: "hc" | "employee" | null;
+  boundary: "check_in" | "check_out" | null;
+  deviceName: string | null;
+  usedInResult: boolean;
+}
+
+export interface AttendanceTransactions {
+  from: string;
+  to: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: AttendanceTransaction[];
+}
+
+export async function getAttendanceTransactions(
+  scope: AttendanceCalculationScope & { source?: AttendanceTransactionSource; page?: number; pageSize?: number },
+) {
+  const params = new URLSearchParams({ from: scope.from, to: scope.to });
+  if (scope.unitId) params.set("unitId", scope.unitId);
+  if (scope.employeeId) params.set("employeeId", scope.employeeId);
+  if (scope.source) params.set("source", scope.source);
+  params.set("page", String(scope.page ?? 1));
+  params.set("pageSize", String(scope.pageSize ?? 50));
+  return readJson<AttendanceTransactions>(await fetch(`/api/admin/attendance/transactions?${params.toString()}`, {
+    credentials: "include", headers: { Accept: "application/json" },
+  }));
+}
+
+/** Data Transaksi "Sumber" badge: where the punch came from, in operator words. */
+export function transactionSourceLabel(item: Pick<AttendanceTransaction, "source" | "correctionBy" | "deviceName">): string {
+  switch (item.source) {
+    case "adms": return item.deviceName ? `Mesin · ${item.deviceName}` : "Mesin";
+    case "mobile": return "HP";
+    case "manual": return "Koreksi HC";
+    case "correction": return item.correctionBy === "hc" ? "Koreksi HC" : "Koreksi pegawai";
+    default: return "—";
+  }
+}

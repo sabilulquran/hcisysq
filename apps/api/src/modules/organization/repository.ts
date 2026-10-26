@@ -419,11 +419,11 @@ export class PostgresOrganizationRepository {
       await this.db.query(
         `INSERT INTO organization_nodes
           (id, change_set_id, stable_key, name, node_type, parent_node_key, active,
-           effective_from, effective_to, visual_rank_offset, integration_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+           effective_from, effective_to, visual_rank_offset, integration_code, legacy_unit_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.name, item.nodeType,
           item.parentNodeKey, item.active, item.effectiveFrom, item.effectiveTo,
-          item.visualRankOffset, item.integrationCode],
+          item.visualRankOffset, item.integrationCode, item.legacyUnitId ?? null],
       );
     }
     for (const item of snapshot.jobProfiles) {
@@ -611,7 +611,7 @@ export class PostgresOrganizationRepository {
           `SELECT id, stable_key AS "stableKey", name, node_type AS "nodeType",
             parent_node_key AS "parentNodeKey", active, effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
-            integration_code AS "integrationCode"
+            integration_code AS "integrationCode", legacy_unit_id AS "legacyUnitId"
            FROM organization_nodes WHERE change_set_id = $1`, [id]),
         this.db.query<JobProfileRow>(
           `SELECT id, stable_key AS "stableKey", name, active,

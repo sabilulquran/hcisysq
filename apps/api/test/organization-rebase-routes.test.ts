@@ -177,3 +177,48 @@ describe("ORG-008-4c undoing one line of the change list", () => {
     expect(response.statusCode).toBe(404);
   });
 });
+
+describe("ORG-008 review: a change set with edits replay cannot reproduce", () => {
+  const withManualEdit = [
+    ...JOURNAL,
+    {
+      id: "journal-2", seq: 2, commandType: "MANUAL_EDIT", payload: { replayable: false },
+      summary: { action: "node.updated", nodeKey: BASE_UNIT, name: "Yayasan Baru", fields: ["name"] },
+    },
+  ];
+
+  it("names the blocking lines in the preview", async () => {
+    const { response, query } = await call(rebaseUrl, {}, { journal: withManualEdit });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      applied: false,
+      blocked: [{ seq: 2, commandType: "MANUAL_EDIT" }],
+    });
+    expect(wrote(query)).toBe(false);
+  });
+
+  it("refuses to rebuild rather than dropping the manual edit, and rolls back", async () => {
+    const { response, query } = await call(rebaseUrl, { apply: true }, { journal: withManualEdit });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "ORGANIZATION_DRAFT_NOT_REPLAYABLE",
+      details: { blocked: [{ seq: 2, commandType: "MANUAL_EDIT" }] },
+    });
+    expect(wrote(query)).toBe(false);
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    expect(statements).toContain("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
+  });
+
+  it("undoes the manual edit itself, since nothing else then needs it", async () => {
+    const { response } = await call(
+      `/admin/organization/designer/drafts/${DRAFT_ID}/journal/2/undo`, { apply: true },
+      { journal: withManualEdit },
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ applied: true, blocked: [] });
+  });
+});

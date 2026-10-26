@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.**
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.** **Revisi R2 diusulkan 2026-10-26 (§20): halaman Laporan satu jendela, tab Tanpa Jadwal, pemetaan PIN berlaku mundur; menunggu D-14-17 … D-14-21.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -903,3 +903,176 @@ D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordin
   Endpoint daftar bukti HP lama tetap ada untuk kartu Ringkasan. Tidak ada migration dan tidak ada
   permission baru.
 
+## 20. Revisi R2 — halaman Laporan satu jendela, tab "Tanpa Jadwal", dan kenapa data kosong (DRAFT, menunggu owner)
+
+**Status:** usulan, **belum ada kode**. Menunggu keputusan D-14-17 … D-14-21.
+**Pemicu:** owner mencoba rilis R1 `hcis-b1657745-20261026` (2026-10-26, diteruskan sesi koordinasi):
+halaman Laporan membingungkan, format lama masih terlipat di bawah, owner meminta pola software
+Solution Attendance Management (satu bar menu di atas, sedikit tabel, laporan terbuka sebagai popup), dan
+menanyakan kenapa data SD kosong setelah Tarik data padahal mesin terus menerima scan.
+
+### 20.1 Kenapa data SD kosong (diagnosis read-only production, 2026-10-26)
+
+Pipa data **tidak putus**; datanya belum siap, dan layar tidak pernah menjelaskannya.
+
+| Fakta | Angka |
+|---|---|
+| Scan mesin 30 hari terakhir | 1.779 scan, 1.772 dari mesin SDIT Tahfizh, 51 PIN unik |
+| PIN yang sudah dipetakan ke pegawai | 44 dari 51; **43 di antaranya baru berlaku 19 Okt 2026 11.38** |
+| Pegawai aktif SDIT Tahfizh | 46 |
+| — punya PIN dan scan setiap hari, **tanpa jadwal sama sekali** | **28** |
+| — punya jadwal + PIN + scan | 11 |
+| — punya jadwal + PIN, tanpa scan sejak 19 Okt | 2 |
+| — punya jadwal, tanpa PIN | 2 |
+| — tanpa ketiganya | 3 |
+| Pola jadwal yang ada | 15, **semuanya mulai 24 Okt 2026** |
+| Run Kalkulasi 1–26 Okt | 346 pasangan dihitung, 850 di luar cakupan |
+| Run Kalkulasi 1–30 Sep | 30 dihitung, 1.350 di luar cakupan |
+
+Akibatnya:
+
+1. **Scan sebelum 19 Okt tidak bisa dikaitkan ke pegawai mana pun**, karena pemetaan PIN berlaku sejak
+   dibuat. Hari-hari itu tampil "Tidak tercatat" (aturan D-14-3).
+2. **Hari tanpa jadwal tidak punya vonis**, karena jadwal tidak pernah disintesis (I-4). Engine hanya
+   menyalin scan mesin ke `attendance_events` saat menghitung hari yang berjadwal. Karena itu
+   `attendance_events` sumber mesin baru berisi 11 baris.
+3. **Ditemukan cacat tampilan:** untuk 28 pegawai tanpa jadwal, engine menulis status `off` dan tab
+   Detail Harian menampilkannya sebagai **"Libur"**. Seharusnya "Tanpa jadwal", seperti di Pantauan Hari
+   Ini yang sudah membedakan keduanya.
+4. Data Transaksi sebetulnya membaca scan mentah lewat pemetaan PIN, jadi scan sejak 19 Okt seharusnya
+   tampil di sana. Namun tidak ada tempat yang mengatakan "28 pegawai ini belum punya jadwal" atau
+   "scan PIN ini terjadi sebelum PIN dipetakan".
+
+Karantina 4.769 baris `UNKNOWN_DEVICE` (28 Agu–16 Okt) adalah scan sebelum mesin didaftarkan; itu
+sejarah, bukan masalah aktif, dan tidak disentuh R2.
+
+### 20.2 Bentuk halaman Laporan (pola referensi, D-14-17)
+
+Satu jendela, satu bar kontrol, satu tabel per tab. Bagian "Format lama" yang terlipat **dihapus**.
+
+```text
+┌ Laporan dan Kalkulasi ─────────────────────────────────────────────────────────────────────────┐
+│ Unit [SDIT Tahfizh ▾]  Pegawai [<Semua> ▾]  Tgl [01-10-2026] s/d [26-10-2026] [Bulan ini ▾]     │
+│ [Kalkulasi]  [Laporan ▾]  [Ekspor ▾]          Urutkan [Unit ▾] [A→Z ▾]                          │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Data Transaksi | Harian | Pengecualian | Rekapitulasi | Lembur | Tanpa Jadwal (28)               │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ satu tabel berhalaman, kolom sesuai tab                                     [panel detail baris] │
+│ status kesegaran: "Dihitung 26 Okt 09.12 · 3 baris berubah sejak dihitung"                      │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Bagian | Isi |
+|---|---|
+| **Bar kontrol** | Unit, pegawai (bawaan `<Semua>`), rentang + pintasan, tombol **Kalkulasi**, **Laporan ▾**, **Ekspor ▾** (Excel/CSV dari tab aktif), urutan (unit, NIP, nama, tanggal/jam, A→Z/Z→A). Satu baris di layar lebar; dua baris di < 1024px; kartu di < 768px. |
+| **Kalkulasi** | Membuka **popup progres** di halaman: "Menghitung … 63% (218 dari 346 pegawai-hari)" dengan tombol **Batal**. Selama berjalan, Laporan dan Ekspor nonaktif. Selesai: popup menutup dan tab aktif dimuat ulang. Nama pegawai yang sedang dihitung butuh kolom baru di tabel run (migration kecil), jadi usulan awalnya tanpa nama (lihat D-14-17). |
+| **Tab Data Transaksi** | Tetap seperti R1 (satu baris = satu absen, sumber, "Perlu ditinjau", detail GPS/foto, Buat koreksi). |
+| **Tab Harian** (padanan "Shift") | Kolom: NIP, Nama, Tanggal, Jam kerja (nama shift), Jam masuk/pulang jadwal, Scan masuk/pulang, Normal, Riil, Terlambat, Plg. cepat, Tidak hadir (centang), Lembur, Jml jam kerja, Pengecualian, Unit. Baris tidak hadir diberi latar biru muda pada kolom scan, sel scan yang hilang hijau muda, sesuai referensi. Status "Tanpa jadwal" dibedakan dari "Libur" (perbaikan 20.1 butir 3). |
+| **Tab Pengecualian** | Cuti/izin final, penyelesaian, klarifikasi, dan koreksi dalam rentang (read-only), dengan tautan ke Perbaikan Absen. |
+| **Tab Rekapitulasi** | Satu baris per pegawai: Hari kerja, Hadir, Terlambat, Menit telat, Tidak lengkap, Cuti/Izin, Tidak hadir, Lembur, Presensi %. |
+| **Tab Lembur** | Lembur disetujui dan fakta scan di luar jadwal (tanpa vonis lembur; ATT-011-6a). |
+| **Tab Tanpa Jadwal** | §20.3. |
+| **Laporan ▾** | Menu model: Laporan Harian (grid), Rekapitulasi Pegawai, Detail Harian (sudah ada); Per Unit, Data Scan, Jadwal Harian, Data Transaksi, Lembur Harian, Dari tampilan aktif (bertahap). Model terbuka sebagai popup (§20.4). |
+
+Tidak ada lagi langkah ①–④ bertumpuk, dan tidak ada blok "Format lama". Format ATT-009 yang masih
+diperlukan diganti tab (Data Transaksi untuk data scan, Lembur untuk lembur) dan model laporan di menu.
+
+### 20.3 Tab "Tanpa Jadwal" (D-14-19)
+
+Tab ini menjawab langsung "kenapa kosong". Isinya dua bagian.
+
+**A. Pegawai yang scan tetapi belum punya jadwal** (padanan "Tidak Ada Shift").
+Satu baris per pegawai dalam lingkup: NIP, Nama, Unit, jumlah hari ber-scan tanpa jadwal, scan
+pertama–terakhir, dan alasan:
+
+- "Belum punya pola jadwal";
+- "Pola jadwal mulai 24 Okt; scan sebelumnya tidak dinilai".
+
+Sumbernya scan mentah lewat pemetaan PIN, seperti Data Transaksi, sehingga tidak bergantung pada
+Kalkulasi. Tombol **Pasang jadwal** (hanya `attendance.schedule.manage`) membuka Jadwal → Pola jadwal
+dengan pegawai terpilih sudah terisi. Jumlah baris tampil di judul tab.
+
+**B. Scan yang belum bisa dikaitkan ke pegawai.**
+Satu baris per mesin + PIN: jumlah scan dalam rentang, tanggal scan pertama–terakhir, dan statusnya:
+
+- **"PIN belum dipetakan"** (7 PIN saat ini), dengan tombol **Petakan PIN** ke asisten pemetaan ADMS
+  yang sudah ada (`attendance.devices.operate`);
+- **"Scan sebelum pemetaan berlaku"**, berisi nama pegawai yang kini memegang PIN itu dan tanggal
+  pemetaan berlaku (mis. 19 Okt 11.38), dengan tombol **Berlakukan sejak …** bila D-14-20 disetujui.
+
+Bagian B hanya tampil untuk pemegang `attendance.devices.read`, karena PIN adalah data mesin.
+
+### 20.4 Laporan sebagai popup (D-14-18)
+
+| Pilihan | Kelebihan | Kekurangan |
+|---|---|---|
+| **Jendela baru** (`window.open` ke route cetak `/admin/attendance/reports/print` yang sudah ada) | Dokumen berhalaman sungguhan: zoom, cari, simpan PDF, dan cetak memakai peramban. Tidak diblokir karena dipicu klik. Kop, nomor halaman, dan judul kolom berulang sudah teruji (§19.11). Halaman Laporan tetap utuh di belakangnya. | Penunjuk "Halaman 1/76" hanya terlihat di pratinjau cetak, bukan di layar. |
+| **Modal di halaman** | Tidak berpindah jendela. | Tidak bisa menampilkan halaman cetak sungguhan. Isi modal tetap satu halaman web panjang, persis keluhan owner sebelumnya. |
+
+**Usulan: jendela baru**, berukuran sekitar 1100×800 dan diberi nama per model sehingga klik ulang
+memakai jendela yang sama. Di atas lembar ada bilah alat layar: Cetak, Simpan PDF (dialog cetak), Excel,
+CSV, dan Tutup. Penunjuk halaman di layar memerlukan pustaka paged media; itu tidak termasuk usulan ini.
+
+### 20.5 Memberlakukan mundur pemetaan PIN (D-14-20)
+
+Pembuatan pemetaan **baru** sudah boleh berlaku mundur sampai 62 hari
+(`ADMS_MAPPING_EFFECTIVE_RANGE_INVALID`). Yang belum ada adalah **memajukan awal berlaku pemetaan yang
+sudah ada**. Itu yang dibutuhkan 43 pemetaan tanggal 19 Okt.
+
+Usulan aksi **"Berlakukan sejak …"** pada pemetaan aktif (pemegang `attendance.devices.operate`):
+
+1. Tanggal baru tidak boleh lebih awal dari 62 hari lalu, dan tidak lebih awal dari akhir pemetaan
+   sebelumnya untuk mesin + PIN yang sama.
+2. **Peringatan tumpang tindih** sebelum simpan:
+   - bila PIN itu pernah dipegang pegawai lain dalam rentang baru, aksi **ditolak**;
+   - bila pegawai itu sudah punya PIN lain di mesin yang sama dalam rentang itu, aksi diperingatkan.
+   Ringkasannya ditampilkan: "N scan dari 1 Sep–19 Okt akan menjadi milik <nama>".
+3. Wajib alasan, dicatat sebagai audit `mapping_backdated` dengan keadaan sebelum/sesudah. Pemetaan
+   tetap satu baris yang sama: `effective_from` diubah, riwayatnya ada di audit.
+4. Setelah disimpan, layar menawarkan **Kalkulasi** untuk rentang yang baru tercakup. Tidak ada hitung
+   otomatis.
+5. Tersedia juga dalam jumlah banyak dari tab Tanpa Jadwal bagian B: pilih beberapa PIN, lalu
+   "Berlakukan sejak tanggal scan pertama", dengan ringkasan dan konfirmasi sekali.
+
+Ini menyentuh aturan pemetaan ATT-005/ATT-012 yang berbasis tanggal berlaku, sehingga butuh review
+tambahan. Tidak ada migration (audit memakai tabel audit ADMS yang ada).
+
+### 20.6 Scan pada hari tanpa jadwal (D-14-21)
+
+**Usulan: engine tidak diubah.** Fakta "ada scan tanpa jadwal" dibaca langsung dari scan mentah lewat
+pemetaan, oleh tab Tanpa Jadwal dan Data Transaksi. Kalkulasi tetap tidak menyalin atau memvonis hari
+tanpa jadwal, sesuai invariant bahwa jadwal tidak pernah disintesis.
+
+Alternatifnya adalah menyalin scan ke `attendance_events` untuk semua hari ber-pemetaan. Itu menambah
+penulisan tanpa manfaat bagi layar, karena layar sudah bisa membaca scan mentah. Yang tetap diperbaiki
+adalah label: hari tanpa pola jadwal tampil **"Tanpa jadwal"**, bukan "Libur" (§20.1 butir 3).
+
+### 20.7 Keputusan owner untuk R2
+
+| # | Pertanyaan | Usulan |
+|---|---|---|
+| D-14-17 | Bentuk halaman Laporan mengikuti §20.2 (satu bar kontrol, enam tab, Kalkulasi dengan popup progres), dan bagian "Format lama" dihapus seluruhnya. | Ya. Popup progres tanpa nama pegawai dulu; nama pegawai bisa ditambah kemudian dengan migration kecil. |
+| D-14-18 | Laporan terbuka di jendela baru ke route cetak, atau modal di halaman. | **Jendela baru** (§20.4). |
+| D-14-19 | Tab "Tanpa Jadwal" dengan dua bagian (§20.3) dan tombol Pasang jadwal / Petakan PIN. | Ya. |
+| D-14-20 | HC boleh memberlakukan mundur pemetaan PIN yang sudah ada (maks 62 hari, tolak tumpang tindih, wajib alasan, diaudit). | Ya, dengan aturan §20.5. |
+| D-14-21 | Scan pada hari tanpa jadwal tetap tidak disalin engine dan cukup dibaca dari scan mentah; label "Libur" untuk hari tanpa pola diganti "Tanpa jadwal". | Ya. |
+
+### 20.8 Paket setelah disetujui
+
+| Urutan | Paket | Isi | Migration |
+|---|---|---|---|
+| 1 | **ATT-014-R2a** Kenapa kosong | Status "Tanpa jadwal" vs "Libur" di Detail Harian/laporan; tab **Tanpa Jadwal** bagian A dan B (read-only) dengan tombol Pasang jadwal / Petakan PIN. | Tidak. |
+| 2 | **ATT-014-R2b** Satu jendela | Bar kontrol tunggal, enam tab, popup progres Kalkulasi, menu Laporan → jendela baru, hapus "Format lama". Tab Pengecualian dan Lembur read-only. | Tidak. |
+| 3 | **ADMS-R2c** Berlakukan mundur | Aksi "Berlakukan sejak …" satu per satu dan dalam jumlah banyak, cek tumpang tindih, audit, tawaran Kalkulasi. | Tidak. |
+| 4 | **ATT-014-R2d** Model tambahan | Per Unit, Data Scan, Jadwal Harian, Data Transaksi, Lembur Harian, Dari tampilan aktif. | Tidak. |
+
+R2a disarankan lebih dulu karena langsung menjawab "kenapa kosong", dan bisa dirilis sendiri. Setiap paket
+satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.
+
+**Langkah operasional yang tidak butuh kode** dan bisa dilakukan HC sekarang:
+
+- pasang pola jadwal untuk 28 pegawai SDIT Tahfizh yang belum punya;
+- petakan 7 PIN yang belum dipetakan;
+- bila D-14-20 disetujui, berlakukan mundur 43 pemetaan agar scan September–Oktober ikut terhitung.
+
+Setelah itu, jalankan Kalkulasi lagi untuk rentang yang diperlukan.

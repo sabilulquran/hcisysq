@@ -2006,7 +2006,7 @@ export async function registerAttendanceWorkforceRoutes(
       return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
         .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
     }
-    return reply.send(await attendanceExceptions(pool, query.data));
+    return reply.send(await attendanceExceptions(pool, { ...query.data, unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null }));
   });
 
   // ATT-014 §19.1 step ③ Data Transaksi: every punch in scope, read-only and paginated.

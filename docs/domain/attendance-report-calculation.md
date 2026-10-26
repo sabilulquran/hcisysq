@@ -1142,3 +1142,25 @@ Setelah itu, jalankan Kalkulasi lagi untuk rentang yang diperlukan.
 - Manifest AUTH-011 (+1 route, jumlah 187) dan `attendance-workforce.openapi.yaml` diperbarui. Tidak ada
   migration dan tidak ada permission baru.
 
+### 20.10 Shift "Berlaku sejak" dan "Mundurkan awal berlaku" (2026-10-26)
+
+**Masalah:** setiap shift hanya bermakna sejak versinya dibuat (`attendance_schedule_versions.effective_from`
+= saat simpan). Engine memakai versi yang berlaku pada tanggal kerja, sehingga pola jadwal yang mulai lebih
+awal dari pembuatan shift tidak menghasilkan jadwal untuk tanggal-tanggal itu. Contohnya "SDIT — Hari
+Penuh" baru bermakna sejak 24 Okt 2026, 12.40.
+
+**Keputusan owner 2026-10-26:** "Ya, sekalian bangun fitur \"berlaku sejak\" dan \"mundurkan awal
+berlaku\" untuk shift" (diteruskan sesi koordinasi).
+
+- **Berlaku sejak** saat membuat shift (`POST /admin/attendance/schedules` `effectiveFrom`): versi pertama
+  berlaku sejak tanggal itu pukul 00.00 WIB. Bila kosong, perilaku lama dipakai (sejak disimpan). Tanggal
+  di masa depan ditolak (`422`).
+- **Mundurkan awal berlaku** (`POST /admin/attendance/schedules/{id}/backdate`,
+  `attendance.schedule.manage`): memajukan awal versi pertama ke tanggal yang lebih awal. Tanggal yang tidak
+  lebih awal ditolak (`409`). Alasan wajib. Audit `attendance.schedule.backdated` menyimpan awal lama
+  sebagai jalur pemulihan.
+- Jam dan toleransi versi pertama berlaku juga untuk tanggal yang baru tercakup. Pola jadwal pegawai tetap
+  harus mencakup tanggal itu, dan hasil kehadiran baru berubah setelah Kalkulasi dijalankan lagi.
+- Halaman Shift menampilkan kolom **Berlaku sejak**, isian tanggal pada form tambah, dan aksi **Mundurkan
+  awal berlaku** per shift. Tidak ada migration dan tidak ada permission baru.
+

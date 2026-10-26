@@ -82,6 +82,12 @@ const scheduleTemplateSchema = z.object({
   lateGraceMinutes: z.number().int().min(0).max(240).default(0),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
+  // ATT-014 §20.10: the date the shift's meaning applies from (00:00 WIB); default is the moment of creation.
+  effectiveFrom: dateSchema.optional(),
+});
+const scheduleBackdateSchema = z.object({
+  effectiveFrom: dateSchema,
+  reason: z.string().trim().min(3).max(500),
 });
 const scheduleTemplatePatchSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
@@ -864,7 +870,9 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.late_grace_minutes AS "lateGraceMinutes",
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
-         version.id AS "currentVersionId", version.version AS "currentVersion"
+         version.id AS "currentVersionId", version.version AS "currentVersion",
+         (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
+            FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
        LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
        LEFT JOIN attendance_schedule_versions version
@@ -967,6 +975,9 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const body = scheduleTemplateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_SCHEDULE_TEMPLATE", message: "Template jadwal tidak valid." });
+    if (body.data.effectiveFrom && body.data.effectiveFrom > jakartaWorkDate()) {
+      return reply.status(422).send({ code: "SCHEDULE_EFFECTIVE_FROM_IN_FUTURE", message: "Tanggal berlaku shift tidak boleh di masa depan." });
+    }
     const id = randomUUID();
     const versionId = randomUUID();
     const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
@@ -987,16 +998,18 @@ export async function registerAttendanceWorkforceRoutes(
       await client.query(
         `INSERT INTO attendance_schedule_versions (
            id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
-           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id
-         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10)`,
+           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id,
+           effective_from
+         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10,
+           coalesce(($11::date::timestamp AT TIME ZONE 'Asia/Jakarta'), now()))`,
         [
           versionId, id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
           body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
-          body.data.workLocationId ?? null, principal.id,
+          body.data.workLocationId ?? null, principal.id, body.data.effectiveFrom ?? null,
         ],
       );
       await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
-        versionId, version: 1,
+        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null,
       });
       await client.query("COMMIT");
       return reply.status(201).send({ id, versionId, version: 1 });
@@ -1008,6 +1021,59 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+
+  // ATT-014 §20.10 "Mundurkan awal berlaku": moves the start of a shift's first version earlier, so
+  // schedule patterns on earlier dates resolve to this shift. Only the first version, only earlier,
+  // never in the future; the previous start is kept in the audit event for recovery.
+  app.post("/admin/attendance/schedules/:scheduleId/backdate", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ scheduleId: z.string().uuid() }).safeParse(request.params);
+    const body = scheduleBackdateSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_SCHEDULE_BACKDATE", message: "Tanggal dan alasan wajib diisi." });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const first = await client.query<{ id: string; effectiveFrom: Date; effectiveTo: Date | null }>(
+        `SELECT id, effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
+         FROM attendance_schedule_versions
+         WHERE schedule_template_id = $1
+         ORDER BY version
+         LIMIT 1
+         FOR UPDATE`,
+        [params.data.scheduleId],
+      );
+      const version = first.rows[0];
+      if (!version) throw new WorkforceAttendanceError(404, "SCHEDULE_NOT_FOUND", "Shift tidak ditemukan.");
+      const target = await client.query<{ at: Date }>(
+        "SELECT ($1::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS at",
+        [body.data.effectiveFrom],
+      );
+      const newFrom = target.rows[0]!.at;
+      if (new Date(newFrom) >= new Date(version.effectiveFrom)) {
+        throw new WorkforceAttendanceError(409, "SCHEDULE_BACKDATE_NOT_EARLIER", "Tanggal baru harus lebih awal dari awal berlaku sekarang.");
+      }
+      await client.query(
+        "UPDATE attendance_schedule_versions SET effective_from = $2 WHERE id = $1",
+        [version.id, newFrom],
+      );
+      await insertAudit(client, principal.id, "attendance.schedule.backdated", "attendance_schedule_template", params.data.scheduleId, {
+        versionId: version.id,
+        previousEffectiveFrom: new Date(version.effectiveFrom).toISOString(),
+        effectiveFrom: new Date(newFrom).toISOString(),
+        reason: body.data.reason,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.scheduleId, versionId: version.id, effectiveFrom: new Date(newFrom).toISOString() });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
+  });
 
   app.get("/admin/attendance/schedule-assignments", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");

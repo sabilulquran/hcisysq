@@ -85,8 +85,13 @@ paths:
         content:
           application/json:
             schema: { $ref: '#/components/schemas/AttendanceClarificationInput' }
+      description: >-
+        For mode `correction`, proposed times must belong to `workDate` (same rule as
+        POST /admin/attendance/manual-corrections); checked before any write.
       responses:
         '201': { description: Clarification submitted }
+        '400': { description: INVALID_CLARIFICATION }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /attendance/clarifications/me:
     get:
@@ -135,8 +140,13 @@ paths:
               properties:
                 decision: { type: string, enum: [approve, reject] }
                 note: { type: [string, 'null'], maxLength: 2000 }
+      description: >-
+        Approving a correction whose proposed times do not belong to its work date (submitted before
+        the work-date check existed) is refused with 422; such a request can only be rejected.
       responses:
         '200': { description: Decision stored and result recomputed }
+        '409': { description: CLARIFICATION_ALREADY_DECIDED }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /admin/attendance/work-locations:
     get:
@@ -612,8 +622,16 @@ paths:
       tags: [Attendance]
       operationId: createCanonicalManualAttendanceCorrection
       x-required-permission: attendance.records.manage
+      description: >-
+        Koreksi HC. `checkInAt` must fall on `workDate` (Asia/Jakarta); `checkOutAt` on `workDate`
+        or the next day (shift ending after midnight); when both are given, check-out is after
+        check-in and at most 24 hours later. Checked before any write.
       responses:
         '201': { description: Audited append-only canonical correction created and result recomputed }
+        '400': { description: INVALID_MANUAL_CORRECTION }
+        '403': { description: Missing attendance.records.manage }
+        '404': { description: EMPLOYEE_NOT_FOUND }
+        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /admin/attendance/daily:
     get:

@@ -9,7 +9,7 @@ import { jakartaWorkDate } from "./engine.js";
 
 export type CalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-  | "not_captured" | "not_calculated";
+  | "unscheduled" | "not_captured" | "not_calculated";
 
 type EmployeeRow = { employeeId: string; employeeNumber: string; employeeName: string; unitId: string | null; unitName: string | null };
 
@@ -17,7 +17,7 @@ type StoredResult = {
   employeeId: string;
   workDate: string;
   version: number;
-  status: Exclude<CalculationRowStatus, "not_captured" | "not_calculated">;
+  status: Exclude<CalculationRowStatus, "unscheduled" | "not_captured" | "not_calculated">;
   scheduledStartAt: Date | null;
   scheduledEndAt: Date | null;
   firstCheckInAt: Date | null;
@@ -28,6 +28,8 @@ type StoredResult = {
   overtimeMinutes: number;
   incompleteSession: boolean;
   hasDisposition: boolean;
+  /** A schedule pattern or published roster entry covers the date (R2a: tells a rest day from no schedule). */
+  hasScheduleCoverage: boolean;
   createdAt: Date;
   calculatedAt: Date;
   changed: boolean;
@@ -90,6 +92,20 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
        checked.early_leave_minutes AS "earlyLeaveMinutes", checked.overtime_minutes AS "overtimeMinutes",
        checked.incomplete_session AS "incompleteSession",
        (checked.source_leave_request_id IS NOT NULL OR checked.source_attendance_resolution_case_id IS NOT NULL) AS "hasDisposition",
+       (
+         EXISTS (
+           SELECT 1 FROM attendance_schedule_assignments assignment
+           WHERE assignment.employee_id = checked.employee_id
+             AND checked.work_date >= assignment.effective_from
+             AND (assignment.effective_to IS NULL OR checked.work_date <= assignment.effective_to)
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM attendance_roster_entries entry
+           JOIN attendance_rosters roster ON roster.id = entry.roster_id AND roster.status = 'PUBLISHED'
+           WHERE entry.employee_id = checked.employee_id AND entry.work_date = checked.work_date
+         )
+       ) AS "hasScheduleCoverage",
        checked.created_at AS "createdAt", checked.calculated_at AS "calculatedAt",
        (
          EXISTS (
@@ -170,7 +186,10 @@ export async function attendanceCalculationRows(
     const status: CalculationRowStatus = uncoveredKeys.has(key)
       ? "not_captured"
       : !stored ? "not_calculated"
-        : provisional ? provisionalStatus(stored, now) : stored.status;
+        // ATT-014 §20.1: the engine writes "off" both for a rest day and for a day without any
+        // schedule; only the first is a real day off (Libur).
+        : stored.status === "off" && !stored.hasScheduleCoverage ? "unscheduled"
+          : provisional ? provisionalStatus(stored, now) : stored.status;
     const changed = Boolean(stored?.changed);
     if (changed) changedCount += 1;
     if (stored && (!lastCalculatedAt || stored.calculatedAt > lastCalculatedAt)) lastCalculatedAt = stored.calculatedAt;

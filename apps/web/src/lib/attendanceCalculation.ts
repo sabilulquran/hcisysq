@@ -27,7 +27,7 @@ export interface AttendanceCalculationRun {
 
 export type AttendanceCalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-  | "not_captured" | "not_calculated";
+  | "unscheduled" | "not_captured" | "not_calculated";
 
 export interface AttendanceCalculationRow {
   employeeId: string;
@@ -125,6 +125,7 @@ export async function getAttendanceCalculationRows(
 export function calculationRowStatusLabel(status: AttendanceCalculationRowStatus): string {
   if (status === "not_captured") return "Tidak tercatat (belum terhubung mesin)";
   if (status === "not_calculated") return "Belum dikalkulasi";
+  if (status === "unscheduled") return "Tanpa jadwal";
   return attendanceStatusLabel(status);
 }
 

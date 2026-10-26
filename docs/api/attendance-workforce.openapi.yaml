@@ -369,6 +369,33 @@ paths:
         '404': { description: REPORT_MODEL_NOT_FOUND }
         '422': { description: CALCULATION_RANGE_TOO_LARGE, CALCULATION_DATE_IN_FUTURE, or EXPORT_TOO_LARGE }
 
+  /admin/attendance/unscheduled:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceUnscheduled
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §20.3 Tanpa Jadwal (R2a). `employees`: employees in scope with captured punches (raw
+        machine scans through the PIN mapping valid at scan time, plus mobile/manual events) on dates no
+        schedule pattern or published roster covers, with position, number of days, first/last date,
+        range of the last scan time per day (information only), and the earliest pattern start.
+        `pins`: machine scans that cannot be attributed (PIN unmapped, before the holder's mapping, or
+        outside it), per device and PIN; `null` unless the caller holds attendance.devices.read.
+        Read-only, paginated, at most 93 days.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pinPage, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200': { description: '`{ from, to, employees: { page, pageSize, total, totalPages, items }, pins: { … } | null }`' }
+        '400': { description: INVALID_UNSCHEDULED_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
   /admin/attendance/transactions:
     get:
       tags: [Attendance]
@@ -426,7 +453,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, not_captured, not_calculated]
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, unscheduled, not_captured, not_calculated]
         - { name: changedOnly, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }

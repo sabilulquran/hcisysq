@@ -6,6 +6,7 @@ import { attendanceCalculationRows } from "../src/modules/attendance/calculation
 import { createCalculationRunner, type CalculationRunner } from "../src/modules/attendance/calculation-runner.js";
 import { listAttendanceCorrections } from "../src/modules/attendance/corrections.js";
 import { attendanceTransactions } from "../src/modules/attendance/transactions.js";
+import { unattributedPins, unscheduledEmployees } from "../src/modules/attendance/unscheduled.js";
 import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -32,15 +33,15 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
   beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
   afterAll(async () => { await pool?.end(); });
 
-  async function admsScan(at: string, createdAt?: string) {
+  async function admsScan(at: string, createdAt?: string, pin = "CALC-1") {
     const id = randomUUID();
     await client.query(
       `INSERT INTO attendance_adms_events (
          id, device_id, source_request_id, event_identity_hash, pin,
          occurred_at_raw, occurred_at, raw_line, raw_fields, raw_line_sha256, received_at, created_at
-       ) VALUES ($1::uuid, $2, $3, $1::uuid::text, 'CALC-1', $4::text, $4::text::timestamptz, 'synthetic', '[]'::jsonb,
+       ) VALUES ($1::uuid, $2, $3, $1::uuid::text, $6, $4::text, $4::text::timestamptz, 'synthetic', '[]'::jsonb,
                  $1::uuid::text, $4::text::timestamptz, coalesce($5::timestamptz, now()))`,
-      [id, deviceId, requestId, at, createdAt ?? null],
+      [id, deviceId, requestId, at, createdAt ?? null, pin],
     );
   }
 
@@ -293,6 +294,46 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     // The approved HC correction shows up in Data Transaksi as a "Koreksi HC" punch.
     const punches = await attendanceTransactions(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28", source: "correction", page: 1, pageSize: 50 });
     expect(punches.items.map((item) => [item.correctionBy, item.boundary])).toEqual([["hc", "check_in"]]);
+  });
+
+  it("explains empty days: Tanpa jadwal instead of Libur, and scans that cannot be attributed (ATT-014 R2a)", async () => {
+    // A third employee scans through PIN CALC-2 but has no schedule pattern at all.
+    const noSchedule = randomUUID();
+    await client.query(
+      `INSERT INTO employees (id, employee_number, full_name, status, started_on, functional_position)
+       VALUES ($1, $2, 'Synthetic Calculation Unscheduled', 'active', '2026-01-01', 'Guru Sintetis (Half Day)')`,
+      [noSchedule, `CALC-${noSchedule}`],
+    );
+    await client.query(
+      `INSERT INTO attendance_adms_employee_mappings (id, device_id, pin, employee_id, effective_from)
+       VALUES ($1, $2, 'CALC-2', $3, '2026-08-01T00:00:00+07:00')`,
+      [randomUUID(), deviceId, noSchedule],
+    );
+    await admsScan("2026-08-27T07:01:00+07:00", undefined, "CALC-2");
+    await admsScan("2026-08-27T12:02:00+07:00", undefined, "CALC-2");
+    await admsScan("2026-08-28T12:31:00+07:00", undefined, "CALC-2");
+    // A PIN nobody holds, and a CALC-1 scan before its mapping became effective (26 Aug).
+    await admsScan("2026-08-27T07:10:00+07:00", undefined, "CALC-9");
+    await admsScan("2026-08-24T07:05:00+07:00");
+
+    const scope = { from: "2026-08-20", to: "2026-08-28", page: 1, pageSize: 50 };
+    const employees = await unscheduledEmployees(transactionPool, { ...scope, employeeId: noSchedule });
+    expect(employees.items).toEqual([expect.objectContaining({
+      employeeId: noSchedule, position: "Guru Sintetis (Half Day)", days: 2,
+      firstDate: "2026-08-27", lastDate: "2026-08-28", earliestLastScan: "12:02", latestLastScan: "12:31", scheduleStartsOn: null,
+    })]);
+    // Employees with a pattern covering the dates are not listed.
+    expect((await unscheduledEmployees(transactionPool, { ...scope, employeeId: mapped })).total).toBe(0);
+
+    const pins = await unattributedPins(transactionPool, scope);
+    const byPin = new Map(pins.items.map((item) => [item.pin, item]));
+    expect(byPin.get("CALC-9")).toMatchObject({ status: "unmapped", scans: 1, mappedEmployeeId: null });
+    expect(byPin.get("CALC-1")).toMatchObject({ status: "before_mapping", scans: 1, mappedEmployeeId: mapped, mappedEmployeeStartedOn: "2026-01-01" });
+    expect(byPin.has("CALC-2")).toBe(false);
+
+    await calculate({ employeeId: noSchedule, from: "2026-08-27", to: "2026-08-28" });
+    const rows = await attendanceCalculationRows(transactionPool, { employeeId: noSchedule, from: "2026-08-27", to: "2026-08-28" });
+    expect(rows.items.map((item) => item.status)).toEqual(["unscheduled", "unscheduled"]);
   });
 
   it("paginates rows while the summary counts every row", async () => {

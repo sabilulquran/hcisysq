@@ -66,7 +66,7 @@ export const SYMBOL_LEGEND = [
   { symbol: "C", label: "Cuti/Izin" },
   { symbol: "L", label: "Libur" },
   { symbol: "!", label: "Jadwal bermasalah" },
-  { symbol: "·", label: "Tidak tercatat / belum ditarik / hari berjalan" },
+  { symbol: "·", label: "Tanpa jadwal / tidak tercatat / belum ditarik / hari berjalan" },
 ];
 
 export function daySymbol(row: Pick<ReportSourceRow, "status" | "earlyLeaveMinutes">): string {
@@ -92,6 +92,7 @@ const STATUS_WORDS: Record<CalculationRowStatus, string> = {
   absent: "Tidak hadir",
   off: "Libur",
   configuration_error: "Jadwal bermasalah",
+  unscheduled: "Tanpa jadwal",
   not_captured: "Tidak tercatat",
   not_calculated: "Belum ditarik",
 };

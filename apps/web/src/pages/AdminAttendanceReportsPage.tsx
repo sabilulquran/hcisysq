@@ -5,6 +5,7 @@ import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
 import { LegacyReportSection } from "@/components/attendance/reports/LegacyReportSection";
 import { ReportModelSection } from "@/components/attendance/reports/ReportModelSection";
+import { UnscheduledTab } from "@/components/attendance/reports/UnscheduledTab";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
 import { listEmployees } from "@/lib/adminEmployees";
@@ -29,12 +30,13 @@ import {
   type AttendanceTransactions,
 } from "@/lib/attendanceCalculation";
 import { mobileReviewLabel } from "@/lib/attendanceLabels";
+import { getAttendanceUnscheduled, type AttendanceUnscheduled } from "@/lib/attendanceUnscheduled";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 
 const STATUS_FILTERS: AttendanceCalculationRowStatus[] = [
-  "present", "late", "incomplete", "absent", "leave", "off", "pending", "configuration_error", "not_calculated", "not_captured",
+  "present", "late", "incomplete", "absent", "leave", "off", "unscheduled", "pending", "configuration_error", "not_calculated", "not_captured",
 ];
 const SOURCE_FILTERS: Array<{ value: AttendanceTransactionSource; label: string }> = [
   { value: "adms", label: "Mesin" }, { value: "mobile", label: "HP" }, { value: "correction", label: "Koreksi" }, { value: "manual", label: "Koreksi HC (lama)" },
@@ -90,13 +92,20 @@ export function AdminAttendanceReportsPage() {
   const canRun = hasPermission(session, "attendance.calculation.run");
   const canPickEmployee = hasPermission(session, "employees.manage");
   const canEnterCorrection = hasPermission(session, "attendance.records.manage");
+  const canManageSchedules = hasPermission(session, "attendance.schedule.manage");
+  const canMapPins = hasPermission(session, "attendance.devices.operate");
   // Old links (Bukti HP) land here with ?tab=transactions&source=mobile.
   const initialSearch = new URLSearchParams(window.location.search);
   const [range, setRange] = useState(() => calculationRange("this_month"));
   const [unitId, setUnitId] = useState("");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
-  const [tab, setTab] = useState<"transactions" | "detail">(initialSearch.get("tab") === "detail" ? "detail" : "transactions");
+  const [tab, setTab] = useState<"transactions" | "detail" | "unscheduled">(
+    initialSearch.get("tab") === "detail" ? "detail" : initialSearch.get("tab") === "unscheduled" ? "unscheduled" : "transactions",
+  );
+  const [unscheduled, setUnscheduled] = useState<AttendanceUnscheduled | null>(null);
+  const [unscheduledPage, setUnscheduledPage] = useState(1);
+  const [pinPage, setPinPage] = useState(1);
   const [status, setStatus] = useState<AttendanceCalculationRowStatus | "">("");
   const [source, setSource] = useState<AttendanceTransactionSource | "">(
     SOURCE_FILTERS.some((item) => item.value === initialSearch.get("source")) ? initialSearch.get("source") as AttendanceTransactionSource : "",
@@ -147,6 +156,19 @@ export function AdminAttendanceReportsPage() {
 
   useEffect(() => { void loadRows(); }, [loadRows]);
 
+  // Tanpa Jadwal aggregates raw scans over the whole range, so it reloads only when the scope or its own
+  // pages change, not on the filters of the other tabs.
+  const loadUnscheduled = useCallback(async () => {
+    try {
+      setUnscheduled(await getAttendanceUnscheduled({ ...scope, page: unscheduledPage, pinPage }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Data tanpa jadwal tidak dapat dimuat.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, unitId, employeeId, unscheduledPage, pinPage]);
+
+  useEffect(() => { void loadUnscheduled(); }, [loadUnscheduled]);
+
   // Poll the active run every 2 seconds; reload the data when it finishes.
   useEffect(() => {
     if (!run || !isCalculationActive(run)) return;
@@ -181,7 +203,7 @@ export function AdminAttendanceReportsPage() {
   };
 
   // Changing the scope clears the previous run and starts both tables from page 1.
-  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setRun(null); setSelectedPunch(null); };
+  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setUnscheduledPage(1); setPinPage(1); setRun(null); setSelectedPunch(null); };
   const changeRange = (next: { from: string; to: string }) => { setRange(next); resetPages(); };
   const active = isCalculationActive(run);
   const pending = rows ? (rows.summary.not_calculated ?? 0) : 0;
@@ -268,7 +290,7 @@ export function AdminAttendanceReportsPage() {
       <Step number="3" title="Data mentah" hint="Belum berbentuk laporan. Data scan asli tidak pernah diubah di sini.">
         <div className="-mx-4 overflow-hidden border-y border-border/70">
           <nav className="flex gap-1 border-b bg-surface px-3 pt-2" role="tablist" aria-label="Data mentah">
-            {([["transactions", "Data Transaksi"], ["detail", "Detail Harian"]] as const).map(([key, label]) => (
+            {([["transactions", "Data Transaksi"], ["detail", "Detail Harian"], ["unscheduled", `Tanpa Jadwal${unscheduled ? ` (${unscheduled.employees.total})` : ""}`]] as const).map(([key, label]) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
                 className={`rounded-t-lg px-3 py-2 text-xs font-bold ${tab === key ? "bg-surface-raised text-brand-heading" : "text-muted-foreground"}`}>
                 {label}
@@ -356,7 +378,7 @@ export function AdminAttendanceReportsPage() {
                 </div>
               ) : null}
             </div>
-          ) : (
+          ) : tab === "detail" ? (
             <div role="tabpanel">
               <div className="flex flex-wrap items-center gap-3 p-3">
                 <select aria-label="Filter status" className="h-9 rounded-xl border px-3 text-sm" value={status} onChange={(event) => { setStatus(event.target.value as AttendanceCalculationRowStatus | ""); setDetailPage(1); }}>
@@ -414,6 +436,11 @@ export function AdminAttendanceReportsPage() {
                 {rows && rows.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada baris yang cocok dengan filter.</li> : null}
               </ul>
               {rows ? <Pager page={rows.page} totalPages={rows.totalPages} total={rows.total} loading={loading} onPage={setDetailPage} /> : null}
+            </div>
+          ) : (
+            <div role="tabpanel">
+              <UnscheduledTab data={unscheduled} scope={scope} loading={loading} canManageSchedules={canManageSchedules} canMapPins={canMapPins}
+                onPage={setUnscheduledPage} onPinPage={setPinPage} onChanged={() => { void loadRows(); void loadUnscheduled(); }} />
             </div>
           )}
         </div>

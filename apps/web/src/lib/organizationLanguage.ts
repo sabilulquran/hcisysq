@@ -140,6 +140,8 @@ const ISSUE_SENTENCES: Record<string, (name: string | null) => string> = {
     name
       ? `Perubahan ini baru saja diubah ${name}. Muat ulang halaman.`
       : "Perubahan ini baru saja diubah orang lain. Muat ulang halaman.",
+  ORGANIZATION_DRAFT_NOT_REPLAYABLE: () =>
+    "Perubahan ini berisi suntingan langsung atau usulan dari data lama yang tidak bisa disusun ulang. Batalkan baris itu dulu, atau ulangi perubahannya sendiri.",
 };
 
 /** Prefix families whose exact code varies per referenced entity (INVALID_NODE_PARENT, ...). */
@@ -447,8 +449,30 @@ export function organizationJournalSentence(entry: {
         ? `Disusun dari data lama: ${units} unit, ${placements} penempatan pegawai. Semuanya usulan — tinjau sebelum diterbitkan.`
         : "Disusun dari data lama sebagai usulan — tinjau sebelum diterbitkan.";
     }
+    case "MANUAL_EDIT":
+      return manualEditSentence(text("action"), text("name") ?? text("title"));
     default:
       return "Satu perubahan tercatat.";
+  }
+}
+
+/** A line written by a single-record edit; the summary names the action and, where it has one, the item. */
+function manualEditSentence(action: string | null, name: string | null): string {
+  const quoted = name ? ` "${name}"` : "";
+  switch (action) {
+    case "node.created": return `Unit${quoted} ditambahkan langsung.`;
+    case "node.updated": return `Unit${quoted} diubah.`;
+    case "node.deleted": return `Unit${quoted} dihapus.`;
+    case "position.created": return `Jabatan${quoted} ditambahkan langsung.`;
+    case "position.updated": return `Jabatan${quoted} diubah.`;
+    case "position.deleted": return `Jabatan${quoted} dihapus.`;
+    case "memberships.replaced": return "Daftar anggota satu unit diganti.";
+    case "incumbencies.replaced": return "Pejabat atau Plt satu jabatan diganti.";
+    case "authority_binding.created": return "Satu kewenangan ditambahkan.";
+    case "authority_binding.deleted": return "Satu kewenangan dihapus.";
+    case "authority_binding.ended": return "Satu kewenangan diakhiri.";
+    case "reporting_override.created": return "Atasan khusus ditetapkan untuk satu pegawai.";
+    default: return "Satu suntingan langsung tercatat.";
   }
 }
 
@@ -519,6 +543,7 @@ const COMMAND_LABELS: Record<string, string> = {
   SET_UNIT_APPROVER: "Penyetuju cuti unit",
   SET_OVERRIDE: "Atasan khusus",
   SEED_FROM_LEGACY: "Usulan dari data lama",
+  MANUAL_EDIT: "Suntingan langsung",
 };
 
 /** ORG-008-4d: the short name of an action, for a line that could not be replayed. */

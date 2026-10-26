@@ -164,3 +164,30 @@ describe("ORG-008-4d journal sentences cover every command", () => {
     expect(sentence).not.toContain(commandType);
   });
 });
+
+describe("ORG-008 review: edits a rebuild cannot reproduce", () => {
+  it("lists a manual edit as a sentence, naming the item", () => {
+    const text = visibleText(render({
+      entries: [entry({
+        seq: 3, commandType: "MANUAL_EDIT" as OrganizationJournalEntry["commandType"],
+        summary: { action: "node.updated", nodeKey: "node-1", name: "Bidang Pendidikan", fields: ["name"] },
+      })],
+    }));
+
+    expect(text).toContain('Unit "Bidang Pendidikan" diubah.');
+    expect(text).not.toContain("MANUAL_EDIT");
+  });
+
+  it("names the blocking lines and does not offer to continue", () => {
+    const preview: OrganizationReplayReport = {
+      applied: false, baseChangeSetId: null, kept: [], skipped: [],
+      blocked: [{ seq: 2, commandType: "MANUAL_EDIT", summary: { action: "authority_binding.ended" } }],
+    };
+    const html = render({ preview, previewFor: 1 });
+    const text = visibleText(html);
+
+    expect(text).toContain("Belum bisa dilanjutkan");
+    expect(text).toContain("Satu kewenangan diakhiri.");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Lanjutkan/);
+  });
+});

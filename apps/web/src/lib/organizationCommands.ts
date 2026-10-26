@@ -71,6 +71,11 @@ export interface OrganizationReplayReport {
   baseChangeSetId: string | null;
   kept: Array<{ seq: number; commandType: OrganizationCommandType; summary: Record<string, unknown> }>;
   skipped: Array<{ seq: number; commandType: OrganizationCommandType; code: string; message: string }>;
+  /**
+   * Lines a rebuild cannot reproduce (a manual edit, or the legacy seed). While any is listed the
+   * API refuses to apply, so the screen says which ones and does not offer to continue.
+   */
+  blocked?: Array<{ seq: number; commandType: string; summary: Record<string, unknown> }>;
 }
 
 export interface OrganizationItemUse {

@@ -103,10 +103,24 @@ export function OrganizationChangeList({
             </ul>
           ) : null}
           <p className="mt-2 text-xs">Tindakan yang tidak bisa diterapkan lagi akan hilang dari daftar ini dan perlu Anda ulangi.</p>
+          {(preview.blocked ?? []).length > 0 ? (
+            <div className="mt-3 rounded-lg border border-warning-line bg-warning-soft p-3 text-xs text-warning-ink">
+              <p className="font-bold">Belum bisa dilanjutkan</p>
+              <p className="mt-1 leading-5">
+                Baris berikut tidak bisa disusun ulang, sehingga akan hilang bila dilanjutkan. Batalkan baris itu
+                dulu, atau ulangi perubahannya sendiri.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {(preview.blocked ?? []).map((item) => (
+                  <li key={item.seq}>&bull; {organizationJournalSentence(item)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || (preview.blocked ?? []).length > 0}
               onClick={onConfirmPreview}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-60"
             >

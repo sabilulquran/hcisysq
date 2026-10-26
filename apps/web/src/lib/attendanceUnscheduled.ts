@@ -87,3 +87,33 @@ export function unattributedStatusLabel(status: UnattributedPin["status"]): stri
   if (status === "before_mapping") return "Scan sebelum pemetaan berlaku";
   return "Scan di luar masa pemetaan";
 }
+
+export type AssignmentPlan =
+  | { employeeId: string; action: "create"; from: string; to: string | null }
+  | { employeeId: string; action: "skip"; reason: string };
+
+function dayBefore(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * Plans one new schedule pattern per employee without overlapping an existing one: two patterns on the
+ * same date make the engine report "Jadwal bermasalah" (ambiguous assignment). The new pattern ends the
+ * day before the next existing pattern; an employee whose pattern already covers the start date is
+ * skipped with a reason.
+ */
+export function planAssignments(
+  employeeIds: string[],
+  existing: Array<{ employeeId: string; effectiveFrom: string; effectiveTo: string | null }>,
+  from: string,
+): AssignmentPlan[] {
+  return employeeIds.map((employeeId) => {
+    const own = existing.filter((item) => item.employeeId === employeeId);
+    const covering = own.find((item) => item.effectiveFrom <= from && (item.effectiveTo === null || item.effectiveTo >= from));
+    if (covering) return { employeeId, action: "skip", reason: `sudah punya pola sejak ${covering.effectiveFrom}` };
+    const next = own.filter((item) => item.effectiveFrom > from).map((item) => item.effectiveFrom).sort()[0];
+    return { employeeId, action: "create", from, to: next ? dayBefore(next) : null };
+  });
+}

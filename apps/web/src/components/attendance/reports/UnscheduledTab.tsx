@@ -4,12 +4,18 @@ import { useEffect, useState } from "react";
 import type { AttendanceCalculationScope } from "@/lib/attendanceCalculation";
 import {
   groupByPosition,
+  planAssignments,
   unattributedStatusLabel,
   unscheduledReason,
   type AttendanceUnscheduled,
   type UnscheduledEmployee,
 } from "@/lib/attendanceUnscheduled";
-import { createAttendanceScheduleAssignment, listAttendanceSchedules } from "@/lib/workforceAttendance";
+import {
+  createAttendanceScheduleAssignment,
+  listAttendanceScheduleAssignments,
+  listAttendanceSchedules,
+  type AttendanceScheduleAssignmentItem,
+} from "@/lib/workforceAttendance";
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 
@@ -36,30 +42,46 @@ function AssignToShift({ employees, defaultFrom, onDone, onCancel }: {
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [from, setFrom] = useState(defaultFrom);
   const [selected, setSelected] = useState<string[]>(employees.map((item) => item.employeeId));
+  const [existing, setExisting] = useState<AttendanceScheduleAssignmentItem[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string[]>([]);
 
   useEffect(() => {
-    void listAttendanceSchedules()
-      .then((result) => setShifts(result.items.filter((item) => item.active)))
+    void Promise.all([listAttendanceSchedules(), listAttendanceScheduleAssignments()])
+      .then(([schedules, assignments]) => {
+        setShifts(schedules.items.filter((item) => item.active));
+        setExisting(assignments.items);
+      })
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Daftar shift tidak dapat dimuat."));
   }, []);
+
+  // Never overlap an existing pattern: overlapping patterns turn every shared day into "Jadwal bermasalah".
+  const plan = existing && from ? planAssignments(selected, existing, from) : [];
+  const toCreate = plan.filter((item) => item.action === "create");
+  const nameOf = (employeeId: string) => employees.find((item) => item.employeeId === employeeId)?.employeeName ?? employeeId;
 
   const save = async () => {
     setSaving(true);
     setError(null);
+    const failures: string[] = [];
     let done = 0;
-    try {
-      for (const employeeId of selected) {
-        await createAttendanceScheduleAssignment({ employeeId, scheduleTemplateId: shiftId, weekdays, effectiveFrom: from, effectiveTo: null });
+    for (const item of toCreate) {
+      if (item.action !== "create") continue;
+      try {
+        await createAttendanceScheduleAssignment({ employeeId: item.employeeId, scheduleTemplateId: shiftId, weekdays, effectiveFrom: item.from, effectiveTo: item.to });
         done += 1;
+      } catch (cause) {
+        failures.push(`${nameOf(item.employeeId)}: ${cause instanceof Error ? cause.message : "gagal"}`);
       }
-      const shift = shifts.find((item) => item.id === shiftId);
+    }
+    setSaving(false);
+    setFailed(failures);
+    const shift = shifts.find((item) => item.id === shiftId);
+    if (failures.length === 0) {
       onDone(`${done} pegawai dipasang ke ${shift?.name ?? "shift"} mulai ${shortDate(from)}. Jalankan Kalkulasi untuk menghitung ulang.`);
-    } catch (cause) {
-      setError(`${done} dari ${selected.length} berhasil. ${cause instanceof Error ? cause.message : "Pemasangan gagal."}`);
-    } finally {
-      setSaving(false);
+    } else {
+      setError(`${done} berhasil, ${failures.length} gagal. Pegawai yang gagal tercantum di bawah dan dapat dicoba lagi.`);
     }
   };
 
@@ -96,9 +118,17 @@ function AssignToShift({ employees, defaultFrom, onDone, onCancel }: {
           ))}
         </fieldset>
       ) : null}
-      <p className="text-xs text-muted-foreground">{selected.length} pegawai, mulai {from ? shortDate(from) : "—"}, hari {weekdays.map((day) => WEEKDAYS[day - 1]).join(", ") || "—"}.</p>
+      <p className="text-xs text-muted-foreground">{toCreate.length} pegawai, mulai {from ? shortDate(from) : "—"}, hari {weekdays.map((day) => WEEKDAYS[day - 1]).join(", ") || "—"}.</p>
+      {plan.some((item) => item.action === "skip" || (item.action === "create" && item.to)) ? (
+        <ul className="grid gap-1 text-xs text-muted-foreground">
+          {plan.map((item) => item.action === "skip"
+            ? <li key={item.employeeId}>{nameOf(item.employeeId)}: dilewati, {item.reason}.</li>
+            : item.to ? <li key={item.employeeId}>{nameOf(item.employeeId)}: berlaku sampai {shortDate(item.to)}, karena pola berikutnya mulai keesokan harinya.</li> : null)}
+        </ul>
+      ) : null}
+      {failed.length ? <ul className="grid gap-1 text-xs text-danger-ink">{failed.map((line) => <li key={line}>{line}</li>)}</ul> : null}
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={saving || !shiftId || !from || !selected.length || !weekdays.length} onClick={() => void save()} className="inline-flex h-9 items-center gap-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">
+        <button type="button" disabled={saving || !existing || !shiftId || !from || !toCreate.length || !weekdays.length} onClick={() => void save()} className="inline-flex h-9 items-center gap-1 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />} Pasang
         </button>
         <button type="button" onClick={onCancel} className="h-9 rounded-xl border px-3 text-xs font-bold">Batal</button>

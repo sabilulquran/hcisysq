@@ -30,7 +30,11 @@ export type UnscheduledEmployee = {
   lastDate: string;
   earliestLastScan: string;
   latestLastScan: string;
-  /** Earliest schedule pattern start, when the employee has one (the days before it are not judged). */
+  /**
+   * Start of the first schedule pattern that begins after the first uncovered day, if any: the days
+   * before it are not judged, and a new pattern for those days must end the day before it so the two
+   * never overlap (overlapping patterns make the engine report configuration_error).
+   */
   scheduleStartsOn: string | null;
 };
 
@@ -107,7 +111,7 @@ export async function unscheduledEmployees(pool: Pick<Pool, "query">, filter: Un
        min(to_char(uncovered.last_scan AT TIME ZONE 'Asia/Jakarta', 'HH24:MI')) AS "earliestLastScan",
        max(to_char(uncovered.last_scan AT TIME ZONE 'Asia/Jakarta', 'HH24:MI')) AS "latestLastScan",
        (SELECT min(assignment.effective_from)::text FROM attendance_schedule_assignments assignment
-         WHERE assignment.employee_id = scoped.id) AS "scheduleStartsOn",
+         WHERE assignment.employee_id = scoped.id AND assignment.effective_from > min(uncovered.work_date)) AS "scheduleStartsOn",
        count(*) OVER ()::int AS total
      FROM uncovered
      JOIN scoped ON scoped.id = uncovered.employee_id

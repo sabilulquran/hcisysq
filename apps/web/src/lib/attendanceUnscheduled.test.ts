@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { calculationRowStatusLabel } from "@/lib/attendanceCalculation";
-import { groupByPosition, unattributedStatusLabel, unscheduledReason, type UnscheduledEmployee } from "@/lib/attendanceUnscheduled";
+import { groupByPosition, planAssignments, unattributedStatusLabel, unscheduledReason, type UnscheduledEmployee } from "@/lib/attendanceUnscheduled";
 
 // ATT-014 §20.3 Tanpa Jadwal (R2a). Synthetic employees only.
 
@@ -36,5 +36,21 @@ describe("Tanpa Jadwal grouping and wording", () => {
   it("calls a day without any schedule Tanpa jadwal, not Libur", () => {
     expect(calculationRowStatusLabel("unscheduled")).toBe("Tanpa jadwal");
     expect(calculationRowStatusLabel("off")).toBe("Libur");
+  });
+});
+
+describe("Pasang ke shift yang ada never overlaps an existing pattern", () => {
+  it("ends the new pattern the day before the next one and skips covered employees", () => {
+    const existing = [
+      { employeeId: "later", effectiveFrom: "2026-10-24", effectiveTo: null },
+      { employeeId: "covered", effectiveFrom: "2026-09-01", effectiveTo: null },
+      { employeeId: "ended", effectiveFrom: "2026-01-01", effectiveTo: "2026-06-30" },
+    ];
+    expect(planAssignments(["none", "later", "covered", "ended"], existing, "2026-09-01")).toEqual([
+      { employeeId: "none", action: "create", from: "2026-09-01", to: null },
+      { employeeId: "later", action: "create", from: "2026-09-01", to: "2026-10-23" },
+      { employeeId: "covered", action: "skip", reason: "sudah punya pola sejak 2026-09-01" },
+      { employeeId: "ended", action: "create", from: "2026-09-01", to: null },
+    ]);
   });
 });

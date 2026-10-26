@@ -139,14 +139,12 @@ export function AdminAttendanceReportsPage() {
   const loadRows = useCallback(async () => {
     setLoading(true);
     try {
-      const [detail, punches, withoutSchedule] = await Promise.all([
+      const [detail, punches] = await Promise.all([
         getAttendanceCalculationRows({ ...scope, ...(status ? { status } : {}), changedOnly, page: detailPage }),
         getAttendanceTransactions({ ...scope, ...(source ? { source } : {}), needsReview, page: transactionPage }),
-        getAttendanceUnscheduled({ ...scope, page: unscheduledPage, pinPage }),
       ]);
       setRows(detail);
       setTransactions(punches);
-      setUnscheduled(withoutSchedule);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Data tidak dapat dimuat.");
@@ -154,9 +152,22 @@ export function AdminAttendanceReportsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, unitId, employeeId, status, source, needsReview, changedOnly, detailPage, transactionPage, unscheduledPage, pinPage]);
+  }, [range.from, range.to, unitId, employeeId, status, source, needsReview, changedOnly, detailPage, transactionPage]);
 
   useEffect(() => { void loadRows(); }, [loadRows]);
+
+  // Tanpa Jadwal aggregates raw scans over the whole range, so it reloads only when the scope or its own
+  // pages change, not on the filters of the other tabs.
+  const loadUnscheduled = useCallback(async () => {
+    try {
+      setUnscheduled(await getAttendanceUnscheduled({ ...scope, page: unscheduledPage, pinPage }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Data tanpa jadwal tidak dapat dimuat.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, unitId, employeeId, unscheduledPage, pinPage]);
+
+  useEffect(() => { void loadUnscheduled(); }, [loadUnscheduled]);
 
   // Poll the active run every 2 seconds; reload the data when it finishes.
   useEffect(() => {
@@ -429,7 +440,7 @@ export function AdminAttendanceReportsPage() {
           ) : (
             <div role="tabpanel">
               <UnscheduledTab data={unscheduled} scope={scope} loading={loading} canManageSchedules={canManageSchedules} canMapPins={canMapPins}
-                onPage={setUnscheduledPage} onPinPage={setPinPage} onChanged={() => void loadRows()} />
+                onPage={setUnscheduledPage} onPinPage={setPinPage} onChanged={() => { void loadRows(); void loadUnscheduled(); }} />
             </div>
           )}
         </div>

@@ -140,7 +140,7 @@ export function OrganizationAdvancedAuthority({
         </form>
       ) : (
         <p className="rounded-xl border border-border/70 bg-surface p-3 text-sm text-muted-foreground">
-          Aturan ini diatur oleh pemegang izin persetujuan (Kepala HC atau owner).
+          Aturan ini disusun oleh pengelola struktur organisasi, lalu berlaku setelah diterbitkan Kepala HC.
         </p>
       )}
     </div>

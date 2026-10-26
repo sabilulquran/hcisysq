@@ -40,3 +40,13 @@ export const manualCorrectionWindowMessages: Record<ManualCorrectionWindowError,
   CHECK_OUT_OUTSIDE_WORK_DATE: "Jam pulang harus pada tanggal kerja yang dipilih atau keesokan harinya.",
   CHECK_OUT_BEFORE_CHECK_IN: "Jam pulang harus setelah jam masuk dan paling lama 24 jam sesudahnya.",
 };
+
+// ATT-011-7 (§8, D-7): an employee clarifies today or up to 7 days back, never a future date.
+export const CLARIFICATION_LOOKBACK_DAYS = 7;
+
+export function clarificationDateAllowed(workDate: string, now = new Date()): boolean {
+  const today = jakartaWorkDate(now);
+  const oldest = new Date(`${today}T00:00:00Z`);
+  oldest.setUTCDate(oldest.getUTCDate() - CLARIFICATION_LOOKBACK_DAYS);
+  return workDate <= today && workDate >= oldest.toISOString().slice(0, 10);
+}

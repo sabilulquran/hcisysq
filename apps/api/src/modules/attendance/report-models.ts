@@ -3,15 +3,43 @@ import ExcelJS from "exceljs";
 import type { CalculationRowStatus } from "./calculation-rows.js";
 
 // ATT-014 §7 and §19.2 report models (D-14-11): Laporan Harian (Grid Bulanan), Rekapitulasi Pegawai
-// and Detail Harian. Pure builders over the stored-result rows of calculation-rows; nothing here
-// calculates attendance. The same table feeds the screen preview, the print document, CSV and XLSX.
+// and Detail Harian, plus the R2d models of §20.2 (Per Unit, Jadwal Harian, Lembur Harian over the same
+// stored-result rows; Data Transaksi and Data Scan over the punch read model). Pure builders; nothing
+// here calculates attendance. The same table feeds the screen preview, the print document, CSV and XLSX.
 
 // printTitle is the heading on paper (owner-approved print mock-up, 2026-10-26).
 export const REPORT_MODELS = {
   daily_grid: { title: "Laporan Harian (Grid Bulanan)", printTitle: "Laporan Kehadiran Harian", orientation: "landscape" },
   employee_summary: { title: "Rekapitulasi Pegawai", printTitle: "Rekapitulasi Kehadiran Pegawai", orientation: "portrait" },
   daily_detail: { title: "Detail Harian", printTitle: "Detail Kehadiran Harian", orientation: "landscape" },
+  unit_summary: { title: "Per Unit", printTitle: "Rekapitulasi Kehadiran per Unit", orientation: "portrait" },
+  daily_schedule: { title: "Jadwal Harian", printTitle: "Jadwal Kerja Harian", orientation: "portrait" },
+  daily_overtime: { title: "Lembur Harian", printTitle: "Lembur Harian", orientation: "portrait" },
+  transactions: { title: "Data Transaksi", printTitle: "Data Transaksi Kehadiran", orientation: "landscape" },
+  scans: { title: "Data Scan", printTitle: "Data Scan Mesin", orientation: "portrait" },
 } as const;
+
+/** Models built from punches (transactions read model) instead of daily results. */
+export const PUNCH_MODELS = ["transactions", "scans"] as const;
+export type PunchModel = (typeof PUNCH_MODELS)[number];
+export function isPunchModel(model: ReportModel): model is PunchModel {
+  return (PUNCH_MODELS as readonly string[]).includes(model);
+}
+
+export type ReportPunchRow = {
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitName: string | null;
+  occurredAt: Date | string;
+  workDate: string;
+  source: "adms" | "mobile" | "manual" | "correction";
+  correctionBy: "hc" | "employee" | null;
+  boundary: "check_in" | "check_out" | null;
+  deviceName: string | null;
+  usedInResult: boolean;
+  reviewState: "accepted" | "needs_review" | null;
+};
 
 /** Terms that are easy to misread, explained on the sheet itself. */
 export const REPORT_NOTES = [
@@ -199,10 +227,138 @@ function groupByUnitAndEmployee(rows: ReportSourceRow[]) {
     }));
 }
 
+const SOURCE_WORDS: Record<ReportPunchRow["source"], string> = {
+  adms: "Mesin", mobile: "HP", manual: "Koreksi HC (lama)", correction: "Koreksi",
+};
+
+/** Data Transaksi (every punch, all sources) and Data Scan (machine scans only), by unit, then time. */
+export function buildPunchTable(model: PunchModel, punches: ReportPunchRow[]): ReportTable {
+  const meta = REPORT_MODELS[model];
+  const rows = model === "scans" ? punches.filter((punch) => punch.source === "adms") : punches;
+  const units = new Map<string, ReportPunchRow[]>();
+  for (const punch of rows) {
+    const unit = punch.unitName ?? "Tanpa unit";
+    units.set(unit, [...(units.get(unit) ?? []), punch]);
+  }
+  const columns: ReportColumn[] = model === "scans"
+    ? [
+      { key: "date", label: "Tanggal" }, { key: "time", label: "Jam" }, { key: "employeeNumber", label: "NIP" },
+      { key: "employeeName", label: "Nama" }, { key: "device", label: "Mesin" }, { key: "used", label: "Dipakai", align: "center" },
+    ]
+    : [
+      { key: "date", label: "Tanggal" }, { key: "time", label: "Jam" }, { key: "employeeNumber", label: "NIP" },
+      { key: "employeeName", label: "Nama" }, { key: "source", label: "Sumber" }, { key: "boundary", label: "Jenis" },
+      { key: "device", label: "Mesin" }, { key: "review", label: "Tinjauan" }, { key: "used", label: "Dipakai", align: "center" },
+    ];
+  const groups = [...units.entries()]
+    .sort(([left], [right]) => (left === "Tanpa unit" ? 1 : right === "Tanpa unit" ? -1 : left.localeCompare(right, "id")))
+    .map(([unitName, list]) => ({
+      unitName,
+      rows: list
+        .sort((left, right) => new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime()
+          || left.employeeName.localeCompare(right.employeeName, "id"))
+        .map((punch) => ({
+          date: punch.workDate,
+          time: clock(new Date(punch.occurredAt).toISOString()),
+          employeeNumber: punch.employeeNumber,
+          employeeName: punch.employeeName,
+          source: SOURCE_WORDS[punch.source] + (punch.source === "correction" && punch.correctionBy === "hc" ? " HC" : ""),
+          boundary: punch.boundary === "check_in" ? "Masuk" : punch.boundary === "check_out" ? "Pulang" : null,
+          device: punch.deviceName,
+          review: punch.reviewState === "needs_review" ? "Perlu ditinjau" : null,
+          used: punch.usedInResult ? "Ya" : "Belum",
+        })),
+      subtotal: { date: `Jumlah ${unitName}`, time: `${list.length} baris` },
+    }));
+  return {
+    model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups,
+    notes: model === "scans"
+      ? ["Hanya scan mesin yang sudah terkait ke pegawai lewat pemetaan PIN. Scan yang belum terkait ada di tab Tanpa Jadwal."]
+      : ["Satu baris = satu absen. \"Dipakai\" berarti jam itu dipakai pada hasil terakhir."],
+    total: { date: "Jumlah seluruhnya", time: `${rows.length} baris` },
+    legend: null,
+  };
+}
+
 export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], from: string, to: string): ReportTable {
+  if (isPunchModel(model)) throw new Error(`${model} is built from punches; use buildPunchTable`);
   const meta = REPORT_MODELS[model];
   const grouped = groupByUnitAndEmployee(rows);
   const grand = emptyTotals();
+
+  if (model === "unit_summary") {
+    // One row per unit with the employee summary totals (§20.2 "Per Unit").
+    const columns: ReportColumn[] = [{ key: "unit", label: "Unit" }, { key: "employees", label: "Pegawai", align: "center" }, ...SUMMARY_COLUMNS];
+    const unitRows = grouped.map(({ unitName, employees }) => {
+      const totals = emptyTotals();
+      for (const row of employees.flat()) addRow(totals, row);
+      mergeTotals(grand, totals);
+      return { unit: unitName, employees: employees.length, ...summaryCells(totals) };
+    });
+    return {
+      model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns,
+      groups: [{ unitName: "Semua unit", rows: unitRows, subtotal: null }], notes: REPORT_NOTES,
+      total: { unit: "Jumlah seluruhnya", employees: unitRows.reduce((sum, row) => sum + row.employees, 0), ...summaryCells(grand) },
+      legend: null,
+    };
+  }
+
+  if (model === "daily_schedule") {
+    // The schedule that applied on each scheduled day; days without one are listed as such (I-4).
+    const columns: ReportColumn[] = [
+      { key: "date", label: "Tanggal" }, { key: "day", label: "Hari" }, { key: "employeeNumber", label: "NIP" },
+      { key: "employeeName", label: "Nama" }, { key: "start", label: "Masuk jadwal", align: "center" },
+      { key: "end", label: "Pulang jadwal", align: "center" }, { key: "status", label: "Keterangan" },
+    ];
+    const groups = grouped.map(({ unitName, employees }) => ({
+      unitName,
+      rows: employees.flat()
+        .sort((left, right) => left.workDate.localeCompare(right.workDate) || (left.employeeName ?? "").localeCompare(right.employeeName ?? "", "id"))
+        .map((row) => ({
+          date: row.workDate,
+          day: WEEKDAY[new Date(`${row.workDate}T00:00:00Z`).getUTCDay()]!,
+          employeeNumber: row.employeeNumber,
+          employeeName: row.employeeName,
+          start: clock(row.scheduledStartAt),
+          end: clock(row.scheduledEndAt),
+          status: row.scheduledStartAt ? null : STATUS_WORDS[row.status],
+        })),
+      subtotal: null,
+    }));
+    return { model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups, notes: [], total: null, legend: null };
+  }
+
+  if (model === "daily_overtime") {
+    // Overtime minutes of the stored results, only days that have some (ATT-011-6a: no verdict from scans here).
+    const columns: ReportColumn[] = [
+      { key: "date", label: "Tanggal" }, { key: "day", label: "Hari" }, { key: "employeeNumber", label: "NIP" },
+      { key: "employeeName", label: "Nama" }, { key: "schedule", label: "Jadwal" }, { key: "checkOut", label: "Pulang" },
+      { key: "overtimeMinutes", label: "Lembur (mnt)", align: "right" },
+    ];
+    const groups = grouped.map(({ unitName, employees }) => {
+      const list = employees.flat().filter((row) => (row.overtimeMinutes ?? 0) > 0);
+      const minutes = list.reduce((sum, row) => sum + (row.overtimeMinutes ?? 0), 0);
+      grand.overtimeMinutes += minutes;
+      return {
+        unitName,
+        rows: list.map((row) => ({
+          date: row.workDate,
+          day: WEEKDAY[new Date(`${row.workDate}T00:00:00Z`).getUTCDay()]!,
+          employeeNumber: row.employeeNumber,
+          employeeName: row.employeeName,
+          schedule: row.scheduledStartAt ? `${clock(row.scheduledStartAt)}–${clock(row.scheduledEndAt)}` : null,
+          checkOut: clock(row.lastCheckOutAt),
+          overtimeMinutes: row.overtimeMinutes,
+        })),
+        subtotal: { date: `Jumlah ${unitName}`, overtimeMinutes: minutes },
+      };
+    }).filter((group) => group.rows.length > 0);
+    return {
+      model, title: meta.title, printTitle: meta.printTitle, orientation: meta.orientation, columns, groups,
+      notes: ["Menit lembur dari hasil kehadiran yang sudah dihitung. Pengajuan dan keputusan lembur ada di menu Lembur."],
+      total: { date: "Jumlah seluruhnya", overtimeMinutes: grand.overtimeMinutes }, legend: null,
+    };
+  }
 
   if (model === "daily_detail") {
     const columns: ReportColumn[] = [
@@ -372,7 +528,7 @@ export async function reportXlsx(
   sheet.views = [{ state: "frozen", ySplit: headerRow.number }];
   for (const row of flatRows(table)) {
     const added = sheet.addRow(columns.map((column) => row[column.key] ?? null));
-    if (String(row.employeeNumber ?? row.date ?? "").startsWith("Jumlah")) added.font = { bold: true };
+    if (String(row.employeeNumber ?? row.date ?? row.unit ?? "").startsWith("Jumlah")) added.font = { bold: true };
   }
   sheet.addRow([]);
   if (table.legend) sheet.addRow([`Keterangan: ${table.legend.map((item) => `${item.symbol} = ${item.label}`).join("; ")}`]);

@@ -32,6 +32,7 @@ import { AdminAdmsAuditPage } from "@/pages/AdminAdmsAuditPage";
 import { AdminAdmsHealthPage } from "@/pages/AdminAdmsHealthPage";
 import { AdminAdmsJobsPage } from "@/pages/AdminAdmsJobsPage";
 import { AdminAdmsUsersManagementPage } from "@/pages/AdminAdmsUsersManagementPage";
+import { AdminAttendanceActionQueuePage } from "@/pages/AdminAttendanceActionQueuePage";
 import { AdminAttendanceCorrectionsPage } from "@/pages/AdminAttendanceCorrectionsPage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
@@ -342,6 +343,13 @@ const adminAttendanceDailyRoute = createRoute({
   component: AdminAttendanceDailyPage,
 });
 
+const adminAttendanceActionQueueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/action-queue",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/action-queue"),
+  component: AdminAttendanceActionQueuePage,
+});
+
 const adminAttendanceCorrectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/corrections",
@@ -589,6 +597,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceScheduleDatesRoute,
   adminAttendanceShiftSwapsRoute,
   adminAttendanceDailyRoute,
+  adminAttendanceActionQueueRoute,
   adminAttendanceCorrectionsRoute,
   adminAttendanceReportsRoute,
   adminAttendanceReportPrintRoute,

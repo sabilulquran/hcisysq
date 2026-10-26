@@ -1373,6 +1373,9 @@ paths:
                   changeSetId: { type: [string, 'null'], format: uuid }
                   activeEmployees: { type: integer }
                   withoutUnit: { type: integer }
+                  withoutWorkLocation:
+                    description: ORG-005-1. Placed employees whose unit branch names no work location; informational only.
+                    type: integer
                   unresolvedManager: { type: integer }
                   ineligibleManagers: { type: integer }
                   vacantRequiringActing: { type: integer }
@@ -2303,6 +2306,13 @@ paths:
   /admin/attendance/shift-swaps/{shiftSwapId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
 
+  /payroll/periods:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods'
+  /payroll/periods/{periodId}:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}'
+  /payroll/periods/{periodId}/transitions:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transitions'
+
   /admin/payslip-imports:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports'
   /admin/payslip-imports/preview:
@@ -2702,6 +2712,12 @@ components:
             unlinked branch falls back to the organisation-wide recipients.
           type: [string, 'null']
           format: uuid
+        workLocationId:
+          description: >
+            ORG-005-1 (DRAFT). The work location this unit works at; units below inherit it unless
+            they name their own. Must exist and be active, else 400 INVALID_WORK_LOCATION. Null clears it.
+          type: [string, 'null']
+          format: uuid
         name: { type: string, minLength: 1, maxLength: 160 }
         nodeType: { type: string, minLength: 1, maxLength: 80 }
         parentNodeKey: { type: [string, 'null'], format: uuid }
@@ -2818,6 +2834,17 @@ components:
         sourceDetails:
           type: array
           items: { type: string }
+        workLocation:
+          description: >
+            ORG-005-1 (DRAFT). The unit's work location, or the nearest ancestor unit's
+            (inheritedFromNodeKey names that unit); null when none up the branch names one.
+          oneOf:
+            - type: object
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+                inheritedFromNodeKey: { type: [string, 'null'], format: uuid }
+            - type: 'null'
         unitApprover:
           oneOf: [{ $ref: '#/components/schemas/OrganizationResolvedPerson' }, { type: 'null' }]
         issues:

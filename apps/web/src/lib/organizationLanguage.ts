@@ -100,6 +100,10 @@ const ISSUE_SENTENCES: Record<string, (name: string | null) => string> = {
     name
       ? `Unit ${name} dan unit di atasnya belum punya pemimpin.`
       : "Ada unit yang bersama unit di atasnya belum punya pemimpin.",
+  WORK_LOCATION_INACTIVE: (name) =>
+    name
+      ? `Unit ${name} memakai lokasi kerja yang sudah dinonaktifkan. Pilih lokasi lain.`
+      : "Ada unit yang memakai lokasi kerja yang sudah dinonaktifkan. Pilih lokasi lain.",
   MEMBERSHIP_NOT_CONFIGURED: (name) =>
     name ? `${name} belum punya unit.` : "Ada pegawai yang belum punya unit.",
   AMBIGUOUS_MEMBERSHIP: (name) =>
@@ -173,6 +177,8 @@ export function organizationIssueSentence(
 }
 
 const API_MESSAGES: Record<string, string> = {
+  INVALID_WORK_LOCATION:
+    "Lokasi kerja itu tidak ada atau sudah dinonaktifkan. Pilih lokasi lain.",
   ORGANIZATION_DRAFT_NOT_FOUND:
     "Perubahan struktur ini tidak ditemukan. Mungkin sudah diterbitkan atau dihapus.",
   ORGANIZATION_DRAFT_NOT_EDITABLE:

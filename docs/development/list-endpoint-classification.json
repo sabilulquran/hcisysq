@@ -13,6 +13,11 @@
       "reason": "Satu baris per peran yang mengikuti jabatan (kini hanya Kepala HC); isinya hanya pemegang peran itu dan pemegang satu jabatan."
     },
     {
+      "url": "/admin/attendance/action-queue",
+      "list": "paged",
+      "reason": "Antrean Perlu tindakan; halaman standar dengan jumlah per jenis."
+    },
+    {
       "url": "/admin/attendance/adms/biometric-control-plane",
       "list": "aggregate"
     },
@@ -257,9 +262,19 @@
       "reason": "Satu tanggal; satu baris per pegawai aktif."
     },
     {
+      "url": "/admin/attendance/daily/:employeeId/:workDate",
+      "list": "single",
+      "reason": "Detail satu pegawai-hari; absen hari itu dibatasi 200."
+    },
+    {
       "url": "/admin/attendance/employees/:employeeId",
       "list": "range",
       "reason": "Satu pegawai, rentang maks 62 hari."
+    },
+    {
+      "url": "/admin/attendance/exceptions",
+      "list": "paged",
+      "reason": "Pengecualian (cuti, klarifikasi, koreksi) dalam rentang; halaman standar."
     },
     {
       "url": "/admin/attendance/mobile-evidence",
@@ -656,6 +671,15 @@
       "list": "debt",
       "reason": "limit maks 100 tanpa offset/kursor; notifikasi lama tidak terjangkau.",
       "package": "PAG-5"
+    },
+    {
+      "url": "/payroll/periods",
+      "list": "paged",
+      "reason": "Daftar periode payroll dengan page dan pageSize, urutan stabil."
+    },
+    {
+      "url": "/payroll/periods/:periodId",
+      "list": "single"
     },
     {
       "url": "/payslips",

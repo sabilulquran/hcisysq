@@ -190,7 +190,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(215);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(223);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(39);
@@ -522,6 +522,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
 
   it("ORG-008-8: Super Admin grants Kepala HC only with organization scope and a mandate", async () => {
     // Owner decision 2026-10-24: Kepala HC holds approvals.policy.manage in full, as AUTH-011 defines it.
+    // PAY-003 adds the payroll permissions up to submission; approval and payment stay elsewhere.
     const leadRoleId = (await pool.query<{ id: string }>(
       "SELECT id FROM roles WHERE role_key = $1", [HC_LEAD_ROLE_KEY],
     )).rows[0]!.id;

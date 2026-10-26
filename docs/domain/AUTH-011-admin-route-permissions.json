@@ -1499,6 +1499,38 @@
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "GET",
+    "url": "/admin/attendance/exceptions",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/action-queue",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/daily/:employeeId/:workDate",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/daily/:employeeId/:workDate/request-clarification",
+    "permissions": [
+      "attendance.clarification.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
     "url": "/admin/attendance/reports/:model",
     "permissions": [
       "attendance.reports.read"
@@ -2333,6 +2365,52 @@
     "access": "super-admin",
     "permissions": [
       "access.roles.assign"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods",
+    "permissions": [
+      "payroll.periods.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods/:periodId/transitions",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization",
+      "payroll.calculate",
+      "payroll.submit"
     ]
   }
 ]

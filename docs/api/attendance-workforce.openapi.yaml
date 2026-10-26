@@ -86,12 +86,13 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/AttendanceClarificationInput' }
       description: >-
-        For mode `correction`, proposed times must belong to `workDate` (same rule as
+        `workDate` must be today (Asia/Jakarta) or at most 7 days earlier (ATT-011-7, D-7). For mode
+        `correction`, proposed times must belong to `workDate` (same rule as
         POST /admin/attendance/manual-corrections); checked before any write.
       responses:
         '201': { description: Clarification submitted }
         '400': { description: INVALID_CLARIFICATION }
-        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
+        '422': { description: CLARIFICATION_DATE_OUT_OF_RANGE, CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /attendance/clarifications/me:
     get:
@@ -376,12 +377,15 @@ paths:
       description: >-
         ATT-014 §7/§19.2 report models built from stored results only (D-14-11): `daily_grid`
         (Laporan Harian grid, symbols §6.6, landscape), `employee_summary` (Rekapitulasi Pegawai with
-        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian). `format=json`
+        unit subtotals, Presensi % = Riil ÷ Normal), `daily_detail` (Detail Harian); R2d (§20.13):
+        `unit_summary` (Per Unit), `daily_schedule` (Jadwal Harian), `daily_overtime` (Lembur Harian from
+        result minutes), `transactions` (Data Transaksi, every punch) and `scans` (Data Scan, machine scans
+        attributed to an employee); the last two read punches, never GPS or photos. `format=json`
         feeds the preview and, with `purpose=print`, the print document; `csv` (UTF-8 BOM) and `xlsx`
         are downloads. Every print and export is audited as `attendance.report.exported` with model,
         format, purpose, scope, range and row count only. At most 93 days and 50 000 employee-days.
       parameters:
-        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail] } }
+        - { name: model, in: path, required: true, schema: { type: string, enum: [daily_grid, employee_summary, daily_detail, unit_summary, daily_schedule, daily_overtime, transactions, scans] } }
         - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
@@ -423,6 +427,91 @@ paths:
       responses:
         '200': { description: '`{ from, to, employees: { page, pageSize, total, totalPages, items }, pins: { … } | null }`' }
         '400': { description: INVALID_UNSCHEDULED_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/action-queue:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceActionQueue
+      x-required-permission: any of attendance.clarification.manage, attendance.records.manage, attendance.reports.read, attendance.schedule.manage
+      description: >-
+        ATT-011-3 section 6.1 "Perlu tindakan", oldest date first: submitted clarifications and flagged phone
+        punches without a decided clarification (attendance.clarification.manage); incomplete days at
+        least two days old without a waiting clarification (attendance.records.manage or
+        attendance.reports.read); configuration errors (attendance.reports.read or
+        attendance.schedule.manage). Only the kinds the caller can act on are included (`kinds`), with
+        `counts` per kind. Latest result version only. Default range: the last 31 days; at most 93.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [clarification, mobile_review, incomplete, configuration_error] } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: '`{ page, pageSize, total, pageCount, kinds, counts, items: [{ kind, id, employeeId, employeeNumber, employeeName, unitName, workDate, detail, mode, reason, occurredAt }] }`' }
+        '400': { description: INVALID_ACTION_QUEUE_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: None of the queue permissions }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/daily/{employeeId}/{workDate}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceDay
+      x-required-permission: any of attendance.reports.read, attendance.records.manage, attendance.clarification.manage
+      description: >-
+        ATT-011-3 section 6.2 one employee-day: employee, resolved schedule (with shift name and tolerance),
+        latest stored result with sessions (no technical source summary), every punch of the day (GPS
+        fields only for attendance.clarification.manage; photos only through the evidence endpoint),
+        clarifications, approved leave covering the date, and overtime requests.
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: workDate, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: '`{ employee, workDate, schedule, result, punches, clarifications, leave, overtime }`' }
+        '400': { description: INVALID_ATTENDANCE_DAY }
+        '403': { description: None of the listed permissions }
+        '404': { description: EMPLOYEE_NOT_FOUND }
+
+  /admin/attendance/daily/{employeeId}/{workDate}/request-clarification:
+    post:
+      tags: [Attendance]
+      operationId: requestAttendanceClarification
+      x-required-permission: any of attendance.clarification.manage, attendance.records.manage
+      description: >-
+        ATT-011-3 "Minta pegawai klarifikasi": sends the employee an in-app notification (once per employee
+        and date) and records audit `attendance.clarification.requested`. Only for dates the employee can
+        still clarify (today to 7 days back).
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: workDate, in: path, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: '`{ notified }`; false when the employee has no active account' }
+        '400': { description: INVALID_ATTENDANCE_DAY }
+        '403': { description: None of the listed permissions }
+        '422': { description: CLARIFICATION_DATE_OUT_OF_RANGE }
+
+  /admin/attendance/exceptions:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceExceptions
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014 §20.2 tab Pengecualian (R2b). Approved leave requests overlapping the range (one row per
+        request, `typeName` from the leave policy catalog) and attendance clarifications or HC corrections
+        with a work date in the range (every status, `origin` employee or hc). Read-only, ENG-LIST-001
+        paged (pageSize default 25, max 100), at most 93 days.
+      parameters:
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: '`{ page, pageSize, total, pageCount, items: [{ kind: leave|clarification, id, employeeId, employeeNumber, employeeName, unitName, startOn, endOn, type, typeName, mode, origin, status, reason }] }`' }
+        '400': { description: INVALID_EXCEPTIONS_QUERY or INVALID_CALCULATION_RANGE }
         '403': { description: Missing attendance.reports.read }
         '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
 

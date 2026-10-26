@@ -167,8 +167,23 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
 });
 
 describe("ORG-008-8 the Kepala HC role", () => {
-  it("holds exactly organization.manage and approvals.policy.manage", () => {
-    expect([...HC_LEAD_PERMISSIONS].sort()).toEqual(["approvals.policy.manage", "organization.manage"]);
+  it("holds the two ORG-008-8 permissions plus payroll up to submission", () => {
+    expect([...HC_LEAD_PERMISSIONS].sort()).toEqual([
+      "approvals.policy.manage",
+      "organization.manage",
+      "payroll.calculate",
+      "payroll.inputs.manage",
+      "payroll.periods.manage",
+      "payroll.policies.manage",
+      "payroll.profiles.manage",
+      "payroll.submit",
+    ]);
+  });
+
+  it("cannot approve a payroll period, confirm its payment, or approve a reopen", () => {
+    for (const permission of ["payroll.approve", "payroll.payments.confirm", "payroll.reopen.approve"]) {
+      expect(HC_LEAD_PERMISSIONS as readonly string[]).not.toContain(permission);
+    }
   });
 
   it("holds no operational HC permission, so it is not a back door into day-to-day HC work", () => {

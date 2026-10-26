@@ -58,6 +58,8 @@ function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE", options: { rollou
     if (sql.includes("FROM employees e")) return { rows: [EMPLOYEE_ROW], rowCount: 1 };
     if (sql.includes("FROM organization_change_sets")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM organization_") || sql.includes("FROM employees")) return { rows: [], rowCount: 0 };
+    // ORG-005-1: work location names for the row's workLocation.
+    if (sql.includes("FROM attendance_work_locations")) return { rows: [], rowCount: 0 };
     throw new Error(`Unexpected read-model SQL: ${sql}`);
   });
   const client = { query, release: vi.fn() };
@@ -125,7 +127,7 @@ describe("ORG-008-2 read endpoints never write", () => {
     expect(body.items).toHaveLength(1);
     expect(Object.keys(body.items[0]).sort()).toEqual([
       "directManager", "employeeId", "employeeNumber", "fullName", "issues", "legacy",
-      "position", "source", "sourceDetails", "unit", "unitApprover",
+      "position", "source", "sourceDetails", "unit", "unitApprover", "workLocation",
     ]);
     const employeeQuery = sqlLog.find((sql) => sql.includes("FROM employees e"));
     for (const forbidden of ["national_id", "nik", "address", "salary", "birth", "phone", "email"]) {

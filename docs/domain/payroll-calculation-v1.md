@@ -31,7 +31,7 @@ Permission mengikuti pola `<resource>.<action>[.<scope>]`. Semua permission baru
 | Aktor | Permission (usulan) | Scope |
 |---|---|---|
 | Kepala HCM / staf HC | `payroll.policies.manage`, `payroll.profiles.manage`, `payroll.periods.manage`, `payroll.inputs.manage`, `payroll.calculate`, `payroll.submit` | organization |
-| Keuangan (pengelola kasbon) | `payroll.loans.manage`, `payroll.payments.confirm` | organization |
+| Keuangan (pengelola kasbon) | `payroll.loans.manage` | organization |
 | Kepala Keuangan | `payroll.transfers.read.organization`, `payroll.reports.read.organization`, `payroll.payments.confirm` | organization |
 | Direktur | `payroll.approve`, `payroll.reopen.approve`, `payroll.reports.read.organization` | organization |
 | Pengurus Yayasan | **tidak ada permission payroll di v1** | — |
@@ -237,6 +237,8 @@ Periode tidak dapat diajukan bila ada blocker:
 - satu rekening dipakai lebih dari satu pegawai;
 - input periode berubah setelah perhitungan terakhir.
 
+Tiga blocker terakhir bersifat **tingkat periode**, bukan per pegawai, sehingga diperiksa pada lapisan periode saat perhitungan dijalankan, bukan di fungsi perhitungan per pegawai: satu rekening dipakai lebih dari satu pegawai, kebijakan statutori tidak tersedia untuk tanggal periode, dan input berubah setelah perhitungan terakhir (dibandingkan lewat `input_snapshot` hasil terakhir).
+
 Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang §10 butir 6, pegawai baru/keluar, input manual bernilai besar.
 
 ## 6. Lifecycle periode
@@ -290,7 +292,7 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - **Diizinkan** di payload audit: identifier (periode, employment id, aktor), jumlah baris/pegawai, status, kode blocker, dan **total agregat periode** (bruto, potongan, netto, dibayar, biaya yayasan). Total agregat bukan data perorangan, sehingga `payroll.period.calculated` dan `payroll.period.approved` boleh memuatnya.
 - Respons laporan dan slip memakai `Cache-Control: no-store`.
 - Laporan per orang dan ekspor dicatat sebagai akses sensitif.
-- Pengurus Yayasan hanya membaca laporan final; tidak ada mutasi dan tidak ada akses ke input atau profil.
+- Pengurus Yayasan tidak memiliki permission payroll di v1 (§2): tidak membaca laporan, input, maupun profil.
 
 ## 9. Migrasi dan verifikasi
 

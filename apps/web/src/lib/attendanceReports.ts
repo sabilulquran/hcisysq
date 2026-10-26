@@ -4,12 +4,19 @@ import { WorkforceAttendanceApiError } from "@/lib/workforceAttendance";
 // ATT-014 §7/§19.2 report models. The server builds every table from stored results; the screen
 // preview and the print document only render it.
 
-export type AttendanceReportModel = "daily_grid" | "employee_summary" | "daily_detail";
+export type AttendanceReportModel =
+  | "daily_grid" | "employee_summary" | "daily_detail"
+  | "unit_summary" | "daily_schedule" | "daily_overtime" | "transactions" | "scans";
 
 export const REPORT_MODEL_OPTIONS: Array<{ value: AttendanceReportModel; label: string; hint: string }> = [
   { value: "daily_grid", label: "Laporan Harian (Grid Bulanan)", hint: "Satu baris per pegawai, satu kolom per tanggal, berisi simbol kehadiran. Dicetak lanskap." },
   { value: "employee_summary", label: "Rekapitulasi Pegawai", hint: "Satu baris per pegawai dengan Normal, Riil, Presensi %, dan jumlah per jenis, subtotal per unit." },
   { value: "daily_detail", label: "Detail Harian", hint: "Satu baris per pegawai per tanggal: jadwal, scan, status, terlambat, pulang cepat, lembur." },
+  { value: "unit_summary", label: "Per Unit", hint: "Satu baris per unit: jumlah pegawai, hari kerja, hadir, terlambat, tidak hadir, Presensi %." },
+  { value: "daily_schedule", label: "Jadwal Harian", hint: "Jam masuk dan pulang jadwal per pegawai per tanggal." },
+  { value: "daily_overtime", label: "Lembur Harian", hint: "Hari dengan menit lembur pada hasil kehadiran, per pegawai." },
+  { value: "transactions", label: "Data Transaksi", hint: "Setiap absen dari mesin, HP, dan koreksi, satu baris per absen." },
+  { value: "scans", label: "Data Scan", hint: "Scan mesin yang sudah terkait ke pegawai, satu baris per scan." },
 ];
 
 export type ReportCell = string | number | null;

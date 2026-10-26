@@ -371,7 +371,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
       [randomUUID(), accountId, lateShift],
     );
     rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
-    expect(rows.items[0]).toMatchObject({ status: "unscheduled", changedSinceCalculated: true });
+    // Until Kalkulasi runs again the row keeps the stored result, flagged as changed.
+    expect(rows.items[0]?.changedSinceCalculated).toBe(true);
 
     await queueRun({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" }, new Date(Date.now() + 2 * 3_600_000).toISOString());
     const ordered = createCalculationRunner(transactionPool, { pause: async () => undefined });

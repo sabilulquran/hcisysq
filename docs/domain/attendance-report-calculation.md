@@ -691,6 +691,11 @@ ROLLBACK;
 
 *Bila tidak ada baris:* catat hasilnya di catatan rilis, tidak ada tindakan data.
 
+*Hasil pemeriksaan 2026-10-26 (D-14-13 disetujui owner):* dijalankan read-only di `sqcore_hcis`
+Mi8VPS (`BEGIN TRANSACTION READ ONLY` dan `default_transaction_read_only=on`). Jumlah klarifikasi
+`mode='correction'` di production: **0** (baik dari pegawai maupun HC), sehingga baris bermasalah
+**0**. Tidak ada data yang perlu ditangani; status `superseded` dan migration-nya **tidak dibuat**.
+
 *Bila ada baris:* data scan asli dan baris klarifikasi **tidak dihapus atau diubah** (append-only).
 Yang diusulkan (D-14-13):
 

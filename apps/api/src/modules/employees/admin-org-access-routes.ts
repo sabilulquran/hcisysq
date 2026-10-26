@@ -26,6 +26,18 @@ import {
   assertManagerAssignment,
   OrgAccessPolicyError,
 } from "./org-access-policy.js";
+import { HC_LEAD_ROLE_KEY } from "../auth/permissions.js";
+import {
+  computeRoleSeatCheck,
+  type RoleSeatAccount,
+  type RoleSeatCheck,
+  type RoleSeatHolder,
+} from "../auth/role-seat-check.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
+import { PostgresOrganizationRepository } from "../organization/repository.js";
+
+/** ORG-008-9: roles whose holders are compared with the holders of a structural seat. */
+const SEAT_LINKED_ROLE_KEYS = [HC_LEAD_ROLE_KEY] as const;
 
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
 const accountIdSchema = z.object({ accountId: z.string().uuid() });
@@ -751,5 +763,121 @@ export async function registerOrgAccessAdminRoutes(
       if (error instanceof AuthError) return reply.status(error.statusCode).send({ code: error.code, message: error.message });
       throw error;
     }
+  });
+
+  /**
+   * ORG-008-9: compare the people holding a role with the people holding the seat it is meant to
+   * follow. Read-only; it never grants or revokes (AUTH-011: a position grants no admin permission).
+   */
+  async function loadRoleSeatCheck(roleKey: string): Promise<RoleSeatCheck> {
+    const asOf = jakartaBusinessDate();
+    const [link, holders, snapshot] = await Promise.all([
+      pool.query<{ positionKey: string; reason: string; setAt: Date }>(
+        `SELECT position_key AS "positionKey", reason, set_at AS "setAt"
+         FROM access_role_position_links WHERE role_key = $1`,
+        [roleKey],
+      ),
+      // Exactly the assignments the permission engine honours on that date.
+      pool.query<RoleSeatHolder>(
+        `SELECT DISTINCT a.id AS "accountId", a.employee_id AS "employeeId", coalesce(e.full_name, a.email) AS name
+         FROM account_role_assignments ara
+         JOIN roles r ON r.id = ara.role_id
+         JOIN accounts a ON a.id = ara.account_id
+         JOIN employees e ON e.id = a.employee_id
+         WHERE r.role_key = $1
+           AND a.principal_type = 'EMPLOYEE' AND a.status = 'active' AND e.status = 'active'
+           AND ara.scope_type = 'organization' AND ara.organizational_unit_id IS NULL
+           AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+           AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ORDER BY name`,
+        [roleKey, asOf],
+      ),
+      new PostgresOrganizationRepository(pool).loadEffectiveSnapshot(asOf),
+    ]);
+    const row = link.rows[0];
+    const seatKey = row?.positionKey;
+    const incumbentIds = snapshot && seatKey
+      ? [...new Set(snapshot.incumbencies.flatMap((item) =>
+        item.positionKey === seatKey && item.employeeId ? [item.employeeId] : []))]
+      : [];
+    const [employees, accounts] = incumbentIds.length === 0
+      ? [{ rows: [] as Array<{ id: string; fullName: string }> }, { rows: [] as RoleSeatAccount[] }]
+      : await Promise.all([
+        pool.query<{ id: string; fullName: string }>(
+          `SELECT id, full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [incumbentIds],
+        ),
+        pool.query<RoleSeatAccount>(
+          `SELECT id AS "accountId", employee_id AS "employeeId", status
+           FROM accounts WHERE employee_id = ANY($1::uuid[]) AND principal_type = 'EMPLOYEE'`,
+          [incumbentIds],
+        ),
+      ]);
+    return computeRoleSeatCheck({
+      roleKey,
+      asOf,
+      link: row ? { positionKey: row.positionKey, reason: row.reason, setAt: row.setAt.toISOString() } : null,
+      snapshot,
+      holders: holders.rows,
+      employeeNames: new Map(employees.rows.map((item) => [item.id, item.fullName])),
+      accounts: accounts.rows,
+    });
+  }
+
+  app.get("/admin/access/role-seat-checks", async (request, reply) => {
+    const principal = await authenticateAdmin(request, reply, "access.manage");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ items: await Promise.all(SEAT_LINKED_ROLE_KEYS.map(loadRoleSeatCheck)) });
+  });
+
+  // Setting the seat a role follows is part of granting that role, so it is Super Admin only too.
+  app.put("/admin/access/role-seat-links/:roleKey", async (request, reply) => {
+    const principal = await authenticateRoleGrantor(request, reply);
+    if (!principal) return;
+
+    const params = z.object({ roleKey: z.enum(SEAT_LINKED_ROLE_KEYS) }).safeParse(request.params);
+    const body = z.object({
+      positionKey: z.string().uuid().nullable(),
+      reason: z.string().trim().min(1).max(500),
+    }).safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_ROLE_SEAT_LINK", message: "Jabatan acuan atau alasannya tidak valid." });
+    }
+    const { roleKey } = params.data;
+    const { positionKey, reason } = body.data;
+
+    // Only a seat that has been published can be followed; a draft-only position may never exist.
+    if (positionKey && !(await new PostgresOrganizationRepository(pool).isStableKeyPublished("position", positionKey))) {
+      return reply.status(404).send({
+        code: "ORGANIZATION_POSITION_NOT_PUBLISHED",
+        message: "Jabatan itu belum pernah ada di struktur yang diterbitkan.",
+      });
+    }
+
+    const client = await pool.connect();
+    let committed = false;
+    try {
+      await client.query("BEGIN");
+      if (positionKey) {
+        await client.query(
+          `INSERT INTO access_role_position_links (role_key, position_key, reason, set_by_account_id, set_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (role_key) DO UPDATE
+           SET position_key = EXCLUDED.position_key, reason = EXCLUDED.reason,
+               set_by_account_id = EXCLUDED.set_by_account_id, set_at = EXCLUDED.set_at`,
+          [roleKey, positionKey, reason, principal.id],
+        );
+      } else {
+        await client.query("DELETE FROM access_role_position_links WHERE role_key = $1", [roleKey]);
+      }
+      await audit(client, principal, positionKey ? "role.seat_link.set" : "role.seat_link.cleared",
+        "role", null, { roleKey, positionKey, reason });
+      await client.query("COMMIT");
+      committed = true;
+    } finally {
+      try { if (!committed) await client.query("ROLLBACK"); } finally { client.release(); }
+    }
+    reply.header("Cache-Control", "no-store");
+    return reply.send(await loadRoleSeatCheck(roleKey));
   });
 }

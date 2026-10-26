@@ -2261,5 +2261,22 @@
     "permissions": [
       "organization.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "GET",
+    "url": "/admin/access/role-seat-checks",
+    "permissions": [
+      "access.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "PUT",
+    "url": "/admin/access/role-seat-links/:roleKey",
+    "access": "super-admin",
+    "permissions": [
+      "access.roles.assign"
+    ]
   }
 ]

@@ -530,7 +530,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -545,6 +545,23 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - Lembur, Koreksi HC, dan filter Laporan memakai pencarian pegawai server-side (`GET /admin/employees?q=`), bukan 100 pegawai pertama (L-4). Form "Catat lembur atas nama pegawai" hanya tampil dengan `employees.manage`.
 - Belum termasuk (paket berikutnya): panel detail dan kartu mobile Kehadiran (ATT-011-3), planner Jadwal (ATT-011-5); Assignment/Roster lama masih menjadi tab Pola jadwal dan Jadwal per tanggal sampai ATT-011-5 diterima.
 - Tidak ada perubahan API, migration, atau permission.
+
+### 10.2 Catatan implementasi ATT-011-7 (2026-10-27)
+
+- **Kehadiran Saya** (`/app/attendance`) memuat: Hari ini, Ajukan lembur dan pengajuan terakhir (dengan
+  Batalkan), **Jadwal saya** (minggu ini + minggu depan dari `GET /attendance/me/schedule`; tanggal dari
+  roster ditandai "Jadwal diganti"), **Klarifikasi saya** (status, catatan keputusan, Batalkan selama
+  Menunggu), dan **Riwayat 30 hari** dengan tombol **Ajukan klarifikasi** pada hari Terlambat, Belum
+  lengkap, atau Tidak hadir, hari ini sampai 7 hari ke belakang. Riwayat tampil sebagai kartu di HP.
+- Form klarifikasi menjadi satu komponen (`ClarificationForm`) yang dipakai Clock In/Out (hari ini) dan
+  Riwayat (tanggal lalu).
+- `POST /attendance/clarifications` menolak tanggal depan dan tanggal lebih lama dari 7 hari dengan `422
+  CLARIFICATION_DATE_OUT_OF_RANGE`, sebelum query apa pun.
+- Keputusan HC atas klarifikasi **pegawai** mengirim notifikasi in-app ("Klarifikasi disetujui/ditolak",
+  tautan ke Klarifikasi saya) dalam transaksi keputusan. Koreksi HC tidak memberi notifikasi.
+- Tautan "Klarifikasi" di navigasi pegawai menuju bagian Klarifikasi saya, bukan anchor di halaman lain.
+- Lembur Tim dan perintah lembur atasan (butir 5–6 §8) menunggu ATT-011-6b.
+- Tidak ada migration atau permission baru.
 
 ## 11. Keputusan owner
 

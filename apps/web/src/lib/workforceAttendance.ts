@@ -625,6 +625,43 @@ export async function submitAttendanceOvertime(input: {
   );
 }
 
+export interface MyAttendanceClarification {
+  id: string;
+  workDate: string;
+  kind: string;
+  mode: "correction" | "justification";
+  reason: string;
+  status: "submitted" | "approved" | "rejected" | "cancelled";
+  proposedCheckInAt: string | null;
+  proposedCheckOutAt: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export async function listMyAttendanceClarifications() {
+  return readJson<{ items: MyAttendanceClarification[] }>(await fetch("/api/attendance/clarifications/me", {
+    credentials: "include", headers: { Accept: "application/json" },
+  }));
+}
+
+export async function cancelMyAttendanceClarification(clarificationId: string) {
+  const response = await fetch(`/api/attendance/clarifications/${encodeURIComponent(clarificationId)}/cancel`, {
+    method: "POST", credentials: "include", headers: { Accept: "application/json" },
+  });
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+/** ATT-011-7: an employee may clarify today and the 7 days before it, never a future date (D-7). */
+export const CLARIFICATION_LOOKBACK_DAYS = 7;
+export function canClarifyDate(workDate: string, today: string, status: string | undefined) {
+  const oldest = new Date(`${today}T00:00:00Z`);
+  oldest.setUTCDate(oldest.getUTCDate() - CLARIFICATION_LOOKBACK_DAYS);
+  return workDate <= today && workDate >= oldest.toISOString().slice(0, 10)
+    && (status === "incomplete" || status === "late" || status === "absent");
+}
+
 export async function cancelAttendanceOvertime(overtimeId: string) {
   const response = await fetch(`/api/attendance/overtime/${encodeURIComponent(overtimeId)}/cancel`, {
     method: "POST", credentials: "include", headers: { Accept: "application/json" },

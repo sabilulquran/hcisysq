@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiConfig } from "../src/config/env.js";
 import type { AdminPermission } from "../src/modules/auth/permissions.js";
-import { manualCorrectionWindowError } from "../src/modules/attendance/manual-correction-window.js";
+import { clarificationDateAllowed, manualCorrectionWindowError } from "../src/modules/attendance/manual-correction-window.js";
 
 // Koreksi HC: corrected times must belong to the selected work date. Synthetic identifiers only.
 
@@ -146,6 +146,9 @@ describe("Employee clarification and HC decision window check", () => {
   const connect = vi.fn(async () => ({ query: clientQuery, release: vi.fn() }));
 
   beforeEach(async () => {
+    // The clarification date window (ATT-011-7) is relative to today in Jakarta.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-26T10:00:00+07:00"));
     statements.length = 0;
     clientQuery.mockClear();
     query.mockClear();
@@ -156,7 +159,27 @@ describe("Employee clarification and HC decision window check", () => {
     });
   });
 
-  afterEach(async () => { await app.close(); });
+  afterEach(async () => { vi.useRealTimers(); await app.close(); });
+
+  it("accepts today and 7 days back for an employee clarification, nothing later or older (ATT-011-7)", async () => {
+    const now = new Date("2026-10-26T10:00:00+07:00");
+    expect(clarificationDateAllowed("2026-10-26", now)).toBe(true);
+    expect(clarificationDateAllowed("2026-10-19", now)).toBe(true);
+    expect(clarificationDateAllowed("2026-10-18", now)).toBe(false);
+    expect(clarificationDateAllowed("2026-10-27", now)).toBe(false);
+    granted.principalType = "EMPLOYEE";
+    granted.permissions = [];
+    for (const workDate of ["2026-10-18", "2026-10-27"]) {
+      const response = await app.inject({
+        method: "POST", url: "/attendance/clarifications", headers: { cookie: "hcis_session=test-token" },
+        payload: { workDate, kind: "lateness", mode: "justification", reason: "Ban bocor" },
+      });
+      expect(response.statusCode).toBe(422);
+      expect(response.json().code).toBe("CLARIFICATION_DATE_OUT_OF_RANGE");
+    }
+    expect(query).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+  });
 
   it("rejects an employee correction whose time is on another date before any lookup", async () => {
     granted.principalType = "EMPLOYEE";
@@ -222,5 +245,25 @@ describe("Employee clarification and HC decision window check", () => {
       payload: { decision: "reject", note: "Tanggal dan jam tidak sejalan" },
     });
     expect(statements.some((statement) => statement.startsWith("UPDATE attendance_clarifications"))).toBe(true);
+  });
+
+  it("notifies the employee about a decision on their own request, not on an HC correction", async () => {
+    granted.principalType = "SUPER_ADMIN";
+    granted.permissions = ["attendance.clarification.manage"];
+    const decide = async () => app.inject({
+      method: "POST",
+      url: "/admin/attendance/clarifications/00000000-0000-4000-8000-000000015003/decision",
+      headers: { cookie: "hcis_session=test-token" },
+      payload: { decision: "reject", note: "Tidak sesuai" },
+    });
+    // notifyEmployee starts by looking up the employee account; the mock has none, so no row is written.
+    const notified = () => clientQuery.mock.calls.some(([sql]) => String(sql).includes("FROM accounts account"));
+    stored = { employeeId: "00000000-0000-4000-8000-000000015002", workDate: "2026-10-20", mode: "justification", proposedCheckInAt: null, proposedCheckOutAt: null, administrativeCorrection: false };
+    await decide();
+    expect(notified()).toBe(true);
+    clientQuery.mockClear();
+    stored = { ...stored, administrativeCorrection: true };
+    await decide();
+    expect(notified()).toBe(false);
   });
 });

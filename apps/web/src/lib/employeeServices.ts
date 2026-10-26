@@ -58,7 +58,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "attendance-clarification", label: "Klarifikasi Kehadiran",
     description: "Klarifikasi dan izin terkait catatan kehadiran.",
-    featureIds: ["ATT-002"], stage: "available", category: "time-attendance", href: "/app/attendance/clock#clarification",
+    featureIds: ["ATT-002"], stage: "available", category: "time-attendance", href: "/app/attendance#clarifications",
   },
   {
     key: "lateness", label: "Keterlambatan",

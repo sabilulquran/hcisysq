@@ -64,7 +64,7 @@ describe("ATT-011 §3 operator vocabulary", () => {
 describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
   it("offers a section only when the account can load one of its tabs, opening on that tab", () => {
     const operator = session(["attendance.clarification.manage"]);
-    expect(attendanceSectionHref(operator, "records")).toBe("/admin/attendance/clarifications");
+    expect(attendanceSectionHref(operator, "records")).toBe("/admin/attendance/corrections");
     expect(attendanceSectionHref(operator, "summary")).toBe("/admin/attendance");
     for (const key of ["shifts", "schedules", "overtime", "devices", "settings"] as const) {
       expect(attendanceSectionHref(operator, key), key).toBeNull();
@@ -73,9 +73,13 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
     const swapsOnly = session(["attendance.shift_swap.manage"]);
     expect(attendanceSectionHref(swapsOnly, "schedules")).toBe("/admin/attendance/schedules/swaps");
 
-    const policyOnly = session(["attendance.policy.manage"]);
-    expect(attendanceSectionHref(policyOnly, "settings")).toBe("/admin/attendance/settings/recalculate");
-    expect(attendanceSectionHref(policyOnly, "records")).toBeNull();
+    // ATT-014-2: Kalkulasi is read with attendance.reports.read; running it needs attendance.calculation.run.
+    const calculationOnly = session(["attendance.calculation.run"]);
+    expect(attendanceSectionHref(calculationOnly, "summary")).toBe("/admin/attendance");
+    expect(attendanceSectionHref(calculationOnly, "records")).toBeNull();
+    const reader = session(["attendance.reports.read"]);
+    expect(attendanceSectionHref(reader, "records")).toBe("/admin/attendance/daily");
+    expect(attendanceSectionHref(reader, "settings")).toBeNull();
 
     const devices = session(["attendance.devices.read"]);
     expect(attendanceSectionHref(devices, "devices")).toBe("/admin/attendance/adms");
@@ -89,13 +93,10 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/schedules/dates": "attendance.schedule.manage",
       "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
       "/admin/attendance/daily": "attendance.reports.read",
-      "/admin/attendance/clarifications": "attendance.clarification.manage",
-      "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
       "/admin/attendance/corrections": "attendance.records.manage",
       "/admin/attendance/reports": "attendance.reports.read",
       "/admin/attendance/overtime": "attendance.overtime.manage",
       "/admin/attendance/settings/locations": "attendance.schedule.manage",
-      "/admin/attendance/settings/recalculate": "attendance.policy.manage",
       "/admin/attendance/adms": "attendance.devices.read",
     };
     const tabs = attendanceSections.flatMap((section) => section.tabs).filter((tab) => tab.href !== "/admin/attendance");
@@ -115,6 +116,10 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
   it("forwards every pre-ATT-011 route to an existing new route", () => {
     const newPaths = new Set(attendanceSections.flatMap((section) => section.tabs.map((tab) => tab.href)));
     expect(Object.keys(legacyAttendanceRedirects).sort()).toEqual([
+      "/admin/attendance/calculation",
+      "/admin/attendance/clarifications",
+      "/admin/attendance/mobile-evidence",
+      "/admin/attendance/settings/recalculate",
       "/admin/attendance/workforce",
       "/admin/attendance/workforce/assignments",
       "/admin/attendance/workforce/clarifications",
@@ -127,7 +132,16 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/workforce/shift-swaps",
     ]);
     for (const [from, to] of Object.entries(legacyAttendanceRedirects)) {
-      expect(newPaths.has(to), `${from} -> ${to}`).toBe(true);
+      expect(newPaths.has(to.split("?")[0]!), `${from} -> ${to}`).toBe(true);
     }
+    expect(legacyAttendanceRedirects["/admin/attendance/mobile-evidence"]).toBe("/admin/attendance/reports?tab=transactions&source=mobile");
+  });
+
+  it("keeps Kehadiran to three tabs and opens Perbaikan Absen for either correction permission (ATT-014 §19.8)", () => {
+    const records = attendanceSections.find((section) => section.key === "records")!;
+    expect(records.tabs.map((tab) => tab.label)).toEqual(["Pantauan Hari Ini", "Perbaikan Absen", "Laporan"]);
+    expect(canAccessAdminPath(session(["attendance.clarification.manage"]), "/admin/attendance/corrections")).toBe(true);
+    expect(canAccessAdminPath(session(["attendance.records.manage"]), "/admin/attendance/corrections")).toBe(true);
+    expect(canAccessAdminPath(session(["attendance.reports.read"]), "/admin/attendance/corrections")).toBe(false);
   });
 });

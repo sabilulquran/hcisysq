@@ -260,12 +260,6 @@ export async function publishAttendanceRoster(rosterId: string) {
   }));
 }
 
-export async function finalizeAttendanceDate(date: string) {
-  return readJson<{ date: string; materialized: number }>(await fetch(`/api/admin/attendance/finalize/${date}`, {
-    method: "POST", credentials: "include", headers: { Accept: "application/json" },
-  }));
-}
-
 export async function getAttendanceReport(date: string, status?: string) {
   const params = new URLSearchParams({ date });
   if (status) params.set("status", status);
@@ -510,6 +504,46 @@ export interface AttendanceDailyItem {
 export async function getAttendanceDaily(date: string) {
   return readJson<{ date: string; summary: Record<string, number>; items: AttendanceDailyItem[] }>(
     await fetch(`/api/admin/attendance/daily?date=${encodeURIComponent(date)}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+/** ATT-014-1 Pantauan Hari Ini: today's scan facts; the API never returns an attendance verdict here. */
+export type AttendanceTodayDayKind = "scheduled" | "off" | "holiday" | "unscheduled" | "leave" | "resolved_absent" | "configuration_error";
+export type AttendanceTodayFact =
+  | "before_shift" | "no_scan" | "not_connected" | "checked_in" | "has_scans"
+  | "scan_on_rest_day" | "scan_without_schedule" | "none";
+export type AttendanceTodayCard =
+  | "scanned" | "not_scanned" | "not_connected" | "off" | "leave"
+  | "unscheduled" | "unscheduled_with_scans" | "configuration_error";
+
+export interface AttendanceTodayItem {
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  unitId: string | null;
+  unitName: string | null;
+  workDate: string;
+  dayKind: AttendanceTodayDayKind;
+  scheduleName: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  firstScanAt: string | null;
+  lastScanAt: string | null;
+  scanCount: number;
+  sources: string[];
+  deviceIds: string[];
+  startDeltaMinutes: number | null;
+  connected: boolean;
+  fact: AttendanceTodayFact;
+  card: AttendanceTodayCard;
+}
+
+export async function getAttendanceToday() {
+  return readJson<{ date: string; generatedAt: string; summary: Record<AttendanceTodayCard, number>; items: AttendanceTodayItem[] }>(
+    await fetch("/api/admin/attendance/today", {
       credentials: "include",
       headers: { Accept: "application/json" },
     }),

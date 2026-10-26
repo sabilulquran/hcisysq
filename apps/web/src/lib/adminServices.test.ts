@@ -15,7 +15,7 @@ describe("admin module catalog", () => {
     expect(getAdminService("sites")?.featureIds).toContain("ORG-005");
     expect(getAdminService("mobile-attendance")?.featureIds).toContain("ATT-006");
     expect(getAdminService("mobile-attendance")?.stage).toBe("available");
-    expect(getAdminService("mobile-attendance")?.href).toBe("/admin/attendance/mobile-evidence");
+    expect(getAdminService("mobile-attendance")?.href).toBe("/admin/attendance/reports?tab=transactions&source=mobile");
     expect(getAdminService("mobile-attendance")?.details ?? []).not.toContain("Face recognition");
     expect(getAdminService("schedules")?.stage).toBe("available");
     expect(getAdminService("schedules")?.href).toBe("/admin/attendance/schedules");

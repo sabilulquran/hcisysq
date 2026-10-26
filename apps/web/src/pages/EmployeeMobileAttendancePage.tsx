@@ -2,6 +2,7 @@ import { AlertTriangle, Camera, CheckCircle2, Loader2, LocateFixed, LogIn, LogOu
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
+import { correctionTimestamps } from "@/lib/attendanceCorrection";
 import { clockMobileAttendance, getMyWorkforceAttendance, submitAttendanceClarification, type WorkforceSnapshot } from "@/lib/workforceAttendance";
 import { cameraErrorMessage, locationErrorMessage, mobileRequestError, prepareMobileClockAttempt, type MobileClockAttempt } from "@/lib/mobileCapture";
 
@@ -45,6 +46,7 @@ export function EmployeeMobileAttendancePage() {
   const [reason, setReason] = useState("");
   const [proposedIn, setProposedIn] = useState("");
   const [proposedOut, setProposedOut] = useState("");
+  const [proposedOutNextDay, setProposedOutNextDay] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -185,17 +187,23 @@ export function EmployeeMobileAttendancePage() {
     setNotice(null);
   };
 
+  // The work date is fixed by the snapshot; the employee enters clock times only (Koreksi window).
+  const proposed = correctionTimestamps({
+    date: snapshot?.workDate ?? "", checkIn: proposedIn, checkOut: proposedOut, checkOutNextDay: proposedOutNextDay,
+  });
+  const proposalInvalid = mode === "correction" && ((!proposedIn && !proposedOut) || Boolean(proposed.error));
+
   const submitClarification = async () => {
-    if (!snapshot || !reason.trim() || clarifying) return;
+    if (!snapshot || !reason.trim() || clarifying || proposalInvalid) return;
     setClarifying(true);
     setError(null);
     try {
       await submitAttendanceClarification({
         workDate: snapshot.workDate, kind, mode, reason: reason.trim(),
-        proposedCheckInAt: mode === "correction" && proposedIn ? new Date(proposedIn + ":00+07:00").toISOString() : null,
-        proposedCheckOutAt: mode === "correction" && proposedOut ? new Date(proposedOut + ":00+07:00").toISOString() : null,
+        proposedCheckInAt: mode === "correction" ? proposed.checkInAt : null,
+        proposedCheckOutAt: mode === "correction" ? proposed.checkOutAt : null,
       });
-      setReason(""); setProposedIn(""); setProposedOut("");
+      setReason(""); setProposedIn(""); setProposedOut(""); setProposedOutNextDay(false);
       setNotice("Klarifikasi dikirim ke Human Capital.");
       await load();
     } catch (cause) { setError(mobileRequestError(cause)); }
@@ -281,9 +289,21 @@ export function EmployeeMobileAttendancePage() {
               <select aria-label="Jenis pengajuan" value={mode} onChange={(event) => setMode(event.target.value as "correction" | "justification")} className="h-11 rounded-xl border border-border px-3 text-sm"><option value="justification">Justifikasi</option><option value="correction">Koreksi waktu</option></select>
               <select aria-label="Alasan klarifikasi" value={kind} onChange={(event) => setKind(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm"><option value="lateness">Keterlambatan</option><option value="missing_check_in">Jam masuk belum tercatat</option><option value="missing_check_out">Jam keluar belum tercatat</option><option value="machine_issue">Masalah mesin</option><option value="early_leave">Pulang lebih awal</option><option value="outside_geofence">Di luar geofence</option><option value="other">Lainnya</option></select>
             </div>
-            {mode === "correction" ? <div className="mt-3 grid gap-3 sm:grid-cols-2"><input type="datetime-local" value={proposedIn} onChange={(event) => setProposedIn(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam masuk" /><input type="datetime-local" value={proposedOut} onChange={(event) => setProposedOut(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam keluar" /></div> : null}
+            {mode === "correction" ? (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">Usulan jam untuk hari kerja {snapshot.workDate} (WIB).</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Jam masuk<input type="time" value={proposedIn} onChange={(event) => setProposedIn(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam masuk" /></label>
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Jam keluar<input type="time" value={proposedOut} onChange={(event) => setProposedOut(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam keluar" /></label>
+                    <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={proposedOutNextDay} onChange={(event) => setProposedOutNextDay(event.target.checked)} />Keluar keesokan hari (+1 hari)</label>
+                  </div>
+                </div>
+                {proposed.error ? <p className="mt-2 text-xs font-semibold text-danger-ink" role="alert">{proposed.error}</p> : null}
+              </div>
+            ) : null}
             <textarea aria-label="Penjelasan klarifikasi" value={reason} maxLength={2000} onChange={(event) => setReason(event.target.value)} placeholder="Tuliskan penjelasan..." className="mt-3 min-h-24 w-full rounded-xl border border-border p-3 text-sm" />
-            <button type="button" onClick={() => void submitClarification()} disabled={!reason.trim() || clarifying} className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"><Send className="mr-2 inline h-4 w-4" />{clarifying ? "Mengirim..." : "Kirim klarifikasi"}</button>
+            <button type="button" onClick={() => void submitClarification()} disabled={!reason.trim() || clarifying || proposalInvalid} className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"><Send className="mr-2 inline h-4 w-4" />{clarifying ? "Mengirim..." : "Kirim klarifikasi"}</button>
           </section>
         </>
       )}

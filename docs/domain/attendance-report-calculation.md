@@ -1031,7 +1031,7 @@ CSV, dan Tutup. Penunjuk halaman di layar memerlukan pustaka paged media; itu ti
 
 ### 20.5 Pemetaan PIN berlaku sejak tanggal mulai aktif pegawai (D-14-20, direvisi menurut arahan owner 2026-10-26)
 
-**Keputusan owner:** pemetaan PIN adalah urusan pengelolaan kehadiran, sedangkan scan di mesin tetap ada.
+**Arahan owner (2026-10-26, menunggu persetujuan rencana):** pemetaan PIN adalah urusan pengelolaan kehadiran, sedangkan scan di mesin tetap ada.
 Selama PIN cocok, semua scan PIN itu di mesin itu milik pegawai tersebut. Batasnya adalah **tanggal mulai
 aktif pegawai (TMT, `employees.started_on`)**, bukan tanggal pemetaan dibuat. Ini menggantikan usulan
 lama (mundur maksimal 62 hari dan alasan per kasus).

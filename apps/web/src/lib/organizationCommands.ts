@@ -195,3 +195,35 @@ export function endOrganizationBinding(
     revision,
   );
 }
+
+export interface OrganizationSeedSummary {
+  units: number;
+  placements: number;
+  unitApprovers: number;
+  unitLeaders: number;
+  reportingExceptions: number;
+  employeesWithoutUnit: number;
+  employeesWithoutManager: number;
+}
+
+export interface OrganizationSeedResult {
+  id: string;
+  name: string;
+  effectiveOn: string;
+  proposal: boolean;
+  summary: OrganizationSeedSummary;
+}
+
+/**
+ * ORG-008-7 (decision O-3): build a first change set from the units, placements, unit approvers and
+ * managers HCIS already records. The result is a proposal to review; nothing is published.
+ */
+export function seedOrganizationDraftFromLegacy(input: {
+  name: string;
+  effectiveOn: string;
+}): Promise<OrganizationSeedResult> {
+  return send<OrganizationSeedResult>("/drafts/from-legacy", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

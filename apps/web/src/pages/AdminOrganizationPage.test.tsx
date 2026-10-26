@@ -99,10 +99,24 @@ const hcAdmin = session("EMPLOYEE", ["organization.manage", "employees.manage"])
 const publisher = session("SUPER_ADMIN", ["organization.manage", "approvals.policy.manage"]);
 
 describe("ORG-008-1 tombol mengikuti izin yang benar-benar dipakai API", () => {
-  it("hides publishing from an HC admin and says who it waits for", () => {
+  it("hides publishing from an HC admin and says who publishes", () => {
     const html = render({ actor: hcAdmin });
-    expect(html).toContain("Terbitkan: menunggu Kepala HC");
+    expect(html).toContain("Diterbitkan oleh Kepala HC");
     expect(html).not.toContain(">Terbitkan<");
+  });
+
+  it("tells an HC admin a checked change is waiting for Kepala HC (ORG-008-8)", () => {
+    const validated = view();
+    validated.draft = { ...validated.draft!, status: "VALIDATED", validatedAt: "2026-10-20T00:00:00Z" };
+    const html = render({ actor: hcAdmin, data: validated });
+    expect(visibleText(html)).toContain("Siap diterbitkan — menunggu Kepala HC");
+    expect(html).not.toContain(">Terbitkan<");
+  });
+
+  it("offers an HC admin the composing start that writes leaders and approvers (ORG-008-8, O-1)", () => {
+    // Before ORG-008-8 this needed approvals.policy.manage, so an HC admin never saw it.
+    const empty = view({ nodes: [], positions: [], draft: null, mode: "CURRENT" });
+    expect(visibleText(render({ actor: hcAdmin, data: empty }))).toContain("Mulai dari data yang sudah ada");
   });
 
   it("offers publishing to a principal holding approvals.policy.manage", () => {

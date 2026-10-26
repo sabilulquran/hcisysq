@@ -11,6 +11,7 @@ import {
   Eye,
   GitBranchPlus,
   Info,
+  Link2,
   LoaderCircle,
   Lock,
   Network,
@@ -50,6 +51,7 @@ import {
   updateOrganizationNode,
   updateOrganizationPosition,
   validateOrganizationDraft,
+  type OrganizationAuthorityBinding,
   type OrganizationDesignerView,
   type OrganizationEmployeeOption,
   type OrganizationImpactPreview,
@@ -69,6 +71,7 @@ import {
 import {
   getOrganizationExplanation,
   getOrganizationPeople,
+  getOrganizationUnitHcStaff,
   getOrganizationReadiness,
   previewOrganizationApproval,
   type OrganizationApprovalPreview,
@@ -76,15 +79,25 @@ import {
   type OrganizationPeoplePage,
   type OrganizationPreviewWorkflow,
   type OrganizationReadiness,
+  type OrganizationUnitHcStaff,
 } from "@/lib/organizationReadModel";
+import {
+  OrganizationAdvancedAuthority,
+  type OrganizationAdvancedBindingType,
+} from "@/components/organization/OrganizationAdvancedAuthority";
 import { OrganizationChangeList } from "@/components/organization/OrganizationChangeList";
+import { OrganizationUnitLink } from "@/components/organization/OrganizationUnitLink";
+import { getOrganizationAdmin, type OrganizationUnitSummary } from "@/lib/adminOrgAccess";
 import {
   applyOrganizationCommand,
   deleteOrganizationNode,
+  deleteOrganizationBinding,
   deleteOrganizationPosition,
+  endOrganizationBinding,
   listOrganizationJournal,
   OrganizationCommandRefused,
   rebaseOrganizationDraft,
+  seedOrganizationDraftFromLegacy,
   undoOrganizationJournalEntry,
   type OrganizationCommand,
   type OrganizationJournalEntry,
@@ -118,7 +131,11 @@ type EditorAction =
   | { type: "appointActing"; position: OrganizationPosition }
   | { type: "reportsTo"; position: OrganizationPosition }
   | { type: "unitAuthority"; node: OrganizationNode; bindingType: "LEADER" | "UNIT_APPROVER" }
-  | { type: "override" };
+  | { type: "override" }
+  // ORG-008-6b: which imported unit this one stands for, and who is told about its overtime.
+  | { type: "unitLink"; node: OrganizationNode }
+  // ORG-008-7 (O-3): propose a first change set from what HCIS already records.
+  | { type: "seedFromLegacy" };
 
 /** ORG-008-1 §4.8: every irreversible-looking action is confirmed with its effect spelled out. */
 type ConfirmAction = {
@@ -397,6 +414,11 @@ export function OrganizationDesignerWorkspace({
   const [journalError, setJournalError] = useState<string | null>(null);
   const [replayPreview, setReplayPreview] = useState<OrganizationReplayReport | null>(null);
   const [replayFor, setReplayFor] = useState<number | null>(null);
+  const [legacyUnits, setLegacyUnits] = useState<OrganizationUnitSummary[]>([]);
+  const [legacyUnitsError, setLegacyUnitsError] = useState<string | null>(null);
+  const [unitStaff, setUnitStaff] = useState<OrganizationUnitHcStaff | null>(null);
+  const [unitStaffLoading, setUnitStaffLoading] = useState(false);
+  const [unitStaffError, setUnitStaffError] = useState<string | null>(null);
 
   const data = view;
   const today = jakartaToday();
@@ -405,10 +427,11 @@ export function OrganizationDesignerWorkspace({
     pending: !rollout && !rolloutFailed,
   });
 
-  // UI eligibility only; every endpoint authorizes independently. ORG-008-8 will move composing
-  // incumbents, Plt, and authority to organization.manage; publishing stays with approvals.policy.manage.
+  // UI eligibility only; every endpoint authorizes independently. ORG-008-8 (decision O-1): HC
+  // administrators compose every part of a change set, including incumbents, acting holders and
+  // authority. Publishing is the separate second pair of eyes, held by the Kepala HC role.
   const canCompose = hasPermission(session, "organization.manage");
-  const canAssignIncumbents = hasPermission(session, "approvals.policy.manage");
+  const canAssignIncumbents = canCompose;
   const canPublish = hasPermission(session, "approvals.policy.manage");
 
   const selectedNode = useMemo(
@@ -557,6 +580,94 @@ export function OrganizationDesignerWorkspace({
     } catch (cause) {
       setError(errorMessage(cause, "Perubahan tidak dapat diperbarui."));
     } finally { setSaving(false); }
+  };
+
+  const addAdvancedRule = (
+    position: OrganizationPosition,
+    bindingType: OrganizationAdvancedBindingType,
+    targetPositionKey: string,
+  ) => {
+    if (!data?.draft) return;
+    void mutate(
+      () => createOrganizationAuthorityBinding(data.draft!.id, {
+        sourceType: "POSITION",
+        sourceKey: position.stableKey,
+        authorityType: bindingType,
+        targetPositionKey,
+        // The rule follows the seat; when that seat is empty the next authority above answers.
+        vacancyPolicy: "CLIMB_TO_PARENT",
+        effectiveFrom: data.draft!.effectiveOn,
+        effectiveTo: null,
+      }),
+      "Aturan disimpan.",
+    );
+  };
+
+  /**
+   * ORG-008-4b: a rule created inside this change set is removed; one that came from published
+   * structure is ended instead, so the record of it stays.
+   */
+  const removeAdvancedRule = (binding: OrganizationAuthorityBinding) => {
+    if (!data?.draft) return;
+    const draft = data.draft;
+    const fromPublished = binding.effectiveFrom < draft.effectiveOn;
+    setConfirmation({
+      title: fromPublished ? "Akhiri aturan ini?" : "Hapus aturan ini?",
+      body: fromPublished
+        ? "Aturan ini berasal dari struktur yang sudah terbit, jadi ia diakhiri dan catatannya tetap tersimpan. Berlaku setelah perubahan ini diterbitkan."
+        : "Aturan ini dibuat di dalam perubahan ini dan belum pernah terbit, jadi menghapusnya tidak menghilangkan riwayat apa pun.",
+      confirmLabel: fromPublished ? "Akhiri aturan" : "Hapus aturan",
+      success: fromPublished ? "Aturan diakhiri." : "Aturan dihapus.",
+      run: () => fromPublished
+        ? endOrganizationBinding(draft.id, binding.id, draft.effectiveOn, draft.revision)
+        : deleteOrganizationBinding(draft.id, binding.id, draft.revision),
+    });
+  };
+
+  const loadUnitStaff = (nodeKey: string) => {
+    setUnitStaffLoading(true);
+    setUnitStaffError(null);
+    void getOrganizationUnitHcStaff({ nodeKey, asOf: effectiveDate, draftId })
+      .then(setUnitStaff)
+      .catch((cause: unknown) => setUnitStaffError(errorMessage(cause, "Staf HC unit ini tidak dapat dimuat.")))
+      .finally(() => setUnitStaffLoading(false));
+  };
+
+  const openUnitLink = (node: OrganizationNode) => {
+    setAction({ type: "unitLink", node });
+    setUnitStaff(null);
+    loadUnitStaff(node.stableKey);
+    // The imported unit list is the same one the access screens use; it needs organization.manage,
+    // which anyone reaching this screen already holds.
+    setLegacyUnitsError(null);
+    void getOrganizationAdmin()
+      .then((result) => setLegacyUnits(result.units))
+      .catch(() => setLegacyUnitsError("Daftar unit lama tidak dapat dimuat, jadi tautan belum bisa dipilih."));
+  };
+
+  const seedFromLegacy = (name: string, effectiveOn: string) => {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    void seedOrganizationDraftFromLegacy({ name, effectiveOn })
+      .then((result) => {
+        onDraftIdChange(result.id);
+        onEffectiveDateChange(result.effectiveOn);
+        setAction(null);
+        // The counts are the point: the operator has to know what to review, and what the old data
+        // could not answer, before any of this is published.
+        setNotice(
+          `Usulan dibuat dari data lama: ${result.summary.units} unit, `
+          + `${result.summary.placements} penempatan pegawai, `
+          + `${result.summary.unitApprovers} penyetuju cuti unit, `
+          + `${result.summary.unitLeaders} pemimpin unit, `
+          + `${result.summary.reportingExceptions} atasan khusus. `
+          + `Belum terjawab: ${result.summary.employeesWithoutUnit} pegawai tanpa unit, `
+          + `${result.summary.employeesWithoutManager} tanpa atasan. Tinjau sebelum diterbitkan.`,
+        );
+      })
+      .catch((cause: unknown) => setError(errorMessage(cause, "Usulan dari data lama tidak dapat dibuat.")))
+      .finally(() => setSaving(false));
   };
 
   const askDeleteNode = (node: OrganizationNode) => {
@@ -711,24 +822,6 @@ export function OrganizationDesignerWorkspace({
     );
   };
 
-  const handleAuthority = (event: FormEvent<HTMLFormElement>, editor: Extract<EditorAction, { type: "authority" }>) => {
-    event.preventDefault();
-    if (!data?.draft) return;
-    const form = new FormData(event.currentTarget);
-    void mutate(
-      () => createOrganizationAuthorityBinding(data.draft!.id, {
-        sourceType: editor.kind === "node" ? "NODE" : "POSITION",
-        sourceKey: editor.item.stableKey,
-        authorityType: String(form.get("authorityType")) as "SUPERVISORY_PARENT" | "LEADER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER" | "OVERSIGHT_PARENT",
-        targetPositionKey: String(form.get("targetPositionKey")),
-        vacancyPolicy: String(form.get("vacancyPolicy")) as OrganizationVacancyPolicy,
-        effectiveFrom: data.draft!.effectiveOn,
-        effectiveTo: null,
-      }),
-      "Kewenangan disimpan.",
-    );
-  };
-
   const runValidation = async () => {
     if (!data?.draft) return;
     setSaving(true);
@@ -852,7 +945,7 @@ export function OrganizationDesignerWorkspace({
                 {canPublish ? (
                   <button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={askPublish} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-4 w-4" /> Terbitkan</button>
                 ) : (
-                  <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> Terbitkan: menunggu Kepala HC</span>
+                  <span className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-muted px-3 text-xs font-bold text-muted-foreground"><Lock className="h-4 w-4" /> {data?.draft?.status === "VALIDATED" ? "Siap diterbitkan — menunggu Kepala HC" : "Diterbitkan oleh Kepala HC"}</span>
                 )}
               </>
             )}
@@ -864,7 +957,6 @@ export function OrganizationDesignerWorkspace({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p>
             <p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p>
             {selectedSeat?.reason ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">{selectedSeat.reason}</p> : null}
-            {!canAssignIncumbents ? <p className="mt-1 max-w-xl text-[11px] leading-4 text-muted-foreground">Pejabat, Plt, dan kewenangan diisi oleh pemegang izin persetujuan (Kepala HC atau owner).</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             {selectedNode ? <>
@@ -878,6 +970,7 @@ export function OrganizationDesignerWorkspace({
                 <ActionButton onClick={() => setAction({ type: "unitAuthority", node: selectedNode, bindingType: "UNIT_APPROVER" })} icon={<Network />}>Penyetuju cuti unit</ActionButton>
                 <ActionButton onClick={() => setAction({ type: "override" })} icon={<UserCog />}>Atasan khusus</ActionButton>
               </> : null}
+              <ActionButton onClick={() => openUnitLink(selectedNode)} icon={<Link2 />}>Unit lama &amp; staf HC</ActionButton>
               <ActionButton onClick={() => askDeleteNode(selectedNode)} icon={<Trash2 />}>Hapus unit</ActionButton>
             </> : selectedPosition ? <>
               <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedPosition.nodeKey, parentPositionKey: selectedPosition.stableKey })} icon={<GitBranchPlus />}>Jabatan di bawah</ActionButton>
@@ -899,7 +992,8 @@ export function OrganizationDesignerWorkspace({
 
         <div className="relative min-h-[34rem] overflow-auto bg-surface">
           {loading ? <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised/70 text-sm font-semibold text-muted-foreground"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Memuat struktur...</div> : null}
-          <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty} />
+          <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty}
+            onSeedFromLegacy={!hasActiveDraft && canAssignIncumbents ? () => setAction({ type: "seedFromLegacy" }) : undefined} />
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-surface-raised px-5 py-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" /> Jabatan terisi</span>
@@ -977,6 +1071,67 @@ export function OrganizationDesignerWorkspace({
       </Modal> : null}
 
       {action?.type === "draft" ? <Modal title="Mulai perubahan struktur" description="Perubahan disusun terpisah. Struktur yang sudah terbit dan riwayatnya tidak pernah ditimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama perubahan"><input name="name" required defaultValue={`Perubahan struktur ${effectiveDate}`} className={inputClass} /></Field><Field label="Berlaku mulai" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Mulai perubahan" /></form></Modal> : null}
+
+      {action?.type === "seedFromLegacy" ? <Modal
+        title="Mulai dari data yang sudah ada"
+        description="Menyusun usulan dari unit, penempatan pegawai, penyetuju cuti unit, dan atasan langsung yang sudah tercatat di HCIS."
+        onClose={() => setAction(null)}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            seedFromLegacy(String(form.get("name")), String(form.get("effectiveOn")));
+          }}
+          className="space-y-4"
+        >
+          <div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm leading-6 text-info-ink">
+            <p className="font-bold">Yang perlu Anda tahu sebelum menekan ini</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>Hasilnya <span className="font-semibold">usulan</span>, bukan struktur yang berlaku. Tidak ada yang diterbitkan.</li>
+              <li>Tidak ada yang disimpulkan dari nama jabatan. Judul yang dibuat hanya diturunkan dari nama unitnya.</li>
+              <li>Susunannya datar, karena daftar unit lama memang tidak punya induk. Menyusun tingkatannya tetap pekerjaan Anda.</li>
+              <li>Pegawai tanpa unit atau tanpa atasan tidak ditebak — jumlahnya dilaporkan untuk Anda bereskan.</li>
+            </ul>
+          </div>
+          <Field label="Nama perubahan">
+            <input name="name" required defaultValue="Usulan struktur dari data lama" className={inputClass} />
+          </Field>
+          <Field label="Berlaku mulai" hint="Asia/Jakarta">
+            <input name="effectiveOn" type="date" required min={jakartaToday()}
+              defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} />
+          </Field>
+          <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Buat usulan" />
+        </form>
+      </Modal> : null}
+
+      {action?.type === "unitLink" ? <Modal
+        title={`Unit lama & staf HC \u2014 ${action.node.name}`}
+        description="Menautkan unit ini ke unit lama membuat pemberitahuan lembur bisa menemukan staf HC yang tepat, termasuk lewat unit di atasnya."
+        onClose={() => setAction(null)}
+      >
+        <OrganizationUnitLink
+          node={action.node}
+          units={legacyUnits}
+          unitsError={legacyUnitsError}
+          staff={unitStaff}
+          staffLoading={unitStaffLoading}
+          staffError={unitStaffError}
+          canEdit={Boolean(canEdit)}
+          saving={saving}
+          onLink={(legacyUnitId) => {
+            if (!data?.draft) return;
+            void mutate(
+              () => updateOrganizationNode(data.draft!.id, action.node.id, { legacyUnitId }),
+              legacyUnitId ? "Tautan unit disimpan." : "Tautan unit dilepas.",
+            );
+          }}
+          onRetryStaff={() => loadUnitStaff(action.node.stableKey)}
+        />
+        <div className="mt-6 flex justify-end border-t border-border/70 pt-4">
+          <button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Tutup</button>
+        </div>
+      </Modal> : null}
 
       {action?.type === "addUnit" ? <Modal
         title={action.parent ? `Tambah unit di bawah ${action.parent.name}` : "Tambah unit"}
@@ -1195,7 +1350,25 @@ export function OrganizationDesignerWorkspace({
 
       {action?.type === "visual" ? <Modal title="Atur tampilan kotak" description="Pengaturan ini hanya memindahkan kotak pada bagan. Atasan langsung, penyetuju cuti, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-info-line bg-info-soft p-4 text-sm font-bold text-info-ink">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Sejajar dengan tingkat sebenarnya" : `Turunkan ${offset} tingkat`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis penghubung tetap menunjuk ke unit induk yang sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
 
-      {action?.type === "authority" ? <Modal title="Atur pemimpin, penyetuju, dan atasan" description="Pilih peran dan jabatan yang memegangnya. Judul jabatan tidak pernah dipakai sebagai aturan." onClose={() => setAction(null)}><form onSubmit={(event) => handleAuthority(event, action)} className="space-y-4"><Field label="Peran"><select name="authorityType" className={inputClass}>{action.kind === "position" ? <><option value="SUPERVISORY_PARENT">Melapor ke</option><option value="GOVERNANCE_APPROVER">Penyetuju khusus untuk jabatan ini</option><option value="OVERSIGHT_PARENT">Diberi tahu setelah disetujui</option></> : <><option value="LEADER">Pemimpin unit (atasan langsung anggota unit)</option><option value="UNIT_APPROVER">Penyetuju cuti unit</option></>}</select></Field><Field label="Dipegang jabatan"><select name="targetPositionKey" required className={inputClass}><option value="">Pilih jabatan...</option>{data?.positions.map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan itu kosong"><select name="vacancyPolicy" defaultValue="CLIMB_TO_PARENT" className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan" /></form></Modal> : null}
+      {action?.type === "authority" && action.kind === "position" ? <Modal
+        title={`Pengaturan lanjutan \u2014 ${(action.item as OrganizationPosition).title}`}
+        description="Ditulis sebagai kalimat, bukan istilah teknis. Dipakai untuk jabatan yang pengajuannya tidak mengikuti jalur biasa."
+        onClose={() => setAction(null)}
+      >
+        <OrganizationAdvancedAuthority
+          position={action.item as OrganizationPosition}
+          bindings={data?.bindings ?? []}
+          positions={data?.positions ?? []}
+          canManage={canAssignIncumbents}
+          saving={saving}
+          onAdd={(bindingType, targetPositionKey) =>
+            addAdvancedRule(action.item as OrganizationPosition, bindingType, targetPositionKey)}
+          onRemove={removeAdvancedRule}
+        />
+        <div className="mt-6 flex justify-end border-t border-border/70 pt-4">
+          <button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Tutup</button>
+        </div>
+      </Modal> : null}
     </>
   );
 }

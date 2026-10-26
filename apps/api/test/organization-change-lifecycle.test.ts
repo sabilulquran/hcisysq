@@ -333,7 +333,7 @@ describe("ORG-008-3b a discarded change set can never become effective structure
 
   it("extends both change-set constraints, so the migration cannot half-apply DISCARDED", async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const sql = await readFile(join(here, "../migrations/0061_organization_change_set_lifecycle.sql"), "utf8");
+    const sql = await readFile(join(here, "../migrations/0062_organization_change_set_lifecycle.sql"), "utf8");
 
     // 0019 holds two CHECKs: the status list and the lifecycle consistency rule. Extending only the
     // first would make every discard fail against the second.

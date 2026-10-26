@@ -240,7 +240,7 @@ describe("ORG-008-6 the link survives an edit", () => {
 
   it("keeps the column nullable and non-destructive in the migration", async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const sql = await readFile(join(here, "../migrations/0063_organization_node_legacy_unit.sql"), "utf8");
+    const sql = await readFile(join(here, "../migrations/0064_organization_node_legacy_unit.sql"), "utf8");
 
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS legacy_unit_id uuid NULL");
     // Removing an imported unit must drop the link, never structure or published history.

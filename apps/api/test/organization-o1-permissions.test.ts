@@ -190,7 +190,7 @@ describe("ORG-008-8 the Kepala HC role", () => {
   });
 
   it("is created by migration with no account assigned", async () => {
-    const sql = await readFile(new URL("../migrations/0064_human_capital_lead_role.sql", import.meta.url), "utf8");
+    const sql = await readFile(new URL("../migrations/0065_human_capital_lead_role.sql", import.meta.url), "utf8");
     const body = sql.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
 
     expect(body).toContain("'human_capital_lead'");

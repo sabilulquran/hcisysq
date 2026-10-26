@@ -77,7 +77,7 @@ export function reportDates(from: string, to: string, maximum = 93) {
   return output;
 }
 
-async function activeEmployees(pool: Pool, filter: Pick<AttendanceReportFilter, "employeeId" | "unitId">) {
+export async function activeEmployees(pool: Pool, filter: Pick<AttendanceReportFilter, "employeeId" | "unitId">) {
   const values: unknown[] = [];
   const clauses = ["employee.status = 'active'"];
   if (filter.employeeId) {
@@ -138,7 +138,7 @@ async function latestResults(pool: Pool, date: string, employeeIds: string[]) {
   return new Map(result.rows.map((item) => [item.employeeId, item]));
 }
 
-async function leaveDisposition(pool: Pool, employeeId: string, workDate: string) {
+export async function leaveDisposition(pool: Pool, employeeId: string, workDate: string) {
   const result = await pool.query<{ disposition: "leave" | "absent" }>(
     `WITH candidates AS (
        SELECT 'leave'::text AS disposition, 1 AS priority

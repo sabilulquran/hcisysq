@@ -973,7 +973,7 @@
     "method": "POST",
     "url": "/admin/organization/designer/drafts/:draftId/authority-bindings",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -989,7 +989,7 @@
     "method": "PUT",
     "url": "/admin/organization/designer/drafts/:draftId/incumbencies",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -1045,7 +1045,7 @@
     "method": "POST",
     "url": "/admin/organization/designer/drafts/:draftId/reporting-overrides",
     "permissions": [
-      "approvals.policy.manage"
+      "organization.manage"
     ]
   },
   {
@@ -2092,6 +2092,158 @@
     "url": "/admin/employment/consistency",
     "permissions": [
       "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/drafts",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/reopen",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/discard",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/capabilities",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/people",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/readiness",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/explanation",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/resolution-preview",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/commands",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/designer/drafts/:draftId/journal",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/nodes/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/positions/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/organization/designer/drafts/:draftId/authority-bindings/:itemId",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/rebase",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/:draftId/journal/:seq/undo",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/units/:nodeKey/hc-staff",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "GET",
+    "url": "/admin/organization/positions/search",
+    "permissions": [
+      "organization.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/admin-routes.ts",
+    "method": "POST",
+    "url": "/admin/organization/designer/drafts/from-legacy",
+    "permissions": [
+      "organization.manage"
     ]
   }
 ]

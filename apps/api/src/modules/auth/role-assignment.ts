@@ -4,11 +4,13 @@ import { AuthError, type AuthPrincipal } from "./service.js";
 import {
   ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, EMPLOYMENT_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
+  HC_LEAD_ROLE_KEY,
 } from "./permissions.js";
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
 const HCIS_ROLES = [
   "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
+  HC_LEAD_ROLE_KEY,
 ];
 const HCIS_PERMISSIONS: readonly string[] = [
   ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, "employees.read.unit", "attendance.read.unit",
@@ -99,6 +101,13 @@ export async function createRoleAssignment(
     if (role.roleKey === "human_capital_admin" &&
       (input.scopeType !== "organization" || !input.reason?.trim())) {
       throw new AuthError(400, "ADMIN_ORGANIZATION_MANDATE_REQUIRED", "Admin HC memerlukan scope organisasi dan alasan penugasan.");
+    }
+    // ORG-008-8: Kepala HC publishes structure and changes approval policy for the whole foundation.
+    // A unit-scoped grant would satisfy no organization guard anyway, so it is refused rather than
+    // stored as an assignment that silently does nothing; the mandate names who appointed them.
+    if (role.roleKey === HC_LEAD_ROLE_KEY &&
+      (input.scopeType !== "organization" || !input.reason?.trim())) {
+      throw new AuthError(400, "ADMIN_ORGANIZATION_MANDATE_REQUIRED", "Kepala HC memerlukan scope organisasi dan alasan penugasan.");
     }
     // ORG-010 §1.1: the board-view role is organization scope only and needs a reason naming the mandate.
     if (role.roleKey === BOARD_VIEWER_ROLE_KEY) {

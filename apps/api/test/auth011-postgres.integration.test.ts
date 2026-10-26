@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthService, type AuthPrincipal } from "../src/modules/auth/service.js";
-import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
+import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, HC_LEAD_PERMISSIONS, HC_LEAD_ROLE_KEY, HC_OPERATIONAL_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
 import { createRoleAssignment, removeRoleAssignment } from "../src/modules/auth/role-assignment.js";
 import { OidcLoginService } from "../src/modules/auth/oidc-service.js";
 import type { OidcProvider } from "../src/modules/auth/oidc-provider.js";
@@ -189,7 +189,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(186);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(205);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(2);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(39);
@@ -518,6 +518,45 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(result.setCookie).toContain("Secure");
     expect((await auth.getAuthorizationContext(actors.get("legacy")!.principal)).organizationPermissions).toEqual([...ADMIN_PERMISSIONS]);
   });
+
+  it("ORG-008-8: Super Admin grants Kepala HC only with organization scope and a mandate", async () => {
+    // Owner decision 2026-10-24: Kepala HC holds approvals.policy.manage in full, as AUTH-011 defines it.
+    const leadRoleId = (await pool.query<{ id: string }>(
+      "SELECT id FROM roles WHERE role_key = $1", [HC_LEAD_ROLE_KEY],
+    )).rows[0]!.id;
+    expect((await pool.query<{ permissionKey: string }>(
+      `SELECT permission_key AS "permissionKey" FROM role_permissions WHERE role_id = $1 ORDER BY permission_key`,
+      [leadRoleId],
+    )).rows.map((row) => row.permissionKey)).toEqual([...HC_LEAD_PERMISSIONS].sort());
+
+    // A fresh account, so earlier cases in this suite cannot colour its permissions.
+    const employeeId = randomUUID();
+    const accountId = randomUUID();
+    await pool.query("INSERT INTO employees(id,employee_number,full_name,status) VALUES ($1,$2,'Synthetic Lead','active')",
+      [employeeId, `AUTH011-LEAD-${accountId}`]);
+    await pool.query(`INSERT INTO accounts(id,employee_id,email,principal_type,status)
+      VALUES($1,$2,$3,'EMPLOYEE','active')`, [accountId, employeeId, `lead-${accountId}@example.invalid`]);
+    const legacy = actors.get("legacy")!.principal;
+
+    // A unit-scoped grant would satisfy no organization guard, so it is refused, not stored.
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic mandate" }))
+      .rejects.toMatchObject({ code: "ADMIN_ORGANIZATION_MANDATE_REQUIRED" });
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "organization" }))
+      .rejects.toMatchObject({ code: "ADMIN_ORGANIZATION_MANDATE_REQUIRED" });
+
+    await createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "organization", reason: "Synthetic SK Kepala HC" });
+    const session = await auth.createSessionForAccountId(accountId, context);
+    const granted = await auth.getAuthorizationContext(session.session.principal);
+    expect(granted.organizationPermissions.sort()).toEqual([...HC_LEAD_PERMISSIONS].sort());
+
+    // An HC administrator may not grant it, whatever the scope.
+    await expect(createRoleAssignment(pool, actors.get("admin")!.principal, accountId,
+      { roleId: leadRoleId, scopeType: "organization", reason: "Synthetic delegation attempt" }))
+      .rejects.toMatchObject({ code: "ROLE_GRANT_SUPER_ADMIN_ONLY" });
+  }, 60000);
 });
 
 const migrationCompatibilitySchema = `auth011_migration_${randomUUID().replaceAll("-", "")}`;

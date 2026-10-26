@@ -827,3 +827,29 @@ Rencana R1 dan D-14-8 … D-14-15 disetujui owner 2026-10-26 (diteruskan sesi ko
 - **Tab Kalkulasi dihapus**; `/admin/attendance/calculation` dan `/admin/attendance/settings/recalculate`
   dialihkan langsung ke `/admin/attendance/reports`. Endpoint ATT-014-2 tidak berubah.
 - Manifest AUTH-011 (+1 route, jumlah 185) dan `attendance-workforce.openapi.yaml` diperbarui.
+
+### 19.11 Catatan implementasi ATT-014-4R (2026-10-26)
+
+- **Tiga model laporan pertama (D-14-11)** dibuat di server dari hasil tersimpan (`report-models.ts`):
+  **Laporan Harian (Grid Bulanan)** (simbol §6.6, kolom per tanggal dengan tanda akhir pekan, total
+  Normal, Riil, Presensi %, A, T, TL, C, lembur; lanskap), **Rekapitulasi Pegawai** (subtotal per unit
+  dan jumlah seluruhnya; Presensi % = Riil ÷ Normal, satu desimal), dan **Detail Harian**. Satu tabel
+  yang sama dipakai pratinjau, dokumen cetak, CSV, dan XLSX.
+- **Endpoint** `GET /admin/attendance/reports/{model}` (`attendance.reports.read`), `format=json|csv|xlsx`,
+  `purpose=view|print`, maks 93 hari dan 50 000 pegawai-hari (`422 EXPORT_TOO_LARGE`, DRAFT). Setiap
+  **cetak** (`purpose=print`) dan **ekspor** (csv/xlsx) diaudit `attendance.report.exported` dengan model,
+  format, tujuan, lingkup, rentang, dan jumlah baris saja. Pratinjau di layar tidak diaudit.
+- **Dokumen cetak** (`/admin/attendance/reports/print`, tab baru, tanpa kerangka admin): kop, judul,
+  lingkup, periode, "Dicetak oleh <email akun> pada <tanggal jam> WIB", peringatan bila ada data belum
+  ditarik/berubah/hari berjalan, tabel per unit, legenda simbol. CSS cetak: A4 sesuai orientasi model,
+  `thead { display: table-header-group }` agar judul kolom berulang, baris tidak terpotong, unit kedua dan
+  seterusnya mulai di halaman baru, nomor halaman lewat `@page` (peramban yang mendukung). Dialog cetak
+  terbuka otomatis; "Simpan sebagai PDF" dari dialog yang sama.
+- **Kop sementara (D-14-10):** logo bintang YSQ yang sudah ada di aplikasi dan teks "Yayasan Sabilul
+  Qur'an · Human Capital Information System (HCIS)". Semua nilai kop ada di satu berkas
+  (`apps/web/src/lib/reportLetterhead.ts`); kop resmi menyusul dari owner. Kolom tanda tangan
+  "Mengetahui" mati secara bawaan dan dapat dinyalakan di berkas yang sama.
+- **Langkah ④** kini memakai model baru (Tampilkan, Cetak, Excel, CSV). Format ATT-009 lama (sesi kerja,
+  data scan, jadwal, lembur) tetap tersedia di bagian "Format lama" yang tertutup secara bawaan untuk
+  satu rilis.
+- Manifest AUTH-011 (+1 route, jumlah 186) dan `attendance-workforce.openapi.yaml` diperbarui.

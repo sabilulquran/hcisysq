@@ -36,6 +36,7 @@ import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
+import { AdminAttendanceReportPrintPage } from "@/pages/AdminAttendanceReportPrintPage";
 import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
@@ -362,6 +363,14 @@ const adminAttendanceReportsRoute = createRoute({
   component: AdminAttendanceReportsPage,
 });
 
+// ATT-014 §19.2: the standalone print document, without the admin shell.
+const adminAttendanceReportPrintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/reports/print",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/reports/print"),
+  component: AdminAttendanceReportPrintPage,
+});
+
 const adminAttendanceOvertimeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/overtime",
@@ -590,6 +599,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceMobileRoute,
   adminAttendanceCorrectionsRoute,
   adminAttendanceReportsRoute,
+  adminAttendanceReportPrintRoute,
   adminAttendanceOvertimeRoute,
   adminAttendanceLocationsRoute,
   ...adminAttendanceLegacyRoutes,

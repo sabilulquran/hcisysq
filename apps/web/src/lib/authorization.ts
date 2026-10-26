@@ -14,6 +14,7 @@ const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/mobile-evidence": "attendance.clarification.manage",
   "/admin/attendance/corrections": "attendance.records.manage",
   "/admin/attendance/reports": "attendance.reports.read",
+  "/admin/attendance/reports/print": "attendance.reports.read",
   "/admin/attendance/overtime": "attendance.overtime.manage",
   "/admin/attendance/settings/locations": "attendance.schedule.manage",
 };

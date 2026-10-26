@@ -2306,6 +2306,13 @@ paths:
   /admin/attendance/shift-swaps/{shiftSwapId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
 
+  /payroll/periods:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods'
+  /payroll/periods/{periodId}:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}'
+  /payroll/periods/{periodId}/transitions:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transitions'
+
   /admin/payslip-imports:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports'
   /admin/payslip-imports/preview:

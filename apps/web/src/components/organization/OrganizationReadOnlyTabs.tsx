@@ -170,6 +170,14 @@ export function OrganizationReadinessTab({
               onAction={() => onOpenIssue("AUTHORITY_INELIGIBLE")}
             />
           ) : null}
+          {(readiness.withoutWorkLocation ?? 0) > 0 ? (
+            // ORG-005-1: informational; it never holds back publishing (D-5-3).
+            <IssueLine
+              tone="info"
+              count={readiness.withoutWorkLocation ?? 0}
+              label="pegawai di unit yang belum punya lokasi kerja (termasuk unit di atasnya)"
+            />
+          ) : null}
           {readiness.actingEndingSoon.length > 0 ? (
             <IssueLine
               tone="info"
@@ -316,6 +324,9 @@ export function OrganizationPeopleTab({
                           </td>
                           <td className="py-2.5 pr-3 text-muted-foreground">
                             {person.unit ? person.unit.path.join(" › ") : "—"}
+                            {person.workLocation ? (
+                              <span className="block text-[11px]">Lokasi: {person.workLocation.name}</span>
+                            ) : null}
                           </td>
                           <td className="py-2.5 pr-3 text-muted-foreground">{person.position?.title ?? "—"}</td>
                           <td className="py-2.5 pr-3">

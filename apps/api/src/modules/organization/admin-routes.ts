@@ -61,6 +61,8 @@ const nodeInput = z.object({
   // ORG-008-6 (O-9): which imported unit this structural unit stands for, so HC notification can
   // find "the employee's unit or the unit above it" through the structure's own hierarchy.
   legacyUnitId: uuid.nullable().optional(),
+  // ORG-005-1 (DRAFT D-5-2): the work location this unit works at; units below inherit it.
+  workLocationId: uuid.nullable().optional(),
 });
 const nodePatch = nodeInput.partial().extend({ active: z.boolean().optional() });
 const positionInput = z.object({
@@ -145,6 +147,30 @@ function replyDraftAlreadyOpen(
     message: "Another organization change is still open.",
     details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
   });
+}
+
+/** ORG-005-1: a unit may only name a work location that exists and is active. */
+async function replyIfWorkLocationUnusable(
+  db: OrganizationQueryable,
+  reply: FastifyReply,
+  workLocationId: string | null | undefined,
+): Promise<boolean> {
+  if (!workLocationId) return false;
+  const result = await db.query<{ active: boolean }>(
+    "SELECT active FROM attendance_work_locations WHERE id = $1", [workLocationId],
+  );
+  if (result.rows[0]?.active === true) return false;
+  await reply.status(400).send({
+    code: "INVALID_WORK_LOCATION",
+    message: "The work location does not exist or is no longer active.",
+  });
+  return true;
+}
+
+/** ORG-005-1: names of every work location, for the screens; the list is small (one per site). */
+async function workLocationNames(db: OrganizationQueryable): Promise<Map<string, string>> {
+  const result = await db.query<{ id: string; name: string }>("SELECT id, name FROM attendance_work_locations");
+  return new Map(result.rows.map((row) => [row.id, row.name]));
 }
 
 function invalid(reply: FastifyReply, code: string, message: string) {
@@ -373,6 +399,7 @@ export async function registerOrganizationAdminRoutes(
       eligibility,
       asOf,
       includeLegacy: input.includeLegacy,
+      workLocationNames: await workLocationNames(pool),
     });
     return { asOf, snapshot, rows, eligibility };
   }
@@ -801,6 +828,7 @@ export async function registerOrganizationAdminRoutes(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
          FROM employees WHERE id = ANY($1::uuid[])`, [employeeIds]);
     const employeeById = new Map(employees.rows.map((item) => [item.id, item]));
+    const locationNames = await workLocationNames(pool);
     const accountIds = [...new Set(
       snapshot.incumbencies.flatMap((item) => item.accountId ? [item.accountId] : []),
     )];
@@ -848,6 +876,7 @@ export async function registerOrganizationAdminRoutes(
       draft: snapshot.changeSet,
       nodes: snapshot.nodes.map((item) => ({
         ...item,
+        workLocationName: item.workLocationId ? locationNames.get(item.workLocationId) ?? null : null,
         memberCount: snapshot.memberships.filter((member) => member.nodeKey === item.stableKey).length,
         leaderPositionKey: snapshot.authorityBindings.find((binding) =>
           binding.subjectKind === "NODE" && binding.subjectKey === item.stableKey && binding.bindingType === "LEADER")
@@ -1088,9 +1117,11 @@ export async function registerOrganizationAdminRoutes(
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
       if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
+      if (await replyIfWorkLocationUnusable(transaction.client, reply, body.data.workLocationId)) return null;
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data,
         integrationCode: body.data.integrationCode ?? null,
         legacyUnitId: body.data.legacyUnitId ?? null,
+        workLocationId: body.data.workLocationId ?? null,
         active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.node.created", "organization_node", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });
@@ -1110,6 +1141,7 @@ export async function registerOrganizationAdminRoutes(
       if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
       const item = snapshot.nodes.find((entry) => entry.id === params.data.itemId);
       if (!item) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
+      if (await replyIfWorkLocationUnusable(transaction.client, reply, body.data.workLocationId)) return null;
       // ORG-008-4b: deactivating a unit that still holds members, positions, sub-units or an
       // authority binding would leave those pointing at something switched off, which only shows up
       // later as an unnamed validation failure. Refuse it and say what still points at it.

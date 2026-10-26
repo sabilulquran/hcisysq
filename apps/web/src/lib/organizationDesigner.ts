@@ -50,6 +50,9 @@ export interface OrganizationNode {
   integrationCode: string | null;
   /** ORG-008-6 (O-9): the imported unit this one stands for; null leaves it unlinked. */
   legacyUnitId?: string | null;
+  /** ORG-005-1 (DRAFT): the work location this unit names itself; units below inherit it. */
+  workLocationId?: string | null;
+  workLocationName?: string | null;
   memberCount: number;
   leaderPositionKey: string | null;
 }
@@ -294,6 +297,7 @@ export function updateOrganizationNode(
       | "visualRankOffset"
       | "integrationCode"
       | "legacyUnitId"
+      | "workLocationId"
       | "leaderPositionKey"
     >
   >,

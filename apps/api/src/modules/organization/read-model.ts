@@ -55,6 +55,11 @@ export interface OrganizationPersonRow {
   employeeNumber: string;
   fullName: string;
   unit: { nodeKey: string; name: string; path: string[] } | null;
+  /**
+   * ORG-005-1 (DRAFT D-5-3): where this person works — their unit's location, or the nearest
+   * ancestor unit's when theirs names none. Null when no unit up the branch names one.
+   */
+  workLocation: { id: string; name: string; inheritedFromNodeKey: string | null } | null;
   position: { stableKey: string; title: string } | null;
   directManager: OrganizationAuthorityView | null;
   source: OrganizationAuthoritySource | null;
@@ -155,6 +160,33 @@ function authorityView(
   };
 }
 
+/** ORG-005-1 (D-5-3): the unit's own location, else the nearest ancestor's. Never a guess. */
+export function resolveWorkLocation(
+  snapshot: OrganizationSnapshot,
+  nodeKey: string,
+  asOf: string,
+  locationNames: ReadonlyMap<string, string>,
+): OrganizationPersonRow["workLocation"] {
+  const seen = new Set<string>();
+  let current: string | null = nodeKey;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const node = snapshot.nodes.find(
+      (item) => item.stableKey === current && isEffective(item.effectiveFrom, item.effectiveTo, asOf),
+    );
+    if (!node) return null;
+    if (node.workLocationId) {
+      return {
+        id: node.workLocationId,
+        name: locationNames.get(node.workLocationId) ?? "",
+        inheritedFromNodeKey: node.stableKey === nodeKey ? null : node.stableKey,
+      };
+    }
+    current = node.parentNodeKey;
+  }
+  return null;
+}
+
 function unitPath(snapshot: OrganizationSnapshot, nodeKey: string, asOf: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
@@ -179,6 +211,8 @@ export interface BuildPeopleViewInput {
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
   includeLegacy?: boolean | undefined;
+  /** ORG-005-1: work location names by id, for the row's workLocation. */
+  workLocationNames?: ReadonlyMap<string, string> | undefined;
 }
 
 /**
@@ -260,6 +294,9 @@ export async function buildOrganizationPeopleView(input: BuildPeopleViewInput): 
             path: unitPath(snapshot, membership.nodeKey, asOf),
           }
         : null,
+      workLocation: membership
+        ? resolveWorkLocation(snapshot, membership.nodeKey, asOf, input.workLocationNames ?? new Map())
+        : null,
       position: ownPosition ? { stableKey: ownPosition.stableKey, title: ownPosition.title } : null,
       directManager,
       source,
@@ -300,6 +337,7 @@ function emptyRow(
     employeeNumber: employee.employeeNumber,
     fullName: employee.fullName,
     unit: null,
+    workLocation: null,
     position: null,
     directManager: null,
     source: null,
@@ -324,6 +362,8 @@ export interface OrganizationReadiness {
   changeSetId: string | null;
   activeEmployees: number;
   withoutUnit: number;
+  /** ORG-005-1: placed in a unit, but no unit up the branch names a work location. */
+  withoutWorkLocation: number;
   unresolvedManager: number;
   ineligibleManagers: number;
   vacantRequiringActing: number;
@@ -368,6 +408,8 @@ export function computeOrganizationReadiness(input: {
     changeSetId: snapshot?.changeSet.id ?? null,
     activeEmployees: rows.length,
     withoutUnit: rows.filter((row) => row.unit === null && row.position === null).length,
+    // ORG-005-1: informational only, never a reason to refuse publishing (D-5-3).
+    withoutWorkLocation: rows.filter((row) => row.unit !== null && row.workLocation === null).length,
     unresolvedManager: rows.filter((row) => row.directManager === null).length,
     ineligibleManagers: rows.filter((row) =>
       row.issues.some((issue) => issue.code === "AUTHORITY_INELIGIBLE")).length,

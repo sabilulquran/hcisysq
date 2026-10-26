@@ -10,6 +10,7 @@ import {
   computeOrganizationReadiness,
   explainPerson,
   RequestScopedEligibilityValidator,
+  resolveWorkLocation,
   type OrganizationPersonEmployee,
 } from "../src/modules/organization/read-model.js";
 
@@ -325,5 +326,32 @@ describe("ORG-008-2 performance target (spec 4.8)", () => {
     // A loose ceiling: this guards against an accidental per-row await of something expensive.
     // The real number on Mi8VPS is measured in the synthetic UAT, not here.
     expect(elapsed).toBeLessThan(10_000);
+  });
+});
+
+describe("ORG-005-1 where a person works", () => {
+  const nodes = [
+    { id: "n1", stableKey: "school", name: "SDIT", nodeType: "SCHOOL", parentNodeKey: null, active: true,
+      effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, workLocationId: "loc-sdit" },
+    { id: "n2", stableKey: "grade", name: "Kelas 1", nodeType: "UNIT", parentNodeKey: "school", active: true,
+      effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, workLocationId: null },
+    { id: "n3", stableKey: "office", name: "Kantor", nodeType: "UNIT", parentNodeKey: null, active: true,
+      effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null },
+  ];
+  const snapshot = { nodes } as unknown as Parameters<typeof resolveWorkLocation>[0];
+  const names = new Map([["loc-sdit", "Kampus SDIT"]]);
+
+  it("uses the unit's own location", () => {
+    expect(resolveWorkLocation(snapshot, "school", "2026-10-27", names))
+      .toEqual({ id: "loc-sdit", name: "Kampus SDIT", inheritedFromNodeKey: null });
+  });
+
+  it("inherits the nearest ancestor's location and says from where", () => {
+    expect(resolveWorkLocation(snapshot, "grade", "2026-10-27", names))
+      .toEqual({ id: "loc-sdit", name: "Kampus SDIT", inheritedFromNodeKey: "school" });
+  });
+
+  it("answers null when nothing up the branch names a location, never a guess", () => {
+    expect(resolveWorkLocation(snapshot, "office", "2026-10-27", names)).toBeNull();
   });
 });

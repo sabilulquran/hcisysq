@@ -87,6 +87,8 @@ import {
 } from "@/components/organization/OrganizationAdvancedAuthority";
 import { OrganizationChangeList } from "@/components/organization/OrganizationChangeList";
 import { OrganizationUnitLink } from "@/components/organization/OrganizationUnitLink";
+import { OrganizationWorkLocation, type WorkLocationOption } from "@/components/organization/OrganizationWorkLocation";
+import { listAttendanceWorkLocations } from "@/lib/workforceAttendance";
 import { getOrganizationAdmin, type OrganizationUnitSummary } from "@/lib/adminOrgAccess";
 import {
   applyOrganizationCommand,
@@ -416,6 +418,8 @@ export function OrganizationDesignerWorkspace({
   const [replayFor, setReplayFor] = useState<number | null>(null);
   const [legacyUnits, setLegacyUnits] = useState<OrganizationUnitSummary[]>([]);
   const [legacyUnitsError, setLegacyUnitsError] = useState<string | null>(null);
+  const [workLocations, setWorkLocations] = useState<WorkLocationOption[]>([]);
+  const [workLocationsError, setWorkLocationsError] = useState<string | null>(null);
   const [unitStaff, setUnitStaff] = useState<OrganizationUnitHcStaff | null>(null);
   const [unitStaffLoading, setUnitStaffLoading] = useState(false);
   const [unitStaffError, setUnitStaffError] = useState<string | null>(null);
@@ -643,6 +647,12 @@ export function OrganizationDesignerWorkspace({
     void getOrganizationAdmin()
       .then((result) => setLegacyUnits(result.units))
       .catch(() => setLegacyUnitsError("Daftar unit lama tidak dapat dimuat, jadi tautan belum bisa dipilih."));
+    // ORG-005-1: the work-location list belongs to schedule management (D-5-5); a session without
+    // that permission still sees the unit's current location, only not the picker.
+    setWorkLocationsError(null);
+    void listAttendanceWorkLocations()
+      .then((result) => setWorkLocations(result.items))
+      .catch(() => setWorkLocationsError("Daftar lokasi kerja tidak dapat dimuat, jadi lokasi belum bisa dipilih."));
   };
 
   const seedFromLegacy = (name: string, effectiveOn: string) => {
@@ -1109,10 +1119,26 @@ export function OrganizationDesignerWorkspace({
       </Modal> : null}
 
       {action?.type === "unitLink" ? <Modal
-        title={`Unit lama & staf HC \u2014 ${action.node.name}`}
+        title={`Lokasi, unit lama & staf HC \u2014 ${action.node.name}`}
         description="Menautkan unit ini ke unit lama membuat pemberitahuan lembur bisa menemukan staf HC yang tepat, termasuk lewat unit di atasnya."
         onClose={() => setAction(null)}
       >
+        <div className="mb-5 border-b border-border/70 pb-5">
+          <OrganizationWorkLocation
+            node={action.node}
+            locations={workLocations}
+            locationsError={workLocationsError}
+            canEdit={Boolean(canEdit)}
+            saving={saving}
+            onSave={(workLocationId) => {
+              if (!data?.draft) return;
+              void mutate(
+                () => updateOrganizationNode(data.draft!.id, action.node.id, { workLocationId }),
+                workLocationId ? "Lokasi kerja unit disimpan." : "Unit kembali mengikuti lokasi unit di atasnya.",
+              );
+            }}
+          />
+        </div>
         <OrganizationUnitLink
           node={action.node}
           units={legacyUnits}

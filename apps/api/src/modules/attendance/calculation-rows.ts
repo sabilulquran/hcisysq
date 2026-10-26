@@ -33,6 +33,9 @@ type StoredResult = {
   createdAt: Date;
   calculatedAt: Date;
   changed: boolean;
+  /** ATT-013: blocks of a multi-block day and how many were attended; 0/0 for a single-block day. */
+  blockCount: number;
+  blocksAttended: number;
 };
 
 const CLOCK_STATUSES = new Set(["scheduled", "pending", "absent"]);
@@ -50,8 +53,14 @@ export function provisionalStatus(result: Pick<StoredResult, "status" | "schedul
   return "absent";
 }
 
-/** §6.3 before ATT-013: Normal 1 for a scheduled day; Riil 1 present/late, 0 absent, empty otherwise. */
-export function normalActual(status: CalculationRowStatus) {
+/**
+ * §6.3: Normal 1 for a scheduled day; Riil 1 present/late, 0 absent, empty otherwise. ATT-013 B-6: on a
+ * multi-block day Riil is the share of blocks attended (two decimals), also when the day is incomplete.
+ */
+export function normalActual(status: CalculationRowStatus, blocks?: { count: number; attended: number }) {
+  if (blocks && blocks.count > 1 && ["present", "late", "incomplete", "absent"].includes(status)) {
+    return { normal: 1, actual: Math.round((blocks.attended / blocks.count) * 100) / 100 };
+  }
   if (status === "present" || status === "late") return { normal: 1, actual: 1 };
   if (status === "absent") return { normal: 1, actual: 0 };
   if (["incomplete", "leave", "scheduled", "pending"].includes(status)) return { normal: 1, actual: null };
@@ -114,6 +123,9 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
          )
        ) AS "hasScheduleCoverage",
        checked.created_at AS "createdAt", checked.calculated_at AS "calculatedAt",
+       (SELECT count(*)::int FROM attendance_result_blocks block WHERE block.attendance_result_version_id = checked.id) AS "blockCount",
+       (SELECT count(*)::int FROM attendance_result_blocks block
+        WHERE block.attendance_result_version_id = checked.id AND block.status IN ('present', 'late')) AS "blocksAttended",
        (
          EXISTS (
            SELECT 1
@@ -232,7 +244,7 @@ export async function attendanceCalculationRows(
       earlyLeaveMinutes: stored?.earlyLeaveMinutes ?? null,
       overtimeMinutes: stored?.overtimeMinutes ?? null,
       incompleteSession: stored?.incompleteSession ?? null,
-      ...normalActual(status),
+      ...normalActual(status, stored ? { count: stored.blockCount ?? 0, attended: stored.blocksAttended ?? 0 } : undefined),
     };
   })
     .filter((item) => !filter.status || item.status === filter.status)

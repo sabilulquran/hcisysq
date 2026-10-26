@@ -23,6 +23,7 @@ import {
   type CalculationRun,
   type CalculationRunner,
 } from "./calculation-runner.js";
+import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
@@ -1611,6 +1612,8 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const body = manualCorrectionSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_MANUAL_CORRECTION", message: "Koreksi manual tidak valid." });
+    const windowError = manualCorrectionWindowError(body.data);
+    if (windowError) return reply.status(422).send({ code: windowError, message: manualCorrectionWindowMessages[windowError] });
     const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
     if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
     const clarificationId = randomUUID();

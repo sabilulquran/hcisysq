@@ -58,6 +58,8 @@ Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Keha
 
 Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis; `/admin/attendance/settings/recalculate` (Finalisasi ulang) dialihkan ke Kalkulasi sejak ATT-014-2. `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Koreksi HC.
 
+**Koreksi HC — tanggal kerja (perbaikan 2026-10-26).** Form memakai satu **Tanggal kerja** dan jam saja (`type="time"`), sehingga tanggal tidak bisa berbeda antar-field. Jam pulang lewat tengah malam ditandai eksplisit "Pulang keesokan hari (+1 hari)". API `POST /admin/attendance/manual-corrections` menolak dengan `422` sebelum menulis apa pun bila jam masuk tidak jatuh pada tanggal kerja (WIB), jam pulang tidak pada tanggal kerja atau keesokan harinya, atau jam pulang tidak setelah jam masuk / lebih dari 24 jam sesudahnya. Sebelumnya field jam memakai `datetime-local` dengan tanggal terpisah (default hari ini), sehingga koreksi untuk 20 Oktober bisa tersimpan dengan stempel 26 Oktober dan ikut dihitung engine.
+
 Back Office ADMS:
 
 ```text

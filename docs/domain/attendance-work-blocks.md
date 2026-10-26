@@ -65,7 +65,22 @@ hadir satu blok sebagai Hadir dengan pulang cepat.
 - Detail Harian dan panel satu hari: satu baris per blok di bawah baris hari (scan, status, terlambat,
   pulang cepat). Laporan Normal/Riil memakai B-6.
 
-## 6. Di luar cakupan
+## 6. Catatan implementasi (2026-10-27)
+
+- Migration `0072`: `attendance_schedule_version_blocks` dan `attendance_result_blocks`, aditif; rilis lama
+  tidak membacanya. Rollback di header migration.
+- `resolveSchedule` membaca blok versi shift dalam query yang sama; `scheduledStartAt`/`EndAt` mencakup
+  semua blok. Engine menilai tiap blok dengan `evaluateSessions` yang sama (B-3), lalu menggulung hari (B-5,
+  B-7). Hash input hanya memuat blok untuk shift berbeberapa blok, jadi hari satu blok tidak berubah.
+- Cuti, ketidakhadiran hasil penyelesaian cuti, dan Libur tetap dinilai untuk seluruh hari.
+- `POST/PATCH /admin/attendance/schedules` menerima `extraBlocks`; validasi §4 menghasilkan `422
+  SCHEDULE_BLOCKS_INVALID`. PATCH tanpa `extraBlocks` mempertahankan blok versi berjalan.
+- Laporan Normal/Riil memakai B-6 dari `attendance_result_blocks`. Panel satu hari menampilkan baris per
+  blok. `TBD`: baris per blok di tab Harian dan model Detail Harian; sekarang satu baris per hari dengan
+  status hasil gulungan.
+- `TBD`: mengubah blok shift yang sudah ada dari layar (sekarang lewat API atau buat shift baru).
+
+## 7. Di luar cakupan
 
 Blok dengan toleransi berbeda per blok, blok yang berbeda per hari dalam satu shift (pakai dua shift dan
 pola per hari), dan jeda antarblok yang dibayar (PAY-003).

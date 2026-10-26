@@ -8,12 +8,15 @@ import {
   DecisionDocumentRegister,
   DocumentDetail,
   DocumentForm,
+} from "@/components/employment/DecisionDocumentRegister";
+import { canAccessAdminPath } from "@/lib/authorization";
+import {
   draftFrom,
   emptyDraft,
   payloadOf,
-} from "@/components/employment/DecisionDocumentRegister";
-import { canAccessAdminPath } from "@/lib/authorization";
-import type { DecisionDocument, DecisionDocumentDetail } from "@/lib/decision-documents";
+  type DecisionDocument,
+  type DecisionDocumentDetail,
+} from "@/lib/decision-documents";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
 const EMPLOYEE_ID = "10000000-0000-4000-8000-000000000001";

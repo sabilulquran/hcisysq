@@ -116,7 +116,11 @@ export function createDecisionDocument(body: DecisionDocumentWrite): Promise<Dec
   return request("/api/admin/decision-documents", { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateDecisionDocument(documentId: string, body: DecisionDocumentWrite): Promise<DecisionDocument> {
+/** expectedUpdatedAt is the version the operator had on screen; the API refuses a stale one. */
+export function updateDecisionDocument(
+  documentId: string,
+  body: DecisionDocumentWrite & { expectedUpdatedAt?: string },
+): Promise<DecisionDocument> {
   return request(`/api/admin/decision-documents/${encodeURIComponent(documentId)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -125,7 +129,7 @@ export function updateDecisionDocument(documentId: string, body: DecisionDocumen
 
 export function correctDecisionDocument(
   documentId: string,
-  body: DecisionDocumentWrite & { reason: string },
+  body: DecisionDocumentWrite & { reason: string; expectedUpdatedAt?: string },
 ): Promise<DecisionDocument> {
   return request(`/api/admin/decision-documents/${encodeURIComponent(documentId)}/corrections`, {
     method: "POST",
@@ -160,3 +164,84 @@ export const PK_CATEGORY_LABEL: Record<PkCategory, string> = {
   PERCOBAAN: "Masa Percobaan",
   LEPAS: "Pegawai Lepas",
 };
+
+/** One form state covering both kinds, with empty strings where the API takes null. */
+export type Draft = DecisionDocumentWrite & { reason: string };
+
+export function emptyDraft(kind: DecisionDocumentKind): Draft {
+  return {
+    documentKind: kind,
+    documentNumber: "",
+    signedOn: "",
+    externalReference: "",
+    notes: "",
+    pkType: kind === "PERJANJIAN_KERJA" ? "PK_BARU" : null,
+    employeeId: null,
+    contractFrom: "",
+    contractTo: "",
+    category: kind === "PERJANJIAN_KERJA" ? "KONTRAK" : null,
+    signatoryEmployerLabel: "",
+    previousPkId: null,
+    skType: kind === "SURAT_KEPUTUSAN" ? "SK_PENEMPATAN" : null,
+    subject: "",
+    issuingAuthorityLabel: "",
+    effectiveOn: "",
+    effectiveTo: "",
+    reason: "",
+  };
+}
+
+export function draftFrom(document: DecisionDocument): Draft {
+  return {
+    documentKind: document.documentKind,
+    documentNumber: document.documentNumber,
+    signedOn: document.signedOn,
+    externalReference: document.externalReference ?? "",
+    notes: document.notes ?? "",
+    pkType: document.pkType ?? null,
+    employeeId: document.employeeId ?? null,
+    contractFrom: document.contractFrom ?? "",
+    contractTo: document.contractTo ?? "",
+    category: document.category ?? null,
+    signatoryEmployerLabel: document.signatoryEmployerLabel ?? "",
+    previousPkId: document.previousPkId ?? null,
+    skType: document.skType ?? null,
+    subject: document.subject ?? "",
+    issuingAuthorityLabel: document.issuingAuthorityLabel ?? "",
+    effectiveOn: document.effectiveOn ?? "",
+    effectiveTo: document.effectiveTo ?? "",
+    reason: "",
+  };
+}
+
+/** Empty optional text is sent as null so the API stores an absent value, not "". */
+export function payloadOf(draft: Draft): DecisionDocumentWrite {
+  const optional = (value: string | null | undefined) => (value && value.trim() ? value.trim() : null);
+  const base: DecisionDocumentWrite = {
+    documentKind: draft.documentKind,
+    documentNumber: draft.documentNumber.trim(),
+    signedOn: draft.signedOn,
+    externalReference: optional(draft.externalReference),
+    notes: optional(draft.notes),
+  };
+  if (draft.documentKind === "PERJANJIAN_KERJA") {
+    return {
+      ...base,
+      pkType: draft.pkType ?? null,
+      employeeId: draft.employeeId ?? null,
+      contractFrom: optional(draft.contractFrom),
+      contractTo: optional(draft.contractTo),
+      category: draft.category ?? null,
+      signatoryEmployerLabel: optional(draft.signatoryEmployerLabel),
+      previousPkId: draft.previousPkId ?? null,
+    };
+  }
+  return {
+    ...base,
+    skType: draft.skType ?? null,
+    subject: optional(draft.subject),
+    issuingAuthorityLabel: optional(draft.issuingAuthorityLabel),
+    effectiveOn: optional(draft.effectiveOn),
+    effectiveTo: optional(draft.effectiveTo),
+  };
+}

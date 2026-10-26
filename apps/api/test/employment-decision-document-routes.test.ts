@@ -21,13 +21,14 @@ const EMPLOYEE_ID = "10000000-0000-4000-8000-000000000001";
 const PK_ID = "30000000-0000-4000-8000-000000000001";
 const SK_ID = "30000000-0000-4000-8000-000000000002";
 
-type Persona = "anonymous" | "employee" | "hc" | "hc_corrector" | "super_admin";
+type Persona = "anonymous" | "employee" | "hc" | "hc_corrector" | "corrector_only" | "super_admin";
 
 const PERMISSIONS: Record<Persona, string[]> = {
   anonymous: [],
   employee: [],
   hc: ["employees.read.all", "employment.read", "employment.manage"],
   hc_corrector: ["employment.read", "employment.manage", "employment.correct"],
+  corrector_only: ["employment.read", "employment.correct"],
   super_admin: [],
 };
 
@@ -80,11 +81,34 @@ const SK_BODY = {
   effectiveOn: "2027-07-01",
 };
 
+const SK_ROW = {
+  ...PK_ROW,
+  id: SK_ID,
+  documentKind: "SURAT_KEPUTUSAN",
+  documentNumber: "012/SK/YSQ/2027",
+  signedOn: "2027-06-25",
+  pkType: null,
+  employeeId: null,
+  contractFrom: null,
+  contractTo: null,
+  category: null,
+  signatoryEmployerLabel: null,
+  skType: "SK_PENEMPATAN",
+  subject: "Penempatan guru semester ganjil 2027/2028",
+  issuingAuthorityLabel: "Ketua Yayasan",
+  effectiveOn: "2027-07-01",
+  effectiveTo: null,
+  employeeNumber: null,
+  employeeName: null,
+};
+
 interface PoolOptions {
   mode?: "OFF" | "SHADOW";
   linkedActionCount?: number;
   documentMissing?: boolean;
   numberTaken?: boolean;
+  /** The row every document read returns; defaults to the Perjanjian Kerja. */
+  row?: typeof PK_ROW;
 }
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
@@ -119,7 +143,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("count(*)::text AS total")) return { rows: [{ total: "1" }], rowCount: 1 };
     if (sql.includes("FROM employment_decision_documents d")) {
       if (options.documentMissing) return { rows: [], rowCount: 0 };
-      return { rows: [{ ...PK_ROW, linkedActionCount: options.linkedActionCount ?? 0 }], rowCount: 1 };
+      return { rows: [{ ...(options.row ?? PK_ROW), linkedActionCount: options.linkedActionCount ?? 0 }], rowCount: 1 };
     }
     if (sql.includes("FROM employment_action_documents link")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employment_decision_document_corrections")) return { rows: [], rowCount: 0 };
@@ -223,10 +247,27 @@ describe("EMP-010-A recording PK and SK", () => {
   });
 
   it("records a Surat Keputusan without an employee", async () => {
-    const { response, writes } = await call("hc", "POST", "/admin/decision-documents", { payload: SK_BODY });
+    const { response, writes } = await call("hc", "POST", "/admin/decision-documents", { row: SK_ROW, payload: SK_BODY });
     expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      documentKind: "SURAT_KEPUTUSAN",
+      skType: "SK_PENEMPATAN",
+      employeeId: null,
+      contractTo: null,
+      effectiveOn: "2027-07-01",
+    });
     expect(writes).toEqual(["INSERT document", "INSERT audit"]);
   });
+
+  it("refuses a Perjanjian Kerja recorded as an extension of itself", async () => {
+    const { response, writes } = await call("hc", "PATCH", `/admin/decision-documents/${PK_ID}`, {
+      payload: { ...PK_BODY, pkType: "PK_PERPANJANGAN", previousPkId: PK_ID },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: "DECISION_DOCUMENT_INVALID", field: "previousPkId" });
+    expect(writes).toEqual([]);
+  });
+
 
   it("rejects a Perjanjian Kerja without a contract end date", async () => {
     const { response, writes } = await call("hc", "POST", "/admin/decision-documents", {
@@ -284,6 +325,39 @@ describe("EMP-010-B lock and correction", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(writes).toEqual(["UPDATE document", "INSERT correction", "INSERT audit"]);
+  });
+
+  it("records a correction on a document no action uses yet", async () => {
+    const { response, writes } = await call("hc_corrector", "POST", `/admin/decision-documents/${PK_ID}/corrections`, {
+      payload: { ...PK_BODY, notes: "Disesuaikan dengan arsip", reason: "Catatan arsip dilengkapi" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(writes).toEqual(["UPDATE document", "INSERT correction", "INSERT audit"]);
+  });
+
+  it("refuses a plain edit to an account holding only employment.correct", async () => {
+    const { response, writes } = await call("corrector_only", "PATCH", `/admin/decision-documents/${PK_ID}`, {
+      payload: PK_BODY,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses a write whose expected version is stale", async () => {
+    const { response, writes } = await call("hc", "PATCH", `/admin/decision-documents/${PK_ID}`, {
+      payload: { ...PK_BODY, expectedUpdatedAt: "2027-06-19T03:00:00.000Z" },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_VERSION_CONFLICT" });
+    expect(writes).toEqual([]);
+  });
+
+  it("accepts a write whose expected version still matches", async () => {
+    const { response, writes } = await call("hc", "PATCH", `/admin/decision-documents/${PK_ID}`, {
+      payload: { ...PK_BODY, expectedUpdatedAt: "2027-06-20T03:00:00.000Z" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(writes).toEqual(["UPDATE document", "INSERT audit"]);
   });
 
   it("requires a reason of at least ten characters for a correction", async () => {

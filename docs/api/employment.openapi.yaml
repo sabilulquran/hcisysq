@@ -234,15 +234,18 @@ paths:
       operationId: updateDecisionDocument
       summary: Edit a document no action uses yet (EMP-010-B)
       description: |
-        Requires employment.manage. Rejected with DECISION_DOCUMENT_LOCKED once the
-        document is linked to a recorded action; use the correction path instead.
-        The kind, and the employee of a Perjanjian Kerja, cannot change.
+        Requires employment.manage. The body replaces the document in full, so an
+        omitted optional field is cleared. Rejected with DECISION_DOCUMENT_LOCKED
+        once the document is linked to a recorded action; use the correction path
+        instead. The kind, and the employee of a Perjanjian Kerja, cannot change.
+        The lock and the kind are checked on the row read under FOR UPDATE, so an
+        action linking the document meanwhile is never missed.
       parameters: [{ $ref: '#/components/parameters/DocumentId' }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/DecisionDocumentWrite' }
+            schema: { $ref: '#/components/schemas/DecisionDocumentEdit' }
       responses:
         '200':
           description: Updated
@@ -270,7 +273,7 @@ paths:
           application/json:
             schema:
               allOf:
-                - { $ref: '#/components/schemas/DecisionDocumentWrite' }
+                - { $ref: '#/components/schemas/DecisionDocumentEdit' }
                 - type: object
                   required: [reason]
                   properties:
@@ -308,7 +311,8 @@ components:
         EMPLOYEE_NOT_FOUND, EMPLOYMENT_HISTORY_DISABLED, EMPLOYMENT_MODE_NOT_AVAILABLE,
         DECISION_DOCUMENT_INVALID (with a field name), DECISION_DOCUMENT_NOT_FOUND,
         DECISION_DOCUMENT_NUMBER_TAKEN, DECISION_DOCUMENT_LOCKED,
-        DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH.
+        DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,
+        EMPLOYMENT_VERSION_CONFLICT.
       content:
         application/json:
           schema:
@@ -359,6 +363,18 @@ components:
         issuingAuthorityLabel: { type: [string, 'null'], maxLength: 500, description: Text only; proves no authority. }
         effectiveOn: { type: [string, 'null'], format: date }
         effectiveTo: { type: [string, 'null'], format: date }
+    DecisionDocumentEdit:
+      allOf:
+        - { $ref: '#/components/schemas/DecisionDocumentWrite' }
+        - type: object
+          properties:
+            expectedUpdatedAt:
+              type: string
+              format: date-time
+              description: |
+                The updatedAt the operator had on screen. When it no longer matches
+                the stored row the write is refused with EMPLOYMENT_VERSION_CONFLICT.
+                Omitted means last write wins.
     DecisionDocument:
       allOf:
         - { $ref: '#/components/schemas/DecisionDocumentWrite' }

@@ -101,7 +101,9 @@ Two decisions this step settled, both DRAFT until the owner says otherwise:
 - the register follows the employment rollout mode and answers `EMPLOYMENT_HISTORY_DISABLED` while it is `OFF`, so no document is recorded before HC starts the SHADOW review;
 - a document that no action uses yet is edited in place with `employment.manage` (`PATCH`); the audited correction path (`employment.correct`) is for a document already linked, which is what the spec locks. Neither path ever rewrites the kind, nor the employee of a Perjanjian Kerja: those make a different document.
 
-New error code beyond spec §12: `DECISION_DOCUMENT_NUMBER_TAKEN` (409) for the unique (kind, number, signing year) series, and `DECISION_DOCUMENT_INVALID` (400) which carries the offending `field`.
+New error codes beyond the original spec §12 table, now added to it: `DECISION_DOCUMENT_NUMBER_TAKEN` (409) for the unique (kind, number, signing year) series, `DECISION_DOCUMENT_INVALID` (400) which carries the offending `field`, `DECISION_DOCUMENT_NOT_FOUND` (404) and `EMPLOYEE_NOT_FOUND` (404). `EMPLOYMENT_VERSION_CONFLICT` is reused for an edit whose `expectedUpdatedAt` is stale.
+
+Independent review (2026-10-27) closed on this step: the lock, the kind, the Perjanjian Kerja employee, and the values a correction keeps are all decided inside the transaction on the row read under `FOR UPDATE`, so an action linking the document meanwhile cannot let a plain edit slip past the lock once S5/S6 add the linking path; `PATCH` replaces the document in full (documented in OpenAPI); paging has a unique tiebreaker; search escapes `%` and `_`; a Perjanjian Kerja cannot extend itself.
 
 **Spec:** EMP-010-A/B/C, §4.5, §13.5.  
 **Prerequisite decisions:** D-08 (accepted: PK and SK are separate kinds), D-09 (accepted).

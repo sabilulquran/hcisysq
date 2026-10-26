@@ -108,7 +108,8 @@ export async function listDecisionDocuments(
   };
 
   if (query.search) {
-    params.push(`%${query.search.trim().toLowerCase()}%`);
+    // Escape the wildcards so a number containing % or _ searches literally.
+    params.push(`%${query.search.trim().toLowerCase().replace(/[\\%_]/g, "\\$&")}%`);
     const placeholder = `$${params.length}`;
     filters.push(
       `(lower(d.document_number) LIKE ${placeholder}
@@ -136,7 +137,7 @@ export async function listDecisionDocuments(
   const rows = await db.query<RawRow>(
     `SELECT ${SELECT_COLUMNS}
      ${where}
-     ORDER BY d.signed_on DESC, d.document_number DESC
+     ORDER BY d.signed_on DESC, d.document_number DESC, d.id DESC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize],
   );
@@ -287,11 +288,16 @@ export async function insertDecisionDocumentCorrection(
   return id;
 }
 
-/** Locks the row for the read-modify-write of an edit or a correction. */
-export async function lockDecisionDocumentRow(client: PoolClient, id: string): Promise<boolean> {
-  const result = await client.query<{ id: string }>(
+/**
+ * Locks the row and returns it as it stands inside the transaction, so an edit
+ * or a correction decides on current values — above all on whether an action
+ * has linked the document meanwhile (EMP-010-B).
+ */
+export async function lockDecisionDocument(client: PoolClient, id: string): Promise<DecisionDocumentRow | null> {
+  const locked = await client.query<{ id: string }>(
     "SELECT id FROM employment_decision_documents WHERE id = $1 FOR UPDATE",
     [id],
   );
-  return result.rowCount === 1;
+  if (locked.rowCount !== 1) return null;
+  return getDecisionDocument(client, id);
 }

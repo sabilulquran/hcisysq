@@ -8,19 +8,21 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import { PaginationBar } from "@/components/PaginationBar";
 import { EmploymentStateNotice } from "@/components/employment/EmploymentPanels";
 import {
+  type Draft,
   PK_CATEGORY_LABEL,
   PK_TYPE_LABEL,
   SK_TYPE_LABEL,
   correctDecisionDocument,
   createDecisionDocument,
+  draftFrom,
+  emptyDraft,
   getDecisionDocument,
   listDecisionDocuments,
+  payloadOf,
   updateDecisionDocument,
-  type DecisionDocument,
   type DecisionDocumentDetail,
   type DecisionDocumentKind,
   type DecisionDocumentPage,
-  type DecisionDocumentWrite,
   type PkCategory,
   type PkType,
   type SkType,
@@ -31,86 +33,6 @@ const card = "rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[
 const field = "h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15";
 const primaryButton = "h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground hover:bg-brand-primary-deep disabled:opacity-60";
 const quietButton = "h-10 rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface";
-
-type Draft = DecisionDocumentWrite & { reason: string };
-
-export function emptyDraft(kind: DecisionDocumentKind): Draft {
-  return {
-    documentKind: kind,
-    documentNumber: "",
-    signedOn: "",
-    externalReference: "",
-    notes: "",
-    pkType: kind === "PERJANJIAN_KERJA" ? "PK_BARU" : null,
-    employeeId: null,
-    contractFrom: "",
-    contractTo: "",
-    category: kind === "PERJANJIAN_KERJA" ? "KONTRAK" : null,
-    signatoryEmployerLabel: "",
-    previousPkId: null,
-    skType: kind === "SURAT_KEPUTUSAN" ? "SK_PENEMPATAN" : null,
-    subject: "",
-    issuingAuthorityLabel: "",
-    effectiveOn: "",
-    effectiveTo: "",
-    reason: "",
-  };
-}
-
-export function draftFrom(document: DecisionDocument): Draft {
-  return {
-    documentKind: document.documentKind,
-    documentNumber: document.documentNumber,
-    signedOn: document.signedOn,
-    externalReference: document.externalReference ?? "",
-    notes: document.notes ?? "",
-    pkType: document.pkType ?? null,
-    employeeId: document.employeeId ?? null,
-    contractFrom: document.contractFrom ?? "",
-    contractTo: document.contractTo ?? "",
-    category: document.category ?? null,
-    signatoryEmployerLabel: document.signatoryEmployerLabel ?? "",
-    previousPkId: document.previousPkId ?? null,
-    skType: document.skType ?? null,
-    subject: document.subject ?? "",
-    issuingAuthorityLabel: document.issuingAuthorityLabel ?? "",
-    effectiveOn: document.effectiveOn ?? "",
-    effectiveTo: document.effectiveTo ?? "",
-    reason: "",
-  };
-}
-
-/** Empty optional text is sent as null so the API stores an absent value, not "". */
-export function payloadOf(draft: Draft): DecisionDocumentWrite {
-  const optional = (value: string | null | undefined) => (value && value.trim() ? value.trim() : null);
-  const base: DecisionDocumentWrite = {
-    documentKind: draft.documentKind,
-    documentNumber: draft.documentNumber.trim(),
-    signedOn: draft.signedOn,
-    externalReference: optional(draft.externalReference),
-    notes: optional(draft.notes),
-  };
-  if (draft.documentKind === "PERJANJIAN_KERJA") {
-    return {
-      ...base,
-      pkType: draft.pkType ?? null,
-      employeeId: draft.employeeId ?? null,
-      contractFrom: optional(draft.contractFrom),
-      contractTo: optional(draft.contractTo),
-      category: draft.category ?? null,
-      signatoryEmployerLabel: optional(draft.signatoryEmployerLabel),
-      previousPkId: draft.previousPkId ?? null,
-    };
-  }
-  return {
-    ...base,
-    skType: draft.skType ?? null,
-    subject: optional(draft.subject),
-    issuingAuthorityLabel: optional(draft.issuingAuthorityLabel),
-    effectiveOn: optional(draft.effectiveOn),
-    effectiveTo: optional(draft.effectiveTo),
-  };
-}
 
 function Labelled({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -213,11 +135,15 @@ export function DecisionDocumentRegister({
         setNotice(`Dokumen ${created.documentNumber} tercatat.`);
         await openDetail(created.id);
       } else if (form.mode === "edit" && selected) {
-        await updateDecisionDocument(selected.id, payload);
+        await updateDecisionDocument(selected.id, { ...payload, expectedUpdatedAt: selected.updatedAt });
         setNotice("Dokumen diperbarui.");
         await openDetail(selected.id);
       } else if (form.mode === "correction" && selected) {
-        await correctDecisionDocument(selected.id, { ...payload, reason: form.draft.reason });
+        await correctDecisionDocument(selected.id, {
+          ...payload,
+          reason: form.draft.reason,
+          expectedUpdatedAt: selected.updatedAt,
+        });
         setNotice("Koreksi tercatat; nilai sebelumnya disimpan.");
         await openDetail(selected.id);
       }

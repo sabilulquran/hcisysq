@@ -19,7 +19,7 @@ import {
   isIsoDate,
   previousValuesOf,
   validateDecisionDocument,
-  type DecisionDocumentInput,
+  type DecisionDocumentValues,
 } from "./domain/index.js";
 import {
   DecisionDocumentNumberTaken,
@@ -29,7 +29,7 @@ import {
   insertDecisionDocument,
   insertDecisionDocumentCorrection,
   listDecisionDocuments,
-  lockDecisionDocumentRow,
+  lockDecisionDocument,
   updateDecisionDocument,
 } from "./infrastructure/postgres-decision-document-store.js";
 import { audit, getRolloutMode } from "./infrastructure/postgres-employment-store.js";
@@ -56,7 +56,9 @@ const documentBody = z.object({
   effectiveTo: z.string().refine(isIsoDate).nullish(),
 });
 
-const correctionBody = documentBody.extend({ reason: z.string().trim().min(10).max(500) });
+/** expectedUpdatedAt is the version the operator had on screen (spec §12 EMPLOYMENT_VERSION_CONFLICT). */
+const editBody = documentBody.extend({ expectedUpdatedAt: z.string().datetime().optional() });
+const correctionBody = editBody.extend({ reason: z.string().trim().min(10).max(500) });
 
 const listQuery = z.object({
   kind: z.enum(DECISION_DOCUMENT_KINDS),
@@ -118,27 +120,44 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
     return send(reply, 400, { code: "DECISION_DOCUMENT_INVALID", message });
   }
 
+  /** Checks the references the validated values actually keep; never the raw body. */
   async function validateReferences(
     reply: FastifyReply,
-    input: DecisionDocumentInput,
+    values: DecisionDocumentValues,
+    documentId: string | null,
   ): Promise<boolean> {
-    if (input.employeeId) {
-      const employee = await pool.query("SELECT id FROM employees WHERE id = $1", [input.employeeId]);
+    if (values.employeeId) {
+      const employee = await pool.query("SELECT id FROM employees WHERE id = $1", [values.employeeId]);
       if (!employee.rows[0]) {
         await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
         return false;
       }
     }
-    if (input.previousPkId) {
-      const previous = await getDecisionDocument(pool, input.previousPkId);
-      if (!previous || previous.documentKind !== "PERJANJIAN_KERJA") {
+    if (values.previousPkId) {
+      if (values.previousPkId === documentId) {
         await send(reply, 422, {
-          code: "DECISION_DOCUMENT_KIND_INVALID",
+          code: "DECISION_DOCUMENT_INVALID",
+          field: "previousPkId",
+          message: "Perjanjian Kerja tidak dapat menjadi perpanjangan dari dirinya sendiri.",
+        });
+        return false;
+      }
+      const previous = await getDecisionDocument(pool, values.previousPkId);
+      if (!previous) {
+        await send(reply, 404, {
+          code: "DECISION_DOCUMENT_NOT_FOUND",
           message: "Perjanjian Kerja sebelumnya tidak ditemukan.",
         });
         return false;
       }
-      if (previous.employeeId !== input.employeeId) {
+      if (previous.documentKind !== "PERJANJIAN_KERJA") {
+        await send(reply, 422, {
+          code: "DECISION_DOCUMENT_KIND_INVALID",
+          message: "Dokumen sebelumnya bukan Perjanjian Kerja.",
+        });
+        return false;
+      }
+      if (previous.employeeId !== values.employeeId) {
         await send(reply, 422, {
           code: "DECISION_DOCUMENT_EMPLOYEE_MISMATCH",
           message: "Perjanjian Kerja ini milik pegawai lain.",
@@ -180,8 +199,9 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
     if (!validation.ok) {
       return send(reply, 400, { ...validation.failure });
     }
-    if (!(await validateReferences(reply, body.data))) return;
+    if (!(await validateReferences(reply, validation.value, null))) return;
 
+    let recorded = "";
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -200,8 +220,7 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
         },
       });
       await client.query("COMMIT");
-      const created = await getDecisionDocument(pool, id);
-      return send(reply, 201, created);
+      recorded = id;
     } catch (error) {
       await client.query("ROLLBACK");
       if (error instanceof DecisionDocumentNumberTaken) {
@@ -214,6 +233,7 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
     } finally {
       client.release();
     }
+    return send(reply, 201, await getDecisionDocument(pool, recorded));
   });
 
   app.get("/admin/decision-documents/:documentId", async (request, reply) => {
@@ -234,6 +254,12 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
    * One write path for both an edit of an unlinked document (employment.manage)
    * and an audited correction of a locked one (employment.correct): the body of
    * a correction carries a reason, and the prior values are kept either way.
+   *
+   * Everything that depends on the stored row — the kind, the Perjanjian Kerja
+   * employee, the lock, and the values a correction keeps — is decided inside
+   * the transaction on the row read under FOR UPDATE, so an action linking the
+   * document meanwhile cannot let a plain edit slip past the lock, and the
+   * correction never keeps values that were already stale when it was read.
    */
   async function writeDocument(
     request: FastifyRequest,
@@ -245,7 +271,7 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
     if (!principal) return;
     const params = documentParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "Dokumen tidak valid.");
-    const parsed = mode === "edit" ? documentBody.safeParse(request.body) : correctionBody.safeParse(request.body);
+    const parsed = mode === "edit" ? editBody.safeParse(request.body) : correctionBody.safeParse(request.body);
     if (!parsed.success) {
       return invalid(reply, mode === "correction" ? "Data koreksi tidak valid (alasan minimal 10 karakter)." : undefined);
     }
@@ -253,38 +279,48 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
 
     const body = parsed.data;
     const reason: string = "reason" in body && typeof body.reason === "string" ? body.reason : "";
-    const existing = await getDecisionDocument(pool, params.data.documentId);
-    if (!existing) return send(reply, 404, { code: "DECISION_DOCUMENT_NOT_FOUND", message: "Dokumen tidak ditemukan." });
-    if (body.documentKind !== existing.documentKind) {
-      return send(reply, 422, {
-        code: "DECISION_DOCUMENT_KIND_INVALID",
-        message: "Jenis dokumen tidak dapat diubah. Catat dokumen baru bila jenisnya berbeda.",
-      });
-    }
-    if (existing.documentKind === "PERJANJIAN_KERJA" && body.employeeId !== existing.employeeId) {
-      return send(reply, 422, {
-        code: "DECISION_DOCUMENT_EMPLOYEE_MISMATCH",
-        message: "Pegawai pada Perjanjian Kerja tidak dapat diubah.",
-      });
-    }
-    if (mode === "edit" && existing.locked) {
-      return send(reply, 409, {
-        code: "DECISION_DOCUMENT_LOCKED",
-        message: "Dokumen sudah dipakai pada tindakan; gunakan koreksi.",
-      });
-    }
-
     const validation = validateDecisionDocument(body);
     if (!validation.ok) return send(reply, 400, { ...validation.failure });
-    if (!(await validateReferences(reply, body))) return;
+    if (!(await validateReferences(reply, validation.value, params.data.documentId))) return;
 
+    let written = false;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      if (!(await lockDecisionDocumentRow(client, existing.id))) {
+      const existing = await lockDecisionDocument(client, params.data.documentId);
+      if (!existing) {
         await client.query("ROLLBACK");
         return send(reply, 404, { code: "DECISION_DOCUMENT_NOT_FOUND", message: "Dokumen tidak ditemukan." });
       }
+      if (body.documentKind !== existing.documentKind) {
+        await client.query("ROLLBACK");
+        return send(reply, 422, {
+          code: "DECISION_DOCUMENT_KIND_INVALID",
+          message: "Jenis dokumen tidak dapat diubah. Catat dokumen baru bila jenisnya berbeda.",
+        });
+      }
+      if (existing.documentKind === "PERJANJIAN_KERJA" && validation.value.employeeId !== existing.employeeId) {
+        await client.query("ROLLBACK");
+        return send(reply, 422, {
+          code: "DECISION_DOCUMENT_EMPLOYEE_MISMATCH",
+          message: "Pegawai pada Perjanjian Kerja tidak dapat diubah.",
+        });
+      }
+      if (mode === "edit" && existing.locked) {
+        await client.query("ROLLBACK");
+        return send(reply, 409, {
+          code: "DECISION_DOCUMENT_LOCKED",
+          message: "Dokumen sudah dipakai pada tindakan; gunakan koreksi.",
+        });
+      }
+      if (body.expectedUpdatedAt && body.expectedUpdatedAt !== existing.updatedAt) {
+        await client.query("ROLLBACK");
+        return send(reply, 409, {
+          code: "EMPLOYMENT_VERSION_CONFLICT",
+          message: "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi.",
+        });
+      }
+
       const previousValues = previousValuesOf(existing);
       const nextValues = previousValuesOf(validation.value);
       await updateDecisionDocument(client, existing.id, validation.value);
@@ -309,7 +345,7 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
         },
       });
       await client.query("COMMIT");
-      return send(reply, 200, await getDecisionDocument(pool, existing.id));
+      written = true;
     } catch (error) {
       await client.query("ROLLBACK");
       if (error instanceof DecisionDocumentNumberTaken) {
@@ -322,6 +358,8 @@ export async function registerDecisionDocumentRoutes(app: FastifyInstance, pool:
     } finally {
       client.release();
     }
+    if (!written) return;
+    return send(reply, 200, await getDecisionDocument(pool, params.data.documentId));
   }
 
   app.patch("/admin/decision-documents/:documentId", (request, reply) => writeDocument(request, reply, "edit"));

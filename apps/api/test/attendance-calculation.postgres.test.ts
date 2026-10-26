@@ -240,6 +240,8 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
       [mapped],
     );
     expect(blocks.rows).toEqual([{ sequence: 1, status: "present" }, { sequence: 2, status: "absent" }]);
+  });
+
   it("sums every approved overtime request and stores the kind of day (ATT-011-6a)", async () => {
     for (const [minutes, status] of [[60, "approved"], [45, "approved"], [30, "rejected"]] as const) {
       await client.query(

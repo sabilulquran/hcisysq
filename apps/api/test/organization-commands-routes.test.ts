@@ -127,21 +127,24 @@ const ACTING = {
   effectiveFrom: "2026-09-01", effectiveTo: "2026-12-31", reason: "Menunggu pengangkatan",
 };
 
-describe("ORG-008-4a a command may not grant what its parts do not", () => {
+describe("ORG-008-4a/8 permission for commands", () => {
   it("lets an HC admin place employees with organization.manage alone", async () => {
     const { response } = await call(PLACE, { permissions: ["organization.manage"] });
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({ commandType: "PLACE_EMPLOYEES" });
   });
 
-  it("refuses an HC admin a command that records authority, and says what it needs", async () => {
-    const { response, query } = await call(ACTING, { permissions: ["organization.manage"] });
+  it("lets an HC admin record authority inside an unpublished change (ORG-008-8, decision O-1)", async () => {
+    // Before ORG-008-8 this was refused. O-1: HC administrators compose every part of a change set;
+    // nothing takes effect until a holder of approvals.policy.manage publishes it.
+    const { response } = await call(ACTING, { permissions: ["organization.manage"] });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({ commandType: "APPOINT_ACTING" });
+  });
 
+  it("still refuses an authority command to a session without organization.manage", async () => {
+    const { response, query } = await call(ACTING, { permissions: ["approvals.policy.manage"] });
     expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      code: "FORBIDDEN",
-      details: { commandType: "APPOINT_ACTING", requires: "approvals.policy.manage" },
-    });
     // Nothing was written, not even the revision bump.
     expect(query.mock.calls.some(([sql]) => String(sql).includes("SET revision = revision + 1"))).toBe(false);
   });

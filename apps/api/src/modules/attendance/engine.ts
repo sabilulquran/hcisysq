@@ -636,9 +636,10 @@ export async function materializeAttendanceResult(
       clarifications: clarifications.rows.map((item) => item.id),
       leave: disposition?.leaveRequestId ?? null,
       resolutionCase: disposition?.resolutionCaseId ?? null,
-      // Same shape as before for zero or one request, so unchanged days keep their input hash.
       overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
-      ...(publicHoliday ? { publicHoliday: true } : {}),
+      // The kind of day is part of the input: versions are immutable, so a day calculated before
+      // ATT-011-6a gets one new version carrying day_type on its next Kalkulasi, then stays stable.
+      dayType,
       computed: {
         status: computed.status,
         workedMinutes: computed.workedMinutes,
@@ -653,7 +654,7 @@ export async function materializeAttendanceResult(
         overtimeMinutes: computed.overtimeMinutes,
       },
     };
-    const inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    let inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
     const existing = await client.query<ResultRow>(
       `SELECT
@@ -670,13 +671,19 @@ export async function materializeAttendanceResult(
          day_type AS "dayType", holiday_scheduled_work AS "holidayScheduledWork",
          created_at AS "createdAt"
        FROM attendance_result_versions
-       WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3
+       WHERE employee_id = $1 AND work_date = $2::date
+       ORDER BY version DESC
        LIMIT 1`,
-      [employeeId, workDate, inputHash],
+      [employeeId, workDate],
     );
-    if (existing.rows[0]) {
+    // Idempotent against the latest version only: inputs that return to an older state (a holiday added
+    // then removed) must produce a new latest version, not silently keep the newer one.
+    const latest = existing.rows[0];
+    const sameAsLatest = latest && (latest.inputHash === inputHash
+      || latest.inputHash === createHash("sha256").update(JSON.stringify({ ...input, recurrence: latest.version })).digest("hex"));
+    if (latest && sameAsLatest) {
       await client.query("COMMIT");
-      return existing.rows[0];
+      return latest;
     }
 
     const versionResult = await client.query<{ version: number }>(
@@ -685,6 +692,14 @@ export async function materializeAttendanceResult(
        WHERE employee_id = $1 AND work_date = $2::date`,
       [employeeId, workDate],
     );
+    // The hash is unique per day; an older version with the same inputs gets the new version number mixed in.
+    const repeated = await client.query(
+      "SELECT 1 FROM attendance_result_versions WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3",
+      [employeeId, workDate, inputHash],
+    );
+    if (repeated.rows[0]) {
+      inputHash = createHash("sha256").update(JSON.stringify({ ...input, recurrence: versionResult.rows[0]?.version ?? 1 })).digest("hex");
+    }
     const result = await client.query<ResultRow>(
       `INSERT INTO attendance_result_versions (
          id, employee_id, work_date, version, status, schedule_template_id, schedule_version_id, roster_id,

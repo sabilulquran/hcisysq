@@ -56,8 +56,9 @@ describe("ATT-011-6a overtime routes", () => {
     if (sql.includes("FROM attendance_overtime_requests") && sql.includes("FOR UPDATE")) {
       return { rows: [{ employeeId: EMPLOYEE, workDate: "2026-10-20", requestedMinutes: 120 }] };
     }
-    if (sql.includes("WITH filtered AS")) {
-      return { rows: [{ id: "o", employeeName: "Pegawai Sintetis", workDate: "2026-10-20", status: "submitted", dayType: "rest_day", scanOutsideScheduleMinutes: 240, initiatedBy: "employee", total: 31 }] };
+    if (sql.includes("SELECT count(*)::int AS total")) return { rows: [{ total: 31 }] };
+    if (sql.includes("WITH page AS")) {
+      return { rows: [{ id: "o", employeeName: "Pegawai Sintetis", workDate: "2026-10-20", status: "submitted", dayType: "rest_day", scanOutsideScheduleMinutes: 240, initiatedBy: "employee" }] };
     }
     return { rows: [] };
   };
@@ -110,8 +111,7 @@ describe("ATT-011-6a overtime routes", () => {
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toMatchObject({ page: 2, pageSize: 25, total: 31, pageCount: 2 });
     expect(response.json().items[0]).toMatchObject({ dayType: "rest_day", scanOutsideScheduleMinutes: 240 });
-    expect(response.json().items[0]).not.toHaveProperty("total");
-    const list = statements.find((item) => item.sql.includes("WITH filtered AS"))!;
+    const list = statements.find((item) => item.sql.includes("WITH page AS"))!;
     expect(list.values).toEqual([["rejected", "cancelled"], null, 25, 25]);
     expect((await call("GET", "/admin/attendance/overtime?pageSize=101")).statusCode).toBe(400);
   });

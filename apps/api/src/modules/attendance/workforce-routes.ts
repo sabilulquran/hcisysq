@@ -26,6 +26,7 @@ import {
 } from "./calculation-runner.js";
 import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
+import { listOvertimeForHc } from "./overtime-list.js";
 import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -1642,75 +1643,10 @@ export async function registerAttendanceWorkforceRoutes(
     if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
     const statuses = query.data.status === "all" ? null
       : query.data.status === "closed" ? ["rejected", "cancelled"] : [query.data.status];
-    const rows = await pool.query(
-      `WITH filtered AS (
-         SELECT request.*
-         FROM attendance_overtime_requests request
-         JOIN employees employee ON employee.id = request.employee_id
-         WHERE ($1::text[] IS NULL OR request.status = ANY($1::text[]))
-           AND ($2::uuid IS NULL OR employee.organizational_unit_id = $2)
-       )
-       SELECT request.id, request.employee_id AS "employeeId",
-         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
-         unit.name AS "unitName", request.work_date::text AS "workDate",
-         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
-         request.note, request.status, request.decision_note AS "decisionNote",
-         request.created_at AS "createdAt", request.decided_at AS "decidedAt",
-         CASE WHEN EXISTS (
-           SELECT 1 FROM attendance_overtime_events submitted
-           WHERE submitted.overtime_request_id = request.id AND submitted.event_type = 'submitted'
-             AND submitted.payload->>'createdByHc' = 'true'
-         ) THEN 'hc' ELSE 'employee' END AS "initiatedBy",
-         result.day_type AS "dayType",
-         CASE
-           WHEN result.id IS NULL THEN NULL
-           WHEN result.scheduled_start_at IS NOT NULL AND (result.first_check_in_at IS NOT NULL OR result.last_check_out_at IS NOT NULL) THEN
-             (greatest(0, coalesce(extract(epoch FROM result.scheduled_start_at - result.first_check_in_at), 0))
-              + greatest(0, coalesce(extract(epoch FROM result.last_check_out_at - result.scheduled_end_at), 0)))::int / 60
-           ELSE span.minutes
-         END AS "scanOutsideScheduleMinutes",
-         count(*) OVER ()::int AS total
-       FROM filtered request
-       JOIN employees employee ON employee.id = request.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       LEFT JOIN LATERAL (
-         SELECT version.id, version.day_type, version.scheduled_start_at, version.scheduled_end_at,
-           version.first_check_in_at, version.last_check_out_at
-         FROM attendance_result_versions version
-         WHERE version.employee_id = request.employee_id AND version.work_date = request.work_date
-         ORDER BY version.version DESC LIMIT 1
-       ) result ON true
-       -- A day without a schedule: every scan of the day is outside it (first to last scan).
-       LEFT JOIN LATERAL (
-         SELECT (extract(epoch FROM max(punch.at) - min(punch.at)) / 60)::int AS minutes
-         FROM (
-           SELECT event.occurred_at AS at FROM attendance_events event
-           WHERE event.employee_id = request.employee_id
-             AND (event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date = request.work_date
-           UNION ALL
-           SELECT adms.occurred_at FROM attendance_adms_events adms
-           JOIN attendance_adms_employee_mappings mapping
-             ON mapping.device_id = adms.device_id AND mapping.pin = adms.pin
-            AND adms.occurred_at >= mapping.effective_from
-            AND (mapping.effective_to IS NULL OR adms.occurred_at < mapping.effective_to)
-           WHERE mapping.employee_id = request.employee_id
-             AND (adms.occurred_at AT TIME ZONE 'Asia/Jakarta')::date = request.work_date
-         ) punch
-         HAVING count(*) > 0
-       ) span ON result.scheduled_start_at IS NULL
-       ORDER BY request.work_date DESC, request.created_at DESC
-       LIMIT $3 OFFSET $4`,
-      [statuses, query.data.unitId ?? null, query.data.pageSize, (query.data.page - 1) * query.data.pageSize],
-    );
-    const total = (rows.rows[0] as { total?: number } | undefined)?.total ?? 0;
     reply.header("Cache-Control", "no-store");
-    return reply.send({
-      page: query.data.page,
-      pageSize: query.data.pageSize,
-      total,
-      pageCount: Math.max(1, Math.ceil(total / query.data.pageSize)),
-      items: rows.rows.map(({ total: rowTotal, ...row }: Record<string, unknown>) => { void rowTotal; return row; }),
-    });
+    return reply.send(await listOvertimeForHc(pool, {
+      page: query.data.page, pageSize: query.data.pageSize, statuses, unitId: query.data.unitId ?? null,
+    }));
   });
 
   app.post("/admin/attendance/overtime", async (request, reply) => {

@@ -566,8 +566,12 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 ### 10.4 Catatan implementasi ATT-011-6a (2026-10-27)
 
 - **Engine (§7.5):** `overtime_minutes` = jumlah `approved_minutes` semua lembur disetujui pada tanggal itu,
-  bukan lagi yang terbaru saja. Hash input hari dengan nol atau satu lembur tidak berubah, sehingga
-  Kalkulasi ulang tidak membuat versi baru untuk hari yang tidak berubah.
+  bukan lagi yang terbaru saja. Jenis hari ikut menjadi input hasil; karena versi hasil tidak boleh diubah,
+  setiap hari yang dihitung sebelum rilis ini mendapat **satu** versi baru berisi `day_type` pada Kalkulasi
+  berikutnya, lalu stabil lagi.
+- **Idempoten terhadap versi terakhir saja:** bila input kembali ke keadaan lama (libur ditambah lalu
+  dihapus), engine menulis versi baru sebagai versi terakhir, bukan diam-diam mempertahankan versi yang lebih
+  baru. Sebelumnya hasil bisa tertahan pada keadaan libur.
 - **Jenis hari (§5.6):** migration `0071` menambah kolom nullable `day_type` (`working_day | rest_day |
   public_holiday`) dan `holiday_scheduled_work` pada `attendance_result_versions`. Libur kalender tetap
   `public_holiday` walaupun dijadwalkan masuk lewat jadwal per tanggal (`holiday_scheduled_work = true`).
@@ -579,7 +583,7 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   `attendance.overtime.rejected`, `attendance.overtime.cancelled` di `access_audit_events`.
 - **Layar HC (§7.4):** tab Menunggu · Disetujui · Ditolak/Dibatalkan, kolom Jenis hari, Dimulai oleh, Fakta
   scan (selisih scan terhadap jadwal, atau seluruh scan pada hari tanpa jadwal; hanya informasi), kartu di
-  HP, dan halaman standar (`GET /admin/attendance/overtime` keluar dari daftar utang PAG-5). Siapa yang
+  HP, dan halaman standar (halaman dipilih dulu, fakta scan hanya dihitung untuk baris halaman itu) (`GET /admin/attendance/overtime` keluar dari daftar utang PAG-5). Siapa yang
   memutuskan belum berubah (HC); persetujuan atasan, perintah lembur, peringatan PP 35/2021, jendela D-9,
   dan aturan Direktur adalah ATT-011-6b.
 

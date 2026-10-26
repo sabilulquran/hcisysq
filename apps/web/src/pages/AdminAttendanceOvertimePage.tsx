@@ -42,6 +42,8 @@ export function AdminAttendanceOvertimePage() {
   const apply = (result: Awaited<ReturnType<typeof listAttendanceOvertime>>) => {
     setItems(result.items);
     setPaging({ total: result.total, pageCount: result.pageCount });
+    // Deciding the last item of the last page shrinks the list; step back instead of showing nothing.
+    if (result.items.length === 0 && result.page > result.pageCount) setPage(result.pageCount);
   };
   const load = async () => apply(await listAttendanceOvertime(status, page));
   useEffect(() => {

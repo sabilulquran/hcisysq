@@ -197,6 +197,36 @@ paths:
             schema: { $ref: '#/components/schemas/AttendanceScheduleInput' }
       responses:
         '201': { description: Schedule template created }
+        '422': { description: SCHEDULE_EFFECTIVE_FROM_IN_FUTURE }
+
+  /admin/attendance/schedules/{scheduleId}/backdate:
+    post:
+      tags: [Attendance]
+      operationId: backdateAttendanceSchedule
+      x-required-permission: attendance.schedule.manage
+      description: >-
+        ATT-014 §20.10 "Mundurkan awal berlaku". Moves the start of the shift's first version to an
+        earlier date (00:00 WIB), so schedule patterns on earlier dates resolve to this shift. Only
+        earlier, never in the future; audited as `attendance.schedule.backdated` with the previous start
+        and the reason. Results already calculated change only when Kalkulasi runs again.
+      parameters:
+        - { name: scheduleId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effectiveFrom, reason]
+              properties:
+                effectiveFrom: { type: string, format: date }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200': { description: '`{ id, versionId, effectiveFrom }`' }
+        '400': { description: INVALID_SCHEDULE_BACKDATE }
+        '403': { description: Missing attendance.schedule.manage }
+        '404': { description: SCHEDULE_NOT_FOUND }
+        '409': { description: SCHEDULE_BACKDATE_NOT_EARLIER }
 
   /admin/attendance/schedule-assignments:
     get:
@@ -948,6 +978,10 @@ components:
         lateGraceMinutes: { type: integer, minimum: 0, maximum: 240 }
         earlyLeaveToleranceMinutes: { type: integer, minimum: 0, maximum: 240 }
         workLocationId: { type: [string, 'null'], format: uuid }
+        effectiveFrom:
+          type: string
+          format: date
+          description: Date (00:00 WIB) the first version applies from; default is the moment of creation. Not in the future.
 
     AttendanceOvertimeInput:
       type: object

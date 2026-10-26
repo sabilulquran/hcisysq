@@ -1,6 +1,6 @@
 # ATT-014 — Laporan & Kalkulasi Kehadiran
 
-**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan dan cetak memakai dokumen tersendiri; menunggu D-14-8 … D-14-11.**
+**Status:** DRAFT — D-14-1 … D-14-4 diterima owner 2026-10-24; D-14-5 … D-14-7 menunggu. ATT-014-1 diimplementasikan 2026-10-24 (§17), ATT-014-2 diimplementasikan 2026-10-24 (§18). **Revisi R1 diusulkan 2026-10-26 (§19): Kalkulasi menjadi langkah di dalam Laporan, cetak memakai dokumen tersendiri, perbaikan tanggal Koreksi HC, tab Perbaikan Absen, sumber absen di Data Transaksi; menunggu D-14-8 … D-14-16.**
 **Specification:** ATT-014
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu (2026-10-24):** kehadiran **tidak dihitung dan ditampilkan otomatis**.
@@ -535,7 +535,7 @@ Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1
 
 ## 19. Revisi R1 — Laporan, cetak, perbaikan absen (DRAFT, menunggu owner)
 
-**Status:** usulan. Owner meminta **tidak ada kode** untuk butir mana pun sampai rencana ini disetujui (D-14-8 … D-14-15).
+**Status:** usulan. Owner meminta **tidak ada kode** untuk butir mana pun sampai rencana ini disetujui (D-14-8 … D-14-16).
 **Pemicu:** umpan balik owner setelah mencoba rilis `hcis-254caa95` (diteruskan sesi koordinasi,
 2026-10-26), dalam kata-kata spesifikasi ini:
 
@@ -548,6 +548,8 @@ Keputusan owner 2026-10-24: "Ya, kerjakan ATT-014-2 dengan usulanmu untuk D-14-1
 4. Klarifikasi dan Koreksi HC sebaiknya satu tab: pegawai mengajukan lewat HCIS, HC menginput dari
    panel admin (§19.6).
 5. Istilah "Bukti HP" tidak jelas (§19.7).
+6. Bukti HP jangan jadi layar sendiri: dilebur ke daftar kehadiran dengan kolom sumber, GPS dan foto
+   dibuka dari barisnya (§19.7).
 
 Arah ATT-014 tidak berubah: kehadiran tetap **tidak dihitung otomatis**, hasil resmi tetap dari
 engine ATT-007 lewat run Kalkulasi, dan D-14-1 … D-14-4 tetap berlaku. Yang berubah adalah **di mana**
@@ -556,7 +558,7 @@ Kalkulasi muncul di layar dan **bagaimana** laporan dicetak. Backend ATT-014-2 (
 
 ### 19.1 Alur Laporan satu layar (menggantikan tab Kalkulasi)
 
-Menu Kehadiran menjadi: **Pantauan Hari Ini | Laporan | Klarifikasi | Bukti HP | Koreksi HC**.
+Bentuk akhir menu Kehadiran ada di §19.8 (Pantauan Hari Ini | Perbaikan Absen | Laporan).
 Tab Kalkulasi dihapus; `/admin/attendance/calculation` dialihkan ke `/admin/attendance/reports`
 minimal satu rilis.
 
@@ -630,7 +632,8 @@ uji render); setiap cetak dan ekspor teraudit.
 | D-14-12 | PR #170 (perbaikan form HC, sudah terlanjur dibuat, kini draft): dipakai sebagai dasar atau ditutup? | Dipakai sebagai dasar, ditambah form pegawai (§19.5). |
 | D-14-13 | Pemeriksaan read-only data koreksi lama di production, dan bila ada baris: status `superseded` dengan migration aditif kecil. | Ya untuk pemeriksaan; `superseded` hanya bila pemeriksaan menemukan baris. |
 | D-14-14 | Nama tab gabungan Klarifikasi + Koreksi HC. | **"Perbaikan Absen"**. Alternatif: "Klarifikasi & Koreksi". |
-| D-14-15 | "Bukti HP": ganti nama menjadi "Absen dari HP", hapus tab sendiri, tampil sebagai bukti pendukung, filter tinjauan tersembunyi selama absen HP mati. | Ya. |
+| D-14-15 | "Bukti HP" dilebur ke **Data Transaksi** di Laporan: kolom Sumber (Mesin/HP/Koreksi), lencana "Perlu ditinjau" tetap terlihat, GPS dan foto dari panel detail baris dan hanya untuk `attendance.clarification.manage`; tab Bukti HP dihapus. | Ya. |
+| D-14-16 | Bentuk akhir navigasi Kehadiran: Pantauan Hari Ini, Perbaikan Absen, Laporan, dengan pengalihan route lama §19.8. | Ya. |
 
 ### 19.5 Butir 3 — bug tanggal pada Koreksi HC dan pengajuan pegawai
 
@@ -729,30 +732,59 @@ usulan ENG-LIST-001).
 Batas tetap: data scan asli tidak pernah diubah; setiap perbaikan adalah fakta baru dengan alasan dan
 jejak keputusan.
 
-### 19.7 Butir 5 — "Bukti HP"
+### 19.7 Butir 5 dan 6 — "Bukti HP" dilebur ke daftar kehadiran
 
 **Fakta production (diperiksa read-only oleh sesi koordinasi 2026-10-26):** `MOBILE_ATTENDANCE_ENABLED`
 tidak ada di `final.env` (absen dari HP mati), dan `attendance_mobile_evidence` hanya berisi 3 baris
 lama. Tab itu praktis kosong.
 
-**Usulan (D-14-15):**
+**Tempatnya: tab Data Transaksi di alur Laporan (§19.1 langkah ③)** — satu baris = satu absen, dari
+sumber mana pun. Alasannya:
 
-1. Label diganti menjadi **"Absen dari HP"** di mana pun tampil; isinya dijelaskan sebagai "lokasi GPS
-   dan foto saat pegawai absen lewat HP".
-2. Tab sendiri **dihapus**. Bukti absen HP tampil sebagai **bukti pendukung** di panel detail Perbaikan
-   Absen dan di baris Data Transaksi Laporan (sumber "HP"), dengan tombol "Lihat foto" per bukti.
-3. Selama absen HP mati, filter "Absen HP perlu ditinjau" di Perbaikan Absen disembunyikan. Saat aktif,
-   filter itu menggantikan fungsi tab lama (bukti di luar radius yang perlu ditinjau).
-4. Aturan ATT-006 tetap: foto dibuka satu per satu lewat endpoint yang sudah ada, setiap pembukaan
-   tercatat `attendance.mobile.photo.read`, tidak ada galeri atau unduhan massal.
-5. Alamat lama `/admin/attendance/mobile-evidence` dialihkan ke Perbaikan Absen.
+- Sumber adalah sifat **tiap absen**, dan Data Transaksi adalah satu-satunya daftar yang barisnya satu
+  absen. Di daftar Perbaikan Absen barisnya satu pengajuan, sehingga absen HP yang tidak pernah
+  diajukan perbaikan tidak akan terlihat di sana.
+- Operator memeriksa absen dalam konteks lingkup dan rentang yang sama dengan laporannya, tanpa pindah
+  layar. Bila absen HP perlu diperbaiki, panel detail barisnya punya tombol **"Buat koreksi"** (hanya
+  untuk `attendance.records.manage`) yang membuka form Perbaikan Absen terisi pegawai dan tanggal kerja.
+- Panel detail di Perbaikan Absen menampilkan absen hari itu dengan komponen yang sama, sehingga
+  pemutus pengajuan juga melihat GPS/foto tanpa membuka layar lain.
 
-### 19.8 Menu Kehadiran setelah R1
+| Aspek | Rencana |
+|---|---|
+| Kolom **Sumber** | Lencana per baris: **Mesin** (nama mesin), **HP**, atau **Koreksi HC** / **Koreksi pegawai** (koreksi jam yang disetujui). Filter Sumber di kepala tabel. |
+| Satu hari, beberapa sumber | Di Data Transaksi tiap absen tetap satu baris, sehingga hari dengan scan Mesin dan HP tampil dua baris berurutan. Di Detail Harian (satu baris = satu hari) kolom Sumber menggabungkan lencana, misalnya "Mesin + HP", dan menandai mana yang dipakai engine sebagai jam masuk/pulang. |
+| **Perlu ditinjau** | Baris HP dengan `review_state = needs_review` (di luar radius lokasi atau akurasi GPS buruk) diberi lencana **"Perlu ditinjau"** berikut alasannya (jarak, akurasi). Filter cepat "Perlu ditinjau" dengan jumlahnya tampil di kepala tabel selama ada baris seperti itu dalam lingkup, terlepas dari status absen HP di server. |
+| GPS dan foto | Dibuka dari **panel detail baris**: koordinat, akurasi, jarak ke lokasi kerja, status tinjauan, dan tombol **"Lihat foto"**. Foto diambil satu per satu lewat endpoint yang sudah ada saat tombol ditekan; setiap pembukaan tercatat `attendance.mobile.photo.read`. Daftar tidak pernah memuat foto, thumbnail, atau tautan foto massal. |
+| Hak akses | Data Transaksi dibaca dengan `attendance.reports.read`. Lencana Sumber dan "Perlu ditinjau" boleh terlihat semua pembaca. **Koordinat, jarak, dan tombol foto disembunyikan** (tidak dirender, dan tidak dikirim API) untuk akun tanpa `attendance.clarification.manage`. Endpoint transaksi hanya menyertakan field GPS bila pemanggil memegang izin itu; endpoint foto tetap menolak 403 seperti sekarang. |
+| Batas | Data scan asli tidak berubah. Tidak ada aksi edit di Data Transaksi; perbaikan selalu lewat Perbaikan Absen sebagai fakta baru beralasan. Aturan ATT-006 tetap. |
+| Nama | "Bukti HP" tidak dipakai lagi. Di mana pun tampil: **"HP"** sebagai sumber, "absen lewat HP (lokasi GPS dan foto)" sebagai keterangan. |
+
+### 19.8 Bentuk akhir navigasi Kehadiran
 
 ```text
-Kehadiran:  Pantauan Hari Ini | Laporan | Perbaikan Absen
-            (sebelumnya: Pantauan Hari Ini | Kalkulasi | Klarifikasi | Bukti HP | Koreksi HC | Laporan)
+Sebelum: Pantauan Hari Ini | Kalkulasi | Klarifikasi | Bukti HP | Koreksi HC | Laporan
+Sesudah: Pantauan Hari Ini | Perbaikan Absen | Laporan
 ```
+
+| Tab | Route | Dibuka dengan | Isi |
+|---|---|---|---|
+| Pantauan Hari Ini | `/admin/attendance/daily` (tetap) | `attendance.reports.read` | §5, tidak berubah. |
+| Perbaikan Absen | `/admin/attendance/corrections` (route lama Koreksi HC dipakai ulang) | `attendance.clarification.manage` **atau** `attendance.records.manage` | §19.6. |
+| Laporan | `/admin/attendance/reports` (tetap) | `attendance.reports.read` | §19.1 (Data Transaksi + Detail Harian, model laporan, cetak). |
+
+Pengalihan, dipertahankan minimal satu rilis, lalu dihapus:
+
+| Route lama | Dialihkan ke |
+|---|---|
+| `/admin/attendance/calculation` (Kalkulasi, ATT-014-2) | `/admin/attendance/reports` |
+| `/admin/attendance/settings/recalculate` (sudah dialihkan ke Kalkulasi) | `/admin/attendance/reports` (langsung, tanpa rantai) |
+| `/admin/attendance/clarifications` | `/admin/attendance/corrections` |
+| `/admin/attendance/mobile-evidence` | `/admin/attendance/reports?tab=transactions&source=mobile` |
+| `/admin/attendance/workforce/clarifications`, `/workforce/mobile` (pra-ATT-011) | sama dengan dua baris di atas |
+
+Kartu Ringkasan, katalog layanan, dan pemetaan izin web (`authorization.ts`) ikut diperbarui; test
+navigasi memastikan setiap route lama berakhir di route yang ada.
 
 ### 19.9 Urutan paket setelah disetujui
 
@@ -761,7 +793,7 @@ Kehadiran:  Pantauan Hari Ini | Laporan | Perbaikan Absen
 | 1 | **ATT-FIX-1** Tanggal koreksi | §19.5 butir 1–3 (form HC + form pegawai + validasi API). | Tidak. |
 | 2 | **ATT-FIX-2** Pemeriksaan data lama | Jalankan kueri read-only §19.5 dengan persetujuan owner; laporkan. Bila ada baris: status `superseded` + alur penggantian. | Hanya bila ada baris (aditif). |
 | 3 | **ATT-014-3R** Alur Laporan | §19.1. | Tidak. |
-| 4 | **ATT-011-3R** Perbaikan Absen | §19.6 + §19.7. | Tidak. |
+| 4 | **ATT-011-3R** Perbaikan Absen + sumber absen | §19.6, §19.7 (kolom Sumber, panel GPS/foto, field GPS hanya untuk pemegang izin), §19.8 navigasi dan pengalihan. | Tidak. |
 | 5 | **ATT-014-4R** Cetak + model laporan | §19.2, model sesuai D-14-11. | Tidak. |
 
 Setiap paket satu PR, dirilis lewat OPS-MI8-REL-001 dengan persetujuan owner.

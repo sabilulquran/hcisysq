@@ -1,12 +1,12 @@
 # Payroll Calculation v1
 
-**Status:** DRAFT  
+**Status:** ACCEPTED (parameter bertanda `DRAFT` adalah default keputusan agent, menunggu konfirmasi process owner)  
 **Specification:** PAY-003 (v1)  
-**ADR:** ADR-0003 (PROPOSED)  
+**ADR:** ADR-0003 (ACCEPTED)  
 **Related:** PAY-001, PAY-002, PAYSLIP-001..006, ATT-010, EMP-005, AUTH-011, ORG-010  
 **Evidence:** `docs/domain/payroll-legacy-flow-audit.md` (aturan legacy dan keputusan D1–D11), `docs/domain/payroll-engine-discovery.md` (arah arsitektur)
 
-Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai parameter berasal dari spreadsheet legacy dan berstatus `DISCOVERY` sampai disahkan process owner melalui tabel kebijakan berversi. Spesifikasi ini tidak mengizinkan implementasi sebelum ADR-0003 `ACCEPTED`.
+Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai parameter berasal dari spreadsheet legacy dan berstatus `DISCOVERY` sampai disahkan process owner melalui tabel kebijakan berversi. ADR-0003 sudah `ACCEPTED` (2026-10-27), sehingga implementasi bertahap diizinkan. Setiap tahap tetap memiliki spesifikasi implementasi dan rollback plan sendiri.
 
 ## 1. Cakupan
 
@@ -56,13 +56,13 @@ Komponen awal v1 (kode final saat implementasi):
 | Kode (usulan) | Komponen | Kategori | Tunjangan tetap? |
 |---|---|---|---|
 | `BASIC` | Gaji pokok | EARNING | ya (gaji pokok) |
-| `TEACH_OVER` | Kelebihan jam | EARNING | TBD (§10 butir 2) |
-| `PERF` | Tunjangan kinerja | EARNING | TBD |
+| `TEACH_OVER` | Kelebihan jam | EARNING | tidak (§10 butir 2) |
+| `PERF` | Tunjangan kinerja | EARNING | ya (§10 butir 2) |
 | `SPOUSE` | Tunjangan pasangan | EARNING | ya |
 | `CHILD` | Tunjangan anak | EARNING | ya |
 | `FUNC` | Tunjangan fungsional | EARNING | ya |
 | `POS` | Tunjangan jabatan | EARNING | ya |
-| `SPECIAL_QUAL` | Tunjangan kualifikasi khusus | EARNING | TBD |
+| `SPECIAL_QUAL` | Tunjangan kualifikasi khusus | EARNING | ya (§10 butir 2) |
 | `BPJS_KES_ALLOW` | Tunjangan BPJS Kesehatan | EARNING | tidak |
 | `OVERTIME` | Lembur | EARNING | tidak |
 | `ARREARS` | Rapel gaji | EARNING | tidak |
@@ -104,7 +104,7 @@ Per employment, berlaku-efektif:
 - jumlah pasangan dan anak tertanggung;
 - pola kerja (penuh / Half Day / Half Day II);
 - jam mengajar per pekan (kosong = tidak terkena aturan jam);
-- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun `TBD`);
+- persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3);
 - target kualifikasi khusus (opsional);
 - kepesertaan BPJS Kesehatan: segmen (`PPU_YAYASAN`, `PBI`, `MANDIRI`, `BELUM_TERDAFTAR`), tanggal aktif, jumlah anggota keluarga tambahan, referensi SK (D2);
 - status PTKP;
@@ -121,8 +121,8 @@ Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (te
 
 | Input | Sumber v1 | Catatan |
 |---|---|---|
-| Jam lembur | Lembur disetujui ATT-010 (`approved_minutes`) dalam jendela cutoff periode | Menggantikan input manual. Jendela cutoff `TBD` (§10 butir 1). |
-| Kehadiran PKWT (transport) | Hasil kehadiran ATT dalam jendela cutoff | Definisi "hadir" untuk transport `TBD`. |
+| Jam lembur | Lembur disetujui ATT-010 (`approved_minutes`) dalam jendela cutoff periode | Menggantikan input manual. Jendela cutoff §10 butir 1 (23–22). |
+| Kehadiran PKWT (transport) | Hasil kehadiran ATT dalam jendela cutoff | Definisi "hadir": §10 butir 4. |
 | Jam mengajar PKWT | Input HC per periode | |
 | Potongan pendidikan anak | Impor/entri HC per periode (rincian SPP, katering/laundry, PPDB, buku, kegiatan) | Integrasi langsung sistem SPP di luar v1. |
 | Insentif Pj. Media | Rekap periode: jumlah konten disetujui × tarif penugasan | Modul laporan konten di luar v1. |
@@ -192,7 +192,7 @@ Periode tidak dapat diajukan bila ada blocker:
 - satu rekening dipakai lebih dari satu pegawai;
 - input periode berubah setelah perhitungan terakhir.
 
-Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang `TBD`, pegawai baru/keluar, input manual bernilai besar.
+Peringatan (tidak memblokir, wajib ditinjau): selisih per komponen dibanding periode lalu di atas ambang §10 butir 6, pegawai baru/keluar, input manual bernilai besar.
 
 ## 6. Lifecycle periode
 
@@ -219,12 +219,12 @@ Aturan:
 
 - Satu periode per bulan per legal entity; operasi bersifat idempoten (mengulang aksi tidak menggandakan hasil).
 - APPROVED mengunci snapshot input, versi kebijakan, dan baris hasil. Hasil revisi menyimpan lineage ke versi sebelumnya.
-- Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi dengan penanda, mekanismenya `TBD` bersama PAY-002.
+- Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi dengan penanda, mekanismenya §10 butir 8.
 - Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED.
 
 ## 7. Output
 
-- **Laporan payroll final** (Keuangan, Direktur, Pengurus): daftar penerima, nominal dibayar, rekening dan nama pemilik rekening, rekap per unit, total, status konfirmasi bayar. Ekspor file `TBD`.
+- **Laporan payroll final** (Keuangan, Direktur, Pengurus): daftar penerima, nominal dibayar, rekening dan nama pemilik rekening, rekap per unit, total, status konfirmasi bayar. Ekspor file §10 butir 7 (CSV UTF-8).
 - **Slip pegawai:** hasil final dipetakan ke draft PAY-001 (`lines` label/value sesuai urutan katalog) lalu dipublikasikan lewat alur PAY-002.
 - **Laporan PPh21 TER** per masa pajak dari hasil final.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
@@ -260,14 +260,20 @@ Setiap migration memiliki rollback/recovery plan pada spesifikasi implementasiny
 - Test otorisasi untuk setiap permission di §2, termasuk larangan self-approval dan read-only Pengurus.
 - Test transisi lifecycle, idempotensi, dan blocker.
 
-## 10. Keputusan terbuka
+## 10. Keputusan yang sudah ditetapkan (default `DRAFT`)
 
-1. Jendela cutoff lembur dan kehadiran PKWT per periode gaji.
-2. Komponen yang berstatus tunjangan tetap untuk dasar BPJS: tunjangan kinerja, kualifikasi khusus, kelebihan jam.
-3. Default kinerja untuk masa kerja < 1 tahun dan siapa yang menetapkan persentase kinerja.
-4. Definisi "hadir" untuk transport PKWT.
-5. Pj. Media: aturan tarif Rp30.000/Rp40.000 dan verifikator rekap.
-6. Ambang peringatan selisih antar periode.
-7. Format ekspor laporan untuk Keuangan.
-8. Mekanisme slip revisi setelah publikasi.
-9. Verifikasi naskah resmi ketentuan BPJS Kesehatan dan tabel TER PPh21 yang berlaku.
+Butir berikut sebelumnya terbuka. Agar implementasi dapat berjalan, setiap butir memakai default paling masuk akal, ditandai `DRAFT`, dan disimpan sebagai parameter kebijakan berversi sehingga process owner dapat mengubahnya tanpa perubahan kode.
+
+| # | Keputusan | Default v1 (`DRAFT`) | Dasar |
+|---|---|---|---|
+| 1 | Jendela cutoff lembur dan kehadiran PKWT | Tanggal **23 bulan sebelumnya s.d. 22 bulan periode** (Asia/Jakarta, inklusif), sama dengan cutoff Pj. Media legacy. Disimpan sebagai `cutoff_start_day`/`cutoff_end_day` per periode, dapat diubah per periode oleh HC dengan alasan. | Audit legacy §Pj. Media langkah 3 (23–22); satu jendela untuk semua input menghindari dua kalender. |
+| 2 | Komponen bertanda tunjangan tetap (dasar BPJS) | `PERF` (tunjangan kinerja) **ya**; `SPECIAL_QUAL` **ya**; `TEACH_OVER` (kelebihan jam) **tidak**. | Tunjangan kinerja dan kualifikasi khusus dibayar rutin tanpa bergantung kehadiran → tunjangan tetap. Kelebihan jam berubah tiap bulan mengikuti beban mengajar → tunjangan tidak tetap (Perpres 82/2018 Pasal 30). |
+| 3 | Default kinerja masa kerja < 1 tahun | `%tahunan = 0`, `%bulanan` diisi penilai; bila belum ada penilaian pada periode itu, `%bulanan = 100%`. Penetapan persentase dilakukan atasan langsung dan disahkan Kepala HCM lewat profil kompensasi berlaku-efektif. | Pegawai baru belum punya siklus penilaian tahunan; default 100% bulanan mencegah pemotongan tanpa dasar penilaian. |
+| 4 | Definisi "hadir" untuk transport PKWT | Hari kerja dengan **check-in tercatat** pada hasil kehadiran ATT dalam jendela cutoff, satu hari dihitung satu kali, tanpa memperhitungkan keterlambatan. Hari cuti/izin/libur tidak menghasilkan transport. | Transport mengganti ongkos perjalanan; dasarnya kedatangan fisik, bukan kelengkapan jam. |
+| 5 | Tarif dan verifikator Pj. Media | Tarif per konten disimpan pada penugasan Pj. Media (`ADDITIONAL` placement) berlaku-efektif; nilai awal Rp30.000, Rp40.000 untuk penugasan yang ditetapkan tertulis. Rekap periode diverifikasi **Kepala HCM** sebelum menjadi input. | Legacy memilih tarif manual tanpa aturan (temuan audit); mengikat tarif ke penugasan menghilangkan pilihan per bulan. |
+| 6 | Ambang peringatan selisih antar periode | Peringatan bila selisih mutlak komponen > **10%** dan > **Rp50.000** dibanding periode sebelumnya, atau pegawai baru/keluar, atau input manual > **Rp1.000.000**. Ambang disimpan sebagai kebijakan. | Dua syarat sekaligus menekan peringatan palsu pada komponen kecil. |
+| 7 | Format ekspor laporan Keuangan | **CSV UTF-8** (satu baris per penerima: NIP, nama, unit, nominal dibayar, bank, nomor rekening, nama pemilik rekening) dan tampilan HTML di HCIS. Tanpa pembuatan surat/memorandum (ADR-0003 keputusan 6). Setiap ekspor dicatat sebagai akses sensitif. | CSV cukup untuk pembuatan daftar pindah buku dan tidak mengunci ke format bank tertentu. |
+| 8 | Slip revisi setelah publikasi | Slip terbit tidak diubah. Reopen yang disetujui Direktur menghasilkan **slip revisi** dengan `revision_of` menunjuk slip sebelumnya dan penanda "Revisi"; slip lama tetap dapat dibaca pegawai. | PAYSLIP-001 melarang mutasi slip terbit; lineage menjaga jejak audit. |
+| 9 | Verifikasi naskah BPJS dan tabel TER | Nilai statutori (5%, +1% per anggota tambahan, batas atas Rp12.000.000, batas bawah UMK, tabel TER A/B/C) disimpan sebagai **baris kebijakan berversi dengan kolom sumber dan tanggal berlaku**, bukan konstanta kode. Verifikasi naskah resmi dilakukan saat pengisian data kebijakan, bukan saat implementasi engine. | Menghindari engine menunggu verifikasi dokumen; perubahan peraturan cukup menambah versi kebijakan. |
+
+Perubahan atas default di atas dilakukan dengan menambah versi kebijakan (bukan menimpa), sehingga periode lama tetap dapat dihitung ulang secara sah.

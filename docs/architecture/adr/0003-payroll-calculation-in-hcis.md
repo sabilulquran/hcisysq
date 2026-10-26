@@ -1,7 +1,7 @@
 # ADR-0003: HCIS Menghitung Payroll (PAY-003 v1)
 
-- **Status:** PROPOSED
-- **Date:** 2026-10-24
+- **Status:** ACCEPTED
+- **Date:** 2026-10-24 (PROPOSED), 2026-10-27 (ACCEPTED)
 - **Related:** PAY-001, PAY-002, PAY-003, PAYSLIP-001..006, ATT-010, EMP-005, AUTH-011, ORG-010; ADR-0001, ADR-0002
 - **Evidence:** `docs/domain/payroll-legacy-flow-audit.md`, `docs/domain/payroll-engine-discovery.md`, `docs/domain/payroll-calculation-v1.md`
 
@@ -37,9 +37,9 @@ Pada 2026-10-23 product owner memutuskan bahwa **HCIS akan menghitung payroll**.
 
 ## Consequences
 
-- `AGENTS.md` §5, `docs/product/mvp.md` §7, dan `docs/product/feature-parity.yaml` (PAY-003) diperbarui **setelah ADR ini ACCEPTED**, bukan sebelumnya.
+- `AGENTS.md` §5, `docs/product/mvp.md` §7, dan `docs/product/feature-parity.yaml` (PAY-003) diperbarui bersama pengesahan ADR ini.
 - Akses Pengurus Yayasan ke laporan payroll mengubah batas Foundation Board (PAYSLIP-001, ORG-010) dan membutuhkan permission baru, review keamanan, serta test otorisasi sebelum diaktifkan.
 - Perubahan nilai dibanding spreadsheet yang disengaja (dasar BPJS, perbaikan lembur, pemisahan penyesuaian gaji, dasar PPh21) harus dijelaskan per pegawai saat parallel run.
 - Auth, permission, audit, payroll, dan migration masuk kategori review tambahan (AGENTS.md §8). Setiap tahap implementasi memiliki spesifikasi implementasi dan migration rollback plan sendiri.
 - Spreadsheet dibekukan hanya setelah parallel run minimal 2–3 periode lulus; sampai itu PAY-001/PAY-002 tetap jalur slip resmi.
-- ADR ini tidak mengizinkan perubahan production.
+- ADR ini tidak mengizinkan perubahan production. Rilis modul payroll ke Mi8VPS memerlukan gate kandidat, backup database sebelum migrasi, dan rollback bila verifikasi gagal (`docs/development/mi8vps-hcis-release.md`).

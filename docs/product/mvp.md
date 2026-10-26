@@ -83,7 +83,7 @@ Approval wajib mengikuti `docs/domain/workflows/approval-engine.md`. HC validati
 
 ### 7. Payslip read-only melalui import
 
-HCIS **tidak menghitung payroll** pada MVP.
+HCIS **tidak menghitung payroll** pada MVP. Perhitungan payroll berada di luar MVP dan dikerjakan sebagai modul pasca-MVP PAY-003 (ADR-0003 ACCEPTED, `docs/domain/payroll-calculation-v1.md`); batas MVP di bagian ini tidak berubah dan PAY-001/PAY-002 tetap jalur slip resmi sampai parallel run PAY-003 lulus.
 
 Workflow terverifikasi:
 

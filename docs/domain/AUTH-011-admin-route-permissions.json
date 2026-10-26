@@ -1483,6 +1483,14 @@
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "GET",
+    "url": "/admin/attendance/exceptions",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
     "url": "/admin/attendance/reports/:model",
     "permissions": [
       "attendance.reports.read"

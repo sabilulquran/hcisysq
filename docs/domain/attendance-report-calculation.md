@@ -1164,3 +1164,26 @@ berlaku\" untuk shift" (diteruskan sesi koordinasi).
 - Halaman Shift menampilkan kolom **Berlaku sejak**, isian tanggal pada form tambah, dan aksi **Mundurkan
   awal berlaku** per shift. Tidak ada migration dan tidak ada permission baru.
 
+### 20.12 Catatan implementasi ATT-014-R2b (2026-10-27)
+
+- **Satu jendela "Laporan dan Kalkulasi"** (D-14-17): satu bar kontrol (Unit, Pegawai, Dari–Sampai,
+  Rentang cepat, **Kalkulasi**, **Laporan ▾**, **Ekspor ▾**), baris kesegaran ("Dihitung … · N baris berubah
+  sejak dihitung"), dan enam tab: Data Transaksi, Harian, Pengecualian, Rekapitulasi, Lembur, Tanpa Jadwal.
+  Langkah ①–④ dan bagian "Format lama" (`LegacyReportSection`, `ReportModelSection`) dihapus.
+- **Kalkulasi** membuka popup progres ("x% (n dari m pegawai-hari)") dengan **Batal**. Selama berjalan,
+  Laporan dan Ekspor nonaktif. Run selesai menutup popup dan memuat ulang semua tab; run gagal atau batal
+  tetap terbuka sampai ditutup. Popup yang ditutup bisa dibuka lagi lewat "Lihat progres".
+- **Laporan ▾** membuka model (Grid Harian, Rekapitulasi Pegawai, Detail Harian) di jendela bernama per
+  model, ukuran 1100×800, ke route cetak yang ada (D-14-18). Klik ulang memakai jendela yang sama.
+- **Ekspor ▾** (Excel/CSV) memakai model server tab aktif: Harian → Detail Harian, Rekapitulasi →
+  Rekapitulasi Pegawai. Tab lain belum punya model ekspor; menunya nonaktif dengan keterangan sampai R2d.
+- **Tab Pengecualian** membaca `GET /admin/attendance/exceptions` (`attendance.reports.read`, berhalaman
+  standar ENG-LIST-001): cuti disetujui yang beririsan dengan rentang dan klarifikasi/koreksi HC bertanggal
+  kerja di rentang, semua status. Hanya baca, dengan tautan ke Perbaikan Absen.
+- **Tab Rekapitulasi** menampilkan model `employee_summary` (tabel yang sama dengan cetak dan ekspor).
+  **Tab Lembur** menampilkan pengajuan lembur pada rentang, hanya baca (tanpa vonis lembur dari scan,
+  ATT-011-6a).
+- `TBD`: kontrol **Urutkan** (unit, NIP, nama, tanggal; A→Z) belum ada karena API baris belum menerima
+  urutan; urutan tetap bawaan server.
+- Manifest AUTH-011 +1 route. Tidak ada migration dan tidak ada permission baru.
+

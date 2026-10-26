@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { pageOffset, pagination, type PageQuery } from "../../lib/pagination.js";
+import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
 
 // ATT-014 §20.2 tab "Pengecualian" (package R2b): approved leave and attendance clarifications or HC
 // corrections that touch the range, read-only. Leave is listed per request overlapping the range;
@@ -24,6 +25,8 @@ export type AttendanceException = {
   endOn: string;
   /** Leave: policy key. Clarification: lateness, early_leave, missing_check_in, ... */
   type: string;
+  /** Leave: the policy name from the catalog; null for clarifications (labelled on screen). */
+  typeName: string | null;
   /** Clarification only: justification or correction. */
   mode: string | null;
   /** Clarification only: employee or hc (an HC correction). */
@@ -33,7 +36,7 @@ export type AttendanceException = {
 };
 
 export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: AttendanceExceptionFilter) {
-  const result = await pool.query<AttendanceException & { total: number }>(
+  const result = await pool.query<Omit<AttendanceException, "typeName"> & { total: number }>(
     `WITH scoped AS (
        SELECT employee.id, employee.employee_number, employee.full_name, unit.name AS unit_name
        FROM employees employee
@@ -73,7 +76,8 @@ export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: At
     ...pagination(filter, total),
     items: result.rows.map(({ total: rowTotal, ...row }) => {
       void rowTotal;
-      return row;
+      const policy = row.kind === "leave" ? LEAVE_POLICY_CATALOG.find((item) => item.key === row.type) : undefined;
+      return { ...row, typeName: policy?.name ?? (row.kind === "leave" ? row.type : null) };
     }),
   };
 }

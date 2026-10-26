@@ -1,20 +1,17 @@
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, DownloadCloud, Loader2, RefreshCw, Square } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, Calculator, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
-import { LegacyReportSection } from "@/components/attendance/reports/LegacyReportSection";
-import { ReportModelSection } from "@/components/attendance/reports/ReportModelSection";
+import { CalculationDialog, ExceptionsTab, OvertimeTab, SummaryTab } from "@/components/attendance/reports/ReportExtraTabs";
 import { UnscheduledTab } from "@/components/attendance/reports/UnscheduledTab";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
 import { listEmployees } from "@/lib/adminEmployees";
 import {
   CALCULATION_RANGE_PRESETS,
-  calculationProgress,
   calculationRange,
   calculationRowStatusLabel,
-  calculationRunLabel,
   cancelAttendanceCalculation,
   getAttendanceCalculation,
   getAttendanceCalculationRows,
@@ -29,7 +26,9 @@ import {
   type AttendanceTransactionSource,
   type AttendanceTransactions,
 } from "@/lib/attendanceCalculation";
+import { exportModelForTab } from "@/lib/attendanceExceptions";
 import { mobileReviewLabel } from "@/lib/attendanceLabels";
+import { REPORT_MODEL_OPTIONS, downloadAttendanceReport, reportPrintHref } from "@/lib/attendanceReports";
 import { getAttendanceUnscheduled, type AttendanceUnscheduled } from "@/lib/attendanceUnscheduled";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -38,6 +37,12 @@ import type { AuthSession } from "@/types/hcis";
 const STATUS_FILTERS: AttendanceCalculationRowStatus[] = [
   "present", "late", "incomplete", "absent", "leave", "off", "unscheduled", "pending", "configuration_error", "not_calculated", "not_captured",
 ];
+const TABS = [
+  ["transactions", "Data Transaksi"], ["detail", "Harian"], ["exceptions", "Pengecualian"],
+  ["summary", "Rekapitulasi"], ["overtime", "Lembur"], ["unscheduled", "Tanpa Jadwal"],
+] as const;
+type ReportTab = (typeof TABS)[number][0];
+
 const SOURCE_FILTERS: Array<{ value: AttendanceTransactionSource; label: string }> = [
   { value: "adms", label: "Mesin" }, { value: "mobile", label: "HP" }, { value: "correction", label: "Koreksi" }, { value: "manual", label: "Koreksi HC (lama)" },
 ];
@@ -55,21 +60,6 @@ function minutes(value: number | null) {
   return value ? `${value} mnt` : "—";
 }
 
-function Step({ number, title, hint, children }: { number: string; title: string; hint?: string; children: ReactNode }) {
-  return (
-    <section className="mb-4 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-      <header className="mb-3 flex items-baseline gap-2">
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary-pale text-xs font-bold text-brand-primary-deep">{number}</span>
-        <div>
-          <h2 className="font-bold text-brand-heading">{title}</h2>
-          {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-        </div>
-      </header>
-      {children}
-    </section>
-  );
-}
-
 function Pager({ page, totalPages, total, loading, onPage }: { page: number; totalPages: number; total: number; loading: boolean; onPage: (page: number) => void }) {
   return (
     <footer className="flex items-center justify-between gap-3 border-t p-3 text-xs text-muted-foreground">
@@ -83,9 +73,9 @@ function Pager({ page, totalPages, total, loading, onPage }: { page: number; tot
 }
 
 /**
- * ATT-014 §19.1 Laporan: one flow on one screen. ① choose the scope, ② Tarik data (a Kalkulasi run on
- * the server), ③ review the half-raw data, ④ pick a report model. Nothing is calculated
- * automatically; tables read stored results and raw punches only.
+ * ATT-014 §20.2 Laporan dan Kalkulasi (R2b, D-14-17): one window, one control bar, one table per tab.
+ * Kalkulasi runs on the server behind a progress popup; report models open in their own window
+ * (D-14-18). Nothing is calculated automatically; tables read stored results and raw punches only.
  */
 export function AdminAttendanceReportsPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -100,9 +90,11 @@ export function AdminAttendanceReportsPage() {
   const [unitId, setUnitId] = useState("");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
-  const [tab, setTab] = useState<"transactions" | "detail" | "unscheduled">(
-    initialSearch.get("tab") === "detail" ? "detail" : initialSearch.get("tab") === "unscheduled" ? "unscheduled" : "transactions",
-  );
+  const [tab, setTab] = useState<ReportTab>(() => TABS.find(([key]) => key === initialSearch.get("tab"))?.[0] ?? "transactions");
+  // Bumped after a finished Kalkulasi so the read-only tabs reload too.
+  const [version, setVersion] = useState(0);
+  const [showRun, setShowRun] = useState(false);
+  const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
   const [unscheduled, setUnscheduled] = useState<AttendanceUnscheduled | null>(null);
   const [unscheduledPage, setUnscheduledPage] = useState(1);
   const [pinPage, setPinPage] = useState(1);
@@ -175,17 +167,24 @@ export function AdminAttendanceReportsPage() {
     const timer = window.setTimeout(() => {
       void getAttendanceCalculation(run.id).then((next) => {
         setRun(next);
-        if (!isCalculationActive(next)) void loadRows();
+        if (!isCalculationActive(next)) {
+          void loadRows();
+          void loadUnscheduled();
+          setVersion((value) => value + 1);
+          // A completed run closes the popup; a failed or cancelled one stays until it is read.
+          if (next.status === "completed") setShowRun(false);
+        }
       }).catch(() => undefined);
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [run, loadRows]);
+  }, [run, loadRows, loadUnscheduled]);
 
   const pullData = async () => {
     setRequesting(true);
     setError(null);
     try {
       setRun(await requestAttendanceCalculation(scope));
+      setShowRun(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Data tidak dapat ditarik.");
     } finally {
@@ -209,91 +208,110 @@ export function AdminAttendanceReportsPage() {
   const pending = rows ? (rows.summary.not_calculated ?? 0) : 0;
   const upToDate = rows !== null && rows.total > 0 && pending === 0 && rows.changedCount === 0;
   const neverPulled = rows !== null && rows.total > 0 && !rows.lastCalculatedAt;
+  const exportModel = exportModelForTab(tab);
+
+  const openReport = (model: (typeof REPORT_MODEL_OPTIONS)[number]["value"]) => {
+    // One named window per model: clicking again reuses it instead of piling up windows.
+    window.open(reportPrintHref(scope, model), `hcis-laporan-${model}`, "width=1100,height=800");
+  };
+
+  const exportTab = async (format: "csv" | "xlsx") => {
+    if (!exportModel) return;
+    setExporting(format);
+    setError(null);
+    try {
+      await downloadAttendanceReport(scope, exportModel, format);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ekspor gagal.");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
-    <AttendanceWorkforceShell tab="reports" title="Laporan" description="Atur lingkup dan tanggal, tarik data, tinjau data mentahnya, lalu pilih model laporan.">
+    <AttendanceWorkforceShell tab="reports" title="Laporan dan Kalkulasi" description="Pilih lingkup dan tanggal, jalankan Kalkulasi, tinjau tabelnya, lalu buka laporan.">
       {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink" role="alert"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div> : null}
+      {run && showRun ? <CalculationDialog run={run} onCancel={() => void cancel()} onClose={() => setShowRun(false)} /> : null}
 
-      <Step number="1" title="Lingkup" hint="Unit, pegawai, dan rentang tanggal (maksimal 93 hari).">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
+      <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
+        <div className="grid gap-3 border-b p-3 lg:flex lg:flex-wrap lg:items-end">
           {units.length > 0 ? (
             <label className="text-xs font-semibold text-muted-foreground">Unit
-              <select className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={unitId} onChange={(event) => { setUnitId(event.target.value); resetPages(); }}>
+              <select className="mt-1 h-9 w-full rounded-xl border px-3 text-sm lg:w-48" value={unitId} onChange={(event) => { setUnitId(event.target.value); resetPages(); }}>
                 <option value="">Semua unit</option>
                 {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
               </select>
             </label>
           ) : null}
-          {canPickEmployee ? <EmployeeSearchField label="Pegawai (kosong = semua)" value={employee} onChange={(picked) => { setEmployee(picked); resetPages(); }} /> : null}
-          <label className="text-xs font-semibold text-muted-foreground">Dari
-            <input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" type="date" max={range.to} value={range.from} onChange={(event) => changeRange({ ...range, from: event.target.value })} />
-          </label>
-          <label className="text-xs font-semibold text-muted-foreground">Sampai
-            <input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" type="date" min={range.from} max={calculationRange("today").to} value={range.to} onChange={(event) => changeRange({ ...range, to: event.target.value })} />
-          </label>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {CALCULATION_RANGE_PRESETS.map((preset) => (
-            <button key={preset.key} type="button" onClick={() => changeRange(calculationRange(preset.key))} className="rounded-full border px-3 py-1 text-xs font-semibold text-muted-foreground hover:bg-surface">
-              {preset.label}
-            </button>
-          ))}
-        </div>
-      </Step>
-
-      <Step number="2" title="Tarik data" hint="Menghitung kehadiran dari scan, jadwal, klarifikasi, dan cuti yang sudah final. Hari ini dihitung sebagai hasil sementara.">
-        <div className="flex flex-wrap items-center gap-3 text-sm" aria-live="polite">
-          {canRun ? (
-            <button
-              type="button"
-              disabled={requesting || active}
-              onClick={() => void pullData()}
-              className={upToDate
-                ? "inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-xs font-bold disabled:opacity-50"
-                : "inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"}
-            >
-              {requesting || active ? <Loader2 className="h-4 w-4 animate-spin" /> : upToDate ? <RefreshCw className="h-4 w-4" /> : <DownloadCloud className="h-4 w-4" />}
-              {upToDate ? "Tarik ulang" : "Tarik data"}
-            </button>
-          ) : null}
-          {rows ? (
-            upToDate ? (
-              <span className="inline-flex items-center gap-1 text-success-ink"><CheckCircle2 className="h-4 w-4" />Data sudah terbaru{rows.lastCalculatedAt ? ` (ditarik ${dateTime(rows.lastCalculatedAt)})` : ""}.</span>
-            ) : neverPulled ? (
-              <span className="text-muted-foreground">Data untuk lingkup ini belum ditarik.{canRun ? "" : " Minta HC yang berwenang untuk menarik data."}</span>
-            ) : (
-              <span className="text-warning-ink">
-                {rows.lastCalculatedAt ? `Ditarik ${dateTime(rows.lastCalculatedAt)}. ` : ""}
-                {[pending ? `${pending} pegawai-hari belum ditarik` : null, rows.changedCount ? `${rows.changedCount} berubah sejak ditarik` : null].filter(Boolean).join(", ")}.
-              </span>
-            )
-          ) : null}
-        </div>
-        {run ? (
-          <div className="mt-3 rounded-xl border bg-surface p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="font-semibold">{calculationRunLabel(run)}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {run.processedPairs}/{run.totalPairs} pegawai-hari{run.uncoveredPairs ? ` · ${run.uncoveredPairs} tidak tercatat` : ""}
-              </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-border/60" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={calculationProgress(run)}>
-              <div className="h-full bg-brand-primary transition-all" style={{ width: `${calculationProgress(run)}%` }} />
-            </div>
-            {active && !run.cancelRequested ? (
-              <button type="button" onClick={() => void cancel()} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-danger-ink"><Square className="h-3 w-3" /> Batalkan</button>
-            ) : null}
+          {canPickEmployee ? <div className="lg:w-56"><EmployeeSearchField label="Pegawai (kosong = semua)" value={employee} onChange={(picked) => { setEmployee(picked); resetPages(); }} /></div> : null}
+          <div className="grid grid-cols-2 gap-2 lg:flex">
+            <label className="text-xs font-semibold text-muted-foreground">Dari
+              <input className="mt-1 h-9 w-full rounded-xl border px-2 text-sm" type="date" max={range.to} value={range.from} onChange={(event) => changeRange({ ...range, from: event.target.value })} />
+            </label>
+            <label className="text-xs font-semibold text-muted-foreground">Sampai
+              <input className="mt-1 h-9 w-full rounded-xl border px-2 text-sm" type="date" min={range.from} max={calculationRange("today").to} value={range.to} onChange={(event) => changeRange({ ...range, to: event.target.value })} />
+            </label>
           </div>
-        ) : null}
-      </Step>
+          <label className="text-xs font-semibold text-muted-foreground">Rentang cepat
+            <select className="mt-1 h-9 w-full rounded-xl border px-3 text-sm lg:w-36" value="" onChange={(event) => { const preset = CALCULATION_RANGE_PRESETS.find((item) => item.key === event.target.value); if (preset) changeRange(calculationRange(preset.key)); }}>
+              <option value="">Pilih…</option>
+              {CALCULATION_RANGE_PRESETS.map((preset) => <option key={preset.key} value={preset.key}>{preset.label}</option>)}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2 lg:ml-auto">
+            {canRun ? (
+              <button type="button" disabled={requesting || active} onClick={() => void pullData()} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">
+                {requesting || active ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />} Kalkulasi
+              </button>
+            ) : null}
+            <details className="relative">
+              <summary className={`inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-xl border px-3 text-xs font-bold ${active ? "pointer-events-none opacity-50" : ""}`} aria-disabled={active}>
+                <FileText className="h-4 w-4" /> Laporan <ChevronDown className="h-3.5 w-3.5" />
+              </summary>
+              <div className="absolute right-0 z-20 mt-1 w-72 rounded-xl border bg-surface-raised p-1 shadow-lg">
+                {REPORT_MODEL_OPTIONS.map((option) => (
+                  <button key={option.value} type="button" disabled={active} onClick={(event) => { (event.currentTarget.closest("details") as HTMLDetailsElement).open = false; openReport(option.value); }}
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface disabled:opacity-50">
+                    <span className="font-semibold">{option.label}</span>
+                    <span className="block text-xs text-muted-foreground">{option.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
+            <details className="relative">
+              <summary className={`inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-xl border px-3 text-xs font-bold ${active || !exportModel ? "pointer-events-none opacity-50" : ""}`}
+                aria-disabled={active || !exportModel} title={exportModel ? undefined : "Ekspor tab ini belum tersedia; buka Laporan untuk mencetak."}>
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Ekspor <ChevronDown className="h-3.5 w-3.5" />
+              </summary>
+              <div className="absolute right-0 z-20 mt-1 w-40 rounded-xl border bg-surface-raised p-1 shadow-lg">
+                {(["xlsx", "csv"] as const).map((format) => (
+                  <button key={format} type="button" disabled={exporting !== null} onClick={(event) => { (event.currentTarget.closest("details") as HTMLDetailsElement).open = false; void exportTab(format); }}
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-surface disabled:opacity-50">{format === "xlsx" ? "Excel" : "CSV"}</button>
+                ))}
+              </div>
+            </details>
+          </div>
+        </div>
 
-      <Step number="3" title="Data mentah" hint="Belum berbentuk laporan. Data scan asli tidak pernah diubah di sini.">
-        <div className="-mx-4 overflow-hidden border-y border-border/70">
-          <nav className="flex gap-1 border-b bg-surface px-3 pt-2" role="tablist" aria-label="Data mentah">
-            {([["transactions", "Data Transaksi"], ["detail", "Detail Harian"], ["unscheduled", `Tanpa Jadwal${unscheduled ? ` (${unscheduled.employees.total})` : ""}`]] as const).map(([key, label]) => (
+        <p className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs" aria-live="polite">
+          {!rows ? <span className="text-muted-foreground">Memuat…</span>
+            : upToDate ? <span className="inline-flex items-center gap-1 text-success-ink"><CheckCircle2 className="h-4 w-4" />Dihitung {rows.lastCalculatedAt ? dateTime(rows.lastCalculatedAt) : ""} · data terbaru.</span>
+            : neverPulled ? <span className="text-muted-foreground">Lingkup ini belum dihitung.{canRun ? " Tekan Kalkulasi." : " Minta HC yang berwenang menjalankan Kalkulasi."}</span>
+            : (
+              <span className="text-warning-ink">
+                {rows.lastCalculatedAt ? `Dihitung ${dateTime(rows.lastCalculatedAt)} · ` : ""}
+                {[pending ? `${pending} pegawai-hari belum dihitung` : null, rows.changedCount ? `${rows.changedCount} baris berubah sejak dihitung` : null].filter(Boolean).join(" · ")}
+              </span>
+            )}
+          {run && !showRun && isCalculationActive(run) ? <button type="button" onClick={() => setShowRun(true)} className="font-semibold underline">Lihat progres</button> : null}
+        </p>
+
+        <div className="overflow-hidden">
+          <nav className="flex gap-1 overflow-x-auto border-b bg-surface px-3 pt-2" role="tablist" aria-label="Tabel laporan">
+            {TABS.map(([key, label]) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-                className={`rounded-t-lg px-3 py-2 text-xs font-bold ${tab === key ? "bg-surface-raised text-brand-heading" : "text-muted-foreground"}`}>
-                {label}
+                className={`shrink-0 rounded-t-lg px-3 py-2 text-xs font-bold ${tab === key ? "bg-surface-raised text-brand-heading" : "text-muted-foreground"}`}>
+                {label}{key === "unscheduled" && unscheduled ? ` (${unscheduled.employees.total})` : ""}
               </button>
             ))}
           </nav>
@@ -437,6 +455,12 @@ export function AdminAttendanceReportsPage() {
               </ul>
               {rows ? <Pager page={rows.page} totalPages={rows.totalPages} total={rows.total} loading={loading} onPage={setDetailPage} /> : null}
             </div>
+          ) : tab === "exceptions" ? (
+            <div role="tabpanel"><ExceptionsTab scope={scope} version={version} /></div>
+          ) : tab === "summary" ? (
+            <div role="tabpanel"><SummaryTab scope={scope} version={version} /></div>
+          ) : tab === "overtime" ? (
+            <div role="tabpanel"><OvertimeTab scope={scope} version={version} /></div>
           ) : (
             <div role="tabpanel">
               <UnscheduledTab data={unscheduled} scope={scope} loading={loading} canManageSchedules={canManageSchedules} canMapPins={canMapPins}
@@ -444,19 +468,7 @@ export function AdminAttendanceReportsPage() {
             </div>
           )}
         </div>
-      </Step>
-
-      <Step number="4" title="Laporan" hint="Pilih model laporan untuk lingkup di atas, tampilkan, lalu cetak atau ekspor.">
-        {pending || (rows?.changedCount ?? 0) > 0 ? (
-          <p className="mb-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-xs text-warning-ink">Sebagian data belum ditarik atau berubah sejak ditarik. Tarik data dulu agar laporan memakai hasil terbaru.</p>
-        ) : null}
-        <ReportModelSection scope={scope} />
-        <details className="mt-6 border-t pt-4">
-          <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">Format lama (sesi kerja, data scan, jadwal, lembur)</summary>
-          <p className="mt-2 text-xs text-muted-foreground">Format ATT-009 untuk satu rilis lagi, sampai model baru menggantikannya.</p>
-          <div className="mt-3"><LegacyReportSection from={range.from} to={range.to} unitId={unitId} employeeId={employeeId} /></div>
-        </details>
-      </Step>
+      </section>
     </AttendanceWorkforceShell>
   );
 }

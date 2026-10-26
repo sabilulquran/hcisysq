@@ -5,6 +5,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageQuerySchema } from "../../lib/pagination.js";
 import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
@@ -24,6 +25,7 @@ import {
   type CalculationRunner,
 } from "./calculation-runner.js";
 import { listAttendanceCorrections } from "./corrections.js";
+import { attendanceExceptions } from "./exceptions.js";
 import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildReportTable, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -1985,6 +1987,26 @@ export async function registerAttendanceWorkforceRoutes(
       canSeePins ? unattributedPins(pool, { ...scope, page: query.data.pinPage }) : Promise.resolve(null),
     ]);
     return reply.send({ from: scope.from, to: scope.to, employees, pins });
+  });
+
+  // ATT-014 §20.2 tab "Pengecualian" (R2b): approved leave and clarifications/corrections in the range.
+  app.get("/admin/attendance/exceptions", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = pageQuerySchema.extend({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_EXCEPTIONS_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    return reply.send(await attendanceExceptions(pool, query.data));
   });
 
   // ATT-014 §19.1 step ③ Data Transaksi: every punch in scope, read-only and paginated.

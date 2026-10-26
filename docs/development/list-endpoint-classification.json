@@ -257,6 +257,11 @@
       "reason": "Satu pegawai, rentang maks 62 hari."
     },
     {
+      "url": "/admin/attendance/exceptions",
+      "list": "paged",
+      "reason": "Pengecualian (cuti, klarifikasi, koreksi) dalam rentang; halaman standar."
+    },
+    {
       "url": "/admin/attendance/mobile-evidence",
       "list": "debt",
       "reason": "LIMIT 500 tanpa halaman.",

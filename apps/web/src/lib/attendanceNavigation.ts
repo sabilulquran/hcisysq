@@ -11,7 +11,7 @@ export type AttendanceTabKey =
   | "summary"
   | "shifts"
   | "patterns" | "dates" | "swaps"
-  | "daily" | "calculation" | "clarifications" | "mobile-evidence" | "corrections" | "reports"
+  | "daily" | "clarifications" | "mobile-evidence" | "corrections" | "reports"
   | "overtime"
   | "devices"
   | "locations";
@@ -45,7 +45,6 @@ export const attendanceSections: AttendanceSection[] = [
     label: "Kehadiran",
     tabs: [
       { key: "daily", label: "Pantauan Hari Ini", href: "/admin/attendance/daily" },
-      { key: "calculation", label: "Kalkulasi", href: "/admin/attendance/calculation" },
       { key: "clarifications", label: "Klarifikasi", href: "/admin/attendance/clarifications" },
       { key: "mobile-evidence", label: "Bukti HP", href: "/admin/attendance/mobile-evidence" },
       { key: "corrections", label: "Koreksi HC", href: "/admin/attendance/corrections" },
@@ -92,6 +91,7 @@ export const legacyAttendanceRedirects: Record<string, string> = {
   "/admin/attendance/workforce/overtime": "/admin/attendance/overtime",
   "/admin/attendance/workforce/shift-swaps": "/admin/attendance/schedules/swaps",
   "/admin/attendance/workforce/reports": "/admin/attendance/reports",
-  // ATT-014-2: Finalisasi ulang per tanggal became Kalkulasi per rentang.
-  "/admin/attendance/settings/recalculate": "/admin/attendance/calculation",
+  // ATT-014 §19.1 (R1): Kalkulasi is the "Tarik data" step inside Laporan.
+  "/admin/attendance/settings/recalculate": "/admin/attendance/reports",
+  "/admin/attendance/calculation": "/admin/attendance/reports",
 };

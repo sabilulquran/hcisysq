@@ -78,7 +78,6 @@ describe("AUTH-011 backend-derived admin navigation", () => {
       "/admin/attendance/reports",
       "/admin/attendance/overtime",
       "/admin/attendance/settings/locations",
-      "/admin/attendance/calculation",
     ]) {
       expect(canAccessAdminPath(workforce, path)).toBe(true);
     }
@@ -88,6 +87,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     // Pre-ATT-011 paths are redirects now, never screens of their own.
     expect(canAccessAdminPath(workforce, "/admin/attendance/workforce/reports")).toBe(false);
     expect(canAccessAdminPath(workforce, "/admin/attendance/settings/recalculate")).toBe(false);
+    expect(canAccessAdminPath(workforce, "/admin/attendance/calculation")).toBe(false);
 
     const deviceOperator = session("EMPLOYEE", ["attendance.devices.read"]);
     expect(canAccessAdminPath(deviceOperator, "/admin/attendance/adms")).toBe(true);

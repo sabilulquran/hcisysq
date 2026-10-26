@@ -5,6 +5,7 @@ import {
   calculationRange,
   calculationRowStatusLabel,
   calculationRunLabel,
+  transactionSourceLabel,
   type AttendanceCalculationRun,
 } from "@/lib/attendanceCalculation";
 
@@ -48,5 +49,15 @@ describe("ATT-014-2 calculation vocabulary", () => {
     expect(calculationRunLabel(run({ status: "completed", failedPairs: 3 }))).toMatch(/3 gagal/);
     expect(calculationProgress(run())).toBe(25);
     expect(calculationProgress(run({ status: "completed", totalPairs: 0 }))).toBe(100);
+  });
+});
+
+describe("ATT-014 §19.1 Data Transaksi source badge", () => {
+  it("names every source in operator words", () => {
+    expect(transactionSourceLabel({ source: "adms", correctionBy: null, deviceName: "Mesin SDIT" })).toBe("Mesin · Mesin SDIT");
+    expect(transactionSourceLabel({ source: "adms", correctionBy: null, deviceName: null })).toBe("Mesin");
+    expect(transactionSourceLabel({ source: "mobile", correctionBy: null, deviceName: null })).toBe("HP");
+    expect(transactionSourceLabel({ source: "correction", correctionBy: "hc", deviceName: null })).toBe("Koreksi HC");
+    expect(transactionSourceLabel({ source: "correction", correctionBy: "employee", deviceName: null })).toBe("Koreksi pegawai");
   });
 });

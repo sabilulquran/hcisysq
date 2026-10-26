@@ -13,7 +13,7 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
-  "attendance.devices.operate", "attendance.devices.export",
+  "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
 ] as const;
 
@@ -38,7 +38,7 @@ export const ADMIN_PERMISSIONS = [
   "attendance.devices.technical",
   "attendance.schedule.manage", "attendance.policy.manage",
   "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage",
-  "attendance.shift_swap.manage",
+  "attendance.shift_swap.manage", "attendance.calculation.run",
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 

@@ -15,6 +15,14 @@ import {
   materializeAttendanceResult,
   resolveSchedule,
 } from "./engine.js";
+import { attendanceCalculationRows } from "./calculation-rows.js";
+import {
+  createCalculationRunner,
+  RUN_COLUMNS,
+  validateCalculationRange,
+  type CalculationRun,
+  type CalculationRunner,
+} from "./calculation-runner.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
@@ -309,6 +317,7 @@ export async function registerAttendanceWorkforceRoutes(
   app: FastifyInstance,
   pool: Pool,
   config: ApiConfig,
+  options: { calculationRunner?: CalculationRunner } = {},
 ) {
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required for attendance workforce routes");
@@ -319,6 +328,22 @@ export async function registerAttendanceWorkforceRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+  // ATT-014-2: Kalkulasi runs inside this process. On start, runs left running are INTERRUPTED and
+  // queued runs continue. Tests inject their own runner and never start the loop implicitly.
+  const calculationRunner = options.calculationRunner ?? createCalculationRunner(pool, {
+    log: (message, details) => app.log.info(details, message),
+  });
+  if (config.NODE_ENV !== "test") {
+    // Never blocks start-up: a database hiccup here only delays the queue until the next request.
+    app.addHook("onReady", async () => {
+      try {
+        await calculationRunner.recoverInterrupted();
+        calculationRunner.kick();
+      } catch (error) {
+        app.log.error({ error: error instanceof Error ? error.name : "unknown" }, "attendance calculation recovery failed");
+      }
+    });
+  }
 
   app.get("/attendance/me/workforce", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "EMPLOYEE");
@@ -1669,19 +1694,181 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send(result);
   });
 
+  async function queuePosition(run: Pick<CalculationRun, "id" | "status" | "createdAt">) {
+    if (run.status !== "queued") return null;
+    const result = await pool.query<{ position: number }>(
+      `SELECT count(*)::int AS position FROM attendance_calculation_runs
+       WHERE status = 'queued' AND (created_at, id) <= ($1::timestamptz, $2::uuid)`,
+      [run.createdAt, run.id],
+    );
+    return result.rows[0]?.position ?? 1;
+  }
+
+  async function presentRun(run: CalculationRun) {
+    return {
+      id: run.id,
+      status: run.status,
+      position: await queuePosition(run),
+      unitId: run.unitId,
+      employeeId: run.employeeId,
+      from: run.dateFrom,
+      to: run.dateTo,
+      totalPairs: run.totalPairs,
+      processedPairs: run.processedPairs,
+      failedPairs: run.failedPairs,
+      uncoveredPairs: run.uncoveredPairs,
+      cancelRequested: Boolean(run.cancelRequestedAt),
+      errorCode: run.errorCode,
+      requestedByAccountId: run.requestedByAccountId,
+      createdAt: new Date(run.createdAt).toISOString(),
+      startedAt: run.startedAt ? new Date(run.startedAt).toISOString() : null,
+      finishedAt: run.finishedAt ? new Date(run.finishedAt).toISOString() : null,
+    };
+  }
+
+  const calculationRangeMessages = {
+    INVALID_CALCULATION_RANGE: "Rentang tanggal tidak valid.",
+    CALCULATION_RANGE_TOO_LARGE: "Satu kalkulasi maksimal 93 hari. Bagi rentang menjadi beberapa kalkulasi.",
+    CALCULATION_DATE_IN_FUTURE: "Tanggal di masa depan belum bisa dikalkulasi.",
+  } as const;
+
+  async function requestCalculation(
+    reply: FastifyReply,
+    principal: AuthPrincipal,
+    scope: { unitId?: string | undefined; employeeId?: string | undefined; from: string; to: string },
+  ) {
+    reply.header("Cache-Control", "no-store");
+    const rangeError = validateCalculationRange(scope.from, scope.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const id = randomUUID();
+    const inserted = await pool.query<CalculationRun>(
+      `INSERT INTO attendance_calculation_runs (id, requested_by_account_id, unit_id, employee_id, date_from, date_to, status)
+       VALUES ($1, $2, $3, $4, $5::date, $6::date, 'queued')
+       RETURNING ${RUN_COLUMNS}`,
+      [id, principal.id, scope.unitId ?? null, scope.employeeId ?? null, scope.from, scope.to],
+    );
+    const run = inserted.rows[0];
+    if (!run) throw new Error("Attendance calculation insert did not return a row");
+    await insertAudit(pool, principal.id, "attendance.calculation.requested", "attendance_calculation_run", id, {
+      unitId: scope.unitId ?? null, employeeId: scope.employeeId ?? null, from: scope.from, to: scope.to,
+    });
+    calculationRunner.kick();
+    return reply.status(202).send(await presentRun(run));
+  }
+
+  async function findRun(id: string) {
+    const result = await pool.query<CalculationRun>(`SELECT ${RUN_COLUMNS} FROM attendance_calculation_runs WHERE id = $1`, [id]);
+    return result.rows[0] ?? null;
+  }
+
+  // ATT-014-2 Kalkulasi: queue a calculation for a scope and range (D-14-1 … D-14-4).
+  app.post("/admin/attendance/calculations", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
+    if (!principal) return;
+    const body = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+    }).strict().safeParse(request.body);
+    if (!body.success) {
+      reply.header("Cache-Control", "no-store");
+      return reply.status(400).send({ code: "INVALID_CALCULATION_RANGE", message: "Lingkup atau rentang tanggal tidak valid." });
+    }
+    return requestCalculation(reply, principal, body.data);
+  });
+
+  app.get("/admin/attendance/calculations/:id", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const run = params.success ? await findRun(params.data.id) : null;
+    if (!run) return reply.status(404).send({ code: "CALCULATION_NOT_FOUND", message: "Kalkulasi tidak ditemukan." });
+    return reply.send(await presentRun(run));
+  });
+
+  app.post("/admin/attendance/calculations/:id/cancel", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const run = params.success ? await findRun(params.data.id) : null;
+    if (!run) return reply.status(404).send({ code: "CALCULATION_NOT_FOUND", message: "Kalkulasi tidak ditemukan." });
+    if (run.requestedByAccountId !== principal.id) {
+      const context = await auth.getAuthorizationContext(principal);
+      if (!context.organizationPermissions.includes("attendance.policy.manage")) {
+        return reply.status(403).send({ code: "FORBIDDEN", message: "Hanya pemohon atau pengelola kebijakan yang boleh membatalkan kalkulasi ini." });
+      }
+    }
+    // A queued run is cancelled at once; a running run stops at its next progress checkpoint.
+    const updated = await pool.query<CalculationRun>(
+      `UPDATE attendance_calculation_runs
+       SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+           finished_at = CASE WHEN status = 'queued' THEN now() ELSE finished_at END,
+           cancel_requested_at = coalesce(cancel_requested_at, now())
+       WHERE id = $1 AND status IN ('queued', 'running')
+       RETURNING ${RUN_COLUMNS}`,
+      [run.id],
+    );
+    const cancelled = updated.rows[0];
+    if (!cancelled) return reply.status(409).send({ code: "CALCULATION_ALREADY_FINISHED", message: "Kalkulasi sudah selesai." });
+    if (cancelled.status === "cancelled") {
+      await insertAudit(pool, principal.id, "attendance.calculation.cancelled", "attendance_calculation_run", run.id, {
+        processedPairs: 0, failedPairs: 0, uncoveredPairs: 0, errorCode: null,
+      });
+    }
+    return reply.send(await presentRun(cancelled));
+  });
+
+  // Detail rows for Laporan & Kalkulasi (§6.2, §6.5). Reads stored results only; paginated.
+  app.get("/admin/attendance/calculation-rows", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = z.object({
+      tab: z.enum(["detail"]).default("detail"),
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      status: z.enum([
+        "scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off",
+        "configuration_error", "not_captured", "not_calculated",
+      ]).optional(),
+      changedOnly: z.enum(["true", "false"]).optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_CALCULATION_ROWS_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const result = await attendanceCalculationRows(
+      pool,
+      { unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null, from: query.data.from, to: query.data.to },
+      {
+        ...(query.data.status ? { status: query.data.status } : {}),
+        changedOnly: query.data.changedOnly === "true",
+        page: query.data.page,
+        pageSize: query.data.pageSize,
+      },
+    );
+    return reply.send(result);
+  });
+
+  // Kept for one release (ATT-014 §10): queues a calculation of every employee for one date.
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.policy.manage");
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
     if (!principal) return;
     const params = z.object({ date: dateSchema }).safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_DATE", message: "Tanggal tidak valid." });
-    const employees = await pool.query<{ id: string }>("SELECT id FROM employees WHERE status = 'active' ORDER BY id");
-    let materialized = 0;
-    for (const employee of employees.rows) {
-      await materializeAttendanceResult(pool, employee.id, params.data.date);
-      materialized += 1;
-    }
-    await insertAudit(pool, principal.id, "attendance.finalized", "attendance_result", null, { date: params.data.date, materialized });
-    return reply.send({ date: params.data.date, materialized });
+    return requestCalculation(reply, principal, { from: params.data.date, to: params.data.date });
   });
 
   app.get("/admin/attendance/report", async (request, reply) => {

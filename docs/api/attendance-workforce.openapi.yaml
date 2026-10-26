@@ -231,11 +231,130 @@ paths:
     post:
       tags: [Attendance]
       operationId: finalizeAttendanceDate
-      x-required-permission: attendance.policy.manage
+      x-required-permission: attendance.calculation.run
+      deprecated: true
+      description: >-
+        ATT-014-2 alias kept for one release. Queues a Kalkulasi of every employee for one date and
+        answers like POST /admin/attendance/calculations. Same range rules (no future date).
       parameters:
         - { name: date, in: path, required: true, schema: { type: string, format: date } }
       responses:
-        '200': { description: Versioned results materialized for active employees }
+        '202': { description: Calculation run queued (same body as POST /admin/attendance/calculations) }
+        '400': { description: Invalid date (INVALID_DATE) }
+        '403': { description: Missing attendance.calculation.run }
+        '422': { description: CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/calculations:
+    post:
+      tags: [Attendance]
+      operationId: requestAttendanceCalculation
+      x-required-permission: attendance.calculation.run
+      description: >-
+        ATT-014-2 Kalkulasi (D-14-1 … D-14-4). Queues a calculation for an optional unit or employee
+        and a date range of at most 93 days ending no later than today (Asia/Jakarta). One run is
+        processed at a time across the server, in the API process; other runs wait as `queued`.
+        Only employee-days covered by a machine PIN mapping, a mobile/manual event, or an approved
+        clarification are calculated; the rest are counted as `uncoveredPairs` and never written.
+        Today is calculated as a provisional result. Audited as `attendance.calculation.requested`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [from, to]
+              properties:
+                unitId: { type: string, format: uuid }
+                employeeId: { type: string, format: uuid }
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses:
+        '202':
+          description: Run queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '400': { description: Invalid body or reversed range (INVALID_CALCULATION_RANGE) }
+        '403': { description: Missing attendance.calculation.run }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE (over 93 days) or CALCULATION_DATE_IN_FUTURE }
+
+  /admin/attendance/calculations/{id}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceCalculation
+      x-required-permission: attendance.reports.read
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Run status and progress
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '403': { description: Missing attendance.reports.read }
+        '404': { description: CALCULATION_NOT_FOUND }
+
+  /admin/attendance/calculations/{id}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelAttendanceCalculation
+      x-required-permission: attendance.calculation.run
+      description: >-
+        Allowed for the requester, or for another account that also holds attendance.policy.manage.
+        A queued run is cancelled at once; a running run stops at its next progress checkpoint
+        (every 25 employee-days). Results already calculated stay valid.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Run after the cancel request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceCalculationRun' }
+        '403': { description: Not the requester and missing attendance.policy.manage }
+        '404': { description: CALCULATION_NOT_FOUND }
+        '409': { description: CALCULATION_ALREADY_FINISHED }
+
+  /admin/attendance/calculation-rows:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceCalculationRows
+      x-required-permission: attendance.reports.read
+      description: >-
+        ATT-014-2 Detail Harian rows for Laporan & Kalkulasi. Reads stored result versions only and
+        never calculates. One row per employed employee-day in scope: `not_captured` outside the
+        coverage rule ("Tidak tercatat"), `not_calculated` when covered but not calculated yet,
+        otherwise the latest result status. Today's rows are `provisional`; a scheduled day without a
+        check-in is re-evaluated by the clock on read. `changedSinceCalculated` is set when machine
+        scans, attendance events, schedule assignments, or published roster entries arrive after the
+        pair was last calculated. Paginated; `summary` and `changedCount` cover all pages.
+      parameters:
+        - { name: tab, in: query, required: false, schema: { type: string, enum: [detail], default: detail } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: employeeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, not_captured, not_calculated]
+        - { name: changedOnly, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: >-
+            `{ from, to, today, generatedAt, lastCalculatedAt, changedCount, summary, page, pageSize,
+            total, totalPages, items }`. Each item carries employee and unit, `workDate`, `status`,
+            `provisional`, `changedSinceCalculated`, `resultVersion`, `calculatedAt`, scheduled and
+            scanned times, `workedMinutes`, `lateMinutes`, `earlyLeaveMinutes`, `overtimeMinutes`,
+            `incompleteSession`, `normal`, and `actual`.
+        '400': { description: INVALID_CALCULATION_ROWS_QUERY or INVALID_CALCULATION_RANGE }
+        '403': { description: Missing attendance.reports.read }
+        '422': { description: CALCULATION_RANGE_TOO_LARGE or CALCULATION_DATE_IN_FUTURE }
 
   /admin/attendance/report:
     get:
@@ -587,6 +706,27 @@ paths:
 
 components:
   schemas:
+    AttendanceCalculationRun:
+      type: object
+      required: [id, status, position, from, to, totalPairs, processedPairs, failedPairs, uncoveredPairs, cancelRequested, errorCode, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+        position: { type: integer, nullable: true, description: Queue position while queued }
+        unitId: { type: string, format: uuid, nullable: true }
+        employeeId: { type: string, format: uuid, nullable: true }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        totalPairs: { type: integer, description: Covered employee-days to calculate }
+        processedPairs: { type: integer }
+        failedPairs: { type: integer }
+        uncoveredPairs: { type: integer, description: Employee-days outside the coverage rule (never written) }
+        cancelRequested: { type: boolean }
+        errorCode: { type: string, nullable: true, description: INTERRUPTED or CALCULATION_FAILED }
+        requestedByAccountId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
     AttendanceResult:
       type: [object, 'null']
       properties:

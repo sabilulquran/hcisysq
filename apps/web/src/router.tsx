@@ -36,7 +36,7 @@ import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
 import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
-import { AdminAttendanceRecalculatePage } from "@/pages/AdminAttendanceRecalculatePage";
+import { AdminAttendanceCalculationPage } from "@/pages/AdminAttendanceCalculationPage";
 import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
@@ -377,11 +377,11 @@ const adminAttendanceLocationsRoute = createRoute({
   component: AdminAttendanceLocationsPage,
 });
 
-const adminAttendanceRecalculateRoute = createRoute({
+const adminAttendanceCalculationRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/settings/recalculate",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/recalculate"),
-  component: AdminAttendanceRecalculatePage,
+  path: "/admin/attendance/calculation",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/calculation"),
+  component: AdminAttendanceCalculationPage,
 });
 
 // Routes before ATT-011 stay reachable for at least one release and forward to their new home.
@@ -600,7 +600,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceReportsRoute,
   adminAttendanceOvertimeRoute,
   adminAttendanceLocationsRoute,
-  adminAttendanceRecalculateRoute,
+  adminAttendanceCalculationRoute,
   ...adminAttendanceLegacyRoutes,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,

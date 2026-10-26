@@ -46,7 +46,8 @@ Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Keha
 | Jadwal → Pola jadwal | `/admin/attendance/schedules` | `attendance.schedule.manage` |
 | Jadwal → Jadwal per tanggal | `/admin/attendance/schedules/dates` | `attendance.schedule.manage` |
 | Jadwal → Tukar shift | `/admin/attendance/schedules/swaps` | `attendance.shift_swap.manage` |
-| Kehadiran → Harian | `/admin/attendance/daily` | `attendance.reports.read` |
+| Kehadiran → Pantauan Hari Ini | `/admin/attendance/daily` | `attendance.reports.read` |
+| Kehadiran → Kalkulasi (ATT-014-2) | `/admin/attendance/calculation` | `attendance.reports.read`; tombol Kalkulasi butuh `attendance.calculation.run` |
 | Kehadiran → Klarifikasi | `/admin/attendance/clarifications` | `attendance.clarification.manage` |
 | Kehadiran → Bukti HP | `/admin/attendance/mobile-evidence` | `attendance.clarification.manage` |
 | Kehadiran → Koreksi HC | `/admin/attendance/corrections` | `attendance.records.manage` |
@@ -54,9 +55,8 @@ Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Keha
 | Lembur | `/admin/attendance/overtime` | `attendance.overtime.manage` |
 | Mesin Fingerprint | `/admin/attendance/adms` | `attendance.devices.read` |
 | Pengaturan → Lokasi kerja | `/admin/attendance/settings/locations` | `attendance.schedule.manage` |
-| Pengaturan → Finalisasi ulang | `/admin/attendance/settings/recalculate` | `attendance.policy.manage` |
 
-Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis. `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Koreksi HC.
+Menu sidebar membuka tab pertama yang dapat dimuat akun tersebut; menu tanpa tab yang dapat dimuat tidak tampil (K-8). Route lama `/admin/attendance/workforce/*` dialihkan ke route baru (`legacyAttendanceRedirects` di `apps/web/src/lib/attendanceNavigation.ts`) selama minimal satu rilis; `/admin/attendance/settings/recalculate` (Finalisasi ulang) dialihkan ke Kalkulasi sejak ATT-014-2. `/admin/attendance` sebelumnya halaman koreksi manual; koreksi kini ada di Kehadiran → Koreksi HC.
 
 Back Office ADMS:
 

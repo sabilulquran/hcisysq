@@ -175,6 +175,8 @@ function createPool(options: { permissions?: string[]; openDraft?: boolean; publ
   const query = vi.fn(async (sql: string) => {
     sqlLog.push(sql);
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    // O-7: the open-change-set check runs under a transaction-scoped advisory lock.
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
     if (sql.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) {
       return { rows: permissions.map((permissionKey) => ({ permissionKey })), rowCount: permissions.length };
     }

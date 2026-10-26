@@ -57,6 +57,16 @@ export interface OrganizationCommandResult {
   summary: Record<string, unknown>;
 }
 
+/**
+ * Journal lines whose command type is one of these can be replayed onto a fresh base. Every other
+ * line (a manual edit made through a single-record endpoint, or the legacy seed) records a change
+ * the journal cannot reproduce.
+ */
+export const REPLAYABLE_COMMAND_TYPES: ReadonlySet<string> = new Set([
+  "ADD_UNIT", "PLACE_EMPLOYEES", "APPOINT_ACTING", "SET_REPORTS_TO",
+  "SET_UNIT_LEADER", "SET_UNIT_APPROVER", "SET_OVERRIDE",
+]);
+
 export type OrganizationCommand =
   | {
       type: "ADD_UNIT";

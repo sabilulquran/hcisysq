@@ -123,6 +123,30 @@ const rolloutInput = z.object({
   reason: z.string().trim().min(1).max(500).optional(),
 });
 
+/**
+ * ORG-008-3b (O-7): one change set is open at a time. The check runs under a transaction-scoped
+ * advisory lock inside the creating transaction, so two simultaneous "Mulai perubahan" cannot both
+ * pass it.
+ */
+async function lockAndFindOpenChangeSet(
+  client: PoolClient,
+  repository: PostgresOrganizationRepository,
+) {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('hcis.organization.open_change_set'))");
+  return repository.findOpenChangeSet();
+}
+
+function replyDraftAlreadyOpen(
+  reply: FastifyReply,
+  open: { id: string; name: string; effectiveOn: string; status: string },
+) {
+  return reply.status(409).send({
+    code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
+    message: "Another organization change is still open.",
+    details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
+  });
+}
+
 function invalid(reply: FastifyReply, code: string, message: string) {
   return reply.status(400).send({ code, message });
 }
@@ -176,6 +200,11 @@ interface OrganizationMutationContext {
     changeSetId: string | null,
     payload?: Record<string, unknown>,
   ): Promise<void>;
+  /**
+   * Record a manual edit made through a single-record endpoint as a line of the change list. It is
+   * never replayed, but it keeps "Yang berubah" complete and stops a rebuild from dropping the edit.
+   */
+  journal(changeSetId: string, summary: Record<string, unknown>): Promise<void>;
 }
 
 async function atomicOrganizationMutation<T>(
@@ -193,8 +222,20 @@ async function atomicOrganizationMutation<T>(
       draftService: new OrganizationDraftService(repository),
       audit: (action, entityType, entityId, changeSetId, payload = {}) =>
         insertAuditEvent(client, principal, action, entityType, entityId, changeSetId, payload),
+      journal: async (changeSetId, summary) => {
+        await repository.appendJournalEntry({
+          changeSetId,
+          commandType: "MANUAL_EDIT",
+          payload: { replayable: false },
+          summary,
+          actorAccountId: principal.id,
+        });
+      },
     });
-    await client.query("COMMIT");
+    // An operation returns null or false only after it has sent a refusal. Nothing it did before the
+    // refusal may persist, not even the revision it claimed, or the operator's next save would be
+    // refused as a concurrent edit that never happened.
+    await client.query(result === null || result === false ? "ROLLBACK" : "COMMIT");
     return result;
   } catch (error) {
     await client.query("ROLLBACK");
@@ -871,15 +912,9 @@ export async function registerOrganizationAdminRoutes(
     // one cannot be built from a base the first will replace. The existing one is named in the reply
     // so the screen can offer to continue it. This is checked here rather than by a unique index,
     // because how many open change sets production already holds has not been verified.
-    const open = await repository.findOpenChangeSet();
-    if (open) {
-      return reply.status(409).send({
-        code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
-        message: "Another organization change is still open.",
-        details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
-      });
-    }
     const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const open = await lockAndFindOpenChangeSet(transaction.client, transaction.repository);
+      if (open) { await replyDraftAlreadyOpen(reply, open); return null; }
       const snapshot = await transaction.repository.createDraft({ ...parsed.data, actorAccountId: principal.id });
       await transaction.audit("organization.draft.created", "organization_change_set", snapshot.changeSet.id, snapshot.changeSet.id, {
         effectiveOn: snapshot.changeSet.effectiveOn,
@@ -887,6 +922,7 @@ export async function registerOrganizationAdminRoutes(
       });
       return snapshot.changeSet;
     });
+    if (!changeSet) return;
     return reply.status(201).send(changeSet);
   });
 
@@ -970,14 +1006,6 @@ export async function registerOrganizationAdminRoutes(
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
 
-    const open = await repository.findOpenChangeSet();
-    if (open) {
-      return reply.status(409).send({
-        code: "ORGANIZATION_DRAFT_ALREADY_OPEN",
-        message: "Another organization change is still open.",
-        details: { changeSetId: open.id, name: open.name, effectiveOn: open.effectiveOn, status: open.status },
-      });
-    }
     const existing = await repository.loadEffectiveSnapshot(parsed.data.effectiveOn);
     if (existing) {
       return reply.status(409).send({
@@ -1000,6 +1028,8 @@ export async function registerOrganizationAdminRoutes(
     ]);
 
     const outcome = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const open = await lockAndFindOpenChangeSet(transaction.client, transaction.repository);
+      if (open) { await replyDraftAlreadyOpen(reply, open); return null; }
       const created = await transaction.repository.createDraft({
         ...parsed.data, actorAccountId: principal.id,
       });
@@ -1024,6 +1054,7 @@ export async function registerOrganizationAdminRoutes(
       });
       return { changeSet: created.changeSet, summary: seeded.summary };
     });
+    if (!outcome) return;
     return reply.status(201).send({ ...outcome.changeSet, summary: outcome.summary, proposal: true });
   });
 
@@ -1048,6 +1079,7 @@ export async function registerOrganizationAdminRoutes(
         active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.node.created", "organization_node", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });
+      await transaction.journal(snapshot.changeSet.id, { action: "node.created", nodeKey: created.stableKey, name: created.name });
       return created;
     });
     if (!item) return;
@@ -1072,6 +1104,7 @@ export async function registerOrganizationAdminRoutes(
       }
       Object.assign(item, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.node.updated", "organization_node", item.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+      await transaction.journal(snapshot.changeSet.id, { action: "node.updated", nodeKey: item.stableKey, name: item.name, fields: Object.keys(body.data) });
       return { item, snapshot };
     });
     if (!result) return;
@@ -1091,6 +1124,7 @@ export async function registerOrganizationAdminRoutes(
         effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.positions.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.position.created", "organization_position", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });
+      await transaction.journal(snapshot.changeSet.id, { action: "position.created", positionKey: created.stableKey, title: created.title });
       return created;
     });
     if (!item) return;
@@ -1114,6 +1148,7 @@ export async function registerOrganizationAdminRoutes(
       }
       Object.assign(updated, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.position.updated", "organization_position", updated.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+      await transaction.journal(snapshot.changeSet.id, { action: "position.updated", positionKey: updated.stableKey, title: updated.title, fields: Object.keys(body.data) });
       return updated;
     });
     if (!item) return;
@@ -1135,6 +1170,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.memberships.replaced", "organization_node", null, snapshot.changeSet.id,
         { nodeKey: body.data.nodeKey, memberCount: body.data.employeeIds.length });
+      await transaction.journal(snapshot.changeSet.id, { action: "memberships.replaced", nodeKey: body.data.nodeKey, memberCount: body.data.employeeIds.length });
       return true;
     });
     if (!mutated) return;
@@ -1179,6 +1215,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.incumbencies.replaced", "organization_position", null, snapshot.changeSet.id,
         { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId, hasActing: Boolean(body.data.actingEmployeeId) });
+      await transaction.journal(snapshot.changeSet.id, { action: "incumbencies.replaced", positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId, hasActing: Boolean(body.data.actingEmployeeId) });
       return true;
     });
     if (!mutated) return;
@@ -1198,6 +1235,7 @@ export async function registerOrganizationAdminRoutes(
       snapshot.authorityBindings.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.authority_binding.created", "organization_authority_binding", created.id,
         snapshot.changeSet.id, { subjectKind: created.subjectKind, subjectKey: created.subjectKey, bindingType: created.bindingType, targetPositionKey: created.targetPositionKey });
+      await transaction.journal(snapshot.changeSet.id, { action: "authority_binding.created", subjectKey: created.subjectKey, bindingType: created.bindingType, targetPositionKey: created.targetPositionKey });
       return created;
     });
     if (!item) return;
@@ -1218,6 +1256,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.audit("organization.reporting_override.created", "organization_reporting_override", created.id,
         snapshot.changeSet.id, { employeeId: created.employeeId, managerPositionKey: created.managerPositionKey, reason: created.reason,
           effectiveFrom: created.effectiveFrom, effectiveTo: created.effectiveTo });
+      await transaction.journal(snapshot.changeSet.id, { action: "reporting_override.created", managerPositionKey: created.managerPositionKey });
       return created;
     });
     if (!item) return;
@@ -1342,6 +1381,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.node.deleted", "organization_node", item.id,
         snapshot.changeSet.id, { stableKey: item.stableKey });
+      await transaction.journal(snapshot.changeSet.id, { action: "node.deleted", nodeKey: item.stableKey, name: item.name });
       return true;
     });
     if (!removed) return;
@@ -1367,6 +1407,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.position.deleted", "organization_position", item.id,
         snapshot.changeSet.id, { stableKey: item.stableKey });
+      await transaction.journal(snapshot.changeSet.id, { action: "position.deleted", positionKey: item.stableKey, title: item.title });
       return true;
     });
     if (!removed) return;
@@ -1397,6 +1438,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.audit("organization.authority_binding.deleted", "organization_authority_binding",
         binding.id, snapshot.changeSet.id,
         { subjectKey: binding.subjectKey, bindingType: binding.bindingType });
+      await transaction.journal(snapshot.changeSet.id, { action: "authority_binding.deleted", subjectKey: binding.subjectKey, bindingType: binding.bindingType });
       return true;
     });
     if (!removed) return;
@@ -1428,6 +1470,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.audit("organization.authority_binding.ended", "organization_authority_binding",
         binding.id, snapshot.changeSet.id,
         { subjectKey: binding.subjectKey, bindingType: binding.bindingType, effectiveTo: binding.effectiveTo });
+      await transaction.journal(snapshot.changeSet.id, { action: "authority_binding.ended", subjectKey: binding.subjectKey, bindingType: binding.bindingType, effectiveTo: binding.effectiveTo });
       return binding;
     });
     if (!updated) return;
@@ -1472,6 +1515,7 @@ export async function registerOrganizationAdminRoutes(
         baseChangeSetId: base?.changeSet.id ?? null,
         kept: result.applied.map((entry) => ({ seq: entry.seq, commandType: entry.commandType, summary: entry.summary })),
         skipped: result.skipped,
+        blocked: result.blocked,
       });
     }
 
@@ -1484,6 +1528,16 @@ export async function registerOrganizationAdminRoutes(
       const result = replayJournal({
         changeSet: snapshot.changeSet, base, entries, skipSeq: input.skipSeq,
       });
+      // A manual edit or the legacy seed cannot be rebuilt from the journal. Writing anyway would
+      // drop what those lines did without saying so; refuse and name them instead.
+      if (result.blocked.length > 0) {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_REPLAYABLE",
+          message: "This change set holds edits that cannot be rebuilt; undo or redo them by hand first.",
+          details: { blocked: result.blocked },
+        });
+        return null;
+      }
 
       await transaction.repository.replaceDraftSnapshot(result.snapshot);
       await transaction.repository.setBaseChangeSet(input.draftId, base?.changeSet.id ?? null);
@@ -1508,6 +1562,7 @@ export async function registerOrganizationAdminRoutes(
         baseChangeSetId: base?.changeSet.id ?? null,
         kept: result.applied.map((entry) => ({ seq: entry.seq, commandType: entry.commandType, summary: entry.summary })),
         skipped: result.skipped,
+        blocked: result.blocked,
       };
     });
     if (!outcome) return;
@@ -1559,6 +1614,13 @@ export async function registerOrganizationAdminRoutes(
       const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
       if (!snapshot || snapshot.changeSet.status === "PUBLISHED") {
         await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+        return null;
+      }
+      if (snapshot.changeSet.status === "DISCARDED") {
+        await reply.status(409).send({
+          code: "ORGANIZATION_DRAFT_NOT_EDITABLE",
+          message: "A discarded change set cannot be checked again.",
+        });
         return null;
       }
       const result = await transaction.draftService.validateDraft(snapshot.changeSet.id, principal.id);

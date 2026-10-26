@@ -1,7 +1,7 @@
 # ENG-LIST-001 — Standar daftar panjang dan pagination SQ Core
 
-**Status:** DIUSULKAN (24 Oktober 2026). Berlaku untuk HCIS setelah PR yang menambahkan dokumen ini di-merge
-dengan persetujuan owner. Penerapan ke repository SQ Core lain (SQ Hub, Aset SQ, Karir SQ, SPMB SQ,
+**Status:** BERLAKU untuk HCIS sejak 26 Oktober 2026 (diusulkan 24 Oktober, di-merge lewat
+sabilulquran/hcisysq#162). Penerapan ke repository SQ Core lain (SQ Hub, Aset SQ, Karir SQ, SPMB SQ,
 Keluarga SQ) memerlukan PR terpisah di repository masing-masing.
 
 **Dasar:** audit [list-pagination-audit-2026-10-24.md](list-pagination-audit-2026-10-24.md). Owner menemukan
@@ -78,7 +78,10 @@ GET /admin/employees?page=2&pageSize=25&q=...&status=active
 }
 ```
 
-- `page` integer ≥ 1, default 1; `pageSize` integer 1–100, default 25.
+- `page` integer ≥ 1, default 1; `pageSize` integer 1–100, default 25. `pageCount` = `ceil(total / pageSize)`,
+  minimal 1.
+- Implementasi API memakai `apps/api/src/lib/pagination.ts` (`pageQuerySchema`, `pageOffset`, `pagination`);
+  komponen OpenAPI `Page`, `PageSize`, dan schema `Pagination`.
 - `total` dihitung dengan query `count(*)` yang memakai filter yang sama.
 - `page` di atas `pageCount` mengembalikan `items: []` dengan `pagination` yang benar, bukan error.
 - Nama parameter memakai bahasa Inggris (`page`, `pageSize`) di semua aplikasi SQ Core, termasuk yang saat ini
@@ -131,14 +134,17 @@ penyimpangan itu bukan preseden.
 
 1. **Quality gate `AGENTS.md` §7** (usulan dalam PR ini): setiap daftar baru atau yang diubah mengikuti ENG-LIST-001.
 2. **PR template**: checklist "Daftar/dropdown baru mengikuti ENG-LIST-001" pada bagian Verification.
-3. **Helper bersama** (paket fondasi, belum dibuat): `apps/api` mendapat satu modul `pagination` (schema zod
-   `pageQuery`/`cursorQuery`, builder response) sehingga route tidak menulis ulang validasi; web mendapat hook
-   `usePagedQuery` yang mengikat state ke URL dan `PaginationBar` mode server.
-4. **Test klasifikasi route** (paket fondasi, belum dibuat): setiap route `GET` di manifest
-   `docs/domain/AUTH-011-admin-route-permissions.json` diberi atribut `list`: `paged`, `cursor`, `bounded:<alasan>`,
-   `snapshot`, atau `single`. Test integration gagal jika ada `GET` baru tanpa klasifikasi, dan test kontrak
-   memastikan endpoint `paged`/`cursor` menolak `pageSize`/`limit` > 100 dan mengembalikan `total`/`nextCursor`.
-   Ini mengikuti pola penghitung route AUTH-011 yang sudah ada.
+3. **Helper bersama** (PAG-0, sudah ada): `apps/api/src/lib/pagination.ts` untuk kontrak offset; `GET /admin/employees`
+   sudah memakainya. Helper kursor ditambahkan bersama konsumen pertamanya (PAG-3). Di web, `PaginationBar`
+   sudah menerima `page/pageSize/total` dari server; hook yang mengikat state halaman ke URL ditambahkan bersama layar
+   pertama yang memakainya (PAG-1), bukan sebagai kode tanpa pemakai.
+4. **Test klasifikasi route** (PAG-0, sudah berjalan): `docs/development/list-endpoint-classification.json`
+   mengklasifikasikan **setiap** rute `GET` yang terdaftar di `createApp` sebagai `paged`, `typeahead`, `range`,
+   `bounded`, `aggregate`, `single`, `export`, `snapshot`, atau `debt`. `apps/api/test/list-endpoint-classification.test.ts`
+   gagal jika ada rute `GET` baru tanpa klasifikasi, jika pengecualian tanpa alasan, atau jika pelanggaran (`debt`)
+   tanpa paket PAG. Jumlah `debt` dipatok (55 pada 26 Oktober 2026) sehingga hanya boleh turun; menambahnya butuh
+   pengecualian yang disetujui owner. File klasifikasi terpisah dari manifest AUTH-011 agar perubahan pagination tidak
+   menyentuh berkas izin.
 5. **Test per endpoint**: endpoint berhalaman memiliki test untuk halaman kedua, halaman di luar jangkauan,
    filter + `total`, dan urutan stabil (data sintetis).
 6. **Review**: reviewer memeriksa `LIMIT` tanpa kontrak halaman, `.slice(` pada array dari API, dan `<select>` yang
@@ -146,7 +152,8 @@ penyimpangan itu bukan preseden.
 
 ## 6. Status dan langkah berikut
 
-- Dokumen ini DIUSULKAN. Owner menyetujui dengan me-merge PR yang memuatnya.
-- Paket perbaikan berprioritas ada di dokumen audit §5. Tidak ada perbaikan layar dalam PR ini.
+- PAG-0 (fondasi) selesai: helper offset, komponen OpenAPI, dan test klasifikasi. PAG-2 (SPMB) selesai di
+  sabilulquran/spmb-sq#32 (commit 9854c8a).
+- Paket perbaikan berikutnya ada di dokumen audit §5. Setiap paket menurunkan angka `debt` yang dipatok.
 - Untuk SQ Hub dan Aset SQ (yang memiliki `AGENTS.md`) serta Karir/SPMB/Keluarga SQ, aturan yang sama diusulkan
   lewat PR dokumentasi terpisah di masing-masing repository setelah owner menyetujui versi HCIS.

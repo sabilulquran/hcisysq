@@ -26,7 +26,7 @@ import {
 } from "./calculation-runner.js";
 import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
-import { manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
+import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
@@ -653,6 +653,13 @@ export async function registerAttendanceWorkforceRoutes(
     try {
       const body = clarificationSchema.safeParse(request.body);
       if (!body.success) throw new WorkforceAttendanceError(400, "INVALID_CLARIFICATION", "Klarifikasi tidak valid.");
+      if (!clarificationDateAllowed(body.data.workDate)) {
+        throw new WorkforceAttendanceError(
+          422,
+          "CLARIFICATION_DATE_OUT_OF_RANGE",
+          `Klarifikasi hanya untuk hari ini dan ${CLARIFICATION_LOOKBACK_DAYS} hari sebelumnya.`,
+        );
+      }
       if (body.data.mode === "correction") {
         const windowError = manualCorrectionWindowError({
           workDate: body.data.workDate,
@@ -761,9 +768,16 @@ export async function registerAttendanceWorkforceRoutes(
       await client.query("BEGIN");
       const current = await client.query<{
         employeeId: string; workDate: string; mode: string; proposedCheckInAt: Date | null; proposedCheckOutAt: Date | null;
+        administrativeCorrection: boolean;
       }>(
         `SELECT employee_id AS "employeeId", work_date::text AS "workDate", mode,
-           proposed_check_in_at AS "proposedCheckInAt", proposed_check_out_at AS "proposedCheckOutAt"
+           proposed_check_in_at AS "proposedCheckInAt", proposed_check_out_at AS "proposedCheckOutAt",
+           EXISTS (
+             SELECT 1 FROM attendance_clarification_events submitted
+             WHERE submitted.clarification_id = attendance_clarifications.id
+               AND submitted.event_type = 'submitted'
+               AND submitted.payload->>'administrativeCorrection' = 'true'
+           ) AS "administrativeCorrection"
          FROM attendance_clarifications WHERE id = $1 AND status = 'submitted' FOR UPDATE`,
         [params.data.clarificationId],
       );
@@ -794,6 +808,19 @@ export async function registerAttendanceWorkforceRoutes(
          ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
         [randomUUID(), params.data.clarificationId, principal.id, body.data.decision === "approve" ? "approved" : "rejected", JSON.stringify({ note: body.data.note ?? null })],
       );
+      // ATT-011-7: the employee hears about the decision on their own request (not on HC corrections).
+      if (!item.administrativeCorrection) {
+        const approved = body.data.decision === "approve";
+        await notifyEmployee(client, item.employeeId, {
+          eventKey: `clarification:${params.data.clarificationId}:${approved ? "approved" : "rejected"}`,
+          category: "attendance",
+          title: approved ? "Klarifikasi disetujui" : "Klarifikasi ditolak",
+          body: approved ? `Klarifikasi kehadiran ${item.workDate} disetujui.` : `Klarifikasi kehadiran ${item.workDate} ditolak.`,
+          href: "/app/attendance#clarifications",
+          actorAccountId: principal.id,
+          metadata: { clarificationId: params.data.clarificationId, workDate: item.workDate, status: approved ? "approved" : "rejected" },
+        });
+      }
       await client.query("COMMIT");
       const result = await materializeAttendanceResult(pool, item.employeeId, item.workDate);
       return reply.send({ status: body.data.decision === "approve" ? "approved" : "rejected", result: mapResult(result as unknown as Record<string, unknown>) });

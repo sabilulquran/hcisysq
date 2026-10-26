@@ -86,12 +86,13 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/AttendanceClarificationInput' }
       description: >-
-        For mode `correction`, proposed times must belong to `workDate` (same rule as
+        `workDate` must be today (Asia/Jakarta) or at most 7 days earlier (ATT-011-7, D-7). For mode
+        `correction`, proposed times must belong to `workDate` (same rule as
         POST /admin/attendance/manual-corrections); checked before any write.
       responses:
         '201': { description: Clarification submitted }
         '400': { description: INVALID_CLARIFICATION }
-        '422': { description: CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
+        '422': { description: CLARIFICATION_DATE_OUT_OF_RANGE, CHECK_IN_OUTSIDE_WORK_DATE, CHECK_OUT_OUTSIDE_WORK_DATE, or CHECK_OUT_BEFORE_CHECK_IN }
 
   /attendance/clarifications/me:
     get:

@@ -43,6 +43,11 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
       && (!path.endsWith("/settings") || hasPermission(session, "attendance.devices.configure"))
       && (!path.endsWith("/diagnostics") || hasPermission(session, "attendance.devices.technical"));
   }
+  // ATT-011-3 Perlu Tindakan: any permission that acts on one of the queue's kinds opens it.
+  if (path === "/admin/attendance/action-queue") {
+    return ["attendance.clarification.manage", "attendance.records.manage", "attendance.reports.read", "attendance.schedule.manage"]
+      .some((permission) => hasPermission(session, permission));
+  }
   // ATT-011-3R Perbaikan Absen: deciding requests or entering corrections each open it.
   if (path === "/admin/attendance/corrections") {
     return hasPermission(session, "attendance.clarification.manage") || hasPermission(session, "attendance.records.manage");

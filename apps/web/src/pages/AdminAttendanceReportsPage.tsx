@@ -1,6 +1,7 @@
 import { AlertTriangle, Calculator, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { AttendanceDayPanel } from "@/components/attendance/AttendanceDayPanel";
 import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
 import { CalculationDialog, ExceptionsTab, OvertimeTab, SummaryTab } from "@/components/attendance/reports/ReportExtraTabs";
@@ -95,6 +96,8 @@ export function AdminAttendanceReportsPage() {
   const [version, setVersion] = useState(0);
   const [showRun, setShowRun] = useState(false);
   const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
+  // ATT-011-3 §6.2: a Harian row opens the one-day panel.
+  const [openDay, setOpenDay] = useState<{ employeeId: string; workDate: string } | null>(null);
   const [unscheduled, setUnscheduled] = useState<AttendanceUnscheduled | null>(null);
   const [unscheduledPage, setUnscheduledPage] = useState(1);
   const [pinPage, setPinPage] = useState(1);
@@ -231,6 +234,11 @@ export function AdminAttendanceReportsPage() {
   return (
     <AttendanceWorkforceShell tab="reports" title="Laporan dan Kalkulasi" description="Pilih lingkup dan tanggal, jalankan Kalkulasi, tinjau tabelnya, lalu buka laporan.">
       {error ? <div className="mb-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink" role="alert"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div> : null}
+      {openDay ? (
+        <AttendanceDayPanel employeeId={openDay.employeeId} workDate={openDay.workDate}
+          canDecide={hasPermission(session, "attendance.clarification.manage")} canCorrect={canEnterCorrection}
+          onClose={() => setOpenDay(null)} onChanged={() => void loadRows()} />
+      ) : null}
       {run && showRun ? <CalculationDialog run={run} onCancel={() => void cancel()} onClose={() => setShowRun(false)} /> : null}
 
       <section className="rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
@@ -419,7 +427,7 @@ export function AdminAttendanceReportsPage() {
                   </thead>
                   <tbody className="divide-y">
                     {rows?.items.map((item) => (
-                      <tr key={`${item.employeeId}:${item.workDate}`}>
+                      <tr key={`${item.employeeId}:${item.workDate}`} onClick={() => setOpenDay({ employeeId: item.employeeId, workDate: item.workDate })} className="cursor-pointer hover:bg-surface">
                         <td className="p-3"><p className="font-semibold">{item.employeeName ?? "—"}</p><p className="text-xs text-muted-foreground">{item.employeeNumber ?? ""}</p></td>
                         <td className="p-3">{item.unitName ?? "—"}</td>
                         <td className="p-3 tabular-nums">{shortDate(item.workDate)}</td>
@@ -443,7 +451,7 @@ export function AdminAttendanceReportsPage() {
               </div>
               <ul className="divide-y md:hidden">
                 {rows?.items.map((item) => (
-                  <li key={`${item.employeeId}:${item.workDate}`} className="p-4">
+                  <li key={`${item.employeeId}:${item.workDate}`} className="cursor-pointer p-4" onClick={() => setOpenDay({ employeeId: item.employeeId, workDate: item.workDate })}>
                     <div className="flex items-start justify-between gap-3">
                       <div><p className="font-semibold">{item.employeeName ?? "—"}</p><p className="text-xs text-muted-foreground">{shortDate(item.workDate)} · {item.unitName ?? "—"}</p></div>
                       <span className="rounded-full bg-surface px-2.5 py-1 text-right text-xs font-bold">{calculationRowStatusLabel(item.status)}</span>

@@ -11,7 +11,7 @@ export type AttendanceTabKey =
   | "summary"
   | "shifts"
   | "patterns" | "dates" | "swaps"
-  | "daily" | "corrections" | "reports"
+  | "daily" | "queue" | "corrections" | "reports"
   | "overtime"
   | "devices"
   | "locations";
@@ -29,7 +29,15 @@ export interface AttendanceSection {
 }
 
 export const attendanceSections: AttendanceSection[] = [
-  { key: "summary", label: "Ringkasan", tabs: [{ key: "summary", label: "Ringkasan", href: "/admin/attendance" }] },
+  {
+    key: "summary",
+    label: "Ringkasan",
+    tabs: [
+      { key: "summary", label: "Ringkasan", href: "/admin/attendance" },
+      // ATT-011-3 §3/§6.1: the "Perlu tindakan" queue lives with Ringkasan; Kehadiran keeps three tabs (ATT-014 §19.8).
+      { key: "queue", label: "Perlu Tindakan", href: "/admin/attendance/action-queue" },
+    ],
+  },
   { key: "shifts", label: "Shift", tabs: [{ key: "shifts", label: "Shift", href: "/admin/attendance/shifts" }] },
   {
     key: "schedules",

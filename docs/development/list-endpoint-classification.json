@@ -13,6 +13,11 @@
       "reason": "Satu baris per peran yang mengikuti jabatan (kini hanya Kepala HC); isinya hanya pemegang peran itu dan pemegang satu jabatan."
     },
     {
+      "url": "/admin/attendance/action-queue",
+      "list": "paged",
+      "reason": "Antrean Perlu tindakan; halaman standar dengan jumlah per jenis."
+    },
+    {
       "url": "/admin/attendance/adms/biometric-control-plane",
       "list": "aggregate"
     },
@@ -255,6 +260,11 @@
       "url": "/admin/attendance/daily",
       "list": "range",
       "reason": "Satu tanggal; satu baris per pegawai aktif."
+    },
+    {
+      "url": "/admin/attendance/daily/:employeeId/:workDate",
+      "list": "single",
+      "reason": "Detail satu pegawai-hari; absen hari itu dibatasi 200."
     },
     {
       "url": "/admin/attendance/employees/:employeeId",

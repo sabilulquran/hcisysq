@@ -142,6 +142,17 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
              AND roster.status = 'PUBLISHED'
              AND roster.published_at > checked.calculated_at
          )
+         OR EXISTS (
+           -- §20.10: a shift whose start was moved earlier now gives a schedule to dates it did not cover.
+           SELECT 1
+           FROM access_audit_events audit
+           JOIN attendance_schedule_assignments assignment ON assignment.schedule_template_id = audit.entity_id
+           WHERE audit.action = 'attendance.schedule.backdated'
+             AND audit.occurred_at > checked.calculated_at
+             AND assignment.employee_id = checked.employee_id
+             AND checked.work_date >= assignment.effective_from
+             AND (assignment.effective_to IS NULL OR checked.work_date <= assignment.effective_to)
+         )
        ) AS changed
      FROM checked`,
     [employeeIds, from, to],

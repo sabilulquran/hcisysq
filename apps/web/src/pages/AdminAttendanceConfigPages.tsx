@@ -45,6 +45,13 @@ function Notice({ error, notice }: { error: string | null; notice: string | null
   );
 }
 
+/** The latest date "Mundurkan awal berlaku" accepts: strictly earlier than the current start. */
+function dayBefore(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
 function todayJakarta() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date()); }
 
 export function AdminAttendanceLocationsPage() {
@@ -189,7 +196,7 @@ export function AdminAttendanceSchedulesPage() {
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">
                   <label className="text-xs font-semibold text-muted-foreground">Berlaku sejak (lebih awal dari {item.effectiveFrom ?? "sekarang"})
-                    <input className="mt-1 h-9 rounded-lg border px-2" type="date" max={item.effectiveFrom ?? todayJakarta()} value={backdating.effectiveFrom} onChange={(e) => setBackdating({ ...backdating, effectiveFrom: e.target.value })} />
+                    <input className="mt-1 h-9 rounded-lg border px-2" type="date" max={dayBefore(item.effectiveFrom ?? todayJakarta())} value={backdating.effectiveFrom} onChange={(e) => setBackdating({ ...backdating, effectiveFrom: e.target.value })} />
                   </label>
                   <label className="min-w-[16rem] flex-1 text-xs font-semibold text-muted-foreground">Alasan
                     <input className="mt-1 h-9 w-full rounded-lg border px-2" maxLength={500} value={backdating.reason} onChange={(e) => setBackdating({ ...backdating, reason: e.target.value })} placeholder="Mis. shift ini sudah dipakai sejak Juli 2021" />

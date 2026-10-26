@@ -336,6 +336,54 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     expect(rows.items.map((item) => item.status)).toEqual(["unscheduled", "unscheduled"]);
   });
 
+  it("resolves a schedule before the shift was created once its start is moved earlier (ATT-014 §20.10)", async () => {
+    // A shift created "today" (version from now()) with a pattern from 1 Aug: August days have no schedule.
+    const lateShift = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_schedule_templates (id, name, start_time, end_time, created_by_account_id)
+       VALUES ($1, 'Synthetic Late Shift', '07:00', '12:00', $2)`,
+      [lateShift, accountId],
+    );
+    const versionId = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_schedule_versions (id, schedule_template_id, version, name, start_time, end_time, end_day_offset, created_by_account_id)
+       VALUES ($1, $2, 1, 'Synthetic Late Shift', '07:00', '12:00', 0, $3)`,
+      [versionId, lateShift, accountId],
+    );
+    await client.query("UPDATE attendance_schedule_assignments SET effective_to = '2026-07-31' WHERE employee_id = $1", [mapped]);
+    await client.query(
+      `INSERT INTO attendance_schedule_assignments (id, employee_id, schedule_template_id, weekday_mask, effective_from, created_by_account_id)
+       VALUES ($1, $2, $3, 127, '2026-08-01', $4)`,
+      [randomUUID(), mapped, lateShift, accountId],
+    );
+    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    let rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    expect(rows.items[0]?.status).toBe("unscheduled");
+
+    // Same SQL as POST /admin/attendance/schedules/{id}/backdate, then Kalkulasi again.
+    await client.query(
+      "UPDATE attendance_schedule_versions SET effective_from = ('2021-07-01'::date::timestamp AT TIME ZONE 'Asia/Jakarta') WHERE id = $1",
+      [versionId],
+    );
+    await client.query(
+      `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload, occurred_at)
+       VALUES ($1, $2, 'attendance.schedule.backdated', 'attendance_schedule_template', $3, '{}'::jsonb, now() + interval '1 hour')`,
+      [randomUUID(), accountId, lateShift],
+    );
+    rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    expect(rows.items[0]).toMatchObject({ status: "unscheduled", changedSinceCalculated: true });
+
+    await queueRun({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" }, new Date(Date.now() + 2 * 3_600_000).toISOString());
+    const ordered = createCalculationRunner(transactionPool, { pause: async () => undefined });
+    ordered.kick();
+    await ordered.idle();
+    const result = await client.query(
+      "SELECT status FROM attendance_result_versions WHERE employee_id = $1 AND work_date = '2026-08-28' ORDER BY version DESC LIMIT 1",
+      [mapped],
+    );
+    expect(result.rows[0].status).not.toBe("off");
+  });
+
   it("paginates rows while the summary counts every row", async () => {
     await calculate({ employeeId: mapped, from: "2026-08-15", to: "2026-08-28" });
     const rows = await attendanceCalculationRows(

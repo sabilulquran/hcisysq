@@ -136,7 +136,7 @@ Dibanding data atasan lama                                               [Buka l
 
 - Setiap baris membuka tab terkait yang sudah difilter.
 - "Dibanding data atasan lama" = laporan read-only §4.6; **bukan** mode `SHADOW` dan tidak menyentuh rollout.
-- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3).
+- Empty (belum ada struktur terbit): "Belum ada struktur. [Mulai dari data yang sudah ada] [Mulai dari kosong]" (O-3). **Selesai (ORG-008-7b).** Tombol pertama hanya tampil bagi sesi yang juga boleh menulis pejabat dan kewenangan, karena tanpa itu ia pasti berakhir 403 (acceptance ORG-008-J). Dialognya menyebutkan lebih dulu bahwa hasilnya usulan, bahwa tidak ada yang disimpulkan dari nama jabatan, bahwa susunannya datar sehingga menyusun tingkatan tetap pekerjaan operator, dan bahwa pegawai tanpa unit atau tanpa atasan dilaporkan jumlahnya alih-alih ditebak. Setelah selesai, hitungan hasilnya ditampilkan termasuk apa yang belum terjawab.
 - Forbidden: tanpa `organization.manage` menu tidak tampil; akses langsung → "Anda tidak punya akses ke Struktur Organisasi".
 
 ### 4.3 Bagan
@@ -275,6 +275,7 @@ Aturan lain yang terkena: Direktur (lembur tidak berlaku) — jabatan tetap akti
 - Bila struktur dasar sudah berubah sejak perubahan ini dibuat (ada terbitan lain): "Struktur sudah diubah oleh 'Koreksi Oktober' (terbit 20 Okt). [Perbarui perubahan ini dari struktur terbaru]" — **Terbitkan** ditolak sampai diperbarui (§5.2).
 - **Buang perubahan** (konfirmasi, alasan opsional): status Dibuang, tetap tercatat di riwayat dan audit.
 - Setelah terbit: "Struktur terbit, berlaku 1 Jan 2027. Persetujuan masih memakai data atasan lama." Tidak ada `window.confirm`; konfirmasi memakai dialog dengan ringkasan dampak.
+- **Siapa menekan Terbitkan (ORG-008-8, layar):** HC Admin melihat semua tombol penyusunan, termasuk pejabat, Plt, kewenangan, atasan khusus, dan "Mulai dari data yang sudah ada". Sebagai ganti tombol Terbitkan, ia melihat "Diterbitkan oleh Kepala HC", dan setelah perubahan lulus pemeriksaan: "Siap diterbitkan — menunggu Kepala HC". Tombol Terbitkan hanya tampil bagi pemegang `approvals.policy.manage` (role Kepala HC). Ini perubahan sisi layar untuk keputusan O-1; aturan sisi API ada di baris ORG-008-8 §9.
 
 ### 4.8 Kegagalan, empty, forbidden, mobile, lambat
 
@@ -325,6 +326,7 @@ Read model menghitung per pegawai secara batch (satu snapshot dimuat sekali). Ba
 ### 5.4 Keterkaitan ATT-011
 
 - **Unit HC (D-11):** tambah kolom nullable `organization_nodes.legacy_unit_id → organizational_units(id)` (O-9) agar "unit pegawai atau unit induknya" dapat dihitung dari struktur bertingkat, sementara scope role tetap menunjuk `organizational_units`. Panel unit menampilkan staf HC yang scope-nya cocok (read-only, link ke Akses). Tanpa tautan: notifikasi ATT-011 mengikuti fallback organisasi (sudah DRAFT di ATT-011 §7.4).
+  Layar tautannya ada di panel unit sebagai **"Unit lama & staf HC"** (ORG-008-6b): memilih unit lama yang diwakili, dan menampilkan staf HC yang sudah berwenang atas unit itu atau unit di atasnya. Daftar stafnya **read-only** — penugasannya tetap dilakukan di layar Akses. Daftar unit lama diambil dari `GET /admin/organization` yang sudah ada, sehingga tidak ada endpoint baru. Keadaan "belum tertaut" dan "tertaut tetapi belum ada staf" ditampilkan sebagai dua pesan berbeda, karena akibatnya berbeda.
 - **Direktur (D-10):** aturan tetap dikelola di **Pengaturan → Aturan lembur** (ATT-011) dengan pemilih jabatan ORG-008 (cari jabatan dengan jalur unit). ORG-008 hanya menampilkan "aturan yang memakai jabatan ini" dan memperingatkan saat jabatan tersebut dinonaktifkan/dipindah di perubahan (O-8).
 - **Atasan lembur (D-5):** Cek persetujuan memakai resolver yang sama dengan ATT-011-6b; tidak ada resolver kedua di ORG-008.
 

@@ -232,3 +232,53 @@ export async function removeRoleAssignment(assignmentId: string): Promise<void> 
   });
   await readJson<void>(response);
 }
+
+/** ORG-008-9: who holds the Kepala HC role against who holds the Kepala HC seat. Read-only. */
+export type RoleSeatStatus =
+  | "SEAT_NOT_SET"
+  | "NO_PUBLISHED_STRUCTURE"
+  | "SEAT_NOT_IN_STRUCTURE"
+  | "SEAT_VACANT"
+  | "CHECKED";
+
+export type RoleSeatMismatch =
+  | { kind: "HOLDER_NOT_SEATED"; accountId: string; employeeId: string | null; name: string }
+  | {
+      kind: "SEATED_WITHOUT_ROLE";
+      employeeId: string;
+      name: string;
+      incumbentKind: "PRIMARY" | "ACTING";
+      reason: "NO_ACCOUNT" | "ACCOUNT_NOT_ACTIVE" | "NO_ROLE";
+    };
+
+export interface RoleSeatCheck {
+  roleKey: string;
+  asOf: string;
+  seat: { positionKey: string; title: string | null; unitName: string | null; reason: string; setAt: string } | null;
+  status: RoleSeatStatus;
+  holders: Array<{ accountId: string; employeeId: string | null; name: string }>;
+  incumbents: Array<{ employeeId: string; name: string; kind: "PRIMARY" | "ACTING"; accountId: string | null; hasRole: boolean }>;
+  mismatches: RoleSeatMismatch[];
+}
+
+export async function getRoleSeatChecks(): Promise<{ items: RoleSeatCheck[] }> {
+  const response = await fetch("/api/admin/access/role-seat-checks", {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  return readJson(response);
+}
+
+/** Super Admin only. `positionKey: null` clears the seat; nothing is granted or revoked either way. */
+export async function setRoleSeatLink(
+  roleKey: string,
+  input: { positionKey: string | null; reason: string },
+): Promise<RoleSeatCheck> {
+  const response = await fetch(`/api/admin/access/role-seat-links/${roleKey}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson(response);
+}

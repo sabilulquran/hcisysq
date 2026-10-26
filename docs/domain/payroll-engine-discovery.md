@@ -4,7 +4,8 @@
 **Specification:** PAY-003  
 **Decision date:** 2026-09-22  
 **Related:** PAY-001, PAY-002, ATT-007, EMP-005, EMP-006, ORG-004, ORG-007, LEAVE-001, LEAVE-002  
-**Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`
+**Benchmark evidence:** `docs/product/semarthris-benchmark-2026-09-22.md`  
+**Follow-up (2026-10-24):** legacy flow audit `docs/domain/payroll-legacy-flow-audit.md`, v1 specification `docs/domain/payroll-calculation-v1.md` (DRAFT), ADR-0003 (PROPOSED)
 
 ## Purpose
 

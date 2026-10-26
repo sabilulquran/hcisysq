@@ -98,6 +98,19 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
               <p className="text-xs text-muted-foreground">{[day.result.lateMinutes ? `Terlambat ${day.result.lateMinutes} mnt` : null, day.result.earlyLeaveMinutes ? `Pulang cepat ${day.result.earlyLeaveMinutes} mnt` : null].filter(Boolean).join(" · ")}</p>
             ) : null}
           </section>
+          {day.result?.blocks && day.result.blocks.length > 1 ? (
+            <section>
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Blok kerja</h3>
+              <ul className="mt-1 grid gap-1 tabular-nums">
+                {day.result.blocks.map((block) => (
+                  <li key={block.sequence}>
+                    Blok {block.sequence} · {time(block.scheduledStartAt)}–{time(block.scheduledEndAt)} · scan {block.firstCheckInAt || block.lastCheckOutAt ? `${time(block.firstCheckInAt)} – ${time(block.lastCheckOutAt)}` : "—"} · {calculationRowStatusLabel(block.status as AttendanceCalculationRowStatus)}
+                    {block.lateMinutes ? ` · terlambat ${block.lateMinutes} mnt` : ""}{block.earlyLeaveMinutes ? ` · pulang cepat ${block.earlyLeaveMinutes} mnt` : ""}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section>
             <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Data scan</h3>
             <ul className="mt-1 grid gap-1">

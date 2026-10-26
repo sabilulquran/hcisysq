@@ -201,6 +201,46 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
     expect(after.rows).toEqual(before.rows);
   });
 
+  it("judges each work block of a two-block shift and stores the blocks (ATT-013)", async () => {
+    const template = randomUUID();
+    const version = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_schedule_templates (id, name, start_time, end_time, created_by_account_id)
+       VALUES ($1, 'Synthetic Two Blocks', '04:00', '08:30', $2)`,
+      [template, accountId],
+    );
+    await client.query(
+      `INSERT INTO attendance_schedule_versions (id, schedule_template_id, version, name, start_time, end_time, end_day_offset, effective_from, created_by_account_id)
+       VALUES ($1, $2, 1, 'Synthetic Two Blocks', '04:00', '08:30', 0, '2000-01-01T00:00:00Z', $3)`,
+      [version, template, accountId],
+    );
+    await client.query(
+      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time)
+       VALUES ($1, $2, 2, '14:30', '19:30')`,
+      [randomUUID(), version],
+    );
+    await client.query("UPDATE attendance_schedule_assignments SET effective_to = '2026-08-27' WHERE employee_id = $1", [mapped]);
+    await client.query(
+      `INSERT INTO attendance_schedule_assignments (id, employee_id, schedule_template_id, weekday_mask, effective_from, created_by_account_id)
+       VALUES ($1, $2, $3, 127, '2026-08-28', $4)`,
+      [randomUUID(), mapped, template, accountId],
+    );
+    // Only the morning block is attended.
+    await admsScan("2026-08-28T03:58:00+07:00");
+    await admsScan("2026-08-28T08:31:00+07:00");
+    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    const rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    expect(rows.items[0]).toMatchObject({ status: "incomplete", normal: 1, actual: 0.5 });
+    const blocks = await client.query(
+      `SELECT block.sequence, block.status FROM attendance_result_blocks block
+       JOIN attendance_result_versions version ON version.id = block.attendance_result_version_id
+       WHERE version.employee_id = $1 AND version.work_date = '2026-08-28'
+       ORDER BY version.version DESC, block.sequence LIMIT 2`,
+      [mapped],
+    );
+    expect(blocks.rows).toEqual([{ sequence: 1, status: "present" }, { sequence: 2, status: "absent" }]);
+  });
+
   it("is idempotent: calculating unchanged data again writes no new version (ATT-014-C)", async () => {
     await calculate({ employeeId: mapped, from: "2026-08-25", to: "2026-08-28" });
     const first = await client.query("SELECT count(*)::int AS total FROM attendance_result_versions WHERE employee_id = $1", [mapped]);

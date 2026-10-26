@@ -78,6 +78,37 @@ const workLocationSchema = z.object({
 const workLocationPatchSchema = workLocationSchema.partial().extend({
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan lokasi kosong.");
+// ATT-013: blocks 2-3 of a shift, on the same day as block 1.
+const extraBlocksSchema = z.array(z.object({
+  startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+})).max(2);
+
+/** ATT-013 §3: blocks in order, no overlap, at least one minute apart, and no midnight crossing. */
+export function scheduleBlocksError(first: { startTime: string; endTime: string; endDayOffset: number }, extra: ReadonlyArray<{ startTime: string; endTime: string }>) {
+  if (extra.length === 0) return null;
+  if (first.endDayOffset !== 0 || first.endTime <= first.startTime) return "Shift dengan beberapa blok tidak boleh melewati tengah malam.";
+  let previousEnd = first.endTime.slice(0, 5);
+  for (const block of extra) {
+    const start = block.startTime.slice(0, 5);
+    const end = block.endTime.slice(0, 5);
+    if (end <= start) return "Setiap blok harus selesai setelah mulai, pada hari yang sama.";
+    if (start <= previousEnd) return "Blok harus berurutan dan tidak boleh bertumpuk.";
+    previousEnd = end;
+  }
+  return null;
+}
+
+async function writeVersionBlocks(client: PoolClient, versionId: string, blocks: ReadonlyArray<{ startTime: string; endTime: string }>) {
+  for (const [index, block] of blocks.entries()) {
+    await client.query(
+      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time)
+       VALUES ($1, $2, $3, $4::time, $5::time)`,
+      [randomUUID(), versionId, index + 2, block.startTime, block.endTime],
+    );
+  }
+}
+
 const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
@@ -88,6 +119,7 @@ const scheduleTemplateSchema = z.object({
   workLocationId: z.string().uuid().nullable().optional(),
   // ATT-014 §20.10: the date the shift's meaning applies from (00:00 WIB); default is the moment of creation.
   effectiveFrom: dateSchema.optional(),
+  extraBlocks: extraBlocksSchema.default([]),
 });
 const scheduleBackdateSchema = z.object({
   effectiveFrom: dateSchema,
@@ -100,6 +132,7 @@ const scheduleTemplatePatchSchema = z.object({
   endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
+  extraBlocks: extraBlocksSchema.optional(),
   workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
@@ -291,8 +324,24 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
      ORDER BY sequence`,
     [mapped.id],
   );
+  // ATT-013: per-block outcome of a multi-block day (none for a single-block day).
+  const blocks = await db.query(
+    `SELECT sequence, scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
+       first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt", status,
+       late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes", worked_minutes AS "workedMinutes"
+     FROM attendance_result_blocks WHERE attendance_result_version_id = $1 ORDER BY sequence`,
+    [mapped.id],
+  );
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value ?? null);
   return {
     ...mapped,
+    blocks: blocks.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      scheduledStartAt: iso(item.scheduledStartAt),
+      scheduledEndAt: iso(item.scheduledEndAt),
+      firstCheckInAt: iso(item.firstCheckInAt),
+      lastCheckOutAt: iso(item.lastCheckOutAt),
+    })),
     sessions: sessions.rows.map((item: Record<string, unknown>) => ({
       ...item,
       checkInAt: item.checkInAt instanceof Date ? item.checkInAt.toISOString() : item.checkInAt ?? null,
@@ -908,6 +957,8 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
          version.id AS "currentVersionId", version.version AS "currentVersion",
+         (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+            FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks",
          (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
@@ -951,8 +1002,22 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
-      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId"]
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks"]
         .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
+      // ATT-013: without new blocks in the request, a new version keeps the current version's blocks.
+      const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string }>(
+        `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime"
+         FROM attendance_schedule_version_blocks block
+         JOIN attendance_schedule_versions version ON version.id = block.schedule_version_id
+         WHERE version.schedule_template_id = $1 AND version.effective_to IS NULL
+         ORDER BY block.sequence`,
+        [params.data.scheduleId],
+      )).rows;
+      const blocksError = scheduleBlocksError(next, blocks);
+      if (blocksError) {
+        await client.query("ROLLBACK");
+        return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
+      }
 
       await client.query(
         `UPDATE attendance_schedule_templates
@@ -992,6 +1057,7 @@ export async function registerAttendanceWorkforceRoutes(
             next.workLocationId ?? null, effectiveAt, principal.id,
           ],
         );
+        await writeVersionBlocks(client, versionId, blocks);
       }
 
       await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
@@ -1018,6 +1084,8 @@ export async function registerAttendanceWorkforceRoutes(
     const id = randomUUID();
     const versionId = randomUUID();
     const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
+    const blocksError = scheduleBlocksError({ startTime: body.data.startTime, endTime: body.data.endTime, endDayOffset }, body.data.extraBlocks);
+    if (blocksError) return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1045,8 +1113,9 @@ export async function registerAttendanceWorkforceRoutes(
           body.data.workLocationId ?? null, principal.id, body.data.effectiveFrom ?? null,
         ],
       );
+      await writeVersionBlocks(client, versionId, body.data.extraBlocks);
       await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
-        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null,
+        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null, extraBlocks: body.data.extraBlocks,
       });
       await client.query("COMMIT");
       return reply.status(201).send({ id, versionId, version: 1 });

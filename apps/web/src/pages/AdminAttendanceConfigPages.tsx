@@ -14,7 +14,8 @@ import {
   updateAttendanceSchedule,
   updateAttendanceScheduleAssignment,
   updateAttendanceWorkLocation,
-  type AttendanceScheduleAssignmentItem,
+  type AttendanceScheduleAssignmentItem, shiftHoursText,
+  type ShiftBlock,
 } from "@/lib/workforceAttendance";
 
 async function loadActiveEmployees() {
@@ -138,6 +139,8 @@ export function AdminAttendanceSchedulesPage() {
   const [locations, setLocations] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
   const [items, setItems] = useState<Array<{ id: string; name: string; startTime: string; endTime: string; endDayOffset: number; lateGraceMinutes: number; earlyLeaveToleranceMinutes: number; active: boolean; workLocationId: string | null; workLocationName: string | null; effectiveFrom: string | null }>>([]);
   const [form, setForm] = useState({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "10", earlyLeaveToleranceMinutes: "0", workLocationId: "", effectiveFrom: "" });
+  // ATT-013: blocks 2-3 of a shift with more than one work block per day.
+  const [extraBlocks, setExtraBlocks] = useState<ShiftBlock[]>([]);
   // ATT-014 §20.10 "Mundurkan awal berlaku": one shift at a time, date + reason, audited by the API.
   const [backdating, setBackdating] = useState<{ id: string; effectiveFrom: string; reason: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -168,10 +171,25 @@ export function AdminAttendanceSchedulesPage() {
             <input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" max={todayJakarta()} value={form.effectiveFrom} onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })} />
           </label>
         </div>
+        <div className="mt-3 grid gap-2">
+          {extraBlocks.map((block, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs font-semibold text-muted-foreground">Blok {index + 2}</span>
+              <input className="h-10 rounded-xl border px-3" type="time" aria-label={`Mulai blok ${index + 2}`} value={block.startTime} onChange={(e) => setExtraBlocks(extraBlocks.map((item, at) => at === index ? { ...item, startTime: e.target.value } : item))} />
+              <input className="h-10 rounded-xl border px-3" type="time" aria-label={`Selesai blok ${index + 2}`} value={block.endTime} onChange={(e) => setExtraBlocks(extraBlocks.map((item, at) => at === index ? { ...item, endTime: e.target.value } : item))} />
+              <button type="button" className="rounded-lg border p-2" aria-label={`Hapus blok ${index + 2}`} onClick={() => setExtraBlocks(extraBlocks.filter((_, at) => at !== index))}><X className="h-4 w-4" /></button>
+            </div>
+          ))}
+          {extraBlocks.length < 2 ? (
+            <button type="button" className="inline-flex w-fit items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => setExtraBlocks([...extraBlocks, { startTime: "", endTime: "" }])}><Plus className="h-3.5 w-3.5" /> Tambah blok</button>
+          ) : null}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Blok tambahan untuk pegawai yang bekerja dua atau tiga kali sehari dengan jeda panjang (misalnya 04:00–08:30 dan 14:30–19:30). Setiap blok dinilai sendiri dengan toleransi yang sama.</p>
         <p className="mt-2 text-xs text-muted-foreground">Pilih "Selesai hari berikutnya" untuk shift malam. "Berlaku sejak" menentukan tanggal pertama shift ini dipakai (kosong = sejak disimpan); pola jadwal pada tanggal sebelumnya tidak dinilai. Perubahan jam shift langsung berlaku sejak disimpan, termasuk untuk hari ini.</p>
         <button className="mt-3 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50" disabled={busy || !form.name} onClick={() => void run(async () => {
-          await createAttendanceSchedule({ name: form.name, startTime: form.startTime, endTime: form.endTime, endDayOffset: Number(form.endDayOffset), lateGraceMinutes: Number(form.lateGraceMinutes), earlyLeaveToleranceMinutes: Number(form.earlyLeaveToleranceMinutes), workLocationId: form.workLocationId || null, ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}) });
+          await createAttendanceSchedule({ name: form.name, startTime: form.startTime, endTime: form.endTime, endDayOffset: Number(form.endDayOffset), lateGraceMinutes: Number(form.lateGraceMinutes), earlyLeaveToleranceMinutes: Number(form.earlyLeaveToleranceMinutes), workLocationId: form.workLocationId || null, ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}), ...(extraBlocks.length ? { extraBlocks } : {}) });
           setForm({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "10", earlyLeaveToleranceMinutes: "0", workLocationId: "", effectiveFrom: "" });
+          setExtraBlocks([]);
         }, "Shift ditambahkan.")}><Plus className="h-4 w-4" /> Tambah shift</button>
       </section>
 
@@ -191,7 +209,7 @@ export function AdminAttendanceSchedulesPage() {
             </tr>
           ) : (
             <Fragment key={item.id}>
-            <tr><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{item.startTime.slice(0,5)}–{item.endTime.slice(0,5)}{item.endDayOffset === 1 ? " · +1 hari" : ""}</td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? "—"}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm({ name: item.name, startTime: item.startTime, endTime: item.endTime, endDayOffset: String(item.endDayOffset ?? 0), lateGraceMinutes: String(item.lateGraceMinutes), earlyLeaveToleranceMinutes: String(item.earlyLeaveToleranceMinutes), workLocationId: item.workLocationId ?? "", active: item.active }); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
+            <tr><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}</td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? "—"}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm({ name: item.name, startTime: item.startTime, endTime: item.endTime, endDayOffset: String(item.endDayOffset ?? 0), lateGraceMinutes: String(item.lateGraceMinutes), earlyLeaveToleranceMinutes: String(item.earlyLeaveToleranceMinutes), workLocationId: item.workLocationId ?? "", active: item.active }); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
             {backdating?.id === item.id ? (
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">

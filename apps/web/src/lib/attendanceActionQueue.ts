@@ -59,6 +59,8 @@ export interface AttendanceDay {
     overtimeMinutes: number;
     createdAt: string;
     sessions: Array<{ sequence: number; checkInAt: string | null; checkOutAt: string | null; workedMinutes: number | null; complete: boolean }>;
+    /** ATT-013: one entry per block of a multi-block day. */
+    blocks?: Array<{ sequence: number; scheduledStartAt: string; scheduledEndAt: string; firstCheckInAt: string | null; lastCheckOutAt: string | null; status: string; lateMinutes: number; earlyLeaveMinutes: number }>;
   };
   punches: AttendanceTransaction[];
   clarifications: Array<{ id: string; kind: string; mode: string; status: string; reason: string; decisionNote: string | null }>;

@@ -3,7 +3,12 @@ import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiConfig } from "../src/config/env.js";
 import {
-  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, DOCUMENT_PERMISSIONS, HC_ADMIN_PERMISSIONS, PAYROLL_PERMISSIONS,
+  ADMIN_PERMISSIONS,
+  BOARD_READ_PERMISSION,
+  DOCUMENT_PERMISSIONS,
+  EMPLOYMENT_PERMISSIONS,
+  HC_ADMIN_PERMISSIONS,
+  PAYROLL_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
 
 // AUTH-011 / SEC-02: every route registered by createApp must be either explicitly public
@@ -119,10 +124,11 @@ describe("AUTH-011 route manifest coverage", () => {
   it("declares a known guard for every manifest entry", async () => {
     // PAY-003 permissions are a known guard but deliberately outside both bundles:
     // legacy Super Admin compatibility grants no payroll permission (ADR-0003).
+    // EMP-010: employment.correct is likewise a real guard no bundle carries by default (D-16).
     // DOC-002: documents.discipline.manage and documents.correct are outside every bundle too.
     const known = new Set<string>([
       ...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve",
-      ...PAYROLL_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
+      ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
     ]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;

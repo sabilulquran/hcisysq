@@ -2159,6 +2159,46 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "GET",
+    "url": "/admin/decision-documents",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "POST",
+    "url": "/admin/decision-documents",
+    "permissions": [
+      "employment.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "GET",
+    "url": "/admin/decision-documents/:documentId",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/decision-documents/:documentId",
+    "permissions": [
+      "employment.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "POST",
+    "url": "/admin/decision-documents/:documentId/corrections",
+    "permissions": [
+      "employment.correct"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "GET",
     "url": "/admin/organization/designer/drafts",

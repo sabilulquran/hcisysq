@@ -45,6 +45,7 @@ import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
+import { AdminDecisionDocumentsPage } from "@/pages/AdminDecisionDocumentsPage";
 import { AdminEmploymentConsistencyPage } from "@/pages/AdminEmploymentConsistencyPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
@@ -292,6 +293,13 @@ const adminEmploymentConsistencyRoute = createRoute({
   path: "/admin/employment/consistency",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employment/consistency"),
   component: AdminEmploymentConsistencyPage,
+});
+
+const adminDecisionDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/decision-documents",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/decision-documents"),
+  component: AdminDecisionDocumentsPage,
 });
 
 const adminOrganizationRoute = createRoute({
@@ -598,6 +606,7 @@ const routeTree = rootRoute.addChildren([
   adminEmployeeImportRoute,
   adminEmployeeImportHistoryRoute,
   adminEmploymentConsistencyRoute,
+  adminDecisionDocumentsRoute,
   adminOrganizationRoute,
   adminAttendanceRoute,
   adminAttendanceShiftsRoute,

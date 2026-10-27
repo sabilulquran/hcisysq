@@ -21,6 +21,7 @@ const data: AccessAdminResponse = {
       organizationalUnitName: null, startsOn: null, endsOn: null, reason: null, createdAt: "2026-01-01T00:00:00Z",
     }],
   }],
+  pagination: { page: 1, pageSize: 25, total: 1, pageCount: 1 },
   roles: [{ id: "synthetic-role", roleKey: "human_capital", name: "Synthetic Human Capital", description: null, permissions: ["leave.validate"] }],
   units: [{ id: "synthetic-unit", name: "Synthetic Unit" }],
   summary: { accounts: 1, active: 1, invited: 0, unaccountedActiveEmployees: 0 },

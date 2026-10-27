@@ -3,6 +3,7 @@ import { canAccessAdminPath } from "@/lib/authorization";
 import type { ReactNode } from "react";
 import {
   Building2,
+  Calculator,
   CalendarDays,
   CalendarRange,
   ClipboardCheck,
@@ -47,6 +48,7 @@ export type AdminNavKey =
   | "leave"
   | "leave-calendar"
   | "payslips"
+  | "payroll"
   | "access"
   | "services";
 
@@ -110,7 +112,10 @@ const navGroups: AdminNavGroup[] = [
   {
     label: "Payslip",
     category: "pay",
-    items: [{ key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards }],
+    items: [
+      { key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards },
+      { key: "payroll", label: "Payroll", href: "/admin/payroll", icon: Calculator },
+    ],
   },
   {
     label: "Sistem",

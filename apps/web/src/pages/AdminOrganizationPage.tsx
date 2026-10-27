@@ -25,12 +25,13 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   OrganizationChart,
   type OrganizationSelection,
 } from "@/components/organization/OrganizationChart";
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import { getCurrentSession } from "@/lib/auth";
@@ -97,6 +98,7 @@ import {
   deleteOrganizationPosition,
   endOrganizationBinding,
   listOrganizationJournal,
+  ORGANIZATION_JOURNAL_PAGE_SIZE,
   OrganizationCommandRefused,
   rebaseOrganizationDraft,
   seedOrganizationDraftFromLegacy,
@@ -412,6 +414,8 @@ export function OrganizationDesignerWorkspace({
   const [previewEmployeeId, setPreviewEmployeeId] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [journal, setJournal] = useState<OrganizationJournalEntry[]>([]);
+  const [journalPage, setJournalPage] = useState(1);
+  const [journalTotal, setJournalTotal] = useState(0);
   const [journalLoading, setJournalLoading] = useState(false);
   const [journalError, setJournalError] = useState<string | null>(null);
   const [replayPreview, setReplayPreview] = useState<OrganizationReplayReport | null>(null);
@@ -502,12 +506,21 @@ export function OrganizationDesignerWorkspace({
   const draftId = data?.draft?.id ?? null;
   const revision = data?.draft?.revision;
 
-  const loadJournal = () => {
-    if (!draftId) { setJournal([]); return; }
+  // Newest step first, one page at a time (ENG-LIST-001); a new step always lands on page 1.
+  const journalRequest = useRef(0);
+  const loadJournal = (page = 1) => {
+    const request = ++journalRequest.current;
+    if (!draftId) { setJournal([]); setJournalTotal(0); setJournalPage(1); return; }
     setJournalLoading(true);
     setJournalError(null);
-    void listOrganizationJournal(draftId)
-      .then(setJournal)
+    void listOrganizationJournal(draftId, page)
+      .then((result) => {
+        // Only the newest request may land, so quick pager clicks cannot show an older page last.
+        if (request !== journalRequest.current) return;
+        setJournal(result.items);
+        setJournalTotal(result.pagination.total);
+        setJournalPage(result.pagination.page);
+      })
       .catch((cause: unknown) => setJournalError(errorMessage(cause, "Daftar perubahan tidak dapat dimuat.")))
       .finally(() => setJournalLoading(false));
   };
@@ -1074,7 +1087,16 @@ export function OrganizationDesignerWorkspace({
           onConfirmPreview={() => void applyReplay()}
           onCancelPreview={() => { setReplayPreview(null); setReplayFor(null); }}
           onRebase={() => void runReplayPreview(null)}
-          onRetry={loadJournal}
+          onRetry={() => loadJournal(journalPage)}
+          total={journalTotal}
+          footer={journalTotal > ORGANIZATION_JOURNAL_PAGE_SIZE ? (
+            <PaginationBar
+              page={journalPage}
+              pageSize={ORGANIZATION_JOURNAL_PAGE_SIZE}
+              total={journalTotal}
+              onPageChange={(page) => loadJournal(page)}
+            />
+          ) : null}
         />
       </section> : null}
 

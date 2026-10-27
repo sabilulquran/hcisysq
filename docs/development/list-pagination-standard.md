@@ -142,7 +142,7 @@ penyimpangan itu bukan preseden.
    mengklasifikasikan **setiap** rute `GET` yang terdaftar di `createApp` sebagai `paged`, `typeahead`, `range`,
    `bounded`, `aggregate`, `single`, `export`, `snapshot`, atau `debt`. `apps/api/test/list-endpoint-classification.test.ts`
    gagal jika ada rute `GET` baru tanpa klasifikasi, jika pengecualian tanpa alasan, atau jika pelanggaran (`debt`)
-   tanpa paket PAG. Jumlah `debt` dipatok (56 pada 26 Oktober 2026, 51 setelah PAG-4 pada 27 Oktober) sehingga hanya boleh turun; menambahnya butuh
+   tanpa paket PAG. Jumlah `debt` dipatok (56 pada 26 Oktober 2026, 51 setelah PAG-4 dan 42 setelah PAG-10 pada 27 Oktober) sehingga hanya boleh turun; menambahnya butuh
    pengecualian yang disetujui owner. File klasifikasi terpisah dari manifest AUTH-011 agar perubahan pagination tidak
    menyentuh berkas izin.
 5. **Test per endpoint**: endpoint berhalaman memiliki test untuk halaman kedua, halaman di luar jangkauan,

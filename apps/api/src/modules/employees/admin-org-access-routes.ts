@@ -10,6 +10,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AUTH_COOKIE_NAME,
@@ -42,6 +43,11 @@ const SEAT_LINKED_ROLE_KEYS = [HC_LEAD_ROLE_KEY] as const;
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
 const accountIdSchema = z.object({ accountId: z.string().uuid() });
 const assignmentIdSchema = z.object({ assignmentId: z.string().uuid() });
+// ENG-LIST-001: GET /admin/access pages accounts; includeInactive=true also lists inactive ones.
+const accessListQuerySchema = pageQuerySchema.extend({
+  q: z.string().trim().max(120).optional(),
+  includeInactive: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+});
 
 const managerSchema = z.object({
   managerEmployeeId: z.string().uuid().nullable(),
@@ -458,7 +464,22 @@ export async function registerOrgAccessAdminRoutes(
     const principal = await authenticateAdmin(request, reply, "access.manage");
     if (!principal) return;
 
-    const [accounts, assignments, roles, units, unaccounted] = await Promise.all([
+    const query = accessListQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({ code: "INVALID_QUERY", message: "Pencarian atau halaman account tidak valid." });
+    }
+    // ENG-LIST-001: accounts are searched and paged in SQL; inactive ones stay out unless asked for.
+    // % and _ typed by the admin are matched literally, not as wildcards.
+    const search = query.data.q?.trim().replace(/[\\%_]/g, (character) => `\\${character}`) || null;
+    const accountFilter = `
+          WHERE ($1::text IS NULL
+            OR a.email ILIKE '%' || $1 || '%'
+            OR coalesce(e.full_name, '') ILIKE '%' || $1 || '%'
+            OR coalesce(e.employee_number, '') ILIKE '%' || $1 || '%')
+            AND ($2::boolean OR a.status <> 'inactive')`;
+    const filterValues = [search, query.data.includeInactive];
+
+    const [accounts, accountCount, summaryCounts, roles, units, unaccounted] = await Promise.all([
       pool.query<AccessAccountRow>(
         `
           SELECT
@@ -475,29 +496,25 @@ export async function registerOrgAccessAdminRoutes(
           FROM accounts a
           LEFT JOIN employees e ON e.id = a.employee_id
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-          ORDER BY a.principal_type DESC, coalesce(e.full_name, a.email) ASC
+          ${accountFilter}
+          ORDER BY a.principal_type DESC, coalesce(e.full_name, a.email) ASC, a.id ASC
+          LIMIT $3 OFFSET $4
         `,
+        [...filterValues, query.data.pageSize, pageOffset(query.data)],
       ),
-      pool.query<AssignmentRow>(
-        `
-          SELECT
-            ara.id,
-            ara.account_id AS "accountId",
-            r.id AS "roleId",
-            r.role_key AS "roleKey",
-            r.name AS "roleName",
-            ara.scope_type AS "scopeType",
-            ara.organizational_unit_id AS "organizationalUnitId",
-            u.name AS "organizationalUnitName",
-            ara.starts_on AS "startsOn",
-            ara.ends_on AS "endsOn",
-            ara.reason,
-            ara.created_at AS "createdAt"
-          FROM account_role_assignments ara
-          JOIN roles r ON r.id = ara.role_id
-          LEFT JOIN organizational_units u ON u.id = ara.organizational_unit_id
-          ORDER BY ara.created_at DESC
-        `,
+      pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total
+           FROM accounts a
+           LEFT JOIN employees e ON e.id = a.employee_id
+           ${accountFilter}`,
+        filterValues,
+      ),
+      // The summary cards count every account, whatever page or search is showing.
+      pool.query<{ accounts: number; active: number; invited: number }>(
+        `SELECT count(*)::int AS accounts,
+                count(*) FILTER (WHERE status = 'active')::int AS active,
+                count(*) FILTER (WHERE status = 'invited')::int AS invited
+           FROM accounts`,
       ),
       pool.query<RoleRow>(
         `
@@ -530,8 +547,33 @@ export async function registerOrgAccessAdminRoutes(
         `,
       ),
     ]);
+    // Role assignments (current and ended) only for the accounts on this page.
+    const assignments = await pool.query<AssignmentRow>(
+      `
+          SELECT
+            ara.id,
+            ara.account_id AS "accountId",
+            r.id AS "roleId",
+            r.role_key AS "roleKey",
+            r.name AS "roleName",
+            ara.scope_type AS "scopeType",
+            ara.organizational_unit_id AS "organizationalUnitId",
+            u.name AS "organizationalUnitName",
+            ara.starts_on AS "startsOn",
+            ara.ends_on AS "endsOn",
+            ara.reason,
+            ara.created_at AS "createdAt"
+          FROM account_role_assignments ara
+          JOIN roles r ON r.id = ara.role_id
+          LEFT JOIN organizational_units u ON u.id = ara.organizational_unit_id
+          WHERE ara.account_id = ANY($1::uuid[])
+          ORDER BY ara.created_at DESC, ara.id DESC
+        `,
+      [accounts.rows.map((row) => row.id)],
+    );
 
     const canDelegate = await hasEffectiveOrganizationPermission(pool, principal, "access.roles.delegate");
+    const counts = summaryCounts.rows[0] ?? { accounts: 0, active: 0, invited: 0 };
     reply.header("Cache-Control", "no-store");
     return reply.send({
       accounts: accounts.rows.map((row) => ({
@@ -544,12 +586,13 @@ export async function registerOrgAccessAdminRoutes(
             createdAt: assignment.createdAt.toISOString(),
           })),
       })),
+      pagination: pagination(query.data, accountCount.rows[0]?.total ?? 0),
       roles: roles.rows.filter((role) => canDelegateRole(role, canDelegate)),
       units: units.rows,
       summary: {
-        accounts: accounts.rows.length,
-        active: accounts.rows.filter((row) => row.status === "active").length,
-        invited: accounts.rows.filter((row) => row.status === "invited").length,
+        accounts: counts.accounts,
+        active: counts.active,
+        invited: counts.invited,
         unaccountedActiveEmployees: unaccounted.rows[0]?.count ?? 0,
       },
     });

@@ -1281,7 +1281,7 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: asOf, in: query, schema: { type: string, format: date } }
         - { name: draftId, in: query, schema: { type: string, format: uuid } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
       responses:
         '200':
           description: Matching positions effective on that date
@@ -1325,7 +1325,7 @@ paths:
           schema: { type: string }
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
         - name: withLegacy
           in: query
           description: Include the ORG-002 manager and unit approver side by side for comparison
@@ -1344,6 +1344,7 @@ paths:
                   page: { type: integer }
                   pageSize: { type: integer }
                   total: { type: integer }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/OrganizationPerson' }
@@ -1550,23 +1551,26 @@ paths:
     get:
       tags: [Organization]
       operationId: listOrganizationDrafts
-      summary: List organization change sets, newest effective date first (ORG-008-3b)
+      summary: Page through organization change sets, newest effective date first (ORG-008-3b, ENG-LIST-001)
       parameters:
         - name: status
           in: query
           schema: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED, DISCARDED] }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200':
-          description: Change sets, optionally filtered by status
+          description: One page of change sets, optionally filtered by status, with the filtered total
           content:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, pagination]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/OrganizationDraft' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2079,12 +2083,15 @@ paths:
     get:
       tags: [Organization]
       operationId: listOrganizationChangeJournal
-      summary: What was changed in this change set, in the operator's order (ORG-008-4a)
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      summary: What was changed in this change set, newest step first (ORG-008-4a, ENG-LIST-001)
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200':
           description: >
-            Applied commands, oldest first. Besides the command types, a line may be SEED_FROM_LEGACY
+            One page of applied commands, newest first, with the total. Besides the command types, a line may be SEED_FROM_LEGACY
             or MANUAL_EDIT: an edit made through a single-record endpoint, whose summary.action names
             it (node.created, node.updated, node.deleted, position.created, position.updated,
             position.deleted, memberships.replaced, incumbencies.replaced, authority_binding.created,
@@ -2106,6 +2113,8 @@ paths:
                         summary: { type: object }
                         actorAccountId: { type: string, format: uuid }
                         createdAt: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { description: 'INVALID_DRAFT_ID or INVALID_JOURNAL_PAGE' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Change set not found }
@@ -2420,6 +2429,60 @@ paths:
                       units: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
                       positions: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
         '400': { description: 'INVALID_QUERY: a filter or page parameter is out of range' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/access:
+    get:
+      tags: [Employees]
+      operationId: getAccessAdmin
+      summary: Accounts with their role assignments, roles, units and summary (AUTH-011, ENG-LIST-001)
+      description: >
+        Requires access.manage. Accounts are searched and paged in SQL; inactive accounts are left out
+        unless includeInactive=true. Assignments (current and ended) are returned only for the accounts
+        on the page. The summary counts every account regardless of search or page.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 120 }, description: Name, employee number or email }
+        - { name: includeInactive, in: query, required: false, schema: { type: string, enum: ['true', 'false'], default: 'false' } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: One page of accounts plus role catalog, units and global summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accounts, pagination, roles, units, summary]
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, email, principalType, status, assignments]
+                      properties:
+                        id: { type: string, format: uuid }
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        email: { type: string }
+                        principalType: { type: string }
+                        status: { type: string, enum: [invited, active, suspended, inactive] }
+                        employeeNumber: { type: [string, 'null'] }
+                        employeeName: { type: [string, 'null'] }
+                        employeeStatus: { type: [string, 'null'] }
+                        unitName: { type: [string, 'null'] }
+                        createdAt: { type: string, format: date-time }
+                        assignments: { type: array, items: { type: object } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  roles: { type: array, items: { type: object } }
+                  units: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
+                  summary:
+                    type: object
+                    required: [accounts, active, invited, unaccountedActiveEmployees]
+                    properties:
+                      accounts: { type: integer }
+                      active: { type: integer }
+                      invited: { type: integer }
+                      unaccountedActiveEmployees: { type: integer }
+        '400': { description: 'INVALID_QUERY: search, flag or page out of range' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
   /admin/employee-imports:

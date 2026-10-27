@@ -95,7 +95,9 @@ export interface AccessAccount {
 }
 
 export interface AccessAdminResponse {
+  /** One page of accounts with their role assignments (ENG-LIST-001). */
   accounts: AccessAccount[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
   roles: AccessRole[];
   units: Array<{ id: string; name: string }>;
   summary: {
@@ -164,8 +166,21 @@ export async function updateDirectManager(
   return readJson(response);
 }
 
-export async function getAccessAdmin(): Promise<AccessAdminResponse> {
-  const response = await fetch("/api/admin/access", {
+export interface AccessAdminQuery {
+  q?: string;
+  includeInactive?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getAccessAdmin(query: AccessAdminQuery = {}): Promise<AccessAdminResponse> {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.includeInactive) params.set("includeInactive", "true");
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/admin/access${suffix}`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   });

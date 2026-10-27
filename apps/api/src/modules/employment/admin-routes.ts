@@ -8,6 +8,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import type { EmploymentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthError, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
@@ -36,7 +37,7 @@ const consistencyQuery = z.object({
   date: z.string().refine(isIsoDate).optional(),
   code: z.string().max(64).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
 const rolloutBody = z.object({
   mode: z.enum(["OFF", "SHADOW", "AUTHORITATIVE"]),
@@ -216,6 +217,8 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
       total: selected.length,
       page: query.data.page,
       pageSize: query.data.pageSize,
+      // ENG-LIST-001: the shared shape; the flat fields above stay for existing clients.
+      pagination: pagination(query.data, selected.length),
       rows: selected.slice(start, start + query.data.pageSize).map((finding) => ({
         ...finding,
         employeeNumber: identityById.get(finding.employeeId)?.employeeNumber ?? null,

@@ -146,7 +146,7 @@ describe("EMP-PKG1-X1 employment.read authorization", () => {
   });
 });
 
-describe("Rollout mode is governance-only and cannot reach AUTHORITATIVE yet", () => {
+describe("Rollout mode is governance-only", () => {
   it("denies HC and ordinary employees", async () => {
     expect((await call("hc", "GET", "/admin/employment/rollout")).response.statusCode).toBe(403);
     expect((await call("employee", "PUT", "/admin/employment/rollout", { payload: { mode: "SHADOW", reason: "Uji sintetis SHADOW" } })).response.statusCode).toBe(403);
@@ -154,7 +154,7 @@ describe("Rollout mode is governance-only and cannot reach AUTHORITATIVE yet", (
 
   it("lets governance read and switch to SHADOW with an audited reason", async () => {
     const read = await call("super_admin", "GET", "/admin/employment/rollout", { mode: "OFF" });
-    expect(read.response.json()).toEqual({ mode: "OFF", changedAt: null, availableModes: ["OFF", "SHADOW"] });
+    expect(read.response.json()).toEqual({ mode: "OFF", changedAt: null, availableModes: ["OFF", "SHADOW", "AUTHORITATIVE"] });
     const { response, writes } = await call("super_admin", "PUT", "/admin/employment/rollout", {
       mode: "OFF",
       payload: { mode: "SHADOW", reason: "Review data awal oleh HC" },
@@ -164,11 +164,12 @@ describe("Rollout mode is governance-only and cannot reach AUTHORITATIVE yet", (
     expect(writes).toEqual(["INSERT INTO employment_rollout_settings", "INSERT INTO employment_audit_events"]);
   });
 
-  it("refuses AUTHORITATIVE in this release and a missing reason", async () => {
-    const authoritative = await call("super_admin", "PUT", "/admin/employment/rollout", { payload: { mode: "AUTHORITATIVE", reason: "Aktifkan riwayat" } });
-    expect(authoritative.response.statusCode).toBe(409);
-    expect(authoritative.response.json()).toMatchObject({ code: "EMPLOYMENT_MODE_NOT_AVAILABLE" });
-    expect(authoritative.writes).toEqual([]);
+  it("accepts AUTHORITATIVE now that actions and account deactivation exist, and refuses a missing reason", async () => {
+    // S5 and S5A released the writer side; switching production is still the
+    // S8 runbook decision, not this endpoint.
+    const authoritative = await call("super_admin", "PUT", "/admin/employment/rollout", { payload: { mode: "AUTHORITATIVE", reason: "Aktifkan riwayat kepegawaian" } });
+    expect(authoritative.response.statusCode).toBe(200);
+    expect(authoritative.writes).toEqual(["INSERT INTO employment_rollout_settings", "INSERT INTO employment_audit_events"]);
     const short = await call("super_admin", "PUT", "/admin/employment/rollout", { payload: { mode: "SHADOW", reason: "x" } });
     expect(short.response.statusCode).toBe(400);
   });

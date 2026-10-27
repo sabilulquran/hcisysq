@@ -241,18 +241,13 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       next: plan.newSnapshot,
       documentIds: plan.documentIds,
       expectedVersion: plan.expectedVersion,
-<<<<<<< HEAD
-      /** What legacy consumers will read once the action is recorded. */
-      state: resolveEmployment(history, today, policy).state,
+      /** The derived state once the action is recorded, not the current one. */
+      state: resolveEmployment(applyPlan(history, plan, new Date().toISOString()), today, policy).state,
       /** EMP-005 D-15: when the employee's login account closes, if at all. */
       accountDeactivation:
         plan.actionType === "TERMINATION" && plan.effectiveOn
           ? { willDeactivate: true, onDate: addDays(plan.effectiveOn, 1) }
           : { willDeactivate: false, onDate: null },
-=======
-      /** The derived state once the action is recorded, not the current one. */
-      state: resolveEmployment(applyPlan(history, plan, new Date().toISOString()), today, policy).state,
->>>>>>> feat/emp-s5-contract-actions
     };
   }
 

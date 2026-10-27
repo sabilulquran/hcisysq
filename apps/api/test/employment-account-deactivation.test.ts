@@ -97,7 +97,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("UPDATE accounts SET status")) {
-      writes.push(`SET account ${sql.includes("'active'") ? "active" : "inactive"}`);
+      writes.push(`SET account ${sql.includes("SET status = 'active'") ? "active" : "inactive"}`);
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("UPDATE auth_sessions SET revoked_at")) {

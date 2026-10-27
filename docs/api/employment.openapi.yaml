@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Package 1 steps S2, S4 and S5 (docs/domain/employment-administration-package1.md).
     Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
@@ -9,8 +9,10 @@ info:
     CONTRACT_EXTENSION, CATEGORY_CHANGE, TERMINATION). Career actions arrive in S6
     and reversal in S7.
     Reads and the register need a mode other than OFF; recording or previewing an
-    action needs AUTHORITATIVE (spec §8.1), which stays unavailable until the
-    automatic account deactivation of S5A is released.
+    action needs AUTHORITATIVE (spec §8.1), which S5A made available — switching
+    production to it still follows the S8 runbook.
+    S5A also adds the time-boxed reactivation of a former employee's account
+    (spec §8.5.2) under /admin/access/accounts/{accountId}/temporary-reactivations.
     employment.* is HC-only and never granted through legacy Super Admin compatibility.
     Read endpoints return 409 EMPLOYMENT_HISTORY_DISABLED while the rollout mode is OFF.
     All responses carry Cache-Control: no-store.
@@ -379,6 +381,98 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /admin/access/accounts/{accountId}/temporary-reactivations:
+    get:
+      tags: [Employment]
+      operationId: listAccountTemporaryReactivations
+      summary: Grants of temporary access for a former employee (EMP-005 D-15)
+      description: Requires access.accounts.temporary_reactivate (human_capital_admin only).
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      responses:
+        '200':
+          description: Every grant of this account, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccountTemporaryReactivation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Employment]
+      operationId: grantAccountTemporaryReactivation
+      summary: Grant time-boxed access to a former employee's account (EMP-005 D-15)
+      description: |
+        Requires access.accounts.temporary_reactivate. Reason and expiry are
+        mandatory, the expiry is at most 30 days away, and granting to one's own
+        account is refused. The grant opens only own payslips, own attendance
+        history and own leave history, read-only; every other request answers
+        EMPLOYMENT_ENDED_READ_ONLY. An existing live grant is revoked first, so
+        extending always leaves its own audited record.
+      parameters: [{ $ref: '#/components/parameters/AccountId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, expiresAt]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Granted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, accountId, expiresAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  accountId: { type: string, format: uuid }
+                  expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/access/accounts/{accountId}/temporary-reactivations/{grantId}/revoke:
+    post:
+      tags: [Employment]
+      operationId: revokeAccountTemporaryReactivation
+      summary: End a temporary reactivation early (EMP-005 D-15)
+      description: |
+        Requires access.accounts.temporary_reactivate. The account returns to
+        inactive and its sessions are revoked immediately.
+      parameters:
+        - { $ref: '#/components/parameters/AccountId' }
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, revoked]
+                properties:
+                  id: { type: string, format: uuid }
+                  revoked: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
 components:
   parameters:
     EmployeeId:
@@ -388,6 +482,11 @@ components:
       schema: { type: string, format: uuid }
     DocumentId:
       name: documentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AccountId:
+      name: accountId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -409,7 +508,11 @@ components:
         EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED, EMPLOYMENT_BASELINE_MISSING,
         DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH, IDEMPOTENCY_KEY_CONFLICT
         (409, the key already recorded an action for another employee),
-        EMPLOYEE_NOT_FOUND, INVALID_EMPLOYMENT_REQUEST, UNAUTHENTICATED.
+        EMPLOYEE_NOT_FOUND, INVALID_EMPLOYMENT_REQUEST, UNAUTHENTICATED, and the
+        S5A codes EMPLOYMENT_ENDED (401, the employment ended and no grant is
+        valid), EMPLOYMENT_ENDED_READ_ONLY (403, outside the reactivation
+        allowlist), REACTIVATION_EXPIRY_REQUIRED, REACTIVATION_SELF_FORBIDDEN,
+        REACTIVATION_NOT_APPLICABLE, REACTIVATION_NOT_FOUND, ACCOUNT_NOT_FOUND.
       content:
         application/json:
           schema:
@@ -420,6 +523,18 @@ components:
               message: { type: string }
               field: { type: string, description: Set by DECISION_DOCUMENT_INVALID. }
   schemas:
+    AccountTemporaryReactivation:
+      type: object
+      required: [id, accountId, reason, startsAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        reason: { type: string }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: At most 30 days after startsAt. }
+        grantedByAccountId: { type: [string, 'null'], format: uuid }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        revokedByAccountId: { type: [string, 'null'], format: uuid }
     EmploymentWarning:
       type: string
       enum: [BACKDATED, TERM_GAP, CONTRACT_DURATION_LONG, PROBATION_DURATION_LONG]
@@ -509,6 +624,12 @@ components:
           type: string
           enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
           description: The derived state the action produces, not the current one.
+        accountDeactivation:
+          type: object
+          description: EMP-005 D-15 — when the employee's login account closes.
+          properties:
+            willDeactivate: { type: boolean }
+            onDate: { type: [string, 'null'], format: date }
     EmployeeProjection:
       type: object
       description: The nine legacy employees columns as the action left them (spec §8.4).
@@ -688,6 +809,12 @@ components:
           type: string
           enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
           description: The derived state the action produces, not the current one.
+        accountDeactivation:
+          type: object
+          description: EMP-005 D-15 — when the employee's login account closes.
+          properties:
+            willDeactivate: { type: boolean }
+            onDate: { type: [string, 'null'], format: date }
         flags:
           type: array
           items:

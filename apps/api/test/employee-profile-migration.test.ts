@@ -94,6 +94,39 @@ describe.skipIf(!allowed)("0102 employee profile records migration", () => {
         [id],
       );
     });
+
+    it("menyimpan siapa dan kapan memverifikasi walau verifikasinya dicabut", async () => {
+      const id = randomUUID();
+      await client.query(insertEducation, [id, employeeId, "S2", "SELESAI", 2019, 2021]);
+      await client.query(
+        "UPDATE employee_education SET verification_status = 'DIVERIFIKASI', verified_at = now() WHERE id = $1",
+        [id],
+      );
+      await client.query(
+        `UPDATE employee_education
+         SET verification_status = 'DILAPORKAN', unverified_at = now(), unverified_reason = 'Ijazah belum terlihat'
+         WHERE id = $1`,
+        [id],
+      );
+      const row = await client.query<{ verifiedAt: Date | null; unverifiedReason: string | null }>(
+        'SELECT verified_at AS "verifiedAt", unverified_reason AS "unverifiedReason" FROM employee_education WHERE id = $1',
+        [id],
+      );
+      expect(row.rows[0]?.verifiedAt).not.toBeNull();
+      expect(row.rows[0]?.unverifiedReason).toBe("Ijazah belum terlihat");
+      // Mencabut tanpa alasan tidak diterima.
+      await expectSqlError(
+        "UPDATE employee_education SET unverified_at = now(), unverified_reason = NULL WHERE id = $1",
+        [id],
+        "23514",
+      );
+    });
+
+    it("menolak pembatalan catatan tanpa alasan", async () => {
+      const id = randomUUID();
+      await client.query(insertEducation, [id, employeeId, "S2", "SELESAI", 2019, 2021]);
+      await expectSqlError("UPDATE employee_education SET voided_at = now() WHERE id = $1", [id], "23514");
+    });
   });
 
   describe("keahlian", () => {
@@ -125,6 +158,60 @@ describe.skipIf(!allowed)("0102 employee profile records migration", () => {
     it("mengizinkan pasangan berikutnya setelah yang lama ditutup", async () => {
       await client.query(insertFamily, [randomUUID(), employeeId, "PASANGAN", null, false, false, null, null, "2019-01-01", "2023-12-31"]);
       await client.query(insertFamily, [randomUUID(), employeeId, "PASANGAN", null, false, false, null, null, "2024-01-01", null]);
+    });
+
+    it("tidak pernah menyimpan nomor identitas anggota keluarga", async () => {
+      await expectSqlError(
+        `INSERT INTO employee_family_members
+           (id, employee_id, relation, full_name, identity_number, valid_from)
+         VALUES ($1, $2, 'PASANGAN', 'Pasangan Sintetis', '3273010101900001', '2019-01-01')`,
+        [randomUUID(), employeeId],
+        "23514",
+      );
+    });
+
+    it("menolak urutan tanggungan dan urutan darurat di luar rentang", async () => {
+      await expectSqlError(
+        `INSERT INTO employee_family_members
+           (id, employee_id, relation, full_name, birth_date, is_dependent, dependent_order, valid_from)
+         VALUES ($1, $2, 'ANAK', 'Anak Sintetis', '2020-01-01', true, 0, '2020-01-01')`,
+        [randomUUID(), employeeId],
+        "23514",
+      );
+      await expectSqlError(
+        insertFamily,
+        [randomUUID(), employeeId, "SAUDARA", null, false, true, "0812", 10, "2020-01-01", null],
+        "23514",
+      );
+    });
+
+    it("membebaskan periode setelah catatan dibatalkan", async () => {
+      const spouseId = randomUUID();
+      await client.query(insertFamily, [spouseId, employeeId, "PASANGAN", null, false, false, null, null, "2019-01-01", null]);
+      await client.query(
+        "UPDATE employee_family_members SET voided_at = now(), voided_reason = 'Salah catat' WHERE id = $1",
+        [spouseId],
+      );
+      await client.query(insertFamily, [randomUUID(), employeeId, "PASANGAN", null, false, false, null, null, "2019-01-01", null]);
+    });
+
+    it("menolak pasangan yang mulai tepat pada hari terakhir pasangan sebelumnya", async () => {
+      await client.query(insertFamily, [randomUUID(), employeeId, "PASANGAN", null, false, false, null, null, "2019-01-01", "2024-01-01"]);
+      await expectSqlError(
+        insertFamily,
+        [randomUUID(), employeeId, "PASANGAN", null, false, false, null, null, "2024-01-01", null],
+        "23P01",
+      );
+    });
+
+    it("tidak mencampur pegawai yang berbeda", async () => {
+      const otherEmployeeId = randomUUID();
+      await client.query(
+        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Synthetic Other', 'active')",
+        [otherEmployeeId, `EMP-P2B-${otherEmployeeId}`],
+      );
+      await client.query(insertFamily, [randomUUID(), employeeId, "PASANGAN", null, false, true, "0812", 1, "2019-01-01", null]);
+      await client.query(insertFamily, [randomUUID(), otherEmployeeId, "PASANGAN", null, false, true, "0813", 1, "2019-01-01", null]);
     });
 
     it("menolak urutan kontak darurat yang bertabrakan", async () => {
@@ -164,6 +251,21 @@ describe.skipIf(!allowed)("0102 employee profile records migration", () => {
       await client.query(insertAddress, [randomUUID(), employeeId, "DOMISILI", "2027-01-01", null]);
     });
 
+    it("menolak alamat yang mulai tepat pada hari terakhir alamat sebelumnya", async () => {
+      await client.query(insertAddress, [randomUUID(), employeeId, "DOMISILI", "2024-01-01", "2027-01-01"]);
+      await expectSqlError(insertAddress, [randomUUID(), employeeId, "DOMISILI", "2027-01-01", null], "23P01");
+    });
+
+    it("membebaskan periode setelah alamat dibatalkan", async () => {
+      const addressId = randomUUID();
+      await client.query(insertAddress, [addressId, employeeId, "DOMISILI", "2024-01-01", null]);
+      await client.query(
+        "UPDATE employee_addresses SET voided_at = now(), voided_reason = 'Salah catat' WHERE id = $1",
+        [addressId],
+      );
+      await client.query(insertAddress, [randomUUID(), employeeId, "DOMISILI", "2024-01-01", null]);
+    });
+
     it("menolak kode pos yang bukan lima angka", async () => {
       await expectSqlError(
         `INSERT INTO employee_addresses (id, employee_id, kind, address_line, city, postal_code, valid_from)
@@ -190,6 +292,28 @@ describe.skipIf(!allowed)("0102 employee profile records migration", () => {
       await expectSqlError(insertRequest, [randomUUID(), employeeId, accountId, "DITERIMA", null, null], "23514");
       await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DIAJUKAN", null, null]);
       await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DITOLAK", new Date(), "Alamat tidak jelas"]);
+    });
+
+    it("menuntut nama pemutus pada keputusan HC, tidak pada pembatalan sendiri", async () => {
+      const accountId = randomUUID();
+      await client.query(
+        `INSERT INTO accounts(id, email, principal_type, status, employee_id)
+         VALUES ($1, $2, 'EMPLOYEE', 'active', $3)`,
+        [accountId, `p2d-${accountId}@example.invalid`, employeeId],
+      );
+      await expectSqlError(
+        `INSERT INTO employee_data_change_requests
+           (id, employee_id, submitted_by_account_id, target, payload, state, decided_at)
+         VALUES ($1, $2, $3, 'ALAMAT', '{}'::jsonb, 'DITERIMA', now())`,
+        [randomUUID(), employeeId, accountId],
+        "23514",
+      );
+      await client.query(
+        `INSERT INTO employee_data_change_requests
+           (id, employee_id, submitted_by_account_id, target, payload, state, decided_at)
+         VALUES ($1, $2, $3, 'ALAMAT', '{}'::jsonb, 'DIBATALKAN', now())`,
+        [randomUUID(), employeeId, accountId],
+      );
     });
   });
 });

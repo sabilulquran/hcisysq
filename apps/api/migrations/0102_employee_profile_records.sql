@@ -11,9 +11,12 @@
 --   DROP TABLE IF EXISTS employee_data_change_requests, employee_addresses,
 --     employee_family_members, employee_skills, employee_education,
 --     employee_profile_audit_events;
+--   DELETE FROM schema_migrations WHERE name = '0102_employee_profile_records';
 --
--- btree_gist sudah aktif sejak migrasi 0021; dipakai di sini untuk menjaga
--- "satu yang berlaku pada satu waktu" di tingkat basis data, bukan di kode.
+-- btree_gist dipakai untuk menjaga "satu yang berlaku pada satu waktu" di
+-- tingkat basis data, bukan di kode. Sudah aktif sejak migrasi 0021; tetap
+-- ditegaskan di sini seperti 0056 dan 0069, agar berkas ini berdiri sendiri.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 -- EMP-007 -------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS employee_education (
@@ -35,11 +38,17 @@ CREATE TABLE IF NOT EXISTS employee_education (
     CHECK (verification_status IN ('DILAPORKAN', 'DIVERIFIKASI')),
   verified_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   verified_at timestamptz NULL,
+  -- Verifikasi yang dicabut (spec §5.2): siapa dan kapan memverifikasi tetap
+  -- tersimpan, karena riwayat tidak dihapus (§3.6).
+  unverified_at timestamptz NULL,
+  unverified_reason text NULL,
   voided_at timestamptz NULL,
   voided_reason text NULL,
   created_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT employee_education_unverified_pair_check
+    CHECK ((unverified_at IS NULL) = (unverified_reason IS NULL)),
   CONSTRAINT employee_education_year_order_check
     CHECK (started_year IS NULL OR completed_year IS NULL OR completed_year >= started_year),
   -- Namanya bukan employee_education_completed_year_check: PostgreSQL sudah
@@ -47,7 +56,7 @@ CREATE TABLE IF NOT EXISTS employee_education (
   CONSTRAINT employee_education_completion_year_required_check
     CHECK (completion_status <> 'SELESAI' OR completed_year IS NOT NULL),
   CONSTRAINT employee_education_verified_pair_check
-    CHECK ((verification_status = 'DIVERIFIKASI') = (verified_at IS NOT NULL)),
+    CHECK (verification_status <> 'DIVERIFIKASI' OR verified_at IS NOT NULL),
   CONSTRAINT employee_education_voided_pair_check
     CHECK ((voided_at IS NULL) = (voided_reason IS NULL))
 );
@@ -75,18 +84,22 @@ CREATE TABLE IF NOT EXISTS employee_skills (
     CHECK (verification_status IN ('DILAPORKAN', 'DIVERIFIKASI')),
   verified_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   verified_at timestamptz NULL,
+  unverified_at timestamptz NULL,
+  unverified_reason text NULL,
   voided_at timestamptz NULL,
   voided_reason text NULL,
   created_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT employee_skills_unverified_pair_check
+    CHECK ((unverified_at IS NULL) = (unverified_reason IS NULL)),
   -- Sertifikat selalu menyebut penerbit dan tanggal terbitnya; keahlian tidak.
   CONSTRAINT employee_skills_certificate_fields_check
     CHECK (kind <> 'SERTIFIKAT' OR (issuer IS NOT NULL AND issued_on IS NOT NULL)),
   CONSTRAINT employee_skills_expiry_order_check
     CHECK (expires_on IS NULL OR issued_on IS NULL OR expires_on >= issued_on),
   CONSTRAINT employee_skills_verified_pair_check
-    CHECK ((verification_status = 'DIVERIFIKASI') = (verified_at IS NOT NULL)),
+    CHECK (verification_status <> 'DIVERIFIKASI' OR verified_at IS NOT NULL),
   CONSTRAINT employee_skills_voided_pair_check
     CHECK ((voided_at IS NULL) = (voided_reason IS NULL))
 );
@@ -95,7 +108,8 @@ CREATE INDEX IF NOT EXISTS employee_skills_employee_idx
   ON employee_skills (employee_id, kind) WHERE voided_at IS NULL;
 -- Daftar "sertifikat akan berakhir" membaca kolom ini lintas pegawai.
 CREATE INDEX IF NOT EXISTS employee_skills_expiry_idx
-  ON employee_skills (expires_on) WHERE voided_at IS NULL AND expires_on IS NOT NULL;
+  ON employee_skills (expires_on)
+  WHERE voided_at IS NULL AND expires_on IS NOT NULL AND kind = 'SERTIFIKAT';
 
 -- EMP-009 -------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS employee_family_members (
@@ -109,7 +123,8 @@ CREATE TABLE IF NOT EXISTS employee_family_members (
   dependent_order integer NULL CHECK (dependent_order BETWEEN 1 AND 20),
   -- Spec §8: nomor identitas anggota keluarga belum dikumpulkan sampai ada
   -- kebijakan enkripsi kolom. Kolomnya ada agar keputusan owner tidak
-  -- memerlukan migrasi lagi; aplikasi tidak menulisnya.
+  -- memerlukan migrasi lagi, dan constraint di bawah menjaga agar route mana
+  -- pun tidak dapat diam-diam mulai mengisinya.
   identity_number text NULL,
   is_emergency_contact boolean NOT NULL DEFAULT false,
   emergency_phone text NULL,
@@ -131,6 +146,9 @@ CREATE TABLE IF NOT EXISTS employee_family_members (
     CHECK (NOT is_emergency_contact OR (emergency_phone IS NOT NULL AND emergency_priority IS NOT NULL)),
   CONSTRAINT employee_family_voided_pair_check
     CHECK ((voided_at IS NULL) = (voided_reason IS NULL)),
+  -- Dicabut oleh migrasi yang memperkenalkan enkripsi kolom.
+  CONSTRAINT employee_family_identity_not_collected_check
+    CHECK (identity_number IS NULL),
   -- Satu pasangan yang berlaku pada satu waktu (keputusan DRAFT spec §13).
   CONSTRAINT employee_family_single_spouse_excl
     EXCLUDE USING gist (
@@ -197,11 +215,14 @@ CREATE TABLE IF NOT EXISTS employee_data_change_requests (
   decided_by_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,
   decided_at timestamptz NULL,
   decision_note text NULL,
-  applied_record_id uuid NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT employee_data_change_decided_pair_check
     CHECK ((state IN ('DIAJUKAN')) = (decided_at IS NULL)),
+  -- Keputusan HC selalu menyebut siapa yang memutuskan; pembatalan oleh
+  -- pengusul sendiri tidak.
+  CONSTRAINT employee_data_change_decider_check
+    CHECK (state IN ('DIAJUKAN', 'DIBATALKAN') OR decided_by_account_id IS NOT NULL),
   -- Menolak wajib beralasan; menerima tidak harus.
   CONSTRAINT employee_data_change_reject_reason_check
     CHECK (state <> 'DITOLAK' OR (decision_note IS NOT NULL AND length(trim(decision_note)) >= 5))

@@ -172,7 +172,7 @@ Tidak ada izin baru. Paket ini sengaja memakai `employees.manage` yang sudah dip
 
 ### 5.2 Verifikasi
 
-`DILAPORKAN` (default untuk apa pun yang datang dari pegawai atau impor) → `DIVERIFIKASI` (petugas HC melihat buktinya) → boleh kembali ke `DILAPORKAN` dengan alasan bila ternyata meragukan. Verifikasi mencatat siapa dan kapan.
+`DILAPORKAN` (default untuk apa pun yang datang dari pegawai atau impor) → `DIVERIFIKASI` (petugas HC melihat buktinya) → boleh kembali ke `DILAPORKAN` dengan alasan bila ternyata meragukan. Verifikasi mencatat siapa dan kapan, dan **pencabutan verifikasi tidak menghapusnya**: catatan menyimpan kapan terakhir diverifikasi beserta alasan pencabutannya, karena riwayat tidak dihapus (§3.6).
 
 ### 5.3 Kedaluwarsa sertifikat
 
@@ -192,7 +192,7 @@ Dihitung dari catatan `SELESAI` dan `DIVERIFIKASI` dengan `level` tertinggi menu
 
 ## 6. Status verifikasi dan audit
 
-Setiap perubahan menulis satu peristiwa audit: `employee.education.recorded|updated|verified|voided`, `employee.skill.*`, `employee.family.*`, `employee.address.*`, `employee.data_change.submitted|accepted|rejected|cancelled`.
+Setiap perubahan menulis satu peristiwa audit: `employee.education.recorded|updated|verified|unverified|voided`, `employee.skill.*`, `employee.family.*`, `employee.address.*`, `employee.data_change.submitted|accepted|rejected|cancelled`.
 
 Payload audit berisi id, kode, tanggal, dan nama field yang berubah. **Tidak pernah** berisi nama anggota keluarga, nomor identitas, alamat, nomor telepon, atau isi catatan.
 
@@ -228,7 +228,10 @@ Setiap layar memiliki keadaan loading, kosong, error, tidak berizin, dan tampila
 | Sertifikat dan masa berlakunya | Kepatuhan jabatan tertentu, perencanaan sertifikasi ulang | Disimpan |
 | Nama dan tanggal lahir anggota keluarga | Pendaftaran BPJS tanggungan, cuti khusus terkait keluarga | Disimpan untuk tanggungan dan pasangan |
 | Nomor identitas anggota keluarga | Pendaftaran BPJS | **Belum dikumpulkan** sampai ada enkripsi kolom; layar tidak memintanya |
+| Jenis kelamin anggota keluarga | Pendaftaran BPJS tanggungan, yang memintanya | Disimpan, opsional |
 | Kontak darurat | Kecelakaan kerja dan keadaan darurat | Disimpan |
+| Isi usulan perubahan data | Bukti apa yang diminta pegawai dan apa yang diputuskan HC | Disimpan selama usulan menunggu; usulan yang sudah diputuskan lebih dari 12 bulan dihapus isinya dan menyisakan keputusannya (`DRAFT`) |
+| Catatan bebas pada data keluarga | Keterangan administratif singkat | Tidak boleh memuat data kesehatan, agama, atau penghasilan; itu di luar lingkup §2 |
 | Alamat domisili | Korespondensi, tunjangan transport bila kelak diputuskan | Disimpan |
 | Alamat KTP | Dokumen administratif yang mensyaratkannya | Disimpan bila diisi |
 | Agama, kesehatan, penghasilan anggota keluarga | — | **Tidak dikumpulkan** |
@@ -304,3 +307,4 @@ EMP-003:
 | Approval usulan perubahan | Satu petugas HC | APR-001 dapat ditambahkan di atas state `DIAJUKAN` |
 | Kategori keahlian | Tujuh kategori awal | Menambah kategori tidak mengubah data lama |
 | Jenjang `PONDOK` | Jenjang tersendiri, tidak disetarakan | Pemetaan kesetaraan ditambahkan sebagai atribut, bukan mengganti `level` |
+| Berapa lama isi usulan perubahan disimpan | Dihapus 12 bulan setelah diputuskan, keputusannya tetap | Angka diubah; tidak ada perubahan struktur |

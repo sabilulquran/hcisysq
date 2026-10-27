@@ -136,6 +136,13 @@ describe("EMP-008 keahlian dan sertifikat", () => {
     expectField(validateSkill({ ...skill, expiresOn: "2025-01-01" }), "expiresOn");
   });
 
+  it("memperlakukan tingkat kemahiran kosong sebagai tidak diisi", () => {
+    const result = validateSkill({ ...skill, proficiency: "" as never });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.proficiency).toBeNull();
+    expectField(validateSkill({ ...skill, proficiency: "SANGAT_MAHIR" as never }), "proficiency");
+  });
+
   it("membiarkan sertifikat tanpa masa berlaku", () => {
     const result = validateSkill({ ...skill, expiresOn: null });
     expect(result.ok).toBe(true);
@@ -160,6 +167,17 @@ describe("EMP-009 keluarga dan tanggungan", () => {
 
   it("menolak urutan tanggungan pada yang bukan tanggungan", () => {
     expectField(validateFamilyMember({ ...family, isDependent: false, birthDate: "2020-05-17" }), "dependentOrder");
+  });
+
+  it("menolak angka urutan dan jenis kelamin yang akan ditolak basis data", () => {
+    expectField(validateFamilyMember({ ...family, dependentOrder: 0 }), "dependentOrder");
+    expectField(validateFamilyMember({ ...family, dependentOrder: 21 }), "dependentOrder");
+    expectField(validateFamilyMember({ ...family, dependentOrder: 1.5 }), "dependentOrder");
+    expectField(validateFamilyMember({ ...family, gender: "X" as never }), "gender");
+    expectField(validateFamilyMember({
+      relation: "ORANG_TUA", fullName: "Orang Tua", validFrom: "2019-01-01",
+      isEmergencyContact: true, emergencyPhone: "0812", emergencyPriority: 10,
+    }), "emergencyPriority");
   });
 
   it("mewajibkan nomor dan urutan untuk kontak darurat", () => {
@@ -205,15 +223,30 @@ describe("EMP-003 alamat", () => {
   });
 
   it("menutup alamat lama sehari sebelum yang baru berlaku", () => {
-    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "2027-03-01")).toBe("2027-02-28");
-    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "2028-03-01")).toBe("2028-02-29");
+    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "2027-03-01")).toEqual({ kind: "close", on: "2027-02-28" });
+    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "2028-03-01")).toEqual({ kind: "close", on: "2028-02-29" });
+    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "2027-01-01")).toEqual({ kind: "close", on: "2026-12-31" });
   });
 
   it("tidak menutup alamat yang memang sudah berakhir", () => {
-    expect(closingDateFor({ validFrom: "2020-01-01", validTo: "2022-12-31" }, "2027-03-01")).toBeNull();
+    expect(closingDateFor({ validFrom: "2020-01-01", validTo: "2022-12-31" }, "2027-03-01")).toEqual({ kind: "none" });
   });
 
-  it("tidak menutup alamat yang baru mulai pada hari yang sama", () => {
-    expect(closingDateFor({ validFrom: "2027-03-01", validTo: null }, "2027-03-01")).toBeNull();
+  it("menyatakan mustahil, bukan diam, bila alamat lama mulai pada atau sesudah tanggal baru", () => {
+    // Keduanya dulu mengembalikan null, sehingga pemanggil mengira tidak ada
+    // yang perlu ditutup padahal periodenya bertabrakan.
+    expect(closingDateFor({ validFrom: "2027-03-01", validTo: null }, "2027-03-01")).toEqual({ kind: "impossible" });
+    expect(closingDateFor({ validFrom: "2027-03-02", validTo: null }, "2027-03-01")).toEqual({ kind: "impossible" });
+  });
+
+  it("tidak melempar pada tanggal yang bukan tanggal", () => {
+    expect(closingDateFor({ validFrom: "2024-01-01", validTo: null }, "bukan-tanggal")).toEqual({ kind: "impossible" });
+  });
+
+  it("memakai sumber HC bila tidak disebut, dan menolak sumber yang tidak dikenal", () => {
+    const result = validateAddress(address);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.source).toBe("HC");
+    expectField(validateAddress({ ...address, source: "ENTAH" as never }), "source");
   });
 });

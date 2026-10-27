@@ -64,6 +64,16 @@ export type ProficiencyLevel = (typeof PROFICIENCY_LEVELS)[number];
 export const FAMILY_RELATIONS = ["PASANGAN", "ANAK", "ORANG_TUA", "SAUDARA", "LAINNYA"] as const;
 export type FamilyRelation = (typeof FAMILY_RELATIONS)[number];
 
+export const GENDERS = ["L", "P"] as const;
+export type Gender = (typeof GENDERS)[number];
+
+export const ADDRESS_SOURCES = ["IMPOR", "HC", "USULAN_PEGAWAI"] as const;
+export type AddressSource = (typeof ADDRESS_SOURCES)[number];
+
+/** Batas yang sama dengan CHECK di migrasi 0102. */
+export const MAX_DEPENDENT_ORDER = 20;
+export const MAX_EMERGENCY_PRIORITY = 9;
+
 export const ADDRESS_KINDS = ["DOMISILI", "KTP"] as const;
 export type AddressKind = (typeof ADDRESS_KINDS)[number];
 
@@ -221,7 +231,10 @@ export function validateSkill(input: SkillInput): ProfileValidation<SkillValues>
   if (!name) return fail("name", "Nama keahlian atau sertifikat wajib diisi.");
   if (!SKILL_KINDS.includes(input.kind)) return fail("kind", "Pilih jenis catatan.");
   if (!SKILL_CATEGORIES.includes(input.category)) return fail("category", "Pilih kategori.");
-  if (input.proficiency && !PROFICIENCY_LEVELS.includes(input.proficiency)) {
+  // Rapikan dulu: string kosong dari form bukan "tanpa tingkat" bagi basis
+  // data, melainkan nilai yang ditolak constraint.
+  const proficiency = text(input.proficiency) as ProficiencyLevel | null;
+  if (proficiency !== null && !PROFICIENCY_LEVELS.includes(proficiency)) {
     return fail("proficiency", "Tingkat kemahiran tidak valid.");
   }
 
@@ -245,7 +258,7 @@ export function validateSkill(input: SkillInput): ProfileValidation<SkillValues>
       kind: input.kind,
       name,
       category: input.category,
-      proficiency: input.proficiency ?? null,
+      proficiency,
       issuer,
       certificateNumber: text(input.certificateNumber),
       issuedOn,
@@ -267,7 +280,7 @@ export interface FamilyMemberInput {
   relation: FamilyRelation;
   fullName: string;
   birthDate?: string | null | undefined;
-  gender?: "L" | "P" | null | undefined;
+  gender?: Gender | null | undefined;
   isDependent?: boolean | undefined;
   dependentOrder?: number | null | undefined;
   isEmergencyContact?: boolean | undefined;
@@ -282,7 +295,7 @@ export interface FamilyMemberValues {
   relation: FamilyRelation;
   fullName: string;
   birthDate: string | null;
-  gender: "L" | "P" | null;
+  gender: Gender | null;
   isDependent: boolean;
   dependentOrder: number | null;
   isEmergencyContact: boolean;
@@ -306,6 +319,9 @@ export function validateFamilyMember(input: FamilyMemberInput): ProfileValidatio
   const birthDate = input.birthDate ?? null;
   if (birthDate !== null && !isIsoDate(birthDate)) return fail("birthDate", "Tanggal lahir tidak valid.");
 
+  const gender = input.gender ?? null;
+  if (gender !== null && !GENDERS.includes(gender)) return fail("gender", "Jenis kelamin tidak valid.");
+
   const isDependent = input.isDependent === true;
   if (isDependent && birthDate === null) {
     return fail("birthDate", "Tanggungan wajib menyebut tanggal lahir.");
@@ -313,6 +329,9 @@ export function validateFamilyMember(input: FamilyMemberInput): ProfileValidatio
   const dependentOrder = input.dependentOrder ?? null;
   if (dependentOrder !== null && !isDependent) {
     return fail("dependentOrder", "Urutan tanggungan hanya untuk anggota keluarga yang menjadi tanggungan.");
+  }
+  if (dependentOrder !== null && (!Number.isInteger(dependentOrder) || dependentOrder < 1 || dependentOrder > MAX_DEPENDENT_ORDER)) {
+    return fail("dependentOrder", `Urutan tanggungan antara 1 dan ${MAX_DEPENDENT_ORDER}.`);
   }
 
   const isEmergencyContact = input.isEmergencyContact === true;
@@ -322,6 +341,12 @@ export function validateFamilyMember(input: FamilyMemberInput): ProfileValidatio
     if (!emergencyPhone) return fail("emergencyPhone", "Kontak darurat wajib menyebut nomor telepon.");
     if (emergencyPriority === null) return fail("emergencyPriority", "Tentukan urutan kontak darurat.");
   }
+  if (
+    emergencyPriority !== null
+    && (!Number.isInteger(emergencyPriority) || emergencyPriority < 1 || emergencyPriority > MAX_EMERGENCY_PRIORITY)
+  ) {
+    return fail("emergencyPriority", `Urutan kontak darurat antara 1 dan ${MAX_EMERGENCY_PRIORITY}.`);
+  }
 
   return {
     ok: true,
@@ -329,7 +354,7 @@ export function validateFamilyMember(input: FamilyMemberInput): ProfileValidatio
       relation: input.relation,
       fullName,
       birthDate,
-      gender: input.gender ?? null,
+      gender,
       isDependent,
       dependentOrder,
       isEmergencyContact,
@@ -354,6 +379,7 @@ export interface AddressInput {
   postalCode?: string | null | undefined;
   validFrom: string;
   validTo?: string | null | undefined;
+  source?: AddressSource | undefined;
   notes?: string | null | undefined;
 }
 
@@ -367,6 +393,7 @@ export interface AddressValues {
   postalCode: string | null;
   validFrom: string;
   validTo: string | null;
+  source: AddressSource;
   notes: string | null;
 }
 
@@ -386,6 +413,8 @@ export function validateAddress(input: AddressInput): ProfileValidation<AddressV
   if (postalCode !== null && !/^[0-9]{5}$/.test(postalCode)) {
     return fail("postalCode", "Kode pos terdiri dari lima angka.");
   }
+  const source = input.source ?? "HC";
+  if (!ADDRESS_SOURCES.includes(source)) return fail("source", "Sumber alamat tidak valid.");
 
   return {
     ok: true,
@@ -399,6 +428,7 @@ export function validateAddress(input: AddressInput): ProfileValidation<AddressV
       postalCode,
       validFrom: input.validFrom,
       validTo,
+      source,
       notes: text(input.notes),
     },
   };
@@ -406,18 +436,39 @@ export function validateAddress(input: AddressInput): ProfileValidation<AddressV
 
 /**
  * Pindah rumah: alamat lama ditutup sehari sebelum yang baru berlaku, bukan
- * dihapus. Mengembalikan tanggal penutupannya, atau null bila tidak perlu
- * ditutup (sudah berakhir sebelum tanggal itu).
+ * dihapus.
+ *
+ * Tiga jawaban yang berbeda, karena dua di antaranya dulu sama-sama "null"
+ * dan membuat pemanggil mengira tidak ada yang perlu ditutup padahal periode
+ * lama tetap bertabrakan — yang baru muncul sebagai pelanggaran constraint:
+ *
+ * - `close`: tutup alamat lama pada tanggal ini;
+ * - `none`: alamat lama memang sudah berakhir sebelum tanggal baru;
+ * - `impossible`: alamat lama mulai pada atau setelah tanggal baru, jadi
+ *   menutupnya mustahil dan pemanggil harus menolak permintaannya.
  */
-export function closingDateFor(current: { validFrom: string; validTo: string | null }, newValidFrom: string): string | null {
-  if (current.validTo !== null && current.validTo < newValidFrom) return null;
+export type AddressClosing =
+  | { kind: "close"; on: string }
+  | { kind: "none" }
+  | { kind: "impossible" };
+
+export function closingDateFor(
+  current: { validFrom: string; validTo: string | null },
+  newValidFrom: string,
+): AddressClosing {
+  if (!isIsoDate(newValidFrom) || !isIsoDate(current.validFrom)) return { kind: "impossible" };
+  if (current.validTo !== null && current.validTo < newValidFrom) return { kind: "none" };
   const date = new Date(`${newValidFrom}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - 1);
   const closing = date.toISOString().slice(0, 10);
-  return closing < current.validFrom ? null : closing;
+  return closing < current.validFrom ? { kind: "impossible" } : { kind: "close", on: closing };
 }
 
-/** Field yang dicatat sebagai "berubah" di audit; isinya tidak pernah ikut. */
+/**
+ * Field yang dicatat sebagai "berubah" di audit; isinya tidak pernah ikut.
+ * Perbandingannya dangkal, yang cukup untuk baris datar di sini; sebuah nilai
+ * berbentuk objek akan selalu terbaca berubah.
+ */
 export function changedFields(
   previous: Record<string, unknown>,
   next: Record<string, unknown>,

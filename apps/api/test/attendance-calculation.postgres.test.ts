@@ -220,22 +220,22 @@ describe.skipIf(!allowed)("ATT-014-2 real PostgreSQL calculation", () => {
        VALUES ($1, $2, 2, '14:30', '19:30')`,
       [randomUUID(), version],
     );
-    await client.query("UPDATE attendance_schedule_assignments SET effective_to = '2026-08-27' WHERE employee_id = $1", [mapped]);
+    await client.query("UPDATE attendance_schedule_assignments SET effective_to = '2026-08-28' WHERE employee_id = $1", [mapped]);
     await client.query(
       `INSERT INTO attendance_schedule_assignments (id, employee_id, schedule_template_id, weekday_mask, effective_from, created_by_account_id)
-       VALUES ($1, $2, $3, 127, '2026-08-28', $4)`,
+       VALUES ($1, $2, $3, 127, '2026-08-29', $4)`,
       [randomUUID(), mapped, template, accountId],
     );
-    // Only the morning block is attended.
-    await admsScan("2026-08-28T03:58:00+07:00");
-    await admsScan("2026-08-28T08:31:00+07:00");
-    await calculate({ employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
-    const rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-28", to: "2026-08-28" });
+    // Only the morning block is attended (a date without the shared setup's scans).
+    await admsScan("2026-08-29T03:58:00+07:00");
+    await admsScan("2026-08-29T08:31:00+07:00");
+    await calculate({ employeeId: mapped, from: "2026-08-29", to: "2026-08-29" });
+    const rows = await attendanceCalculationRows(transactionPool, { employeeId: mapped, from: "2026-08-29", to: "2026-08-29" });
     expect(rows.items[0]).toMatchObject({ status: "incomplete", normal: 1, actual: 0.5 });
     const blocks = await client.query(
       `SELECT block.sequence, block.status FROM attendance_result_blocks block
        JOIN attendance_result_versions version ON version.id = block.attendance_result_version_id
-       WHERE version.employee_id = $1 AND version.work_date = '2026-08-28'
+       WHERE version.employee_id = $1 AND version.work_date = '2026-08-29'
        ORDER BY version.version DESC, block.sequence LIMIT 2`,
       [mapped],
     );

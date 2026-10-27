@@ -74,6 +74,8 @@ interface PoolOptions {
     payload?: Record<string, unknown>;
     state?: string;
     employeeRemoved?: boolean;
+    /** The employee is marked outside HCIS management (S2B §8.7). */
+    employeeOutsideHcis?: boolean;
   } | null;
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
   /** The write raises this exclusion violation, constraint name and all. */
@@ -126,6 +128,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           payload: options.locked?.payload ?? ADDRESS_PAYLOAD,
           state: options.locked?.state ?? "DIAJUKAN",
           employeeRemoved: options.locked?.employeeRemoved === true,
+          employeeOutsideHcis: options.locked?.employeeOutsideHcis === true,
         }],
         rowCount: 1,
       };
@@ -426,6 +429,17 @@ describe("EMP-003 HC decides", () => {
     expect(removed.response.statusCode).toBe(404);
     expect(removed.response.json()).toMatchObject({ code: "EMPLOYEE_NOT_FOUND" });
     expect(removed.writes).toEqual([]);
+  });
+
+  it("refuses to accept a proposal whose record is outside HCIS management", async () => {
+    // The direct HC routes refuse that record, so accepting a proposal must
+    // not be the way around them (S2B §8.7).
+    const { response, writes } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      locked: { employeeOutsideHcis: true },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(writes).toEqual([]);
   });
 
   it("locks the proposal before deciding anything", async () => {

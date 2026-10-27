@@ -24,6 +24,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "./management-scope.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
   DATA_CHANGE_TARGETS,
@@ -367,6 +368,12 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
         if (locked.employeeRemoved) {
           await rollback(client);
           return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+        }
+        // S2B §8.7: accepting would write to a record the direct HC routes
+        // refuse, so this path refuses it too — decided on the locked row.
+        if (locked.employeeOutsideHcis) {
+          await rollback(client);
+          return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
         }
 
         let applied: { entityType: string; entityId: string | null } | null = null;

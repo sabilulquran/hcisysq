@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.9.0
+  version: 0.10.0
   description: |
     Package 1 steps S2, S4, S5, S5A and S6 (docs/domain/employment-administration-package1.md).
     Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
@@ -34,6 +34,10 @@ info:
     Accepting writes the change in the same transaction as the decision, and
     the payload is validated again at that moment, because the rules may have
     moved while it waited.
+    Step S2B marks the records HCIS does not manage (BUMY staff, Pengurus
+    Yayasan). A marked record stays readable and stops being writable: every
+    write path answers 409 EMPLOYEE_OUTSIDE_HCIS_READ_ONLY, and the employee
+    import skips the row rather than updating it.
     All responses carry Cache-Control: no-store.
 paths:
   /admin/employment/rollout:
@@ -1182,6 +1186,56 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
+  /admin/employees/{employeeId}/management-scope:
+    put:
+      tags: [Employment]
+      operationId: setEmployeeManagementScope
+      summary: Mark a record outside HCIS management, or bring it back
+      description: |
+        Requires employees.manage. Marking needs a reason (BUMY or
+        PENGURUS_YAYASAN) and a note of at least five characters; unmarking
+        needs the note alone and clears the marker whole. A request that would
+        not change the scope answers 409 MANAGEMENT_SCOPE_UNCHANGED. Nothing is
+        deleted either way, and the import never marks a record itself.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [managementScope, note]
+              properties:
+                managementScope: { type: string, enum: [MANAGED, OUTSIDE_HCIS] }
+                reason:
+                  type: [string, 'null']
+                  enum: [BUMY, PENGURUS_YAYASAN, null]
+                  description: Required when managementScope is OUTSIDE_HCIS, refused otherwise.
+                note: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: The record's scope after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, managementScope]
+                properties:
+                  id: { type: string, format: uuid }
+                  employeeNumber: { type: string }
+                  fullName: { type: string }
+                  managementScope: { type: string, enum: [MANAGED, OUTSIDE_HCIS] }
+                  managementScopeReason: { type: [string, 'null'] }
+                  managementScopeNote: { type: [string, 'null'] }
+                  managementScopeMarkedAt: { type: [string, 'null'], format: date-time }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
 components:
   parameters:
     EmployeeId:
@@ -1220,6 +1274,7 @@ components:
         EMPLOYEE_RECORD_INVALID (with a field name), EMPLOYEE_RECORD_NOT_FOUND,
         EMPLOYEE_RECORD_VOIDED,
         FAMILY_SPOUSE_OVERLAP, EMERGENCY_PRIORITY_TAKEN, ADDRESS_PERIOD_OVERLAP,
+        EMPLOYEE_OUTSIDE_HCIS_READ_ONLY, MANAGEMENT_SCOPE_UNCHANGED, INVALID_MANAGEMENT_SCOPE,
         DATA_CHANGE_NOT_FOUND, DATA_CHANGE_NOT_PENDING, DATA_CHANGE_REASON_REQUIRED,
         DATA_CHANGE_NO_LONGER_VALID, DATA_CHANGE_CONFLICT, EMPLOYEE_ACCOUNT_REQUIRED,
         DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,

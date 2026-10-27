@@ -1,6 +1,7 @@
-// EMP-005 Package 1 S5: the contract actions (spec §5, §6, §11, §12). HIRE,
-// CONTRACT_EXTENSION, CATEGORY_CHANGE and TERMINATION are recorded here; the
-// career actions follow in S6 and reversal in S7. Every rule is the planner's;
+// EMP-005 / EMP-006 Package 1 S5 and S6: the employment actions (spec §5, §6,
+// §11, §12). Contract actions (HIRE, CONTRACT_EXTENSION, CATEGORY_CHANGE,
+// TERMINATION) and career actions (PLACEMENT, TRANSFER, PROMOTION, DEMOTION)
+// are recorded here; reversal follows in S7. Every rule is the planner's;
 // this file authenticates, loads history, persists the plan in one transaction,
 // and maps a typed domain failure to its HTTP code.
 //
@@ -85,7 +86,9 @@ const common = {
   acknowledgedWarnings: z.array(z.enum(["BACKDATED", "TERM_GAP", "CONTRACT_DURATION_LONG", "PROBATION_DURATION_LONG"])).optional(),
 };
 
-/** Only the four contract actions; career actions arrive with S6. */
+/** EMP-006 §5: a career move always lands on a primary placement. */
+const careerReasonCodes = z.enum(["RESTRUKTURISASI", "KINERJA", "DISIPLIN", "PERMINTAAN_PEGAWAI", "KEBUTUHAN_ORGANISASI", "LAINNYA"]);
+
 const actionBody = z.discriminatedUnion("actionType", [
   z.object({
     actionType: z.literal("HIRE"),
@@ -110,6 +113,26 @@ const actionBody = z.discriminatedUnion("actionType", [
     category,
     termEndOn: isoDate.nullish(),
     contractReference: z.string().trim().max(200).nullish(),
+    ...common,
+  }),
+  z.object({
+    actionType: z.literal("PLACEMENT"),
+    effectiveOn: isoDate,
+    placement: placementBody.extend({ kind: z.enum(["PRIMARY", "ADDITIONAL"]).default("PRIMARY") }),
+    ...common,
+  }),
+  z.object({
+    actionType: z.literal("PLACEMENT_END"),
+    effectiveOn: isoDate,
+    /** The additional duty to end; the primary placement is ended by a career move. */
+    placementId: z.string().uuid(),
+    ...common,
+  }),
+  z.object({
+    actionType: z.enum(["TRANSFER", "PROMOTION", "DEMOTION"]),
+    effectiveOn: isoDate,
+    placement: placementBody,
+    reasonCode: careerReasonCodes.nullish(),
     ...common,
   }),
   z.object({
@@ -226,6 +249,39 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
           termEndOn: body.termEndOn ?? null,
           contractReference: body.contractReference ?? null,
         };
+      case "PLACEMENT":
+        return {
+          ...shared,
+          actionType: "PLACEMENT",
+          effectiveOn: body.effectiveOn,
+          placement: {
+            kind: body.placement.kind,
+            unitRef: unitRefOf(body.placement),
+            positionRef: positionRefOf(body.placement),
+            jobTitleLabel: body.placement.jobTitleLabel,
+          },
+        };
+      case "PLACEMENT_END":
+        return {
+          ...shared,
+          actionType: "PLACEMENT",
+          effectiveOn: body.effectiveOn,
+          endAdditionalPlacementId: body.placementId,
+        };
+      case "TRANSFER":
+      case "PROMOTION":
+      case "DEMOTION":
+        return {
+          ...shared,
+          actionType: body.actionType,
+          effectiveOn: body.effectiveOn,
+          placement: {
+            unitRef: unitRefOf(body.placement),
+            positionRef: positionRefOf(body.placement),
+            jobTitleLabel: body.placement.jobTitleLabel,
+          },
+          reasonCode: body.reasonCode ?? null,
+        };
       case "TERMINATION":
         return { ...shared, actionType: "TERMINATION", lastDayOn: body.lastDayOn, reasonCode: body.reasonCode };
     }
@@ -243,6 +299,16 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       expectedVersion: plan.expectedVersion,
       /** The derived state once the action is recorded, not the current one. */
       state: resolveEmployment(applyPlan(history, plan, new Date().toISOString()), today, policy).state,
+      /**
+       * EMP-006 D-18: a placement records where the employee works; it never
+       * writes ORG-004 and never moves approval authority. The dialog shows
+       * this on every career move so nobody expects the structure to follow.
+       */
+      structureNote:
+        plan.actionType === "PLACEMENT" || plan.actionType === "TRANSFER"
+          || plan.actionType === "PROMOTION" || plan.actionType === "DEMOTION"
+          ? "Penempatan ini tidak mengubah Struktur Organisasi maupun kewenangan approval."
+          : null,
       /** EMP-005 D-15: when the employee's login account closes, if at all. */
       accountDeactivation:
         plan.actionType === "TERMINATION" && plan.effectiveOn

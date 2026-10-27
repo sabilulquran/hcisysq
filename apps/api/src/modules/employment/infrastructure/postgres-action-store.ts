@@ -358,6 +358,57 @@ export async function loadEmploymentManagedEmployeeIds(db: Db): Promise<Set<stri
   return new Set(result.rows.map((row) => row.employeeId));
 }
 
+/**
+ * EMP-006 D-18: the employment history and ORG-004 are separate records of the
+ * same working life, and an action never writes the structure. Where one says
+ * someone holds a seat and the other does not, HC decides which is right — so
+ * the consistency report names both directions instead of guessing.
+ *
+ * Units are not compared: a placement points at the legacy unit table and an
+ * ORG-004 seat at a node stable key, and no accepted mapping exists yet.
+ */
+export async function loadStructureMismatches(
+  db: Db,
+  date: string,
+): Promise<{ withoutPlacement: string[]; withoutSeat: string[] }> {
+  const result = await db.query<{ employeeId: string; hasSeat: boolean; hasPlacement: boolean }>(
+    `WITH published AS (
+       SELECT id FROM organization_change_sets
+       WHERE status = 'PUBLISHED' AND effective_on <= $1::date
+       ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+       LIMIT 1
+     ),
+     seats AS (
+       SELECT DISTINCT i.employee_id
+       FROM organization_incumbencies i
+       JOIN published p ON p.id = i.change_set_id
+       WHERE i.kind = 'PRIMARY'
+         AND i.effective_from <= $1::date
+         AND (i.effective_to IS NULL OR i.effective_to >= $1::date)
+     ),
+     placements AS (
+       SELECT DISTINCT e.employee_id
+       FROM employment_placements pl
+       JOIN employments e ON e.id = pl.employment_id
+       WHERE pl.kind = 'PRIMARY'
+         AND pl.voided_by_action_id IS NULL
+         AND e.voided_by_action_id IS NULL
+         AND pl.effective_from <= $1::date
+         AND (pl.effective_to IS NULL OR pl.effective_to >= $1::date)
+     )
+     SELECT COALESCE(seats.employee_id, placements.employee_id) AS "employeeId",
+            seats.employee_id IS NOT NULL AS "hasSeat",
+            placements.employee_id IS NOT NULL AS "hasPlacement"
+     FROM seats FULL OUTER JOIN placements ON placements.employee_id = seats.employee_id
+     WHERE seats.employee_id IS NULL OR placements.employee_id IS NULL`,
+    [date],
+  );
+  return {
+    withoutPlacement: result.rows.filter((row) => row.hasSeat && !row.hasPlacement).map((row) => row.employeeId),
+    withoutSeat: result.rows.filter((row) => row.hasPlacement && !row.hasSeat).map((row) => row.employeeId),
+  };
+}
+
 /** Employees whose stored columns no longer equal the projection (consistency report). */
 export async function loadProjectedEmployeeIds(db: Db): Promise<string[]> {
   const result = await db.query<{ employeeId: string }>(

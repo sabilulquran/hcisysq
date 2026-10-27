@@ -38,23 +38,59 @@ function Notice({ tone, children }: { tone: "info" | "warning" | "danger"; child
  * buttons appear only in AUTHORITATIVE and only for employment.manage; the API
  * refuses anything the rollout mode or the permission does not allow anyway.
  */
+type ActionKey =
+  | "HIRE"
+  | "CONTRACT_EXTENSION"
+  | "CATEGORY_CHANGE"
+  | "TERMINATION"
+  | "PLACEMENT"
+  | "TRANSFER"
+  | "PROMOTION"
+  | "DEMOTION";
+
 export interface EmploymentActionButtonsProps {
   mode: string;
   state: string;
   canManage: boolean;
-  onStart: (actionType: "HIRE" | "CONTRACT_EXTENSION" | "CATEGORY_CHANGE" | "TERMINATION") => void;
+  /** "contract" for the Kepegawaian tab, "career" for Penempatan & Karier. */
+  group?: "contract" | "career";
+  /** A career move needs a primary placement to move; a placement opens one. */
+  hasPrimaryPlacement?: boolean;
+  onStart: (actionType: ActionKey) => void;
 }
 
-export function EmploymentActionButtons({ mode, state, canManage, onStart }: EmploymentActionButtonsProps) {
+export function EmploymentActionButtons({
+  mode,
+  state,
+  canManage,
+  group = "contract",
+  hasPrimaryPlacement = false,
+  onStart,
+}: EmploymentActionButtonsProps) {
   if (!canManage || mode !== "AUTHORITATIVE") return null;
   const active = state === "AKTIF" || state === "AKAN_MULAI";
-  const buttons: Array<{ key: EmploymentActionButtonsProps extends never ? never : Parameters<EmploymentActionButtonsProps["onStart"]>[0]; label: string }> = active
-    ? [
-        { key: "CONTRACT_EXTENSION", label: "Perpanjang kontrak" },
-        { key: "CATEGORY_CHANGE", label: "Ubah status kepegawaian" },
-        { key: "TERMINATION", label: "Akhiri hubungan kerja" },
-      ]
-    : [{ key: "HIRE", label: "Mulai hubungan kerja baru" }];
+  let buttons: Array<{ key: ActionKey; label: string }>;
+  if (group === "career") {
+    // Without an employment there is nothing to place; without a primary
+    // placement the career moves have nothing to move (the API says the same).
+    if (!active) return null;
+    buttons = hasPrimaryPlacement
+      ? [
+          { key: "PLACEMENT", label: "Penempatan" },
+          { key: "TRANSFER", label: "Mutasi" },
+          { key: "PROMOTION", label: "Promosi" },
+          { key: "DEMOTION", label: "Demosi" },
+        ]
+      : [{ key: "PLACEMENT", label: "Penempatan" }];
+  } else {
+    buttons = active
+      ? [
+          { key: "CONTRACT_EXTENSION", label: "Perpanjang kontrak" },
+          { key: "CATEGORY_CHANGE", label: "Ubah status kepegawaian" },
+          { key: "TERMINATION", label: "Akhiri hubungan kerja" },
+        ]
+      : [{ key: "HIRE", label: "Mulai hubungan kerja baru" }];
+  }
   return (
     <div className="flex flex-wrap gap-2">
       {buttons.map((button) => (
@@ -252,9 +288,12 @@ function timelineSentence(item: EmploymentTimelineItem): string {
 export function PlacementCareerPanel({
   view,
   timeline,
+  actions,
 }: {
   view: EmploymentView<EmploymentSummary>;
   timeline: EmploymentView<EmploymentTimelineItem[]>;
+  /** S6 career buttons; omitted on screens that only read. */
+  actions?: ReactNode;
 }) {
   if (view.kind !== "ready") return <EmploymentStateNotice view={view} subject="data penempatan" />;
   const data = view.data;
@@ -269,6 +308,7 @@ export function PlacementCareerPanel({
           <BriefcaseBusiness className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
           <h2 className="text-base font-bold text-brand-heading">Penempatan saat ini</h2>
         </div>
+        {actions ? <div className="mt-4">{actions}</div> : null}
         {primary ? (
           <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-3">
             <Field label="Unit" value={primary.unitName ?? "—"} />

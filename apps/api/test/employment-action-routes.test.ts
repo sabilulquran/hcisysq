@@ -37,6 +37,10 @@ const PK_ID = "30000000-0000-4000-8000-000000000001";
 const SK_ID = "30000000-0000-4000-8000-000000000002";
 const PK_BARU_ID = "30000000-0000-4000-8000-000000000003";
 const SK_PENGANGKATAN_ID = "30000000-0000-4000-8000-000000000004";
+const SK_MUTASI_ID = "30000000-0000-4000-8000-000000000005";
+const SK_PROMOSI_ID = "30000000-0000-4000-8000-000000000006";
+const SK_DEMOSI_ID = "30000000-0000-4000-8000-000000000007";
+const UNIT_TUJUAN_ID = "20000000-0000-4000-8000-000000000002";
 
 /** The extension and its Perjanjian Kerja state the same period and category. */
 const EXTENSION = {
@@ -64,6 +68,18 @@ const DOCUMENTS = [
   },
   {
     id: SK_PENGANGKATAN_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PENGANGKATAN", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
+    id: SK_MUTASI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_MUTASI", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
+    id: SK_PROMOSI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PROMOSI", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
+    id: SK_DEMOSI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_DEMOSI", employeeId: null,
     contractFrom: null, contractTo: null, category: null,
   },
   {
@@ -488,6 +504,100 @@ describe("EMP-005 termination", () => {
   });
 });
 
+describe("EMP-006 career actions", () => {
+  const TRANSFER = {
+    actionType: "TRANSFER",
+    effectiveOn: "2027-10-01",
+    placement: { unitId: UNIT_TUJUAN_ID, jobTitleLabel: "Guru Kelas" },
+    documentIds: [SK_MUTASI_ID],
+  };
+
+  it("moves the primary placement and says the structure does not follow", async () => {
+    const preview = await call("hc", PREVIEW_URL, { payload: TRANSFER });
+    expect(preview.response.statusCode).toBe(200);
+    expect(preview.response.json()).toMatchObject({
+      actionType: "TRANSFER",
+      structureNote: "Penempatan ini tidak mengubah Struktur Organisasi maupun kewenangan approval.",
+      next: { placement: { jobTitleLabel: "Guru Kelas" } },
+    });
+
+    const { response, writes } = await call("hc", RECORD_URL, { payload: TRANSFER });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+    expect(writes).toContain("CLOSE row");
+    expect(writes).toContain("PROJECT employee");
+  });
+
+  it("refuses a move to the unit and position the employee already holds", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, placement: { unitId: UNIT_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_REFERENCE_INVALID" });
+    expect(writes).toEqual([]);
+  });
+
+  it("asks each career move for its own SK", async () => {
+    const wrongKind = await call("hc", RECORD_URL, { payload: { ...TRANSFER, documentIds: [SK_PROMOSI_ID] } });
+    expect(wrongKind.response.json()).toMatchObject({ code: "DECISION_DOCUMENT_KIND_INVALID" });
+    const missing = await call("hc", RECORD_URL, { payload: { ...TRANSFER, documentIds: [] } });
+    expect(missing.response.json()).toMatchObject({ code: "DECISION_DOCUMENT_REQUIRED" });
+    expect(wrongKind.writes).toEqual([]);
+    expect(missing.writes).toEqual([]);
+  });
+
+  it("records a promotion with its SK Promosi", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "PROMOTION", documentIds: [SK_PROMOSI_ID] },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+  });
+
+  it("refuses a demotion without a reason", async () => {
+    const withoutReason = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "DEMOTION", documentIds: [SK_DEMOSI_ID] },
+    });
+    expect(withoutReason.response.statusCode).toBe(400);
+    expect(withoutReason.response.json()).toMatchObject({ code: "EMPLOYMENT_REASON_REQUIRED" });
+    expect(withoutReason.writes).toEqual([]);
+
+    const withReason = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "DEMOTION", documentIds: [SK_DEMOSI_ID], reasonCode: "KINERJA" },
+    });
+    expect(withReason.response.statusCode).toBe(201);
+  });
+
+  it("adds an additional duty without touching the primary placement", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: {
+        actionType: "PLACEMENT",
+        effectiveOn: "2027-10-01",
+        placement: { unitId: UNIT_ID, jobTitleLabel: "Koordinator Tahfidz", kind: "ADDITIONAL" },
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+    expect(writes).not.toContain("CLOSE row");
+  });
+
+  it("refuses a second primary placement and points at the career actions", async () => {
+    const { response } = await call("hc", RECORD_URL, {
+      payload: { actionType: "PLACEMENT", effectiveOn: "2027-10-01", placement: { unitId: UNIT_TUJUAN_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_OVERLAP" });
+  });
+
+  it("refuses to end an additional duty that is not running", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { actionType: "PLACEMENT_END", effectiveOn: "2027-10-01", placementId: "p9" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(writes).toEqual([]);
+  });
+});
+
 describe("EMP-005 request validation", () => {
   it("authorizes before validating the body", async () => {
     expect((await call("employee", RECORD_URL, { payload: { actionType: "SALAH" } })).response.statusCode).toBe(403);
@@ -496,7 +606,7 @@ describe("EMP-005 request validation", () => {
     expect(invalid.writes).toEqual([]);
   });
 
-  it("rejects a career action: those arrive with S6", async () => {
+  it("rejects a career move without a destination unit", async () => {
     const { response } = await call("hc", RECORD_URL, {
       payload: { actionType: "TRANSFER", effectiveOn: "2027-10-01", placement: { jobTitleLabel: "Guru" } },
     });

@@ -38,13 +38,19 @@ function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmp
       return {
         rows: [{
           id: IMPORT_ID, status: "previewed", error_count: 0, insert_count: 0, update_count: 0,
-          source_filename: "sintetis.xlsx", source_sheet: "Sheet1",
+          source_filename: "sintetis.xlsx", source_sheet: "Sheet1", checksum_sha256: "0".repeat(64),
+          row_count: 1, warning_count: 0, created_at: new Date("2027-01-01T00:00:00Z"), committed_at: null,
         }],
         rowCount: 1,
       };
     }
+    if (sql.includes("count(*) FILTER")) return { rows: [{ total: 1, skip: 0 }], rowCount: 1 };
+    if (sql.includes("jsonb_array_elements(messages)")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employee_import_rows")) {
       return { rows: [{ row_number: 1, action: "update", payload: CANDIDATE, messages: [] }], rowCount: 1 };
+    }
+    if (sql.includes("WHERE employee_number = ANY")) {
+      return { rows: [{ employeeNumber: CANDIDATE.employeeNumber }], rowCount: 1 };
     }
     if (sql.includes("FROM employment_rollout_settings WHERE id = 1")) {
       return { rows: [{ mode: options.mode }], rowCount: 1 };
@@ -78,6 +84,20 @@ function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmp
 function employeeUpdate(statements: string[]): string {
   return statements.find((sql) => sql.includes("UPDATE employees SET")) ?? "";
 }
+
+describe("EMP-005 §8.1 import preview", () => {
+  it("tells the operator which rows will keep their employment columns", async () => {
+    const { store } = createStore({ mode: "AUTHORITATIVE", hasEmployment: true });
+    const page = await store.getPreviewPage(IMPORT_ID, { page: 1, pageSize: 25 }, "all");
+    expect(page?.rows[0]?.issues.map((issue) => issue.code)).toContain("EMPLOYMENT_FIELDS_IGNORED");
+  });
+
+  it("says nothing of the sort while the mode is SHADOW", async () => {
+    const { store } = createStore({ mode: "SHADOW", hasEmployment: true });
+    const page = await store.getPreviewPage(IMPORT_ID, { page: 1, pageSize: 25 }, "all");
+    expect(page?.rows[0]?.issues).toEqual([]);
+  });
+});
 
 describe("EMP-005 §8.1 import guard", () => {
   it("keeps writing every column while the mode is not AUTHORITATIVE", async () => {

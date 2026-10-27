@@ -20,6 +20,7 @@ import {
   type EmploymentHistory,
   type PlacementRecord,
 } from "./domain/index.js";
+import { loadStructureMismatches } from "./infrastructure/postgres-action-store.js";
 import {
   getRolloutMode,
   jakartaToday,
@@ -192,6 +193,7 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
     if (!mode) return;
 
     const date = query.data.date ?? jakartaToday();
+    const structure = await loadStructureMismatches(pool, date);
     const [sources, histories, identities] = await Promise.all([
       loadBaselineSources(pool),
       loadHistories(pool),
@@ -200,7 +202,14 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
       ),
     ]);
     const identityById = new Map(identities.rows.map((row) => [row.id, row]));
-    const findings = sources.map((source) => checkConsistency(source, histories.get(source.employeeId) ?? null, date, policy));
+    const findings = sources.map((source) => {
+      const finding = checkConsistency(source, histories.get(source.employeeId) ?? null, date, policy);
+      // EMP-006 D-18: structure and placement are compared, never reconciled
+      // automatically; HC decides which record to correct.
+      if (structure.withoutPlacement.includes(source.employeeId)) finding.codes.push("STRUCTURE_SEAT_WITHOUT_PLACEMENT");
+      if (structure.withoutSeat.includes(source.employeeId)) finding.codes.push("PLACEMENT_WITHOUT_STRUCTURE_SEAT");
+      return finding;
+    });
 
     const counts = new Map<ConsistencyIssueCode, number>();
     for (const finding of findings) for (const code of finding.codes) counts.set(code, (counts.get(code) ?? 0) + 1);

@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import {
   ACTION_DONE_MESSAGE,
   ACTION_TITLE,
+  CAREER_REASON_LABEL,
   TERMINATION_REASON_LABEL,
   WARNING_LABEL,
   newIdempotencyKey,
@@ -16,6 +17,7 @@ import {
   recordEmploymentAction,
   requiredDocumentKind,
   type ActionCategory,
+  type CareerReasonCode,
   type EmploymentActionPreview,
   type EmploymentActionRequest,
   type EmploymentActionType,
@@ -49,9 +51,11 @@ interface DraftState {
   staffType: "" | "PENDIDIK" | "KEPENDIDIKAN";
   contractReference: string;
   reasonCode: TerminationReason;
+  careerReasonCode: CareerReasonCode | "";
   reasonNote: string;
   unitId: string;
   jobTitleLabel: string;
+  additionalDuty: boolean;
   documentId: string;
 }
 
@@ -64,9 +68,11 @@ function emptyDraft(): DraftState {
     staffType: "",
     contractReference: "",
     reasonCode: "KONTRAK_BERAKHIR",
+    careerReasonCode: "",
     reasonNote: "",
     unitId: "",
     jobTitleLabel: "",
+    additionalDuty: false,
     documentId: "",
   };
 }
@@ -114,8 +120,32 @@ function buildRequest(
       };
     case "TERMINATION":
       return { ...shared, actionType: "TERMINATION", lastDayOn: draft.lastDayOn, reasonCode: draft.reasonCode };
+    case "PLACEMENT":
+      return {
+        ...shared,
+        actionType: "PLACEMENT",
+        effectiveOn: draft.effectiveOn,
+        placement: {
+          unitId: draft.unitId,
+          jobTitleLabel: draft.jobTitleLabel.trim(),
+          kind: draft.additionalDuty ? "ADDITIONAL" : "PRIMARY",
+        },
+      };
+    case "TRANSFER":
+    case "PROMOTION":
+    case "DEMOTION":
+      return {
+        ...shared,
+        actionType,
+        effectiveOn: draft.effectiveOn,
+        placement: { unitId: draft.unitId, jobTitleLabel: draft.jobTitleLabel.trim() },
+        reasonCode: draft.careerReasonCode || null,
+      };
   }
 }
+
+/** Career moves and a new employment all need a destination unit. */
+const PLACEMENT_ACTIONS: readonly EmploymentActionType[] = ["HIRE", "PLACEMENT", "TRANSFER", "PROMOTION", "DEMOTION"];
 
 function Labelled({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -155,9 +185,9 @@ export function EmploymentActionDialog({
   const [error, setError] = useState<string | null>(null);
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  // Only a new employment needs a unit to place the employee in.
+  // Every action that opens a placement needs a unit to point at.
   useEffect(() => {
-    if (actionType !== "HIRE") return;
+    if (!PLACEMENT_ACTIONS.includes(actionType)) return;
     let mounted = true;
     void listEmployees({ pageSize: 1 })
       .then((page) => { if (mounted) setUnits(page.filters.units); })
@@ -294,9 +324,9 @@ export function EmploymentActionDialog({
             </Labelled>
           ) : null}
 
-          {actionType === "HIRE" ? (
+          {PLACEMENT_ACTIONS.includes(actionType) ? (
             <>
-              <Labelled label="Unit penempatan">
+              <Labelled label={actionType === "HIRE" || actionType === "PLACEMENT" ? "Unit penempatan" : "Unit tujuan"}>
                 <select value={draft.unitId} onChange={(event) => set({ unitId: event.target.value })} className={field}>
                   <option value="">Pilih unit</option>
                   {units.map((unit) => (
@@ -307,6 +337,37 @@ export function EmploymentActionDialog({
               <Labelled label="Label jabatan">
                 <input value={draft.jobTitleLabel} onChange={(event) => set({ jobTitleLabel: event.target.value })} className={field} />
               </Labelled>
+            </>
+          ) : null}
+
+          {actionType === "PLACEMENT" ? (
+            <label className="flex items-center gap-2 self-end text-sm font-semibold text-foreground">
+              <input
+                type="checkbox"
+                checked={draft.additionalDuty}
+                onChange={(event) => set({ additionalDuty: event.target.checked })}
+              />
+              Tugas tambahan (penempatan utama tetap)
+            </label>
+          ) : null}
+
+          {actionType === "TRANSFER" || actionType === "PROMOTION" || actionType === "DEMOTION" ? (
+            <Labelled label={actionType === "DEMOTION" ? "Alasan (wajib)" : "Alasan"}>
+              <select
+                value={draft.careerReasonCode}
+                onChange={(event) => set({ careerReasonCode: event.target.value as CareerReasonCode })}
+                className={field}
+              >
+                <option value="">Pilih alasan</option>
+                {Object.entries(CAREER_REASON_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </Labelled>
+          ) : null}
+
+          {actionType === "HIRE" ? (
+            <>
               <Labelled label="Jenis kepegawaian">
                 <select
                   value={draft.staffType}
@@ -368,6 +429,12 @@ export function EmploymentActionDialog({
                 <dd className="text-sm font-semibold text-foreground">{summaryLine(preview.next)}</dd>
               </div>
             </dl>
+
+            {preview.structureNote ? (
+              <p className="mt-3 rounded-xl border border-border/70 bg-surface-raised p-3 text-sm text-muted-foreground">
+                {preview.structureNote}
+              </p>
+            ) : null}
 
             {preview.accountDeactivation.willDeactivate ? (
               <p className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-3 text-sm text-warning-ink">

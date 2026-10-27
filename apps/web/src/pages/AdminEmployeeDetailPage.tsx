@@ -317,7 +317,24 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           }}
         />
       ) : null}
-      {tab === "penempatan" ? <PlacementCareerPanel view={employmentView ?? { kind: "loading" }} timeline={timelineView} /> : null}
+      {tab === "penempatan" ? (
+        <PlacementCareerPanel
+          view={employmentView ?? { kind: "loading" }}
+          timeline={timelineView}
+          actions={
+            employmentView?.kind === "ready" ? (
+              <EmploymentActionButtons
+                mode={employmentView.data.mode}
+                state={employmentView.data.state}
+                canManage={canManageEmployment}
+                group="career"
+                hasPrimaryPlacement={employmentView.data.current.primaryPlacement !== null}
+                onStart={setEmploymentAction}
+              />
+            ) : null
+          }
+        />
+      ) : null}
 
       {tab === "ringkasan" ? (<>
       <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">

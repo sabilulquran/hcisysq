@@ -83,6 +83,56 @@ describe("EMP-005 action dialog", () => {
   });
 });
 
+describe("EMP-006 career actions", () => {
+  const start = () => undefined;
+
+  it("offers every career move once a primary placement exists", () => {
+    const html = render(
+      <EmploymentActionButtons mode="AUTHORITATIVE" state="AKTIF" canManage group="career" hasPrimaryPlacement onStart={start} />,
+    );
+    expect(html).toContain("Penempatan");
+    expect(html).toContain("Mutasi");
+    expect(html).toContain("Promosi");
+    expect(html).toContain("Demosi");
+  });
+
+  it("offers only a placement while there is none to move", () => {
+    const html = render(
+      <EmploymentActionButtons mode="AUTHORITATIVE" state="AKTIF" canManage group="career" onStart={start} />,
+    );
+    expect(html).toContain("Penempatan");
+    expect(html).not.toContain("Mutasi");
+  });
+
+  it("offers nothing once the employment ended", () => {
+    expect(render(
+      <EmploymentActionButtons mode="AUTHORITATIVE" state="BERAKHIR" canManage group="career" hasPrimaryPlacement onStart={start} />,
+    )).toBe("");
+  });
+
+  it("asks a transfer for its destination and its SK", () => {
+    const html = dialog("TRANSFER");
+    expect(html).toContain("Mutasi");
+    expect(html).toContain("Unit tujuan");
+    expect(html).toContain("Surat Keputusan");
+    expect(html).toContain("Mutasi memerlukan SK Mutasi.");
+    expect(html).not.toContain("Status kepegawaian");
+  });
+
+  it("marks the reason as required on a demotion", () => {
+    expect(dialog("DEMOTION")).toContain("Alasan (wajib)");
+    expect(dialog("TRANSFER")).toContain("Alasan</span>");
+  });
+
+  it("lets a placement be recorded as an additional duty", () => {
+    const html = dialog("PLACEMENT");
+    expect(html).toContain("Tugas tambahan (penempatan utama tetap)");
+    expect(html).toContain("Unit penempatan");
+    // A placement needs no basis document of its own.
+    expect(html).not.toContain("Pilih dokumen dasar");
+  });
+});
+
 describe("EMP-005 basis document the dialog asks for", () => {
   it("follows the action and the category", () => {
     expect(requiredDocumentKind("CONTRACT_EXTENSION", "KONTRAK", null)?.kind).toBe("PERJANJIAN_KERJA");

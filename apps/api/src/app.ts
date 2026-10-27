@@ -31,6 +31,7 @@ import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-em
 import { registerStaffIdentityRoutes } from "./modules/employees/staff-identity-routes.js";
 import { registerGovernanceSummaryRoutes } from "./modules/governance/routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
+import { registerTemporaryReactivationRoutes } from "./modules/auth/temporary-reactivation-routes.js";
 import { registerEmploymentActionRoutes } from "./modules/employment/action-routes.js";
 import { registerDecisionDocumentRoutes } from "./modules/employment/decision-document-routes.js";
 import { registerEmploymentAdminRoutes } from "./modules/employment/admin-routes.js";
@@ -137,6 +138,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerSystemRoutes(app, pool);
   await registerAdmsPhysicalParityDeviceRoutes(app, pool, config);
   await registerAdmsIngressRoutes(app, pool, config);
+  await registerTemporaryReactivationRoutes(app, pool, config);
   await registerAuthRoutes(app, pool, config);
   await registerAccountActivationRoutes(app, pool);
   await registerAccountActivationAdminRoutes(app, pool, config);

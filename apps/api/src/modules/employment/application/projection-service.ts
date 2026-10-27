@@ -5,6 +5,7 @@
 
 import type { Pool } from "pg";
 
+import { deactivateAccountsForEndedEmployment, expireTemporaryReactivations } from "../../auth/employment-access.js";
 import { audit } from "../infrastructure/postgres-employment-store.js";
 import {
   employeesNeedingProjection,
@@ -19,6 +20,10 @@ export interface ProjectionRefreshSummary {
   updated: number;
   skipped: number;
   applied: boolean;
+  /** EMP-005 D-15: accounts closed because an employment ended by this date. */
+  deactivatedAccounts: number;
+  /** Temporary reactivations that reached their expiry. */
+  expiredReactivations: number;
 }
 
 export interface ProjectionRefreshOptions {
@@ -52,6 +57,8 @@ export async function runProjectionRefresh(
     updated: 0,
     skipped: 0,
     applied: options.apply === true,
+    deactivatedAccounts: 0,
+    expiredReactivations: 0,
   };
   if (!options.apply || targets.length === 0) {
     summary.skipped = targets.length;
@@ -65,14 +72,27 @@ export async function runProjectionRefresh(
       const projection = await refreshProjection(client, employeeId, options.date);
       if (projection) summary.updated += 1;
       else summary.skipped += 1;
+      // EMP-005 §8.5.1: a termination recorded for a future date closes the
+      // account on the day after the last working day, not before.
+      if (projection?.endedOn && projection.endedOn < options.date) {
+        summary.deactivatedAccounts += (await deactivateAccountsForEndedEmployment(client, employeeId)).length;
+      }
     }
+    summary.expiredReactivations = (await expireTemporaryReactivations(client)).length;
     await audit(client, {
       actorAccountId: null,
       action: "employment.projection.refreshed",
       entityType: "employment_projection",
       entityId: null,
       employeeId: null,
-      payload: { date: summary.date, scope, considered: summary.considered, updated: summary.updated },
+      payload: {
+        date: summary.date,
+        scope,
+        considered: summary.considered,
+        updated: summary.updated,
+        deactivatedAccounts: summary.deactivatedAccounts,
+        expiredReactivations: summary.expiredReactivations,
+      },
     });
     await client.query("COMMIT");
   } catch (error) {

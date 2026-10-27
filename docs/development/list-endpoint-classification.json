@@ -8,6 +8,11 @@
       "package": "PAG-10"
     },
     {
+      "url": "/admin/access/accounts/:accountId/temporary-reactivations",
+      "list": "bounded",
+      "reason": "Riwayat aktivasi sementara satu akun; satu grant aktif per akun dan jumlahnya kecil."
+    },
+    {
       "url": "/admin/access/role-seat-checks",
       "list": "bounded",
       "reason": "Satu baris per peran yang mengikuti jabatan (kini hanya Kepala HC); isinya hanya pemegang peran itu dan pemegang satu jabatan."

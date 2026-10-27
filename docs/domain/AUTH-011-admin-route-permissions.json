@@ -2384,6 +2384,30 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/auth/temporary-reactivation-routes.ts",
+    "method": "GET",
+    "url": "/admin/access/accounts/:accountId/temporary-reactivations",
+    "permissions": [
+      "access.accounts.temporary_reactivate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/auth/temporary-reactivation-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/accounts/:accountId/temporary-reactivations",
+    "permissions": [
+      "access.accounts.temporary_reactivate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/auth/temporary-reactivation-routes.ts",
+    "method": "POST",
+    "url": "/admin/access/accounts/:accountId/temporary-reactivations/:grantId/revoke",
+    "permissions": [
+      "access.accounts.temporary_reactivate"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/payroll/routes.ts",
     "method": "POST",
     "url": "/payroll/periods",

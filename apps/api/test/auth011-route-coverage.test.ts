@@ -5,6 +5,7 @@ import type { ApiConfig } from "../src/config/env.js";
 import {
   ADMIN_PERMISSIONS,
   BOARD_READ_PERMISSION,
+  ACCESS_REACTIVATION_PERMISSION,
   EMPLOYMENT_PERMISSIONS,
   HC_ADMIN_PERMISSIONS,
   PAYROLL_PERMISSIONS,
@@ -126,7 +127,7 @@ describe("AUTH-011 route manifest coverage", () => {
     // EMP-010: employment.correct is likewise a real guard no bundle carries by default (D-16).
     const known = new Set<string>([
       ...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve",
-      ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS,
+      ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ACCESS_REACTIVATION_PERMISSION,
     ]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;

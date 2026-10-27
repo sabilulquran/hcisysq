@@ -128,6 +128,7 @@ export type CompensationProfileRow = {
   bpjsDecisionReference: string | null;
   ptkpStatus: string | null;
   pjMediaRatePerContent: string | null;
+  bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
   recordedAt: string;
@@ -153,6 +154,7 @@ const PROFILE_COLUMNS = `
   bpjs_decision_reference AS "bpjsDecisionReference",
   ptkp_status AS "ptkpStatus",
   pj_media_rate_per_content AS "pjMediaRatePerContent",
+  bank_name AS "bankName",
   bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName",
   recorded_at AS "recordedAt"
 `;
@@ -191,6 +193,7 @@ export type NewCompensationProfile = {
   bpjsDecisionReference?: string | null | undefined;
   ptkpStatus?: string | null | undefined;
   pjMediaRatePerContent?: number | null | undefined;
+  bankName?: string | null | undefined;
   bankAccountNumber?: string | null | undefined;
   bankAccountName?: string | null | undefined;
 };
@@ -198,6 +201,14 @@ export type NewCompensationProfile = {
 /**
  * Opens a compensation profile that applies from a date, closing the one it
  * supersedes the day before. History is never rewritten (specification section 3).
+ *
+ * A new profile is a new row, not an edit, so everything it does not say would
+ * be NULL. That turns "set the bank account" into "forget the unit, the
+ * position and the performance rates", and the next run pays a different
+ * amount or refuses the employee outright. So a field left out is carried over
+ * from the profile in force on the new date; a field sent as `null` is cleared
+ * on purpose. Only the caller can tell those two apart, which is why the
+ * distinction lives here and not in a screen.
  */
 export async function openCompensationProfile(
   pool: Pool,
@@ -207,6 +218,24 @@ export async function openCompensationProfile(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // Read before the UPDATE below closes it.
+    const { rows: previousRows } = await client.query<CompensationProfileRow>(
+      `SELECT ${PROFILE_COLUMNS} FROM payroll_compensation_profiles
+       WHERE employment_id = $1 AND effective_from <= $2::date
+       ORDER BY effective_from DESC
+       LIMIT 1`,
+      [profile.employmentId, profile.effectiveFrom],
+    );
+    const previous = previousRows[0] ?? null;
+    /** The value the caller gave, or the one already in force, or nothing. */
+    function carried<K extends keyof CompensationProfileRow>(
+      given: unknown,
+      key: K,
+    ): unknown {
+      if (given !== undefined) return given;
+      return previous ? previous[key] : null;
+    }
 
     await client.query(
       `UPDATE payroll_compensation_profiles
@@ -222,36 +251,37 @@ export async function openCompensationProfile(
          spouse_count, child_count, registered_dependants, special_qualification_target,
          annual_performance_rate, monthly_performance_rate, bpjs_segment, bpjs_active_from,
          bpjs_extra_family_override, bpjs_extra_family_override_reason, bpjs_decision_reference,
-         ptkp_status, pj_media_rate_per_content, bank_account_number, bank_account_name,
+         ptkp_status, pj_media_rate_per_content, bank_name, bank_account_number, bank_account_name,
          recorded_by_account_id)
        VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25)
+               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25, $26)
        RETURNING ${PROFILE_COLUMNS}`,
       [
         randomUUID(),
         profile.employmentId,
         profile.effectiveFrom,
-        profile.education ?? null,
-        profile.workPattern ?? null,
-        profile.unitRef ?? null,
-        profile.functionalPositionRef ?? null,
-        profile.structuralPositionRef ?? null,
-        profile.teachingHoursPerWeek ?? null,
-        profile.spouseCount ?? 0,
-        profile.childCount ?? 0,
-        profile.registeredDependants ?? 0,
-        profile.specialQualificationTarget ?? null,
-        profile.annualPerformanceRate ?? null,
-        profile.monthlyPerformanceRate ?? null,
-        profile.bpjsSegment ?? "BELUM_TERDAFTAR",
-        profile.bpjsActiveFrom ?? null,
-        profile.bpjsExtraFamilyOverride ?? null,
-        profile.bpjsExtraFamilyOverrideReason ?? null,
-        profile.bpjsDecisionReference ?? null,
-        profile.ptkpStatus ?? null,
-        profile.pjMediaRatePerContent ?? null,
-        profile.bankAccountNumber ?? null,
-        profile.bankAccountName ?? null,
+        carried(profile.education, "education"),
+        carried(profile.workPattern, "workPattern"),
+        carried(profile.unitRef, "unitRef"),
+        carried(profile.functionalPositionRef, "functionalPositionRef"),
+        carried(profile.structuralPositionRef, "structuralPositionRef"),
+        carried(profile.teachingHoursPerWeek, "teachingHoursPerWeek"),
+        carried(profile.spouseCount, "spouseCount") ?? 0,
+        carried(profile.childCount, "childCount") ?? 0,
+        carried(profile.registeredDependants, "registeredDependants") ?? 0,
+        carried(profile.specialQualificationTarget, "specialQualificationTarget"),
+        carried(profile.annualPerformanceRate, "annualPerformanceRate"),
+        carried(profile.monthlyPerformanceRate, "monthlyPerformanceRate"),
+        carried(profile.bpjsSegment, "bpjsSegment") ?? "BELUM_TERDAFTAR",
+        carried(profile.bpjsActiveFrom, "bpjsActiveFrom"),
+        carried(profile.bpjsExtraFamilyOverride, "bpjsExtraFamilyOverride"),
+        carried(profile.bpjsExtraFamilyOverrideReason, "bpjsExtraFamilyOverrideReason"),
+        carried(profile.bpjsDecisionReference, "bpjsDecisionReference"),
+        carried(profile.ptkpStatus, "ptkpStatus"),
+        carried(profile.pjMediaRatePerContent, "pjMediaRatePerContent"),
+        carried(profile.bankName, "bankName"),
+        carried(profile.bankAccountNumber, "bankAccountNumber"),
+        carried(profile.bankAccountName, "bankAccountName"),
         actorAccountId,
       ],
     );
@@ -279,6 +309,8 @@ export async function openCompensationProfile(
 export type LoanRow = {
   id: string;
   employeeId: string;
+  employeeNumber: string;
+  fullName: string;
   grantedOn: string;
   principal: string;
   instalment: string | null;
@@ -290,6 +322,7 @@ export type LoanRow = {
 
 const LOAN_COLUMNS = `
   l.id, l.employee_id AS "employeeId",
+  emp.employee_number AS "employeeNumber", emp.full_name AS "fullName",
   to_char(l.granted_on, 'YYYY-MM-DD') AS "grantedOn",
   l.principal::text AS principal, l.instalment::text AS instalment, l.note, l.closed_at AS "closedAt",
   coalesce(paid.total, 0)::text AS deducted,
@@ -313,14 +346,85 @@ const LOAN_PAID = `
   ) paid ON true
 `;
 
-export async function listLoans(pool: Pool, employeeId?: string): Promise<LoanRow[]> {
+/**
+ * The loan register, a page at a time (ENG-LIST-001). The register grows with
+ * every kasbon ever granted, so it is never read whole: finance filters by
+ * employee, or walks it page by page with the total in hand.
+ */
+export async function listLoans(
+  pool: Pool,
+  options: { employeeId?: string | null; page: number; pageSize: number },
+): Promise<{ loans: LoanRow[]; total: number }> {
+  const employeeId = options.employeeId ?? null;
   const { rows } = await pool.query<LoanRow>(
-    `SELECT ${LOAN_COLUMNS} FROM payroll_loans l ${LOAN_PAID}
+    `SELECT ${LOAN_COLUMNS} FROM payroll_loans l
+     JOIN employees emp ON emp.id = l.employee_id
+     ${LOAN_PAID}
      WHERE ($1::uuid IS NULL OR l.employee_id = $1)
-     ORDER BY l.granted_on DESC, l.id`,
-    [employeeId ?? null],
+     ORDER BY l.granted_on DESC, l.id
+     LIMIT $2 OFFSET $3`,
+    [employeeId, options.pageSize, (options.page - 1) * options.pageSize],
   );
-  return rows;
+  // Counted with the same filter, so the pager never promises a page that the
+  // filter would leave empty.
+  const { rows: counted } = await pool.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM payroll_loans l
+     WHERE ($1::uuid IS NULL OR l.employee_id = $1)`,
+    [employeeId],
+  );
+  return { loans: rows, total: counted[0]?.total ?? 0 };
+}
+
+export type PayrollEmploymentRow = {
+  employmentId: string;
+  employeeId: string;
+  employeeNumber: string;
+  fullName: string;
+  startedOn: string;
+  endedOn: string | null;
+  profileCount: number;
+};
+
+/**
+ * The employments a compensation profile can be opened against, searched by
+ * name or employee number (ENG-LIST-001: a picker over employees is a
+ * typeahead, never a dropdown of everyone).
+ */
+export async function listPayrollEmployments(
+  pool: Pool,
+  options: { q?: string | null; page: number; pageSize: number },
+): Promise<{ employments: PayrollEmploymentRow[]; total: number }> {
+  const q = (options.q ?? "").trim();
+  // `%` and `_` typed into a search box mean those characters, not wildcards.
+  // Backslash is LIKE's default escape character in PostgreSQL.
+  const escaped = q.replace(/([\\%_])/g, "\\$1");
+  const pattern = q.length > 0 ? `%${escaped}%` : null;
+  const { rows } = await pool.query<PayrollEmploymentRow>(
+    `SELECT e.id AS "employmentId", e.employee_id AS "employeeId",
+            emp.employee_number AS "employeeNumber", emp.full_name AS "fullName",
+            to_char(e.started_on, 'YYYY-MM-DD') AS "startedOn",
+            to_char(e.ended_on, 'YYYY-MM-DD') AS "endedOn",
+            coalesce(profiles.total, 0)::int AS "profileCount"
+     FROM employments e
+     JOIN employees emp ON emp.id = e.employee_id
+     LEFT JOIN LATERAL (
+       SELECT count(*) AS total FROM payroll_compensation_profiles p WHERE p.employment_id = e.id
+     ) profiles ON true
+     WHERE e.voided_by_action_id IS NULL
+       AND ($1::text IS NULL OR emp.full_name ILIKE $1 OR emp.employee_number ILIKE $1)
+     ORDER BY emp.employee_number, e.started_on DESC, e.id
+     LIMIT $2 OFFSET $3`,
+    [pattern, options.pageSize, (options.page - 1) * options.pageSize],
+  );
+  const { rows: counted } = await pool.query<{ total: number }>(
+    `SELECT count(*)::int AS total
+     FROM employments e
+     JOIN employees emp ON emp.id = e.employee_id
+     WHERE e.voided_by_action_id IS NULL
+       AND ($1::text IS NULL OR emp.full_name ILIKE $1 OR emp.employee_number ILIKE $1)`,
+    [pattern],
+  );
+  return { employments: rows, total: counted[0]?.total ?? 0 };
 }
 
 export type NewLoan = {
@@ -349,7 +453,9 @@ export async function createLoan(pool: Pool, loan: NewLoan, actorAccountId: stri
     });
     await client.query("COMMIT");
     const { rows } = await pool.query<LoanRow>(
-      `SELECT ${LOAN_COLUMNS} FROM payroll_loans l ${LOAN_PAID} WHERE l.id = $1`,
+      `SELECT ${LOAN_COLUMNS} FROM payroll_loans l
+       JOIN employees emp ON emp.id = l.employee_id
+       ${LOAN_PAID} WHERE l.id = $1`,
       [id],
     );
     return rows[0]!;

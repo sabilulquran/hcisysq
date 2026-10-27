@@ -722,9 +722,14 @@
       "reason": "Riwayat profil satu employment."
     },
     {
+      "url": "/payroll/employments",
+      "list": "typeahead",
+      "reason": "Pemilih pegawai untuk profil kompensasi dan kasbon; dicari per nama/NIP, berhalaman."
+    },
+    {
       "url": "/payroll/loans",
-      "list": "bounded",
-      "reason": "Kasbon aktif; disaring per pegawai bila diminta."
+      "list": "paged",
+      "reason": "Register kasbon bertambah setiap kasbon diberikan; page/pageSize default 25 maks 100 dengan total."
     },
     {
       "url": "/payroll/periods",

@@ -37,6 +37,10 @@ export interface OrganizationChangeSet {
 
 export interface OrganizationNode extends EffectivePeriod {
   id: string;
+  /** ORG-008-6 (O-9): the imported unit that role scopes point at, when this unit is linked. */
+  legacyUnitId?: string | null;
+  /** ORG-005-1 (DRAFT D-5-2): the work location this unit works at; units below inherit it. */
+  workLocationId?: string | null;
   stableKey: string;
   name: string;
   nodeType: string;

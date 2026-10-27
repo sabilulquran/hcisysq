@@ -1013,7 +1013,10 @@ paths:
               properties:
                 pin: { type: string, minLength: 1, maxLength: 128, description: Leading zeroes are significant. }
                 employeeId: { type: string, format: uuid }
-                effectiveFrom: { type: string, format: date-time, description: Must be within the last 62 days and not materially in the future. }
+      description: >-
+        ADMS-R2c (ATT-014 §20.5): the mapping starts at the employee's TMT (`started_on`, 00:00 WIB), or at
+        the end of an earlier mapping of the same PIN on the same device if that is later. The start is not
+        a request field; an `effectiveFrom` in the body is ignored.
       responses:
         '201':
           description: Mapping created and eligible raw history re-projected on a bounded basis
@@ -1021,7 +1024,100 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Active or effective-window mapping conflict }
+        '409': { description: "Active or effective-window mapping conflict (ADMS_PIN_ALREADY_MAPPED, ADMS_MAPPING_OVERLAP), inactive employee, or EMPLOYEE_START_DATE_MISSING" }
+
+  /admin/attendance/adms/mappings/align-to-start-date:
+    post:
+      tags: [Attendance]
+      operationId: alignAdmsMappingsToStartDate
+      summary: Sesuaikan dengan TMT — dry run or apply moving mapping starts to the employee's TMT (ADMS-R2c)
+      description: >-
+        Requires attendance.devices.operate. Without `apply` nothing is written. With `apply` (reason
+        required) the mappings are locked, the plan is recomputed, every `change` row is updated and audited
+        as `mapping_aligned_to_start_date` with the previous start. The legacy daily projection is refreshed
+        after the reply; attendance results change only after Kalkulasi runs again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mappingIds]
+              properties:
+                mappingIds: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                apply: { type: boolean, default: false }
+                reason: { type: string, maxLength: 500, description: Required when apply is true. }
+      responses:
+        '200':
+          description: Per-mapping plan (and result when applied)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [applied, summary, items]
+                properties:
+                  applied: { type: boolean }
+                  reprojectionQueued: { type: integer, description: Employee-days queued for legacy re-projection (apply only). }
+                  summary:
+                    type: object
+                    properties:
+                      mappings: { type: integer }
+                      change: { type: integer }
+                      unchanged: { type: integer }
+                      missingStartDate: { type: integer }
+                      invalidRange: { type: integer }
+                      overlap: { type: integer }
+                      scansAdded: { type: integer }
+                      scansRemoved: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        mappingId: { type: string, format: uuid }
+                        deviceId: { type: string, format: uuid }
+                        deviceName: { type: string }
+                        pin: { type: string }
+                        employeeId: { type: string, format: uuid }
+                        employeeNumber: { type: string }
+                        employeeName: { type: string }
+                        startedOn: { type: string, format: date, nullable: true }
+                        currentFrom: { type: string, format: date-time }
+                        targetFrom: { type: string, format: date-time, nullable: true }
+                        effectiveTo: { type: string, format: date-time, nullable: true }
+                        scansAdded: { type: integer }
+                        scansRemoved: { type: integer }
+                        status: { type: string, enum: [change, unchanged, missing_start_date, invalid_range, overlap, removes_scans], description: removes_scans (TMT later and scans would lose their owner) is never applied. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/mappings/{mappingId}/revert-alignment:
+    post:
+      tags: [Attendance]
+      operationId: revertAdmsMappingAlignment
+      summary: Restore the start a mapping had before its latest TMT alignment (ADMS-R2c recovery)
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200': { description: Start restored and audited as mapping_alignment_reverted (references the alignment audit it undoes) }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ADMS_MAPPING_NOT_ALIGNED: the current start is not the result of the latest alignment that is not reverted yet" }
 
   /admin/attendance/adms/mappings/{mappingId}:
     delete:
@@ -1039,6 +1135,63 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/access/role-seat-checks:
+    get:
+      tags: [Access]
+      operationId: listRoleSeatChecks
+      summary: Compare role holders with the holders of the seat the role follows (ORG-008-9)
+      description: >
+        For each role that follows a structural seat (today only human_capital_lead, Kepala HC), compares
+        the accounts whose assignment is effective today with the primary and acting holders (Plt) of
+        that seat in the structure effective today. Read-only: a position never grants administrative
+        permission (AUTH-011), so nothing is granted, revoked or suggested.
+      responses:
+        '200':
+          description: One check per seat-linked role
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoleSeatCheck' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/access/role-seat-links/{roleKey}:
+    put:
+      tags: [Access]
+      operationId: setRoleSeatLink
+      summary: Choose or clear the seat a role follows (ORG-008-9, Super Admin only)
+      description: >
+        Super Admin only, like granting the role; every other actor gets 403 ROLE_GRANT_SUPER_ADMIN_ONLY
+        before input is read. The seat must be a position stable key that has appeared in a published
+        change set. positionKey null clears it. Audited as role.seat_link.set or role.seat_link.cleared.
+      parameters:
+        - { name: roleKey, in: path, required: true, schema: { type: string, enum: [human_capital_lead] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positionKey, reason]
+              properties:
+                positionKey: { type: [string, 'null'], format: uuid }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: The check after the change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleSeatCheck' }
+        '400': { description: INVALID_ROLE_SEAT_LINK }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: ROLE_GRANT_SUPER_ADMIN_ONLY }
+        '404': { description: ORGANIZATION_POSITION_NOT_PUBLISHED }
 
   /admin/organization/capabilities:
     get:
@@ -1061,6 +1214,94 @@ paths:
                   manageAuthority: { type: boolean }
                   publish: { type: boolean }
                   manageRollout: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/units/{nodeKey}/hc-staff:
+    get:
+      tags: [Organization]
+      operationId: getOrganizationUnitHcStaff
+      summary: HC staff whose scope covers this unit or a unit above it (ORG-008-6)
+      description: >
+        Decision O-9, ATT-011 D-11. Role scopes point at organizational_units, a flat list with no
+        parent; the hierarchy lives in the ORG-004 structure. This walks up the structure from the
+        unit, collecting each linked imported unit, and returns the HC staff assigned to any of them.
+        Read-only: it reports who is already assigned, never who should be. Assignment stays in Akses.
+
+
+        When nothing up the branch is linked, linkedUnitIds is empty and fallback is true: ATT-011
+        keeps its organisation-wide recipients rather than a narrower guess.
+      parameters:
+        - { name: nodeKey, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { name: draftId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The linked imported units and the HC staff assigned to them
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asOf, nodeKey, linkedUnitIds, fallback, items]
+                properties:
+                  asOf: { type: string, format: date }
+                  nodeKey: { type: string, format: uuid }
+                  linkedUnitIds:
+                    description: The unit itself first, then upwards; only units that carry a link
+                    type: array
+                    items: { type: string, format: uuid }
+                  fallback:
+                    description: True when nothing up the branch is linked
+                    type: boolean
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        fullName: { type: string }
+                        roleKey: { type: string }
+                        unitId: { type: string, format: uuid }
+                        unitName: { type: string }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: No structure for that date, or the unit is not in it }
+
+  /admin/organization/positions/search:
+    get:
+      tags: [Organization]
+      operationId: searchOrganizationPositions
+      summary: Find a position by title or unit path, for rules that point at a seat (ORG-008-6)
+      description: >
+        Decision O-8, ATT-011 D-10. The overtime rule names a position by its stable key, which
+        survives a rename and a restructure. The unit path comes back so two seats with the same
+        title in different schools can be told apart (gap S-4).
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: asOf, in: query, schema: { type: string, format: date } }
+        - { name: draftId, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: Matching positions effective on that date
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [asOf, items]
+                properties:
+                  asOf: { type: string, format: date }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stableKey: { type: string, format: uuid }
+                        title: { type: string }
+                        nodeKey: { type: string, format: uuid }
+                        unitPath: { type: array, items: { type: string } }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -1132,6 +1373,9 @@ paths:
                   changeSetId: { type: [string, 'null'], format: uuid }
                   activeEmployees: { type: integer }
                   withoutUnit: { type: integer }
+                  withoutWorkLocation:
+                    description: ORG-005-1. Placed employees whose unit branch names no work location; informational only.
+                    type: integer
                   unresolvedManager: { type: integer }
                   ineligibleManagers: { type: integer }
                   vacantRequiringActing: { type: integer }
@@ -1389,6 +1633,33 @@ paths:
         '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/nodes/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationNode
+      summary: Remove a unit that exists only inside this change set (ORG-008-4b)
+      description: >
+        Only for a stable key that has never been published: published structure is history
+        and is deactivated instead. Refused while anything still points at it.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: >
+            ORGANIZATION_ITEM_PUBLISHED when the item has been published, so it can only be
+            deactivated or ended; ORGANIZATION_ITEM_IN_USE when something still points at it, with
+            the list in details.uses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
     patch:
       tags: [Organization]
       operationId: updateOrganizationNode
@@ -1427,6 +1698,33 @@ paths:
         '409': { description: Draft is not editable, or ORGANIZATION_DRAFT_CHANGED when If-Match no longer matches }
 
   /admin/organization/designer/drafts/{draftId}/positions/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationPosition
+      summary: Remove a position that exists only inside this change set (ORG-008-4b)
+      description: >
+        Only for a stable key that has never been published: published structure is history
+        and is deactivated instead. Refused while anything still points at it.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: >
+            ORGANIZATION_ITEM_PUBLISHED when the item has been published, so it can only be
+            deactivated or ended; ORGANIZATION_ITEM_IN_USE when something still points at it, with
+            the list in details.uses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
     patch:
       tags: [Organization]
       operationId: updateOrganizationPosition
@@ -1473,6 +1771,9 @@ paths:
     put:
       tags: [Organization]
       operationId: replaceOrganizationIncumbencies
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1497,6 +1798,9 @@ paths:
     post:
       tags: [Organization]
       operationId: createOrganizationAuthorityBinding
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1508,10 +1812,61 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/designer/drafts/{draftId}/authority-bindings/{itemId}:
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationAuthorityBinding
+      summary: Remove an authority created inside this change set (ORG-008-4b, gap W-1)
+      description: >
+        The authority dialog can only add today, so one wrong leader makes a change set permanently
+        unvalidatable and the only way out is to discard it. A binding created inside this change set
+        can go; one that came from published structure is ended instead, with PATCH.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Removed from the change set }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+        '409':
+          description: ORGANIZATION_ITEM_PUBLISHED, with details.endInstead, when it came from published structure
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationItemInUse' }
+    patch:
+      tags: [Organization]
+      operationId: endOrganizationAuthorityBinding
+      summary: End an authority from a given date, keeping the record (ORG-008-4b)
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [effectiveTo]
+              properties:
+                effectiveTo: { type: string, format: date }
+      responses:
+        '200':
+          description: The authority now ends on that date
+        '400': { description: ORGANIZATION_BINDING_PERIOD_INVALID when it would end before it began }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not part of this change set }
+
   /admin/organization/designer/drafts/{draftId}/reporting-overrides:
     post:
       tags: [Organization]
       operationId: createOrganizationReportingOverride
+      description: >
+        Needs organization.manage (ORG-008-8, decision O-1). This composes inside an unpublished change
+        set; nothing takes effect until publish, which needs approvals.policy.manage.
       parameters: [{ $ref: '#/components/parameters/DraftId' }, { $ref: '#/components/parameters/DraftRevisionIfMatch' }]
       requestBody:
         required: true
@@ -1543,10 +1898,8 @@ paths:
         organization.command.applied summary event in the same transaction.
 
 
-        Permission: the route needs organization.manage. A command that records an incumbent, an
-        authority binding or a reporting exception additionally needs approvals.policy.manage,
-        exactly like the primitive endpoints it replaces, and answers 403 naming what it needs. That
-        second requirement moves to organization.manage with decision O-1 in ORG-008-8.
+        Permission (ORG-008-8, decision O-1): organization.manage, for every command. Composing inside
+        an unpublished change set takes effect nowhere; publishing it needs approvals.policy.manage.
       parameters:
         - { $ref: '#/components/parameters/DraftId' }
         - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
@@ -1590,6 +1943,138 @@ paths:
                   message: { type: string }
                   details: { type: object }
 
+  /admin/organization/designer/drafts/from-legacy:
+    post:
+      tags: [Organization]
+      operationId: seedOrganizationDraftFromLegacy
+      summary: Build a first change set from the data HCIS already records (ORG-008-7, decision O-3)
+      description: >
+        Reads organizational_units, employees.organizational_unit_id, the ORG-002 unit leave
+        approver, and employees.direct_manager_employee_id. Nothing is inferred from a job title
+        (invariant I-7): the only titles it creates are derived from the unit's own name and are
+        marked as proposals. A unit where everyone shares one manager gets that manager as its
+        leader; anything else stays a per-employee exception pointing at the person, exactly as
+        ORG-002 records it. The result is a change set to review; nothing is published and rollout
+        is not touched.
+
+
+        Offered only when no structure is effective on that date and no other change is open.
+        Merging a proposal into an existing structure would mean inventing rules about what to keep.
+
+
+        Needs organization.manage (ORG-008-8, decision O-1): it only composes a change set, and
+        publishing that change set still needs approvals.policy.manage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, effectiveOn]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 160 }
+                effectiveOn: { type: string, format: date }
+      responses:
+        '201':
+          description: The change set, with counts of what was proposed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/OrganizationDraft' }
+                  - type: object
+                    properties:
+                      proposal: { type: boolean }
+                      summary:
+                        type: object
+                        properties:
+                          units: { type: integer }
+                          placements: { type: integer }
+                          unitApprovers: { type: integer }
+                          unitLeaders: { type: integer }
+                          reportingExceptions: { type: integer }
+                          employeesWithoutUnit: { type: integer }
+                          employeesWithoutManager: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: >
+            ORGANIZATION_DRAFT_ALREADY_OPEN when another change is open (decision O-7), or
+            ORGANIZATION_STRUCTURE_EXISTS when a structure is already effective on that date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraftConflict' }
+
+  /admin/organization/designer/drafts/{draftId}/rebase:
+    post:
+      tags: [Organization]
+      operationId: rebaseOrganizationDraft
+      summary: Rebuild a change set on the newest published structure (ORG-008-4c)
+      description: >
+        Replays the change journal onto the structure effective on the change set's own date, which
+        is what the stale-base guard asks for before publishing (gap D-2). It previews by default:
+        only apply=true writes. A line that no longer fits the newer structure is reported in
+        `skipped` and dropped from the journal, never resolved on the operator's behalf, so they can
+        see what was lost and redo it. A line replay cannot reproduce at all (a MANUAL_EDIT made
+        through a single-record endpoint, or SEED_FROM_LEGACY) is listed in `blocked`, and apply is
+        refused with 409 ORGANIZATION_DRAFT_NOT_REPLAYABLE while any remains, so a rebuild never
+        drops such an edit silently.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply: { type: boolean, default: false }
+      responses:
+        '200':
+          description: The result of the replay, applied or previewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationReplayReport' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or on apply ORGANIZATION_DRAFT_CHANGED or ORGANIZATION_DRAFT_NOT_REPLAYABLE (details.blocked) }
+
+  /admin/organization/designer/drafts/{draftId}/journal/{seq}/undo:
+    post:
+      tags: [Organization]
+      operationId: undoOrganizationJournalEntry
+      summary: Undo one line of the change list (ORG-008-4c)
+      description: >
+        Rebuilds the change set from its base with that line left out. Lines that depended on it are
+        reported in `skipped` rather than silently dropped. Previews by default, like rebase. Other
+        lines replay cannot reproduce are listed in `blocked` and refuse apply with
+        409 ORGANIZATION_DRAFT_NOT_REPLAYABLE; undoing a MANUAL_EDIT line itself is allowed.
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/DraftRevisionIfMatch' }
+        - { name: seq, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply: { type: boolean, default: false }
+      responses:
+        '200':
+          description: The result of the replay, applied or previewed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationReplayReport' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Change set or journal line not found }
+        '409': { description: ORGANIZATION_DRAFT_NOT_EDITABLE, or on apply ORGANIZATION_DRAFT_CHANGED or ORGANIZATION_DRAFT_NOT_REPLAYABLE (details.blocked) }
+
   /admin/organization/designer/drafts/{draftId}/journal:
     get:
       tags: [Organization]
@@ -1598,7 +2083,12 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
-          description: Applied commands, oldest first
+          description: >
+            Applied commands, oldest first. Besides the command types, a line may be SEED_FROM_LEGACY
+            or MANUAL_EDIT: an edit made through a single-record endpoint, whose summary.action names
+            it (node.created, node.updated, node.deleted, position.created, position.updated,
+            position.deleted, memberships.replaced, incumbencies.replaced, authority_binding.created,
+            authority_binding.deleted, authority_binding.ended, reporting_override.created).
           content:
             application/json:
               schema:
@@ -1670,6 +2160,10 @@ paths:
     post:
       tags: [Organization]
       operationId: publishOrganizationDraft
+      description: >
+        Needs approvals.policy.manage, held by the Kepala HC role (ORG-008-8, decision O-1). Composing
+        a change set needs only organization.manage; publishing is the separate second pair of eyes,
+        because hierarchy decides approval routing once it takes effect.
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
@@ -1685,6 +2179,9 @@ paths:
             this draft cloned its base and takes effect on or before this draft's effective date.
             Publishing is refused because the draft's snapshot does not contain that publication and
             would replace it. Published snapshots are not modified by the refusal.
+            ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON (ORG-008-10, DRAFT default) when the caller
+            created the change set or appears in its organization audit trail other than for checking,
+            reopening or publishing; Super Admin is exempt as the audited break-glass account.
           content:
             application/json:
               schema:
@@ -1809,6 +2306,27 @@ paths:
   /admin/attendance/shift-swaps/{shiftSwapId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1shift-swaps~1{shiftSwapId}~1decision'
 
+  /payroll/periods:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods'
+  /payroll/periods/{periodId}:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}'
+  /payroll/periods/{periodId}/transitions:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transitions'
+  /payroll/periods/{periodId}/inputs:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs'
+  /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1{employmentId}~1{inputKey}'
+  /payroll/periods/{periodId}/results:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1results'
+  /payroll/policies:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1policies'
+  /payroll/employments/{employmentId}/compensation-profiles:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1employments~1{employmentId}~1compensation-profiles'
+  /payroll/loans:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1loans'
+  /payroll/periods/{periodId}/loan-deductions:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1loan-deductions'
+
   /admin/payslip-imports:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports'
   /admin/payslip-imports/preview:
@@ -1836,6 +2354,62 @@ paths:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1{notificationId}~1read'
   /notifications/read-all:
     $ref: './notifications.openapi.yaml#/paths/~1notifications~1read-all'
+  /admin/employees:
+    get:
+      tags: [Employees]
+      operationId: listEmployees
+      summary: Page through the employee master (EMP-001, ENG-LIST-001 reference list)
+      description: >
+        Server-side offset pagination per ENG-LIST-001 §3.1. Filters run in SQL before LIMIT;
+        ordering is full name then employee number. A pageSize above 100 is refused with 400.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 100 }, description: Employee number, name or email }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [active, inactive, resigned] } }
+        - { name: unitId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: positionId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: One page of employees with the filtered total, the global status summary and filter options
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination, summary, filters]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, employeeNumber, fullName, status]
+                      properties:
+                        id: { type: string, format: uuid }
+                        employeeNumber: { type: string }
+                        fullName: { type: string }
+                        status: { type: string, enum: [active, inactive, resigned] }
+                        unitId: { type: [string, 'null'], format: uuid }
+                        unitName: { type: [string, 'null'] }
+                        positionId: { type: [string, 'null'], format: uuid }
+                        positionName: { type: [string, 'null'] }
+                        updatedAt: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  summary:
+                    type: object
+                    required: [total, active, inactive, resigned]
+                    properties:
+                      total: { type: integer }
+                      active: { type: integer }
+                      inactive: { type: integer }
+                      resigned: { type: integer }
+                  filters:
+                    type: object
+                    properties:
+                      units: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
+                      positions: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
+        '400': { description: 'INVALID_QUERY: a filter or page parameter is out of range' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /admin/employment/rollout:
     $ref: './employment.openapi.yaml#/paths/~1admin~1employment~1rollout'
   /admin/employees/{employeeId}/employment:
@@ -1870,10 +2444,23 @@ components:
         (SQ Hub), then maps iss + sub like OIDC login. Accepted only on /governance/summary.
 
   parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: ENG-LIST-001 §3.1. 1-based page number; a page past the last returns an empty items array.
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: ENG-LIST-001 §3.1. Rows per page; values outside 1–100 are refused with 400, never clamped.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
     Cursor:
       name: cursor
       in: query
       required: false
+      description: ENG-LIST-001 §3.2. Opaque keyset cursor from the previous page's nextCursor, bound to the same filters.
       schema:
         type: string
     IdempotencyKey:
@@ -1927,6 +2514,16 @@ components:
             $ref: '#/components/schemas/ValidationProblem'
 
   schemas:
+    Pagination:
+      description: ENG-LIST-001 §3.1. Position of one page in the filtered list.
+      type: object
+      additionalProperties: false
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0, description: Rows matching the filters across all pages }
+        pageCount: { type: integer, minimum: 1, description: 'ceil(total / pageSize), at least 1' }
     OrganizationDirectorySnapshot:
       type: object
       additionalProperties: false
@@ -2122,6 +2719,19 @@ components:
       type: object
       required: [name, nodeType]
       properties:
+        legacyUnitId:
+          description: >
+            ORG-008-6 (O-9). The imported unit this structural unit stands for, so HC notification
+            can resolve "the employee's unit or the unit above it". Null leaves it unlinked, and an
+            unlinked branch falls back to the organisation-wide recipients.
+          type: [string, 'null']
+          format: uuid
+        workLocationId:
+          description: >
+            ORG-005-1 (DRAFT). The work location this unit works at; units below inherit it unless
+            they name their own. Must exist and be active, else 400 INVALID_WORK_LOCATION. Null clears it.
+          type: [string, 'null']
+          format: uuid
         name: { type: string, minLength: 1, maxLength: 160 }
         nodeType: { type: string, minLength: 1, maxLength: 80 }
         parentNodeKey: { type: [string, 'null'], format: uuid }
@@ -2238,6 +2848,17 @@ components:
         sourceDetails:
           type: array
           items: { type: string }
+        workLocation:
+          description: >
+            ORG-005-1 (DRAFT). The unit's work location, or the nearest ancestor unit's
+            (inheritedFromNodeKey names that unit); null when none up the branch names one.
+          oneOf:
+            - type: object
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+                inheritedFromNodeKey: { type: [string, 'null'], format: uuid }
+            - type: 'null'
         unitApprover:
           oneOf: [{ $ref: '#/components/schemas/OrganizationResolvedPerson' }, { type: 'null' }]
         issues:
@@ -2301,6 +2922,121 @@ components:
             type: object
             properties:
               code: { type: string }
+
+    RoleSeatCheck:
+      type: object
+      description: >
+        ORG-008-9. status is SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE or SEAT_VACANT when
+        nothing (or nobody) could be compared, otherwise CHECKED. mismatches lists role holders who do not
+        hold the seat (HOLDER_NOT_SEATED) and seat holders without the role (SEATED_WITHOUT_ROLE, reason
+        NO_ACCOUNT, ACCOUNT_NOT_ACTIVE or NO_ROLE). An acting holder counts like the primary holder.
+      required: [roleKey, asOf, seat, status, holders, incumbents, mismatches]
+      properties:
+        roleKey: { type: string }
+        asOf: { type: string, format: date }
+        seat:
+          type: [object, 'null']
+          properties:
+            positionKey: { type: string, format: uuid }
+            title: { type: [string, 'null'] }
+            unitName: { type: [string, 'null'] }
+            reason: { type: string }
+            setAt: { type: string, format: date-time }
+        status: { type: string, enum: [SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE, SEAT_VACANT, CHECKED] }
+        holders:
+          type: array
+          items:
+            type: object
+            properties:
+              accountId: { type: string, format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              name: { type: string }
+        incumbents:
+          type: array
+          items:
+            type: object
+            properties:
+              employeeId: { type: string, format: uuid }
+              name: { type: string }
+              kind: { type: string, enum: [PRIMARY, ACTING] }
+              accountId: { type: [string, 'null'], format: uuid }
+              hasRole: { type: boolean }
+        mismatches:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [HOLDER_NOT_SEATED, SEATED_WITHOUT_ROLE] }
+              accountId: { type: string, format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              name: { type: string }
+              incumbentKind: { type: string, enum: [PRIMARY, ACTING] }
+              reason: { type: string, enum: [NO_ACCOUNT, ACCOUNT_NOT_ACTIVE, NO_ROLE] }
+
+    OrganizationReplayReport:
+      type: object
+      description: ORG-008-4c. What a rebuild kept and what no longer fits.
+      required: [applied, kept, skipped]
+      properties:
+        applied:
+          description: False for a preview; true when the change set was actually rebuilt
+          type: boolean
+        baseChangeSetId: { type: [string, 'null'], format: uuid }
+        kept:
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              summary: { type: object }
+        skipped:
+          description: Lines that could not be replayed; nothing was guessed on their behalf
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              code: { type: string }
+              message: { type: string }
+        blocked:
+          description: >
+            Lines kept in the change set that replay cannot reproduce (MANUAL_EDIT, SEED_FROM_LEGACY).
+            While any is listed, apply is refused with 409 ORGANIZATION_DRAFT_NOT_REPLAYABLE.
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              commandType: { type: string }
+              summary: { type: object }
+
+    OrganizationItemInUse:
+      type: object
+      description: >
+        ORG-008-4b. Why an item cannot be removed or switched off yet. details.uses lists the records
+        that still point at it, by identifier and, where the change set has one, a name.
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [ORGANIZATION_ITEM_IN_USE, ORGANIZATION_ITEM_PUBLISHED] }
+        message: { type: string }
+        details:
+          type: object
+          properties:
+            itemKind: { type: string }
+            deactivateInstead: { type: boolean }
+            endInstead: { type: boolean }
+            uses:
+              type: array
+              items:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum: [MEMBERSHIP, POSITION, CHILD_UNIT, INCUMBENT, ACTING_INCUMBENT, AUTHORITY_BINDING, CHILD_POSITION, REPORTING_OVERRIDE]
+                  id: { type: string }
+                  name: { type: [string, 'null'] }
 
     OrganizationCommand:
       description: >
@@ -2419,6 +3155,11 @@ components:
             Present only when the view was opened by draftId. Null while that change set's base is
             still the newest publication.
           oneOf: [{ $ref: '#/components/schemas/OrganizationStaleBase' }, { type: 'null' }]
+        publishBlockedForSelf:
+          description: >
+            ORG-008-10. True when the view was opened by draftId and this session composed that change
+            set, so publish would answer 409 ORGANIZATION_PUBLISH_REQUIRES_SECOND_PERSON.
+          type: boolean
         mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
         draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
         nodes: { type: array, items: { type: object } }

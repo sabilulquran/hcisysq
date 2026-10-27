@@ -85,6 +85,18 @@ export function mobileReviewLabel(value: unknown): string {
   return mobileReviewLabels[value as (typeof MOBILE_REVIEW_STATES)[number]] ?? "Perlu ditinjau";
 }
 
+export const GEOFENCE_STATUSES = ["inside", "outside", "uncertain_accuracy", "unassigned_location"] as const;
+const geofenceLabels: Record<(typeof GEOFENCE_STATUSES)[number], string> = {
+  inside: "Di dalam area",
+  outside: "Di luar area",
+  uncertain_accuracy: "Akurasi GPS rendah",
+  unassigned_location: "Lokasi kerja belum ditetapkan",
+};
+
+export function geofenceLabel(value: unknown): string {
+  return geofenceLabels[value as (typeof GEOFENCE_STATUSES)[number]] ?? "Lokasi tidak diketahui";
+}
+
 export const SCAN_EVENT_KINDS = ["check_in", "check_out", "punch", "correction"] as const;
 const scanEventLabels: Record<(typeof SCAN_EVENT_KINDS)[number], string> = {
   check_in: "Masuk",

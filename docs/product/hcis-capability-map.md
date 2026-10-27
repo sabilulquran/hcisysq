@@ -136,7 +136,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
-- Organization sites, branches, and work locations — ORG-005.
+- Organization sites, branches, and work locations — ORG-005 (DRAFT spec `docs/domain/organization-sites-work-locations.md`; ORG-005-1 unit work location built).
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY, ADR-0005 PROPOSED).
 - Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).

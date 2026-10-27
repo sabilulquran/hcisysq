@@ -152,7 +152,9 @@ OPEN
 
 Nama state final masih TBD.
 
-PAY-001/PAY-002 tetap menjadi batas verified untuk import dan akses slip sampai PAY-003 mempunyai spesifikasi yang disetujui dan implementasi tersendiri.
+PAY-003 sudah mempunyai spesifikasi v1 yang disahkan (`docs/domain/payroll-calculation-v1.md`, ADR-0003 ACCEPTED 2026-10-27), sehingga implementasi bertahap berjalan: domain engine, skema + permission, lifecycle periode, input periode, review/rekonsiliasi, publikasi slip, dan layar web.
+
+PAY-001/PAY-002 tetap menjadi batas verified untuk import dan akses slip sampai parallel run PAY-003 lulus.
 
 Detail discovery ada di `docs/domain/payroll-engine-discovery.md`.
 

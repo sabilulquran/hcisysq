@@ -1,6 +1,6 @@
 # Jadwal Siap Input — Gelombang 1
 
-**Status:** SIAP DIINPUT HC. Toleransi telat dan lokasi kerja sudah ditetapkan owner (§1).
+**Status:** **DIINPUT ke production 2026-10-24** (§7). Toleransi telat dan lokasi kerja ditetapkan owner (§1).
 **Tanggal:** 2026-10-23
 **Sumber:** DRAF 01–08 SK Jadwal Kerja per Unit YSQ dan "RINGKASAN - Daftar Jadwal Kerja Pegawai YSQ".
 **Analisis lengkap:** `attendance-schedule-intake-feasibility.md`
@@ -16,13 +16,18 @@ dan bukan ditebak saat input.
 
 | # | Hal | Keputusan |
 |---|---|---|
-| K-1 | **Toleransi telat** | **5 menit** untuk seluruh shift gelombang ini. Toleransi pulang cepat **0**. Draf SK tidak menyebut angka, jadi angka ini adalah kebijakan operasional, bukan kutipan SK; bila SK final nanti menyebut angka berbeda, shift diperbarui lewat versi baru. |
-| K-2 | **Lokasi kerja per shift** | Shift SDIT memakai lokasi **SDIT Tahfizh**. Shift **Yayasan Umum** dan **Taman Tahfizh dikosongkan** lokasinya. |
+| K-1 | **Toleransi telat** | **1 menit** untuk seluruh shift gelombang ini, sama dengan shift "Regular" yang sudah ada. Toleransi pulang cepat **0**. Draf SK tidak menyebut angka, jadi ini kebijakan operasional, bukan kutipan SK; bila SK final menyebut angka berbeda, shift diperbarui lewat versi baru. |
+| K-2 | **Lokasi kerja per shift** | **Dikosongkan untuk seluruh shift**, termasuk shift SDIT. Aturan owner: **tempat scan tetap tercatat, tetapi shift tidak mengikat tempat absen** — pegawai shift SDIT boleh scan di mesin mana pun. HCIS sudah memenuhi ini tanpa perubahan: setiap scan mesin menyimpan mesin asalnya, dan kolom "Sumber"/mesin di Kehadiran harian serta laporan Data Scan menampilkannya. Lokasi pada shift hanya dipakai untuk mencocokkan titik GPS absen lewat HP. |
 
-Konsekuensi K-2 yang perlu diketahui HC: untuk shift tanpa lokasi, absen lewat **HP** selalu masuk
-antrean "perlu ditinjau" karena tidak ada titik yang dapat dicocokkan. Absen lewat **mesin
-fingerprint tidak terpengaruh**. Bila nanti lokasi kantor Yayasan dan Taman Tahfizh dibuat di menu
-Lokasi kerja, shift tinggal diperbarui dan statusnya ikut normal.
+Konsekuensi yang perlu diketahui HC:
+
+- **K-1.** Dengan toleransi 1 menit, scan pukul 07.01.30 pada shift 07.00 sudah tercatat
+  **Terlambat 1 menit**. Angka ini memang ketat; menaikkannya nanti cukup dengan membuat versi
+  shift baru, dan hasil kehadiran yang sudah terbentuk tidak berubah.
+- **K-2.** Untuk shift tanpa lokasi, absen lewat **HP** selalu masuk antrean "perlu ditinjau"
+  karena tidak ada titik yang dapat dicocokkan. Absen lewat **mesin fingerprint tidak
+  terpengaruh**, dan itu jalur yang dipakai sekarang. Bila kelak absen HP dipakai serius, lokasi
+  tinggal diisi di menu Lokasi kerja dan shift diperbarui.
 
 ## 2. Shift yang perlu dibuat (menu Shift)
 
@@ -30,11 +35,11 @@ Nilai di bawah sudah lengkap; tinggal disalin apa adanya.
 
 | Shift | Jam masuk | Jam pulang | Toleransi telat | Toleransi pulang cepat | Lokasi |
 |---|---|---|---|---|---|
-| Yayasan Umum — Reguler | 07.00 | 16.00 | 5 menit | 0 | *(kosongkan)* |
-| Yayasan Umum — Rabu | 07.00 | 17.00 | 5 menit | 0 | *(kosongkan)* |
-| Taman Tahfizh — Senin–Kamis | 07.45 | 12.00 | 5 menit | 0 | *(kosongkan)* |
-| Taman Tahfizh — Jumat | 07.45 | 13.00 | 5 menit | 0 | *(kosongkan)* |
-| SDIT — Hari Penuh | 07.00 | 16.00 | 5 menit | 0 | SDIT Tahfizh |
+| Yayasan Umum — Reguler | 07.00 | 16.00 | 1 menit | 0 | *(kosongkan)* |
+| Yayasan Umum — Rabu | 07.00 | 17.00 | 1 menit | 0 | *(kosongkan)* |
+| Taman Tahfizh — Senin–Kamis | 07.45 | 12.00 | 1 menit | 0 | *(kosongkan)* |
+| Taman Tahfizh — Jumat | 07.45 | 13.00 | 1 menit | 0 | *(kosongkan)* |
+| SDIT — Hari Penuh | 07.00 | 16.00 | 1 menit | 0 | *(kosongkan)* |
 
 Tidak ada yang melewati tengah malam, jadi semuanya shift biasa.
 
@@ -97,3 +102,48 @@ lampau yang berubah sebelum SK sah.
 Pola jadwal dapat diakhiri dari layar dengan mengisi tanggal akhir; tidak ada data kehadiran yang
 hilang karena bukti scan tidak tersentuh. Shift yang terlanjur dibuat tidak bisa dihapus bila sudah
 dipakai, tetapi dapat dinonaktifkan setelah pola jadwalnya diakhiri.
+
+## 7. Pelaksanaan 2026-10-24
+
+Diinput lewat layar HCIS production (`/admin/attendance/shifts` dan `/admin/attendance/schedules`)
+oleh agen di panel browser yang login-nya dilakukan owner sendiri; agen tidak memegang kredensial.
+Seluruh perubahan tercatat di audit aplikasi atas nama akun yang login (Administrator HCIS).
+Tidak ada akses database langsung.
+
+**Shift dibuat (5):** Yayasan Umum — Reguler 07.00–16.00, Yayasan Umum — Rabu 07.00–17.00,
+Taman Tahfizh — Senin–Kamis 07.45–12.00, Taman Tahfizh — Jumat 07.45–13.00, SDIT — Hari Penuh
+07.00–16.00. Semua toleransi telat 1 menit, pulang cepat 0, tanpa lokasi, selesai hari yang sama.
+
+**Pola jadwal dibuat (49), berlaku mulai 2026-10-24 tanpa tanggal akhir:**
+
+| Kelompok | Shift | Hari | Pegawai | Pola |
+|---|---|---|---|---|
+| SDIT Guru Kelas + Guru PAI/PJOK | SDIT — Hari Penuh | Sen–Jum | 15 | 15 |
+| Taman Tahfizh | Senin–Kamis / Jumat | Sen–Kam / Jum | 9 | 18 |
+| Yayasan Umum (5 unit, dikonfirmasi owner) | Reguler / Rabu | Sen, Sel, Kam, Jum / Rab | 8 | 16 |
+| **Total** | | | **32** | **49** |
+
+**Pola lama diakhiri (1):** satu pegawai unit Human Capital Management memakai shift "Regular"
+08.00–16.00 sejak 2023-01-21. Pola itu diakhiri pada **2026-10-23** sebelum pola Yayasan Umum
+dibuat, agar hari kerjanya tidak tumpang tindih ("Jadwal bermasalah"). Riwayat sebelum 24 Oktober
+tetap memakai shift lama. Shift "Regular" kini tidak dipakai pola aktif mana pun dan dibiarkan.
+
+**Verifikasi dari data aplikasi (bukan dari tampilan):**
+
+- 49 pola baru; tidak ada duplikat; **0 pasangan pola yang tumpang tindih** untuk pegawai mana pun.
+- Kehadiran harian: Sabtu 2026-10-24 → 99 Libur (benar, tidak ada kelompok yang bekerja Sabtu).
+  Senin 26, Rabu 28, dan Jumat 30 Oktober → masing-masing **32 Terjadwal, 67 Libur**.
+- Contoh jam terjadwal sesuai: Yayasan Umum Rabu 07.00–17.00 dan Jumat 07.00–16.00; Taman Tahfizh
+  Rabu 07.45–12.00 dan Jumat 07.45–13.00; SDIT 07.00–16.00.
+
+**Yang harus diketahui HC mulai Senin 2026-10-26.** Sebelum hari ini masalah K-1 hampir tidak
+terlihat karena hanya 1 pegawai yang terjadwal. Sekarang 32 pegawai terjadwal, dan engine masih
+**belum** menghitung scan secara otomatis (ATT-011-2 belum dirilis). Akibatnya pegawai yang sudah
+scan akan tampil **"Tidak hadir" setelah jam pulangnya lewat**, sampai HC menekan
+**Pengaturan → Finalisasi ulang** untuk tanggal itu. Sementara ATT-011-2 belum ada, jalankan
+Finalisasi ulang setiap sore untuk hari tersebut. Setelah finalisasi, hari dengan satu scan saja
+akan tampil **Tidak lengkap** — itu benar menurut aturan.
+
+67 pegawai lain tetap tampil Libur sampai kelompoknya diisi: guru tahfizh SDIT (menunggu pemisahan
+putra/putri), Pesantren (menunggu ATT-013 untuk Blok Kerja ganda dan roster), dan General Affair
+(menunggu data jabatan dan jadwal final).

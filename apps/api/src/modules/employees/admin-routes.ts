@@ -6,6 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
@@ -23,9 +24,7 @@ const listQuerySchema = z.object({
   status: z.enum(["active", "inactive", "resigned"]).optional(),
   unitId: z.string().uuid().optional(),
   positionId: z.string().uuid().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(25),
-});
+}).extend(pageQuerySchema.shape);
 
 const importIdSchema = z.object({ importId: z.string().uuid() });
 
@@ -144,9 +143,9 @@ export async function registerEmployeeAdminRoutes(
       });
     }
 
-    const { page, pageSize, status, unitId, positionId } = parsed.data;
+    const { pageSize, status, unitId, positionId } = parsed.data;
     const search = parsed.data.q?.trim() || null;
-    const offset = (page - 1) * pageSize;
+    const offset = pageOffset(parsed.data);
     const filterValues = [search, status ?? null, unitId ?? null, positionId ?? null];
     const where = `
       WHERE ($1::text IS NULL
@@ -223,12 +222,7 @@ export async function registerEmployeeAdminRoutes(
         ...row,
         updatedAt: row.updatedAt.toISOString(),
       })),
-      pagination: {
-        page,
-        pageSize,
-        total,
-        pageCount: Math.max(1, Math.ceil(total / pageSize)),
-      },
+      pagination: pagination(parsed.data, total),
       summary: globalSummary,
       filters: {
         units: units.rows,

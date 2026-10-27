@@ -1,8 +1,9 @@
-import { AlertTriangle, Camera, CheckCircle2, Loader2, LocateFixed, LogIn, LogOut, Send } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Loader2, LocateFixed, LogIn, LogOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
-import { clockMobileAttendance, getMyWorkforceAttendance, submitAttendanceClarification, type WorkforceSnapshot } from "@/lib/workforceAttendance";
+import { ClarificationForm } from "@/components/attendance/ClarificationForm";
+import { clockMobileAttendance, getMyWorkforceAttendance, type WorkforceSnapshot } from "@/lib/workforceAttendance";
 import { cameraErrorMessage, locationErrorMessage, mobileRequestError, prepareMobileClockAttempt, type MobileClockAttempt } from "@/lib/mobileCapture";
 
 function initials(name: string) {
@@ -37,14 +38,8 @@ export function EmployeeMobileAttendancePage() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [busy, setBusy] = useState<"check_in" | "check_out" | null>(null);
   const [retryPending, setRetryPending] = useState(false);
-  const [clarifying, setClarifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mode, setMode] = useState<"correction" | "justification">("justification");
-  const [kind, setKind] = useState("lateness");
-  const [reason, setReason] = useState("");
-  const [proposedIn, setProposedIn] = useState("");
-  const [proposedOut, setProposedOut] = useState("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -185,23 +180,6 @@ export function EmployeeMobileAttendancePage() {
     setNotice(null);
   };
 
-  const submitClarification = async () => {
-    if (!snapshot || !reason.trim() || clarifying) return;
-    setClarifying(true);
-    setError(null);
-    try {
-      await submitAttendanceClarification({
-        workDate: snapshot.workDate, kind, mode, reason: reason.trim(),
-        proposedCheckInAt: mode === "correction" && proposedIn ? new Date(proposedIn + ":00+07:00").toISOString() : null,
-        proposedCheckOutAt: mode === "correction" && proposedOut ? new Date(proposedOut + ":00+07:00").toISOString() : null,
-      });
-      setReason(""); setProposedIn(""); setProposedOut("");
-      setNotice("Klarifikasi dikirim ke Human Capital.");
-      await load();
-    } catch (cause) { setError(mobileRequestError(cause)); }
-    finally { setClarifying(false); }
-  };
-
   const ready = snapshot?.mobileEnabled && location !== null && photoBase64 !== null;
   return (
     <AppShell user={user} activeItem="Clock In/Out">
@@ -277,13 +255,10 @@ export function EmployeeMobileAttendancePage() {
           <section id="clarification" className="scroll-mt-28 mt-5 rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <h2 className="text-base font-bold text-brand-heading">Klarifikasi kehadiran</h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">Justifikasi mempertahankan waktu aktual. Koreksi menambahkan usulan waktu baru tanpa mengubah bukti mentah.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <select aria-label="Jenis pengajuan" value={mode} onChange={(event) => setMode(event.target.value as "correction" | "justification")} className="h-11 rounded-xl border border-border px-3 text-sm"><option value="justification">Justifikasi</option><option value="correction">Koreksi waktu</option></select>
-              <select aria-label="Alasan klarifikasi" value={kind} onChange={(event) => setKind(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm"><option value="lateness">Keterlambatan</option><option value="missing_check_in">Jam masuk belum tercatat</option><option value="missing_check_out">Jam keluar belum tercatat</option><option value="machine_issue">Masalah mesin</option><option value="early_leave">Pulang lebih awal</option><option value="outside_geofence">Di luar geofence</option><option value="other">Lainnya</option></select>
+            <div className="mt-4">
+              <ClarificationForm workDate={snapshot.workDate} onError={setError}
+                onSubmitted={async (message) => { setError(null); setNotice(message); await load(); }} />
             </div>
-            {mode === "correction" ? <div className="mt-3 grid gap-3 sm:grid-cols-2"><input type="datetime-local" value={proposedIn} onChange={(event) => setProposedIn(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam masuk" /><input type="datetime-local" value={proposedOut} onChange={(event) => setProposedOut(event.target.value)} className="h-11 rounded-xl border border-border px-3 text-sm" aria-label="Usulan jam keluar" /></div> : null}
-            <textarea aria-label="Penjelasan klarifikasi" value={reason} maxLength={2000} onChange={(event) => setReason(event.target.value)} placeholder="Tuliskan penjelasan..." className="mt-3 min-h-24 w-full rounded-xl border border-border p-3 text-sm" />
-            <button type="button" onClick={() => void submitClarification()} disabled={!reason.trim() || clarifying} className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"><Send className="mr-2 inline h-4 w-4" />{clarifying ? "Mengirim..." : "Kirim klarifikasi"}</button>
           </section>
         </>
       )}

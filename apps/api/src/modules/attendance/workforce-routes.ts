@@ -5,7 +5,8 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
-import { requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
+import { pageQuerySchema } from "../../lib/pagination.js";
+import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
 import type { AdminPermission } from "../auth/permissions.js";
@@ -15,6 +16,21 @@ import {
   materializeAttendanceResult,
   resolveSchedule,
 } from "./engine.js";
+import { ACTION_QUEUE_PERMISSIONS, allowedActionKinds, attendanceActionQueue, type ActionKind } from "./action-queue.js";
+import { attendanceCalculationRows } from "./calculation-rows.js";
+import {
+  createCalculationRunner,
+  RUN_COLUMNS,
+  validateCalculationRange,
+  type CalculationRun,
+  type CalculationRunner,
+} from "./calculation-runner.js";
+import { listAttendanceCorrections } from "./corrections.js";
+import { attendanceExceptions } from "./exceptions.js";
+import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
+import { listOvertimeForHc } from "./overtime-list.js";
+import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
+import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
 import {
   decryptMobileAttendancePhoto,
@@ -22,8 +38,13 @@ import {
   restrictedMediaReady,
 } from "./restricted-media-crypto.js";
 import { attendanceTodayReadModel } from "./today.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
+import { attendanceTransactions } from "./transactions.js";
+import { unattributedPins, unscheduledEmployees } from "./unscheduled.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// §13: a print or export larger than this asks the operator to narrow the scope (DRAFT, tune on Mi8VPS).
+const REPORT_ROW_LIMIT = 50_000;
 const clockSchema = z.object({
   action: z.enum(["check_in", "check_out"]),
   latitude: z.number().min(-90).max(90),
@@ -59,6 +80,66 @@ const workLocationSchema = z.object({
 const workLocationPatchSchema = workLocationSchema.partial().extend({
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan lokasi kosong.");
+// ATT-013: blocks 2-3 of a shift, on the same day as block 1.
+const workdayWeightSchema = z.number().gt(0).max(1).multipleOf(0.01);
+const extraBlocksSchema = z.array(z.object({
+  startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  // D-13-6 "Hitungan hari"; when every block has one they must add up to 1,00.
+  workdayWeight: workdayWeightSchema.optional(),
+})).max(2);
+
+const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/**
+ * ATT-013 (attendance-multi-block-schedule.md §4.1): blocks in order on one day, Jeda Antarblok at least
+ * 30 minutes (D-13-2), at most 20 hours of blocks, and day shares that are all given or all left out and
+ * then add up to 1,00 (D-13-6). The message names the block.
+ */
+export function scheduleBlocksError(
+  first: { startTime: string; endTime: string; endDayOffset: number; workdayWeight?: number | null },
+  extra: ReadonlyArray<{ startTime: string; endTime: string; workdayWeight?: number | null | undefined }>,
+) {
+  if (extra.length === 0) return null;
+  if (first.endDayOffset !== 0 || first.endTime <= first.startTime) return "Shift dengan beberapa blok tidak boleh melewati tengah malam.";
+  let previousEnd = minutesOf(first.endTime);
+  let total = previousEnd - minutesOf(first.startTime);
+  for (const [index, block] of extra.entries()) {
+    const start = minutesOf(block.startTime);
+    const end = minutesOf(block.endTime);
+    if (end <= start) return `Blok ${index + 2} harus selesai setelah mulai, pada hari yang sama.`;
+    if (start - previousEnd < 30) return `Jeda sebelum blok ${index + 2} minimal 30 menit; jeda lebih pendek adalah istirahat di dalam satu blok.`;
+    total += end - start;
+    previousEnd = end;
+  }
+  if (total > 20 * 60) return "Total seluruh blok tidak boleh lebih dari 20 jam.";
+  const weights = [first.workdayWeight, ...extra.map((block) => block.workdayWeight)];
+  const given = weights.filter((weight) => weight !== undefined && weight !== null);
+  if (given.length > 0 && given.length < weights.length) return "Isi Hitungan hari untuk semua blok, atau kosongkan semuanya.";
+  if (given.length && Math.round(given.reduce((sum, weight) => sum + Number(weight), 0) * 100) !== 100) {
+    return "Jumlah Hitungan hari seluruh blok harus 1,00.";
+  }
+  return null;
+}
+
+async function writeVersionBlocks(
+  client: PoolClient,
+  versionId: string,
+  blocks: ReadonlyArray<{ startTime: string; endTime: string; workdayWeight?: number | null | undefined }>,
+  firstBlockWorkdayWeight: number | null = null,
+) {
+  if (blocks.length && firstBlockWorkdayWeight !== null) {
+    await client.query("UPDATE attendance_schedule_versions SET first_block_workday_weight = $2 WHERE id = $1", [versionId, firstBlockWorkdayWeight]);
+  }
+  for (const [index, block] of blocks.entries()) {
+    await client.query(
+      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time, workday_weight)
+       VALUES ($1, $2, $3, $4::time, $5::time, $6)`,
+      [randomUUID(), versionId, index + 2, block.startTime, block.endTime, block.workdayWeight ?? null],
+    );
+  }
+}
+
 const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
@@ -67,6 +148,14 @@ const scheduleTemplateSchema = z.object({
   lateGraceMinutes: z.number().int().min(0).max(240).default(0),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).default(0),
   workLocationId: z.string().uuid().nullable().optional(),
+  // ATT-014 §20.10: the date the shift's meaning applies from (00:00 WIB); default is the moment of creation.
+  effectiveFrom: dateSchema.optional(),
+  extraBlocks: extraBlocksSchema.default([]),
+  firstBlockWorkdayWeight: workdayWeightSchema.optional(),
+});
+const scheduleBackdateSchema = z.object({
+  effectiveFrom: dateSchema,
+  reason: z.string().trim().min(3).max(500),
 });
 const scheduleTemplatePatchSchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
@@ -75,6 +164,8 @@ const scheduleTemplatePatchSchema = z.object({
   endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
+  extraBlocks: extraBlocksSchema.optional(),
+  firstBlockWorkdayWeight: workdayWeightSchema.optional(),
   workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
@@ -97,6 +188,13 @@ const scheduleRangeSchema = z.object({ from: dateSchema, to: dateSchema });
 const rosterQuerySchema = z.object({ weekStart: dateSchema });
 const clarificationAdminQuerySchema = z.object({
   status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+  origin: z.enum(["all", "employee", "hc"]).default("all"),
+  mode: z.enum(["all", "correction", "justification"]).default("all"),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+  q: z.string().trim().max(120).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(10).max(200).default(50),
 });
 const mobileEvidenceQuerySchema = z.object({
   date: dateSchema.optional(),
@@ -211,6 +309,37 @@ function datesBetween(from: string, to: string, maximum: number) {
   return items;
 }
 
+const OVERTIME_DAY_LIMIT_MINUTES = 24 * 60;
+
+/**
+ * ATT-011-6a §7.6: overtime of one employee on one day may not add up to more than 24 hours. Counts
+ * approved and waiting requests (other than `excludeId`) plus the minutes being added.
+ */
+async function assertOvertimeDayTotal(
+  db: Pick<PoolClient, "query">,
+  employeeId: string,
+  workDate: string,
+  addMinutes: number,
+  excludeId: string | null = null,
+) {
+  const total = await db.query<{ minutes: number }>(
+    `SELECT coalesce(sum(CASE WHEN status = 'approved' THEN coalesce(approved_minutes, 0) ELSE requested_minutes END), 0)::int AS minutes
+     FROM attendance_overtime_requests
+     WHERE employee_id = $1 AND work_date = $2::date AND status IN ('submitted', 'approved')
+       AND ($3::uuid IS NULL OR id <> $3)`,
+    [employeeId, workDate, excludeId],
+  );
+  if ((total.rows[0]?.minutes ?? 0) + addMinutes > OVERTIME_DAY_LIMIT_MINUTES) {
+    throw new WorkforceAttendanceError(422, "OVERTIME_DAY_TOTAL_INVALID", "Total lembur satu hari tidak boleh lebih dari 24 jam.");
+  }
+}
+
+function shiftDateText(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
 function mapResult(row: Record<string, unknown> | null | undefined) {
   if (!row) return null;
   const date = (value: unknown) => value instanceof Date ? value.toISOString() : value ?? null;
@@ -237,7 +366,8 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
        incomplete_session AS "incompleteSession", justified,
        late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
        outside_geofence_justified AS "outsideGeofenceJustified",
-       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
+       overtime_minutes AS "overtimeMinutes", day_type AS "dayType",
+       holiday_scheduled_work AS "holidayScheduledWork", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,
@@ -253,8 +383,25 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
      ORDER BY sequence`,
     [mapped.id],
   );
+  // ATT-013: per-block outcome of a multi-block day (none for a single-block day).
+  const blocks = await db.query(
+    `SELECT sequence, scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
+       first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt", status,
+       late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes", worked_minutes AS "workedMinutes",
+       expected_workday::float8 AS "expectedWorkday", credited_workday::float8 AS "creditedWorkday"
+     FROM attendance_result_blocks WHERE attendance_result_version_id = $1 ORDER BY sequence`,
+    [mapped.id],
+  );
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value ?? null);
   return {
     ...mapped,
+    blocks: blocks.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      scheduledStartAt: iso(item.scheduledStartAt),
+      scheduledEndAt: iso(item.scheduledEndAt),
+      firstCheckInAt: iso(item.firstCheckInAt),
+      lastCheckOutAt: iso(item.lastCheckOutAt),
+    })),
     sessions: sessions.rows.map((item: Record<string, unknown>) => ({
       ...item,
       checkInAt: item.checkInAt instanceof Date ? item.checkInAt.toISOString() : item.checkInAt ?? null,
@@ -305,10 +452,50 @@ async function sendError(reply: FastifyReply, error: unknown) {
   return reply.status(error.statusCode).send({ code: error.code, message: error.message });
 }
 
+/**
+ * ORG-005-2 (D-5-7): what still uses a work location — units of the structure effective today or of
+ * any structure published to take effect later, and every machine that is not retired. Names only.
+ * Runs on the caller's transaction, after the location row is locked.
+ */
+async function workLocationUses(
+  db: PoolClient,
+  locationId: string,
+): Promise<Array<{ kind: "UNIT" | "DEVICE"; name: string }>> {
+  const asOf = jakartaBusinessDate();
+  const units = await db.query<{ name: string }>(
+    `WITH current_structure AS (
+       SELECT id FROM organization_change_sets
+       WHERE status = 'PUBLISHED' AND effective_on <= $2::date
+       ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+       LIMIT 1
+     )
+     SELECT DISTINCT node.name
+     FROM organization_nodes node
+     JOIN organization_change_sets change_set ON change_set.id = node.change_set_id
+     WHERE change_set.status = 'PUBLISHED'
+       AND node.work_location_id = $1
+       AND node.active
+       AND (node.effective_to IS NULL OR node.effective_to >= $2::date)
+       AND (change_set.effective_on > $2::date OR change_set.id IN (SELECT id FROM current_structure))
+     ORDER BY node.name`,
+    [locationId, asOf],
+  );
+  const devices = await db.query<{ name: string }>(
+    `SELECT coalesce(display_name, serial_number) AS name FROM attendance_adms_devices
+     WHERE work_location_id = $1 AND lifecycle <> 'retired' ORDER BY name`,
+    [locationId],
+  );
+  return [
+    ...units.rows.map((row) => ({ kind: "UNIT" as const, name: row.name })),
+    ...devices.rows.map((row) => ({ kind: "DEVICE" as const, name: row.name })),
+  ];
+}
+
 export async function registerAttendanceWorkforceRoutes(
   app: FastifyInstance,
   pool: Pool,
   config: ApiConfig,
+  options: { calculationRunner?: CalculationRunner } = {},
 ) {
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required for attendance workforce routes");
@@ -319,6 +506,22 @@ export async function registerAttendanceWorkforceRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+  // ATT-014-2: Kalkulasi runs inside this process. On start, runs left running are INTERRUPTED and
+  // queued runs continue. Tests inject their own runner and never start the loop implicitly.
+  const calculationRunner = options.calculationRunner ?? createCalculationRunner(pool, {
+    log: (message, details) => app.log.info(details, message),
+  });
+  if (config.NODE_ENV !== "test") {
+    // Never blocks start-up: a database hiccup here only delays the queue until the next request.
+    app.addHook("onReady", async () => {
+      try {
+        await calculationRunner.recoverInterrupted();
+        calculationRunner.kick();
+      } catch (error) {
+        app.log.error({ error: error instanceof Error ? error.name : "unknown" }, "attendance calculation recovery failed");
+      }
+    });
+  }
 
   app.get("/attendance/me/workforce", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "EMPLOYEE");
@@ -606,6 +809,21 @@ export async function registerAttendanceWorkforceRoutes(
     try {
       const body = clarificationSchema.safeParse(request.body);
       if (!body.success) throw new WorkforceAttendanceError(400, "INVALID_CLARIFICATION", "Klarifikasi tidak valid.");
+      if (!clarificationDateAllowed(body.data.workDate)) {
+        throw new WorkforceAttendanceError(
+          422,
+          "CLARIFICATION_DATE_OUT_OF_RANGE",
+          `Klarifikasi hanya untuk hari ini dan ${CLARIFICATION_LOOKBACK_DAYS} hari sebelumnya.`,
+        );
+      }
+      if (body.data.mode === "correction") {
+        const windowError = manualCorrectionWindowError({
+          workDate: body.data.workDate,
+          checkInAt: body.data.proposedCheckInAt ?? null,
+          checkOutAt: body.data.proposedCheckOutAt ?? null,
+        });
+        if (windowError) throw new WorkforceAttendanceError(422, windowError, manualCorrectionWindowMessages[windowError]);
+      }
       const employee = await employeeForAccount(pool, principal.id);
       const id = randomUUID();
       const client = await pool.connect();
@@ -677,36 +895,22 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+  // ATT-011-3R Perbaikan Absen: employee requests and HC corrections in one paginated list, readable
+  // by whoever may decide requests or enter corrections. Each action keeps its own permission.
   app.get("/admin/attendance/clarifications", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.clarification.manage");
-    if (!principal) return;
+    try {
+      await requireAnyPermissionFromCookie(auth, request.headers.cookie, ["attendance.clarification.manage", "attendance.records.manage"]);
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+    reply.header("Cache-Control", "no-store");
     const query = clarificationAdminQuerySchema.safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_CLARIFICATION_FILTER", message: "Filter klarifikasi tidak valid." });
-    const values: unknown[] = [];
-    let statusClause = "";
-    if (query.data.status !== "all") {
-      values.push(query.data.status);
-      statusClause = "WHERE clarification.status = $1";
-    }
-    const rows = await pool.query(
-      `SELECT clarification.id, clarification.work_date::text AS "workDate",
-         clarification.kind, clarification.mode, clarification.reason, clarification.status,
-         clarification.proposed_check_in_at AS "proposedCheckInAt",
-         clarification.proposed_check_out_at AS "proposedCheckOutAt",
-         clarification.decision_note AS "decisionNote", clarification.decided_at AS "decidedAt",
-         employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
-         employee.full_name AS "employeeName", unit.name AS "unitName",
-         clarification.created_at AS "createdAt"
-       FROM attendance_clarifications clarification
-       JOIN employees employee ON employee.id = clarification.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       ${statusClause}
-       ORDER BY clarification.work_date DESC, clarification.created_at DESC
-       LIMIT 500`,
-      values,
-    );
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ items: rows.rows });
+    return reply.send(await listAttendanceCorrections(pool, query.data));
   });
 
   app.post("/admin/attendance/clarifications/:clarificationId/decision", async (request, reply) => {
@@ -718,13 +922,35 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const current = await client.query<{ employeeId: string; workDate: string }>(
-        `SELECT employee_id AS "employeeId", work_date::text AS "workDate"
+      const current = await client.query<{
+        employeeId: string; workDate: string; mode: string; proposedCheckInAt: Date | null; proposedCheckOutAt: Date | null;
+        administrativeCorrection: boolean;
+      }>(
+        `SELECT employee_id AS "employeeId", work_date::text AS "workDate", mode,
+           proposed_check_in_at AS "proposedCheckInAt", proposed_check_out_at AS "proposedCheckOutAt",
+           EXISTS (
+             SELECT 1 FROM attendance_clarification_events submitted
+             WHERE submitted.clarification_id = attendance_clarifications.id
+               AND submitted.event_type = 'submitted'
+               AND submitted.payload->>'administrativeCorrection' = 'true'
+           ) AS "administrativeCorrection"
          FROM attendance_clarifications WHERE id = $1 AND status = 'submitted' FOR UPDATE`,
         [params.data.clarificationId],
       );
       const item = current.rows[0];
       if (!item) throw new WorkforceAttendanceError(409, "CLARIFICATION_ALREADY_DECIDED", "Klarifikasi sudah diputuskan.");
+      // A request submitted before the work-date check existed may carry times from another date:
+      // it can only be rejected, so the engine never counts it.
+      if (body.data.decision === "approve" && item.mode === "correction") {
+        const windowError = manualCorrectionWindowError({
+          workDate: item.workDate,
+          checkInAt: item.proposedCheckInAt ? new Date(item.proposedCheckInAt).toISOString() : null,
+          checkOutAt: item.proposedCheckOutAt ? new Date(item.proposedCheckOutAt).toISOString() : null,
+        });
+        if (windowError) {
+          throw new WorkforceAttendanceError(422, windowError, `${manualCorrectionWindowMessages[windowError]} Tolak pengajuan ini dan minta pegawai mengajukan ulang.`);
+        }
+      }
       await client.query(
         `UPDATE attendance_clarifications
          SET status = $2, decided_by_account_id = $3, decision_note = $4,
@@ -738,6 +964,19 @@ export async function registerAttendanceWorkforceRoutes(
          ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
         [randomUUID(), params.data.clarificationId, principal.id, body.data.decision === "approve" ? "approved" : "rejected", JSON.stringify({ note: body.data.note ?? null })],
       );
+      // ATT-011-7: the employee hears about the decision on their own request (not on HC corrections).
+      if (!item.administrativeCorrection) {
+        const approved = body.data.decision === "approve";
+        await notifyEmployee(client, item.employeeId, {
+          eventKey: `clarification:${params.data.clarificationId}:${approved ? "approved" : "rejected"}`,
+          category: "attendance",
+          title: approved ? "Klarifikasi disetujui" : "Klarifikasi ditolak",
+          body: approved ? `Klarifikasi kehadiran ${item.workDate} disetujui.` : `Klarifikasi kehadiran ${item.workDate} ditolak.`,
+          href: "/app/attendance#clarifications",
+          actorAccountId: principal.id,
+          metadata: { clarificationId: params.data.clarificationId, workDate: item.workDate, status: approved ? "approved" : "rejected" },
+        });
+      }
       await client.query("COMMIT");
       const result = await materializeAttendanceResult(pool, item.employeeId, item.workDate);
       return reply.send({ status: body.data.decision === "approve" ? "approved" : "rejected", result: mapResult(result as unknown as Record<string, unknown>) });
@@ -768,26 +1007,54 @@ export async function registerAttendanceWorkforceRoutes(
     if (!params.success || !body.success) {
       return reply.status(400).send({ code: "INVALID_WORK_LOCATION_UPDATE", message: "Perubahan lokasi kerja tidak valid." });
     }
-    const current = await pool.query<{
-      name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean;
-    }>(
-      `SELECT name, latitude, longitude, radius_meters AS "radiusMeters", active
-       FROM attendance_work_locations WHERE id = $1`,
-      [params.data.locationId],
-    );
-    const item = current.rows[0];
-    if (!item) return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
-    const next = { ...item, ...body.data };
-    await pool.query(
-      `UPDATE attendance_work_locations
-       SET name = $2, latitude = $3, longitude = $4, radius_meters = $5,
-           active = $6, updated_at = now()
-       WHERE id = $1`,
-      [params.data.locationId, next.name, next.latitude, next.longitude, next.radiusMeters, next.active],
-    );
-    await insertAudit(pool, principal.id, "attendance.work_location.updated", "attendance_work_location", params.data.locationId, {
-      fields: Object.keys(body.data),
-    });
+    // ORG-005-2: the row is locked, so a machine cannot be linked between the in-use check and the
+    // switch-off (a link takes a share lock on the same row).
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{
+        name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean;
+      }>(
+        `SELECT name, latitude, longitude, radius_meters AS "radiusMeters", active
+         FROM attendance_work_locations WHERE id = $1 FOR UPDATE`,
+        [params.data.locationId],
+      );
+      const item = current.rows[0];
+      if (!item) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
+      }
+      // ORG-005-2 (DRAFT D-5-7): a location still named by a published unit or a machine is not
+      // switched off; the refusal names what still uses it.
+      if (body.data.active === false && item.active) {
+        const uses = await workLocationUses(client, params.data.locationId);
+        if (uses.length > 0) {
+          await client.query("ROLLBACK");
+          return reply.status(409).send({
+            code: "WORK_LOCATION_IN_USE",
+            message: "Lokasi kerja ini masih dipakai unit atau mesin absensi.",
+            details: { uses },
+          });
+        }
+      }
+      const next = { ...item, ...body.data };
+      await client.query(
+        `UPDATE attendance_work_locations
+         SET name = $2, latitude = $3, longitude = $4, radius_meters = $5,
+             active = $6, updated_at = now()
+         WHERE id = $1`,
+        [params.data.locationId, next.name, next.latitude, next.longitude, next.radiusMeters, next.active],
+      );
+      await insertAudit(client, principal.id, "attendance.work_location.updated", "attendance_work_location", params.data.locationId, {
+        fields: Object.keys(body.data),
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     return reply.send({ id: params.data.locationId });
   });
 
@@ -816,7 +1083,13 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.late_grace_minutes AS "lateGraceMinutes",
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
-         version.id AS "currentVersionId", version.version AS "currentVersion"
+         version.id AS "currentVersionId", version.version AS "currentVersion",
+         (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text,
+                   'workdayWeight', block.workday_weight::float8) ORDER BY block.sequence), '[]'::json)
+            FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks",
+         version.first_block_workday_weight::float8 AS "firstBlockWorkdayWeight",
+         (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
+            FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
        LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
        LEFT JOIN attendance_schedule_versions version
@@ -858,8 +1131,28 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
-      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId"]
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks", "firstBlockWorkdayWeight"]
         .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
+      // ATT-013: without new blocks in the request, a new version keeps the current version's blocks.
+      const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string; workdayWeight: number | null }>(
+        `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime",
+           block.workday_weight::float8 AS "workdayWeight"
+         FROM attendance_schedule_version_blocks block
+         JOIN attendance_schedule_versions version ON version.id = block.schedule_version_id
+         WHERE version.schedule_template_id = $1 AND version.effective_to IS NULL
+         ORDER BY block.sequence`,
+        [params.data.scheduleId],
+      )).rows;
+      const firstWeight = body.data.firstBlockWorkdayWeight ?? (body.data.extraBlocks ? null : (await client.query<{ weight: number | null }>(
+        `SELECT first_block_workday_weight::float8 AS weight FROM attendance_schedule_versions
+         WHERE schedule_template_id = $1 AND effective_to IS NULL`,
+        [params.data.scheduleId],
+      )).rows[0]?.weight ?? null);
+      const blocksError = scheduleBlocksError({ ...next, workdayWeight: firstWeight }, blocks);
+      if (blocksError) {
+        await client.query("ROLLBACK");
+        return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
+      }
 
       await client.query(
         `UPDATE attendance_schedule_templates
@@ -899,6 +1192,7 @@ export async function registerAttendanceWorkforceRoutes(
             next.workLocationId ?? null, effectiveAt, principal.id,
           ],
         );
+        await writeVersionBlocks(client, versionId, blocks, firstWeight);
       }
 
       await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
@@ -919,9 +1213,16 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const body = scheduleTemplateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_SCHEDULE_TEMPLATE", message: "Template jadwal tidak valid." });
+    if (body.data.effectiveFrom && body.data.effectiveFrom > jakartaWorkDate()) {
+      return reply.status(422).send({ code: "SCHEDULE_EFFECTIVE_FROM_IN_FUTURE", message: "Tanggal berlaku shift tidak boleh di masa depan." });
+    }
     const id = randomUUID();
     const versionId = randomUUID();
     const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
+    const blocksError = scheduleBlocksError({
+      startTime: body.data.startTime, endTime: body.data.endTime, endDayOffset, workdayWeight: body.data.firstBlockWorkdayWeight ?? null,
+    }, body.data.extraBlocks);
+    if (blocksError) return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -939,16 +1240,19 @@ export async function registerAttendanceWorkforceRoutes(
       await client.query(
         `INSERT INTO attendance_schedule_versions (
            id, schedule_template_id, version, name, start_time, end_time, end_day_offset,
-           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id
-         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10)`,
+           late_grace_minutes, early_leave_tolerance_minutes, work_location_id, created_by_account_id,
+           effective_from
+         ) VALUES ($1, $2, 1, $3, $4::time, $5::time, $6, $7, $8, $9, $10,
+           coalesce(($11::date::timestamp AT TIME ZONE 'Asia/Jakarta'), now()))`,
         [
           versionId, id, body.data.name, body.data.startTime, body.data.endTime, endDayOffset,
           body.data.lateGraceMinutes, body.data.earlyLeaveToleranceMinutes,
-          body.data.workLocationId ?? null, principal.id,
+          body.data.workLocationId ?? null, principal.id, body.data.effectiveFrom ?? null,
         ],
       );
+      await writeVersionBlocks(client, versionId, body.data.extraBlocks, body.data.firstBlockWorkdayWeight ?? null);
       await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
-        versionId, version: 1,
+        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null, extraBlocks: body.data.extraBlocks,
       });
       await client.query("COMMIT");
       return reply.status(201).send({ id, versionId, version: 1 });
@@ -960,6 +1264,59 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+
+  // ATT-014 §20.10 "Mundurkan awal berlaku": moves the start of a shift's first version earlier, so
+  // schedule patterns on earlier dates resolve to this shift. Only the first version, only earlier,
+  // never in the future; the previous start is kept in the audit event for recovery.
+  app.post("/admin/attendance/schedules/:scheduleId/backdate", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
+    if (!principal) return;
+    const params = z.object({ scheduleId: z.string().uuid() }).safeParse(request.params);
+    const body = scheduleBackdateSchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_SCHEDULE_BACKDATE", message: "Tanggal dan alasan wajib diisi." });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const first = await client.query<{ id: string; effectiveFrom: Date; effectiveTo: Date | null }>(
+        `SELECT id, effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
+         FROM attendance_schedule_versions
+         WHERE schedule_template_id = $1
+         ORDER BY version
+         LIMIT 1
+         FOR UPDATE`,
+        [params.data.scheduleId],
+      );
+      const version = first.rows[0];
+      if (!version) throw new WorkforceAttendanceError(404, "SCHEDULE_NOT_FOUND", "Shift tidak ditemukan.");
+      const target = await client.query<{ at: Date }>(
+        "SELECT ($1::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS at",
+        [body.data.effectiveFrom],
+      );
+      const newFrom = target.rows[0]!.at;
+      if (new Date(newFrom) >= new Date(version.effectiveFrom)) {
+        throw new WorkforceAttendanceError(409, "SCHEDULE_BACKDATE_NOT_EARLIER", "Tanggal baru harus lebih awal dari awal berlaku sekarang.");
+      }
+      await client.query(
+        "UPDATE attendance_schedule_versions SET effective_from = $2 WHERE id = $1",
+        [version.id, newFrom],
+      );
+      await insertAudit(client, principal.id, "attendance.schedule.backdated", "attendance_schedule_template", params.data.scheduleId, {
+        versionId: version.id,
+        previousEffectiveFrom: new Date(version.effectiveFrom).toISOString(),
+        effectiveFrom: new Date(newFrom).toISOString(),
+        reason: body.data.reason,
+      });
+      await client.query("COMMIT");
+      return reply.send({ id: params.data.scheduleId, versionId: version.id, effectiveFrom: new Date(newFrom).toISOString() });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
+  });
 
   app.get("/admin/attendance/schedule-assignments", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
@@ -1393,12 +1750,17 @@ export async function registerAttendanceWorkforceRoutes(
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${employee.id}:${body.data.workDate}`]);
+        await assertOvertimeDayTotal(client, employee.id, body.data.workDate, body.data.requestedMinutes);
         await client.query(
           `INSERT INTO attendance_overtime_requests (
              id, employee_id, work_date, requested_minutes, note, requested_by_account_id
            ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
           [id, employee.id, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
         );
+        await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+          workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "employee",
+        });
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1436,6 +1798,7 @@ export async function registerAttendanceWorkforceRoutes(
           [params.data.overtimeId, employee.id],
         );
         if (!changed.rows[0]) throw new WorkforceAttendanceError(409, "OVERTIME_NOT_CANCELLABLE", "Pengajuan lembur tidak dapat dibatalkan.");
+        await insertAudit(client, principal.id, "attendance.overtime.cancelled", "attendance_overtime_request", params.data.overtimeId, {});
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1455,32 +1818,22 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+  // ATT-011-6a §7.4: HC monitors overtime. Each row carries the kind of day of the stored result and the
+  // scan time outside the schedule, as information only: it never fills overtime minutes (I-7).
   app.get("/admin/attendance/overtime", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
     if (!principal) return;
-    const query = z.object({
-      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+    const query = pageQuerySchema.extend({
+      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled", "closed"]).default("submitted"),
+      unitId: z.string().uuid().optional(),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
-    const values: unknown[] = [];
-    const clause = query.data.status === "all" ? "" : (values.push(query.data.status), "WHERE request.status = $1");
-    const rows = await pool.query(
-      `SELECT request.id, request.employee_id AS "employeeId",
-         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
-         unit.name AS "unitName", request.work_date::text AS "workDate",
-         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
-         request.note, request.status, request.decision_note AS "decisionNote",
-         request.created_at AS "createdAt", request.decided_at AS "decidedAt"
-       FROM attendance_overtime_requests request
-       JOIN employees employee ON employee.id = request.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       ${clause}
-       ORDER BY request.work_date DESC, request.created_at DESC
-       LIMIT 1000`,
-      values,
-    );
+    const statuses = query.data.status === "all" ? null
+      : query.data.status === "closed" ? ["rejected", "cancelled"] : [query.data.status];
     reply.header("Cache-Control", "no-store");
-    return reply.send({ items: rows.rows });
+    return reply.send(await listOvertimeForHc(pool, {
+      page: query.data.page, pageSize: query.data.pageSize, statuses, unitId: query.data.unitId ?? null,
+    }));
   });
 
   app.post("/admin/attendance/overtime", async (request, reply) => {
@@ -1494,12 +1847,17 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${body.data.employeeId}:${body.data.workDate}`]);
+      await assertOvertimeDayTotal(client, body.data.employeeId, body.data.workDate, body.data.requestedMinutes);
       await client.query(
         `INSERT INTO attendance_overtime_requests (
            id, employee_id, work_date, requested_minutes, note, requested_by_account_id
          ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
         [id, body.data.employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
       );
+      await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+        workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "hc",
+      });
       await client.query(
         `INSERT INTO attendance_overtime_events (
            id, overtime_request_id, actor_account_id, event_type, payload
@@ -1510,7 +1868,7 @@ export async function registerAttendanceWorkforceRoutes(
       return reply.status(201).send({ id, status: "submitted" });
     } catch (error) {
       await client.query("ROLLBACK");
-      throw error;
+      return sendError(reply, error);
     } finally {
       client.release();
     }
@@ -1545,7 +1903,14 @@ export async function registerAttendanceWorkforceRoutes(
       if (approvedMinutes !== null && approvedMinutes > item.requestedMinutes) {
         throw new WorkforceAttendanceError(400, "OVERTIME_APPROVED_EXCEEDS_REQUEST", "Menit lembur disetujui tidak boleh melebihi pengajuan.");
       }
+      if (approvedMinutes !== null) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${item.employeeId}:${item.workDate}`]);
+        await assertOvertimeDayTotal(client, item.employeeId, item.workDate, approvedMinutes, params.data.overtimeId);
+      }
       const status = body.data.decision === "approve" ? "approved" : "rejected";
+      await insertAudit(client, principal.id, `attendance.overtime.${status}`, "attendance_overtime_request", params.data.overtimeId, {
+        workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes,
+      });
       await client.query(
         `UPDATE attendance_overtime_requests
          SET status = $2, approved_minutes = $3, decided_by_account_id = $4,
@@ -1586,6 +1951,8 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const body = manualCorrectionSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_MANUAL_CORRECTION", message: "Koreksi manual tidak valid." });
+    const windowError = manualCorrectionWindowError(body.data);
+    if (windowError) return reply.status(422).send({ code: windowError, message: manualCorrectionWindowMessages[windowError] });
     const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
     if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
     const clarificationId = randomUUID();
@@ -1669,19 +2036,523 @@ export async function registerAttendanceWorkforceRoutes(
     return reply.send(result);
   });
 
+  async function queuePosition(run: Pick<CalculationRun, "id" | "status" | "createdAt">) {
+    if (run.status !== "queued") return null;
+    const result = await pool.query<{ position: number }>(
+      `SELECT count(*)::int AS position FROM attendance_calculation_runs
+       WHERE status = 'queued' AND (created_at, id) <= ($1::timestamptz, $2::uuid)`,
+      [run.createdAt, run.id],
+    );
+    return result.rows[0]?.position ?? 1;
+  }
+
+  async function presentRun(run: CalculationRun) {
+    return {
+      id: run.id,
+      status: run.status,
+      position: await queuePosition(run),
+      unitId: run.unitId,
+      employeeId: run.employeeId,
+      from: run.dateFrom,
+      to: run.dateTo,
+      totalPairs: run.totalPairs,
+      processedPairs: run.processedPairs,
+      failedPairs: run.failedPairs,
+      uncoveredPairs: run.uncoveredPairs,
+      cancelRequested: Boolean(run.cancelRequestedAt),
+      errorCode: run.errorCode,
+      requestedByAccountId: run.requestedByAccountId,
+      createdAt: new Date(run.createdAt).toISOString(),
+      startedAt: run.startedAt ? new Date(run.startedAt).toISOString() : null,
+      finishedAt: run.finishedAt ? new Date(run.finishedAt).toISOString() : null,
+    };
+  }
+
+  const calculationRangeMessages = {
+    INVALID_CALCULATION_RANGE: "Rentang tanggal tidak valid.",
+    CALCULATION_RANGE_TOO_LARGE: "Satu kalkulasi maksimal 93 hari. Bagi rentang menjadi beberapa kalkulasi.",
+    CALCULATION_DATE_IN_FUTURE: "Tanggal di masa depan belum bisa dikalkulasi.",
+  } as const;
+
+  async function requestCalculation(
+    reply: FastifyReply,
+    principal: AuthPrincipal,
+    scope: { unitId?: string | undefined; employeeId?: string | undefined; from: string; to: string },
+  ) {
+    reply.header("Cache-Control", "no-store");
+    const rangeError = validateCalculationRange(scope.from, scope.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const id = randomUUID();
+    const inserted = await pool.query<CalculationRun>(
+      `INSERT INTO attendance_calculation_runs (id, requested_by_account_id, unit_id, employee_id, date_from, date_to, status)
+       VALUES ($1, $2, $3, $4, $5::date, $6::date, 'queued')
+       RETURNING ${RUN_COLUMNS}`,
+      [id, principal.id, scope.unitId ?? null, scope.employeeId ?? null, scope.from, scope.to],
+    );
+    const run = inserted.rows[0];
+    if (!run) throw new Error("Attendance calculation insert did not return a row");
+    await insertAudit(pool, principal.id, "attendance.calculation.requested", "attendance_calculation_run", id, {
+      unitId: scope.unitId ?? null, employeeId: scope.employeeId ?? null, from: scope.from, to: scope.to,
+    });
+    calculationRunner.kick();
+    return reply.status(202).send(await presentRun(run));
+  }
+
+  async function findRun(id: string) {
+    const result = await pool.query<CalculationRun>(`SELECT ${RUN_COLUMNS} FROM attendance_calculation_runs WHERE id = $1`, [id]);
+    return result.rows[0] ?? null;
+  }
+
+  // ATT-014-2 Kalkulasi: queue a calculation for a scope and range (D-14-1 … D-14-4).
+  app.post("/admin/attendance/calculations", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
+    if (!principal) return;
+    const body = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+    }).strict().safeParse(request.body);
+    if (!body.success) {
+      reply.header("Cache-Control", "no-store");
+      return reply.status(400).send({ code: "INVALID_CALCULATION_RANGE", message: "Lingkup atau rentang tanggal tidak valid." });
+    }
+    return requestCalculation(reply, principal, body.data);
+  });
+
+  app.get("/admin/attendance/calculations/:id", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const run = params.success ? await findRun(params.data.id) : null;
+    if (!run) return reply.status(404).send({ code: "CALCULATION_NOT_FOUND", message: "Kalkulasi tidak ditemukan." });
+    return reply.send(await presentRun(run));
+  });
+
+  app.post("/admin/attendance/calculations/:id/cancel", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    const run = params.success ? await findRun(params.data.id) : null;
+    if (!run) return reply.status(404).send({ code: "CALCULATION_NOT_FOUND", message: "Kalkulasi tidak ditemukan." });
+    if (run.requestedByAccountId !== principal.id) {
+      const context = await auth.getAuthorizationContext(principal);
+      if (!context.organizationPermissions.includes("attendance.policy.manage")) {
+        return reply.status(403).send({ code: "FORBIDDEN", message: "Hanya pemohon atau pengelola kebijakan yang boleh membatalkan kalkulasi ini." });
+      }
+    }
+    // A queued run is cancelled at once; a running run stops at its next progress checkpoint.
+    const updated = await pool.query<CalculationRun>(
+      `UPDATE attendance_calculation_runs
+       SET status = CASE WHEN status = 'queued' THEN 'cancelled' ELSE status END,
+           finished_at = CASE WHEN status = 'queued' THEN now() ELSE finished_at END,
+           cancel_requested_at = coalesce(cancel_requested_at, now())
+       WHERE id = $1 AND status IN ('queued', 'running')
+       RETURNING ${RUN_COLUMNS}`,
+      [run.id],
+    );
+    const cancelled = updated.rows[0];
+    if (!cancelled) return reply.status(409).send({ code: "CALCULATION_ALREADY_FINISHED", message: "Kalkulasi sudah selesai." });
+    if (cancelled.status === "cancelled") {
+      await insertAudit(pool, principal.id, "attendance.calculation.cancelled", "attendance_calculation_run", run.id, {
+        processedPairs: 0, failedPairs: 0, uncoveredPairs: 0, errorCode: null,
+      });
+    }
+    return reply.send(await presentRun(cancelled));
+  });
+
+  // Detail rows for Laporan & Kalkulasi (§6.2, §6.5). Reads stored results only; paginated.
+  app.get("/admin/attendance/calculation-rows", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = z.object({
+      tab: z.enum(["detail"]).default("detail"),
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      status: z.enum([
+        "scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off",
+        "configuration_error", "unscheduled", "not_captured", "not_calculated",
+      ]).optional(),
+      changedOnly: z.enum(["true", "false"]).optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_CALCULATION_ROWS_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const result = await attendanceCalculationRows(
+      pool,
+      { unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null, from: query.data.from, to: query.data.to },
+      {
+        ...(query.data.status ? { status: query.data.status } : {}),
+        changedOnly: query.data.changedOnly === "true",
+        page: query.data.page,
+        pageSize: query.data.pageSize,
+      },
+    );
+    return reply.send(result);
+  });
+
+  // ATT-014 §20.3 Tanpa Jadwal (R2a): who scans without a schedule, and which machine scans cannot be
+  // attributed to an employee yet. Read-only; the PIN part only for attendance.devices.read.
+  app.get("/admin/attendance/unscheduled", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      page: z.coerce.number().int().min(1).default(1),
+      pinPage: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_UNSCHEDULED_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const scope = {
+      from: query.data.from, to: query.data.to,
+      unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null,
+      pageSize: query.data.pageSize,
+    };
+    const canSeePins = (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("attendance.devices.read");
+    const [employees, pins] = await Promise.all([
+      unscheduledEmployees(pool, { ...scope, page: query.data.page }),
+      canSeePins ? unattributedPins(pool, { ...scope, page: query.data.pinPage }) : Promise.resolve(null),
+    ]);
+    return reply.send({ from: scope.from, to: scope.to, employees, pins });
+  });
+
+  // ATT-011-3 §6.1 "Perlu tindakan": one queue of what waits for HC, filtered to the kinds this account
+  // can act on. Read-only; the actions use their own endpoints and permissions.
+  app.get("/admin/attendance/action-queue", async (request, reply) => {
+    let held: AdminPermission[];
+    try {
+      ({ permissions: held } = await requireAnyPermissionFromCookie(auth, request.headers.cookie, ACTION_QUEUE_PERMISSIONS));
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+    reply.header("Cache-Control", "no-store");
+    const today = jakartaWorkDate();
+    const query = pageQuerySchema.extend({
+      unitId: z.string().uuid().optional(),
+      kind: z.enum(["clarification", "mobile_review", "incomplete", "configuration_error"]).optional(),
+      from: dateSchema.optional(),
+      to: dateSchema.optional(),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_ACTION_QUEUE_QUERY", message: "Filter tidak valid." });
+    // Default: the last 31 days up to today.
+    const to = query.data.to ?? today;
+    const from = query.data.from ?? shiftDateText(to, -30);
+    const rangeError = validateCalculationRange(from, to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    return reply.send(await attendanceActionQueue(pool, {
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+      from,
+      to,
+      incompleteBefore: shiftDateText(today, -2),
+      unitId: query.data.unitId ?? null,
+      kind: (query.data.kind ?? null) as ActionKind | null,
+      kinds: allowedActionKinds(held),
+    }));
+  });
+
+  // ATT-011-3 §6.2 detail of one employee-day: schedule, stored result, every punch, and the requests that
+  // touch it. Photos stay behind the evidence endpoint; GPS only with attendance.clarification.manage.
+  app.get("/admin/attendance/daily/:employeeId/:workDate", async (request, reply) => {
+    let held: AdminPermission[];
+    try {
+      ({ permissions: held } = await requireAnyPermissionFromCookie(auth, request.headers.cookie, [
+        "attendance.reports.read", "attendance.records.manage", "attendance.clarification.manage",
+      ]));
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ employeeId: z.string().uuid(), workDate: dateSchema }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_DAY", message: "Pegawai atau tanggal tidak valid." });
+    const { employeeId, workDate } = params.data;
+    const employee = await pool.query<{ id: string; employeeNumber: string; fullName: string; unitName: string | null }>(
+      `SELECT employee.id, employee.employee_number AS "employeeNumber", employee.full_name AS "fullName", unit.name AS "unitName"
+       FROM employees employee LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       WHERE employee.id = $1`,
+      [employeeId],
+    );
+    if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+    const [schedule, result, punches, clarifications, leave, overtime] = await Promise.all([
+      resolveSchedule(pool, employeeId, workDate),
+      latestResult(pool, employeeId, workDate),
+      // The next day too: a shift that ends after midnight has its check-out there.
+      attendanceTransactions(pool, {
+        employeeId, from: workDate, to: shiftDateText(workDate, 1), page: 1, pageSize: 200,
+        includeEvidence: held.includes("attendance.clarification.manage"),
+      }),
+      pool.query(
+        `SELECT id, kind, mode, status, reason, decision_note AS "decisionNote",
+           proposed_check_in_at AS "proposedCheckInAt", proposed_check_out_at AS "proposedCheckOutAt", created_at AS "createdAt"
+         FROM attendance_clarifications WHERE employee_id = $1 AND work_date = $2::date ORDER BY created_at`,
+        [employeeId, workDate],
+      ),
+      pool.query<{ id: string; policyKey: string; startOn: string; endOn: string }>(
+        `SELECT id, policy_key AS "policyKey", start_on::text AS "startOn", end_on::text AS "endOn"
+         FROM leave_requests WHERE employee_id = $1 AND status = 'approved' AND $2::date BETWEEN start_on AND end_on`,
+        [employeeId, workDate],
+      ),
+      pool.query(
+        `SELECT id, status, requested_minutes AS "requestedMinutes", approved_minutes AS "approvedMinutes", note
+         FROM attendance_overtime_requests WHERE employee_id = $1 AND work_date = $2::date ORDER BY created_at`,
+        [employeeId, workDate],
+      ),
+    ]);
+    const template = schedule.scheduleVersionId
+      ? (await pool.query<{ name: string }>("SELECT name FROM attendance_schedule_versions WHERE id = $1", [schedule.scheduleVersionId])).rows[0]?.name ?? null
+      : null;
+    const { sessions, ...stored } = (result ?? { sessions: [] }) as Record<string, unknown> & { sessions?: Array<Record<string, unknown>> };
+    return reply.send({
+      employee: employee.rows[0],
+      workDate,
+      schedule: { ...scheduleResponse(schedule), name: template },
+      // source_summary is technical provenance (ATT-011-1 removed it from screens).
+      result: result ? { ...stored, sessions: (sessions ?? []).map(({ sourceSummary, ...session }) => { void sourceSummary; return session; }) } : null,
+      // Punches of the work date, plus next-day punches up to 6 hours after a shift's end (engine window).
+      punches: punches.items.filter((punch) => punch.workDate === workDate || (
+        schedule.scheduledEndAt !== null
+          && new Date(punch.occurredAt).getTime() <= schedule.scheduledEndAt.getTime() + 6 * 60 * 60_000
+          && shiftDateText(workDate, 1) === punch.workDate
+          && schedule.scheduledEndAt.getTime() > new Date(`${shiftDateText(workDate, 1)}T00:00:00+07:00`).getTime()
+      )),
+      clarifications: clarifications.rows.map((row: Record<string, unknown>) => ({
+        ...row,
+        proposedCheckInAt: row.proposedCheckInAt instanceof Date ? row.proposedCheckInAt.toISOString() : null,
+        proposedCheckOutAt: row.proposedCheckOutAt instanceof Date ? row.proposedCheckOutAt.toISOString() : null,
+        createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+      })),
+      leave: leave.rows.map((row) => ({ ...row, name: LEAVE_POLICY_CATALOG.find((policy) => policy.key === row.policyKey)?.name ?? row.policyKey })),
+      overtime: overtime.rows,
+    });
+  });
+
+  // ATT-011-3 §6.1 "Minta pegawai klarifikasi": an in-app notification to the employee, audited. Asking
+  // twice for the same day sends nothing new (the notification key is per employee and date).
+  app.post("/admin/attendance/daily/:employeeId/:workDate/request-clarification", async (request, reply) => {
+    let principal: AuthPrincipal;
+    try {
+      ({ principal } = await requireAnyPermissionFromCookie(auth, request.headers.cookie, ["attendance.clarification.manage", "attendance.records.manage"]));
+    } catch (error) {
+      if (error instanceof AuthError) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+    const params = z.object({ employeeId: z.string().uuid(), workDate: dateSchema }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_ATTENDANCE_DAY", message: "Pegawai atau tanggal tidak valid." });
+    const { employeeId, workDate } = params.data;
+    const known = await pool.query("SELECT 1 FROM employees WHERE id = $1", [employeeId]);
+    if (!known.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+    if (!clarificationDateAllowed(workDate)) {
+      return reply.status(422).send({
+        code: "CLARIFICATION_DATE_OUT_OF_RANGE",
+        message: `Pegawai hanya dapat mengajukan klarifikasi untuk hari ini dan ${CLARIFICATION_LOOKBACK_DAYS} hari sebelumnya. Gunakan Perbaiki jam.`,
+      });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const notified = await notifyEmployee(client, employeeId, {
+        eventKey: `clarification-request:${employeeId}:${workDate}`,
+        category: "attendance",
+        title: "Mohon ajukan klarifikasi kehadiran",
+        body: `Human Capital meminta klarifikasi untuk kehadiran ${workDate}. Ajukan dari Kehadiran Saya → Riwayat.`,
+        href: "/app/attendance#clarifications",
+        actorAccountId: principal.id,
+        metadata: { workDate },
+      });
+      await insertAudit(client, principal.id, "attendance.clarification.requested", "employee", employeeId, { workDate });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ notified });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return sendError(reply, error);
+    } finally {
+      client.release();
+    }
+  });
+
+  // ATT-014 §20.2 tab "Pengecualian" (R2b): approved leave and clarifications/corrections in the range.
+  app.get("/admin/attendance/exceptions", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = pageQuerySchema.extend({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_EXCEPTIONS_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    return reply.send(await attendanceExceptions(pool, { ...query.data, unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null }));
+  });
+
+  // ATT-014 §19.1 step ③ Data Transaksi: every punch in scope, read-only and paginated.
+  app.get("/admin/attendance/transactions", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const query = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      source: z.enum(["adms", "mobile", "manual", "correction"]).optional(),
+      reviewState: z.enum(["needs_review"]).optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_TRANSACTIONS_QUERY", message: "Filter tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    return reply.send(await attendanceTransactions(pool, {
+      from: query.data.from,
+      to: query.data.to,
+      unitId: query.data.unitId ?? null,
+      employeeId: query.data.employeeId ?? null,
+      source: query.data.source ?? null,
+      reviewState: query.data.reviewState ?? null,
+      // ATT-006: GPS and the photo handle only for accounts that may review mobile evidence.
+      includeEvidence: (await auth.getAuthorizationContext(principal)).organizationPermissions.includes("attendance.clarification.manage"),
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+    }));
+  });
+
+  // ATT-014 §7/§19.2 report models from stored results: preview (json), print document (json,
+  // purpose=print), CSV and XLSX. Every print and export is audited without personal data.
+  app.get("/admin/attendance/reports/:model", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "attendance.reports.read");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = z.object({ model: z.enum(Object.keys(REPORT_MODELS) as [ReportModel, ...ReportModel[]]) }).safeParse(request.params);
+    if (!params.success) return reply.status(404).send({ code: "REPORT_MODEL_NOT_FOUND", message: "Model laporan tidak dikenal." });
+    const query = z.object({
+      unitId: z.string().uuid().optional(),
+      employeeId: z.string().uuid().optional(),
+      from: dateSchema,
+      to: dateSchema,
+      format: z.enum(["json", "csv", "xlsx"]).default("json"),
+      purpose: z.enum(["view", "print"]).default("view"),
+    }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ code: "INVALID_REPORT_QUERY", message: "Filter laporan tidak valid." });
+    const rangeError = validateCalculationRange(query.data.from, query.data.to);
+    if (rangeError) {
+      return reply.status(rangeError === "INVALID_CALCULATION_RANGE" ? 400 : 422)
+        .send({ code: rangeError, message: calculationRangeMessages[rangeError] });
+    }
+    const scope = { unitId: query.data.unitId ?? null, employeeId: query.data.employeeId ?? null, from: query.data.from, to: query.data.to };
+    const data = await attendanceCalculationRows(pool, scope, { page: 1, pageSize: REPORT_ROW_LIMIT + 1 });
+    if (data.total > REPORT_ROW_LIMIT) {
+      return reply.status(422).send({ code: "EXPORT_TOO_LARGE", message: "Laporan terlalu besar. Persempit unit atau rentang tanggal." });
+    }
+    let table;
+    if (isPunchModel(params.data.model)) {
+      // Data Transaksi / Data Scan read punches; evidence (GPS, photo) never goes into a report.
+      const punches = await attendanceTransactions(pool, {
+        ...scope, ...(params.data.model === "scans" ? { source: "adms" as const } : {}), page: 1, pageSize: REPORT_ROW_LIMIT + 1,
+      });
+      if (punches.total > REPORT_ROW_LIMIT) {
+        return reply.status(422).send({ code: "EXPORT_TOO_LARGE", message: "Laporan terlalu besar. Persempit unit atau rentang tanggal." });
+      }
+      table = buildPunchTable(params.data.model, punches.items);
+    } else {
+      table = buildReportTable(params.data.model, data.items, scope.from, scope.to);
+    }
+    const unitName = scope.unitId ? data.items.find((item) => item.unitId === scope.unitId)?.unitName ?? null : null;
+    const stamp = (value: Date) => new Intl.DateTimeFormat("id-ID", {
+      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta",
+    }).format(value);
+    const longDate = (value: string) => new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${value}T00:00:00Z`));
+    // Identity and meta of the owner-approved print mock-up: unit, employees, filter, work days, and
+    // when the data was calculated, separate from when and by whom it was printed.
+    const header = {
+      scope: scope.employeeId ? `Pegawai: ${data.items[0]?.employeeName ?? "-"}` : `Unit: ${unitName ?? "Semua unit"}`,
+      unit: unitName ?? (scope.unitId ? "-" : "Semua unit"),
+      employeeCount: new Set(data.items.map((item) => item.employeeId)).size,
+      filter: scope.employeeId ? `Satu pegawai (${data.items[0]?.employeeName ?? "-"})` : "Semua pegawai, semua sumber",
+      workDays: new Set(data.items.filter((item) => item.normal === 1).map((item) => item.workDate)).size,
+      period: `Periode ${longDate(scope.from)} – ${longDate(scope.to)}`,
+      calculatedAt: data.lastCalculatedAt ? `${stamp(new Date(data.lastCalculatedAt))} WIB` : "Belum ditarik",
+      printedBy: principal.email,
+      printedAt: `${stamp(new Date())} WIB`,
+    };
+    const warnings = {
+      notCalculated: data.summary.not_calculated ?? 0,
+      changed: data.changedCount,
+      provisional: data.items.some((item) => item.provisional),
+    };
+    if (query.data.format !== "json" || query.data.purpose === "print") {
+      await insertAudit(pool, principal.id, "attendance.report.exported", "attendance_report", null, {
+        model: params.data.model, format: query.data.format, purpose: query.data.purpose,
+        unitId: scope.unitId, employeeId: scope.employeeId, from: scope.from, to: scope.to, rows: data.total,
+      });
+    }
+    const filename = `hcis-kehadiran-${params.data.model}-${scope.from}-${scope.to}`;
+    if (query.data.format === "csv") {
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      return reply.send(reportCsv(table));
+    }
+    if (query.data.format === "xlsx") {
+      reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      reply.header("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      return reply.send(await reportXlsx(table, header));
+    }
+    return reply.send({ ...table, header, warnings, from: scope.from, to: scope.to });
+  });
+
+  // Kept for one release (ATT-014 §10): queues a calculation of every employee for one date.
   app.post("/admin/attendance/finalize/:date", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply, "attendance.policy.manage");
+    const principal = await authenticate(auth, request, reply, "attendance.calculation.run");
     if (!principal) return;
     const params = z.object({ date: dateSchema }).safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_DATE", message: "Tanggal tidak valid." });
-    const employees = await pool.query<{ id: string }>("SELECT id FROM employees WHERE status = 'active' ORDER BY id");
-    let materialized = 0;
-    for (const employee of employees.rows) {
-      await materializeAttendanceResult(pool, employee.id, params.data.date);
-      materialized += 1;
-    }
-    await insertAudit(pool, principal.id, "attendance.finalized", "attendance_result", null, { date: params.data.date, materialized });
-    return reply.send({ date: params.data.date, materialized });
+    return requestCalculation(reply, principal, { from: params.data.date, to: params.data.date });
   });
 
   app.get("/admin/attendance/report", async (request, reply) => {

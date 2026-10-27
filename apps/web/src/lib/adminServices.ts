@@ -67,7 +67,7 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-006"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/mobile-evidence",
+    href: "/admin/attendance/reports?tab=transactions&source=mobile",
     details: ["GPS", "Geotagging / geofence", "Foto kehadiran"],
   },
   {

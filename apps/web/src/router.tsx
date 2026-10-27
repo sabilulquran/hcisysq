@@ -32,12 +32,12 @@ import { AdminAdmsAuditPage } from "@/pages/AdminAdmsAuditPage";
 import { AdminAdmsHealthPage } from "@/pages/AdminAdmsHealthPage";
 import { AdminAdmsJobsPage } from "@/pages/AdminAdmsJobsPage";
 import { AdminAdmsUsersManagementPage } from "@/pages/AdminAdmsUsersManagementPage";
-import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
+import { AdminAttendanceActionQueuePage } from "@/pages/AdminAttendanceActionQueuePage";
+import { AdminAttendanceCorrectionsPage } from "@/pages/AdminAttendanceCorrectionsPage";
 import { AdminAttendanceAssignmentsPage, AdminAttendanceLocationsPage, AdminAttendanceSchedulesPage } from "@/pages/AdminAttendanceConfigPages";
-import { AdminAttendanceClarificationsPage, AdminAttendanceMobileEvidencePage } from "@/pages/AdminAttendanceReviewPages";
 import { AdminAttendanceDailyPage } from "@/pages/AdminAttendanceDailyPage";
-import { AdminAttendanceRecalculatePage } from "@/pages/AdminAttendanceRecalculatePage";
-import { AdminAttendanceReportsV2Page } from "@/pages/AdminAttendanceReportsV2Page";
+import { AdminAttendanceReportPrintPage } from "@/pages/AdminAttendanceReportPrintPage";
+import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
@@ -344,32 +344,33 @@ const adminAttendanceDailyRoute = createRoute({
   component: AdminAttendanceDailyPage,
 });
 
-const adminAttendanceClarificationsRoute = createRoute({
+const adminAttendanceActionQueueRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/admin/attendance/clarifications",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/clarifications"),
-  component: AdminAttendanceClarificationsPage,
-});
-
-const adminAttendanceMobileRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/mobile-evidence",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/mobile-evidence"),
-  component: AdminAttendanceMobileEvidencePage,
+  path: "/admin/attendance/action-queue",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/action-queue"),
+  component: AdminAttendanceActionQueuePage,
 });
 
 const adminAttendanceCorrectionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/corrections",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/corrections"),
-  component: AdminAttendancePage,
+  component: AdminAttendanceCorrectionsPage,
 });
 
 const adminAttendanceReportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/reports",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/reports"),
-  component: AdminAttendanceReportsV2Page,
+  component: AdminAttendanceReportsPage,
+});
+
+// ATT-014 §19.2: the standalone print document, without the admin shell.
+const adminAttendanceReportPrintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/reports/print",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/reports/print"),
+  component: AdminAttendanceReportPrintPage,
 });
 
 const adminAttendanceOvertimeRoute = createRoute({
@@ -384,13 +385,6 @@ const adminAttendanceLocationsRoute = createRoute({
   path: "/admin/attendance/settings/locations",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/locations"),
   component: AdminAttendanceLocationsPage,
-});
-
-const adminAttendanceRecalculateRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/admin/attendance/settings/recalculate",
-  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/recalculate"),
-  component: AdminAttendanceRecalculatePage,
 });
 
 // Routes before ATT-011 stay reachable for at least one release and forward to their new home.
@@ -611,13 +605,12 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceScheduleDatesRoute,
   adminAttendanceShiftSwapsRoute,
   adminAttendanceDailyRoute,
-  adminAttendanceClarificationsRoute,
-  adminAttendanceMobileRoute,
+  adminAttendanceActionQueueRoute,
   adminAttendanceCorrectionsRoute,
   adminAttendanceReportsRoute,
+  adminAttendanceReportPrintRoute,
   adminAttendanceOvertimeRoute,
   adminAttendanceLocationsRoute,
-  adminAttendanceRecalculateRoute,
   ...adminAttendanceLegacyRoutes,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,

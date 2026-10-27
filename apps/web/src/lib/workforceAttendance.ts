@@ -207,12 +207,35 @@ export async function listAttendanceSchedules() {
     id: string; name: string; startTime: string; endTime: string; endDayOffset: number;
     lateGraceMinutes: number; earlyLeaveToleranceMinutes: number;
     active: boolean; workLocationId: string | null; workLocationName: string | null;
+    /** Date (WIB) the shift's first version applies from. */
+    effectiveFrom: string | null;
+    /** ATT-013: blocks 2-3 of the current version. */
+    extraBlocks?: ShiftBlock[];
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
+}
+
+export interface ShiftBlock { startTime: string; endTime: string; /** ATT-013 "Hitungan hari". */ workdayWeight?: number }
+
+/** "04:00–08:30 + 14:30–19:30" (ATT-013); a single block keeps "07:00–16:00". */
+export function shiftHoursText(item: { startTime: string; endTime: string; endDayOffset?: number; extraBlocks?: ShiftBlock[] }) {
+  const blocks = [{ startTime: item.startTime, endTime: item.endTime }, ...(item.extraBlocks ?? [])];
+  return blocks.map((block) => `${block.startTime.slice(0, 5)}–${block.endTime.slice(0, 5)}`).join(" + ")
+    + (item.endDayOffset === 1 ? " · +1 hari" : "");
+}
+
+/** ATT-014 §20.10 "Mundurkan awal berlaku" for the first version of a shift; audited, reason required. */
+export async function backdateAttendanceSchedule(scheduleId: string, input: { effectiveFrom: string; reason: string }) {
+  return readJson<{ id: string; effectiveFrom: string }>(await fetch(`/api/admin/attendance/schedules/${scheduleId}/backdate`, {
+    method: "POST", credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  }));
 }
 
 export async function createAttendanceSchedule(input: {
   name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
-  earlyLeaveToleranceMinutes: number; workLocationId: string | null;
+  earlyLeaveToleranceMinutes: number; workLocationId: string | null; effectiveFrom?: string;
+  extraBlocks?: ShiftBlock[]; firstBlockWorkdayWeight?: number;
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
     method: "POST", credentials: "include",
@@ -256,12 +279,6 @@ export async function updateAttendanceRosterEntries(
 
 export async function publishAttendanceRoster(rosterId: string) {
   return readJson(await fetch(`/api/admin/attendance/rosters/${rosterId}/publish`, {
-    method: "POST", credentials: "include", headers: { Accept: "application/json" },
-  }));
-}
-
-export async function finalizeAttendanceDate(date: string) {
-  return readJson<{ date: string; materialized: number }>(await fetch(`/api/admin/attendance/finalize/${date}`, {
     method: "POST", credentials: "include", headers: { Accept: "application/json" },
   }));
 }
@@ -597,6 +614,20 @@ export interface AttendanceOvertimeItem {
   decisionNote: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** ATT-011-6a HC list only. */
+  initiatedBy?: "employee" | "hc";
+  dayType?: "working_day" | "rest_day" | "public_holiday" | null;
+  /** Scan time outside the schedule (all scans on a day without one); information only. */
+  scanOutsideScheduleMinutes?: number | null;
+}
+
+export type OvertimeStatusFilter = "all" | "submitted" | "approved" | "rejected" | "cancelled" | "closed";
+
+export function dayTypeLabel(value: AttendanceOvertimeItem["dayType"]): string {
+  if (value === "working_day") return "Hari kerja";
+  if (value === "rest_day") return "Hari istirahat";
+  if (value === "public_holiday") return "Libur nasional";
+  return "Belum dihitung";
 }
 
 export async function listMyAttendanceOvertime() {
@@ -620,6 +651,43 @@ export async function submitAttendanceOvertime(input: {
   );
 }
 
+export interface MyAttendanceClarification {
+  id: string;
+  workDate: string;
+  kind: string;
+  mode: "correction" | "justification";
+  reason: string;
+  status: "submitted" | "approved" | "rejected" | "cancelled";
+  proposedCheckInAt: string | null;
+  proposedCheckOutAt: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export async function listMyAttendanceClarifications() {
+  return readJson<{ items: MyAttendanceClarification[] }>(await fetch("/api/attendance/clarifications/me", {
+    credentials: "include", headers: { Accept: "application/json" },
+  }));
+}
+
+export async function cancelMyAttendanceClarification(clarificationId: string) {
+  const response = await fetch(`/api/attendance/clarifications/${encodeURIComponent(clarificationId)}/cancel`, {
+    method: "POST", credentials: "include", headers: { Accept: "application/json" },
+  });
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+/** ATT-011-7: an employee may clarify today and the 7 days before it, never a future date (D-7). */
+export const CLARIFICATION_LOOKBACK_DAYS = 7;
+export function canClarifyDate(workDate: string, today: string, status: string | undefined) {
+  const oldest = new Date(`${today}T00:00:00Z`);
+  oldest.setUTCDate(oldest.getUTCDate() - CLARIFICATION_LOOKBACK_DAYS);
+  return workDate <= today && workDate >= oldest.toISOString().slice(0, 10)
+    && (status === "incomplete" || status === "late" || status === "absent");
+}
+
 export async function cancelAttendanceOvertime(overtimeId: string) {
   const response = await fetch(`/api/attendance/overtime/${encodeURIComponent(overtimeId)}/cancel`, {
     method: "POST", credentials: "include", headers: { Accept: "application/json" },
@@ -628,11 +696,11 @@ export async function cancelAttendanceOvertime(overtimeId: string) {
   await readJson<never>(response);
 }
 
-export async function listAttendanceOvertime(
-  status: "all" | "submitted" | "approved" | "rejected" | "cancelled" = "submitted",
-) {
-  return readJson<{ items: AttendanceOvertimeItem[] }>(
-    await fetch(`/api/admin/attendance/overtime?status=${encodeURIComponent(status)}`, {
+export async function listAttendanceOvertime(status: OvertimeStatusFilter = "submitted", page = 1, unitId?: string) {
+  const params = new URLSearchParams({ status, page: String(page) });
+  if (unitId) params.set("unitId", unitId);
+  return readJson<{ page: number; pageSize: number; total: number; pageCount: number; items: AttendanceOvertimeItem[] }>(
+    await fetch(`/api/admin/attendance/overtime?${params.toString()}`, {
       credentials: "include", headers: { Accept: "application/json" },
     }),
   );

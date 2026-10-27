@@ -2,13 +2,13 @@ import { AlertTriangle, ArrowLeftRight, ClipboardCheck, Smartphone, TimerReset, 
 import { useEffect, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { listAttendanceCorrections } from "@/lib/attendanceCorrections";
 import { todayCardLabel } from "@/lib/attendanceToday";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import { listShiftSwapsForHc } from "@/lib/shiftSwap";
 import {
   getAttendanceToday,
-  listAttendanceClarificationsForHcByStatus,
   listAttendanceMobileEvidence,
   listAttendanceOvertime,
 } from "@/lib/workforceAttendance";
@@ -41,17 +41,19 @@ export function AdminAttendanceSummaryPage() {
       };
       const [daily, clarifications, mobile, overtime, swaps] = await Promise.all([
         can("attendance.reports.read") ? getAttendanceToday().then((value) => value.summary as Record<string, number>).catch(() => null) : Promise.resolve(undefined),
-        can("attendance.clarification.manage") ? count(() => listAttendanceClarificationsForHcByStatus("submitted")) : Promise.resolve(undefined),
+        can("attendance.clarification.manage")
+          ? listAttendanceCorrections({ status: "submitted", origin: "all", mode: "all", page: 1 }).then((value) => value.submittedCount ?? value.total).catch(() => null)
+          : Promise.resolve(undefined),
         can("attendance.clarification.manage") ? count(() => listAttendanceMobileEvidence({ date, reviewState: "needs_review" })) : Promise.resolve(undefined),
-        can("attendance.overtime.manage") ? count(() => listAttendanceOvertime("submitted")) : Promise.resolve(undefined),
+        can("attendance.overtime.manage") ? listAttendanceOvertime("submitted").then((value) => value.total).catch(() => null) : Promise.resolve(undefined),
         can("attendance.shift_swap.manage") ? count(() => listShiftSwapsForHc("awaiting_hc")) : Promise.resolve(undefined),
       ]);
       if (!active) return;
       if (daily === null) setError("Kehadiran hari ini tidak dapat dimuat. Coba muat ulang halaman.");
       setToday(daily ?? null);
       const cards: Array<ActionCard | null> = [
-        clarifications === undefined ? null : { key: "clarifications", label: "Klarifikasi menunggu", href: "/admin/attendance/clarifications", icon: ClipboardCheck, count: clarifications },
-        mobile === undefined ? null : { key: "mobile", label: "Absen HP perlu ditinjau hari ini", href: "/admin/attendance/mobile-evidence", icon: Smartphone, count: mobile },
+        clarifications === undefined ? null : { key: "clarifications", label: "Perbaikan absen menunggu keputusan", href: "/admin/attendance/corrections", icon: ClipboardCheck, count: clarifications },
+        mobile === undefined ? null : { key: "mobile", label: "Absen HP perlu ditinjau hari ini", href: "/admin/attendance/reports?tab=transactions&source=mobile", icon: Smartphone, count: mobile },
         overtime === undefined ? null : { key: "overtime", label: "Lembur menunggu", href: "/admin/attendance/overtime", icon: TimerReset, count: overtime },
         swaps === undefined ? null : { key: "swaps", label: "Tukar shift menunggu HC", href: "/admin/attendance/schedules/swaps", icon: ArrowLeftRight, count: swaps },
       ];

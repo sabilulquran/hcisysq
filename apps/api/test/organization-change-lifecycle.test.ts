@@ -56,6 +56,8 @@ function createPool(scenario: Scenario = {}) {
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
     sqlLog.push(sql);
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [], rowCount: 0 };
+    // O-7: the open-change-set check runs under a transaction-scoped advisory lock.
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [], rowCount: 1 };
     if (sql.includes("FROM auth_sessions s")) {
       return {
         rows: [{
@@ -331,7 +333,7 @@ describe("ORG-008-3b a discarded change set can never become effective structure
 
   it("extends both change-set constraints, so the migration cannot half-apply DISCARDED", async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const sql = await readFile(join(here, "../migrations/0061_organization_change_set_lifecycle.sql"), "utf8");
+    const sql = await readFile(join(here, "../migrations/0062_organization_change_set_lifecycle.sql"), "utf8");
 
     // 0019 holds two CHECKs: the status list and the lifecycle consistency rule. Extending only the
     // first would make every discard fail against the second.
@@ -339,5 +341,37 @@ describe("ORG-008-3b a discarded change set can never become effective structure
     expect(sql).toContain("(status = 'DISCARDED' AND published_at IS NULL)");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 0");
     expect(sql).toContain("Rollback/recovery");
+  });
+});
+
+describe("ORG-008 review: lifecycle refusals", () => {
+  it("refuses to check a discarded change set again instead of failing with 500", async () => {
+    const { response } = await call(
+      { changeSets: [changeSetRow({ status: "DISCARDED", validatedAt: null })] },
+      "POST",
+      `/admin/organization/designer/drafts/${DRAFT_ID}/validate`,
+    );
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "ORGANIZATION_DRAFT_NOT_EDITABLE" });
+  });
+
+  it("checks for an open change set under a lock, inside the creating transaction (O-7)", async () => {
+    const { response, query } = await call(
+      { changeSets: [changeSetRow({ status: "DRAFT" })] },
+      "POST",
+      "/admin/organization/designer/drafts",
+      { payload: { name: "Perubahan Kedua", effectiveOn: "2027-06-01" } },
+    );
+
+    expect(response.statusCode).toBe(409);
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    const begin = statements.indexOf("BEGIN");
+    const lock = statements.findIndex((sql) => sql.includes("pg_advisory_xact_lock"));
+    const openCheck = statements.findIndex((sql) => sql.includes("status = ANY($1::text[])"));
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeGreaterThan(begin);
+    expect(openCheck).toBeGreaterThan(lock);
+    expect(statements).toContain("ROLLBACK");
   });
 });

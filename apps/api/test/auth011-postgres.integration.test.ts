@@ -4,9 +4,10 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { AuthService, type AuthPrincipal } from "../src/modules/auth/service.js";
-import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
+import { ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, HC_LEAD_PERMISSIONS, HC_LEAD_ROLE_KEY, HC_OPERATIONAL_PERMISSIONS, hasOrganizationPermission } from "../src/modules/auth/permissions.js";
 import { createRoleAssignment, removeRoleAssignment } from "../src/modules/auth/role-assignment.js";
 import { OidcLoginService } from "../src/modules/auth/oidc-service.js";
+import { PostgresOrganizationRepository } from "../src/modules/organization/repository.js";
 import type { OidcProvider } from "../src/modules/auth/oidc-provider.js";
 import type { SqHubApplicationAccessClient } from "../src/modules/auth/application-access.js";
 
@@ -189,8 +190,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(180);
-    expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(2);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(230);
+    expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(39);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
@@ -518,6 +519,155 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(result.setCookie).toContain("Secure");
     expect((await auth.getAuthorizationContext(actors.get("legacy")!.principal)).organizationPermissions).toEqual([...ADMIN_PERMISSIONS]);
   });
+
+  it("ORG-008-8: Super Admin grants Kepala HC only with organization scope and a mandate", async () => {
+    // Owner decision 2026-10-24: Kepala HC holds approvals.policy.manage in full, as AUTH-011 defines it.
+    // PAY-003 adds the payroll permissions up to submission; approval and payment stay elsewhere.
+    const leadRoleId = (await pool.query<{ id: string }>(
+      "SELECT id FROM roles WHERE role_key = $1", [HC_LEAD_ROLE_KEY],
+    )).rows[0]!.id;
+    expect((await pool.query<{ permissionKey: string }>(
+      `SELECT permission_key AS "permissionKey" FROM role_permissions WHERE role_id = $1 ORDER BY permission_key`,
+      [leadRoleId],
+    )).rows.map((row) => row.permissionKey)).toEqual([...HC_LEAD_PERMISSIONS].sort());
+
+    // A fresh account, so earlier cases in this suite cannot colour its permissions.
+    const employeeId = randomUUID();
+    const accountId = randomUUID();
+    await pool.query("INSERT INTO employees(id,employee_number,full_name,status) VALUES ($1,$2,'Synthetic Lead','active')",
+      [employeeId, `AUTH011-LEAD-${accountId}`]);
+    await pool.query(`INSERT INTO accounts(id,employee_id,email,principal_type,status)
+      VALUES($1,$2,$3,'EMPLOYEE','active')`, [accountId, employeeId, `lead-${accountId}@example.invalid`]);
+    const legacy = actors.get("legacy")!.principal;
+
+    // A unit-scoped grant would satisfy no organization guard, so it is refused, not stored.
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic mandate" }))
+      .rejects.toMatchObject({ code: "ADMIN_ORGANIZATION_MANDATE_REQUIRED" });
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "organization" }))
+      .rejects.toMatchObject({ code: "ADMIN_ORGANIZATION_MANDATE_REQUIRED" });
+
+    await createRoleAssignment(pool, legacy, accountId,
+      { roleId: leadRoleId, scopeType: "organization", reason: "Synthetic SK Kepala HC" });
+    const session = await auth.createSessionForAccountId(accountId, context);
+    const granted = await auth.getAuthorizationContext(session.session.principal);
+    expect(granted.organizationPermissions.sort()).toEqual([...HC_LEAD_PERMISSIONS].sort());
+
+    // An HC administrator may not grant it, whatever the scope.
+    await expect(createRoleAssignment(pool, actors.get("admin")!.principal, accountId,
+      { roleId: leadRoleId, scopeType: "organization", reason: "Synthetic delegation attempt" }))
+      .rejects.toMatchObject({ code: "ROLE_GRANT_SUPER_ADMIN_ONLY" });
+  }, 60000);
+
+  it("ORG-008-9: compares Kepala HC role holders with the Kepala HC seat, and only Super Admin sets the seat", async () => {
+    // Before a seat is chosen there is nothing to compare, and the check says so.
+    const before = await request("admin", "GET", "/admin/access/role-seat-checks");
+    expect(before.statusCode, before.body).toBe(200);
+    expect(before.json().items).toMatchObject([{ roleKey: HC_LEAD_ROLE_KEY, status: "SEAT_NOT_SET", mismatches: [] }]);
+
+    // A published structure whose Kepala HC seat is held by the "employee" actor.
+    const organization = new PostgresOrganizationRepository(pool);
+    const draft = await organization.createDraft({
+      name: "Synthetic ORG-008-9", effectiveOn: "2026-01-01", actorAccountId: actors.get("legacy")!.principal.id,
+    });
+    const seatKey = randomUUID();
+    const nodeKey = randomUUID();
+    const seatHolder = actors.get("employee")!.employeeId!;
+    draft.nodes.push({
+      id: randomUUID(), stableKey: nodeKey, name: "Synthetic Human Capital", nodeType: "UNIT", parentNodeKey: null,
+      active: true, effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null,
+    });
+    draft.positions.push({
+      id: randomUUID(), stableKey: seatKey, nodeKey, title: "Synthetic Kepala HC", parentPositionKey: null,
+      singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT", active: true, effectiveFrom: "2026-01-01",
+      effectiveTo: null, visualRankOffset: 0, holderSource: "EMPLOYEE",
+    });
+    draft.incumbencies.push({
+      id: randomUUID(), positionKey: seatKey, employeeId: seatHolder, accountId: null, kind: "PRIMARY",
+      isPrimaryStructural: false, effectiveFrom: "2026-01-01", effectiveTo: null, reason: null,
+    });
+    await organization.replaceDraftSnapshot(draft);
+    await pool.query(
+      `UPDATE organization_change_sets SET status = 'PUBLISHED', validated_at = now(), published_at = now(),
+         validation_report = '{"valid": true, "issues": []}'::jsonb WHERE id = $1`,
+      [draft.changeSet.id],
+    );
+
+    const link = { positionKey: seatKey, reason: "Synthetic SK Kepala HC" };
+    // Choosing the seat is part of granting the role: everyone but Super Admin is refused first.
+    for (const name of ["admin", "hc", "delegate", "employee"]) {
+      const refused = await request(name, "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`, link);
+      expect.soft(refused.statusCode, name).toBe(403);
+    }
+    expect((await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`,
+      { positionKey: randomUUID(), reason: "Synthetic" })).statusCode).toBe(404);
+
+    const set = await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`, link);
+    expect(set.statusCode, set.body).toBe(200);
+    const check = set.json();
+    expect(check).toMatchObject({ status: "CHECKED", seat: { positionKey: seatKey, title: "Synthetic Kepala HC" } });
+    // The seat holder has an account but not the role; nothing was granted to make them match.
+    expect(check.mismatches).toContainEqual(expect.objectContaining({
+      kind: "SEATED_WITHOUT_ROLE", employeeId: seatHolder, incumbentKind: "PRIMARY", reason: "NO_ROLE",
+    }));
+    for (const holder of check.holders as Array<{ accountId: string }>) {
+      expect(check.mismatches).toContainEqual(expect.objectContaining({ kind: "HOLDER_NOT_SEATED", accountId: holder.accountId }));
+    }
+    expect((await pool.query(
+      `SELECT count(*)::int AS count FROM account_role_assignments ara
+       JOIN accounts a ON a.id = ara.account_id JOIN roles r ON r.id = ara.role_id
+       WHERE a.employee_id = $1 AND r.role_key = $2`, [seatHolder, HC_LEAD_ROLE_KEY],
+    )).rows[0].count).toBe(0);
+    expect((await pool.query(
+      "SELECT payload FROM access_audit_events WHERE action = 'role.seat_link.set' ORDER BY occurred_at DESC LIMIT 1",
+    )).rows[0].payload).toMatchObject({ roleKey: HC_LEAD_ROLE_KEY, positionKey: seatKey });
+
+    // Clearing goes back to "no seat chosen" and is audited too.
+    const cleared = await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`,
+      { positionKey: null, reason: "Synthetic reset" });
+    expect(cleared.json()).toMatchObject({ status: "SEAT_NOT_SET" });
+    expect((await pool.query("SELECT 1 FROM access_audit_events WHERE action = 'role.seat_link.cleared'")).rowCount).toBe(1);
+  }, 60000);
+
+  it("ORG-008-10: counts as composers the creator and every editor, never the checker", async () => {
+    const organization = new PostgresOrganizationRepository(pool);
+    const creator = actors.get("admin")!.principal.id;
+    const editor = actors.get("delegate")!.principal.id;
+    const checker = actors.get("hc")!.principal.id;
+    const draft = await organization.createDraft({
+      name: "Synthetic ORG-008-10", effectiveOn: "2027-03-01", actorAccountId: creator,
+    });
+    const event = (actor: string, action: string) => pool.query(
+      `INSERT INTO organization_audit_events (id, actor_account_id, action, entity_type, entity_id, change_set_id, payload)
+       VALUES ($1, $2, $3, 'organization_change_set', $4, $4, '{}'::jsonb)`,
+      [randomUUID(), actor, action, draft.changeSet.id],
+    );
+    await event(editor, "organization.node.updated");
+    await event(checker, "organization.draft.validated");
+    await event(checker, "organization.draft.reopened");
+
+    expect((await organization.listChangeSetComposers(draft.changeSet.id)).sort()).toEqual([creator, editor].sort());
+    await pool.query("UPDATE organization_change_sets SET status = 'DISCARDED' WHERE id = $1", [draft.changeSet.id]);
+  }, 60000);
+
+  it("ORG-005-2: device location and the in-use guard run against PostgreSQL", async () => {
+    const created = await request("admin", "POST", "/admin/attendance/work-locations",
+      { name: "Synthetic Kampus", latitude: -6.2, longitude: 106.8, radiusMeters: 100 });
+    expect(created.statusCode, created.body).toBe(201);
+    const locationId = created.json().id as string;
+
+    // The device profile reads the location name with a correlated subselect.
+    const missing = randomUUID();
+    expect((await request("admin", "GET", `/admin/attendance/adms/devices/${missing}/wdms-profile`)).statusCode).toBe(404);
+    expect((await request("admin", "PATCH", `/admin/attendance/adms/devices/${missing}/wdms-profile`,
+      { workLocationId: locationId })).statusCode).toBe(404);
+
+    // Nothing uses it yet, so it can be switched off; the uses query runs on the real schema.
+    const off = await request("admin", "PATCH", `/admin/attendance/work-locations/${locationId}`, { active: false });
+    expect(off.statusCode, off.body).toBe(200);
+    expect((await pool.query("SELECT active FROM attendance_work_locations WHERE id = $1", [locationId])).rows[0].active).toBe(false);
+  }, 60000);
 });
 
 const migrationCompatibilitySchema = `auth011_migration_${randomUUID().replaceAll("-", "")}`;

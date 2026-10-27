@@ -215,6 +215,47 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
 
+  /payroll/periods/{periodId}/inputs/from-attendance:
+    post:
+      tags: [Payroll]
+      operationId: resolvePayrollAttendanceInputs
+      summary: Fill the period's attendance-derived inputs
+      description: >-
+        Requires payroll.inputs.manage, and only while the period is COLLECTING or
+        CALCULATED. Reads approved overtime (ATT-010) and, for contract workers,
+        the days with a recorded check-in inside the period's cutoff window, and
+        stores both as ordinary period inputs with origin ATTENDANCE. It replaces
+        whatever those two keys held, including a correction typed by hand, which
+        is why it is an explicit action rather than part of the calculation.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: How many employments each key produced, and the period's inputs afterwards
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [overtimeCount, attendanceCount, inputs]
+                properties:
+                  overtimeCount: { type: integer }
+                  attendanceCount: { type: integer }
+                  inputs:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPeriodInput' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period has left COLLECTING and CALCULATED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
   /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
     delete:
       tags: [Payroll]

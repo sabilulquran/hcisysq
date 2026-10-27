@@ -162,6 +162,12 @@ function createPool(
     if (sql.includes("FROM payroll_loans")) {
       return { rows: [], rowCount: 0 };
     }
+    if (sql.includes("FROM attendance_overtime_requests")) {
+      return { rows: [{ employmentId: EMPLOYMENT_ID, minutes: "120" }], rowCount: 1 };
+    }
+    if (sql.includes("attendance_result_versions")) {
+      return { rows: [{ employmentId: EMPLOYMENT_ID, days: "18" }], rowCount: 1 };
+    }
     if (sql.includes("FROM payroll_period_transitions")) {
       return { rows: transitions, rowCount: transitions.length };
     }
@@ -843,4 +849,37 @@ describe("PAY-003 input ranges", () => {
     });
     expect(response.statusCode).toBe(200);
   });
+});
+
+
+describe("PAY-003 attendance-derived inputs", () => {
+  const url = `/payroll/periods/${PERIOD_ID}/inputs/from-attendance`;
+
+  it("stores approved overtime and contract attendance as ATTENDANCE inputs", async () => {
+    const { response, inputWrites, audits } = await call("hc", "POST", url, {
+      period: { state: "COLLECTING" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ overtimeCount: 1, attendanceCount: 1 });
+    expect(inputWrites).toEqual([
+      { employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 2 },
+      { employmentId: EMPLOYMENT_ID, inputKey: "CONTRACT_ATTENDANCE_DAYS", value: 18 },
+    ]);
+    expect(audits).toEqual(["payroll.period.inputs_recorded"]);
+  });
+
+  it("needs payroll.inputs.manage", async () => {
+    for (const persona of ["director", "finance", "employee", "board", "super_admin"] as const) {
+      const { response } = await call(persona, "POST", url, { period: { state: "COLLECTING" } });
+      expect(response.statusCode).toBe(403);
+    }
+  }, 20_000);
+
+  it("refuses once the period has left its working phase", async () => {
+    for (const state of ["SUBMITTED", "APPROVED", "PUBLISHED"]) {
+      const { response, inputWrites } = await call("hc", "POST", url, { period: { state } });
+      expect(response.statusCode).toBe(409);
+      expect(inputWrites).toEqual([]);
+    }
+  }, 20_000);
 });

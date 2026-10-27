@@ -128,7 +128,9 @@ Daftar vertikal puluhan slip dihapus.
 
 Employee page menggunakan compact selector di atas dokumen:
 
-- input combobox/searchable;
+- pilihan tahun (muncul bila slip ada di lebih dari satu tahun); `GET /payslips?year=` mengembalikan satu tahun
+  beserta daftar tahun yang tersedia (ENG-LIST-001 PAG-10, 27 Oktober 2026), tanpa `year` tahun terbaru;
+- input combobox/searchable untuk periode di tahun terpilih;
 - option menampilkan bulan/tahun + jenis slip;
 - tombol `Tampilkan`;
 - latest published slip dapat menjadi default selection;

@@ -1596,6 +1596,30 @@ export async function registerPayslipRoutes(
   app.get("/payslips", async (request, reply) => {
     const self = await requireEmployee(request, reply);
     if (!self) return;
+    const query = z.object({ year: z.coerce.number().int().min(2000).max(2100).optional() }).safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({ code: "INVALID_QUERY", message: "Tahun slip gaji tidak valid." });
+    }
+    // ENG-LIST-001: one year at a time (at most twelve months plus revisions), with the years the
+    // employee has slips in, newest first. Without a year the newest year is shown.
+    const visible = `payslip.employee_id = $1
+          AND payslip.published_at IS NOT NULL
+          -- PAY-003: a slip a revision replaced is history, not the slip for the
+          -- month. Listing both would show one period twice with two amounts.
+          AND payslip.superseded_by_id IS NULL`;
+    const years = await pool.query<{ year: number; count: number }>(
+      `SELECT extract(year FROM payslip.period)::int AS year, count(*)::int AS count
+         FROM payslips payslip
+        WHERE ${visible}
+        GROUP BY 1
+        ORDER BY 1 DESC`,
+      [self.employeeId],
+    );
+    const year = query.data.year ?? years.rows[0]?.year ?? null;
+    if (year === null) {
+      reply.header("Cache-Control", "private, no-store");
+      return reply.send({ items: [], year: null, years: [] });
+    }
     const result = await pool.query(
       `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
               payslip.source_format AS "sourceFormat",
@@ -1604,16 +1628,13 @@ export async function registerPayslipRoutes(
               (payslip.revision_of IS NOT NULL) AS "isRevision"
          FROM payslips payslip
          JOIN employees employee ON employee.id = payslip.employee_id
-        WHERE payslip.employee_id = $1
-          AND payslip.published_at IS NOT NULL
-          -- PAY-003: a slip a revision replaced is history, not the slip for the
-          -- month. Listing both would show one period twice with two amounts.
-          AND payslip.superseded_by_id IS NULL
-        ORDER BY payslip.period DESC`,
-      [self.employeeId],
+        WHERE ${visible}
+          AND extract(year FROM payslip.period) = $2
+        ORDER BY payslip.period DESC, payslip.id DESC`,
+      [self.employeeId, year],
     );
     reply.header("Cache-Control", "private, no-store");
-    return reply.send({ items: result.rows });
+    return reply.send({ items: result.rows, year, years: years.rows });
   });
 
   app.get("/payslips/:id", async (request, reply) => {

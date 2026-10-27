@@ -5,6 +5,7 @@
 // decides. Nothing is resolved on their behalf.
 
 import { AlertTriangle, History, LoaderCircle, RefreshCw, Undo2 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import {
   organizationCommandLabel,
@@ -26,8 +27,15 @@ export function OrganizationChangeList({
   onCancelPreview,
   onRebase,
   onRetry,
+  total,
+  footer,
 }: {
+  /** One page of the journal, newest step first. */
   entries: OrganizationJournalEntry[];
+  /** Steps in the whole change set; defaults to the entries shown. */
+  total?: number;
+  /** Paging control under the list when the journal spans more than one page. */
+  footer?: ReactNode;
   loading: boolean;
   error: string | null;
   /** Set when another publication has replaced the base this change set was built on. */
@@ -46,10 +54,10 @@ export function OrganizationChangeList({
     <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
       <div className="flex items-center gap-2">
         <History className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-        <h2 className="text-base font-bold text-brand-heading">Yang berubah{entries.length > 0 ? ` (${entries.length})` : ""}</h2>
+        <h2 className="text-base font-bold text-brand-heading">Yang berubah{(total ?? entries.length) > 0 ? ` (${total ?? entries.length})` : ""}</h2>
       </div>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Urutan tindakan yang Anda lakukan pada perubahan ini. Belum berlaku sebelum diterbitkan.
+        Tindakan yang Anda lakukan pada perubahan ini, terbaru di atas. Belum berlaku sebelum diterbitkan.
       </p>
 
       {staleBaseName ? (
@@ -160,6 +168,7 @@ export function OrganizationChangeList({
             ))}
           </ol>
         )}
+        {footer}
       </div>
     </article>
   );

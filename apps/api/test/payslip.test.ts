@@ -1169,8 +1169,12 @@ describe("PAYSLIP-007 employment status contract", () => {
         expect(values).toEqual([employeePrincipal.id]);
         return result([{ employeeId }]);
       }
-      if (normalized.includes("FROM payslips payslip") && normalized.includes("employment_status")) {
+      if (normalized.includes("extract(year FROM payslip.period)::int AS year")) {
         expect(values).toEqual([employeeId]);
+        return result([{ year: 2026, count: 1 }]);
+      }
+      if (normalized.includes("FROM payslips payslip") && normalized.includes("employment_status")) {
+        expect(values).toEqual([employeeId, 2026]);
         expect(normalized).toContain('employee.employment_status AS "employmentStatus"');
         return result([{
           id: payslipId,
@@ -1196,6 +1200,37 @@ describe("PAYSLIP-007 employment status contract", () => {
       sourceFormat: "tetap",
       employmentStatus: "Kontrak",
     });
+    expect(response.json()).toMatchObject({ year: 2026, years: [{ year: 2026, count: 1 }] });
+    await app.close();
+  });
+
+  it("lists one year of own payslips at a time and refuses an invalid year (ENG-LIST-001)", async () => {
+    const calls: Array<{ sql: string; values?: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      calls.push({ sql: normalized, values });
+      if (normalized.includes("FROM accounts account JOIN employees employee")) return result([{ employeeId }]);
+      if (normalized.includes("extract(year FROM payslip.period)::int AS year")) {
+        return result([{ year: 2026, count: 9 }, { year: 2025, count: 12 }]);
+      }
+      if (normalized.includes("FROM payslips payslip")) return result([{ id: payslipId, period: "2025-12" }]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(employeePrincipal));
+
+    const older = await app.inject({ method: "GET", url: "/payslips?year=2025", headers: { cookie: "hcis_session=synthetic" } });
+    expect(older.statusCode).toBe(200);
+    expect(older.json()).toMatchObject({ year: 2025, years: [{ year: 2026, count: 9 }, { year: 2025, count: 12 }] });
+    const listQuery = calls.find((call) => call.sql.includes("extract(year FROM payslip.period) = $2"));
+    expect(listQuery?.values).toEqual([employeeId, 2025]);
+    // Every query stays scoped to the signed-in employee.
+    expect(calls.filter((call) => call.sql.includes("FROM payslips payslip")).every((call) => call.values?.[0] === employeeId)).toBe(true);
+
+    for (const bad of ["abc", "1999", "2101", "2025.5"]) {
+      const invalid = await app.inject({ method: "GET", url: `/payslips?year=${bad}`, headers: { cookie: "hcis_session=synthetic" } });
+      expect(invalid.statusCode, bad).toBe(400);
+    }
     await app.close();
   });
 });

@@ -284,6 +284,35 @@ export function decideTransition(
   return { allowed: true, nextState, auditAction: rule.auditAction };
 }
 
+/**
+ * The work on a period that is not a lifecycle transition: resolving the
+ * attendance inputs, drafting the slips, publishing them. The screens must not
+ * decide these from a state and a permission of their own, so the rule lives
+ * here beside the transitions it belongs with.
+ */
+export const PERIOD_OPERATIONS = ["resolve_attendance", "draft_payslips", "publish_payslips"] as const;
+
+export type PeriodOperation = (typeof PERIOD_OPERATIONS)[number];
+
+const OPERATION_RULES: Readonly<Record<PeriodOperation, { from: readonly PeriodState[]; permission: string }>> = {
+  resolve_attendance: { from: ["COLLECTING", "CALCULATED"], permission: "payroll.inputs.manage" },
+  draft_payslips: { from: ["PAYMENT_CONFIRMED", "PUBLISHED"], permission: "payroll.periods.manage" },
+  // PAY-002 keeps the decision to show a slip to an employee.
+  publish_payslips: { from: ["PAYMENT_CONFIRMED", "PUBLISHED"], permission: "payslips.publish" },
+};
+
+export function availableOperations(period: PeriodSnapshot, actor: TransitionActor): PeriodOperation[] {
+  return PERIOD_OPERATIONS.filter((operation) => {
+    const rule = OPERATION_RULES[operation];
+    return rule.from.includes(period.state) && actor.organizationPermissions.includes(rule.permission);
+  });
+}
+
+/** The actions that carry a reason, so a caller need not know the table. */
+export function reasonRequiredActions(): PeriodAction[] {
+  return PERIOD_ACTIONS.filter((action) => TRANSITIONS[action].reasonRequired);
+}
+
 /** The actions this actor could take on this period right now, for the UI. */
 export function availableActions(
   period: PeriodSnapshot,

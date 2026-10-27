@@ -278,18 +278,36 @@ paths:
     get:
       tags: [Payslips]
       operationId: listMyPayslips
+      description: >
+        ENG-LIST-001: one calendar year of the employee's own published, current slips per request,
+        plus every year that has slips (newest first). Without year the newest year is returned.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema: { type: integer, minimum: 2000, maximum: 2100 }
       responses:
         '200':
-          description: Published payslips owned by current active employee
+          description: Published payslips owned by current active employee for one year
           content:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, year, years]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/PayslipSummary' }
+                  year: { type: [integer, 'null'] }
+                  years:
+                    type: array
+                    items:
+                      type: object
+                      required: [year, count]
+                      properties:
+                        year: { type: integer }
+                        count: { type: integer }
+        '400': { description: 'INVALID_QUERY: year out of range' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 

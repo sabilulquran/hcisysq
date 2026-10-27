@@ -42,9 +42,9 @@ describe.skipIf(!allowed)("PAY-003 reference data against PostgreSQL", () => {
     employeeId = randomUUID();
     employmentId = randomUUID();
     const actionId = randomUUID();
-    // Each test owns one policy key, so suites running side by side never
-    // collide on the no-overlap constraint.
-    policyKey = "OVERTIME";
+    // A key no other suite writes, so suites running side by side never collide
+    // on the no-overlap constraint. The store does not care which key it is.
+    policyKey = "PPH21_TER";
 
     const client = await pool.connect();
     await client.query("BEGIN");

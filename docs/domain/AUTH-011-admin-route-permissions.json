@@ -2753,5 +2753,21 @@
       "payroll.calculate",
       "payroll.inputs.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods/:periodId/payslips",
+    "permissions": [
+      "payroll.periods.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods/:periodId/payslips/publish",
+    "permissions": [
+      "payslips.publish"
+    ]
   }
 ]

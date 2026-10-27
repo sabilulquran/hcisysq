@@ -147,21 +147,38 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
       title: "Pengumuman seluruh pegawai", body: "Isi pengumuman sintetis untuk pengujian.",
       audiences: [{ kind: "ALL_EMPLOYEES" }],
     });
-    expect((await publish(id)).statusCode).toBe(200);
-    // The second attempt is refused; the first already took effect.
-    const second = await publish(id);
-    expect(second.statusCode, second.body).toBe(409);
+    const first = await publish(id);
+    expect(first.statusCode, first.body).toBe(200);
+    const reach = first.json().reach as number;
+    // ALL_EMPLOYEES covers whatever else lives in this database, so the counts are compared
+    // against each other rather than against an absolute number.
+    expect(reach).toBeGreaterThanOrEqual(2);
 
-    const rows = await client.query<{ total: number }>(
+    const countRecipients = async () => (await client.query<{ total: number }>(
       `SELECT count(*)::int AS total FROM announcement_recipients WHERE announcement_id = $1`,
       [id],
-    );
-    expect(rows.rows[0]?.total).toBe(2);
-    const notifications = await client.query<{ total: number }>(
+    )).rows[0]!.total;
+    const countNotifications = async () => (await client.query<{ total: number }>(
       `SELECT count(*)::int AS total FROM in_app_notifications WHERE event_key = $1`,
       [`announcement.${id}`],
+    )).rows[0]!.total;
+
+    const recipientsAfterFirst = await countRecipients();
+    const notificationsAfterFirst = await countNotifications();
+    expect(recipientsAfterFirst).toBe(reach);
+    // Both synthetic employees are in the snapshot; only employee A has an account.
+    const synthetic = await client.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM announcement_recipients
+        WHERE announcement_id = $1 AND employee_id = ANY($2::uuid[])`,
+      [id, [employeeA, employeeB]],
     );
-    expect(notifications.rows[0]?.total).toBe(1);
+    expect(synthetic.rows[0]?.total).toBe(2);
+
+    // The second attempt is refused; the first already took effect, and nothing is added.
+    const second = await publish(id);
+    expect(second.statusCode, second.body).toBe(409);
+    expect(await countRecipients()).toBe(recipientsAfterFirst);
+    expect(await countNotifications()).toBe(notificationsAfterFirst);
   });
 
   it("NOTIF-002-C: moving an employee afterwards does not change the frozen reach", async () => {
@@ -262,12 +279,15 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
     const stored = await client.query<{ status: string }>("SELECT status FROM announcements WHERE id = $1", [scheduled]);
     expect(stored.rows[0]?.status).toBe("SCHEDULED");
 
-    await draft({
+    const drafted = await draft({
       title: "Pengumuman draf", body: "Isi draf sintetis untuk pengujian.",
       audiences: [{ kind: "ALL_EMPLOYEES" }],
     });
 
-    const rows = await client.query<{ total: number }>("SELECT count(*)::int AS total FROM announcement_recipients");
+    const rows = await client.query<{ total: number }>(
+      "SELECT count(*)::int AS total FROM announcement_recipients WHERE announcement_id = ANY($1::uuid[])",
+      [[scheduled, drafted]],
+    );
     expect(rows.rows[0]?.total).toBe(0);
     const mine = await app.inject({ method: "GET", url: "/announcements/me" });
     expect(mine.json().items).toHaveLength(0);

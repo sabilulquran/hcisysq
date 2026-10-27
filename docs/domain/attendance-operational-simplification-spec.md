@@ -28,7 +28,15 @@ ATT-011 **tidak** mengganti model kebenaran backend. Yang tetap:
 | I-7 Lembur hanya dari keputusan eksplisit | ATT-010 | Scan di luar jadwal ditampilkan sebagai fakta, bukan lembur otomatis. |
 | I-8 Tidak ada kalkulasi payroll | MVP, PAY-003 | Lembur yang diakui adalah input masa depan PAY-003. |
 
-Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention foto, payroll, multi-shift per pegawai per hari, approval atasan baru untuk cuti. Beberapa **blok kerja** dalam satu shift kini didukung oleh ATT-013 (`attendance-work-blocks.md`); dua pola jadwal pada tanggal yang sama tetap "Jadwal bermasalah".
+Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention foto, payroll, ~~multi-shift per pegawai per hari~~, approval atasan baru untuk cuti.
+
+> **Dibatalkan 2026-10-24 (keputusan owner):** non-goal "multi-shift per pegawai per hari" tidak
+> berlaku lagi. Draf SK Jadwal Kerja YSQ menyusun jadwal di atas Blok Kerja dan empat kelompok
+> memakai dua Blok Kerja dalam satu hari, sehingga owner memutuskan HCIS yang menyesuaikan.
+> Pekerjaannya berada di spesifikasi tersendiri **ATT-013** (`attendance-multi-block-schedule.md`,
+> rancangan; implementasi tercatat di `attendance-work-blocks.md`), bukan di paket ATT-011 mana pun.
+> Beberapa Blok Kerja dalam satu shift kini didukung; dua pola jadwal pada tanggal yang sama tetap
+> "Jadwal bermasalah".
 
 ## 2. Actor
 

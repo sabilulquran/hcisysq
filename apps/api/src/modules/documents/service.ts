@@ -47,21 +47,50 @@ export interface EmployeeFacts {
   endedOn: string | null;
 }
 
-/** D-04 DRAFT: `<seq>/<kode>/YSQ/<bulan romawi>/<tahun>`. */
-export function formatDocumentNumber(numberCode: string, sequence: number, issuedAt: Date): string {
-  const month = ROMAN_MONTHS[issuedAt.getUTCMonth()];
-  return `${String(sequence).padStart(3, "0")}/${numberCode}/YSQ/${month}/${issuedAt.getUTCFullYear()}`;
+/**
+ * The register is a Yayasan calendar, not a UTC one: between 00:00 and 07:00 WIB the two
+ * disagree, and a letter issued at 06:00 WIB on 1 January would otherwise take last year's
+ * sequence. Every date this module derives comes from Asia/Jakarta.
+ */
+const JAKARTA_DATE = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+/** `YYYY-MM-DD` in Asia/Jakarta. */
+export function jakartaDate(instant: Date): string {
+  return JAKARTA_DATE.format(instant);
 }
 
+/** D-04 DRAFT: `<seq>/<kode>/YSQ/<bulan romawi>/<tahun>`, per Jakarta calendar year. */
+export function formatDocumentNumber(numberCode: string, sequence: number, issuedAt: Date): string {
+  const [year, month] = jakartaDate(issuedAt).split("-");
+  return `${String(sequence).padStart(3, "0")}/${numberCode}/YSQ/${ROMAN_MONTHS[Number(month) - 1]}/${year}`;
+}
+
+export function jakartaYear(instant: Date): number {
+  return Number(jakartaDate(instant).slice(0, 4));
+}
+
+/** Adds months and clamps to the end of the target month, so 31 Aug + 6 is 28/29 Feb, not 3 Mar. */
 export function addMonths(date: string, months: number): string {
   const [year, month, day] = date.split("-").map(Number);
-  const base = new Date(Date.UTC(year!, (month! - 1) + months, day!));
+  const target = (month! - 1) + months;
+  const lastDay = new Date(Date.UTC(year!, target + 1, 0)).getUTCDate();
+  const base = new Date(Date.UTC(year!, target, Math.min(day!, lastDay)));
   return base.toISOString().slice(0, 10);
 }
 
-/** DOC-002-D: expiry is derived from the date, never from a scheduled job. */
-export function isDisciplinaryActive(expiresOn: string, today: string): boolean {
-  return expiresOn >= today;
+/**
+ * DOC-002-D: a letter is in force when it has been issued, has taken effect and has not
+ * expired. Derived on read, so no scheduled job is needed for the data to be correct.
+ */
+export function isDisciplinaryActive(
+  status: string,
+  effectiveDate: string,
+  expiresOn: string,
+  today: string,
+): boolean {
+  return status === "ISSUED" && effectiveDate <= today && expiresOn >= today;
 }
 
 export async function listDocumentTypes(db: QueryTarget): Promise<DocumentType[]> {
@@ -137,13 +166,14 @@ export async function writeDocumentAudit(
 }
 
 /**
- * DOC-001-D: the counter row is locked for the rest of the transaction, so two
- * concurrent issues serialize and never share a sequence. The caller owns the
- * transaction; a rollback gives the number back because the counter row rolls
- * back with it, and nothing else has seen it.
+ * DOC-001-D: ON CONFLICT DO UPDATE takes an exclusive row lock on the counter, so a second
+ * issue for the same code and year blocks until this transaction ends (READ COMMITTED, the
+ * default here) and the two never share a sequence. The caller owns the transaction; a
+ * rollback gives the number back, because the counter row rolls back with it and nothing
+ * else has seen it.
  */
 async function allocateNumber(client: PoolClient, numberCode: string, issuedAt: Date) {
-  const year = issuedAt.getUTCFullYear();
+  const year = jakartaYear(issuedAt);
   const result = await client.query<{ lastSequence: number }>(
     `INSERT INTO hr_document_number_counters (number_code, number_year, last_sequence)
      VALUES ($1, $2, 1)

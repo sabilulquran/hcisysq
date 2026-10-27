@@ -39,6 +39,7 @@ Termasuk (Paket 1):
 | Surat keterangan penghasilan | Butuh angka payroll otoritatif. **Ditunda ke Paket 2**, setelah PAY-003 punya hasil payroll final. Jenisnya sudah disediakan di katalog tetapi tidak aktif. |
 | Unggah berkas dari pegawai | Paket 1 tidak menerima attachment. Object storage dan pemindaian berkas adalah keputusan terpisah. |
 | Tanda tangan elektronik bersertifikat | Paket 1 memakai blok penandatangan tercetak, sama seperti PAYSLIP-005. |
+| Akses mandiri pegawai non-aktif | Endpoint self HCIS mensyaratkan pegawai dan akun yang aktif. Paklaring karena itu diterbitkan HC dan diserahkan di luar sistem pada Paket 1; ini batas yang diketahui, bukan cacat. |
 | Pengiriman email/WhatsApp | NOTIF-001 adapter eksternal, terpisah. |
 
 ## 3. Keputusan
@@ -156,8 +157,9 @@ hr_disciplinary_letters    detail surat peringatan
 
 Aturan:
 
-- `hr_issued_documents` unik pada `(document_code, year, sequence)`;
-- alokasi nomor memakai baris penghitung yang dikunci `FOR UPDATE` di dalam transaksi penerbitan, supaya dua penerbitan bersamaan tidak memperoleh nomor yang sama;
+- `hr_issued_documents` unik pada `(number_code, number_year, number_sequence)` dan pada `document_number`;
+- alokasi nomor menaikkan baris penghitung dengan `ON CONFLICT DO UPDATE` di dalam transaksi penerbitan; kunci baris eksklusifnya membuat penerbitan kedua menunggu, sehingga dua penerbitan bersamaan tidak memperoleh nomor yang sama;
+- tanggal, bulan romawi, dan tahun nomor surat diturunkan dari zona **Asia/Jakarta**, bukan UTC, supaya surat yang terbit dini hari tidak memakai urutan tahun atau bulan sebelumnya;
 - snapshot isi disimpan sebagai `jsonb` yang sudah tersaring (§D-15);
 - tidak ada endpoint hapus.
 
@@ -182,7 +184,7 @@ DOC-002:
 - DOC-002-A: hanya pemegang `documents.discipline.manage` yang dapat menerbitkan dan membaca surat peringatan orang lain.
 - DOC-002-B: pegawai melihat surat peringatan miliknya dan dapat menandainya telah dibaca; tanda terima tercatat dengan waktu.
 - DOC-002-C: pegawai tidak dapat menandai tanda terima milik orang lain.
-- DOC-002-D: SP yang melewati tanggal berakhir ditampilkan tidak aktif tanpa job terjadwal.
+- DOC-002-D: SP dianggap berlaku hanya bila statusnya `ISSUED`, tanggal berlakunya sudah lewat, dan belum melewati tanggal berakhir — seluruhnya diturunkan saat dibaca, tanpa job terjadwal. SP yang dibatalkan tidak pernah tampil berlaku.
 - DOC-002-E: menerbitkan SP1 saat ada SP2 aktif menghasilkan peringatan, bukan penolakan (D-11).
 - DOC-002-F: pembatalan membutuhkan `documents.correct` dan alasan; nomor tetap terpakai.
 - DOC-002-G: pratinjau notifikasi tidak memuat isi naratif.

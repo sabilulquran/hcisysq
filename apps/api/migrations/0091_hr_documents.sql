@@ -1,10 +1,11 @@
 -- DOC-001 / DOC-002 Package 1: HR document register.
 -- Spec: docs/domain/hr-documents.md §9.
 --
--- Number allocation uses hr_document_number_counters locked FOR UPDATE inside the
--- issuing transaction, so two concurrent issues never receive the same number
--- (spec DOC-001-D). Numbers are never recycled: a revoked document keeps its
--- number and moves to status REVOKED (D-03).
+-- Number allocation increments hr_document_number_counters with ON CONFLICT DO UPDATE
+-- inside the issuing transaction. That takes an exclusive row lock, so a second issue for
+-- the same code and year blocks until the first transaction ends and the two never receive
+-- the same number (spec DOC-001-D); the UNIQUE below is the backstop. Numbers are never
+-- recycled: a revoked document keeps its number and moves to status REVOKED (D-03).
 --
 -- Down:
 --   DROP TABLE IF EXISTS hr_document_audit_events;

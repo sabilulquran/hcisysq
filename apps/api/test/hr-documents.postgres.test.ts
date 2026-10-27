@@ -20,6 +20,9 @@ const allowed = (() => {
 /**
  * The routes own their transactions, so the test pool maps BEGIN/COMMIT/ROLLBACK
  * onto savepoints of the one outer transaction the test rolls back afterwards.
+ * Every connect() hands back the same client, so these tests are strictly sequential:
+ * they cover transaction boundaries, not concurrency. The row lock that serializes two
+ * simultaneous issues is asserted through the schema instead (see the UNIQUE test).
  */
 function savepointPool(client: PoolClient): Pool {
   let depth = 0;
@@ -161,7 +164,7 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(await counterFor("SKK")).toBe(before);
   });
 
-  it("DOC-001-D: successive issues receive distinct, increasing numbers", async () => {
+  it("DOC-001-D: successive issues receive distinct numbers, and UNIQUE backs the row lock", async () => {
     await addSigner();
     const first = await approveAndIssue(await submitRequest("Keperluan pertama untuk bank"));
     expect(first.statusCode, first.body).toBe(201);
@@ -173,6 +176,16 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
       [employeeId],
     );
     expect(new Set(numbers.rows.map((row) => row.documentNumber)).size).toBe(2);
+
+    // Two concurrent issues cannot be exercised through the savepoint pool, so the schema
+    // guarantee is asserted directly: even if the row lock were lost, a shared sequence
+    // would be rejected rather than written.
+    const unique = await client.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE tablename = 'hr_issued_documents' AND indexdef LIKE 'CREATE UNIQUE%'`,
+    );
+    const definitions = unique.rows.map((row) => row.indexdef.replace(/\s+/g, " "));
+    expect(definitions.some((definition) => /number_code, number_year, number_sequence/.test(definition))).toBe(true);
+    expect(definitions.some((definition) => /\(document_number\)/.test(definition))).toBe(true);
   });
 
   it("DOC-001-E: the snapshot is frozen at issuing time", async () => {
@@ -301,6 +314,37 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
 
     const list = await app.inject({ method: "GET", url: "/documents/me/disciplinary" });
     expect((list.json().items as Array<{ active: boolean }>)[0]!.active).toBe(false);
+  });
+
+  it("DOC-002-D: a revoked letter never reads as still in force", async () => {
+    await addSigner();
+    permissions = [...permissions, "documents.discipline.manage", "documents.correct"];
+    const issue = await app.inject({
+      method: "POST",
+      url: "/admin/documents/disciplinary",
+      payload: {
+        employeeId, level: "SP1", subject: "Keterlambatan berulang",
+        narrative: "Uraian pelanggaran sintetis untuk pengujian.",
+        effectiveDate: "2020-01-06", expiresOn: "2099-01-06",
+      },
+    });
+    expect(issue.statusCode, issue.body).toBe(201);
+    const before = await app.inject({ method: "GET", url: "/documents/me/disciplinary" });
+    expect((before.json().items as Array<{ active: boolean }>)[0]!.active).toBe(true);
+
+    const documentId = await client.query<{ issuedDocumentId: string }>(
+      `SELECT issued_document_id AS "issuedDocumentId" FROM hr_disciplinary_letters WHERE id = $1`,
+      [issue.json().id],
+    );
+    const revoked = await app.inject({
+      method: "POST",
+      url: `/admin/documents/issued/${documentId.rows[0]!.issuedDocumentId}/revoke`,
+      payload: { reason: "Diterbitkan atas pegawai yang keliru" },
+    });
+    expect(revoked.statusCode, revoked.body).toBe(200);
+
+    const after = await app.inject({ method: "GET", url: "/documents/me/disciplinary" });
+    expect((after.json().items as Array<{ active: boolean }>)[0]!.active).toBe(false);
   });
 
   it("DOC-002-F: revoking needs documents.correct and keeps the number", async () => {

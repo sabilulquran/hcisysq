@@ -25,6 +25,7 @@ import {
   buildContentSnapshot,
   isDisciplinaryActive,
   issueDocument,
+  jakartaDate,
   listDocumentTypes,
   loadEmployeeFacts,
   writeDocumentAudit,
@@ -66,7 +67,7 @@ function send(reply: FastifyReply, status: number, body: unknown) {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return jakartaDate(new Date());
 }
 
 export async function registerDocumentRoutes(
@@ -276,7 +277,7 @@ export async function registerDocumentRoutes(
   app.get("/documents/me/disciplinary", async (request, reply) => {
     const self = await requireSelf(request, reply);
     if (!self) return;
-    const result = await pool.query<{ expiresOn: string }>(
+    const result = await pool.query<{ status: string; effectiveDate: string; expiresOn: string }>(
       `SELECT letter.id, letter.level, letter.subject, letter.narrative,
               to_char(letter.effective_date, 'YYYY-MM-DD') AS "effectiveDate",
               to_char(letter.expires_on, 'YYYY-MM-DD') AS "expiresOn",
@@ -290,7 +291,10 @@ export async function registerDocumentRoutes(
     );
     const now = today();
     return send(reply, 200, {
-      items: result.rows.map((row) => ({ ...row, active: isDisciplinaryActive(row.expiresOn, now) })),
+      items: result.rows.map((row) => ({
+        ...row,
+        active: isDisciplinaryActive(row.status, row.effectiveDate, row.expiresOn, now),
+      })),
     });
   });
 
@@ -413,7 +417,7 @@ export async function registerDocumentRoutes(
         body: decision === "APPROVED"
           ? "Permintaan surat Anda disetujui dan sedang disiapkan."
           : "Permintaan surat Anda tidak dapat diproses. Lihat catatan dari Human Capital.",
-        href: "/app/services/documents",
+        href: "/app/documents",
       });
       await client.query("COMMIT");
       return send(reply, 200, { id: params.data.id, status: decision });
@@ -481,7 +485,7 @@ export async function registerDocumentRoutes(
         category: "system",
         title: "Surat Anda sudah terbit",
         body: `${type.label} dengan nomor ${issued.documentNumber} sudah dapat dilihat.`,
-        href: "/app/services/documents",
+        href: "/app/documents",
       });
       await client.query("COMMIT");
       return send(reply, 201, issued);
@@ -612,7 +616,7 @@ export async function registerDocumentRoutes(
     const query = pageQuerySchema.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_DOCUMENT_FILTER", message: "Filter tidak valid." });
     const [items, count] = await Promise.all([
-      pool.query<{ expiresOn: string }>(
+      pool.query<{ status: string; effectiveDate: string; expiresOn: string }>(
         `SELECT letter.id, letter.level, letter.subject,
                 to_char(letter.effective_date, 'YYYY-MM-DD') AS "effectiveDate",
                 to_char(letter.expires_on, 'YYYY-MM-DD') AS "expiresOn",
@@ -631,7 +635,10 @@ export async function registerDocumentRoutes(
     ]);
     const now = today();
     return send(reply, 200, {
-      items: items.rows.map((row) => ({ ...row, active: isDisciplinaryActive(row.expiresOn, now) })),
+      items: items.rows.map((row) => ({
+        ...row,
+        active: isDisciplinaryActive(row.status, row.effectiveDate, row.expiresOn, now),
+      })),
       pagination: pagination(query.data, count.rows[0]?.total ?? 0),
     });
   });
@@ -664,7 +671,10 @@ export async function registerDocumentRoutes(
         `SELECT letter.level, to_char(letter.expires_on, 'YYYY-MM-DD') AS "expiresOn"
            FROM hr_disciplinary_letters letter
            JOIN hr_issued_documents issued ON issued.id = letter.issued_document_id
-          WHERE letter.employee_id = $1 AND issued.status = 'ISSUED' AND letter.expires_on >= current_date`,
+          WHERE letter.employee_id = $1
+            AND issued.status = 'ISSUED'
+            AND letter.effective_date <= current_date
+            AND letter.expires_on >= current_date`,
         [employee.id],
       );
       const warnings = buildLevelWarnings(body.data.level, existing.rows.map((row) => row.level));
@@ -705,7 +715,7 @@ export async function registerDocumentRoutes(
         category: "system",
         title: "Dokumen kepegawaian baru",
         body: "Ada dokumen kepegawaian yang perlu Anda baca dan konfirmasi.",
-        href: "/app/services/documents",
+        href: "/app/documents",
       });
       await client.query("COMMIT");
       return send(reply, 201, { id: letterId, documentNumber: issued.documentNumber, expiresOn, warnings });

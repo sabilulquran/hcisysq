@@ -33,6 +33,44 @@ function Notice({ tone, children }: { tone: "info" | "warning" | "danger"; child
   return <div role={tone === "danger" ? "alert" : "status"} className={`rounded-2xl border p-4 text-sm leading-6 ${tones[tone]}`}>{children}</div>;
 }
 
+/**
+ * EMP-005 S5B: the contract actions an operator may start from this tab. The
+ * buttons appear only in AUTHORITATIVE and only for employment.manage; the API
+ * refuses anything the rollout mode or the permission does not allow anyway.
+ */
+export interface EmploymentActionButtonsProps {
+  mode: string;
+  state: string;
+  canManage: boolean;
+  onStart: (actionType: "HIRE" | "CONTRACT_EXTENSION" | "CATEGORY_CHANGE" | "TERMINATION") => void;
+}
+
+export function EmploymentActionButtons({ mode, state, canManage, onStart }: EmploymentActionButtonsProps) {
+  if (!canManage || mode !== "AUTHORITATIVE") return null;
+  const active = state === "AKTIF" || state === "AKAN_MULAI";
+  const buttons: Array<{ key: EmploymentActionButtonsProps extends never ? never : Parameters<EmploymentActionButtonsProps["onStart"]>[0]; label: string }> = active
+    ? [
+        { key: "CONTRACT_EXTENSION", label: "Perpanjang kontrak" },
+        { key: "CATEGORY_CHANGE", label: "Ubah status kepegawaian" },
+        { key: "TERMINATION", label: "Akhiri hubungan kerja" },
+      ]
+    : [{ key: "HIRE", label: "Mulai hubungan kerja baru" }];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {buttons.map((button) => (
+        <button
+          key={button.key}
+          type="button"
+          onClick={() => onStart(button.key)}
+          className="h-10 rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface"
+        >
+          {button.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Shared non-ready states; returns null when the view is ready. */
 export function EmploymentStateNotice({ view, subject }: { view: EmploymentView<unknown>; subject: string }) {
   switch (view.kind) {
@@ -92,7 +130,14 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
 }
 
 /** Tab "Kepegawaian & Kontrak" (spec §13.1). */
-export function EmploymentContractPanel({ view }: { view: EmploymentView<EmploymentSummary> }) {
+export function EmploymentContractPanel({
+  view,
+  actions,
+}: {
+  view: EmploymentView<EmploymentSummary>;
+  /** S5B action buttons; omitted on screens that only read. */
+  actions?: ReactNode;
+}) {
   if (view.kind !== "ready") return <EmploymentStateNotice view={view} subject="data kepegawaian" />;
   const data = view.data;
   if (data.state === "TANPA_DATA") {
@@ -100,6 +145,7 @@ export function EmploymentContractPanel({ view }: { view: EmploymentView<Employm
       <div className="space-y-4">
         <ShadowBanner mode={data.mode} />
         <Notice tone="info">Belum ada data kepegawaian. Data awal akan dibuat oleh petugas HC saat fitur diaktifkan.</Notice>
+        {actions}
       </div>
     );
   }
@@ -119,6 +165,7 @@ export function EmploymentContractPanel({ view }: { view: EmploymentView<Employm
           </div>
           <Badge tone={stateTone(data.state)}>{STATE_LABEL[data.state]}</Badge>
         </div>
+        {actions ? <div className="mt-4">{actions}</div> : null}
         {data.flags.length ? (
           <ul className="mt-4 flex flex-wrap gap-2" aria-label="Peringatan kepegawaian">
             {data.flags.map((flag) => (

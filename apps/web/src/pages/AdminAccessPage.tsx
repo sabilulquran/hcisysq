@@ -3,6 +3,7 @@ import { canManageRoleAssignments, hasPermission } from "@/lib/authorization";
 import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
+import { TemporaryReactivationPanel } from "@/components/employment/TemporaryReactivationPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AccountActivationApiError,
@@ -78,6 +79,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
 }) {
   const canPrepareBoard = hasPermission(session, "access.governance.manage");
   const canManageRoles = canManageRoleAssignments(session);
+  const canGrantReactivation = hasPermission(session, "access.accounts.temporary_reactivate");
   const [selectedAccountId, setSelectedAccountId] = useState(() => firstEmployeeAccountId(data));
   const [roleId, setRoleId] = useState(() => data.roles[0]?.id ?? "");
   const [scopeType, setScopeType] = useState<"own" | "unit" | "organization">("unit");
@@ -464,6 +466,11 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             ) : (
               <p className="mt-4 text-xs text-muted-foreground">Tidak ada role tambahan.</p>
             )}
+
+            {/* EMP-005 D-15: only a former employee account can be opened again for a while. */}
+            {canGrantReactivation && account.principalType === "EMPLOYEE" && account.status !== "suspended" ? (
+              <TemporaryReactivationPanel accountId={account.id} />
+            ) : null}
           </article>
         ))}
       </section>

@@ -141,7 +141,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
       await client.query(
         `INSERT INTO auth_sessions(id, account_id, token_hash, expires_at)
          VALUES ($1, $2, $3, now() + interval '8 hours')`,
-        [sessionId, accountId, `hash-${sessionId}`],
+        [sessionId, accountId, sessionId.replace(/-/g, "").padEnd(64, "0")],
       );
       const closed = await deactivateAccountsForEndedEmployment(client, employeeId);
       expect(closed).toEqual([accountId]);

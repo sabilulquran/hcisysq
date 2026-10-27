@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS account_temporary_reactivations (
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT account_temporary_reactivations_window_check
     CHECK (expires_at > starts_at AND expires_at <= starts_at + interval '30 days'),
+  -- A grant ends either because someone revoked it (then we know who) or
+  -- because it expired and the daily job closed it (then nobody did).
   CONSTRAINT account_temporary_reactivations_revoked_check
-    CHECK ((revoked_at IS NULL) = (revoked_by_account_id IS NULL))
+    CHECK (revoked_by_account_id IS NULL OR revoked_at IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS account_temporary_reactivations_account_idx

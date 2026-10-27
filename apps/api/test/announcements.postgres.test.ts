@@ -207,6 +207,23 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
       [important, employeeB],
     );
     expect(other.rows[0]?.acknowledgedAt).toBeNull();
+
+    // From employee B own session the update lands on B row, never on A row.
+    const accountB = randomUUID();
+    await client.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status)
+       VALUES ($1,$2,$3,'EMPLOYEE','active')`,
+      [accountB, employeeB, `ann-${accountB}@example.invalid`],
+    );
+    principal = { id: accountB, email: "ann-b@example.invalid", principalType: "EMPLOYEE" };
+    const asB = await app.inject({ method: "POST", url: `/announcements/me/${important}/acknowledge` });
+    expect(asB.statusCode, asB.body).toBe(200);
+    const rows = await client.query<{ acknowledgedAt: Date | null }>(
+      `SELECT acknowledged_at AS "acknowledgedAt"
+         FROM announcement_recipients WHERE announcement_id = $1 ORDER BY employee_id`,
+      [important],
+    );
+    expect(rows.rows.every((row) => row.acknowledgedAt)).toBe(true);
   });
 
   it("NOTIF-002-E: a published announcement cannot be edited; a correction supersedes it", async () => {
@@ -275,11 +292,91 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
     expect((mine.json().items as Array<{ visibility: string }>)[0]!.visibility).toBe("ARCHIVED");
   });
 
+  it("NOTIF-002-I: a published correction reaches exactly the original recipients", async () => {
+    const original = await draft({
+      title: "Rapat unit A", body: "Rapat unit A diadakan pekan depan.",
+      audiences: [{ kind: "UNIT", organizationalUnitId: unitA }],
+    });
+    expect((await publish(original)).statusCode).toBe(200);
+
+    const correction = await app.inject({
+      method: "POST",
+      url: `/admin/announcements/${original}/correction`,
+      payload: {
+        title: "Ralat rapat unit A", body: "Tanggal rapat berubah.",
+        audiences: [{ kind: "ALL_EMPLOYEES" }], reason: "Tanggal rapat salah tulis",
+      },
+    });
+    expect(correction.statusCode, correction.body).toBe(201);
+    const correctionId = correction.json().id as string;
+
+    // N-06: the original stays published while the correction is still a draft.
+    const beforePublish = await client.query<{ status: string }>(
+      "SELECT status FROM announcements WHERE id = $1", [original],
+    );
+    expect(beforePublish.rows[0]?.status).toBe("PUBLISHED");
+
+    expect((await publish(correctionId)).statusCode).toBe(200);
+    const afterPublish = await client.query<{ status: string }>(
+      "SELECT status FROM announcements WHERE id = $1", [original],
+    );
+    expect(afterPublish.rows[0]?.status).toBe("SUPERSEDED");
+
+    // A wider audience on the correction must not widen who receives it.
+    const recipients = await client.query<{ employeeId: string }>(
+      `SELECT employee_id AS "employeeId" FROM announcement_recipients WHERE announcement_id = $1`,
+      [correctionId],
+    );
+    expect(recipients.rows.map((row) => row.employeeId)).toEqual([employeeA]);
+  });
+
+  it("NOTIF-002-J: a passed schedule publishes nothing on its own", async () => {
+    const id = await draft({
+      title: "Pengumuman jatuh tempo", body: "Isi pengumuman sintetis untuk pengujian.",
+      audiences: [{ kind: "ALL_EMPLOYEES" }], publishAt: "2020-01-06T00:00:00.000Z",
+    });
+    const listed = await app.inject({ method: "GET", url: "/admin/announcements" });
+    const row = (listed.json().items as Array<{ id: string; visibility: string; reach: number }>)
+      .find((item) => item.id === id);
+    expect(row?.visibility).toBe("DUE");
+    expect(row?.reach).toBe(0);
+
+    const notifications = await client.query<{ total: number }>(
+      "SELECT count(*)::int AS total FROM in_app_notifications WHERE event_key = $1",
+      [`announcement.${id}`],
+    );
+    expect(notifications.rows[0]?.total).toBe(0);
+    const mine = await app.inject({ method: "GET", url: "/announcements/me" });
+    expect(mine.json().items).toHaveLength(0);
+  });
+
+  it("rejects an audience naming a unit that does not exist", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/admin/announcements",
+      payload: {
+        title: "Pengumuman unit hantu", body: "Isi pengumuman sintetis untuk pengujian.",
+        audiences: [{ kind: "UNIT", organizationalUnitId: randomUUID() }],
+      },
+    });
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.json().code).toBe("ANNOUNCEMENT_UNIT_NOT_FOUND");
+  });
+
   it("refuses every admin route without announcements.*", async () => {
+    const id = await draft({
+      title: "Pengumuman penjaga izin", body: "Isi pengumuman sintetis untuk pengujian.",
+      audiences: [{ kind: "ALL_EMPLOYEES" }],
+    });
     permissions = [];
     for (const [method, url] of [
       ["GET", "/admin/announcements"],
+      ["GET", `/admin/announcements/${id}`],
       ["POST", "/admin/announcements"],
+      ["PUT", `/admin/announcements/${id}`],
+      ["POST", `/admin/announcements/${id}/publish`],
+      ["POST", `/admin/announcements/${id}/correction`],
+      ["POST", `/admin/announcements/${id}/archive`],
     ] as const) {
       const response = await app.inject({ method, url, payload: {} });
       expect(response.statusCode, `${method} ${url}`).toBe(403);

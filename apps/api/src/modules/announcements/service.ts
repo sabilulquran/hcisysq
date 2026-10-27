@@ -26,20 +26,24 @@ export function jakartaDate(instant: Date): string {
 }
 
 /**
- * N-07/N-08: what a reader sees is derived here, never written by a job. A SCHEDULED
- * announcement whose moment has passed reads as published; a published one past its display
- * window reads as archived. The stored status only records what an operator decided.
+ * N-08: the display window is derived here, never written by a job, so the data is correct
+ * without anything having to run.
+ *
+ * N-07: Package 1 has no auto-publication. A SCHEDULED announcement has no recipients until
+ * an operator publishes it, so it stays HIDDEN however long its moment has passed; DUE only
+ * tells the operator it is waiting. Treating a passed moment as PUBLISHED would label a row
+ * "Terbit" that nobody received.
  */
 export function visibleState(
   row: { status: string; publishAt: Date | string | null; displayUntil: string | null },
   now: Date,
-): "HIDDEN" | "PUBLISHED" | "ARCHIVED" | "SUPERSEDED" {
+): "HIDDEN" | "DUE" | "PUBLISHED" | "ARCHIVED" | "SUPERSEDED" {
   if (row.status === "SUPERSEDED") return "SUPERSEDED";
   if (row.status === "ARCHIVED") return "ARCHIVED";
   if (row.status === "DRAFT") return "HIDDEN";
   if (row.status === "SCHEDULED") {
     const due = row.publishAt ? new Date(row.publishAt).getTime() <= now.getTime() : false;
-    if (!due) return "HIDDEN";
+    return due ? "DUE" : "HIDDEN";
   }
   if (row.displayUntil && row.displayUntil < jakartaDate(now)) return "ARCHIVED";
   return "PUBLISHED";
@@ -69,7 +73,57 @@ export async function writeAnnouncementAudit(
  * N-03: freeze the recipient list. Active employees only, matched by the announcement's own
  * audience rules; ON CONFLICT DO NOTHING makes a retried publication idempotent
  * (NOTIF-002-B) rather than duplicating rows.
+ *
+ * N-06 (D-03 of this spec): a correction inherits the superseded announcement's recipients
+ * instead, so the people who read the original are exactly the people who get the ralat.
  */
+export async function inheritRecipients(client: PoolClient, announcementId: string, fromId: string) {
+  await client.query(
+    `INSERT INTO announcement_recipients (id, announcement_id, employee_id)
+     SELECT gen_random_uuid(), $1, source.employee_id
+       FROM announcement_recipients source
+      WHERE source.announcement_id = $2
+     ON CONFLICT (announcement_id, employee_id) DO NOTHING`,
+    [announcementId, fromId],
+  );
+}
+
+/** The snapshot's size, which is what reach means; the insert's rowCount is only what it added. */
+export async function countRecipients(client: PoolClient, announcementId: string): Promise<number> {
+  const result = await client.query<{ total: number }>(
+    "SELECT count(*)::int AS total FROM announcement_recipients WHERE announcement_id = $1",
+    [announcementId],
+  );
+  return result.rows[0]?.total ?? 0;
+}
+
+/**
+ * One set-based insert instead of two statements per recipient: on ~100 employees the loop
+ * held the publication transaction open for ~200 round trips, long enough to outlive an HTTP
+ * timeout while still committing. It also counts employees without an active account, who
+ * are in reach but can receive nothing.
+ */
+export async function notifyRecipients(
+  client: PoolClient,
+  announcementId: string,
+  title: string,
+  body: string,
+) {
+  await client.query(
+    `INSERT INTO in_app_notifications (id, recipient_account_id, event_key, category, title, body, href)
+     SELECT gen_random_uuid(), account.id, $2, 'system', $3, $4, '/app/announcements'
+       FROM announcement_recipients recipient
+       JOIN accounts account ON account.employee_id = recipient.employee_id
+       JOIN employees employee ON employee.id = recipient.employee_id
+      WHERE recipient.announcement_id = $1
+        AND account.principal_type = 'EMPLOYEE'
+        AND account.status = 'active'
+        AND employee.status = 'active'
+     ON CONFLICT (recipient_account_id, event_key) DO NOTHING`,
+    [announcementId, `announcement.${announcementId}`, title, body],
+  );
+}
+
 export async function snapshotRecipients(client: PoolClient, announcementId: string): Promise<number> {
   const result = await client.query(
     `INSERT INTO announcement_recipients (id, announcement_id, employee_id)

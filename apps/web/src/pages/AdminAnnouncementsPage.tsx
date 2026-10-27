@@ -146,7 +146,8 @@ export function AdminAnnouncementsPage() {
             </button>
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               Daftar penerima dibekukan saat pengumuman diterbitkan, jadi perubahan unit sesudahnya tidak mengubah jangkauannya.
-              Pengumuman yang sudah terbit tidak dapat diedit; yang tersedia adalah ralat.
+              Pengumuman yang sudah terbit tidak dapat diedit; yang tersedia adalah ralat, dan ralat dikirim ke penerima yang sama.
+              Jangan menulis gaji, nomor identitas, atau data pribadi pegawai lain di dalam pengumuman.
             </p>
           </form>
 
@@ -176,7 +177,7 @@ export function AdminAnnouncementsPage() {
                           Terbitkan
                         </button>
                       ) : null}
-                      {item.status === "PUBLISHED" || item.status === "DRAFT" || item.status === "SCHEDULED" ? (
+                      {item.status === "PUBLISHED" ? (
                         <button type="button" disabled={busy} onClick={() => archive(item.id)}
                           className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
                           Arsipkan

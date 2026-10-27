@@ -47,9 +47,11 @@ Termasuk:
 | N-03 | Daftar penerima **dibekukan saat terbit** (snapshot), supaya jangkauan dan angka bacaan tidak berubah ketika organisasi berubah. | ACCEPTED |
 | N-04 | Pegawai yang masuk setelah pengumuman terbit **tidak** menerima notifikasinya, tetapi tetap dapat membaca arsipnya. | DRAFT |
 | N-05 | Dua tingkat: `NORMAL` (cukup dibaca) dan `PENTING` (meminta konfirmasi baca dan tampil menonjol sampai dikonfirmasi). | DRAFT |
-| N-06 | Pengumuman yang sudah terbit **tidak dapat diedit**; yang ada adalah **ralat** — versi baru yang menggantikan dan menautkan ke versi lama. | ACCEPTED |
+| N-06 | Pengumuman yang sudah terbit **tidak dapat diedit**; yang ada adalah **ralat** — versi baru yang menggantikan dan menautkan ke versi lama. Versi lama baru ditandai `SUPERSEDED` **ketika ralatnya diterbitkan**, bukan saat ralat masih draf, supaya pembaca tidak pernah ditinggal tanpa versi yang berlaku. | ACCEPTED |
+| N-06b | Ralat **mewarisi daftar penerima** pengumuman yang diralatnya, bukan menghitung ulang sasaran. Orang yang membaca versi lama adalah orang yang menerima ralatnya, termasuk yang sejak itu pindah unit. | DRAFT |
 | N-07 | Pengumuman dapat **menyimpan waktu terbit yang direncanakan**, tetapi di Paket 1 penerbitan tetap tindakan eksplisit operator. Penerbitan otomatis pada waktunya membutuhkan penjalan terjadwal, dan itu adalah keputusan NOTIF-003 (§8); tidak ada janji otomatis yang dibuat di sini. | DRAFT (revisi) |
 | N-08 | Pengumuman punya **masa tampil** opsional; setelahnya pindah ke arsip, tidak dihapus. | DRAFT |
+| N-11 | Hanya pengumuman yang sudah terbit yang dapat diarsipkan. Draf dan rencana terbit tidak, karena tidak ada jalur mengembalikannya dan satu salah klik akan membuang naskah. | DRAFT |
 | N-09 | Isi pengumuman adalah teks biasa dengan paragraf; tanpa HTML, tanpa skrip. | ACCEPTED |
 | N-10 | Pengumuman **tidak boleh** memuat data pribadi pegawai lain, nominal gaji, atau nomor identitas. Aturan ini ditulis di layar penyusun, dan tidak ditegakkan otomatis. | DRAFT |
 
@@ -69,6 +71,8 @@ Saat `PUBLISHED`:
 3. pengumuman menjadi dapat dibaca di `/app/announcements`.
 
 `ARCHIVED` dan kedaluwarsa masa tampil **diturunkan dari tanggal**, bukan dari job terjadwal, dengan pola yang sama seperti DOC-002.
+
+Keadaan yang dilihat pembaca diturunkan saat dibaca: `HIDDEN`, `DUE` (waktu terbit yang direncanakan sudah lewat tetapi operator belum menerbitkan), `PUBLISHED`, `ARCHIVED`, `SUPERSEDED`. `DUE` hanya pengingat bagi operator; pengumuman itu belum punya penerima, jadi tidak terlihat oleh pegawai mana pun.
 
 ## 5. Permission
 
@@ -98,7 +102,9 @@ announcement_audit_events     jejak transisi
 - NOTIF-002-B: menerbitkan dua kali (retry) tidak menggandakan notifikasi maupun baris penerima.
 - NOTIF-002-C: memindahkan pegawai ke unit lain setelah terbit tidak mengubah daftar penerima maupun angka bacaan.
 - NOTIF-002-D: pengumuman `PENTING` meminta konfirmasi; konfirmasi tercatat dengan waktu dan tidak dapat dilakukan untuk orang lain.
-- NOTIF-002-E: pengumuman yang sudah terbit tidak dapat diedit; ralat membuat versi baru dan menandai yang lama `SUPERSEDED`.
+- NOTIF-002-E: pengumuman yang sudah terbit tidak dapat diedit; ralat membuat versi baru, dan versi lama menjadi `SUPERSEDED` hanya setelah ralat itu diterbitkan.
+- NOTIF-002-I: ralat yang diterbitkan menjangkau persis penerima pengumuman yang diralatnya (N-06b).
+- NOTIF-002-J: rencana waktu terbit yang sudah lewat tidak membuat pengumuman tampil terbit; tidak ada penerima dan tidak ada notifikasi.
 - NOTIF-002-F: pengumuman yang belum diterbitkan (draf maupun terjadwal) tidak terlihat oleh pegawai mana pun, karena daftar penerima baru ada setelah penerbitan.
 - NOTIF-002-G: isi dirender sebagai teks, bukan HTML.
 - NOTIF-002-H: pengumuman yang melewati masa tampil pindah ke arsip tanpa job terjadwal.

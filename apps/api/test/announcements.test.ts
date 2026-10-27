@@ -16,8 +16,10 @@ describe("NOTIF-002 derived visibility (N-07/N-08)", () => {
     expect(visibleState(row({ status: "SCHEDULED", publishAt: "2026-10-28T00:00:00Z" }), now)).toBe("HIDDEN");
   });
 
-  it("shows a schedule whose moment has passed, with no job involved", () => {
-    expect(visibleState(row({ status: "SCHEDULED", publishAt: "2026-10-27T02:00:00Z" }), now)).toBe("PUBLISHED");
+  it("marks a passed schedule DUE, never PUBLISHED, because nobody has received it", () => {
+    // N-07: Package 1 has no auto-publication; recipients exist only after an explicit
+    // publish, so a passed moment is a reminder to the operator, not a publication.
+    expect(visibleState(row({ status: "SCHEDULED", publishAt: "2026-10-27T02:00:00Z" }), now)).toBe("DUE");
   });
 
   it("archives a published announcement past its display window", () => {

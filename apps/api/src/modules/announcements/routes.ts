@@ -13,12 +13,14 @@ import type { ApiConfig } from "../../config/env.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import type { AnnouncementPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
-import { notifyEmployee } from "../notifications/service.js";
 import {
   ANNOUNCEMENT_LEVELS,
   AnnouncementError,
   assertEditable,
   assertPublishable,
+  countRecipients,
+  inheritRecipients,
+  notifyRecipients,
   snapshotRecipients,
   visibleState,
   writeAnnouncementAudit,
@@ -134,6 +136,16 @@ export async function registerAnnouncementRoutes(
       ],
     );
     for (const audience of input.audiences) {
+      if (audience.kind === "UNIT") {
+        // A well-formed uuid for a unit that does not exist is a client mistake, not a 500.
+        const unit = await client.query(
+          "SELECT id FROM organizational_units WHERE id = $1",
+          [audience.organizationalUnitId],
+        );
+        if (!unit.rowCount) {
+          throw new AnnouncementError(400, "ANNOUNCEMENT_UNIT_NOT_FOUND", "Unit organisasi tidak ditemukan.");
+        }
+      }
       await client.query(
         `INSERT INTO announcement_audiences (id, announcement_id, audience_kind, organizational_unit_id)
          VALUES ($1,$2,$3,$4)`,
@@ -342,8 +354,9 @@ export async function registerAnnouncementRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const found = await client.query<{ status: string; title: string; level: string }>(
-        "SELECT status, title, level FROM announcements WHERE id = $1 FOR UPDATE",
+      const found = await client.query<{ status: string; title: string; level: string; supersedesId: string | null }>(
+        `SELECT status, title, level, supersedes_id AS "supersedesId"
+           FROM announcements WHERE id = $1 FOR UPDATE`,
         [params.data.id],
       );
       const announcement = found.rows[0];
@@ -352,7 +365,14 @@ export async function registerAnnouncementRoutes(
         return send(reply, 404, { code: "ANNOUNCEMENT_NOT_FOUND", message: "Pengumuman tidak ditemukan." });
       }
       assertPublishable(announcement);
-      const reach = await snapshotRecipients(client, params.data.id);
+      if (announcement.supersedesId) {
+        // N-06: a correction goes to the people who received what it corrects, not to a
+        // freshly computed audience.
+        await inheritRecipients(client, params.data.id, announcement.supersedesId);
+      } else {
+        await snapshotRecipients(client, params.data.id);
+      }
+      const reach = await countRecipients(client, params.data.id);
       await client.query(
         `UPDATE announcements
             SET status = 'PUBLISHED', published_at = now(), published_by_account_id = $2,
@@ -360,20 +380,21 @@ export async function registerAnnouncementRoutes(
           WHERE id = $1`,
         [params.data.id, principal.id],
       );
-      // N-01: the notification points at the announcement; it never carries its body.
-      const recipients = await client.query<{ employeeId: string }>(
-        `SELECT employee_id AS "employeeId" FROM announcement_recipients WHERE announcement_id = $1`,
-        [params.data.id],
-      );
-      for (const recipient of recipients.rows) {
-        await notifyEmployee(client, recipient.employeeId, {
-          eventKey: `announcement.${params.data.id}`,
-          category: "system",
-          title: announcement.level === "PENTING" ? "Pengumuman penting" : "Pengumuman baru",
-          body: announcement.title,
-          href: "/app/announcements",
-        });
+      if (announcement.supersedesId) {
+        // N-06: the original is retired only now, so it is never left superseded by a ralat
+        // that was never published.
+        await client.query(
+          "UPDATE announcements SET status = 'SUPERSEDED', updated_at = now() WHERE id = $1 AND status = 'PUBLISHED'",
+          [announcement.supersedesId],
+        );
       }
+      // N-01: the notification points at the announcement; it never carries its body.
+      await notifyRecipients(
+        client,
+        params.data.id,
+        announcement.level === "PENTING" ? "Pengumuman penting" : "Pengumuman baru",
+        announcement.title,
+      );
       await writeAnnouncementAudit(client, {
         eventType: "announcement.published",
         announcementId: params.data.id,
@@ -413,8 +434,9 @@ export async function registerAnnouncementRoutes(
         await client.query("ROLLBACK");
         return send(reply, 409, { code: "ANNOUNCEMENT_NOT_CORRECTABLE", message: "Hanya pengumuman yang sudah terbit yang dapat diralat." });
       }
+      // N-06: the original stays published until the correction itself is published, so a
+      // ralat left in draft never leaves readers with nothing.
       const id = await insertDraft(client, body.data, principal.id, params.data.id);
-      await client.query("UPDATE announcements SET status = 'SUPERSEDED', updated_at = now() WHERE id = $1", [params.data.id]);
       await writeAnnouncementAudit(client, {
         eventType: "announcement.corrected",
         announcementId: id,
@@ -445,13 +467,16 @@ export async function registerAnnouncementRoutes(
       const changed = await client.query(
         `UPDATE announcements
             SET status = 'ARCHIVED', archived_at = now(), updated_at = now()
-          WHERE id = $1 AND status IN ('PUBLISHED', 'SCHEDULED', 'DRAFT')
+          WHERE id = $1 AND status = 'PUBLISHED'
           RETURNING id`,
         [params.data.id],
       );
       if (!changed.rows[0]) {
         await client.query("ROLLBACK");
-        return send(reply, 409, { code: "ANNOUNCEMENT_NOT_ARCHIVABLE", message: "Pengumuman tidak dapat diarsipkan." });
+        return send(reply, 409, {
+          code: "ANNOUNCEMENT_NOT_ARCHIVABLE",
+          message: "Hanya pengumuman yang sudah terbit yang dapat diarsipkan.",
+        });
       }
       await writeAnnouncementAudit(client, {
         eventType: "announcement.archived",

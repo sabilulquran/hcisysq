@@ -1,7 +1,7 @@
 // NOTIF-002 client. The API authorizes every call; this module only shapes requests.
 
 export type AnnouncementLevel = "NORMAL" | "PENTING";
-export type AnnouncementVisibility = "HIDDEN" | "PUBLISHED" | "ARCHIVED" | "SUPERSEDED";
+export type AnnouncementVisibility = "HIDDEN" | "DUE" | "PUBLISHED" | "ARCHIVED" | "SUPERSEDED";
 
 export interface EmployeeAnnouncement {
   id: string;
@@ -100,6 +100,8 @@ export function announcementStatusLabel(announcement: Pick<AdminAnnouncement, "s
   if (announcement.status === "SUPERSEDED") return "Diralat";
   if (announcement.visibility === "ARCHIVED") return "Arsip";
   if (announcement.visibility === "PUBLISHED") return "Terbit";
+  // N-07: a scheduled moment that has passed is a reminder to publish, not a publication.
+  if (announcement.visibility === "DUE") return "Jatuh tempo, belum diterbitkan";
   if (announcement.status === "SCHEDULED") return "Dijadwalkan";
   return "Draf";
 }

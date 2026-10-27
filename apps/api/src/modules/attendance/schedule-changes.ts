@@ -334,6 +334,8 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
     holidays: holidays.map((holiday) => holiday.date),
     swaps: swaps.rows.map((swap) => [swap.employeeId, swap.workDate]),
     blocked: [...blockedIds].sort(),
+    // The plan itself, so a shift version that changed in between is noticed too.
+    ops,
   })).digest("hex");
 
   return {
@@ -383,7 +385,7 @@ export async function applyScheduleChange(
 ) {
   if (idempotencyKey) {
     const replay = await client.query<{ id: string }>("SELECT id FROM attendance_schedule_change_sets WHERE idempotency_key = $1", [idempotencyKey]);
-    if (replay.rows[0]) return { id: replay.rows[0].id, replayed: true, summary: null };
+    if (replay.rows[0]) return { id: replay.rows[0].id, replayed: true, summary: null, employeeIds: [] as string[] };
   }
   const first = await planScheduleChange(client, input, now);
   const locks = [...first.employees.map((employee) => `schedule-employee:${employee.id}`), ...first.weeks.map((week) => `roster-week:${week}`)].sort();
@@ -486,5 +488,5 @@ export async function applyScheduleChange(
      VALUES ($1, $2, 'attendance.schedule_change.applied', 'attendance_schedule_change_set', $3, $4::jsonb)`,
     [randomUUID(), actorAccountId, changeSetId, JSON.stringify({ kind: input.kind, ...plan.summary, items: sequence })],
   );
-  return { id: changeSetId, replayed: false, summary: plan.summary };
+  return { id: changeSetId, replayed: false, summary: plan.summary, employeeIds: plan.employees.map((employee) => employee.id) };
 }

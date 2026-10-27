@@ -2,6 +2,7 @@ import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-re
 import { useEffect, useState, type FormEvent } from "react";
 
 import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
+import { FamilyAddressPanel } from "@/components/employment/FamilyAddressPanel";
 import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
 import {
   EmploymentActionButtons,
@@ -33,13 +34,14 @@ import {
   type EmploymentView,
 } from "@/lib/employment";
 
-export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan" | "pendidikan";
+export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan" | "pendidikan" | "keluarga";
 
 const TABS: Array<{ key: EmployeeDetailTab; label: string }> = [
   { key: "ringkasan", label: "Ringkasan" },
   { key: "kepegawaian", label: "Kepegawaian & Kontrak" },
   { key: "penempatan", label: "Penempatan & Karier" },
   { key: "pendidikan", label: "Pendidikan & Keahlian" },
+  { key: "keluarga", label: "Keluarga & Alamat" },
 ];
 
 /**
@@ -54,7 +56,7 @@ export function EmployeeDetailTabs({ active, canReadEmployment, canReadProfile =
   onSelect: (tab: EmployeeDetailTab) => void;
 }) {
   const visible = TABS.filter((tab) => {
-    if (tab.key === "pendidikan") return canReadProfile;
+    if (tab.key === "pendidikan" || tab.key === "keluarga") return canReadProfile;
     if (tab.key === "ringkasan") return true;
     return canReadEmployment;
   });
@@ -126,7 +128,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   }, []);
 
   useEffect(() => {
-    if (tab === "ringkasan" || tab === "pendidikan" || employmentView !== null) return;
+    if (tab === "ringkasan" || tab === "pendidikan" || tab === "keluarga" || employmentView !== null) return;
     setEmploymentView({ kind: "loading" });
     void getEmployeeEmployment(employeeId)
       .then((data) => setEmploymentView({ kind: "ready", data }))
@@ -311,6 +313,10 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
       {tab === "pendidikan" ? (
         <EducationSkillsPanel employeeId={employeeId} canManage={canManageProfile} />
+      ) : null}
+
+      {tab === "keluarga" ? (
+        <FamilyAddressPanel employeeId={employeeId} canManage={canManageProfile} />
       ) : null}
 
       {tab === "kepegawaian" ? (

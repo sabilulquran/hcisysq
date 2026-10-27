@@ -77,7 +77,7 @@ features:
     target_status: planned
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27) together with addresses as dated records. An employee proposes a change to their own address, contact, family, education or skills; HC accepts or refuses with a reason, and accepting writes the change in the same transaction. One HC officer decides; no approval chain in this package.
+    planning_note: Partly implemented. Step P2-3 shipped the addresses-as-dated-records half (docs/domain/employment-administration-package2.md, 2026-10-27) - HC records a move, which closes the previous address rather than overwriting it. The employee's own change proposal, and HC's decision on it, is step P2-4 and is not built yet. One HC officer decides; no approval chain in this package.
 
   - id: EMP-004
     module: employee
@@ -253,10 +253,10 @@ features:
     module: employee
     name: Family, dependents, and employee relations
     legacy_evidence: benchmark HRIS roadmap includes employee relations/family data
-    target_status: planned
+    target_status: implemented
     priority: post-attendance-simplification
     risk: high
-    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Privacy-by-purpose applies and the spec names the purpose of every attribute; family identity numbers stay uncollected until column encryption exists, and audit payloads never carry family data. One spouse and one emergency-contact order per period, enforced by the database.
+    planning_note: Implemented in Package 2 step P2-3 (docs/domain/employment-administration-package2.md, 2026-10-27). Privacy-by-purpose applies and the spec names the purpose of every attribute; a family identity number is refused by the request schema and kept out of the column until encryption exists, and audit payloads carry the relation, the flags and field names but never a name, a phone number or a birth date. One spouse and one emergency-contact order per period, enforced by the database. Screen - Pegawai -> detail -> Keluarga & Alamat.
     docs:
       - docs/domain/employment-administration.md
 

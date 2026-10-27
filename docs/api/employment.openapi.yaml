@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Package 1 steps S2, S4, S5, S5A and S6 (docs/domain/employment-administration-package1.md).
     Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
@@ -21,6 +21,13 @@ info:
     introduce no permission of their own: reading needs employees.read.all and
     writing employees.manage (Package 2 spec 5.1), so unlike employment.* they
     are reachable through legacy Super Admin compatibility.
+    Step P2-3 adds the employee's family members, dependants and emergency
+    contacts (EMP-009) and the dated addresses (EMP-003), under the same two
+    permissions. A family identity number is never accepted: the request
+    schema refuses the field outright and the column stays empty until column
+    encryption exists (Package 2 spec 8). Recording an address of a kind that
+    is already in force is a move, not an edit: the API closes the previous
+    one the day before the new one starts, in the same transaction.
     All responses carry Cache-Control: no-store.
 paths:
   /admin/employment/rollout:
@@ -770,6 +777,225 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
 
+  /admin/employees/{employeeId}/family:
+    get:
+      tags: [EmployeeProfile]
+      operationId: listEmployeeFamily
+      summary: Family members, dependants and emergency contacts of one employee
+      description: |
+        Requires employees.read.all. The counts are derived on read. A relation
+        that has ended keeps its row with an end date rather than disappearing.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      responses:
+        '200':
+          description: Family records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows, dependents, emergencyContacts]
+                properties:
+                  rows: { type: array, items: { $ref: '#/components/schemas/FamilyMemberRecord' } }
+                  dependents: { type: integer }
+                  emergencyContacts: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [EmployeeProfile]
+      operationId: recordEmployeeFamilyMember
+      summary: Record one family member
+      description: |
+        Requires employees.manage. At most one spouse and one emergency-contact
+        order may be in force on a date; an overlap answers 409
+        FAMILY_PERIOD_CONFLICT, never 500.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyMemberInput' }
+      responses:
+        '201':
+          description: The recorded member
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberRecord' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/family-records/{recordId}:
+    patch:
+      tags: [EmployeeProfile]
+      operationId: amendEmployeeFamilyMember
+      summary: Amend one family member
+      description: Requires employees.manage. A voided record, or one of a removed employee, is refused.
+      parameters:
+        - { $ref: '#/components/parameters/RecordId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyMemberInput' }
+      responses:
+        '200':
+          description: The amended member
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FamilyMemberRecord' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/family-records/{recordId}/void:
+    post:
+      tags: [EmployeeProfile]
+      operationId: voidFamilyRecord
+      summary: Void a family record, with a reason
+      description: Requires employees.manage. Nothing is deleted.
+      parameters:
+        - { $ref: '#/components/parameters/RecordId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoidInput' }
+      responses:
+        '200':
+          description: The voided record id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoidedRecord' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/employees/{employeeId}/addresses:
+    get:
+      tags: [EmployeeProfile]
+      operationId: listEmployeeAddresses
+      summary: Address history of one employee
+      description: |
+        Requires employees.read.all. `current` names the record of each kind in
+        force now, derived rather than flagged on the row.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      responses:
+        '200':
+          description: Address records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows, current]
+                properties:
+                  rows: { type: array, items: { $ref: '#/components/schemas/AddressRecord' } }
+                  current:
+                    type: object
+                    properties:
+                      DOMISILI: { type: [string, 'null'], format: uuid }
+                      KTP: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [EmployeeProfile]
+      operationId: recordEmployeeAddress
+      summary: Record an address, closing the one it replaces
+      description: |
+        Requires employees.manage. If an address of this kind is still open it
+        is closed the day before validFrom, inside the same transaction, and
+        the response names it in closedAddressId. An address that starts on or
+        after the new one cannot be closed first, which answers 409
+        ADDRESS_PERIOD_CONFLICT.
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: The recorded address
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/AddressRecord' }
+                  - type: object
+                    properties:
+                      closedAddressId: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/address-records/{recordId}:
+    patch:
+      tags: [EmployeeProfile]
+      operationId: amendEmployeeAddress
+      summary: Amend one address
+      description: |
+        Requires employees.manage. This corrects a record; it does not move
+        anyone. A period that overlaps another address of the same kind answers
+        409 ADDRESS_PERIOD_CONFLICT.
+      parameters:
+        - { $ref: '#/components/parameters/RecordId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '200':
+          description: The amended address
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AddressRecord' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /admin/address-records/{recordId}/void:
+    post:
+      tags: [EmployeeProfile]
+      operationId: voidAddressRecord
+      summary: Void an address record, with a reason
+      description: Requires employees.manage. Nothing is deleted.
+      parameters:
+        - { $ref: '#/components/parameters/RecordId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoidInput' }
+      responses:
+        '200':
+          description: The voided record id
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VoidedRecord' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
 components:
   parameters:
     EmployeeId:
@@ -802,6 +1028,7 @@ components:
         DECISION_DOCUMENT_NUMBER_TAKEN, DECISION_DOCUMENT_LOCKED,
         EMPLOYEE_RECORD_INVALID (with a field name), EMPLOYEE_RECORD_NOT_FOUND,
         EMPLOYEE_RECORD_VOIDED,
+        FAMILY_PERIOD_CONFLICT, ADDRESS_PERIOD_CONFLICT,
         DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,
         EMPLOYMENT_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, and the action codes
         of spec §12: EMPLOYMENT_SELF_ACTION_FORBIDDEN, EMPLOYMENT_NOT_ACTIVE,
@@ -827,6 +1054,90 @@ components:
               message: { type: string }
               field: { type: string, description: Set by DECISION_DOCUMENT_INVALID. }
   schemas:
+    FamilyRelation:
+      type: string
+      enum: [PASANGAN, ANAK, ORANG_TUA, SAUDARA, LAINNYA]
+    Gender:
+      type: string
+      enum: [L, P]
+    AddressKind:
+      type: string
+      enum: [DOMISILI, KTP]
+    AddressSource:
+      type: string
+      enum: [IMPOR, HC, USULAN_PEGAWAI]
+    DatedRecordMeta:
+      type: object
+      required: [id, employeeId, validFrom]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        voidedAt: { type: [string, 'null'], format: date-time }
+        voidedReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    FamilyMemberInput:
+      type: object
+      additionalProperties: false
+      required: [relation, fullName, validFrom]
+      description: |
+        identityNumber is deliberately absent. The schema is strict, so sending
+        one is an invalid request rather than a field quietly dropped
+        (Package 2 spec 8).
+      properties:
+        relation: { $ref: '#/components/schemas/FamilyRelation' }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        birthDate:
+          type: [string, 'null']
+          format: date
+          description: Required when isDependent is true.
+        gender:
+          oneOf:
+            - { $ref: '#/components/schemas/Gender' }
+            - { type: 'null' }
+        isDependent: { type: boolean, default: false }
+        dependentOrder:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 20
+          description: Only for a dependant.
+        isEmergencyContact: { type: boolean, default: false }
+        emergencyPhone:
+          type: [string, 'null']
+          maxLength: 40
+          description: Required when isEmergencyContact is true.
+        emergencyPriority:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 9
+          description: Unique among the employee's emergency contacts in force on a date.
+        validFrom: { type: string, format: date }
+        validTo: { type: [string, 'null'], format: date }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+    FamilyMemberRecord:
+      allOf:
+        - { $ref: '#/components/schemas/DatedRecordMeta' }
+        - { $ref: '#/components/schemas/FamilyMemberInput' }
+    AddressInput:
+      type: object
+      additionalProperties: false
+      required: [kind, addressLine, city, validFrom]
+      properties:
+        kind: { $ref: '#/components/schemas/AddressKind' }
+        addressLine: { type: string, minLength: 1, maxLength: 500 }
+        village: { type: [string, 'null'], maxLength: 120 }
+        district: { type: [string, 'null'], maxLength: 120 }
+        city: { type: string, minLength: 1, maxLength: 120 }
+        province: { type: [string, 'null'], maxLength: 120 }
+        postalCode: { type: [string, 'null'], pattern: '^[0-9]{5}$' }
+        validFrom: { type: string, format: date }
+        validTo: { type: [string, 'null'], format: date }
+        source: { $ref: '#/components/schemas/AddressSource' }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+    AddressRecord:
+      allOf:
+        - { $ref: '#/components/schemas/DatedRecordMeta' }
+        - { $ref: '#/components/schemas/AddressInput' }
     EducationLevel:
       type: string
       enum: [SD, SMP, SMA_SEDERAJAT, D1, D2, D3, D4_S1, S2, S3, PONDOK, LAINNYA]

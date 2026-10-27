@@ -265,7 +265,7 @@ Rollback: revert PR; tabel baru ditinggalkan kosong atau dihapus dengan down scr
 | --- | --- |
 | **P2-1** | Migrasi lima tabel (0106), aturan validasi murni (domain), tanpa route — **selesai** |
 | **P2-2** | API dan layar EMP-007 + EMP-008 (termasuk laporan §7.5) — **selesai** |
-| **P2-3** | API dan layar EMP-009 + alamat EMP-003 (§4.3, §4.4) |
+| **P2-3** | API dan layar EMP-009 + alamat EMP-003 (§4.3, §4.4) — **selesai** |
 | **P2-4** | Alur usulan perubahan data: pengajuan pegawai (§7.3) dan keputusan HC (§7.4) |
 
 Setiap langkah satu pull request dengan tes, dokumentasi, dan catatan rollback sendiri. Langkah yang menyentuh privasi data keluarga (P2-3) meminta satu putaran review independen seperti AGENTS.md §8.

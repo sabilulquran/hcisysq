@@ -70,9 +70,15 @@ BEGIN
 END
 $$;
 
--- Setiap konsumen menyaring kolom ini bersama removed_at, jadi indeksnya
--- parsial pada baris yang ditandai: jumlahnya sedikit, dan daftar "di luar
--- pengelolaan HCIS" membacanya langsung.
+-- Indeks parsial pada baris yang ditandai saja: jumlahnya sedikit, dan daftar
+-- "di luar pengelolaan HCIS" membacanya langsung.
+--
+-- Predikatnya sengaja tidak menyebut removed_at. Kolom itu datang dari migrasi
+-- 0022, yang termasuk himpunan "recovered" pada rehearsal pemulihan riwayat
+-- migrasi (scripts/rehearse-organization-migration-recovery.mjs): pada
+-- skenario kanonikal migrasi itu belum dijalankan, sehingga berkas ini akan
+-- gagal. Baris yang ditandai pun hanya segelintir, jadi menyaring removed_at
+-- di indeks tidak memberi apa-apa.
 CREATE INDEX IF NOT EXISTS employees_management_scope_idx
   ON employees (management_scope_reason, full_name)
-  WHERE management_scope = 'OUTSIDE_HCIS' AND removed_at IS NULL;
+  WHERE management_scope = 'OUTSIDE_HCIS';

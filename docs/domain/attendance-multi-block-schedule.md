@@ -1,6 +1,8 @@
 # ATT-013 — Blok Kerja Ganda dalam Satu Hari
 
-**Status:** DRAFT — menunggu penerimaan owner atas §9.
+**Status:** DRAFT — usulan §9 dipakai sebagai default sejak 2026-10-27 (aturan owner: "ambil default
+paling masuk akal, tandai DRAFT, jalan terus"); owner dapat mengubahnya kapan saja. Implementasi dan
+perbedaannya dari rancangan ini tercatat di `attendance-work-blocks.md`.
 **Specification:** ATT-013
 **Drafted:** 2026-10-24
 **Keputusan owner pemicu:** 2026-10-24, pilihan "HCIS menyesuaikan" atas konflik Blok Kerja ganda
@@ -348,6 +350,10 @@ metadata. Tidak ada event audit baru.
 
 Butir di atas tidak memblokir penulisan kode ATT-013-1 kecuali **D-13-1**, yang menentukan status
 yang dilihat HC dan ikut menentukan test.
+
+**2026-10-27:** D-13-1 sampai D-13-7 dipakai sesuai kolom Usulan sebagai default `DRAFT` (aturan owner
+2026-10-27) dan sudah diimplementasikan (#197, penyelarasan ATT-013-1b). Mengubah salah satunya tidak
+memerlukan migration baru kecuali D-13-6.
 
 ## 10. Acceptance
 

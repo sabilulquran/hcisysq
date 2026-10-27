@@ -63,6 +63,9 @@ const profileBody = z.object({
   bpjsDecisionReference: z.string().trim().max(200).nullable().optional(),
   ptkpStatus: z.string().trim().max(16).nullable().optional(),
   pjMediaRatePerContent: z.number().int().min(0).nullable().optional(),
+  // The transfer list prints the bank beside the account, so the profile has
+  // to be able to carry one; before this it could only ever be empty there.
+  bankName: z.string().trim().max(120).nullable().optional(),
   bankAccountNumber: z.string().trim().max(64).nullable().optional(),
   bankAccountName: z.string().trim().max(200).nullable().optional(),
 });

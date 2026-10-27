@@ -41,6 +41,17 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // PAY-003: exactly the permissions the API lets read a period
   // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
   // anyone else would show them a menu entry leading to a 403.
+  // PAY-003 reference data: a different set of permissions from the periods.
+  // Finance holds the loan register and nothing else here; human capital holds
+  // the policy and the profiles. Checked before the period rule below, which
+  // would otherwise answer for this path too.
+  if (path === "/admin/payroll/reference") {
+    return [
+      "payroll.policies.manage",
+      "payroll.loans.manage",
+      "payroll.profiles.manage",
+    ].some((permission) => hasPermission(session, permission));
+  }
   if (/^\/admin\/payroll(?:\/|$)/.test(path)) {
     return [
       "payroll.periods.manage",

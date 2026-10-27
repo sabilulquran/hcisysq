@@ -128,6 +128,7 @@ export type CompensationProfileRow = {
   bpjsDecisionReference: string | null;
   ptkpStatus: string | null;
   pjMediaRatePerContent: string | null;
+  bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
   recordedAt: string;
@@ -153,6 +154,7 @@ const PROFILE_COLUMNS = `
   bpjs_decision_reference AS "bpjsDecisionReference",
   ptkp_status AS "ptkpStatus",
   pj_media_rate_per_content AS "pjMediaRatePerContent",
+  bank_name AS "bankName",
   bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName",
   recorded_at AS "recordedAt"
 `;
@@ -191,6 +193,7 @@ export type NewCompensationProfile = {
   bpjsDecisionReference?: string | null | undefined;
   ptkpStatus?: string | null | undefined;
   pjMediaRatePerContent?: number | null | undefined;
+  bankName?: string | null | undefined;
   bankAccountNumber?: string | null | undefined;
   bankAccountName?: string | null | undefined;
 };
@@ -222,10 +225,10 @@ export async function openCompensationProfile(
          spouse_count, child_count, registered_dependants, special_qualification_target,
          annual_performance_rate, monthly_performance_rate, bpjs_segment, bpjs_active_from,
          bpjs_extra_family_override, bpjs_extra_family_override_reason, bpjs_decision_reference,
-         ptkp_status, pj_media_rate_per_content, bank_account_number, bank_account_name,
+         ptkp_status, pj_media_rate_per_content, bank_name, bank_account_number, bank_account_name,
          recorded_by_account_id)
        VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25)
+               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25, $26)
        RETURNING ${PROFILE_COLUMNS}`,
       [
         randomUUID(),
@@ -250,6 +253,7 @@ export async function openCompensationProfile(
         profile.bpjsDecisionReference ?? null,
         profile.ptkpStatus ?? null,
         profile.pjMediaRatePerContent ?? null,
+        profile.bankName ?? null,
         profile.bankAccountNumber ?? null,
         profile.bankAccountName ?? null,
         actorAccountId,

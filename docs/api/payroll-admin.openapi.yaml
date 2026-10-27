@@ -390,6 +390,7 @@ components:
         bpjsDecisionReference: { type: [string, 'null'] }
         ptkpStatus: { type: [string, 'null'] }
         pjMediaRatePerContent: { type: [integer, 'null'], minimum: 0 }
+        bankName: { type: [string, 'null'] }
         bankAccountNumber: { type: [string, 'null'] }
         bankAccountName: { type: [string, 'null'] }
 
@@ -423,6 +424,7 @@ components:
         bpjsDecisionReference: { type: [string, 'null'] }
         ptkpStatus: { type: [string, 'null'] }
         pjMediaRatePerContent: { type: [string, 'null'] }
+        bankName: { type: [string, 'null'] }
         bankAccountNumber: { type: [string, 'null'] }
         bankAccountName: { type: [string, 'null'] }
         recordedAt: { type: string, format: date-time }

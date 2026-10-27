@@ -87,6 +87,15 @@ describe("EMP-003 the employee's own list", () => {
     expect(payloadLines({ isDependent: true })).toEqual([{ label: "Tanggungan", value: "Ya" }]);
   });
 
+  it("shows a contact field proposed as empty as a removal, not as silence", () => {
+    // HC has to see that accepting will delete something.
+    expect(payloadLines({ email: null }, "KONTAK")).toEqual([{ label: "Email", value: "dikosongkan" }]);
+    // Other targets carry the whole record, where an empty field is simply
+    // not recorded.
+    expect(payloadLines({ village: null, city: "Bandung" }, "ALAMAT"))
+      .toEqual([{ label: "Kota/kabupaten", value: "Bandung" }]);
+  });
+
   it("names each state in words", () => {
     expect(render(<StateBadge state="DIAJUKAN" />)).toContain("Menunggu keputusan");
     expect(render(<StateBadge state="DITERIMA" />)).toContain("Diterima");

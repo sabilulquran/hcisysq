@@ -70,7 +70,7 @@ export function EmployeeDataChangesPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const [target, setTarget] = useState<DataChangeTarget | null>(null);
   const [address, setAddress] = useState<AddressDraft>({ ...EMPTY_ADDRESS });
-  const [contact, setContact] = useState({ email: "", phone: "" });
+  const [contact, setContact] = useState({ email: "", phone: "", clearEmail: false, clearPhone: false });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,13 +118,19 @@ export function EmployeeDataChangesPage() {
         postalCode: blankToNull(address.postalCode),
         validFrom: address.validFrom,
       }
-      : { email: blankToNull(contact.email), phone: blankToNull(contact.phone) };
+      // Only the fields the employee actually filled, or explicitly asked to
+      // clear. A blank box is "leave this alone": sending it as null made
+      // accepting the proposal delete a contact detail nobody had touched.
+      : {
+        ...(contact.clearEmail ? { email: null } : contact.email.trim() ? { email: contact.email.trim() } : {}),
+        ...(contact.clearPhone ? { phone: null } : contact.phone.trim() ? { phone: contact.phone.trim() } : {}),
+      };
     void run(async () => {
       await submitDataChange(target, payload);
       setNotice("Usulan terkirim dan menunggu keputusan Human Capital.");
       setTarget(null);
       setAddress({ ...EMPTY_ADDRESS });
-      setContact({ email: "", phone: "" });
+      setContact({ email: "", phone: "", clearEmail: false, clearPhone: false });
       setReloadToken((token) => token + 1);
     }, "Usulan tidak dapat dikirim.");
   };
@@ -205,16 +211,47 @@ export function EmployeeDataChangesPage() {
         {target === "KONTAK" ? (
           <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
             <h2 className="sm:col-span-2 text-sm font-bold text-brand-heading">Usulan kontak</h2>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Email</span>
-              <input className={field} type="email" value={contact.email} onChange={(event) => setContact({ ...contact, email: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Telepon</span>
-              <input className={field} value={contact.phone} onChange={(event) => setContact({ ...contact, phone: event.target.value })} />
-            </label>
+            <div className="block text-sm">
+              <label>
+                <span className="mb-1 block font-bold text-brand-heading">Email baru</span>
+                <input
+                  className={field}
+                  type="email"
+                  disabled={contact.clearEmail}
+                  value={contact.email}
+                  onChange={(event) => setContact({ ...contact, email: event.target.value })}
+                />
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={contact.clearEmail}
+                  onChange={(event) => setContact({ ...contact, clearEmail: event.target.checked })}
+                />
+                Usulkan agar email dihapus
+              </label>
+            </div>
+            <div className="block text-sm">
+              <label>
+                <span className="mb-1 block font-bold text-brand-heading">Telepon baru</span>
+                <input
+                  className={field}
+                  disabled={contact.clearPhone}
+                  value={contact.phone}
+                  onChange={(event) => setContact({ ...contact, phone: event.target.value })}
+                />
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={contact.clearPhone}
+                  onChange={(event) => setContact({ ...contact, clearPhone: event.target.checked })}
+                />
+                Usulkan agar nomor telepon dihapus
+              </label>
+            </div>
             <p className="sm:col-span-2 text-xs text-muted-foreground">
-              Mengosongkan salah satu berarti mengusulkan agar data itu dihapus.
+              Kotak yang dibiarkan kosong tidak diubah. Untuk menghapus sebuah data, centang pilihan di bawahnya.
             </p>
             <div className="sm:col-span-2">
               <button type="submit" className={primaryButton} disabled={busy}>Kirim usulan</button>

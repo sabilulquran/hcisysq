@@ -488,9 +488,15 @@ export interface ContactInput {
   phone?: string | null | undefined;
 }
 
+/**
+ * Only the fields the proposal actually names. A key that is absent means
+ * "leave this alone"; a key present and null means "remove it". Carrying both
+ * as plain nulls made a one-field proposal silently delete the other, and
+ * neither the audit row nor HC's screen showed that it had.
+ */
 export interface ContactValues {
-  email: string | null;
-  phone: string | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -503,14 +509,22 @@ const PHONE = /^[0-9+][0-9 ()+-]{5,24}$/;
  * yang tidak mengubah apa pun tidak perlu diputuskan siapa pun.
  */
 export function validateContact(input: ContactInput): ProfileValidation<ContactValues> {
-  const email = text(input.email)?.toLowerCase() ?? null;
-  const phone = text(input.phone);
-  if (input.email === undefined && input.phone === undefined) {
+  const names = (["email", "phone"] as const).filter((field) => field in input && input[field] !== undefined);
+  if (names.length === 0) {
     return fail("email", "Usulan kontak harus menyebut email atau nomor telepon.");
   }
-  if (email !== null && !EMAIL.test(email)) return fail("email", "Alamat email tidak valid.");
-  if (phone !== null && !PHONE.test(phone)) return fail("phone", "Nomor telepon tidak valid.");
-  return { ok: true, value: { email, phone } };
+  const value: ContactValues = {};
+  if (names.includes("email")) {
+    const email = text(input.email)?.toLowerCase() ?? null;
+    if (email !== null && !EMAIL.test(email)) return fail("email", "Alamat email tidak valid.");
+    value.email = email;
+  }
+  if (names.includes("phone")) {
+    const phone = text(input.phone);
+    if (phone !== null && !PHONE.test(phone)) return fail("phone", "Nomor telepon tidak valid.");
+    value.phone = phone;
+  }
+  return { ok: true, value };
 }
 
 export type DataChangeValues =
@@ -569,8 +583,12 @@ export function validateDataChange(
  * di layar HC. Isinya tidak pernah ikut (§6).
  */
 export function proposedFields(values: DataChangeValues): string[] {
-  return Object.entries(values.values as unknown as Record<string, unknown>)
-    .filter(([, value]) => value !== null && value !== undefined)
-    .map(([field]) => field)
-    .sort();
+  const entries = Object.entries(values.values as unknown as Record<string, unknown>);
+  // KONTAK carries only the fields it names, so a null there is a deliberate
+  // removal and belongs in the list. Everywhere else the whole record is
+  // proposed and a null is simply "not recorded".
+  const keep = values.target === "KONTAK"
+    ? ([, value]: [string, unknown]) => value !== undefined
+    : ([, value]: [string, unknown]) => value !== null && value !== undefined;
+  return entries.filter(keep).map(([field]) => field).sort();
 }

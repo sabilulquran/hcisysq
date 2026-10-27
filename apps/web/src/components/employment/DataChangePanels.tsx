@@ -34,7 +34,7 @@ export function StateBadge({ state }: { state: DataChangeState }) {
 
 /** What the employee proposed, spelled out field by field. */
 export function ProposalSummary({ request }: { request: DataChangeRequest }) {
-  const lines = payloadLines(request.payload);
+  const lines = payloadLines(request.payload, request.target);
   if (lines.length === 0) return <p className="text-xs text-muted-foreground">Usulan ini tidak memuat nilai.</p>;
   return (
     <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">

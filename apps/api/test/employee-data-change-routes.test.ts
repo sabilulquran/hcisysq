@@ -43,6 +43,12 @@ const ADDRESS_PAYLOAD = {
 
 const CONTACT_PAYLOAD = { email: "pegawai@example.org", phone: "0800000000" };
 
+const FAMILY_PAYLOAD = {
+  relation: "PASANGAN",
+  fullName: "Nama Sintetis",
+  validFrom: "2015-06-01",
+};
+
 const REQUEST_ROW = {
   id: REQUEST_ID,
   employeeId: EMPLOYEE_ID,
@@ -70,7 +76,10 @@ interface PoolOptions {
     employeeRemoved?: boolean;
   } | null;
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
-  periodConflict?: boolean;
+  /** The write raises this exclusion violation, constraint name and all. */
+  periodConflict?: string;
+  /** The write raises a CHECK violation the domain rules did not catch. */
+  checkViolation?: boolean;
   payload?: object;
 }
 
@@ -136,13 +145,27 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO employee_addresses")) {
-      if (options.periodConflict) throw Object.assign(new Error("exclusion violation"), { code: "23P01" });
+      if (options.periodConflict) {
+        throw Object.assign(new Error("exclusion violation"), { code: "23P01", constraint: options.periodConflict });
+      }
+      if (options.checkViolation) throw Object.assign(new Error("check violation"), { code: "23514" });
       writes.push("INSERT address");
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("UPDATE employee_addresses SET valid_to")) { writes.push("CLOSE address"); return { rows: [], rowCount: 1 }; }
-    if (sql.includes("UPDATE employees SET email")) { writes.push("UPDATE contact"); return { rows: [], rowCount: 1 }; }
-    if (sql.includes("INSERT INTO employee_family_members")) { writes.push("INSERT family"); return { rows: [], rowCount: 1 }; }
+    if (sql.includes("UPDATE employees SET") && sql.includes("WHERE id = $1")) {
+      // The statement itself is the evidence: it must name only the columns
+      // the proposal named.
+      writes.push(`UPDATE contact [${sql.slice(sql.indexOf("SET") + 4, sql.indexOf("WHERE")).trim()}]`);
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO employee_family_members")) {
+      if (options.periodConflict) {
+        throw Object.assign(new Error("exclusion violation"), { code: "23P01", constraint: options.periodConflict });
+      }
+      writes.push("INSERT family");
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes("INSERT INTO employee_education")) { writes.push("INSERT education"); return { rows: [], rowCount: 1 }; }
     if (sql.includes("INSERT INTO employee_skills")) { writes.push("INSERT skill"); return { rows: [], rowCount: 1 }; }
     if (sql.includes("INSERT INTO employee_profile_audit_events")) {
@@ -285,7 +308,40 @@ describe("EMP-003 HC decides", () => {
     const { writes } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
       locked: { target: "KONTAK", payload: CONTACT_PAYLOAD },
     });
-    expect(writes).toEqual(["UPDATE contact", "DECIDE DITERIMA", "INSERT audit"]);
+    expect(writes).toEqual([
+      "UPDATE contact [email = $2, phone = $3, updated_at = now()]",
+      "DECIDE DITERIMA",
+      "INSERT audit",
+    ]);
+  });
+
+  it("changes only the contact field the proposal named", async () => {
+    // A proposal about the phone must not wipe the email. It used to: both
+    // columns were written unconditionally, and neither the audit row nor
+    // HC's screen showed that the email had gone.
+    const { writes, audits } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      locked: { target: "KONTAK", payload: { phone: "0813000000" } },
+    });
+    expect(writes[0]).toBe("UPDATE contact [phone = $2, updated_at = now()]");
+    expect(writes[0]).not.toContain("email");
+    expect(audits[0]?.payload).toMatchObject({ fields: ["phone"] });
+  });
+
+  it("writes an emptied contact field, and names it in the audit", async () => {
+    const { writes, audits } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      locked: { target: "KONTAK", payload: { email: null } },
+    });
+    expect(writes[0]).toBe("UPDATE contact [email = $2, updated_at = now()]");
+    // Removing a value is a change, so the audit has to name the field.
+    expect(audits[0]?.payload).toMatchObject({ fields: ["email"] });
+  });
+
+  it("refuses a contact proposal that names nothing at all", async () => {
+    const { response, writes } = await call("employee", "POST", "/employees/me/data-changes", {
+      payload: { target: "KONTAK", payload: {} },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(writes).toEqual([]);
   });
 
   it("validates again at acceptance, and writes nothing when the rules no longer fit", async () => {
@@ -298,12 +354,36 @@ describe("EMP-003 HC decides", () => {
     expect(writes).toEqual([]);
   });
 
-  it("undoes the decision when the change cannot be written", async () => {
-    const { response, writes } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
-      periodConflict: true,
+  it("names the rule the database refused rather than one code for all", async () => {
+    const overlap = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      periodConflict: "employee_addresses_single_current_excl",
+    });
+    expect(overlap.response.statusCode).toBe(409);
+    expect(overlap.response.json()).toMatchObject({ code: "ADDRESS_PERIOD_OVERLAP" });
+
+    const spouse = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      locked: { target: "KELUARGA", payload: FAMILY_PAYLOAD },
+      periodConflict: "employee_family_single_spouse_excl",
+    });
+    expect(spouse.response.json()).toMatchObject({ code: "FAMILY_SPOUSE_OVERLAP" });
+  });
+
+  it("answers a CHECK the domain did not catch as a refusal, not a 500", async () => {
+    const { response } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      checkViolation: true,
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: "DATA_CHANGE_CONFLICT" });
+  });
+
+  it("undoes the decision when the change cannot be written", async () => {
+    const { response, writes, query } = await call("hc", "POST", `/admin/data-change-requests/${REQUEST_ID}/accept`, {
+      periodConflict: "employee_addresses_single_current_excl",
+    });
+    expect(response.statusCode).toBe(409);
+    // Rolled back, not merely "no decision written".
+    expect(query.mock.calls.some(([sql]) => /^\s*ROLLBACK/.test(String(sql)))).toBe(true);
+    expect(query.mock.calls.some(([sql]) => /^\s*COMMIT/.test(String(sql)))).toBe(false);
     // Nothing was decided: an accepted proposal with no change behind it would
     // be a lie in the employee's own history.
     expect(writes.filter((write) => write.startsWith("DECIDE"))).toEqual([]);
@@ -314,7 +394,8 @@ describe("EMP-003 HC decides", () => {
       openAddress: { id: "old", validFrom: "2027-01-01", validTo: null },
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ code: "DATA_CHANGE_CONFLICT" });
+    // The address rule is what refused it, so that is the code HC sees.
+    expect(response.json()).toMatchObject({ code: "ADDRESS_PERIOD_OVERLAP" });
     expect(writes.filter((write) => write.startsWith("DECIDE"))).toEqual([]);
   });
 

@@ -682,27 +682,50 @@ export async function listDataChangeRequests(
   }
   const forRows = clauses(2);
   const forCount = clauses(1);
+  // A removed employee's proposals cannot be accepted (the decision refuses
+  // with EMPLOYEE_NOT_FOUND), so leaving them in the queue would ask HC to
+  // reject each one by hand for a reason that is not theirs.
+  const managed = "e.removed_at IS NULL";
+  const withManaged = (where: string) => (where ? `${where} AND ${managed}` : `WHERE ${managed}`);
 
   const [rows, count] = await Promise.all([
     db.query<RequestDates<DataChangeRequestRow>>(
-      `SELECT ${REQUEST_COLUMNS} ${REQUEST_FROM} ${forRows.where}
+      `SELECT ${REQUEST_COLUMNS} ${REQUEST_FROM} ${withManaged(forRows.where)}
        ORDER BY r.created_at, r.id
        LIMIT ${input.pageSize} OFFSET $1`,
       [input.pageSize * (input.page - 1), ...forRows.params],
     ),
-    db.query<{ total: number }>(`SELECT count(*)::int AS total ${REQUEST_FROM} ${forCount.where}`, forCount.params),
+    db.query<{ total: number }>(
+      `SELECT count(*)::int AS total ${REQUEST_FROM} ${withManaged(forCount.where)}`,
+      forCount.params,
+    ),
   ]);
   return { total: count.rows[0]?.total ?? 0, rows: rows.rows.map(requestToIso) };
 }
 
-/** Accepting a KONTAK proposal writes the master's own columns. */
+/**
+ * Accepting a KONTAK proposal writes the master's own columns — only the ones
+ * the proposal named. Writing both unconditionally set the other to NULL,
+ * deleting a contact detail nobody had proposed changing.
+ */
 export async function updateEmployeeContact(
   client: PoolClient,
   employeeId: string,
   values: ContactValues,
 ): Promise<void> {
+  const assignments: string[] = [];
+  const params: unknown[] = [employeeId];
+  if ("email" in values) {
+    params.push(values.email ?? null);
+    assignments.push(`email = $${params.length}`);
+  }
+  if ("phone" in values) {
+    params.push(values.phone ?? null);
+    assignments.push(`phone = $${params.length}`);
+  }
+  if (assignments.length === 0) return;
   await client.query(
-    "UPDATE employees SET email = $2, phone = $3, updated_at = now() WHERE id = $1",
-    [employeeId, values.email, values.phone],
+    `UPDATE employees SET ${assignments.join(", ")}, updated_at = now() WHERE id = $1`,
+    params,
   );
 }

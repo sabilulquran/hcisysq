@@ -76,8 +76,45 @@ function jakartaToday(now = new Date()): string {
     .format(now);
 }
 
-function isPeriodConflict(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === "23P01";
+/**
+ * A refusal from the database, turned into the code the spec names for the
+ * rule that was broken (§9). One code for all of them would tell HC only that
+ * something collided, not what.
+ */
+const CONSTRAINT_CONFLICTS: Record<string, { code: string; message: string }> = {
+  employee_family_single_spouse_excl: {
+    code: "FAMILY_SPOUSE_OVERLAP",
+    message: "Sudah ada pasangan yang tercatat pada periode tersebut.",
+  },
+  employee_family_emergency_priority_excl: {
+    code: "EMERGENCY_PRIORITY_TAKEN",
+    message: "Urutan kontak darurat ini sudah dipakai.",
+  },
+  employee_addresses_single_current_excl: {
+    code: "ADDRESS_PERIOD_OVERLAP",
+    message: "Sudah ada alamat jenis ini pada periode tersebut.",
+  },
+};
+
+const GENERIC_CONFLICT = {
+  code: "DATA_CHANGE_CONFLICT",
+  message: "Usulan ini bertabrakan dengan data yang sudah ada, jadi belum dapat diterima.",
+};
+
+function writeConflict(error: unknown): { code: string; message: string } | null {
+  if (typeof error !== "object" || error === null) return null;
+  const { code, constraint } = error as { code?: string; constraint?: string };
+  if (code === "ADDRESS_PERIOD_IMPOSSIBLE") {
+    return {
+      code: "ADDRESS_PERIOD_OVERLAP",
+      message: "Alamat yang berlaku mulai pada atau setelah tanggal usulan, jadi tidak dapat ditutup lebih dulu.",
+    };
+  }
+  // 23P01 is an exclusion, 23514 a CHECK the domain rules are meant to mirror.
+  // Both mean the proposal cannot be written, and both are the employee's
+  // data colliding with itself — never a server fault to report as 500.
+  if (code !== "23P01" && code !== "23514") return null;
+  return (constraint ? CONSTRAINT_CONFLICTS[constraint] : undefined) ?? GENERIC_CONFLICT;
 }
 
 /**
@@ -216,8 +253,9 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
         employeeId: me.employeeId,
         payload: { target: body.data.target, fields: proposedFields(validation.value) },
       });
+      const submitted = await getDataChangeRequest(client, id);
       await client.query("COMMIT");
-      return send(reply, 201, await getDataChangeRequest(pool, id));
+      return send(reply, 201, submitted);
     } catch (error) {
       await rollback(client);
       throw error;
@@ -260,8 +298,9 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
         employeeId: me.employeeId,
         payload: { target: locked.target },
       });
+      const cancelled = await getDataChangeRequest(client, params.data.requestId);
       await client.query("COMMIT");
-      return send(reply, 200, await getDataChangeRequest(pool, params.data.requestId));
+      return send(reply, 200, cancelled);
     } catch (error) {
       await rollback(client);
       throw error;
@@ -331,6 +370,7 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
         }
 
         let applied: { entityType: string; entityId: string | null } | null = null;
+        let appliedFields: string[] | null = null;
         if (outcome === "accept") {
           // Validated again: the rules, and the year, may have moved since the
           // employee proposed this (§4.5).
@@ -343,6 +383,7 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
               field: validation.failure.field,
             });
           }
+          appliedFields = proposedFields(validation.value);
           applied = await applyDataChange(client, locked.employeeId, validation.value, principal.id);
         }
 
@@ -359,26 +400,22 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
           employeeId: locked.employeeId,
           payload: {
             target: locked.target,
+            // §6 asks for the field names a decision touched, not their values.
+            ...(appliedFields ? { fields: appliedFields } : {}),
             ...(applied ? { appliedTo: applied.entityType, appliedId: applied.entityId } : {}),
             ...(note ? { noteLength: note.length } : {}),
           },
         });
+        // Read before COMMIT, on the same client: reading afterwards on the
+        // pool meant a failed second connection threw after the decision was
+        // already committed, answering 500 for work that had succeeded.
+        const decided = await getDataChangeRequest(client, params.data.requestId);
         await client.query("COMMIT");
-        return send(reply, 200, await getDataChangeRequest(pool, params.data.requestId));
+        return send(reply, 200, decided);
       } catch (error) {
         await rollback(client);
-        if (isPeriodConflict(error)) {
-          return send(reply, 409, {
-            code: "DATA_CHANGE_CONFLICT",
-            message: "Usulan ini bertabrakan dengan data yang sudah ada, jadi belum dapat diterima.",
-          });
-        }
-        if ((error as { code?: string } | null)?.code === "ADDRESS_PERIOD_IMPOSSIBLE") {
-          return send(reply, 409, {
-            code: "DATA_CHANGE_CONFLICT",
-            message: "Alamat yang berlaku mulai pada atau setelah tanggal usulan, jadi tidak dapat ditutup lebih dulu.",
-          });
-        }
+        const conflict = writeConflict(error);
+        if (conflict) return send(reply, 409, conflict);
         throw error;
       } finally {
         client.release();

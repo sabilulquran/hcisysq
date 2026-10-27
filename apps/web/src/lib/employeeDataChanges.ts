@@ -148,11 +148,25 @@ export function rejectDataChange(requestId: string, reason: string): Promise<Dat
 }
 
 /** "field: value" lines for the summary, with the field names spelled out. */
-export function payloadLines(payload: Record<string, unknown>): Array<{ label: string; value: string }> {
+/**
+ * "field: value" lines for the summary, with the field names spelled out. A
+ * field proposed as empty reads "dikosongkan" rather than disappearing: HC
+ * has to see that accepting will remove something.
+ */
+export function payloadLines(
+  payload: Record<string, unknown>,
+  target?: DataChangeTarget,
+): Array<{ label: string; value: string }> {
+  // A KONTAK proposal carries only the fields it names, so an empty one is a
+  // deliberate removal and HC must see it. Every other target carries the
+  // whole record, where an empty field just means "not recorded".
+  const removals = target === "KONTAK";
   return Object.entries(payload)
-    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .filter(([, value]) => value !== undefined && (removals || (value !== null && value !== "")))
     .map(([field, value]) => ({
       label: FIELD_LABEL[field] ?? field,
-      value: typeof value === "boolean" ? (value ? "Ya" : "Tidak") : String(value),
+      value: value === null || value === ""
+        ? "dikosongkan"
+        : typeof value === "boolean" ? (value ? "Ya" : "Tidak") : String(value),
     }));
 }

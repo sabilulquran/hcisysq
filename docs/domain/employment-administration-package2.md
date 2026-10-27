@@ -155,6 +155,10 @@ Aturan:
 
 Alur: `DIAJUKAN --terima--> DITERIMA` (perubahan ditulis dalam transaksi yang sama), `--tolak--> DITOLAK`, `--batalkan oleh pengusul--> DIBATALKAN`. Tidak ada status lain; tidak ada approval berjenjang pada paket ini (`DRAFT`: satu petugas HC cukup, sama seperti D-07 pada Paket 1).
 
+Usulan milik pegawai yang sudah dikeluarkan dari master (EMP-001 `removed_at`) tidak dapat diterima — penulisannya ditolak — jadi usulan itu **tidak ditampilkan** di daftar tunggu HC (`DRAFT`): membiarkannya di sana hanya meminta HC menolak satu per satu dengan alasan yang bukan urusannya. Baris usulannya tetap ada dan tetap terbaca lewat id-nya.
+
+Isi usulan `KONTAK` hanya memuat field yang benar-benar diusulkan. Field yang tidak disebut tidak diubah saat usulan diterima, dan field yang disebut bernilai kosong berarti penghapusan yang disengaja — layar HC menuliskannya sebagai "dikosongkan". Menulis kedua kolom tanpa syarat akan menghapus data yang tidak pernah diusulkan siapa pun.
+
 ## 5. Perilaku
 
 ### 5.1 Siapa menulis apa
@@ -210,6 +214,8 @@ Dua bagian pada satu tab: **Riwayat pendidikan** (jenjang, lembaga, jurusan, tah
 
 Pegawai melihat data dirinya dan menekan **Ajukan perubahan** pada bagian yang boleh diusulkan. Form memperlihatkan nilai sekarang dan nilai usulan berdampingan, lalu status usulan: *Diajukan*, *Diterima*, atau *Ditolak* dengan alasannya.
 
+**Yang dibangun di P2-4 (`DRAFT`).** Layar "Data saya" memuat pengajuan alamat dan kontak, daftar usulan beserta statusnya, dan pembatalan usulan yang masih menunggu. Nilai sekarang **belum** ditampilkan berdampingan: paket ini tidak punya rute baca self-service atas alamat dan kontak pegawai sendiri, dan menambahkannya adalah layar profil pegawai tersendiri. Sampai itu ada, form kontak tidak pernah menafsirkan kotak kosong sebagai penghapusan — kotak kosong berarti "jangan diubah", dan penghapusan harus dicentang sendiri. Usulan keluarga, pendidikan, dan keahlian dicatat HC sampai layar pegawainya dibuat.
+
 ### 7.4 HC — **Pegawai → Usulan perubahan data**
 
 Daftar usulan yang menunggu keputusan: pegawai, bagian data, ringkasan "dari → menjadi", tanggal pengajuan. Tombol **Terima** dan **Tolak** (alasan wajib). Diurutkan dari yang paling lama menunggu.
@@ -250,8 +256,14 @@ Pegawai melihat seluruh datanya sendiri. HC melihat data pegawai dalam lingkup a
 | `EMERGENCY_PRIORITY_TAKEN` | 409 | Urutan kontak darurat dipakai | "Urutan kontak darurat ini sudah dipakai." |
 | `DATA_CHANGE_NOT_PENDING` | 409 | Memutuskan usulan yang sudah selesai | "Usulan ini sudah diputuskan." |
 | `DATA_CHANGE_REASON_REQUIRED` | 400 | Menolak tanpa alasan | "Penolakan wajib disertai alasan." |
-| `DATA_CHANGE_FORBIDDEN` | 403 | Mengusulkan atas data pegawai lain | "Anda hanya dapat mengajukan perubahan data Anda sendiri." |
+| `DATA_CHANGE_NO_LONGER_VALID` | 409 | Usulan yang menunggu tidak lagi memenuhi aturan saat hendak diterima (§4.5: divalidasi dua kali); respons menyebut `field` | "Usulan ini tidak lagi memenuhi aturan: …" |
+| `DATA_CHANGE_CONFLICT` | 409 | Perubahan yang diterima tidak dapat ditulis karena bertabrakan dengan data yang ada, dan basis data tidak menyebut aturan tertentu | "Usulan ini bertabrakan dengan data yang sudah ada, jadi belum dapat diterima." |
+| `EMPLOYEE_ACCOUNT_REQUIRED` | 403 | Sesi yang tidak terhubung ke data pegawai membuka layar "Data saya" | "Akun ini tidak terhubung ke data pegawai." |
 | `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Record di luar pengelolaan HCIS | Sama seperti Paket 1 |
+
+`DATA_CHANGE_FORBIDDEN` yang semula direncanakan **tidak dipakai**: menjawab 403 atas usulan milik pegawai lain berarti memberi tahu bahwa usulan dengan id itu ada. Rute pegawai menjawab `DATA_CHANGE_NOT_FOUND` (404), sama persis seperti usulan yang memang tidak ada.
+
+Ketika penulisan usulan yang diterima ditolak oleh aturan periode yang punya namanya sendiri, yang dikirim adalah kode aturan itu — `ADDRESS_PERIOD_OVERLAP`, `FAMILY_SPOUSE_OVERLAP`, atau `EMERGENCY_PRIORITY_TAKEN` — bukan `DATA_CHANGE_CONFLICT`, supaya HC tahu aturan mana yang dilanggar.
 
 ## 10. Migrasi dan rollback
 

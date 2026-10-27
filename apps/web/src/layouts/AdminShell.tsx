@@ -6,6 +6,7 @@ import {
   Calculator,
   CalendarDays,
   CalendarRange,
+  BadgeCheck,
   ClipboardCheck,
   Clock3,
   FileSignature,
@@ -36,6 +37,7 @@ export type AdminNavKey =
   | "import"
   | "history"
   | "employment-consistency"
+  | "expiring-certificates"
   | "decision-documents"
   | "organization"
   | "attendance"
@@ -81,6 +83,7 @@ const navGroups: AdminNavGroup[] = [
       { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
       { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
       { key: "employment-consistency", label: "Kecocokan Data", href: "/admin/employment/consistency", icon: ClipboardCheck },
+      { key: "expiring-certificates", label: "Sertifikat Akan Berakhir", href: "/admin/employees/certificates/expiring", icon: BadgeCheck },
       { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
     ],
   },

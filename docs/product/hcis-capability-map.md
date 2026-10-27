@@ -91,7 +91,7 @@ Classic employment administration is an explicit HCIS direction, using effective
 - Family, dependents, and employee relations — EMP-009.
 - Employment basis documents: Perjanjian Kerja and Surat Keputusan — EMP-010.
 
-Package 1 (EMP-005, EMP-006, EMP-010) is specified and accepted by the owner (2026-10-16) in `docs/domain/employment-administration-package1.md`. Package 2 (EMP-007, EMP-008, EMP-009 and addresses/contacts through the EMP-003 data-change flow) is specified in `docs/domain/employment-administration-package2.md` (2026-10-27).
+Package 1 (EMP-005, EMP-006, EMP-010) is specified and accepted by the owner (2026-10-16) in `docs/domain/employment-administration-package1.md`. Package 2 (EMP-007, EMP-008, EMP-009 and addresses/contacts through the EMP-003 data-change flow) is specified in `docs/domain/employment-administration-package2.md` (2026-10-27); its step P2-2 shipped EMP-007 and EMP-008 (education, skills and certificates, with the worklist of certificates about to expire), and EMP-009 with addresses follows in P2-3.
 
 EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
 

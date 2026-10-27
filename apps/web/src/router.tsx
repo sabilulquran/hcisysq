@@ -49,6 +49,7 @@ import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePa
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminDecisionDocumentsPage } from "@/pages/AdminDecisionDocumentsPage";
 import { AdminEmploymentConsistencyPage } from "@/pages/AdminEmploymentConsistencyPage";
+import { AdminExpiringCertificatesPage } from "@/pages/AdminExpiringCertificatesPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
 import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
@@ -298,6 +299,13 @@ const adminEmployeeImportHistoryRoute = createRoute({
   path: "/admin/employees/imports",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employees/imports"),
   component: AdminEmployeeImportHistoryPage,
+});
+
+const adminExpiringCertificatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees/certificates/expiring",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employees/certificates/expiring"),
+  component: AdminExpiringCertificatesPage,
 });
 
 const adminEmploymentConsistencyRoute = createRoute({
@@ -639,6 +647,7 @@ const routeTree = rootRoute.addChildren([
   adminEmployeeDetailRoute,
   adminEmployeeImportRoute,
   adminEmployeeImportHistoryRoute,
+  adminExpiringCertificatesRoute,
   adminEmploymentConsistencyRoute,
   adminDecisionDocumentsRoute,
   adminOrganizationRoute,

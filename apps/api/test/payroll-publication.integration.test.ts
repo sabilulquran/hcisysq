@@ -533,6 +533,23 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     expect(slips.filter((slip) => slip.supersededById === null)).toHaveLength(1);
   });
 
+  it("refuses two current slips for one employee and month", async () => {
+    const employee = await newEmployee();
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    await pool.query(
+      `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id)
+       VALUES ($1, $2, DATE '2026-09-01', '[]'::jsonb, 'generic', $3)`,
+      [randomUUID(), employee.employeeId, periodId],
+    );
+    await expect(
+      pool.query(
+        `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id)
+         VALUES ($1, $2, DATE '2026-09-01', '[]'::jsonb, 'generic', $3)`,
+        [randomUUID(), employee.employeeId, periodId],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
   it("refuses a slip that claims both an import batch and a payroll period", async () => {
     const employee = await newEmployee();
     const periodId = await newPeriod("PAYMENT_CONFIRMED");

@@ -65,6 +65,11 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     expect((caught as { code?: string } | undefined)?.code).toBe(code);
   }
 
+  /** Dates are relative to today: an employment that ended must be in the past. */
+  function daysFromToday(days: number): string {
+    return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  }
+
   async function addEmployment(startedOn: string, endedOn: string | null) {
     const employmentId = randomUUID();
     const actionId = randomUUID();
@@ -124,7 +129,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     });
 
     it("allows only one live grant per account", async () => {
-      await grant("now() + interval '7 days'".replace(/.*/, new Date(Date.now() + 7 * 86_400_000).toISOString()));
+      await grant(new Date(Date.now() + 7 * 86_400_000).toISOString());
       await expectSqlError(
         `INSERT INTO account_temporary_reactivations(id, account_id, reason, expires_at)
          VALUES ($1, $2, 'Perpanjangan akses sementara', $3)`,
@@ -136,7 +141,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
 
   describe("deactivation when an employment ends", () => {
     it("closes the account, its sessions and its activation tokens", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
       const sessionId = randomUUID();
       await client.query(
         `INSERT INTO auth_sessions(id, account_id, token_hash, expires_at)
@@ -154,14 +159,14 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     });
 
     it("leaves the account open while another employment still runs", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
-      await addEmployment("2027-10-01", null);
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
+      await addEmployment(daysFromToday(-10), null);
       expect(await deactivateAccountsForEndedEmployment(client, employeeId)).toEqual([]);
       expect(await accountStatus()).toBe("active");
     });
 
     it("leaves a suspended account suspended", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
       await client.query("UPDATE accounts SET status = 'suspended' WHERE id = $1", [accountId]);
       expect(await deactivateAccountsForEndedEmployment(client, employeeId)).toEqual([]);
       expect(await accountStatus()).toBe("suspended");
@@ -170,7 +175,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
 
   describe("expiry of a temporary reactivation", () => {
     it("closes the account once and marks the grant, so a later run does nothing", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
       await client.query(
         `INSERT INTO account_temporary_reactivations(id, account_id, reason, starts_at, expires_at)
          VALUES ($1, $2, 'Mengambil slip gaji terakhir', now() - interval '8 days', now() - interval '1 day')`,
@@ -186,8 +191,8 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     });
 
     it("leaves a rehired employee signed in", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
-      await addEmployment("2027-11-01", null);
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
+      await addEmployment(daysFromToday(-5), null);
       await client.query(
         `INSERT INTO account_temporary_reactivations(id, account_id, reason, starts_at, expires_at)
          VALUES ($1, $2, 'Mengambil slip gaji terakhir', now() - interval '8 days', now() - interval '1 day')`,
@@ -200,7 +205,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
 
   describe("the state the guard reads", () => {
     it("reports an ended employment, and an unexpired grant", async () => {
-      await addEmployment("2026-07-01", "2027-09-30");
+      await addEmployment(daysFromToday(-400), daysFromToday(-30));
       const before = await loadEmploymentAccessState(client, accountId);
       expect(before.employmentEnded).toBe(true);
       expect(before.reactivationExpiresAt).toBeNull();
@@ -210,18 +215,18 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     });
 
     it("reports nothing to restrict while the employment runs", async () => {
-      await addEmployment("2026-07-01", null);
+      await addEmployment(daysFromToday(-400), null);
       expect((await loadEmploymentAccessState(client, accountId)).employmentEnded).toBe(false);
     });
 
     it("ignores a voided employment", async () => {
-      const employmentId = await addEmployment("2026-07-01", "2027-09-30");
+      const employmentId = await addEmployment(daysFromToday(-400), daysFromToday(-30));
       const actionId = randomUUID();
       await client.query(
         `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on, reason_code, reverses_action_id, recorded_at)
-         VALUES ($1, $2, $3, 'REVERSAL', '2027-09-30', 'KOREKSI',
+         VALUES ($1, $2, $3, 'REVERSAL', $4::date, 'KOREKSI',
                  (SELECT id FROM employment_actions WHERE employment_id = $3 LIMIT 1), now())`,
-        [actionId, employeeId, employmentId],
+        [actionId, employeeId, employmentId, daysFromToday(-30)],
       );
       await client.query("UPDATE employments SET voided_by_action_id = $2 WHERE id = $1", [employmentId, actionId]);
       expect((await loadEmploymentAccessState(client, accountId)).employmentEnded).toBe(false);

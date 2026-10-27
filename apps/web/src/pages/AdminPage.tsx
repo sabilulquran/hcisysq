@@ -30,7 +30,7 @@ export function AdminPage() {
       canAccessAdminPath(current, "/admin/employees") ? listEmployees({ pageSize: 1 }) : null,
       canAccessAdminPath(current, "/admin/employees/imports") ? listEmployeeImports({ pageSize: 1 }) : null,
       canAccessAdminPath(current, "/admin/organization") ? getOrganizationAdmin() : null,
-      canAccessAdminPath(current, "/admin/access") ? getAccessAdmin() : null,
+      canAccessAdminPath(current, "/admin/access") ? getAccessAdmin({ pageSize: 1 }) : null,
     ]); })
       .then(([employees, imports, organization, access]) => {
         if (!mounted) return;

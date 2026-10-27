@@ -149,9 +149,19 @@ export function applyOrganizationCommand(
   );
 }
 
-export async function listOrganizationJournal(draftId: string): Promise<OrganizationJournalEntry[]> {
-  const result = await send<{ items: OrganizationJournalEntry[] }>(`/drafts/${draftId}/journal`, {});
-  return result.items;
+export interface OrganizationJournalPage {
+  /** Newest step first (ENG-LIST-001). */
+  items: OrganizationJournalEntry[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+}
+
+export const ORGANIZATION_JOURNAL_PAGE_SIZE = 50;
+
+export function listOrganizationJournal(draftId: string, page = 1): Promise<OrganizationJournalPage> {
+  return send<OrganizationJournalPage>(
+    `/drafts/${draftId}/journal?page=${page}&pageSize=${ORGANIZATION_JOURNAL_PAGE_SIZE}`,
+    {},
+  );
 }
 
 export function rebaseOrganizationDraft(

@@ -234,6 +234,32 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
     });
   });
 
+  describe("ENG-LIST-001 account paging on /admin/access", () => {
+    it("pages and searches accounts in SQL and keeps the summary global", async () => {
+      const first = await get("super", "/admin/access?pageSize=1");
+      expect(first.statusCode, first.body).toBe(200);
+      const body = first.json();
+      expect(body.accounts).toHaveLength(1);
+      expect(body.pagination).toMatchObject({ page: 1, pageSize: 1 });
+      expect(body.pagination.total).toBeGreaterThanOrEqual(15);
+      expect(body.pagination.pageCount).toBe(body.pagination.total);
+      expect(body.summary.accounts).toBeGreaterThanOrEqual(body.pagination.total);
+
+      const second = (await get("super", "/admin/access?pageSize=1&page=2")).json();
+      expect(second.accounts[0].id).not.toBe(body.accounts[0].id);
+
+      // Assignments travel only with the accounts on the page, current and ended alike.
+      const expired = actors.get("expired")!.principal;
+      const found = (await get("super", "/admin/access?q=expired%40example.invalid")).json();
+      expect(found.accounts.map((account: { id: string }) => account.id)).toEqual([expired.id]);
+      expect(found.accounts[0].assignments.map((assignment: { roleId: string }) => assignment.roleId)).toEqual([viewerRoleId]);
+      expect(found.pagination.total).toBe(1);
+
+      expect((await get("super", "/admin/access?pageSize=101")).statusCode).toBe(400);
+      expect((await get("super", "/admin/access?includeInactive=maybe")).statusCode).toBe(400);
+    });
+  });
+
   describe("ORG-010-C role grant", () => {
     const snapshot = async () => (await pool.query(
       `SELECT (SELECT count(*)::int FROM account_role_assignments) AS assignments,

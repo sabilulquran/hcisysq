@@ -806,10 +806,10 @@ describe("PAY-003 period inputs", () => {
   it("records an input and audits the batch without naming an amount", async () => {
     const { response, inputWrites, audits } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
       period: collecting,
-      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: 5 }] },
     });
     expect(response.statusCode).toBe(200);
-    expect(inputWrites).toEqual([{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }]);
+    expect(inputWrites).toEqual([{ employmentId: EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: 5 }]);
     expect(audits).toEqual(["payroll.period.inputs_recorded"]);
   });
 
@@ -817,7 +817,7 @@ describe("PAY-003 period inputs", () => {
     for (const persona of ["director", "finance", "employee", "board"] as const) {
       const { response } = await call(persona, "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
         period: collecting,
-        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: 5 }] },
       });
       expect(response.statusCode).toBe(403);
     }
@@ -826,7 +826,7 @@ describe("PAY-003 period inputs", () => {
   it("refuses an input recorded for the actor's own employment", async () => {
     const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
       period: collecting,
-      payload: { inputs: [{ employmentId: OWN_EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+      payload: { inputs: [{ employmentId: OWN_EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: 5 }] },
     });
     expect(response.statusCode).toBe(403);
     expect(response.json().code).toBe("PAYROLL_OWN_RECORD");
@@ -854,7 +854,7 @@ describe("PAY-003 period inputs", () => {
     for (const state of ["SUBMITTED", "APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED"]) {
       const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
         period: { state },
-        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: 5 }] },
       });
       expect(response.statusCode).toBe(409);
     }
@@ -864,11 +864,11 @@ describe("PAY-003 period inputs", () => {
     const { response, deletes, audits } = await call(
       "hc",
       "DELETE",
-      `/payroll/periods/${PERIOD_ID}/inputs/${EMPLOYMENT_ID}/OVERTIME_HOURS`,
+      `/payroll/periods/${PERIOD_ID}/inputs/${EMPLOYMENT_ID}/OTHER_INCOME`,
       { period: collecting },
     );
     expect(response.statusCode).toBe(204);
-    expect(deletes).toEqual([`${EMPLOYMENT_ID}:OVERTIME_HOURS`]);
+    expect(deletes).toEqual([`${EMPLOYMENT_ID}:OTHER_INCOME`]);
     expect(audits).toEqual(["payroll.period.input_removed"]);
   });
 
@@ -976,7 +976,7 @@ describe("PAY-003 input ranges", () => {
   it("refuses a negative count, hour or amount", async () => {
     const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
       period: { state: "COLLECTING" },
-      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: -4 }] },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OTHER_INCOME", value: -4 }] },
     });
     expect(response.statusCode).toBe(400);
   });
@@ -1110,6 +1110,62 @@ describe("PAY-003 transfer list", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body).toContain(`"'0000000001"`);
     expect(audits).toEqual(["payroll.report.read"]);
+  });
+});
+
+describe("PAY-003 input rules on the period", () => {
+  it("tells the screen which inputs are typed by hand and which carry a reason", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "COLLECTING" },
+    });
+    expect(response.statusCode).toBe(200);
+    const rules = response.json().period.inputRules;
+    // Overtime and PKWT attendance come from the resolver, so they are not
+    // offered by hand: typing one would be thrown away by the next resolve.
+    expect(rules.manual).not.toContain("OVERTIME_HOURS");
+    expect(rules.manual).not.toContain("CONTRACT_ATTENDANCE_DAYS");
+    expect(rules.manual).toContain("ADJUSTMENT");
+    expect(rules.reasonRequired).toEqual(["ADJUSTMENT", "ARREARS", "PRORATION_FACTOR", "FULL_PAY_DESPITE_LEAVING"]);
+    expect(rules.decisionRequired).toEqual(["ADJUSTMENT"]);
+  });
+
+  it("refuses a key the attendance resolver owns", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 4 }] },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_INPUT_RESOLVER_OWNED");
+  });
+
+  it("says whether the period still accepts a change", async () => {
+    const collecting = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "CALCULATED" },
+    });
+    expect(collecting.response.json().period.inputRules.editable).toBe(true);
+
+    const approved = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "APPROVED" },
+    });
+    expect(approved.response.json().period.inputRules.editable).toBe(false);
+  });
+
+  it("refuses by the same lists it published", async () => {
+    const withoutReason = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ARREARS", value: 100000 }] },
+    });
+    expect(withoutReason.response.statusCode).toBe(400);
+    expect(withoutReason.response.json().code).toBe("PAYROLL_REASON_REQUIRED");
+
+    const withoutDecision = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: {
+        inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ADJUSTMENT", value: 250000, reason: "SK kenaikan" }],
+      },
+    });
+    expect(withoutDecision.response.statusCode).toBe(400);
+    expect(withoutDecision.response.json().code).toBe("PAYROLL_DECISION_REQUIRED");
   });
 });
 

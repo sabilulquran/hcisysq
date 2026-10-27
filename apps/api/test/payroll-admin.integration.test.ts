@@ -169,6 +169,54 @@ describe.skipIf(!allowed)("PAY-003 reference data against PostgreSQL", () => {
       ]);
     });
 
+    it("carries a field the new profile does not mention", async () => {
+      // Opening a profile just to set the bank account must not forget the
+      // unit and the performance rates the calculation needs.
+      await openCompensationProfile(
+        pool,
+        {
+          employmentId,
+          effectiveFrom: "2026-01-01",
+          education: "S1",
+          workPattern: "FULL",
+          spouseCount: 1,
+          childCount: 2,
+          annualPerformanceRate: 1.1,
+        },
+        actorAccountId,
+      );
+      const later = await openCompensationProfile(
+        pool,
+        { employmentId, effectiveFrom: "2026-07-01", bankName: "BSI", bankAccountNumber: "7001234567" },
+        actorAccountId,
+      );
+
+      expect(later).toMatchObject({
+        education: "S1",
+        workPattern: "FULL",
+        spouseCount: 1,
+        childCount: 2,
+        bankName: "BSI",
+      });
+      expect(Number(later.annualPerformanceRate)).toBe(1.1);
+    });
+
+    it("clears a field the new profile sends as null, which is a decision", async () => {
+      await openCompensationProfile(
+        pool,
+        { employmentId, effectiveFrom: "2026-01-01", education: "S1", workPattern: "FULL" },
+        actorAccountId,
+      );
+      const later = await openCompensationProfile(
+        pool,
+        { employmentId, effectiveFrom: "2026-07-01", workPattern: null },
+        actorAccountId,
+      );
+
+      expect(later.workPattern).toBeNull();
+      expect(later.education).toBe("S1");
+    });
+
     it("refuses a profile slipped in before an existing one", async () => {
       await openCompensationProfile(pool, profile("2026-07-01"), actorAccountId);
       await expect(openCompensationProfile(pool, profile("2026-01-01"), actorAccountId)).rejects.toMatchObject({
@@ -215,8 +263,10 @@ describe.skipIf(!allowed)("PAY-003 reference data against PostgreSQL", () => {
         [randomUUID(), loan.id, approved],
       );
 
-      const loans = await listLoans(pool, employeeId);
+      const { loans, total } = await listLoans(pool, { employeeId, page: 1, pageSize: 25 });
+      expect(total).toBe(1);
       expect(loans[0]!.outstanding).toBe("1000000");
+      expect(loans[0]!.fullName).toBeTruthy();
     });
 
     it("refuses an instalment larger than what is left to repay", async () => {

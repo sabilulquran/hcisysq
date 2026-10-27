@@ -5,7 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
-import { hasPermission } from "@/lib/authorization";
+import { canAccessAdminPath, hasPermission } from "@/lib/authorization";
 import {
   createPayrollPeriod,
   listPayrollPeriods,
@@ -45,6 +45,7 @@ export function AdminPayrollPage() {
   const [newMonth, setNewMonth] = useState("");
 
   const canManagePeriods = hasPermission(session, "payroll.periods.manage");
+  const canOpenReference = canAccessAdminPath(session, "/admin/payroll/reference");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +93,12 @@ export function AdminPayrollPage() {
   return (
     <AdminShell active="payroll" title="Payroll" description="Periode gaji: hitung, tinjau, sahkan, bayar, terbitkan slip.">
       <div className="space-y-6">
+        {canOpenReference ? (
+          <p className="text-sm text-muted-foreground">
+            Kebijakan berversi, kasbon, dan profil kompensasi yang dipakai perhitungan ada di{" "}
+            <a href="/admin/payroll/reference" className="font-medium text-primary underline">data acuan payroll</a>.
+          </p>
+        ) : null}
         {error ? (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

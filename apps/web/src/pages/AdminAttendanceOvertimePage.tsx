@@ -7,10 +7,13 @@ import { requestStatusLabel } from "@/lib/attendanceLabels";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import {
+  awaitingLabel,
   createAttendanceOvertimeForEmployee,
   dayTypeLabel,
   decideAttendanceOvertime,
   listAttendanceOvertime,
+  reassignAttendanceOvertime,
+  voidAttendanceOvertime,
   type AttendanceOvertimeItem,
   type OvertimeStatusFilter,
 } from "@/lib/workforceAttendance";
@@ -19,6 +22,47 @@ import {
 const TABS: Array<{ value: OvertimeStatusFilter; label: string }> = [
   { value: "submitted", label: "Menunggu" }, { value: "approved", label: "Disetujui" }, { value: "closed", label: "Ditolak/Dibatalkan" },
 ];
+
+// ATT-011-6b-2: HC monitors; it decides only requests from before supervisor approval (hc_legacy).
+export function initiatorLabel(value: AttendanceOvertimeItem["initiatedBy"]) {
+  if (value === "supervisor") return "Atasan";
+  if (value === "hc") return "HC";
+  return "Pegawai";
+}
+
+/** Batalkan administratif and Alihkan approver; the API checks every rule again. */
+function HcOvertimeActions({ item, busy, onRun }: {
+  item: AttendanceOvertimeItem;
+  busy: boolean;
+  onRun: (key: string, action: () => Promise<unknown>, message: string) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"void" | "reassign" | null>(null);
+  const [reason, setReason] = useState("");
+  const [approver, setApprover] = useState<PickedEmployee | null>(null);
+  const canReassign = item.status === "submitted" && item.awaiting === "supervisor";
+  const canVoid = item.status === "submitted" || item.status === "approved";
+  if (!canVoid) return <span className="text-muted-foreground">—</span>;
+  if (!mode) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {canReassign ? <button type="button" disabled={busy} onClick={() => setMode("reassign")} className="rounded-lg border px-3 py-1.5 text-xs font-bold">Alihkan approver</button> : null}
+        <button type="button" disabled={busy} onClick={() => setMode("void")} className="rounded-lg border px-3 py-1.5 text-xs font-bold">Batalkan administratif</button>
+      </div>
+    );
+  }
+  return (
+    <div className="grid min-w-[300px] gap-2">
+      {mode === "reassign" ? <EmployeeSearchField value={approver} onChange={setApprover} /> : null}
+      <input className="h-9 rounded-lg border px-2 text-xs" placeholder="Alasan (wajib)" value={reason} onChange={(event) => setReason(event.target.value)} />
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || reason.trim().length < 3 || (mode === "reassign" && !approver)} className="rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-bold text-brand-foreground disabled:opacity-50"
+          onClick={() => void onRun(item.id, () => mode === "void" ? voidAttendanceOvertime(item.id, reason.trim()) : reassignAttendanceOvertime(item.id, approver!.id, reason.trim()),
+            mode === "void" ? "Lembur dibatalkan secara administratif." : "Approver dialihkan.").then(() => setMode(null))}>Simpan</button>
+        <button type="button" onClick={() => setMode(null)} className="rounded-lg border px-3 py-1.5 text-xs font-bold">Batal</button>
+      </div>
+    </div>
+  );
+}
 
 function scanFact(minutes: number | null | undefined) {
   if (minutes === null || minutes === undefined) return "Tidak ada scan";
@@ -69,7 +113,8 @@ export function AdminAttendanceOvertimePage() {
 
       {canPickEmployee ? (
         <section className="mb-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-          <h2 className="font-bold text-brand-heading">Catat lembur atas nama pegawai</h2>
+          <h2 className="font-bold text-brand-heading">Ajukan lembur atas nama pegawai</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Pengajuan dikirim ke atasan langsung pegawai untuk disetujui; HC tidak menjadi approver.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <EmployeeSearchField value={employee} onChange={setEmployee} />
             <label className="text-xs font-semibold text-muted-foreground">Tanggal<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" value={form.workDate} onChange={(e) => setForm({ ...form, workDate: e.target.value })} /></label>
@@ -86,7 +131,7 @@ export function AdminAttendanceOvertimePage() {
 
       <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex items-center justify-between gap-3 border-b p-4">
-          <div><h2 className="font-bold text-brand-heading">Pengajuan lembur</h2><p className="mt-1 text-xs text-muted-foreground">Persetujuan dapat menurunkan durasi, tetapi tidak melebihi durasi yang diajukan.</p></div>
+          <div><h2 className="font-bold text-brand-heading">Pengajuan lembur</h2><p className="mt-1 text-xs text-muted-foreground">Lembur disetujui atasan langsung (pengajuan pegawai) atau pegawai (perintah atasan). HC memantau, membatalkan secara administratif, dan mengalihkan approver; HC hanya memutuskan pengajuan lama.</p></div>
           <nav className="flex flex-wrap gap-2" role="tablist" aria-label="Status lembur">
             {TABS.map((tab) => (
               <button key={tab.value} type="button" role="tab" aria-selected={status === tab.value} onClick={() => { setStatus(tab.value); setPage(1); }}
@@ -96,10 +141,10 @@ export function AdminAttendanceOvertimePage() {
         </header>
         <ul className="divide-y md:hidden">{items.map((item) => <li key={item.id} className="p-4 text-sm">
           <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.employeeName ?? "Pegawai"}</p><p className="text-xs text-muted-foreground">{item.workDate} · {dayTypeLabel(item.dayType)}</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{requestStatusLabel(item.status)}</span></div>
-          <p className="mt-1 text-xs text-muted-foreground">{item.requestedMinutes} mnt diajukan{item.approvedMinutes == null ? "" : ` · ${item.approvedMinutes} mnt disetujui`} · {scanFact(item.scanOutsideScheduleMinutes)}</p>
+          {item.awaiting ? <p className="mt-1 text-xs font-semibold">{awaitingLabel(item.awaiting, item.supervisorName)}</p> : null}<p className="mt-1 text-xs text-muted-foreground">{item.requestedMinutes} mnt diajukan{item.approvedMinutes == null ? "" : ` · ${item.approvedMinutes} mnt disetujui`} · {scanFact(item.scanOutsideScheduleMinutes)}</p>
         </li>)}{items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada pengajuan pada filter ini.</li> : null}</ul>
         <div className="hidden overflow-x-auto md:block"><table className="min-w-[1200px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Tanggal</th><th className="p-3">Jenis hari</th><th className="p-3">Dimulai oleh</th><th className="p-3">Fakta scan</th><th className="p-3">Diajukan</th><th className="p-3">Disetujui</th><th className="p-3">Status</th><th className="p-3">Catatan</th><th className="p-3">Keputusan</th></tr></thead>
-        <tbody className="divide-y">{items.map((item) => <tr key={item.id}><td className="p-3"><p className="font-semibold">{item.employeeName ?? "Pegawai"}</p><p className="text-xs text-muted-foreground">{item.employeeNumber ?? ""} {item.unitName ? "· "+item.unitName : ""}</p></td><td className="p-3">{item.workDate}</td><td className="p-3">{dayTypeLabel(item.dayType)}</td><td className="p-3">{item.initiatedBy === "hc" ? "HC" : "Pegawai"}</td><td className="p-3 text-xs">{scanFact(item.scanOutsideScheduleMinutes)}</td><td className="p-3">{item.requestedMinutes} mnt</td><td className="p-3">{item.approvedMinutes == null ? "—" : item.approvedMinutes+" mnt"}</td><td className="p-3">{requestStatusLabel(item.status)}</td><td className="p-3">{item.decisionNote ?? item.note ?? "—"}</td><td className="p-3">{item.status === "submitted" ? <div className="grid min-w-[300px] grid-cols-[90px_1fr_auto_auto] gap-2"><input className="h-9 rounded-lg border px-2" type="number" min="0" max={item.requestedMinutes} value={approvedMinutes[item.id] ?? String(item.requestedMinutes)} onChange={(e) => setApprovedMinutes({ ...approvedMinutes, [item.id]: e.target.value })}/><input className="h-9 rounded-lg border px-2" placeholder="Catatan" value={decisionNotes[item.id] ?? ""} onChange={(e) => setDecisionNotes({ ...decisionNotes, [item.id]: e.target.value })}/><button disabled={busy !== null} className="rounded-lg bg-brand-primary px-3 text-xs font-bold text-brand-foreground" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "approve", approvedMinutes: Number(approvedMinutes[item.id] ?? item.requestedMinutes), note: decisionNotes[item.id] || null }), "Lembur disetujui.")}>Setujui</button><button disabled={busy !== null} className="rounded-lg border px-3 text-xs font-bold" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "reject", note: decisionNotes[item.id] || null }), "Lembur ditolak.")}>Tolak</button></div> : "—"}</td></tr>)}
+        <tbody className="divide-y">{items.map((item) => <tr key={item.id}><td className="p-3"><p className="font-semibold">{item.employeeName ?? "Pegawai"}</p><p className="text-xs text-muted-foreground">{item.employeeNumber ?? ""} {item.unitName ? "· "+item.unitName : ""}</p></td><td className="p-3">{item.workDate}</td><td className="p-3">{dayTypeLabel(item.dayType)}</td><td className="p-3">{initiatorLabel(item.initiatedBy)}</td><td className="p-3 text-xs">{scanFact(item.scanOutsideScheduleMinutes)}</td><td className="p-3">{item.requestedMinutes} mnt</td><td className="p-3">{item.approvedMinutes == null ? "—" : item.approvedMinutes+" mnt"}</td><td className="p-3">{requestStatusLabel(item.status)}{item.awaiting ? <span className="block text-xs text-muted-foreground">{awaitingLabel(item.awaiting, item.supervisorName)}</span> : null}</td><td className="p-3">{item.decisionNote ?? item.note ?? "—"}</td><td className="p-3">{item.status === "submitted" && item.decidedByHc ? <div className="grid min-w-[300px] grid-cols-[90px_1fr_auto_auto] gap-2"><input className="h-9 rounded-lg border px-2" type="number" min="0" max={item.requestedMinutes} value={approvedMinutes[item.id] ?? String(item.requestedMinutes)} onChange={(e) => setApprovedMinutes({ ...approvedMinutes, [item.id]: e.target.value })}/><input className="h-9 rounded-lg border px-2" placeholder="Catatan" value={decisionNotes[item.id] ?? ""} onChange={(e) => setDecisionNotes({ ...decisionNotes, [item.id]: e.target.value })}/><button disabled={busy !== null} className="rounded-lg bg-brand-primary px-3 text-xs font-bold text-brand-foreground" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "approve", approvedMinutes: Number(approvedMinutes[item.id] ?? item.requestedMinutes), note: decisionNotes[item.id] || null }), "Lembur disetujui.")}>Setujui</button><button disabled={busy !== null} className="rounded-lg border px-3 text-xs font-bold" onClick={() => void run(item.id, () => decideAttendanceOvertime(item.id, { decision: "reject", note: decisionNotes[item.id] || null }), "Lembur ditolak.")}>Tolak</button></div> : <HcOvertimeActions item={item} busy={busy !== null} onRun={run} />}</td></tr>)}
         {items.length === 0 ? <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Tidak ada pengajuan pada filter ini.</td></tr> : null}</tbody></table></div>
         {paging.pageCount > 1 ? (
           <footer className="flex items-center justify-between border-t p-3 text-xs text-muted-foreground">

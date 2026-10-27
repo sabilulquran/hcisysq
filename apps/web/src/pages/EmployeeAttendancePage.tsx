@@ -6,7 +6,9 @@ import { AppShell } from "@/layouts/AppShell";
 import { clarificationKindLabel, clarificationModeLabel, requestStatusLabel } from "@/lib/attendanceLabels";
 import {
   canClarifyDate,
+  awaitingLabel,
   cancelAttendanceOvertime,
+  respondToOvertimeOrder,
   cancelMyAttendanceClarification,
   getMyAttendanceScheduleRange,
   getMyWorkforceAttendance,
@@ -43,6 +45,43 @@ function ResultFacts({ result }: { result: WorkforceResult | null }) {
 /** The most likely reason for a row, preselected in the form (the employee can change it). */
 function kindFor(status: string | undefined) {
   return status === "late" ? "lateness" : status === "incomplete" ? "missing_check_out" : "other";
+}
+
+type OvertimeRequest = NonNullable<Awaited<ReturnType<typeof getMyWorkforceAttendance>>["overtimeRequests"]>[number];
+
+/** ATT-011-6b-2: one overtime request; a supervisor's order waiting for the employee asks Setuju / Tolak. */
+export function OvertimeRequestCard({ item, busy, cancelling, onCancel, onRespond }: {
+  item: OvertimeRequest;
+  busy: boolean;
+  cancelling: boolean;
+  onCancel: () => void;
+  onRespond: (decision: "agree" | "decline") => void;
+}) {
+  const order = item.initiatedBy === "supervisor";
+  const waitingForMe = order && item.status === "submitted";
+  return (
+    <div className={`rounded-xl p-3 text-xs ${waitingForMe ? "border border-brand-primary/40 bg-brand-primary-pale" : "bg-surface"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          {order ? <p className="font-bold text-brand-heading">Perintah lembur dari atasan{item.supervisorName ? ` (${item.supervisorName})` : ""}</p> : null}
+          <p className="font-semibold">{item.workDate} · {item.requestedMinutes} mnt · {requestStatusLabel(item.status)}</p>
+          {item.note ? <p className="mt-1">{item.note}</p> : null}
+          {item.awaiting && !waitingForMe ? <p className="mt-1 text-muted-foreground">{awaitingLabel(item.awaiting, item.supervisorName)}</p> : null}
+          {item.approvedMinutes != null ? <p className="mt-1 text-muted-foreground">Disetujui {item.approvedMinutes} mnt</p> : null}
+          {item.decisionNote ? <p className="mt-1 text-muted-foreground">{item.decisionNote}</p> : null}
+        </div>
+        {item.status === "submitted" && !order ? (
+          <button type="button" disabled={busy} onClick={onCancel} className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-50">{cancelling ? "Membatalkan…" : "Batalkan"}</button>
+        ) : null}
+      </div>
+      {waitingForMe ? (
+        <div className="mt-2 flex gap-2">
+          <button type="button" disabled={busy} onClick={() => onRespond("agree")} className="min-h-10 rounded-lg bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50">Setuju</button>
+          <button type="button" disabled={busy} onClick={() => onRespond("decline")} className="min-h-10 rounded-lg border px-4 text-xs font-bold disabled:opacity-50">Tolak</button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function EmployeeAttendancePage() {
@@ -98,11 +137,21 @@ export function EmployeeAttendancePage() {
     finally{setCancellingOvertimeId(null);}
   };
 
+  // ATT-011-6b-2 flow B: agree to or decline a supervisor's order (D-5a).
+  const respondOrder=async(overtimeId:string,decision:"agree"|"decline")=>{
+    setCancellingOvertimeId(overtimeId);setError(null);setNotice(null);
+    try{
+      await respondToOvertimeOrder(overtimeId,decision);
+      setNotice(decision==="agree"?"Perintah lembur Anda setujui.":"Perintah lembur Anda tolak.");
+      await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Jawaban perintah lembur gagal dikirim.");}
+    finally{setCancellingOvertimeId(null);}
+  };
   const submitOvertime=async()=>{
     setSubmitting(true);setError(null);setNotice(null);
     try{
       await submitAttendanceOvertime({workDate:overtime.workDate,requestedMinutes:Number(overtime.requestedMinutes),note:overtime.note||null});
-      setNotice("Pengajuan lembur dikirim. Menit lembur baru masuk rekap setelah disetujui.");
+      setNotice("Pengajuan lembur dikirim ke atasan Anda. Menit lembur baru masuk rekap setelah disetujui.");
       setOvertime({workDate:today,requestedMinutes:"60",note:""});
       await load();
     }catch(cause){setError(cause instanceof Error?cause.message:"Pengajuan lembur gagal dikirim.");}
@@ -133,7 +182,7 @@ export function EmployeeAttendancePage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><input className="h-10 rounded-xl border px-3 text-sm" type="date" value={overtime.workDate} onChange={e=>setOvertime({...overtime,workDate:e.target.value})}/><input className="h-10 rounded-xl border px-3 text-sm" type="number" min="1" max="1440" value={overtime.requestedMinutes} onChange={e=>setOvertime({...overtime,requestedMinutes:e.target.value})}/></div>
           <input className="mt-3 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Catatan (opsional)" value={overtime.note} onChange={e=>setOvertime({...overtime,note:e.target.value})}/>
           <button disabled={submitting||!overtime.workDate} onClick={()=>void submitOvertime()} className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4"/>{submitting?"Mengirim…":"Kirim pengajuan"}</button>
-          <div className="mt-5 border-t pt-4"><p className="text-xs font-bold text-brand-heading">Pengajuan terakhir</p><div className="mt-2 space-y-2">{snapshot.overtimeRequests?.slice(0,5).map(item=><div key={item.id} className="rounded-xl bg-surface p-3 text-xs"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.workDate} · {item.requestedMinutes} mnt · {statusLabel(item.status)}</p>{item.approvedMinutes!=null?<p className="mt-1 text-muted-foreground">Disetujui {item.approvedMinutes} mnt</p>:null}{item.decisionNote?<p className="mt-1 text-muted-foreground">{item.decisionNote}</p>:null}</div>{item.status==="submitted"?<button type="button" disabled={cancellingOvertimeId!==null} onClick={()=>void cancelOvertime(item.id)} className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-50">{cancellingOvertimeId===item.id?"Membatalkan…":"Batalkan"}</button>:null}</div></div>)}{!snapshot.overtimeRequests?.length?<p className="text-xs text-muted-foreground">Belum ada pengajuan lembur.</p>:null}</div></div>
+          <div className="mt-5 border-t pt-4"><p className="text-xs font-bold text-brand-heading">Pengajuan terakhir</p><div className="mt-2 space-y-2">{snapshot.overtimeRequests?.slice(0,5).map(item=><OvertimeRequestCard key={item.id} item={item} busy={cancellingOvertimeId!==null} cancelling={cancellingOvertimeId===item.id} onCancel={()=>void cancelOvertime(item.id)} onRespond={(decision)=>void respondOrder(item.id,decision)}/>)}{!snapshot.overtimeRequests?.length?<p className="text-xs text-muted-foreground">Belum ada pengajuan lembur.</p>:null}</div></div>
         </article>
       </section>
       <section className="mt-5 rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">

@@ -42,6 +42,7 @@ import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwaps
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
 import { AdminAttendancePlannerPage } from "@/pages/AdminAttendancePlannerPage";
+import { EmployeeTeamOvertimePage } from "@/pages/EmployeeTeamOvertimePage";
 import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
@@ -57,6 +58,7 @@ import { AdminPage } from "@/pages/AdminPage";
 import { AdminAnnouncementsPage } from "@/pages/AdminAnnouncementsPage";
 import { AdminDocumentsPage } from "@/pages/AdminDocumentsPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
+import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { AdminServicesPage } from "@/pages/AdminServicesPage";
@@ -165,6 +167,14 @@ const employeeShiftSwapRoute = createRoute({
   path: "/app/attendance/shift-swap",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeShiftSwapPage,
+});
+
+// ATT-011-6b-2 Lembur Tim: open to every employee; the API shows only what the signed-in supervisor decides.
+const employeeTeamOvertimeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/attendance/team-overtime",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeTeamOvertimePage,
 });
 
 const employeeNotificationsRoute = createRoute({
@@ -564,6 +574,14 @@ const adminPayrollRoute = createRoute({
   component: AdminPayrollPage,
 });
 
+// Declared before the $periodId route so "reference" is not read as a period id.
+const adminPayrollReferenceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/payroll/reference",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/payroll/reference"),
+  component: AdminPayrollReferencePage,
+});
+
 const adminPayrollPeriodRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/payroll/$periodId",
@@ -627,6 +645,7 @@ const routeTree = rootRoute.addChildren([
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
   employeeShiftSwapRoute,
+  employeeTeamOvertimeRoute,
   employeeNotificationsRoute,
   employeeDocumentsRoute,
   employeeAnnouncementsRoute,
@@ -683,6 +702,7 @@ const routeTree = rootRoute.addChildren([
   adminLeaveRoute,
   adminLeaveCalendarRoute,
   adminPayrollRoute,
+  adminPayrollReferenceRoute,
   adminPayrollPeriodRoute,
   adminPayslipsRoute,
   adminDocumentsRoute,

@@ -54,6 +54,26 @@ describe("PAY-003 payroll screens", () => {
     expect(canAccessAdminPath(employee, "/admin/payroll")).toBe(false);
   });
 
+  it("opens the reference screen for the permissions that own the reference data", () => {
+    // A different set from the periods: finance holds the loan register and
+    // nothing else here, human capital the policy and the profiles.
+    for (const permission of ["payroll.policies.manage", "payroll.loans.manage", "payroll.profiles.manage"]) {
+      expect(canAccessAdminPath(session("EMPLOYEE", [permission]), "/admin/payroll/reference")).toBe(true);
+    }
+  });
+
+  it("does not let a period reader into the reference data", () => {
+    // Approving a period is not the same as rewriting the policy it was
+    // calculated with.
+    expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.approve"]), "/admin/payroll/reference")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.reports.read.organization"]), "/admin/payroll/reference")).toBe(false);
+  });
+
+  it("does not let a reference permission into the period screens", () => {
+    expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/payroll")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.profiles.manage"]), "/admin/payroll/8a1f")).toBe(false);
+  });
+
   it("is not opened by holding a payslip permission", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["payslips.import", "payslips.publish"]), "/admin/payroll")).toBe(false);
   });

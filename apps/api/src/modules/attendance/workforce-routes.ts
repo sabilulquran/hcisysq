@@ -37,6 +37,7 @@ import {
   encryptMobileAttendancePhoto,
   restrictedMediaReady,
 } from "./restricted-media-crypto.js";
+import { registerScheduleChangeRoutes } from "./schedule-change-routes.js";
 import { attendanceTodayReadModel } from "./today.js";
 import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import { attendanceTransactions } from "./transactions.js";
@@ -508,6 +509,19 @@ export async function registerAttendanceWorkforceRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+  registerScheduleChangeRoutes(app, pool, {
+    manage: (request, reply) => authenticate(auth, request, reply, "attendance.schedule.manage"),
+    read: async (request, reply) => {
+      try {
+        return (await requireAnyPermissionFromCookie(auth, request.headers.cookie, ["attendance.schedule.manage", "attendance.reports.read"])).principal;
+      } catch (error) {
+        if (!(error instanceof AuthError)) throw error;
+        reply.header("Cache-Control", "no-store");
+        await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+        return null;
+      }
+    },
+  });
   // ATT-014-2: Kalkulasi runs inside this process. On start, runs left running are INTERRUPTED and
   // queued runs continue. Tests inject their own runner and never start the loop implicitly.
   const calculationRunner = options.calculationRunner ?? createCalculationRunner(pool, {

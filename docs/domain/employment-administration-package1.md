@@ -539,6 +539,8 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `DECISION_DOCUMENT_INVALID` | 400 | A required field of the kind is missing or inconsistent; the response carries the offending `field`. (Added with S4.) | Field-specific, e.g. "Tanggal akhir kontrak wajib diisi." |
 | `EMPLOYEE_NOT_FOUND` | 404 | The employee of a Perjanjian Kerja does not exist. (Added with S4.) | "Pegawai tidak ditemukan." |
 | `EMPLOYMENT_ACTION_NOT_REVERSIBLE` | 409 | Not the latest action, already reversed, or baseline. | "Tindakan ini tidak dapat dibatalkan." |
+| `EMPLOYMENT_ACTION_NOT_FOUND` | 404 | The action does not exist. (Added with S7.) | "Tindakan tidak ditemukan." |
+| `EMPLOYEE_ACCOUNT_REQUIRED` | 403 | A non-employee account opening the employee self-service page. (Added with S7.) | "Halaman ini hanya untuk akun pegawai." |
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |
 | `EMPLOYMENT_BACKDATE_REASON_REQUIRED` | 400 | Effective date before today without a reason. | "Tindakan yang berlaku mundur wajib disertai alasan." |

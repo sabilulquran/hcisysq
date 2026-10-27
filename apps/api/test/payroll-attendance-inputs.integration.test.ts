@@ -280,18 +280,30 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
   });
 
   it("stores what it resolved as ordinary period inputs marked ATTENDANCE", async () => {
-    const { employmentId, employeeId } = await newEmployment("KONTRAK_HONORER");
-    await approvedOvertime(employeeId, "2026-09-10", 120);
-    await attendanceDay(employeeId, "2026-09-01", true);
+    const permanent = await newEmployment("TETAP");
+    const contract = await newEmployment("KONTRAK_HONORER");
+    await approvedOvertime(permanent.employeeId, "2026-09-10", 120);
+    await attendanceDay(contract.employeeId, "2026-09-01", true);
 
     const counts = await applyAttendanceInputs(pool, window(), actorAccountId);
     expect(counts).toEqual({ overtimeCount: 1, attendanceCount: 1, clearedCount: 0, skippedOwnCount: 0 });
 
     const inputs = await listInputs(pool, periodId);
-    expect(inputs).toEqual([
-      expect.objectContaining({ employmentId, inputKey: "CONTRACT_ATTENDANCE_DAYS", origin: "ATTENDANCE" }),
-      expect.objectContaining({ employmentId, inputKey: "OVERTIME_HOURS", origin: "ATTENDANCE" }),
-    ]);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employmentId: contract.employmentId,
+          inputKey: "CONTRACT_ATTENDANCE_DAYS",
+          origin: "ATTENDANCE",
+        }),
+        expect.objectContaining({
+          employmentId: permanent.employmentId,
+          inputKey: "OVERTIME_HOURS",
+          origin: "ATTENDANCE",
+        }),
+      ]),
+    );
+    expect(inputs).toHaveLength(2);
   });
 
   it("removes what it wrote before when attendance no longer supports it", async () => {

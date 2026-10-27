@@ -361,9 +361,16 @@ export async function listExpiringContracts(
   db: Db,
   input: { today: string; withinDays: number; unitId: string | null; page: number; pageSize: number },
 ): Promise<{ total: number; rows: ExpiringContract[] }> {
-  const filters = input.unitId ? "AND e.organizational_unit_id = $4::uuid" : "";
-  const params: unknown[] = [input.today, input.withinDays, input.pageSize * (input.page - 1)];
-  if (input.unitId) params.push(input.unitId);
+  // Kedua query punya daftar parameternya sendiri: hitungan tidak memakai
+  // OFFSET, jadi menumpang parameter query baris membuat PostgreSQL menolak
+  // ($3 tidak pernah dirujuk, atau jumlahnya tidak cocok).
+  const rowParams: unknown[] = [input.today, input.withinDays, input.pageSize * (input.page - 1)];
+  const countParams: unknown[] = [input.today, input.withinDays];
+  if (input.unitId) {
+    rowParams.push(input.unitId);
+    countParams.push(input.unitId);
+  }
+  const unitFilter = (index: number) => (input.unitId ? `AND e.organizational_unit_id = $${index}::uuid` : "");
 
   const currentTerm = `
     WITH current_term AS (
@@ -376,9 +383,9 @@ export async function listExpiringContracts(
         AND (t.effective_from IS NULL OR t.effective_from <= $1::date)
       ORDER BY em.employee_id, t.effective_from DESC NULLS LAST, t.sequence DESC
     )`;
-  const where = `
+  const where = (index: number) => `
     WHERE ct.effective_to IS NOT NULL
-      AND ct.effective_to <= $1::date + $2::int ${filters}`;
+      AND ct.effective_to <= $1::date + $2::int ${unitFilter(index)}`;
 
   const [rows, count] = await Promise.all([
     db.query<ExpiringContract>(
@@ -389,10 +396,10 @@ export async function listExpiringContracts(
        FROM current_term ct
        JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-       ${where}
+       ${where(4)}
        ORDER BY ct.effective_to, e.full_name, ct.employee_id
        LIMIT ${input.pageSize} OFFSET $3`,
-      params,
+      rowParams,
     ),
     // Dihitung terpisah agar halaman yang melewati batas tetap melaporkan
     // jumlah sebenarnya, bukan nol.
@@ -401,8 +408,8 @@ export async function listExpiringContracts(
        SELECT count(*)::int AS total
        FROM current_term ct
        JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
-       ${where}`,
-      input.unitId ? [input.today, input.withinDays, 0, input.unitId] : [input.today, input.withinDays, 0],
+       ${where(3)}`,
+      countParams,
     ),
   ]);
   return { total: count.rows[0]?.total ?? 0, rows: rows.rows };

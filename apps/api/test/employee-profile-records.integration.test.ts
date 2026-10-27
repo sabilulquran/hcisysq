@@ -181,6 +181,7 @@ describe.skipIf(!allowed)("EMP-007 §4.1, §4.2, §7.5 against PostgreSQL", () =
     expect((await listEducation(client, employeeId)).map((row) => row.level)).toEqual(["D4_S1", "SMA_SEDERAJAT"]);
 
     await insertSkill(client, employeeId, certificate({ kind: "KEAHLIAN", name: "Microsoft Excel", expiresOn: null, issuedOn: null, issuer: null, proficiency: "MAHIR" }), actorId);
+    await insertSkill(client, employeeId, certificate(), actorId);
     expect((await listSkills(client, employeeId)).map((row) => row.kind)).toEqual(["KEAHLIAN", "SERTIFIKAT"]);
   });
 

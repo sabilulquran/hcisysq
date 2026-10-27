@@ -22,8 +22,10 @@ export async function clearOwnPeriods(pool: Pool, periodIds: readonly string[]):
 
     // A published slip is immutable by design (PAYSLIP-001), which is exactly
     // what production needs and exactly what has to be stood down to clean a
-    // test database.
-    await client.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
+    // test database. Session-local rather than ALTER TABLE: the latter takes a
+    // lock other suites would wait on, and cannot run while a deferred check is
+    // still pending.
+    await client.query("SET LOCAL session_replication_role = replica");
 
     // A revision and the slip it replaced point at each other with ON DELETE
     // RESTRICT, so the links are broken before the rows go.
@@ -33,7 +35,6 @@ export async function clearOwnPeriods(pool: Pool, periodIds: readonly string[]):
       [ids],
     );
     await client.query("DELETE FROM payslips WHERE source_period_id = ANY($1::uuid[])", [ids]);
-    await client.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");
 
     await client.query(
       `DELETE FROM payroll_result_lines

@@ -2318,6 +2318,12 @@ paths:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1from-attendance'
   /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1{employmentId}~1{inputKey}'
+  /payroll/periods/{periodId}/report:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1report'
+  /payroll/periods/{periodId}/transfers:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transfers'
+  /payroll/periods/{periodId}/variance:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1variance'
   /payroll/periods/{periodId}/results:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1results'
   /payroll/policies:

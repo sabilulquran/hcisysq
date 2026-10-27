@@ -294,6 +294,12 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - **Laporan PPh21 TER** per masa pajak dari hasil final.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
 
+## 7.1 Layar operator (`DRAFT`, default agent 2026-10-27)
+
+Satu layar daftar periode (`/admin/payroll`) dan satu layar periode (`/admin/payroll/{id}`). Keduanya terbuka bagi siapa pun yang memegang salah satu permission payroll; setiap angka di dalamnya tetap diotorisasi ulang oleh API, dan bagian yang ditolak (laporan sebelum disahkan, daftar transfer tanpa permission rekening) hilang dari layar tanpa menggagalkan sisanya.
+
+Layar periode menampilkan status, tindakan yang benar-benar tersedia bagi aktor itu (dari `availableActions`), rekap, daftar "perlu ditinjau", hasil per pegawai berikut blocker-nya, daftar transfer bagi yang berhak, dan riwayat keputusan berikut alasannya. Tindakan yang mewajibkan alasan meminta alasan sebelum dikirim. Frontend tidak memuat satu pun aturan payroll: label, urutan, dan kewenangan datang dari API.
+
 ## 8. Privasi dan audit
 
 - **Dilarang** di application log dan payload audit: nominal **per orang**, nomor rekening, nama pemilik rekening, NIK, dan isi baris slip.

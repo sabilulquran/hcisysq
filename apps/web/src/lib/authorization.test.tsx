@@ -20,6 +20,41 @@ const hcAdmin = [
 ];
 const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage"];
 
+describe("PAY-003 payroll screens", () => {
+  const board = session("FOUNDATION_BOARD", ["board.read"]);
+  const employee = session("EMPLOYEE", ["payslips.read.own"]);
+
+  it("opens for anyone with a part in a payroll period", () => {
+    for (const permission of [
+      "payroll.periods.manage",
+      "payroll.calculate",
+      "payroll.inputs.manage",
+      "payroll.submit",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization",
+      "payroll.transfers.read.organization",
+    ]) {
+      expect(canAccessAdminPath(session("EMPLOYEE", [permission]), "/admin/payroll")).toBe(true);
+    }
+  });
+
+  it("covers the period screen as well as the list", () => {
+    const director = session("EMPLOYEE", ["payroll.approve"]);
+    expect(canAccessAdminPath(director, "/admin/payroll/8a1f")).toBe(true);
+  });
+
+  it("stays closed to the Foundation Board and to an ordinary employee", () => {
+    expect(canAccessAdminPath(board, "/admin/payroll")).toBe(false);
+    expect(canAccessAdminPath(employee, "/admin/payroll")).toBe(false);
+  });
+
+  it("is not opened by holding a payslip permission", () => {
+    expect(canAccessAdminPath(session("EMPLOYEE", ["payslips.import", "payslips.publish"]), "/admin/payroll")).toBe(false);
+  });
+});
+
 describe("AUTH-011 backend-derived admin navigation", () => {
   it("shows intended HC admin surfaces in both desktop and compact menus", () => {
     const actor = session("EMPLOYEE", hcAdmin);

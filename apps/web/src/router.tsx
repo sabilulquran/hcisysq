@@ -54,6 +54,8 @@ import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
+import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { AdminServicesPage } from "@/pages/AdminServicesPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
@@ -537,6 +539,20 @@ const adminLeaveCalendarRoute = createRoute({
   component: AdminLeaveCalendarPage,
 });
 
+const adminPayrollRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/payroll",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/payroll"),
+  component: AdminPayrollPage,
+});
+
+const adminPayrollPeriodRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/payroll/$periodId",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/payroll"),
+  component: AdminPayrollPeriodPage,
+});
+
 const adminPayslipsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/payslips",
@@ -632,6 +648,8 @@ const routeTree = rootRoute.addChildren([
   adminAdmsDeviceDiagnosticsRoute,
   adminLeaveRoute,
   adminLeaveCalendarRoute,
+  adminPayrollRoute,
+  adminPayrollPeriodRoute,
   adminPayslipsRoute,
   adminAccessRoute,
   adminServicesRoute,

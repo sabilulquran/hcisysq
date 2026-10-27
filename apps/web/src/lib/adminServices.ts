@@ -111,9 +111,9 @@ export const adminServices: AdminServiceDefinition[] = [
     label: "Payroll",
     description: "Perhitungan, review, rekonsiliasi, finalisasi, dan publikasi payroll.",
     featureIds: ["PAY-003"],
-    stage: "planned",
+    stage: "available",
     category: "payroll-benefits",
-    href: "/admin/services/payroll",
+    href: "/admin/payroll",
   },
   {
     key: "reimbursement",

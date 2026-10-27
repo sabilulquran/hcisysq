@@ -26,6 +26,10 @@ const THRESHOLD = { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 };
 describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
   let pool: Pool;
   let legalEntityKey: string;
+  // unit_ref is a uuid reference into the organization model, not a label.
+  let unitPusat: string;
+  let unitLama: string;
+  let unitBaru: string;
 
   beforeAll(() => {
     pool = new Pool({ connectionString: databaseUrl!, max: 2 });
@@ -39,6 +43,9 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
     // Other suites leave payroll rows behind, so each test owns a legal entity
     // and reads only its own periods.
     legalEntityKey = randomUUID();
+    unitPusat = randomUUID();
+    unitLama = randomUUID();
+    unitBaru = randomUUID();
   });
 
   async function newEmployee(unitRef: string | null, options: { bank?: boolean } = {}) {
@@ -145,8 +152,8 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
   describe("the payroll report", () => {
     it("totals the period and groups it by unit and by component", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const a = await newEmployee("unit-pusat");
-      const b = await newEmployee("unit-pusat");
+      const a = await newEmployee(unitPusat);
+      const b = await newEmployee(unitPusat);
       await writeResult(periodId, a.employmentId, {
         profileId: a.profileId,
         payable: 3_000_000,
@@ -166,7 +173,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       expect(report.totals.gross).toBe("5700000");
       expect(report.totals.deductions).toBe("200000");
       expect(report.totals.payable).toBe("5500000");
-      expect(report.byUnit).toEqual([{ unitRef: "unit-pusat", employeeCount: 2, payable: "5500000" }]);
+      expect(report.byUnit).toEqual([{ unitRef: unitPusat, employeeCount: 2, payable: "5500000" }]);
       expect(report.byComponent).toEqual([
         { componentCode: "BASIC", category: "EARNING", employeeCount: 2, amount: "5700000" },
         { componentCode: "LOAN", category: "DEDUCTION", employeeCount: 1, amount: "200000" },
@@ -175,7 +182,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("groups by the unit the result was calculated with, not today's unit", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-lama");
+      const employee = await newEmployee(unitLama);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: 1_000_000,
@@ -188,17 +195,17 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       );
       await pool.query(
         `INSERT INTO payroll_compensation_profiles(id, employment_id, effective_from, education, unit_ref)
-         VALUES ($1, $2, DATE '2026-10-01', 'S1', 'unit-baru')`,
-        [randomUUID(), employee.employmentId],
+         VALUES ($1, $2, DATE '2026-10-01', 'S1', $3)`,
+        [randomUUID(), employee.employmentId, unitBaru],
       );
 
       const report = await buildPeriodReport(pool, periodId);
-      expect(report.byUnit).toEqual([{ unitRef: "unit-lama", employeeCount: 1, payable: "1000000" }]);
+      expect(report.byUnit).toEqual([{ unitRef: unitLama, employeeCount: 1, payable: "1000000" }]);
     });
 
     it("falls back to the profile effective on the pay date for a result written before 0080", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: null,
         payable: 1_000_000,
@@ -206,19 +213,19 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       });
 
       const report = await buildPeriodReport(pool, periodId);
-      expect(report.byUnit).toEqual([{ unitRef: "unit-pusat", employeeCount: 1, payable: "1000000" }]);
+      expect(report.byUnit).toEqual([{ unitRef: unitPusat, employeeCount: 1, payable: "1000000" }]);
     });
 
     it("counts only the last run when a period has been recalculated", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: 1_000_000,
         lines: [{ code: "BASIC", category: "EARNING", amount: 1_000_000 }],
         calculatedAt: "2026-09-20T00:00:00.000Z",
       });
-      const second = await newEmployee("unit-pusat");
+      const second = await newEmployee(unitPusat);
       await writeResult(periodId, second.employmentId, {
         profileId: second.profileId,
         payable: 2_000_000,
@@ -235,7 +242,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
   describe("the transfer list", () => {
     it("carries the bank, the account and the holder from the result's profile", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: 3_000_000,
@@ -255,7 +262,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("leaves out a recipient with nothing to pay", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: 0,
@@ -266,7 +273,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("keeps a recipient whose payable went negative, so finance sees it", async () => {
       const periodId = await newPeriod("2026-09-01", "APPROVED");
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: -250_000,
@@ -280,7 +287,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
     it("writes the payment confirmation as an ISO timestamp, not a local date string", async () => {
       const periodId = await newPeriod("2026-09-01", "PAYMENT_CONFIRMED");
       await pool.query("UPDATE payroll_periods SET payment_confirmed_at = now() WHERE id = $1", [periodId]);
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(periodId, employee.employmentId, {
         profileId: employee.profileId,
         payable: 1_000_000,
@@ -311,7 +318,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("reports a component that moved past both thresholds", async () => {
       const { previous, current } = await twoPeriods();
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(previous, employee.employmentId, {
         profileId: employee.profileId,
         payable: 100_000,
@@ -331,7 +338,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("stays quiet about a component that moved only a little", async () => {
       const { previous, current } = await twoPeriods();
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(previous, employee.employmentId, {
         profileId: employee.profileId,
         payable: 3_000_000,
@@ -347,7 +354,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("reports a component that appeared from nothing, without dividing by zero", async () => {
       const { previous, current } = await twoPeriods();
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await writeResult(previous, employee.employmentId, {
         profileId: employee.profileId,
         payable: 3_000_000,
@@ -370,7 +377,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("reports a new employee once, with the whole amount", async () => {
       const { previous, current } = await twoPeriods();
-      const existing = await newEmployee("unit-pusat");
+      const existing = await newEmployee(unitPusat);
       await writeResult(previous, existing.employmentId, {
         profileId: existing.profileId,
         payable: 3_000_000,
@@ -382,7 +389,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
         lines: [{ code: "BASIC", category: "EARNING", amount: 3_000_000 }],
       });
 
-      const joiner = await newEmployee("unit-pusat");
+      const joiner = await newEmployee(unitPusat);
       await writeResult(current, joiner.employmentId, {
         profileId: joiner.profileId,
         payable: 4_500_000,
@@ -407,7 +414,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("reports a departing employee once, whatever the thresholds say", async () => {
       const { previous, current } = await twoPeriods();
-      const leaver = await newEmployee("unit-pusat");
+      const leaver = await newEmployee(unitPusat);
       await writeResult(previous, leaver.employmentId, {
         profileId: leaver.profileId,
         payable: 20_000,
@@ -427,7 +434,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("reports a large manual input, which is a trigger of its own", async () => {
       const { previous, current } = await twoPeriods();
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await pool.query(
         `INSERT INTO payroll_period_inputs(
            id, period_id, employment_id, input_key, value, origin, reason, decision_reference)
@@ -443,7 +450,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
 
     it("leaves a manual input below the threshold alone", async () => {
       const { previous, current } = await twoPeriods();
-      const employee = await newEmployee("unit-pusat");
+      const employee = await newEmployee(unitPusat);
       await pool.query(
         `INSERT INTO payroll_period_inputs(id, period_id, employment_id, input_key, value, origin, reason)
          VALUES ($1, $2, $3, 'ARREARS', 250000, 'MANUAL', 'rapel kecil')`,

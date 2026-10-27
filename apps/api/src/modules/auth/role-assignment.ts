@@ -3,7 +3,8 @@ import type { Pool, PoolClient } from "pg";
 import { AuthError, type AuthPrincipal } from "./service.js";
 import {
   ACCESS_REACTIVATION_PERMISSION,
-  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, DOCUMENT_PERMISSIONS, EMPLOYMENT_PERMISSIONS,
+  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, DOCUMENT_CORRECTOR_ROLE_KEY, DOCUMENT_PERMISSIONS,
+  EMPLOYMENT_PERMISSIONS,
   HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
   HC_LEAD_ROLE_KEY, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS,
@@ -12,7 +13,7 @@ import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-a
 
 const HCIS_ROLES = [
   "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
-  HC_LEAD_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
+  HC_LEAD_ROLE_KEY, DOCUMENT_CORRECTOR_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
 ];
 const HCIS_PERMISSIONS: readonly string[] = [
   ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,

@@ -16,9 +16,11 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Placement / Penempatan | Record effective-dated yang menyatakan unit dan jabatan tempat employee bekerja dalam satu employment (utama atau tambahan). Bukan authority ORG-004; incumbency tetap milik ORG-004. DRAFT (EMP-006 Package 1). |
 | Baseline / Data Awal Kepegawaian | Record employment/term/placement pertama yang dibentuk dari employee master saat migrasi; menandai bahwa riwayat sebelum tanggal baseline tidak tercatat. DRAFT. |
 | Legal Entity / Badan Hukum | Boundary organisasi formal yang dapat memiliki struktur ORG-004, site, employment, payroll, leave, dan attendance scope sendiri bila ORG-007 diaktifkan. Bukan sinonim tenant SaaS. |
+| Entity Context / Konteks Entitas | Legal entity yang berlaku untuk satu data bisnis, selalu diturunkan dari employment dan tidak pernah dari account/employee. Konteks yang tidak terselesaikan berarti akses ditolak. DRAFT (ORG-007, ADR-0005). |
 | Unit | Bagian organisasi tempat pegawai ditugaskan. Struktur dan kewenangannya perlu diverifikasi. |
 | Position / Posisi | Jabatan atau fungsi organisasi yang dapat memengaruhi akses dan approval. |
-| Job Classification / Grade | Klasifikasi pekerjaan/kompensasi yang terpisah dari hierarchy dan authority ORG-004. Grade tidak otomatis memberi approval authority. |
+| Job Classification / Klasifikasi Jabatan | Kelas pekerjaan effective-dated dengan kode stabil (mis. `FUNC_GURU`) yang menjadi kunci tabel tunjangan payroll. Hidup di luar change set ORG-004, tidak menyimpan nilai uang, dan tidak memberi approval authority. DRAFT (ORG-011). |
+| Grade / Golongan | Tingkat klasifikasi yang opsional dan hanya membawa urutan (`rank_order`) untuk tampilan dan laporan. Tidak menyimpan nominal dan tidak menjadi dasar gaji pokok; skala gaji pokok tetap pendidikan terakhir x MKG (PAY-003). DRAFT (ORG-011). |
 | Direct Manager / Atasan Langsung | Pegawai yang ditetapkan sebagai atasan operasional utama untuk approval tertentu. Tidak selalu identik dengan role aplikasi. |
 | Organization Snapshot | Satu change set ORG-004 yang memuat struktur efektif bertanggal; identitas snapshot tidak sama dengan ordered external version/cursor. |
 | Organization Directory | Projection read-only fakta struktur yang bersumber dari HCIS untuk pencarian, navigasi, integrasi, dan distribusi lintas aplikasi; bukan editor/master kedua dan bukan pemilik workflow aplikasi. |

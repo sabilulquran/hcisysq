@@ -95,7 +95,7 @@ Package 1 (EMP-005, EMP-006, EMP-010) is specified and accepted by the owner (20
 
 EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
 
-Job classification/grade is a separate discovery concern from ORG-004 hierarchy/authority. A grade may later influence compensation, but must not grant approval authority implicitly. Final specification ID is TBD.
+Job classification/grade is a separate discovery concern from ORG-004 hierarchy/authority — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED, `docs/domain/job-classification-grade.md`). A classification is the stable key PAY-003 allowance tables are keyed to; it never grants approval authority and never holds monetary values.
 
 Employee services continue with:
 
@@ -138,13 +138,16 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Dynamic organization structure and authority resolution — ORG-004.
 - Organization sites, branches, and work locations — ORG-005 (DRAFT spec `docs/domain/organization-sites-work-locations.md`; ORG-005-1 unit work location built).
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
-- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY).
+- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY, ADR-0005 PROPOSED).
+- Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
 `ORG-006` keeps HCIS as the workforce-organization authoring/system-of-authority side while SQ Hub is a read-only projection/distribution layer. The accepted v1 contract uses authenticated full-snapshot pull, stable namespaced HCIS identifiers, content-addressed versions, explicit effective/deactivation semantics, privacy minimization, and a default-OFF production export gate. Contract acceptance does not itself claim deployment or runtime activation.
 
-`ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented.
+`ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented. The readiness assessment, staged plan E1..E6, and DRAFT defaults for the open ORG-007 decisions are in `docs/domain/multi-entity-readiness.md`.
+
+`ORG-011` introduces effective-dated job classification and optional grade catalogs that live outside ORG-004 change sets. They carry no monetary values and no authority; PAY-003 keeps the salary scale (education x MKG) and the versioned allowance policy tables.
 
 ## UX presentation
 

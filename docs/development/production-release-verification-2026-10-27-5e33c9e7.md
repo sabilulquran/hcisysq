@@ -45,3 +45,14 @@ checked read-only before the release.
   rows on the first wide Kalkulasi.
 - Rollback: `release-mi8.sh rollback --sha 5e33c9e7b215b138047fcf8eaf131cf4b1ff6a88 --bundle <bundle>` returns to
   `hcis-a55ad2eb-20261026`; the database is not rolled back and the migrations can stay.
+
+## Follow-up release the same morning: hcis-0cd5b032-20261027
+
+| Item | Value |
+|---|---|
+| Target SHA | `0cd5b0328a40c2cf3475e4504e27d0a3ada8f94a` (`origin/main`), adds ATT-013 work blocks (#197) |
+| Build | run [40431905254](https://github.com/sabilulquran/hcisysq/actions/runs/40431905254), bundle sha256 `3e7dcfe500f98227f7a07931212a294b6bbd890fc5fcad60dbabc54ef3f46c86` |
+| Migration | `0072_attendance_work_blocks.sql` (two new tables), applied |
+| Pre-release backup | `/srv/hcis/backups/pre-release/hcis-0cd5b032-20261027-20261027T012229Z.dump` (33 518 503 B, sha256 `08b3950e0ad6b2c94bf61d5f36c164ddce1ab575016a48c4c1c246c1967dee65`) |
+| Launcher / worker | `9bb4798ec66f891c` → `9ad540881a2781cb` / `4423f5c4d5154b38` → `436687ac188ac275` |
+| Result | 08:21 preflight PASS, candidate PASS, cutover ~26 s, verify PASS (local and public), lock released. Rollback target `hcis-5e33c9e7-20261026`. |

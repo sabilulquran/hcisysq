@@ -724,7 +724,7 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 
 ### 10.9 Catatan implementasi ATT-011-6b-1 (2026-10-27)
 
-- Migration `0102`: `initiated_by` (`employee | supervisor | hc_legacy`), `supervisor_employee_id` dan
+- Migration `0103`: `initiated_by` (`employee | supervisor | hc_legacy`), `supervisor_employee_id` dan
   `approver_snapshot` pada pengajuan lembur; jenis event baru. Pengajuan lama menjadi `hc_legacy` dan tetap
   diputuskan HC; status tetap `submitted | approved | rejected | cancelled`. Aditif; rollback di header.
 - **Alur A:** pegawai (atau HC atas nama pegawai) mengajukan → atasan langsung hasil resolver APR-001

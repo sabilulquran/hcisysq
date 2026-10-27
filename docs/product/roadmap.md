@@ -211,7 +211,7 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - ASSET-001 Employee assets;
 - REIMB-001 Reimbursement;
 - LOAN-001 Employee loan;
-- DOC-001/DOC-002 HR documents;
+- DOC-001/DOC-002 HR documents — Package 1 implemented, `docs/domain/hr-documents.md`;
 - NOTIF-001/002/003 external notification, announcements, reminders.
 
 ## Anti-copy guardrails from benchmark research

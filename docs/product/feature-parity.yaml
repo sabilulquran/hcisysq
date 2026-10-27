@@ -538,17 +538,23 @@ features:
     module: documents
     name: Work certificate request and issuance
     legacy_evidence: work certificate and notifications exist
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: high
+    notes: >-
+      Package 1 implemented 2026-10-27 (docs/domain/hr-documents.md): request,
+      HC decision, numbered issuance, register. Income certificate waits for PAY-003.
 
   - id: DOC-002
     module: documents
     name: Warning letters
     legacy_evidence: warning-letter feature is described
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: high
+    notes: >-
+      Package 1 implemented 2026-10-27 (docs/domain/hr-documents.md): SP1-SP3 with a
+      date-derived validity window and employee acknowledgement.
 
   - id: TRIP-001
     module: employee-service

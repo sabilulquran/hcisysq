@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { AuthError, type AuthPrincipal } from "./service.js";
 import {
-  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, EMPLOYMENT_PERMISSIONS, HC_OPERATIONAL_PERMISSIONS,
+  ADMIN_PERMISSIONS, BOARD_READ_PERMISSION, BOARD_VIEWER_ROLE_KEY, DOCUMENT_PERMISSIONS, EMPLOYMENT_PERMISSIONS,
+  HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
   HC_LEAD_ROLE_KEY, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS,
 } from "./permissions.js";
@@ -13,7 +14,8 @@ const HCIS_ROLES = [
   HC_LEAD_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
 ];
 const HCIS_PERMISSIONS: readonly string[] = [
-  ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, "employees.read.unit", "attendance.read.unit",
+  ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
+  "employees.read.unit", "attendance.read.unit",
   "leave.approve", "leave.hc.approve", "reports.read.organization", "reports.export.organization", BOARD_READ_PERMISSION,
   ...PAYROLL_PERMISSIONS,
 ];

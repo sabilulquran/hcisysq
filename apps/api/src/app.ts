@@ -47,6 +47,7 @@ import { registerPayrollAdminRoutes } from "./modules/payroll/admin-routes.js";
 import { registerPayrollRoutes } from "./modules/payroll/routes.js";
 import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
+import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
 import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
@@ -183,6 +184,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPayrollRoutes(app, pool, config);
   await registerPayslipRoutes(app, pool, config);
   await registerNotificationRoutes(app, pool, config);
+  await registerDocumentRoutes(app, pool, config);
 
   app.setErrorHandler((error, request, reply) => {
     const databaseError = error as Error & { code?: string; constraint?: string };

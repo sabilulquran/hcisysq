@@ -1,5 +1,5 @@
 // EMP-005 S5A against real PostgreSQL: the SQL a fake pool cannot vouch for —
-// migration 0091's constraints, who gets deactivated, and what an expiry does
+// migration 0101's constraints, who gets deactivated, and what an expiry does
 // to someone who was rehired. Runs only on the loopback CI database; every
 // write is rolled back.
 
@@ -98,7 +98,7 @@ describe.skipIf(!allowed)("EMP-005 S5A account effects against PostgreSQL", () =
     return result.rows[0]!.status;
   }
 
-  describe("migration 0091 constraints", () => {
+  describe("migration 0101 constraints", () => {
     it("refuses a window longer than 30 days and one that ends before it starts", async () => {
       await expectSqlError(
         `INSERT INTO account_temporary_reactivations(id, account_id, reason, starts_at, expires_at)

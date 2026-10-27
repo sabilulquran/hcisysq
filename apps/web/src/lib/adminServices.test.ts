@@ -23,6 +23,9 @@ describe("admin module catalog", () => {
     expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/schedules/swaps");
     expect(getAdminService("adms")?.stage).toBe("available");
     expect(getAdminService("adms")?.href).toBe("/admin/attendance/adms");
+    // DOC-001/DOC-002 Package 1 ships a real Human Capital workspace.
+    expect(getAdminService("documents")?.stage).toBe("available");
+    expect(getAdminService("documents")?.href).toBe("/admin/documents");
   });
 
   it("routes every planned module to the authenticated admin coming-soon surface", () => {

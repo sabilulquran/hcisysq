@@ -14,7 +14,7 @@ import {
   getPayrollTransfers,
   getPayrollVariance,
   payrollActionLabel,
-  payrollActionNeedsReason,
+  payrollOperationLabel,
   payrollStateLabel,
   payrollTransfersCsvUrl,
   publishPayrollPayslips,
@@ -23,6 +23,7 @@ import {
   PayrollApiError,
   type PayrollPeriod,
   type PayrollPeriodAction,
+  type PayrollPeriodOperation,
   type PayrollPeriodTransition,
   type PayrollReport,
   type PayrollResult,
@@ -30,6 +31,26 @@ import {
   type PayrollVarianceRow,
 } from "@/lib/payroll";
 import type { AuthSession } from "@/types/hcis";
+
+/**
+ * What to say when a panel came back refused. A period still being worked on is
+ * not an error, and neither is a permission someone does not hold; both are
+ * facts a reviewer needs rather than a blank space.
+ */
+function panelNote(key: string, outcome: PromiseSettledResult<unknown>): Record<string, string> {
+  if (outcome.status === "fulfilled") return {};
+  const reason = outcome.reason;
+  if (reason instanceof PayrollApiError) {
+    if (reason.code === "PAYROLL_NOT_APPROVED_YET") {
+      return { [key]: "Angka periode ini baru terbuka setelah periode disahkan." };
+    }
+    if (reason.code === "PAYROLL_FORBIDDEN") {
+      return { [key]: "Anda tidak memiliki akses untuk bagian ini." };
+    }
+    return { [key]: reason.message };
+  }
+  return { [key]: "Bagian ini gagal dimuat." };
+}
 
 const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
   COMPONENT: "Komponen berubah",
@@ -46,16 +67,14 @@ export function AdminPayrollPeriodPage() {
   const [results, setResults] = useState<PayrollResult[]>([]);
   const [report, setReport] = useState<PayrollReport | null>(null);
   const [variances, setVariances] = useState<PayrollVarianceRow[]>([]);
-  const [transfers, setTransfers] = useState<PayrollTransferRow[]>([]);
+  const [transfers, setTransfers] = useState<PayrollTransferRow[] | null>(null);
+  const [panelNotes, setPanelNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const canManageInputs = hasPermission(session, "payroll.inputs.manage");
   const canReadTransfers = hasPermission(session, "payroll.transfers.read.organization");
-  const canManagePeriods = hasPermission(session, "payroll.periods.manage");
-  const canPublishPayslips = hasPermission(session, "payslips.publish");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,17 +85,25 @@ export function AdminPayrollPeriodPage() {
       setTransitions(detail.transitions);
 
       // Each of these is refused on its own terms (not approved yet, no
-      // permission), so one closed door must not blank the whole screen.
-      const [resultsOutcome, reportOutcome, varianceOutcome, transfersOutcome] = await Promise.allSettled([
+      // permission), so one closed door must not blank the whole screen — and a
+      // closed door must say so, or a director approves a period that looks
+      // empty rather than unreadable. The transfer list is not fetched here: it
+      // carries account numbers and every read of it is recorded, so it is
+      // opened deliberately.
+      const [resultsOutcome, reportOutcome, varianceOutcome] = await Promise.allSettled([
         getPayrollResults(periodId),
         getPayrollReport(periodId),
         getPayrollVariance(periodId),
-        getPayrollTransfers(periodId),
       ]);
       setResults(resultsOutcome.status === "fulfilled" ? resultsOutcome.value.results : []);
       setReport(reportOutcome.status === "fulfilled" ? reportOutcome.value.report : null);
       setVariances(varianceOutcome.status === "fulfilled" ? varianceOutcome.value.variances : []);
-      setTransfers(transfersOutcome.status === "fulfilled" ? transfersOutcome.value.transfers : []);
+      setTransfers(null);
+      setPanelNotes({
+        ...panelNote("results", resultsOutcome),
+        ...panelNote("report", reportOutcome),
+        ...panelNote("variance", varianceOutcome),
+      });
     } catch (cause) {
       setError(cause instanceof PayrollApiError ? cause.message : "Periode gagal dimuat.");
     } finally {
@@ -112,7 +139,8 @@ export function AdminPayrollPeriodPage() {
 
   function handleAction(action: PayrollPeriodAction) {
     let reason: string | undefined;
-    if (payrollActionNeedsReason(action)) {
+    // Which actions carry a reason is the server's table, not the screen's.
+    if (period?.reasonRequiredActions.includes(action)) {
       const answer = window.prompt(`Alasan untuk "${payrollActionLabel(action)}"`);
       if (answer === null || answer.trim().length === 0) return;
       reason = answer.trim();
@@ -120,6 +148,24 @@ export function AdminPayrollPeriodPage() {
     void run(action, async () => {
       const outcome = await transitionPayrollPeriod(periodId, action, reason);
       return `Periode sekarang ${payrollStateLabel(outcome.period.state)}.`;
+    });
+  }
+
+  function handleOperation(operation: PayrollPeriodOperation) {
+    void run(operation, async () => {
+      if (operation === "resolve_attendance") {
+        const outcome = await resolvePayrollAttendanceInputs(periodId);
+        return `Lembur ${outcome.overtimeCount} pegawai, kehadiran ${outcome.attendanceCount} pegawai; ${outcome.clearedCount} baris lama dihapus.`;
+      }
+      if (operation === "draft_payslips") {
+        const outcome = await draftPayrollPayslips(periodId);
+        const conflicts = outcome.importConflicts.length;
+        return `Slip disiapkan: ${outcome.drafted} baru, ${outcome.revised} revisi, ${outcome.alreadyCurrent} tidak berubah${
+          conflicts > 0 ? `; ${conflicts} pegawai memakai slip batch impor dan dilewati.` : "."
+        }`;
+      }
+      const outcome = await publishPayrollPayslips(periodId);
+      return `${outcome.published} slip diterbitkan.`;
     });
   }
 
@@ -147,13 +193,13 @@ export function AdminPayrollPeriodPage() {
     >
       <div className="space-y-6">
         {error ? (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <p>{error}</p>
           </div>
         ) : null}
         {notice ? (
-          <p className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+          <p role="status" className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-400">
             {notice}
           </p>
         ) : null}
@@ -184,70 +230,36 @@ export function AdminPayrollPeriodPage() {
                 type="button"
                 onClick={() => handleAction(action)}
                 disabled={busy !== null}
+                aria-busy={busy === action}
                 className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:opacity-50"
               >
                 {busy === action ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 {payrollActionLabel(action)}
               </button>
             ))}
-            {canManageInputs && (period.state === "COLLECTING" || period.state === "CALCULATED") ? (
+            {period.availableOperations.map((operation) => (
               <button
+                key={operation}
                 type="button"
-                onClick={() =>
-                  void run("attendance", async () => {
-                    const outcome = await resolvePayrollAttendanceInputs(periodId);
-                    return `Lembur ${outcome.overtimeCount} pegawai, kehadiran ${outcome.attendanceCount} pegawai; ${outcome.clearedCount} baris lama dihapus.`;
-                  })
-                }
+                onClick={() => handleOperation(operation)}
                 disabled={busy !== null}
+                aria-busy={busy === operation}
                 className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:opacity-50"
               >
-                {busy === "attendance" ? (
+                {busy === operation ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
+                ) : operation === "resolve_attendance" ? (
                   <RefreshCcw className="h-4 w-4" aria-hidden />
-                )}
-                Ambil lembur &amp; kehadiran
+                ) : null}
+                {payrollOperationLabel(operation)}
               </button>
-            ) : null}
-            {canManagePeriods && (period.state === "PAYMENT_CONFIRMED" || period.state === "PUBLISHED") ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void run("draft", async () => {
-                    const outcome = await draftPayrollPayslips(periodId);
-                    const conflicts = outcome.importConflicts.length;
-                    return `Slip disiapkan: ${outcome.drafted} baru, ${outcome.revised} revisi, ${outcome.alreadyCurrent} tidak berubah${
-                      conflicts > 0 ? `; ${conflicts} pegawai memakai slip batch impor dan dilewati.` : "."
-                    }`;
-                  })
-                }
-                disabled={busy !== null}
-                className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:opacity-50"
-              >
-                {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                Siapkan slip
-              </button>
-            ) : null}
-            {canPublishPayslips && (period.state === "PAYMENT_CONFIRMED" || period.state === "PUBLISHED") ? (
-              <button
-                type="button"
-                onClick={() =>
-                  void run("publish", async () => {
-                    const outcome = await publishPayrollPayslips(periodId);
-                    return `${outcome.published} slip diterbitkan.`;
-                  })
-                }
-                disabled={busy !== null}
-                className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:opacity-50"
-              >
-                {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                Terbitkan slip
-              </button>
-            ) : null}
+            ))}
           </div>
         </section>
 
+        {panelNotes.report ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{panelNotes.report}</p>
+        ) : null}
         {report ? (
           <section className="rounded-lg border bg-card p-4">
             <h2 className="text-sm font-semibold">Rekap periode</h2>
@@ -280,6 +292,9 @@ export function AdminPayrollPeriodPage() {
           </section>
         ) : null}
 
+        {panelNotes.variance ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{panelNotes.variance}</p>
+        ) : null}
         {variances.length > 0 ? (
           <section className="rounded-lg border bg-card">
             <header className="border-b px-4 py-3">
@@ -305,6 +320,9 @@ export function AdminPayrollPeriodPage() {
           </section>
         ) : null}
 
+        {panelNotes.results ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{panelNotes.results}</p>
+        ) : null}
         {results.length > 0 ? (
           <section className="rounded-lg border bg-card">
             <header className="border-b px-4 py-3">
@@ -314,11 +332,11 @@ export function AdminPayrollPeriodPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2">Employment</th>
-                    <th className="px-4 py-2 text-right">Bruto</th>
-                    <th className="px-4 py-2 text-right">Potongan</th>
-                    <th className="px-4 py-2 text-right">Dibayar</th>
-                    <th className="px-4 py-2">Catatan</th>
+                    <th scope="col" className="px-4 py-2">Employment</th>
+                    <th scope="col" className="px-4 py-2 text-right">Bruto</th>
+                    <th scope="col" className="px-4 py-2 text-right">Potongan</th>
+                    <th scope="col" className="px-4 py-2 text-right">Dibayar</th>
+                    <th scope="col" className="px-4 py-2">Catatan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -345,34 +363,59 @@ export function AdminPayrollPeriodPage() {
           </section>
         ) : null}
 
-        {canReadTransfers && transfers.length > 0 ? (
+        {canReadTransfers ? (
           <section className="rounded-lg border bg-card">
             <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold">Daftar transfer</h2>
-                <p className="text-xs text-muted-foreground">{transfers.length} penerima.</p>
+                <p className="text-xs text-muted-foreground">
+                  {transfers === null
+                    ? "Berisi nomor rekening; setiap pembukaan dicatat sebagai akses sensitif."
+                    : `${transfers.length} penerima.`}
+                </p>
               </div>
-              <a
-                href={payrollTransfersCsvUrl(periodId)}
-                className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm"
-              >
-                <Download className="h-4 w-4" aria-hidden />
-                Unduh CSV
-              </a>
+              <span className="flex gap-2">
+                {transfers === null ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void run("transfers", async () => {
+                        const outcome = await getPayrollTransfers(periodId);
+                        setTransfers(outcome.transfers);
+                        return null;
+                      })
+                    }
+                    disabled={busy !== null}
+                    aria-busy={busy === "transfers"}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm disabled:opacity-50"
+                  >
+                    {busy === "transfers" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                    Buka daftar transfer
+                  </button>
+                ) : null}
+                <a
+                  href={payrollTransfersCsvUrl(periodId)}
+                  className="inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm"
+                >
+                  <Download className="h-4 w-4" aria-hidden />
+                  Unduh CSV
+                </a>
+              </span>
             </header>
-            <div className="overflow-x-auto">
+            <div className={transfers === null ? "hidden" : "overflow-x-auto"}>
               <table className="w-full text-sm">
+                <caption className="sr-only">Daftar penerima transfer periode ini</caption>
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2">NIP</th>
-                    <th className="px-4 py-2">Nama</th>
-                    <th className="px-4 py-2">Bank</th>
-                    <th className="px-4 py-2">Rekening</th>
-                    <th className="px-4 py-2 text-right">Dibayar</th>
+                    <th scope="col" className="px-4 py-2">NIP</th>
+                    <th scope="col" className="px-4 py-2">Nama</th>
+                    <th scope="col" className="px-4 py-2">Bank</th>
+                    <th scope="col" className="px-4 py-2">Rekening</th>
+                    <th scope="col" className="px-4 py-2 text-right">Dibayar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {transfers.map((row) => (
+                  {(transfers ?? []).map((row) => (
                     <tr key={row.employeeNumber}>
                       <td className="px-4 py-2 font-mono text-xs">{row.employeeNumber}</td>
                       <td className="px-4 py-2">{row.fullName}</td>

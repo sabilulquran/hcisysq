@@ -23,6 +23,8 @@ export type PayrollPeriodAction =
   | "approve_reopen"
   | "reject_reopen";
 
+export type PayrollPeriodOperation = "resolve_attendance" | "draft_payslips" | "publish_payslips";
+
 export interface PayrollPeriod {
   id: string;
   legalEntityKey: string | null;
@@ -46,7 +48,12 @@ export interface PayrollPeriod {
   blockerCount: number;
   inputCount: number;
   hasCurrentCalculation: boolean;
+  /** Lifecycle transitions this actor may take now, decided by the server. */
   availableActions: PayrollPeriodAction[];
+  /** The work that is not a transition, likewise decided by the server. */
+  availableOperations: PayrollPeriodOperation[];
+  /** Which actions carry a reason, so the screen need not know the table. */
+  reasonRequiredActions: PayrollPeriodAction[];
 }
 
 export interface PayrollPeriodTransition {
@@ -160,7 +167,7 @@ export function listPayrollPeriods(query: { page?: number; pageSize?: number } =
   if (query.page) params.set("page", String(query.page));
   if (query.pageSize) params.set("pageSize", String(query.pageSize));
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  return request<{ page: number; pageSize: number; periods: PayrollPeriod[] }>(
+  return request<{ page: number; pageSize: number; total: number; periods: PayrollPeriod[] }>(
     `/api/payroll/periods${suffix}`,
   );
 }
@@ -284,18 +291,30 @@ export function payrollActionLabel(action: PayrollPeriodAction): string {
   return ACTION_LABELS[action] ?? action;
 }
 
-/** The three actions the specification requires a reason for (section 6). */
-export function payrollActionNeedsReason(action: PayrollPeriodAction): boolean {
-  return action === "return" || action === "request_reopen" || action === "reject_reopen";
+const OPERATION_LABELS: Record<PayrollPeriodOperation, string> = {
+  resolve_attendance: "Ambil lembur & kehadiran",
+  draft_payslips: "Siapkan slip",
+  publish_payslips: "Terbitkan slip",
+};
+
+export function payrollOperationLabel(operation: PayrollPeriodOperation): string {
+  return OPERATION_LABELS[operation] ?? operation;
 }
 
 /**
  * Amounts arrive as strings because they are exact rupiah the server computed.
  * The screen only groups the thousands; it never does arithmetic on them.
+ *
+ * Payroll amounts are whole rupiah by specification (section 5), but a few
+ * columns are numeric, so a value may still arrive with a decimal part. Only the
+ * rupiah are shown, and the fraction is dropped rather than folded into the
+ * digits, which would multiply the amount by a hundred.
  */
 export function formatRupiah(amount: string): string {
-  const negative = amount.trim().startsWith("-");
-  const digits = amount.replace(/[^0-9]/g, "");
+  const text = amount.trim();
+  const negative = text.startsWith("-");
+  const rupiah = text.split(/[.,]/)[0] ?? "";
+  const digits = rupiah.replace(/[^0-9]/g, "");
   if (digits.length === 0) return amount;
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${negative ? "-" : ""}Rp${grouped}`;

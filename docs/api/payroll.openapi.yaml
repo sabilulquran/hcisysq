@@ -34,10 +34,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [page, pageSize, periods]
+                required: [page, pageSize, total, periods]
                 properties:
                   page: { type: integer }
                   pageSize: { type: integer }
+                  total:
+                    type: integer
+                    description: Every period on record, so a list can say what it is not showing.
                   periods:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollPeriod' }
@@ -831,6 +834,19 @@ components:
           description: A calculation exists and no input was recorded after it.
         availableActions:
           type: array
+          description: Lifecycle transitions this actor may take now.
+          items: { type: string }
+        availableOperations:
+          type: array
+          description: >-
+            The work on a period that is not a lifecycle transition and that this
+            actor may do now: resolve_attendance, draft_payslips, publish_payslips.
+          items:
+            type: string
+            enum: [resolve_attendance, draft_payslips, publish_payslips]
+        reasonRequiredActions:
+          type: array
+          description: The actions that carry a reason, so a caller need not know the table.
           items: { type: string }
 
   responses:

@@ -1,7 +1,8 @@
 import { AlertTriangle, CalendarPlus, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -14,14 +15,16 @@ import {
 } from "@/lib/payroll";
 import type { AuthSession } from "@/types/hcis";
 
-/** The month after the newest period, which is the one an operator usually wants. */
+/**
+ * The month after the newest period, which is the one an operator usually wants.
+ * Returned as YYYY-MM for the month input; the request sends its first day.
+ */
 function nextMonthAfter(periods: readonly PayrollPeriod[]): string {
   const newest = periods[0]?.periodMonth;
   const base = newest ? new Date(`${newest}T00:00:00Z`) : new Date();
   const year = base.getUTCFullYear();
   const month = base.getUTCMonth() + (newest ? 1 : 0);
-  const next = new Date(Date.UTC(year, month, 1));
-  return next.toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 7);
 }
 
 function monthLabel(periodMonth: string): string {
@@ -33,6 +36,9 @@ export function AdminPayrollPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -40,37 +46,42 @@ export function AdminPayrollPage() {
 
   const canManagePeriods = hasPermission(session, "payroll.periods.manage");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listPayrollPeriods({ page: 1, pageSize: 24 });
+      const data = await listPayrollPeriods({ page, pageSize });
       setPeriods(data.periods);
+      setTotal(data.total);
       setNewMonth((current) => current || nextMonthAfter(data.periods));
     } catch (cause) {
       setError(cause instanceof PayrollApiError ? cause.message : "Daftar periode gagal dimuat.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize]);
 
   useEffect(() => {
     let active = true;
     void getCurrentSession().then((value) => {
       if (active) setSession(value);
     });
-    void load();
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function handleCreate() {
     if (!newMonth) return;
     setCreating(true);
     setError(null);
     try {
-      const { period } = await createPayrollPeriod({ periodMonth: newMonth });
+      // The month input gives YYYY-MM; a period is named by its first day.
+      const { period } = await createPayrollPeriod({ periodMonth: `${newMonth}-01` });
       await navigate({ to: "/admin/payroll/$periodId", params: { periodId: period.id } });
     } catch (cause) {
       setError(cause instanceof PayrollApiError ? cause.message : "Periode gagal dibuat.");
@@ -98,7 +109,7 @@ export function AdminPayrollPage() {
               <label className="text-sm">
                 <span className="mb-1 block text-muted-foreground">Bulan periode</span>
                 <input
-                  type="date"
+                  type="month"
                   value={newMonth}
                   onChange={(event) => setNewMonth(event.target.value)}
                   className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -162,6 +173,21 @@ export function AdminPayrollPage() {
               ))}
             </ul>
           )}
+
+          {total > 0 ? (
+            <div className="border-t px-4 py-3">
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                onPageSizeChange={(next) => {
+                  setPageSize(next);
+                  setPage(1);
+                }}
+              />
+            </div>
+          ) : null}
         </section>
       </div>
     </AdminShell>

@@ -24,19 +24,23 @@ describe("PAY-003 payroll screens", () => {
   const board = session("FOUNDATION_BOARD", ["board.read"]);
   const employee = session("EMPLOYEE", ["payslips.read.own"]);
 
-  it("opens for anyone with a part in a payroll period", () => {
+  it("opens for exactly the permissions the API lets read a period", () => {
+    // PERIOD_READ_PERMISSIONS in the payroll lifecycle. Opening it wider would
+    // show a menu entry that leads to a 403.
     for (const permission of [
       "payroll.periods.manage",
-      "payroll.calculate",
-      "payroll.inputs.manage",
-      "payroll.submit",
       "payroll.approve",
       "payroll.reopen.approve",
       "payroll.payments.confirm",
       "payroll.reports.read.organization",
-      "payroll.transfers.read.organization",
     ]) {
       expect(canAccessAdminPath(session("EMPLOYEE", [permission]), "/admin/payroll")).toBe(true);
+    }
+  });
+
+  it("stays closed to a permission that may act on a period but not read one", () => {
+    for (const permission of ["payroll.calculate", "payroll.inputs.manage", "payroll.submit", "payroll.transfers.read.organization"]) {
+      expect(canAccessAdminPath(session("EMPLOYEE", [permission]), "/admin/payroll")).toBe(false);
     }
   });
 

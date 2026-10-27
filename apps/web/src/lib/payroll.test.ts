@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatRupiah,
   payrollActionLabel,
-  payrollActionNeedsReason,
+  payrollOperationLabel,
   payrollStateLabel,
   payrollTransfersCsvUrl,
 } from "@/lib/payroll";
@@ -27,6 +27,13 @@ describe("PAY-003 amounts on screen", () => {
     expect(formatRupiah("")).toBe("");
     expect(formatRupiah("—")).toBe("—");
   });
+
+  it("shows only the rupiah of a value that arrives with a fraction", () => {
+    // Dropping the separator instead would read 3000000.00 as three hundred
+    // million, which is the same amount times a hundred.
+    expect(formatRupiah("3000000.00")).toBe("Rp3.000.000");
+    expect(formatRupiah("1500,50")).toBe("Rp1.500");
+  });
 });
 
 describe("PAY-003 period vocabulary", () => {
@@ -41,13 +48,10 @@ describe("PAY-003 period vocabulary", () => {
     expect(payrollActionLabel("approve_reopen")).toBe("Setujui buka ulang");
   });
 
-  it("asks for a reason exactly where the specification does", () => {
-    expect(payrollActionNeedsReason("return")).toBe(true);
-    expect(payrollActionNeedsReason("request_reopen")).toBe(true);
-    expect(payrollActionNeedsReason("reject_reopen")).toBe(true);
-    for (const action of ["start_collecting", "calculate", "submit", "approve", "confirm_payment", "publish", "approve_reopen"] as const) {
-      expect(payrollActionNeedsReason(action)).toBe(false);
-    }
+  it("names the work that is not a lifecycle transition", () => {
+    expect(payrollOperationLabel("resolve_attendance")).toBe("Ambil lembur & kehadiran");
+    expect(payrollOperationLabel("draft_payslips")).toBe("Siapkan slip");
+    expect(payrollOperationLabel("publish_payslips")).toBe("Terbitkan slip");
   });
 
   it("downloads the CSV the server builds, not one assembled in the browser", () => {

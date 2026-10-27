@@ -973,7 +973,7 @@ paths:
                 requestedMinutes: { type: integer, minimum: 1, maximum: 1440 }
                 note: { type: string, minLength: 3, maxLength: 2000 }
       responses:
-        '201': { description: '`{ ids[], status: submitted, awaiting: employee }`' }
+        '201': { description: '`{ ids[], orders[{ employeeId, id }], status: submitted, awaiting: employee }`' }
         '403': { description: OVERTIME_NOT_SUBORDINATE }
         '422': { description: 'OVERTIME_DATE_OUT_OF_RANGE or OVERTIME_DAY_TOTAL_INVALID' }
 

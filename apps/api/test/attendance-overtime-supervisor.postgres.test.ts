@@ -129,7 +129,7 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
     expect(await request(id)).toMatchObject({ status: "approved", approvedMinutes: 60 });
     expect((await as(accounts.boss)("POST", `/attendance/team-overtime/${id}/decision`, { decision: "approve" })).json().code).toBe("OVERTIME_STEP_ALREADY_DECIDED");
 
-    const audit = await client.query("SELECT action FROM access_audit_events WHERE entity_id = $1 ORDER BY created_at", [id]);
+    const audit = await client.query("SELECT action FROM access_audit_events WHERE entity_id = $1", [id]);
     expect(audit.rows.map((row) => row.action).sort()).toEqual(["attendance.overtime.submitted", "attendance.overtime.supervisor_approved"]);
   });
 
@@ -151,7 +151,9 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
 
     const ordered = await as(accounts.boss)("POST", "/attendance/team-overtime/orders", { employeeIds: [ids.staff, ids.other], workDate: today, requestedMinutes: 90, note: "Persiapan wisuda" });
     expect(ordered.statusCode, ordered.body).toBe(201);
-    const [forStaff, forOther] = ordered.json().ids as string[];
+    const orderOf = (employeeId: string) => (ordered.json().orders as Array<{ employeeId: string; id: string }>).find((item) => item.employeeId === employeeId)!.id;
+    const forStaff = orderOf(ids.staff);
+    const forOther = orderOf(ids.other);
 
     expect((await as(accounts.staff)("POST", `/attendance/overtime/${forStaff}/cancel`)).statusCode).toBe(409);
     expect((await as(accounts.other)("POST", `/attendance/overtime/${forStaff}/respond`, { decision: "agree" })).statusCode).toBe(403);

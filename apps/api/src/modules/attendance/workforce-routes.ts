@@ -2303,7 +2303,7 @@ export async function registerAttendanceWorkforceRoutes(
       } finally {
         client.release();
       }
-      return reply.status(201).send({ ids, status: "submitted", awaiting: "employee" });
+      return reply.status(201).send({ ids, orders: employeeIds.map((employeeId, index) => ({ employeeId, id: ids[index] })), status: "submitted", awaiting: "employee" });
     } catch (error) {
       return sendError(reply, error);
     }

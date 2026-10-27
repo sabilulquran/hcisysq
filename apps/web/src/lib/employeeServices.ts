@@ -118,7 +118,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "documents", label: "Dokumen",
     description: "Surat keterangan dan dokumen kepegawaian.",
-    featureIds: ["DOC-001", "DOC-002"], stage: "discovery", category: "employee-services", href: "/app/services/documents",
+    featureIds: ["DOC-001", "DOC-002"], stage: "available", category: "employee-services", href: "/app/documents",
   },
   {
     key: "business-travel", label: "Perjalanan Dinas",

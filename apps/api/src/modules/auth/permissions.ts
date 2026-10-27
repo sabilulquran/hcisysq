@@ -15,7 +15,16 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
   "attendance.devices.operate", "attendance.devices.export",
   "employment.read", "employment.manage",
+  "documents.read", "documents.manage",
 ] as const;
+
+/** DOC-001/DOC-002: HC-only; never granted through legacy Super Admin compatibility.
+ * documents.discipline.manage and documents.correct stay outside every bundle and are
+ * granted through a separate, explicit role assignment (spec §6). */
+export const DOCUMENT_PERMISSIONS = [
+  "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
+] as const;
+export type DocumentPermission = (typeof DOCUMENT_PERMISSIONS)[number];
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;

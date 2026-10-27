@@ -100,7 +100,7 @@ Job classification/grade is a separate discovery concern from ORG-004 hierarchy/
 Employee services continue with:
 
 - Employee data change request — EMP-003.
-- Employment and HR documents — DOC-001 / DOC-002.
+- Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
 - Business travel / official travel workflow — TRIP-001.
 - Employee asset assignment and return — ASSET-001.
 - Desk/workplace booking — WORK-001.

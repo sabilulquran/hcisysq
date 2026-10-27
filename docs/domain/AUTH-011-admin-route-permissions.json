@@ -2125,5 +2125,155 @@
     "permissions": [
       "organization.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/documents/me/types",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/documents/me/requests",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/documents/me/requests",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/documents/me/requests/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/documents/me/issued",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/documents/me/disciplinary",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/documents/me/disciplinary/:id/acknowledge",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/types",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/requests",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/requests/:id/approve",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/requests/:id/reject",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/requests/:id/issue",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/issue",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/register",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/issued/:id/revoke",
+    "permissions": [
+      "documents.correct"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/disciplinary",
+    "permissions": [
+      "documents.discipline.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/documents/disciplinary",
+    "permissions": [
+      "documents.discipline.manage"
+    ]
   }
 ]

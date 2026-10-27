@@ -197,9 +197,9 @@ export const adminServices: AdminServiceDefinition[] = [
     label: "Dokumen Kepegawaian",
     description: "Kelola surat keterangan, surat peringatan, dan dokumen HR terkait.",
     featureIds: ["DOC-001", "DOC-002"],
-    stage: "discovery",
+    stage: "available",
     category: "employee-services",
-    href: "/admin/services/documents",
+    href: "/admin/documents",
   },
   {
     key: "communications",

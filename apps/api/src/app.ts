@@ -42,6 +42,7 @@ import { registerPlannedLeaveRoutes } from "./modules/leave/planned-leave-routes
 import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes.js";
 import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
+import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
 import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
@@ -171,6 +172,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAttendanceResolutionRoutes(app, pool, config);
   await registerPayslipRoutes(app, pool, config);
   await registerNotificationRoutes(app, pool, config);
+  await registerDocumentRoutes(app, pool, config);
 
   app.setErrorHandler((error, request, reply) => {
     const databaseError = error as Error & { code?: string; constraint?: string };

@@ -504,6 +504,42 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     expect(rows[0]!.isRevision).toBe(true);
   });
 
+  it("lets a slip step aside and its replacement land in the same transaction", async () => {
+    // The mechanics the revision path rests on, on their own: one current slip
+    // per employee and month is a partial unique index, so the row being
+    // replaced has to leave the index before the replacement enters it.
+    const employee = await newEmployee();
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    await pool.query(
+      `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id)
+       VALUES ($1, $2, DATE '2026-09-01', '[]'::jsonb, 'generic', $3)`,
+      [firstId, employee.employeeId, periodId],
+    );
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("UPDATE payslips SET superseded_by_id = $2 WHERE id = $1", [firstId, secondId]);
+      await client.query(
+        `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_period_id, revision_of)
+         VALUES ($1, $2, DATE '2026-09-01', '[]'::jsonb, 'generic', $3, $4)`,
+        [secondId, employee.employeeId, periodId, firstId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const slips = await slipsOf(employee.employeeId);
+    expect(slips).toHaveLength(2);
+    expect(slips.filter((slip) => slip.supersededById === null)).toHaveLength(1);
+  });
+
   it("refuses a slip that claims both an import batch and a payroll period", async () => {
     const employee = await newEmployee();
     const periodId = await newPeriod("PAYMENT_CONFIRMED");

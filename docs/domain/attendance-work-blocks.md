@@ -39,8 +39,7 @@ implementasi mengikuti usulan D-13-1 sampai D-13-7 di sana:
 | D-13-7 | Riil blok = Hitungan harinya bila Hadir/Terlambat, 0 bila Tidak hadir, **kosong** bila Tidak lengkap atau belum lewat; Riil hari = jumlah yang terisi. |
 
 Status hari mengikuti tabel §5.4 rancangan, termasuk **Menunggu** selama blok yang sudah lewat dihadiri
-tepat waktu dan masih ada blok yang belum mulai. Sesi kerja masuk ke blok yang memuat jam check-in-nya
-(§5.2 aturan 3), sehingga sesi yang melewati titik tengah jeda tetap milik blok tempat ia dimulai.
+tepat waktu dan masih ada blok yang belum mulai.
 
 Perbedaan implementasi dari rancangan (tidak mengubah perilaku yang terlihat HC):
 
@@ -51,6 +50,14 @@ Perbedaan implementasi dari rancangan (tidak mengubah perilaku yang terlihat HC)
   check-in. `TBD` bila PAY-003 membutuhkannya tersimpan.
 - Pesan validasi memakai `422 SCHEDULE_BLOCKS_INVALID` (bukan 400), sejalan dengan validasi bisnis lain di
   modul ini.
+- §5.2 aturan 3 (sesi masuk ke blok jam check-in-nya) **tidak** dipakai: setiap scan dan koreksi dibagi
+  per titik tengah jeda (aturan 2), lalu sesi dibangun per blok. Dengan aturan 3, scan pulang yang lupa di
+  blok pagi akan berpasangan dengan scan masuk blok sore dan menghitung seluruh jeda sebagai jam kerja,
+  bertentangan dengan I-3 dan D-13-5. Contoh 10.00 di §5.2 tetap berlaku (pulang terlambat blok 1).
+- Bila Hitungan hari dikosongkan, bagian sama rata tetap berjumlah 1,00: blok terakhir menanggung
+  pembulatan (3 blok: 0,33 + 0,33 + 0,34).
+- Aturan jeda 30 menit berlaku juga saat shift berbeberapa blok yang dibuat sebelum aturan ini diubah; di
+  production belum ada shift berbeberapa blok saat aturan ini dirilis.
 
 ## 3. Model
 

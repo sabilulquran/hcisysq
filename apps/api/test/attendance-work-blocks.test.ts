@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { normalActual } from "../src/modules/attendance/calculation-rows.js";
-import { blockIndexFor, evaluateBlocks, type ResolvedSchedule } from "../src/modules/attendance/engine.js";
+import { blockIndexFor, equalShare, evaluateBlocks, type ResolvedSchedule } from "../src/modules/attendance/engine.js";
 import { scheduleBlocksError } from "../src/modules/attendance/workforce-routes.js";
 
 // ATT-013 work blocks (docs/domain/attendance-work-blocks.md). Synthetic times, Asia/Jakarta.
@@ -67,11 +67,23 @@ describe("ATT-013 B-5/B-7: the day from its blocks", () => {
   });
 });
 
-describe("ATT-013 §5.2: a session belongs to the block of its check-in", () => {
-  it("keeps a session that runs past the midpoint in the block where it started", () => {
-    const { blocks: parts } = evaluate([punch("03:58"), punch("12:00"), punch("14:29"), punch("19:31")]);
-    expect(parts[0]).toMatchObject({ status: "present", lastCheckOutAt: at("12:00") });
-    expect(parts[1]).toMatchObject({ status: "present", firstCheckInAt: at("14:29") });
+describe("ATT-013 §5.2: scans split at the gap midpoint", () => {
+  it("keeps a forgotten check-out inside its block instead of pairing across the gap (I-3)", () => {
+    const { blocks: parts, computation } = evaluate([punch("03:58"), punch("14:29"), punch("19:31")]);
+    expect(parts[0]).toMatchObject({ status: "incomplete", creditedWorkday: null, workedMinutes: 0 });
+    expect(parts[1]).toMatchObject({ status: "present", creditedWorkday: 0.5 });
+    expect(computation.status).toBe("incomplete");
+    expect(computation.workedMinutes).toBe(302);
+  });
+
+  it("reads a late check-out before the midpoint as block 1 leaving late (spec example 10.00)", () => {
+    const { blocks: parts } = evaluate([punch("03:58"), punch("10:00"), punch("14:29"), punch("19:31")]);
+    expect(parts[0]).toMatchObject({ status: "present", lastCheckOutAt: at("10:00") });
+  });
+
+  it("gives equal shares that add up to 1,00 for three blocks", () => {
+    expect([0, 1, 2].map((index) => equalShare(3, index))).toEqual([0.33, 0.33, 0.34]);
+    expect([0, 1].map((index) => equalShare(2, index))).toEqual([0.5, 0.5]);
   });
 
   it("leaves an incomplete block without credit (D-13-7)", () => {

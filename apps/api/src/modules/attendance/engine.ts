@@ -292,6 +292,12 @@ export function evaluateSessions(input: {
   };
 }
 
+/** D-13-6 equal shares that still add up to 1,00: the last block takes the rounding (3 blocks: 0.33/0.33/0.34). */
+export function equalShare(count: number, index: number) {
+  const share = Math.floor((100 / count)) / 100;
+  return index === count - 1 ? Math.round((1 - share * (count - 1)) * 100) / 100 : share;
+}
+
 export type BlockComputation = {
   sequence: number;
   scheduledStartAt: Date;
@@ -336,11 +342,11 @@ export function evaluateBlocks(input: {
   now?: Date;
 }): { computation: AttendanceComputation; blocks: BlockComputation[] } {
   const blocks = input.schedule.blocks!;
-  // §5.2 rule 3: a session belongs to the block whose window holds its check-in; a correction to the block
-  // whose window holds the corrected time.
-  const daySessions = buildSessions(input.events);
+  // §5.2: every scan and correction belongs to the block on its side of the gap's midpoint, and sessions are
+  // built per block. A forgotten check-out therefore stays an open session in its own block (I-3) instead of
+  // pairing with the next block's check-in across the gap.
   const blockResults = blocks.map((block, index) => {
-    const own = daySessions.filter((session) => blockIndexFor(blocks, session.checkInAt) === index);
+    const own = buildSessions(input.events.filter((event) => blockIndexFor(blocks, event.occurredAt) === index));
     const corrections = input.corrections.map((correction) => ({
       proposedCheckInAt: correction.proposedCheckInAt && blockIndexFor(blocks, correction.proposedCheckInAt) === index ? correction.proposedCheckInAt : null,
       proposedCheckOutAt: correction.proposedCheckOutAt && blockIndexFor(blocks, correction.proposedCheckOutAt) === index ? correction.proposedCheckOutAt : null,
@@ -355,7 +361,7 @@ export function evaluateBlocks(input: {
       overtimeMinutes: 0,
       ...(input.now ? { now: input.now } : {}),
     });
-    const weight = block.weight ?? Math.round((1 / blocks.length) * 100) / 100;
+    const weight = block.weight ?? equalShare(blocks.length, index);
     return {
       sequence: block.sequence,
       scheduledStartAt: block.startAt,
@@ -579,7 +585,7 @@ function mapScheduleRow(row: ScheduleRow, workDate: string): ResolvedSchedule {
   const weights = [row.firstBlockWeight, ...(row.extraBlocks ?? []).map((block) => block.weight)];
   const stored = weights.every((weight) => weight !== null && weight !== undefined);
   blocks.forEach((block, index) => {
-    block.weight = stored ? Number(weights[index]) : Math.round((1 / blocks.length) * 100) / 100;
+    block.weight = stored ? Number(weights[index]) : equalShare(blocks.length, index);
   });
   return {
     state: "scheduled",

@@ -14,6 +14,7 @@ import {
   Home,
   ShieldCheck,
   TimerReset,
+  UserRoundCog,
   WalletCards,
 } from "lucide-react";
 
@@ -46,6 +47,7 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
   { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight, category: "attendance" },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays, category: "leave" },
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards, category: "pay" },
+  { label: "Data Saya", href: "/app/my-data", icon: UserRoundCog, category: "service" },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },
 ];
 

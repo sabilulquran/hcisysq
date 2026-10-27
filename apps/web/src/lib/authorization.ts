@@ -42,6 +42,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // employees.read.all is enough. It has to come before the rule below, which
   // would otherwise demand employees.manage for every /admin/employees path.
   if (path === "/admin/employees/certificates/expiring") return hasPermission(session, "employees.read.all");
+  // EMP-003 §7.4: HC reads the queue with employees.read.all; deciding needs
+  // employees.manage, which the API checks on each decision.
+  if (path === "/admin/employees/data-changes") return hasPermission(session, "employees.read.all");
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   // EMP-005: HC-only; Super Admin legacy compatibility never carries employment.*.
   if (path === "/admin/employment/consistency") return hasPermission(session, "employment.read");

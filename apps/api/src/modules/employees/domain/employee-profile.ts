@@ -477,3 +477,118 @@ export function changedFields(
   const after = next as Record<string, unknown>;
   return Object.keys(after).filter((field) => before[field] !== after[field]);
 }
+
+// ------------------------------------------- usulan perubahan data (EMP-003)
+
+export const DATA_CHANGE_STATES = ["DIAJUKAN", "DITERIMA", "DITOLAK", "DIBATALKAN"] as const;
+export type DataChangeState = (typeof DATA_CHANGE_STATES)[number];
+
+export interface ContactInput {
+  email?: string | null | undefined;
+  phone?: string | null | undefined;
+}
+
+/**
+ * Only the fields the proposal actually names. A key that is absent means
+ * "leave this alone"; a key present and null means "remove it". Carrying both
+ * as plain nulls made a one-field proposal silently delete the other, and
+ * neither the audit row nor HC's screen showed that it had.
+ */
+export interface ContactValues {
+  email?: string | null;
+  phone?: string | null;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE = /^[0-9+][0-9 ()+-]{5,24}$/;
+
+/**
+ * Kontak tetap tinggal di master pegawai (spec §4.4), jadi usulan kontak
+ * hanya memuat email dan telepon. Keduanya boleh kosong — itu artinya
+ * dihapus — tetapi tidak boleh dua-duanya hilang dari usulan, karena usulan
+ * yang tidak mengubah apa pun tidak perlu diputuskan siapa pun.
+ */
+export function validateContact(input: ContactInput): ProfileValidation<ContactValues> {
+  const names = (["email", "phone"] as const).filter((field) => field in input && input[field] !== undefined);
+  if (names.length === 0) {
+    return fail("email", "Usulan kontak harus menyebut email atau nomor telepon.");
+  }
+  const value: ContactValues = {};
+  if (names.includes("email")) {
+    const email = text(input.email)?.toLowerCase() ?? null;
+    if (email !== null && !EMAIL.test(email)) return fail("email", "Alamat email tidak valid.");
+    value.email = email;
+  }
+  if (names.includes("phone")) {
+    const phone = text(input.phone);
+    if (phone !== null && !PHONE.test(phone)) return fail("phone", "Nomor telepon tidak valid.");
+    value.phone = phone;
+  }
+  return { ok: true, value };
+}
+
+export type DataChangeValues =
+  | { target: "ALAMAT"; values: AddressValues }
+  | { target: "KONTAK"; values: ContactValues }
+  | { target: "KELUARGA"; values: FamilyMemberValues }
+  | { target: "PENDIDIKAN"; values: EducationValues }
+  | { target: "KEAHLIAN"; values: SkillValues };
+
+/**
+ * Satu pintu validasi untuk usulan, dipakai dua kali: saat pegawai mengajukan
+ * dan lagi saat HC menerima (spec §4.5). Aturan dapat berubah di antara kedua
+ * saat itu, dan usulan lama tidak boleh menyelinap lewat hanya karena dulu
+ * sah; `currentYear` pun berbeda bila usulannya menginap lintas tahun.
+ *
+ * `source` pada alamat dipaksa `USULAN_PEGAWAI`: dari mana sebuah alamat
+ * datang adalah fakta, bukan sesuatu yang boleh ditulis pengusul.
+ */
+export function validateDataChange(
+  target: DataChangeTarget,
+  payload: unknown,
+  currentYear: number,
+): ProfileValidation<DataChangeValues> {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return fail("payload", "Isi usulan tidak valid.");
+  }
+  const body = payload as Record<string, unknown>;
+  switch (target) {
+    case "ALAMAT": {
+      const result = validateAddress({ ...(body as unknown as AddressInput), source: "USULAN_PEGAWAI" });
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KONTAK": {
+      const result = validateContact(body as ContactInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KELUARGA": {
+      const result = validateFamilyMember(body as unknown as FamilyMemberInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "PENDIDIKAN": {
+      const result = validateEducation(body as unknown as EducationInput, currentYear);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KEAHLIAN": {
+      const result = validateSkill(body as unknown as SkillInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    default:
+      return fail("target", "Bagian data yang diusulkan tidak dikenal.");
+  }
+}
+
+/**
+ * Nama field yang diusulkan, untuk audit dan untuk ringkasan "dari → menjadi"
+ * di layar HC. Isinya tidak pernah ikut (§6).
+ */
+export function proposedFields(values: DataChangeValues): string[] {
+  const entries = Object.entries(values.values as unknown as Record<string, unknown>);
+  // KONTAK carries only the fields it names, so a null there is a deliberate
+  // removal and belongs in the list. Everywhere else the whole record is
+  // proposed and a null is simply "not recorded".
+  const keep = values.target === "KONTAK"
+    ? ([, value]: [string, unknown]) => value !== undefined
+    : ([, value]: [string, unknown]) => value !== null && value !== undefined;
+  return entries.filter(keep).map(([field]) => field).sort();
+}

@@ -831,6 +831,16 @@
       "url": "/admin/employees/:employeeId/addresses",
       "list": "bounded",
       "reason": "Riwayat alamat satu pegawai; dua jenis dengan beberapa periode."
+    },
+    {
+      "url": "/employees/me/data-changes",
+      "list": "bounded",
+      "reason": "Usulan perubahan data milik pegawai sendiri; sedikit baris per orang."
+    },
+    {
+      "url": "/admin/employees/data-changes",
+      "list": "paged",
+      "reason": "Usulan perubahan data lintas pegawai dengan page/pageSize (maks 100) dan total."
     }
   ]
 }

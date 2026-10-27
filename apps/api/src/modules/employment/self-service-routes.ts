@@ -20,7 +20,6 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   DEFAULT_EMPLOYMENT_POLICY as policy,
   EmploymentDomainError,
-  isIsoDate,
   planEmploymentAction,
   resolveEmployment,
   type EmploymentHistory,
@@ -259,8 +258,15 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
       page,
       pageSize,
       total: result.rows[0]?.total ?? 0,
-      rows: result.rows.map(({ total: _total, ...row }) => ({
-        ...row,
+      rows: result.rows.map((row) => ({
+        employeeId: row.employeeId,
+        employeeNumber: row.employeeNumber,
+        fullName: row.fullName,
+        unitName: row.unitName,
+        category: row.category,
+        endsOn: row.endsOn,
+        sequence: row.sequence,
+        daysLeft: row.daysLeft,
         // A term already past its end is the urgent case (§6.2 flag).
         overdue: row.daysLeft < 0,
       })),

@@ -35,6 +35,8 @@ const PERMISSIONS: Record<Persona, string[]> = {
 
 const PK_ID = "30000000-0000-4000-8000-000000000001";
 const SK_ID = "30000000-0000-4000-8000-000000000002";
+const PK_BARU_ID = "30000000-0000-4000-8000-000000000003";
+const SK_PENGANGKATAN_ID = "30000000-0000-4000-8000-000000000004";
 
 /** The extension and its Perjanjian Kerja state the same period and category. */
 const EXTENSION = {
@@ -57,6 +59,14 @@ const DOCUMENTS = [
     contractFrom: "2027-10-01", contractTo: "2028-09-30", category: "KONTRAK",
   },
   {
+    id: PK_BARU_ID, kind: "PERJANJIAN_KERJA", pkType: "PK_BARU", skType: null, employeeId: EMPLOYEE_ID,
+    contractFrom: "2027-10-01", contractTo: "2028-09-30", category: "KONTRAK",
+  },
+  {
+    id: SK_PENGANGKATAN_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PENGANGKATAN", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
     id: SK_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PEMBERHENTIAN", employeeId: null,
     contractFrom: null, contractTo: null, category: null,
   },
@@ -68,11 +78,18 @@ interface PoolOptions {
   actorEmployeeId?: string | null;
   noHistory?: boolean;
   replayActionId?: string | null;
+  /** The employee the replayed key belongs to; defaults to the one in the URL. */
+  replayEmployeeId?: string;
+  /** The stored optimistic token, when it no longer matches the planned one. */
+  storedVersion?: number;
+  /** SQLSTATE the action insert raises, to exercise the refusal mapping. */
+  insertSqlState?: string;
+  employeeRemoved?: boolean;
 }
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
   const writes: string[] = [];
-  const query = vi.fn(async (sql: string) => {
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes("FROM auth_sessions s")) {
       if (persona === "anonymous") return { rows: [], rowCount: 0 };
       return {
@@ -97,14 +114,27 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     }
     if (sql.includes("FROM employment_actions WHERE idempotency_key")) {
       return options.replayActionId
-        ? { rows: [{ id: options.replayActionId, employeeId: EMPLOYEE_ID }], rowCount: 1 }
+        ? {
+            rows: [{
+              id: options.replayActionId,
+              employeeId: options.replayEmployeeId ?? EMPLOYEE_ID,
+              actionType: "CONTRACT_EXTENSION",
+              effectiveOn: "2027-10-01",
+            }],
+            rowCount: 1,
+          }
         : { rows: [], rowCount: 0 };
     }
-    if (sql.includes("SELECT id FROM employees WHERE id = $1")) return { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
+    if (sql.includes("SELECT id FROM employees WHERE id = $1")) {
+      return options.employeeRemoved ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
+    }
     if (sql.includes("FROM accounts WHERE id = $1 AND employee_id IS NOT NULL")) {
       return options.actorEmployeeId
         ? { rows: [{ employeeId: options.actorEmployeeId }], rowCount: 1 }
         : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("SELECT version FROM employments WHERE id = $1 FOR UPDATE")) {
+      return { rows: [{ version: options.storedVersion ?? 3 }], rowCount: 1 };
     }
     if (sql.includes("FROM employments WHERE")) {
       if (options.noHistory) return { rows: [], rowCount: 0 };
@@ -150,15 +180,26 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       };
     }
     if (sql.includes("FROM employment_decision_documents WHERE id = ANY")) {
-      return { rows: DOCUMENTS, rowCount: DOCUMENTS.length };
+      const ids = (params?.[0] as string[] | undefined) ?? [];
+      const rows = DOCUMENTS.filter((document) => ids.includes(document.id));
+      return { rows, rowCount: rows.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes("SELECT version FROM employments WHERE id = $1 FOR UPDATE")) {
-      return { rows: [{ version: 3 }], rowCount: 1 };
-    }
     if (sql.includes("INSERT INTO employment_actions")) {
+      if (options.insertSqlState) throw Object.assign(new Error("constraint"), { code: options.insertSqlState });
       writes.push("INSERT action");
       return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO employments ")) {
+      writes.push("INSERT employment");
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO employment_placements")) {
+      writes.push("INSERT placement");
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("SELECT id FROM employees WHERE id = $1 FOR UPDATE")) {
+      return { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO employment_terms")) {
       writes.push("INSERT term");
@@ -187,6 +228,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("UPDATE employments SET ended_on")) {
       writes.push("END employment");
       return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes('functional_position AS "functionalPosition"')) {
+      return { rows: [{ functionalPosition: "Guru Kelas", structuralPosition: null }], rowCount: 1 };
     }
     if (sql.includes("FROM employment_placements WHERE id = $1")) {
       return { rows: [{ functionalLabel: null, structuralLabel: null }], rowCount: 1 };
@@ -320,6 +364,108 @@ describe("EMP-005 contract extension", () => {
     const { response, writes } = await call("hc", RECORD_URL, { noHistory: true, payload: EXTENSION });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: "EMPLOYMENT_BASELINE_MISSING" });
+    expect(writes).toEqual([]);
+  });
+});
+
+describe("EMP-005 hire", () => {
+  const HIRE = {
+    actionType: "HIRE",
+    effectiveOn: "2027-10-01",
+    category: "KONTRAK",
+    termEndOn: "2028-09-30",
+    staffType: "PENDIDIK",
+    placement: { unitId: UNIT_ID, jobTitleLabel: "Guru Kelas" },
+    documentIds: [PK_BARU_ID],
+  };
+
+  it("opens the employment, its term and its primary placement", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, { noHistory: true, payload: HIRE });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT employment");
+    expect(writes).toContain("INSERT action");
+    expect(writes).toContain("INSERT term");
+    expect(writes).toContain("INSERT placement");
+    // The fake pool serves a fixed history, so the projection it would compute
+    // after the insert is covered by the extension and termination cases.
+  });
+
+  it("refuses a hire while an employment is still effective", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, { payload: HIRE });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_ALREADY_ACTIVE" });
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses an ORG-004 placement key: Package 1 records legacy units", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      noHistory: true,
+      payload: { ...HIRE, placement: { unitKey: UNIT_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses an action on a record removed from the master", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, { employeeRemoved: true, noHistory: true, payload: HIRE });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: "EMPLOYEE_NOT_FOUND" });
+    expect(writes).toEqual([]);
+  });
+});
+
+describe("EMP-005 category change", () => {
+  it("appoints a contract employee as permanent with an SK Pengangkatan", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: {
+        actionType: "CATEGORY_CHANGE",
+        effectiveOn: "2027-10-01",
+        category: "TETAP",
+        documentIds: [SK_PENGANGKATAN_ID],
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT term");
+    expect(writes).toContain("PROJECT employee");
+  });
+
+  it("refuses a permanent appointment carried by a Perjanjian Kerja", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { actionType: "CATEGORY_CHANGE", effectiveOn: "2027-10-01", category: "TETAP", documentIds: [PK_ID] },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: "DECISION_DOCUMENT_KIND_INVALID" });
+    expect(writes).toEqual([]);
+  });
+});
+
+describe("EMP-005 concurrency and replay", () => {
+  it("refuses a stale optimistic token", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, { storedVersion: 9, payload: EXTENSION });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_VERSION_CONFLICT" });
+    expect(writes).toEqual([]);
+  });
+
+  it("turns an exclusion-constraint violation into a refusal, not a server error", async () => {
+    const { response } = await call("hc", RECORD_URL, { insertSqlState: "23P01", payload: EXTENSION });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_OVERLAP" });
+  });
+
+  it("never answers a replay to an unauthenticated caller", async () => {
+    const { response } = await call("anonymous", RECORD_URL, { replayActionId: EXISTING_ACTION_ID, payload: EXTENSION });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("refuses a key already used for another employee instead of dropping the action", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      replayActionId: EXISTING_ACTION_ID,
+      replayEmployeeId: "10000000-0000-4000-8000-00000000000f",
+      payload: EXTENSION,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "IDEMPOTENCY_KEY_CONFLICT" });
     expect(writes).toEqual([]);
   });
 });

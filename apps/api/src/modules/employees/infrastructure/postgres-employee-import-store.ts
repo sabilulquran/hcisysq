@@ -253,15 +253,9 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       [candidate.employeeNumber],
     );
 
-    const unitId = candidate.unitName
-      ? await this.upsertReference(client, "organizational_units", candidate.unitName)
-      : null;
-    const positionId = candidate.positionName
-      ? await this.upsertReference(client, "positions", candidate.positionName)
-      : null;
-
     // EMP-005 §8.1: in AUTHORITATIVE the nine employment columns belong to the
-    // employment history, so the import updates only the rest of the master.
+    // employment history, so the import updates only the rest of the master —
+    // and creates no unit or position row it would then throw away.
     if (existing.rows[0] && employmentManaged.has(existing.rows[0].id)) {
       await client.query(
         `UPDATE employees SET
@@ -283,6 +277,13 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       );
       return { action: "update", employeeId: existing.rows[0].id, employmentFieldsIgnored: true };
     }
+
+    const unitId = candidate.unitName
+      ? await this.upsertReference(client, "organizational_units", candidate.unitName)
+      : null;
+    const positionId = candidate.positionName
+      ? await this.upsertReference(client, "positions", candidate.positionName)
+      : null;
 
     if (existing.rows[0]) {
       await client.query(

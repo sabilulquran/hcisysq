@@ -19,6 +19,7 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   DEFAULT_EMPLOYMENT_POLICY as policy,
   EmploymentDomainError,
+  applyPlan,
   isIsoDate,
   planEmploymentAction,
   resolveEmployment,
@@ -64,13 +65,18 @@ const STATUS_BY_CODE: Readonly<Record<EmploymentFailureCode, number>> = {
 
 const isoDate = z.string().refine(isIsoDate);
 const category = z.enum(["TETAP", "KONTRAK", "KONTRAK_HONORER", "MAGANG", "PERCOBAAN", "LEPAS"]);
+/**
+ * Package 1 records placements against the legacy unit/position tables, the
+ * same ones the nine projected `employees` columns point at. ORG-004 stable
+ * keys arrive with S6, together with the mapping that keeps those columns
+ * filled; accepting them here would quietly null a employee's unit for every
+ * legacy consumer, and the import guard would stop import from restoring it.
+ */
 const placementBody = z.object({
-  unitId: z.string().uuid().nullish(),
-  unitKey: z.string().uuid().nullish(),
+  unitId: z.string().uuid(),
   positionId: z.string().uuid().nullish(),
-  positionKey: z.string().uuid().nullish(),
   jobTitleLabel: z.string().trim().min(1).max(200),
-});
+}).strict();
 
 const common = {
   reasonNote: z.string().trim().max(1000).nullish(),
@@ -122,16 +128,12 @@ function send(reply: FastifyReply, status: number, body: unknown) {
   return reply.status(status).send(body);
 }
 
-function unitRefOf(placement: z.infer<typeof placementBody>): UnitRef | null {
-  if (placement.unitKey) return { kind: "ORG_NODE", key: placement.unitKey };
-  if (placement.unitId) return { kind: "LEGACY_UNIT", id: placement.unitId };
-  return null;
+function unitRefOf(placement: z.infer<typeof placementBody>): UnitRef {
+  return { kind: "LEGACY_UNIT", id: placement.unitId };
 }
 
 function positionRefOf(placement: z.infer<typeof placementBody>): PositionRef | null {
-  if (placement.positionKey) return { kind: "ORG_POSITION", key: placement.positionKey };
-  if (placement.positionId) return { kind: "LEGACY_POSITION", id: placement.positionId };
-  return null;
+  return placement.positionId ? { kind: "LEGACY_POSITION", id: placement.positionId } : null;
 }
 
 export async function registerEmploymentActionRoutes(app: FastifyInstance, pool: Pool, config: ApiConfig) {
@@ -190,9 +192,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       acknowledgedWarnings: body.acknowledgedWarnings ?? [],
     };
     switch (body.actionType) {
-      case "HIRE": {
-        const unitRef = unitRefOf(body.placement);
-        if (!unitRef) throw new EmploymentDomainError("EMPLOYMENT_REFERENCE_INVALID", "Unit penempatan wajib dipilih.");
+      case "HIRE":
         return {
           ...shared,
           actionType: "HIRE",
@@ -203,12 +203,11 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
           contractReference: body.contractReference ?? null,
           placement: {
             kind: "PRIMARY",
-            unitRef,
+            unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
           },
         };
-      }
       case "CONTRACT_EXTENSION":
         return {
           ...shared,
@@ -241,8 +240,8 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       next: plan.newSnapshot,
       documentIds: plan.documentIds,
       expectedVersion: plan.expectedVersion,
-      /** What legacy consumers will read once the action is recorded. */
-      state: resolveEmployment(history, today, policy).state,
+      /** The derived state once the action is recorded, not the current one. */
+      state: resolveEmployment(applyPlan(history, plan, new Date().toISOString()), today, policy).state,
     };
   }
 
@@ -250,6 +249,8 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
     request: FastifyRequest,
     reply: FastifyReply,
     mode: "preview" | "record",
+    session: { principal: AuthPrincipal; canCorrect: boolean },
+    employeeId: string,
   ): Promise<
     | null
     | {
@@ -260,13 +261,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
         today: string;
       }
   > {
-    const session = await authenticate(request, reply, "employment.manage");
-    if (!session) return null;
-    const params = employeeParams.safeParse(request.params);
-    if (!params.success) {
-      await send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Pegawai tidak valid." });
-      return null;
-    }
+    const params = { data: { employeeId } };
     const body = actionBody.safeParse(request.body);
     if (!body.success) {
       await send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Data tindakan tidak valid." });
@@ -274,7 +269,12 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
     }
     if (!(await requireAuthoritative(reply))) return null;
 
-    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1", [params.data.employeeId]);
+    // A record removed from the master (EMP-001) is read-only history; an
+    // action on it would re-project it as an active employee.
+    const employee = await pool.query<{ id: string }>(
+      "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
+      [params.data.employeeId],
+    );
     if (!employee.rows[0]) {
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       return null;
@@ -292,7 +292,12 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       return null;
     }
 
-    const documents = await loadDecisionDocumentRefs(pool, body.data.documentIds ?? []);
+    const requestedDocumentIds = body.data.documentIds ?? [];
+    const documents = await loadDecisionDocumentRefs(pool, requestedDocumentIds);
+    if (documents.length !== requestedDocumentIds.length) {
+      await send(reply, 404, { code: "DECISION_DOCUMENT_NOT_FOUND", message: "Dokumen dasar tidak ditemukan." });
+      return null;
+    }
     try {
       const plan = planEmploymentAction(history, toActionInput(body.data, documents), policy, {
         today,
@@ -312,12 +317,23 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
   }
 
   app.post("/admin/employees/:employeeId/employment-actions/preview", async (request, reply) => {
-    const prepared = await prepare(request, reply, "preview");
+    const session = await authenticate(request, reply, "employment.manage");
+    if (!session) return;
+    const params = employeeParams.safeParse(request.params);
+    if (!params.success) return send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Pegawai tidak valid." });
+    const prepared = await prepare(request, reply, "preview", session, params.data.employeeId);
     if (!prepared) return;
     return send(reply, 200, describePlan(prepared.plan, prepared.history, prepared.today));
   });
 
   app.post("/admin/employees/:employeeId/employment-actions", async (request, reply) => {
+    // Authentication first: the replay lookup reads recorded actions, so it
+    // must never answer an unauthenticated caller.
+    const session = await authenticate(request, reply, "employment.manage");
+    if (!session) return;
+    const params = employeeParams.safeParse(request.params);
+    if (!params.success) return send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Pegawai tidak valid." });
+
     const idempotencyKey = request.headers["idempotency-key"];
     if (typeof idempotencyKey !== "string" || idempotencyKey.trim().length < 8) {
       return send(reply, 400, {
@@ -326,9 +342,19 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       });
     }
     const replay = await findActionByIdempotencyKey(pool, idempotencyKey);
-    if (replay) return send(reply, 200, { actionId: replay.id, replayed: true });
+    if (replay) {
+      // The same key for another employee is a client bug; answering "already
+      // recorded" would drop that second action without anyone noticing.
+      if (replay.employeeId !== params.data.employeeId) {
+        return send(reply, 409, {
+          code: "IDEMPOTENCY_KEY_CONFLICT",
+          message: "Kunci idempotensi ini sudah dipakai untuk pegawai lain.",
+        });
+      }
+      return send(reply, 200, { actionId: replay.id, replayed: true });
+    }
 
-    const prepared = await prepare(request, reply, "record");
+    const prepared = await prepare(request, reply, "record", session, params.data.employeeId);
     if (!prepared) return;
 
     const client = await pool.connect();
@@ -345,16 +371,30 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       await client.query("COMMIT");
       return send(reply, 201, { actionId: result.actionId, replayed: false, projection: result.projection });
     } catch (error) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // A failed ROLLBACK must not hide the error that caused it.
+      }
       if (error instanceof EmploymentVersionConflict) {
         return send(reply, 409, {
           code: "EMPLOYMENT_VERSION_CONFLICT",
           message: "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi.",
         });
       }
-      if ((error as { code?: string } | null)?.code === "23505") {
+      const sqlState = (error as { code?: string } | null)?.code;
+      if (sqlState === "23505") {
         const existing = await findActionByIdempotencyKey(pool, idempotencyKey);
         if (existing) return send(reply, 200, { actionId: existing.id, replayed: true });
+      }
+      // The exclusion constraints are the real concurrency defence: two
+      // actions racing for the same period lose here, and that is a refusal
+      // (spec §12), not a server error.
+      if (sqlState === "23P01" || sqlState === "23505") {
+        return send(reply, 409, {
+          code: "EMPLOYMENT_OVERLAP",
+          message: "Periode bertabrakan dengan data yang sudah ada.",
+        });
       }
       throw error;
     } finally {

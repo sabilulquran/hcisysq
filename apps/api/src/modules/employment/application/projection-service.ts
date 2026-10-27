@@ -5,7 +5,7 @@
 
 import type { Pool } from "pg";
 
-import { audit } from "../infrastructure/postgres-employment-store.js";
+import { audit, getRolloutMode } from "../infrastructure/postgres-employment-store.js";
 import {
   employeesNeedingProjection,
   loadProjectedEmployeeIds,
@@ -19,6 +19,8 @@ export interface ProjectionRefreshSummary {
   updated: number;
   skipped: number;
   applied: boolean;
+  /** Set when OFF or SHADOW refused the write: import still owns the columns. */
+  refusedMode?: "OFF" | "SHADOW";
 }
 
 export interface ProjectionRefreshOptions {
@@ -39,6 +41,16 @@ export async function runProjectionRefresh(
   options: ProjectionRefreshOptions,
 ): Promise<ProjectionRefreshSummary> {
   const scope = options.scope ?? "due";
+  // Spec §8.1: in OFF and SHADOW the nine columns still belong to the EMP-004
+  // import, so the projection writer stays silent there — the mirror image of
+  // the baseline CLI, which refuses in AUTHORITATIVE.
+  const { mode } = await getRolloutMode(pool);
+  if (options.apply && mode !== "AUTHORITATIVE") {
+    return {
+      date: options.date, mode: scope, considered: 0, updated: 0, skipped: 0,
+      applied: false, refusedMode: mode,
+    };
+  }
   const targets = options.employeeIds?.length
     ? options.employeeIds
     : scope === "all"
@@ -58,14 +70,16 @@ export async function runProjectionRefresh(
     return summary;
   }
 
+  // One transaction per batch: on Mi8VPS a single transaction over every
+  // employee would hold those rows for the whole run, blocking import commits.
+  const BATCH_SIZE = 200;
+  for (let offset = 0; offset < targets.length; offset += BATCH_SIZE) {
+    await refreshBatch(pool, targets.slice(offset, offset + BATCH_SIZE), options.date, summary);
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const employeeId of targets) {
-      const projection = await refreshProjection(client, employeeId, options.date);
-      if (projection) summary.updated += 1;
-      else summary.skipped += 1;
-    }
     await audit(client, {
       actorAccountId: null,
       action: "employment.projection.refreshed",
@@ -82,4 +96,27 @@ export async function runProjectionRefresh(
     client.release();
   }
   return summary;
+}
+
+async function refreshBatch(
+  pool: Pool,
+  employeeIds: string[],
+  date: string,
+  summary: ProjectionRefreshSummary,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const employeeId of employeeIds) {
+      const projection = await refreshProjection(client, employeeId, date);
+      if (projection) summary.updated += 1;
+      else summary.skipped += 1;
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

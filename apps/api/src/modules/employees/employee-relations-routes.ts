@@ -28,6 +28,7 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   ADDRESS_KINDS,
   ADDRESS_SOURCES,
+  type AddressKind,
   FAMILY_RELATIONS,
   GENDERS,
   changedFields,
@@ -91,9 +92,43 @@ function send(reply: FastifyReply, status: number, body: unknown) {
   return reply.status(status).send(body);
 }
 
-/** PostgreSQL exclusion violation: two records claim the same period. */
-function isPeriodConflict(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === "23P01";
+function jakartaToday(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(now);
+}
+
+/**
+ * A PostgreSQL exclusion violation, turned into the code the spec names for
+ * the rule that was actually broken (§9). One code for all three would leave
+ * the operator unable to tell which, and the screen unable to point at a
+ * field.
+ */
+const PERIOD_CONFLICTS: Record<string, { code: string; message: string }> = {
+  employee_family_single_spouse_excl: {
+    code: "FAMILY_SPOUSE_OVERLAP",
+    message: "Sudah ada pasangan yang tercatat pada periode tersebut.",
+  },
+  employee_family_emergency_priority_excl: {
+    code: "EMERGENCY_PRIORITY_TAKEN",
+    message: "Urutan kontak darurat ini sudah dipakai.",
+  },
+  employee_addresses_single_current_excl: {
+    code: "ADDRESS_PERIOD_OVERLAP",
+    message: "Sudah ada alamat jenis ini pada periode tersebut.",
+  },
+};
+
+function periodConflict(error: unknown, fallback: "family" | "address"): { code: string; message: string } | null {
+  if (typeof error !== "object" || error === null) return null;
+  const { code, constraint } = error as { code?: string; constraint?: string };
+  if (code !== "23P01") return null;
+  const named = constraint ? PERIOD_CONFLICTS[constraint] : undefined;
+  if (named) return named;
+  // An exclusion we have not named is still an overlap, and answering 409 is
+  // closer to the truth than a 500.
+  return fallback === "family"
+    ? PERIOD_CONFLICTS.employee_family_single_spouse_excl!
+    : PERIOD_CONFLICTS.employee_addresses_single_current_excl!;
 }
 
 export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool: Pool, config: ApiConfig) {
@@ -123,8 +158,21 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
     return session.principal;
   }
 
-  async function requireEmployee(reply: FastifyReply, employeeId: string): Promise<boolean> {
-    const employee = await pool.query("SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL", [employeeId]);
+  /**
+   * The employee must exist. Reading also accepts one removed from the master:
+   * that record is read-only history, and Package 1 D-14 keeps history
+   * readable to anyone allowed to read it. Writing does not — the lock on each
+   * record refuses it (spec §5.4).
+   */
+  async function requireEmployee(
+    reply: FastifyReply,
+    employeeId: string,
+    { allowRemoved = false }: { allowRemoved?: boolean } = {},
+  ): Promise<boolean> {
+    const employee = await pool.query(
+      `SELECT id FROM employees WHERE id = $1 ${allowRemoved ? "" : "AND removed_at IS NULL"}`,
+      [employeeId],
+    );
     if (!employee.rows[0]) {
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       return false;
@@ -181,7 +229,7 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
     if (!(await authenticate(request, reply, "employees.read.all"))) return;
     const params = employeeParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "Pegawai tidak valid.");
-    if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (!(await requireEmployee(reply, params.data.employeeId, { allowRemoved: true }))) return;
     const rows = await listFamilyMembers(pool, params.data.employeeId);
     return send(reply, 200, {
       rows,
@@ -222,12 +270,8 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       return send(reply, 201, await getFamilyMember(pool, id));
     } catch (error) {
       await rollback(client);
-      if (isPeriodConflict(error)) {
-        return send(reply, 409, {
-          code: "FAMILY_PERIOD_CONFLICT",
-          message: "Sudah ada pasangan atau urutan kontak darurat yang berlaku pada periode itu.",
-        });
-      }
+      const conflict = periodConflict(error, "family");
+      if (conflict) return send(reply, 409, conflict);
       throw error;
     } finally {
       client.release();
@@ -263,12 +307,8 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       return send(reply, 200, await getFamilyMember(pool, params.data.recordId));
     } catch (error) {
       await rollback(client);
-      if (isPeriodConflict(error)) {
-        return send(reply, 409, {
-          code: "FAMILY_PERIOD_CONFLICT",
-          message: "Sudah ada pasangan atau urutan kontak darurat yang berlaku pada periode itu.",
-        });
-      }
+      const conflict = periodConflict(error, "family");
+      if (conflict) return send(reply, 409, conflict);
       throw error;
     } finally {
       client.release();
@@ -281,15 +321,20 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
     if (!(await authenticate(request, reply, "employees.read.all"))) return;
     const params = employeeParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "Pegawai tidak valid.");
-    if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (!(await requireEmployee(reply, params.data.employeeId, { allowRemoved: true }))) return;
     const rows = await listAddresses(pool, params.data.employeeId);
+    const today = jakartaToday();
+    // Which address is in force on the business date, per kind, derived rather
+    // than flagged. "Open-ended" is not the same question: a record that ended
+    // yesterday is not current, and one that starts next year is not current
+    // either, however open its end is.
+    const inForce = (kind: AddressKind) =>
+      rows.find((row) => row.kind === kind && row.validFrom <= today && (row.validTo === null || row.validTo >= today))
+        ?.id ?? null;
     return send(reply, 200, {
       rows,
-      // Which address is in force now, per kind, derived rather than flagged.
-      current: {
-        DOMISILI: rows.find((row) => row.kind === "DOMISILI" && row.validTo === null)?.id ?? null,
-        KTP: rows.find((row) => row.kind === "KTP" && row.validTo === null)?.id ?? null,
-      },
+      date: today,
+      current: { DOMISILI: inForce("DOMISILI"), KTP: inForce("KTP") },
     });
   });
 
@@ -309,14 +354,23 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       await client.query("BEGIN");
       // Moving house closes the open address of the same kind, inside this
       // transaction and on the locked row.
-      const open = await lockOpenAddress(client, params.data.employeeId, validation.value.kind);
+      //
+      // Only an open-ended record is a move. A record that already has an end
+      // date is a past period being filled in, and closing the standing
+      // address for it would leave the employee with no address at all once
+      // that period runs out — which the exclusion constraint cannot catch,
+      // because the two ranges do not overlap. Such a record is simply
+      // inserted, and the constraint refuses it if it really does overlap.
+      const open = validation.value.validTo === null
+        ? await lockOpenAddress(client, params.data.employeeId, validation.value.kind)
+        : null;
       let closedId: string | null = null;
       if (open) {
         const closing = closingDateFor(open, validation.value.validFrom);
         if (closing.kind === "impossible") {
           await rollback(client);
           return send(reply, 409, {
-            code: "ADDRESS_PERIOD_CONFLICT",
+            code: "ADDRESS_PERIOD_OVERLAP",
             message: "Alamat yang berlaku mulai pada atau setelah tanggal ini, jadi tidak dapat ditutup lebih dulu.",
           });
         }
@@ -343,12 +397,8 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       return send(reply, 201, { ...(await getAddress(pool, id)), closedAddressId: closedId });
     } catch (error) {
       await rollback(client);
-      if (isPeriodConflict(error)) {
-        return send(reply, 409, {
-          code: "ADDRESS_PERIOD_CONFLICT",
-          message: "Sudah ada alamat jenis ini yang berlaku pada periode tersebut.",
-        });
-      }
+      const conflict = periodConflict(error, "address");
+      if (conflict) return send(reply, 409, conflict);
       throw error;
     } finally {
       client.release();
@@ -384,12 +434,8 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       return send(reply, 200, await getAddress(pool, params.data.recordId));
     } catch (error) {
       await rollback(client);
-      if (isPeriodConflict(error)) {
-        return send(reply, 409, {
-          code: "ADDRESS_PERIOD_CONFLICT",
-          message: "Sudah ada alamat jenis ini yang berlaku pada periode tersebut.",
-        });
-      }
+      const conflict = periodConflict(error, "address");
+      if (conflict) return send(reply, 409, conflict);
       throw error;
     } finally {
       client.release();

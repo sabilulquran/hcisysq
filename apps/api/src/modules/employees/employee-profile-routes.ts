@@ -122,9 +122,21 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     return session.principal;
   }
 
-  /** A record removed from the master is read-only history (EMP-001). */
-  async function requireEmployee(reply: FastifyReply, employeeId: string): Promise<boolean> {
-    const employee = await pool.query("SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL", [employeeId]);
+  /**
+   * The employee must exist. Reading also accepts one removed from the master:
+   * that record is read-only history, and Package 1 D-14 keeps history
+   * readable to anyone allowed to read it. Writing does not — the lock on each
+   * record refuses it (spec §5.4).
+   */
+  async function requireEmployee(
+    reply: FastifyReply,
+    employeeId: string,
+    { allowRemoved = false }: { allowRemoved?: boolean } = {},
+  ): Promise<boolean> {
+    const employee = await pool.query(
+      `SELECT id FROM employees WHERE id = $1 ${allowRemoved ? "" : "AND removed_at IS NULL"}`,
+      [employeeId],
+    );
     if (!employee.rows[0]) {
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       return false;
@@ -142,7 +154,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     if (!(await authenticate(request, reply, "employees.read.all"))) return;
     const params = employeeParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "Pegawai tidak valid.");
-    if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (!(await requireEmployee(reply, params.data.employeeId, { allowRemoved: true }))) return;
     const rows = await listEducation(pool, params.data.employeeId);
     return send(reply, 200, {
       rows,
@@ -232,7 +244,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     if (!(await authenticate(request, reply, "employees.read.all"))) return;
     const params = employeeParams.safeParse(request.params);
     if (!params.success) return invalid(reply, "Pegawai tidak valid.");
-    if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (!(await requireEmployee(reply, params.data.employeeId, { allowRemoved: true }))) return;
     const today = jakartaToday();
     const rows = await listSkills(pool, params.data.employeeId);
     return send(reply, 200, {

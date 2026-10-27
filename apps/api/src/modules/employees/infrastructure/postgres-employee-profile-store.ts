@@ -475,8 +475,14 @@ export async function getAddress(db: Db, recordId: string): Promise<AddressRow |
 
 /**
  * The address of one kind that is still open, locked for the move that is
- * about to close it. Locking here and not in a plain read is what keeps two
- * operators from both opening a new address and leaving two current ones.
+ * about to close it.
+ *
+ * The lock serialises two moves; it does not by itself prevent two current
+ * addresses. Under READ COMMITTED the second mover's snapshot predates the
+ * first commit, so it sees no open address and tries to insert one anyway —
+ * employee_addresses_single_current_excl is what refuses that, as a 409 the
+ * operator retries. What the lock buys is that the two moves do not interleave
+ * half-applied.
  */
 export async function lockOpenAddress(
   client: PoolClient,

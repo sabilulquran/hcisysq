@@ -214,8 +214,8 @@ describe("EMP-009 / EMP-003 access", () => {
 
   it("turns a refusal into its own view state", () => {
     expect(viewFromRelationError(new EmploymentApiError(403, "FORBIDDEN", "x"))).toEqual({ kind: "forbidden" });
-    expect(viewFromRelationError(new EmploymentApiError(409, "FAMILY_PERIOD_CONFLICT", "Sudah ada pasangan.")))
-      .toEqual({ kind: "error", message: "Sudah ada pasangan." });
+    expect(viewFromRelationError(new EmploymentApiError(409, "FAMILY_SPOUSE_OVERLAP", "Sudah ada pasangan yang tercatat pada periode tersebut.")))
+      .toEqual({ kind: "error", message: "Sudah ada pasangan yang tercatat pada periode tersebut." });
     expect(viewFromRelationError(new Error("offline")).kind).toBe("error");
   });
 });

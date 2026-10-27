@@ -106,8 +106,13 @@ interface PoolOptions {
   ownerRemoved?: boolean;
   /** The open address of the same kind, if any, that a move must close. */
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
-  /** The next write raises an exclusion violation, as the database would. */
-  periodConflict?: boolean;
+  /** The address rows a list returns, for the derived "in force" answer. */
+  addressRows?: Array<Record<string, unknown>>;
+  /**
+   * The next write raises the named exclusion violation, as the database
+   * would — constraint and all, because the route answers by its name.
+   */
+  periodConflict?: string;
   payload?: object;
 }
 
@@ -139,8 +144,11 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes("SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL")) {
-      return options.employeeMissing ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
+    if (/SELECT id FROM employees WHERE id = \$1/.test(sql)) {
+      // employeeMissing stands for "removed from the master": the read, which
+      // does not filter on removed_at, still finds the row.
+      const hidden = options.employeeMissing && sql.includes("removed_at IS NULL");
+      return hidden ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
     }
     if (sql.includes("valid_to IS NULL") && sql.includes("FOR UPDATE")) {
       const open = options.openAddress ?? null;
@@ -158,19 +166,33 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       };
     }
     if (sql.includes("FROM employee_family_members")) return { rows: [FAMILY_ROW], rowCount: 1 };
-    if (sql.includes("FROM employee_addresses")) return { rows: [ADDRESS_ROW], rowCount: 1 };
+    if (sql.includes("FROM employee_addresses")) {
+      const rows = options.addressRows ?? [ADDRESS_ROW];
+      return { rows, rowCount: rows.length };
+    }
+    function conflict() {
+      throw Object.assign(new Error("exclusion violation"), { code: "23P01", constraint: options.periodConflict });
+    }
     if (sql.includes("INSERT INTO employee_family_members")) {
-      if (options.periodConflict) throw Object.assign(new Error("exclusion violation"), { code: "23P01" });
+      if (options.periodConflict) conflict();
       writes.push("INSERT family");
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO employee_addresses")) {
-      if (options.periodConflict) throw Object.assign(new Error("exclusion violation"), { code: "23P01" });
+      if (options.periodConflict) conflict();
       writes.push("INSERT address");
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("UPDATE employee_family_members SET relation")) { writes.push("UPDATE family"); return { rows: [], rowCount: 1 }; }
-    if (sql.includes("UPDATE employee_addresses SET kind")) { writes.push("UPDATE address"); return { rows: [], rowCount: 1 }; }
+    if (sql.includes("UPDATE employee_family_members SET relation")) {
+      if (options.periodConflict) conflict();
+      writes.push("UPDATE family");
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("UPDATE employee_addresses SET kind")) {
+      if (options.periodConflict) conflict();
+      writes.push("UPDATE address");
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes("UPDATE employee_addresses SET valid_to")) { writes.push("CLOSE address"); return { rows: [], rowCount: 1 }; }
     if (/UPDATE employee_(family_members|addresses) SET voided_at/.test(sql)) { writes.push("VOID"); return { rows: [], rowCount: 1 }; }
     if (sql.includes("INSERT INTO employee_profile_audit_events")) {
@@ -271,12 +293,28 @@ describe("EMP-009 family records", () => {
     expect(emergency.writes).toEqual([]);
   });
 
-  it("turns a period that the database excludes into 409, not 500", async () => {
-    const { response, writes } = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
-      payload: FAMILY_BODY, periodConflict: true,
+  it("names the rule the database refused, not one code for all of them", async () => {
+    const spouse = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
+      payload: FAMILY_BODY, periodConflict: "employee_family_single_spouse_excl",
+    });
+    expect(spouse.response.statusCode).toBe(409);
+    expect(spouse.response.json()).toMatchObject({ code: "FAMILY_SPOUSE_OVERLAP" });
+    expect(spouse.writes).toEqual([]);
+
+    // A second emergency contact at the same priority is a different rule, and
+    // the operator has to be told which one they broke (spec §9).
+    const priority = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
+      payload: FAMILY_BODY, periodConflict: "employee_family_emergency_priority_excl",
+    });
+    expect(priority.response.json()).toMatchObject({ code: "EMERGENCY_PRIORITY_TAKEN" });
+  });
+
+  it("answers an overlap on amendment with 409 too, not 500", async () => {
+    const { response, writes } = await call("hc", "PATCH", `/admin/family-records/${FAMILY_ID}`, {
+      payload: FAMILY_BODY, periodConflict: "employee_family_single_spouse_excl",
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ code: "FAMILY_PERIOD_CONFLICT" });
+    expect(response.json()).toMatchObject({ code: "FAMILY_SPOUSE_OVERLAP" });
     expect(writes).toEqual([]);
   });
 
@@ -292,9 +330,35 @@ describe("EMP-009 family records", () => {
 });
 
 describe("EMP-003 addresses", () => {
-  it("says which address of each kind is in force", async () => {
+  it("says which address of each kind is in force on the business date", async () => {
     const { response } = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/addresses`);
     expect(response.json().current).toMatchObject({ DOMISILI: ADDRESS_ID, KTP: null });
+  });
+
+  it("does not call an address current when it has not started or has ended", async () => {
+    // Open-ended is not the same question as in force: one of these starts
+    // next year, the other ended last year.
+    const future = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/addresses`, {
+      addressRows: [{ ...ADDRESS_ROW, validFrom: "2099-01-01" }],
+    });
+    expect(future.response.json().current.DOMISILI).toBeNull();
+
+    const ended = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/addresses`, {
+      addressRows: [{ ...ADDRESS_ROW, validTo: "2020-12-31" }],
+    });
+    expect(ended.response.json().current.DOMISILI).toBeNull();
+  });
+
+  it("does not close the standing address for a record that already has an end date", async () => {
+    // Filling in a past period must not leave the employee with no address
+    // once that period runs out; the ranges do not overlap, so the database
+    // would not catch it either.
+    const { writes, response } = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/addresses`, {
+      payload: { ...ADDRESS_BODY, validFrom: "2015-01-01", validTo: "2016-12-31" },
+      openAddress: { id: ADDRESS_ID, validFrom: "2020-01-01", validTo: null },
+    });
+    expect(writes).toEqual(["INSERT address", "INSERT audit"]);
+    expect(response.json().closedAddressId).toBeNull();
   });
 
   it("closes the open address of the same kind the day before the new one starts", async () => {
@@ -330,7 +394,16 @@ describe("EMP-003 addresses", () => {
       openAddress: { id: ADDRESS_ID, validFrom: "2027-01-01", validTo: null },
     });
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ code: "ADDRESS_PERIOD_CONFLICT" });
+    expect(response.json()).toMatchObject({ code: "ADDRESS_PERIOD_OVERLAP" });
+    expect(writes).toEqual([]);
+  });
+
+  it("answers an overlapping amendment with the address code", async () => {
+    const { response, writes } = await call("hc", "PATCH", `/admin/address-records/${ADDRESS_ID}`, {
+      payload: ADDRESS_BODY, periodConflict: "employee_addresses_single_current_excl",
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "ADDRESS_PERIOD_OVERLAP" });
     expect(writes).toEqual([]);
   });
 
@@ -392,6 +465,15 @@ describe("EMP-009 / EMP-003 refusals", () => {
     const bad = await call("hc", "POST", `/admin/address-records/${ADDRESS_ID}/void`, { payload: { reason: "x" } });
     expect(bad.response.statusCode).toBe(400);
     expect(bad.writes).toEqual([]);
+  });
+
+  it("still reads the history of an employee removed from the master", async () => {
+    // D-14: removed is read-only, not invisible. Writing is refused by the
+    // lock on the record, which the case above proves.
+    const family = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/family`, { employeeMissing: true });
+    expect(family.response.statusCode).toBe(200);
+    const addresses = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/addresses`, { employeeMissing: true });
+    expect(addresses.response.statusCode).toBe(200);
   });
 
   it("refuses an unknown employee before touching anything", async () => {

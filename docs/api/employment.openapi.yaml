@@ -809,8 +809,9 @@ paths:
       summary: Record one family member
       description: |
         Requires employees.manage. At most one spouse and one emergency-contact
-        order may be in force on a date; an overlap answers 409
-        FAMILY_PERIOD_CONFLICT, never 500.
+        order may be in force on a date; an overlap answers 409 with the code
+        for the rule that was broken, FAMILY_SPOUSE_OVERLAP or
+        EMERGENCY_PRIORITY_TAKEN, never 500.
       parameters:
         - { $ref: '#/components/parameters/EmployeeId' }
       requestBody:
@@ -887,7 +888,8 @@ paths:
       summary: Address history of one employee
       description: |
         Requires employees.read.all. `current` names the record of each kind in
-        force now, derived rather than flagged on the row.
+        force on `date`, derived rather than flagged on the row: a record that
+        has ended, or that starts later, is not current however open its end is.
       parameters:
         - { $ref: '#/components/parameters/EmployeeId' }
       responses:
@@ -897,9 +899,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [rows, current]
+                required: [rows, date, current]
                 properties:
                   rows: { type: array, items: { $ref: '#/components/schemas/AddressRecord' } }
+                  date: { type: string, format: date, description: The Asia/Jakarta business date `current` is judged against. }
                   current:
                     type: object
                     properties:
@@ -918,7 +921,8 @@ paths:
         is closed the day before validFrom, inside the same transaction, and
         the response names it in closedAddressId. An address that starts on or
         after the new one cannot be closed first, which answers 409
-        ADDRESS_PERIOD_CONFLICT.
+        ADDRESS_PERIOD_OVERLAP. A record that already carries validTo is a past
+        period being filled in, not a move: nothing is closed for it.
       parameters:
         - { $ref: '#/components/parameters/EmployeeId' }
       requestBody:
@@ -951,7 +955,7 @@ paths:
       description: |
         Requires employees.manage. This corrects a record; it does not move
         anyone. A period that overlaps another address of the same kind answers
-        409 ADDRESS_PERIOD_CONFLICT.
+        409 ADDRESS_PERIOD_OVERLAP.
       parameters:
         - { $ref: '#/components/parameters/RecordId' }
       requestBody:
@@ -1028,7 +1032,7 @@ components:
         DECISION_DOCUMENT_NUMBER_TAKEN, DECISION_DOCUMENT_LOCKED,
         EMPLOYEE_RECORD_INVALID (with a field name), EMPLOYEE_RECORD_NOT_FOUND,
         EMPLOYEE_RECORD_VOIDED,
-        FAMILY_PERIOD_CONFLICT, ADDRESS_PERIOD_CONFLICT,
+        FAMILY_SPOUSE_OVERLAP, EMERGENCY_PRIORITY_TAKEN, ADDRESS_PERIOD_OVERLAP,
         DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,
         EMPLOYMENT_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, and the action codes
         of spec §12: EMPLOYMENT_SELF_ACTION_FORBIDDEN, EMPLOYMENT_NOT_ACTIVE,

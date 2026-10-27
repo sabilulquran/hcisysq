@@ -359,6 +359,9 @@ function createPool(
     if (sql.includes("JOIN payroll_result_lines")) {
       return { rows: [], rowCount: 0 };
     }
+    if (sql.includes("count(*)::int AS total FROM payroll_periods")) {
+      return { rows: [{ total: 7 }], rowCount: 1 };
+    }
     if (sql.includes("FROM payroll_periods p")) {
       return { rows: [periodRow(current)], rowCount: 1 };
     }
@@ -443,10 +446,40 @@ describe("PAY-003 route authorization", () => {
     expect(transition.response.statusCode).toBe(403);
   }, 20_000);
 
-  it("lets human capital read periods", async () => {
+  it("lets human capital read periods, and says how many there are", async () => {
     const { response } = await call("hc", "GET", "/payroll/periods");
     expect(response.statusCode).toBe(200);
     expect(response.json().periods).toHaveLength(1);
+    // Without a total the screen would quietly cut the list at one page.
+    expect(response.json().total).toBe(7);
+  });
+
+  it("tells the caller which work is available beyond the lifecycle", async () => {
+    const collecting = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "COLLECTING" },
+    });
+    expect(collecting.response.json().period.availableOperations).toEqual(["resolve_attendance"]);
+
+    const paid = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "PAYMENT_CONFIRMED" },
+    });
+    expect(paid.response.json().period.availableOperations).toEqual(["draft_payslips"]);
+  }, 20_000);
+
+  it("offers publishing slips only to whoever holds payslips.publish", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "PAYMENT_CONFIRMED" },
+    });
+    expect(response.json().period.availableOperations).not.toContain("publish_payslips");
+  });
+
+  it("says which actions carry a reason, so no caller restates the table", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`);
+    expect(response.json().period.reasonRequiredActions).toEqual([
+      "return",
+      "request_reopen",
+      "reject_reopen",
+    ]);
   });
 
   it("lets the director and the finance lead read a period they must decide on", async () => {

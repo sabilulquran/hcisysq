@@ -58,7 +58,7 @@ Termasuk (Paket 1):
 | D-10 | Tingkat surat peringatan: `SP1`, `SP2`, `SP3`. Masa berlaku bawaan **6 bulan** sejak tanggal berlaku. | DRAFT |
 | D-11 | Sistem **tidak** memaksa urutan SP1 → SP2 → SP3, tetapi memperingatkan bila ada SP aktif tingkat lebih tinggi atau bila tingkat melompat. Keputusan tetap pada HC. | DRAFT |
 | D-12 | Pegawai **wajib** melihat SP-nya dan dapat menekan "Saya telah membaca". Tanda terima dicatat dengan waktu; ketiadaan tanda terima tidak membatalkan SP. | DRAFT |
-| D-13 | Surat peringatan hanya terlihat oleh pegawai ybs dan pemegang `documents.discipline.manage`. **Atasan tidak otomatis melihat**nya di Paket 1. Sejak migrasi 0101 izin itu dibawa `human_capital_admin`, karena di YSQ administrator HC-lah yang menerbitkan surat peringatan; tidak ada role bercakupan unit yang membawanya. | DRAFT (revisi 2026-10-27) |
+| D-13 | Surat peringatan hanya terlihat oleh pegawai ybs dan pemegang `documents.discipline.manage`. **Atasan tidak otomatis melihat**nya di Paket 1. Sejak migrasi 0102 izin itu dibawa `human_capital_admin`, karena di YSQ administrator HC-lah yang menerbitkan surat peringatan; tidak ada role bercakupan unit yang membawanya. | DRAFT (revisi 2026-10-27) |
 | D-14 | Pembatalan SP yang sudah terbit butuh permission terpisah `documents.correct` dan alasan; nilai lama tetap tersimpan. | ACCEPTED |
 | D-15 | Isi surat tidak boleh memuat gaji, NIK lengkap, nomor rekening, data medis, atau alamat rumah. Nomor identitas ditampilkan tersamar bila diperlukan. | ACCEPTED |
 | D-16 | `documents.correct` dibawa role tersendiri `document_corrector`, bukan bundel mana pun. Konsekuensi yang **disengaja**: pemegangnya dapat membatalkan surat peringatan yang tidak dapat ia baca isinya, karena pembatalan adalah tindakan atas register (nomor dan status), bukan atas isi surat. Alasan pembatalan wajib dan tercatat di audit. | ACCEPTED (2026-10-27) |
@@ -123,7 +123,7 @@ ISSUED/ACKNOWLEDGED -> EXPIRED  (turunan tanggal, bukan state tersimpan)
 | `documents.discipline.manage` | Menerbitkan dan membaca surat peringatan |
 | `documents.correct` | Membatalkan surat yang sudah terbit |
 
-Bundel (migrasi 0094 dan 0101):
+Bundel (migrasi 0094 dan 0102):
 
 | Izin | Pembawa |
 | --- | --- |

@@ -16,6 +16,7 @@ import {
   type RowChange,
   type RowTable,
 } from "../domain/index.js";
+import { deactivateAccountsForEndedEmployment } from "../../auth/employment-access.js";
 import { audit, loadHistories } from "./postgres-employment-store.js";
 
 type Db = Pick<Pool, "query"> | PoolClient;
@@ -237,6 +238,35 @@ export interface PersistActionInput {
 export interface PersistedAction {
   actionId: string;
   projection: EmployeeProjection | null;
+  /** EMP-005 D-15: accounts this action deactivated, if the last day has passed. */
+  deactivatedAccountIds: string[];
+}
+
+/**
+ * EMP-005 §8.5.1: a termination whose last day has passed deactivates the
+ * linked HCIS accounts in the same transaction. A future last day is left to
+ * the daily job, and the preview tells the operator the date. No other action
+ * ever touches an account.
+ */
+async function applyTerminationAccountEffect(
+  client: PoolClient,
+  plan: ActionPlan,
+  today: string,
+): Promise<string[]> {
+  if (plan.actionType !== "TERMINATION") return [];
+  if (plan.effectiveOn === null || plan.effectiveOn >= today) return [];
+  const accountIds = await deactivateAccountsForEndedEmployment(client, plan.employeeId);
+  if (accountIds.length > 0) {
+    await audit(client, {
+      actorAccountId: null,
+      action: "employment.account.deactivated",
+      entityType: "employment_action",
+      entityId: plan.actionId,
+      employeeId: plan.employeeId,
+      payload: { accountCount: accountIds.length, cause: "employment_termination", endedOn: plan.effectiveOn },
+    });
+  }
+  return accountIds;
 }
 
 /**
@@ -275,6 +305,7 @@ export async function persistAction(client: PoolClient, input: PersistActionInpu
   }
 
   const projection = await refreshProjection(client, plan.employeeId, input.today);
+  const deactivatedAccountIds = await applyTerminationAccountEffect(client, plan, input.today);
   await audit(client, {
     actorAccountId: input.actorAccountId,
     action: "employment.action.recorded",
@@ -288,9 +319,10 @@ export async function persistAction(client: PoolClient, input: PersistActionInpu
       documentCount: plan.documentIds.length,
       warnings: plan.warnings,
       projectedStatus: projection?.status ?? null,
+      deactivatedAccounts: deactivatedAccountIds.length,
     },
   });
-  return { actionId: plan.actionId, projection };
+  return { actionId: plan.actionId, projection, deactivatedAccountIds };
 }
 
 /** Employees whose projection may change on `date` (scheduled actions, contract ends). */

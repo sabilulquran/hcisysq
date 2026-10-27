@@ -201,6 +201,14 @@ export async function listTransitions(pool: Pool, periodId: string): Promise<Per
   return rows;
 }
 
+/** How many periods exist, so a list can say what it is not showing. */
+export async function countPeriods(pool: Pool): Promise<number> {
+  const { rows } = await pool.query<{ total: number }>(
+    "SELECT count(*)::int AS total FROM payroll_periods",
+  );
+  return rows[0]?.total ?? 0;
+}
+
 export async function getPeriod(pool: Pool, periodId: string): Promise<PeriodWithCalculation | null> {
   const { rows } = await pool.query<PeriodWithCalculation>(
     `SELECT ${PERIOD_COLUMNS}, ${CALCULATION_SUMMARY} FROM payroll_periods p WHERE p.id = $1`,

@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
-import { ATTENDANCE_INPUT_KEYS, ownEmploymentIds, type InputKey } from "./inputs-store.js";
+import { ATTENDANCE_INPUT_KEYS, ownEmploymentIds } from "./inputs-store.js";
 import { writeAudit } from "./store.js";
 
 /** The two keys this resolver owns. Nothing else it writes, nothing else it clears. */

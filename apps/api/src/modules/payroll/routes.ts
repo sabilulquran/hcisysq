@@ -12,17 +12,20 @@ import type { ApiConfig } from "../../config/env.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
   availableActions,
+  availableOperations,
   decideTransition,
   defaultCutoffWindow,
   mayReadPeriods,
   monthEnd,
   PERIOD_ACTIONS,
+  reasonRequiredActions,
   type PeriodSnapshot,
   type PeriodState,
   type TransitionActor,
 } from "./lifecycle.js";
 import {
   applyTransition,
+  countPeriods,
   createPeriod,
   getPeriod,
   hasCurrentCalculation,
@@ -316,10 +319,15 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   }
 
   function periodView(period: PeriodWithCalculation, actor: TransitionActor) {
+    const snapshot = snapshotOf(period);
     return {
       ...period,
       hasCurrentCalculation: hasCurrentCalculation(period),
-      availableActions: availableActions(snapshotOf(period), actor),
+      availableActions: availableActions(snapshot, actor),
+      // The work that is not a lifecycle transition, and which actions carry a
+      // reason: a screen must not re-derive either from a state of its own.
+      availableOperations: availableOperations(snapshot, actor),
+      reasonRequiredActions: reasonRequiredActions(),
     };
   }
 
@@ -387,10 +395,14 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Parameter tidak valid." });
     }
     const { page, pageSize } = parsed.data;
-    const periods = await listPeriods(pool, pageSize, (page - 1) * pageSize);
+    const [periods, total] = await Promise.all([
+      listPeriods(pool, pageSize, (page - 1) * pageSize),
+      countPeriods(pool),
+    ]);
     return send(reply, 200, {
       page,
       pageSize,
+      total,
       periods: periods.map((period) => periodView(period, actor)),
     });
   });

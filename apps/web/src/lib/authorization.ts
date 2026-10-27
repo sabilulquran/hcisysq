@@ -38,6 +38,18 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // EMP-010: the PK/SK register is read with employment.read; writes are authorized by the API.
   if (path === "/admin/decision-documents") return hasPermission(session, "employment.read");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
+  // PAY-003: exactly the permissions the API lets read a period
+  // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
+  // anyone else would show them a menu entry leading to a 403.
+  if (/^\/admin\/payroll(?:\/|$)/.test(path)) {
+    return [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization",
+    ].some((permission) => hasPermission(session, permission));
+  }
   if (/^\/admin\/attendance\/adms(?:\/|$)/.test(path)) return hasPermission(session, "attendance.devices.read");
   if (/^\/admin\/attendance\/devices(?:\/|$)/.test(path)) {
     return hasPermission(session, "attendance.devices.read")

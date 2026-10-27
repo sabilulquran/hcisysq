@@ -294,6 +294,16 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - **Laporan PPh21 TER** per masa pajak dari hasil final.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
 
+## 7.1 Layar operator (`DRAFT`, default agent 2026-10-27)
+
+Satu layar daftar periode (`/admin/payroll`) dan satu layar periode (`/admin/payroll/{id}`). Keduanya terbuka bagi siapa pun yang memegang salah satu permission payroll; setiap angka di dalamnya tetap diotorisasi ulang oleh API, dan bagian yang ditolak (laporan sebelum disahkan, daftar transfer tanpa permission rekening) hilang dari layar tanpa menggagalkan sisanya.
+
+Layar periode menampilkan status, tindakan yang benar-benar tersedia bagi aktor itu, rekap, daftar "perlu ditinjau", hasil per pegawai berikut blocker-nya, daftar transfer bagi yang berhak, dan riwayat keputusan berikut alasannya. Frontend tidak memuat satu pun aturan payroll: tindakan lifecycle datang dari `availableActions`, pekerjaan di luar lifecycle (ambil input kehadiran, siapkan slip, terbitkan slip) dari `availableOperations`, dan tindakan mana yang mewajibkan alasan dari `reasonRequiredActions` — semuanya diputuskan server.
+
+Daftar transfer tidak diambil otomatis: ia memuat nomor rekening dan setiap pembacaannya dicatat sebagai akses sensitif, sehingga operator membukanya dengan sengaja. Bagian yang ditolak menampilkan satu kalimat penjelasan, bukan ruang kosong, supaya Direktur tidak mengesahkan periode yang tampak kosong padahal hanya belum boleh dibaca.
+
+**Pengecualian ENG-LIST-001 (`DRAFT`).** Daftar periode berhalaman server-side. Dua tabel pada layar periode — hasil per pegawai dan daftar transfer — menampilkan seluruh baris satu periode tanpa halaman, karena keduanya adalah satu periode gaji yang dibatasi jumlah pegawai aktif yayasan (±330 pada 2026) dan keduanya memang dibaca utuh saat ditinjau atau dibayarkan. Bila jumlah pegawai melewati sekitar 1.000, keduanya dipindahkan ke endpoint berhalaman.
+
 ## 8. Privasi dan audit
 
 - **Dilarang** di application log dan payload audit: nominal **per orang**, nomor rekening, nama pemilik rekening, NIK, dan isi baris slip.

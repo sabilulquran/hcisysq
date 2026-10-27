@@ -722,6 +722,41 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   item per perubahan di Riwayat (API sudah ada), tanda "diganti 3 Okt oleh Siti" pada sel (API memberi
   `changeSetId`), dan sub-unit pada filter unit.
 
+### 10.9 Catatan implementasi ATT-011-6b-1 (2026-10-27)
+
+- Migration `0103`: `initiated_by` (`employee | supervisor | hc_legacy`), `supervisor_employee_id` dan
+  `approver_snapshot` pada pengajuan lembur; jenis event baru. Pengajuan lama menjadi `hc_legacy` dan tetap
+  diputuskan HC; status tetap `submitted | approved | rejected | cancelled`. Aditif; rollback di header.
+- **Alur A:** pegawai (atau HC atas nama pegawai) mengajukan → atasan langsung hasil resolver APR-001
+  (`DIRECT_MANAGER`, data ORG-002 selama alur OVERTIME `LEGACY`) disnapshot → hanya atasan itu yang menyetujui
+  (boleh mengurangi menit) atau menolak (catatan wajib). Tanpa atasan atau atasan = dirinya →
+  `422 OVERTIME_APPROVER_UNRESOLVED`. DRAFT: bila struktur memakai governance approver, orang itu yang memutuskan.
+- **Alur B:** atasan memerintahkan 1–50 bawahan (keterangan wajib); setiap pegawai diverifikasi resolver;
+  satu saja bukan bawahan → seluruh batch `403 OVERTIME_NOT_SUBORDINATE`. Pegawai menyetujui atau menolak;
+  atasan dapat membatalkan selama belum dijawab.
+- **HC:** memantau (kolom dimulai oleh, menunggu siapa, atasan), **Batalkan administratif** (alasan wajib) dan
+  **Alihkan approver**; memutuskan hanya pengajuan `hc_legacy`. DRAFT: alihkan memakai
+  `attendance.overtime.manage` karena `approvals.reassign` belum ada.
+- **Batas waktu (D-9):** tanggal lembur paling lambat 7 hari ke belakang → `422 OVERTIME_DATE_OUT_OF_RANGE`.
+- Daftar bawahan untuk perintah memakai data ORG-002 (`direct_manager_employee_id`); `TBD` saat OVERTIME
+  memakai struktur ORG-004. Peringatan PP 35/2021 dan aturan jabatan tidak berhak lembur menyusul di 6b-3;
+  layar Lembur Tim dan Lembur Saya di 6b-2.
+
+### 10.10 Catatan implementasi ATT-011-6b-2 (2026-10-27)
+
+- **Lembur Tim** (`/app/attendance/team-overtime`, menu Tugas di aplikasi pegawai): tab Perlu persetujuan
+  (setujui dengan menit yang boleh dikurangi, tolak dengan catatan wajib, centang lalu "Setujui sesuai
+  pengajuan"), Perintah lembur (status per pegawai, batalkan selama belum dijawab) dan Riwayat; kartu,
+  mobile-first. Tombol **Perintahkan lembur** muncul bila server menyatakan user atasan; pilihan pegawai
+  memakai pencarian bawahan langsung.
+- **Lembur Saya** (Kehadiran pegawai): perintah atasan tampil sebagai kartu "Perintah lembur dari atasan"
+  dengan **Setuju / Tolak**; pengajuan sendiri menampilkan "Menunggu persetujuan <atasan>" dan tetap dapat
+  dibatalkan selama menunggu.
+- **HC → Lembur:** kolom Dimulai oleh (Pegawai/Atasan/HC) dan menunggu siapa; **Putuskan** hanya untuk
+  pengajuan lama; **Batalkan administratif** dan **Alihkan approver** (alasan wajib); "Ajukan atas nama
+  pegawai" dikirim ke atasan langsung pegawai.
+- `TBD`: menu Lembur Tim tampil untuk semua pegawai (halaman kosong bila bukan atasan); disembunyikan setelah
+  ada endpoint ringan "apakah atasan".
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

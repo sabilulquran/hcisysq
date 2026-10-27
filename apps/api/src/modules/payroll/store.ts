@@ -403,3 +403,34 @@ export async function applyTransition(
     client.release();
   }
 }
+
+export type EmploymentIdentity = {
+  employmentId: string;
+  employeeNumber: string;
+  fullName: string;
+};
+
+/**
+ * Who every employment in a period belongs to.
+ *
+ * The result and variance rows are keyed by employment, which is what the
+ * engine works with, but a Director approving a period reads names. The
+ * identity is looked up once per request and attached to the rows rather than
+ * joined into each query, so the calculation queries stay about pay.
+ */
+export async function listEmploymentIdentities(
+  pool: Pool,
+  periodId: string,
+): Promise<EmploymentIdentity[]> {
+  const { rows } = await pool.query<EmploymentIdentity>(
+    `SELECT DISTINCT latest.employment_id AS "employmentId",
+            emp.employee_number AS "employeeNumber",
+            emp.full_name AS "fullName"
+     FROM (${LATEST_RESULTS_OF_PERIOD}) latest
+     JOIN employments e ON e.id = latest.employment_id
+     JOIN employees emp ON emp.id = e.employee_id
+     ORDER BY "employeeNumber"`,
+    [periodId],
+  );
+  return rows;
+}

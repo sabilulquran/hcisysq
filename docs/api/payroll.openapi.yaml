@@ -321,7 +321,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [results, lines]
+                required: [results, lines, employees]
                 properties:
                   results:
                     type: array
@@ -329,6 +329,10 @@ paths:
                   lines:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollResultLine' }
+                  employees:
+                    description: Who each employment in the period belongs to, so a reviewer reads names.
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollEmployeeIdentity' }
         '400': { $ref: '#/components/responses/PayrollBadRequest' }
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
@@ -437,7 +441,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [previousPeriodId, threshold, variances]
+                required: [previousPeriodId, threshold, variances, employees]
                 properties:
                   previousPeriodId: { type: [string, 'null'], format: uuid }
                   threshold:
@@ -449,6 +453,9 @@ paths:
                   variances:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollVarianceRow' }
+                  employees:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollEmployeeIdentity' }
         '400': { $ref: '#/components/responses/PayrollBadRequest' }
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
@@ -688,6 +695,14 @@ components:
         reason: { type: [string, 'null'] }
         decisionReference: { type: [string, 'null'] }
         recordedAt: { type: string, format: date-time }
+
+    PayrollEmployeeIdentity:
+      type: object
+      required: [employmentId, employeeNumber, fullName]
+      properties:
+        employmentId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        fullName: { type: string }
 
     PayrollResult:
       type: object

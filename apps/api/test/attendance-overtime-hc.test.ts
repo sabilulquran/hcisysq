@@ -27,6 +27,18 @@ vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
   return { ...actual, AuthService: FakeAuthService };
 });
 
+// ATT-011-6b-1: HC files for the employee into flow A; the supervisor comes from the resolver.
+vi.mock("../src/modules/attendance/overtime-approver.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/modules/attendance/overtime-approver.js")>();
+  return {
+    ...actual,
+    resolveOvertimeApprover: vi.fn(async () => ({
+      supervisorEmployeeId: "00000000-0000-4000-8000-000000025009",
+      snapshot: { mode: "LEGACY", authoritativeSource: "LEGACY", source: "DIRECT_MANAGER", path: ["legacy"], incumbentKind: "OVERRIDE" },
+    })),
+  };
+});
+
 const { registerAttendanceWorkforceRoutes } = await import("../src/modules/attendance/workforce-routes.js");
 
 const config = {
@@ -54,7 +66,7 @@ describe("ATT-011-6a overtime routes", () => {
     if (sql.includes("SELECT id FROM employees WHERE id = $1 AND status = 'active'")) return { rows: [{ id: EMPLOYEE }] };
     if (sql.includes("coalesce(sum(CASE WHEN status = 'approved'")) return { rows: [{ minutes: dayTotal }] };
     if (sql.includes("FROM attendance_overtime_requests") && sql.includes("FOR UPDATE")) {
-      return { rows: [{ employeeId: EMPLOYEE, workDate: "2026-10-20", requestedMinutes: 120 }] };
+      return { rows: [{ employeeId: EMPLOYEE, workDate: "2026-10-20", requestedMinutes: 120, status: "submitted", initiatedBy: "hc_legacy" }] };
     }
     if (sql.includes("SELECT count(*)::int AS total")) return { rows: [{ total: 31 }] };
     if (sql.includes("WITH page AS")) {
@@ -67,6 +79,8 @@ describe("ATT-011-6a overtime routes", () => {
   const connect = vi.fn(async () => ({ query: clientQuery, release: vi.fn() }));
 
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-21T10:00:00+07:00"));
     statements.length = 0;
     dayTotal = 0;
     granted.permissions = ["attendance.overtime.manage", "employees.manage"];
@@ -76,7 +90,7 @@ describe("ATT-011-6a overtime routes", () => {
     });
   });
 
-  afterEach(async () => { await app.close(); });
+  afterEach(async () => { vi.useRealTimers(); await app.close(); });
 
   const call = (method: "GET" | "POST", url: string, payload?: Record<string, unknown>) =>
     app.inject({ method, url, headers: { cookie: "hcis_session=test-token" }, ...(payload ? { payload } : {}) });
@@ -95,7 +109,7 @@ describe("ATT-011-6a overtime routes", () => {
     expect(response.statusCode, response.body).toBe(201);
     const audit = statements.find((item) => item.sql.includes("INSERT INTO access_audit_events"))!;
     expect(audit.values[2]).toBe("attendance.overtime.submitted");
-    expect(JSON.parse(String(audit.values[5]))).toMatchObject({ initiatedBy: "hc", requestedMinutes: 60 });
+    expect(JSON.parse(String(audit.values[5]))).toMatchObject({ initiatedBy: "hc_on_behalf", requestedMinutes: 60, supervisorEmployeeId: "00000000-0000-4000-8000-000000025009" });
   });
 
   it("checks the 24-hour total again on approval, counting the approved minutes", async () => {

@@ -16,6 +16,12 @@ export interface AdminServiceDefinition {
   category: AdminServiceCategory;
   href: string;
   details?: string[];
+  /**
+   * Peran yang memegang akses modul ini, untuk ditulis apa adanya pada kartu
+   * yang terkunci. Ini keterangan, bukan aturan otorisasi: keputusan akses
+   * tetap milik server, dan layar hanya mengulang nama perannya.
+   */
+  accessRoles?: string[];
 }
 
 export const adminServiceCategories: Array<{
@@ -49,6 +55,17 @@ export const adminServiceCategories: Array<{
     description: "Site, cabang, dan lokasi kerja dalam satu organisasi YSQ.",
   },
 ];
+
+/**
+ * Kartu yang terkunci menyebutkan peran yang membukanya, supaya pembaca tahu
+ * apa yang harus diminta dan bukan sekadar bahwa dirinya ditolak.
+ */
+export function lockedNote(service: AdminServiceDefinition): string {
+  if (!service.accessRoles?.length) {
+    return "Tersedia di HCIS · akun ini belum memiliki akses";
+  }
+  return `Tersedia di HCIS · akun ini belum memiliki akses. Modul ini dibuka untuk peran ${service.accessRoles.join(", ")}; minta penugasan peran kepada administrator akses.`;
+}
 
 export const adminServices: AdminServiceDefinition[] = [
   {
@@ -114,6 +131,7 @@ export const adminServices: AdminServiceDefinition[] = [
     stage: "available",
     category: "payroll-benefits",
     href: "/admin/payroll",
+    accessRoles: ["Kepala Human Capital", "Direktur", "Kepala Keuangan"],
   },
   {
     key: "reimbursement",

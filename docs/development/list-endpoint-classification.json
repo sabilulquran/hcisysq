@@ -569,6 +569,16 @@
       "package": "PAG-5"
     },
     {
+      "url": "/attendance/team-overtime",
+      "list": "paged",
+      "reason": "Lembur Tim ATT-011-6b-1: lembur yang diputuskan atau diperintahkan atasan; halaman standar dengan total, scope atasan sebelum LIMIT."
+    },
+    {
+      "url": "/attendance/team-overtime/subordinates",
+      "list": "typeahead",
+      "reason": "Pilihan bawahan langsung untuk perintah lembur; pencarian q, maksimal 50."
+    },
+    {
       "url": "/auth/callback",
       "list": "single"
     },

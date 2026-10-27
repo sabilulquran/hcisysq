@@ -314,6 +314,21 @@
       "package": "PAG-1"
     },
     {
+      "url": "/admin/attendance/schedule-calendar",
+      "list": "paged",
+      "reason": "Kalender Jadwal ATT-011-4b: pegawai per halaman (maks 50, `total`), rentang 1-42 hari; filter unit/cari sebelum LIMIT."
+    },
+    {
+      "url": "/admin/attendance/schedule-changes",
+      "list": "paged",
+      "reason": "Riwayat Perubahan Jadwal ATT-011-4b; halaman standar dengan `total`."
+    },
+    {
+      "url": "/admin/attendance/schedule-changes/:changeSetId",
+      "list": "paged",
+      "reason": "Detail satu Perubahan Jadwal; item per halaman dengan `total`."
+    },
+    {
       "url": "/admin/attendance/schedules",
       "list": "bounded",
       "reason": "Data master template shift (6 hari ini)."

@@ -229,6 +229,112 @@ paths:
         '404': { description: SCHEDULE_NOT_FOUND }
         '409': { description: SCHEDULE_BACKDATE_NOT_EARLIER }
 
+  /admin/attendance/schedule-changes/preview:
+    post:
+      tags: [Attendance]
+      operationId: previewAttendanceScheduleChange
+      summary: Lihat dampak of one Perubahan Jadwal, without writing (ATT-011-4b)
+      description: >-
+        `kind` pattern (Atur jadwal: shift or null for Libur, `from`, `to` or null for no end, `weekdays` 1-7,
+        `untickedDays` off|keep), replacement (Ganti jadwal: shift or null for Libur, `from`-`to` up to 62 days,
+        `note` required), copy (Salin jadwal: `sourceWeekStart` and `targetWeekStarts`, Mondays) or revert
+        (ATT-011-4c Kembalikan seperti sebelumnya: `changeSetId`, `note` required; restores what that change set
+        replaced from tomorrow on, for its employees minus `excludeEmployeeIds`; blocked per employee by
+        `changed_later` when a later change set or a direct edit touched them; 404 SCHEDULE_CHANGE_NOT_FOUND,
+        409 SCHEDULE_CHANGE_ALREADY_REVERTED). Who:
+        `employeeIds` and/or `unitId` (active employees), minus `excludeEmployeeIds`. `workOnHolidays` writes
+        the shift on calendar holidays too (D-2). Returns `fingerprint`, `summary`, `issues` (blocking ones stop
+        Terapkan: shift_swap, draft_roster, started, shift_not_valid), `holidays`, and up to 200 `employees`
+        with `employeesTotal`. At most 500 employees and 400 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScheduleChangeInput' }
+      responses:
+        '200': { description: The preview }
+        '400': { description: INVALID_SCHEDULE_CHANGE }
+        '403': { description: Missing attendance.schedule.manage }
+        '422': { description: 'SCHEDULE_CHANGE_IN_PAST, SCHEDULE_CHANGE_TOO_LONG, SCHEDULE_CHANGE_TOO_LARGE or SCHEDULE_CHANGE_NO_EMPLOYEES' }
+
+  /admin/attendance/schedule-changes:
+    post:
+      tags: [Attendance]
+      operationId: applyAttendanceScheduleChange
+      summary: Terapkan a previewed Perubahan Jadwal in one transaction (ATT-011-4b)
+      description: >-
+        Re-plans under advisory locks per employee and roster week and refuses when anything changed since the
+        preview. A pattern ends, removes or continues the overlapping assignments; a replacement or copy writes one
+        new published roster version per week (the latest published entries plus the change, each pinned to the
+        shift version valid on its date). Records the change set with one item per assignment or roster day and
+        audits `attendance.schedule_change.applied`. When the change starts today, today's results are
+        recalculated after commit (`recalculated`). Repeating with the same `Idempotency-Key` returns the
+        first change set (200, `replayed: true`).
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [change, previewFingerprint]
+              properties:
+                change: { $ref: '#/components/schemas/ScheduleChangeInput' }
+                previewFingerprint: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '201': { description: '`{ id, replayed: false, summary, recalculated }`' }
+        '200': { description: Replayed by Idempotency-Key }
+        '400': { description: INVALID_SCHEDULE_CHANGE or INVALID_IDEMPOTENCY_KEY }
+        '403': { description: Missing attendance.schedule.manage }
+        '409': { description: SCHEDULE_CHANGED_SINCE_PREVIEW or ROSTER_DRAFT_EXISTS }
+        '422': { description: 'SCHEDULE_CHANGE_BLOCKED (`issues`), SCHEDULE_CHANGE_IN_PAST and the preview refusals' }
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceScheduleChanges
+      summary: Riwayat perubahan, newest first (ATT-011-4b)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: employeeId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: '`{ items[{ id, kind, appliedAt, requestedBy, note, summary, revertsChangeSetId }], page, pageSize, total }`' }
+        '403': { description: Needs attendance.schedule.manage or attendance.reports.read }
+
+  /admin/attendance/schedule-changes/{changeSetId}:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceScheduleChange
+      summary: One Perubahan Jadwal with its items, one page at a time (ATT-011-4b)
+      parameters:
+        - { name: changeSetId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: 'The change set (`input`, `summary`) and `items[{ sequence, action, employeeId, employeeName, from, to, weekdayMask, scheduleTemplateId, scheduleName, before, after }]` with `total`' }
+        '403': { description: Needs attendance.schedule.manage or attendance.reports.read }
+        '404': { description: SCHEDULE_CHANGE_NOT_FOUND }
+
+  /admin/attendance/schedule-calendar:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceScheduleCalendar
+      summary: Jadwal calendar, the schedule in force per employee and date (ATT-011-4b)
+      description: >-
+        Resolved like the engine: published roster, then calendar holiday, then pattern. `source` is roster,
+        roster_off, holiday, pattern, conflict (two patterns on the day) or off. Active employees, 50 per page.
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: unitId, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+      responses:
+        '200': { description: '`{ from, to, page, pageSize, total, employees[{ id, employeeNumber, fullName, unitName, days[{ date, source, scheduleTemplateId, changeSetId }] }], shifts, holidays }`' }
+        '400': { description: INVALID_SCHEDULE_CALENDAR_RANGE (1 to 42 days) }
+        '403': { description: Needs attendance.schedule.manage or attendance.reports.read }
+
   /admin/attendance/schedule-assignments:
     get:
       tags: [Attendance]
@@ -984,6 +1090,25 @@ paths:
 
 components:
   schemas:
+    ScheduleChangeInput:
+      type: object
+      required: [kind]
+      description: ATT-011-4b Perubahan Jadwal. Either `employeeIds` or `unitId` is required.
+      properties:
+        kind: { type: string, enum: [pattern, replacement, copy, revert] }
+        changeSetId: { type: string, format: uuid, description: 'revert: the change set to undo' }
+        employeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }
+        unitId: { type: string, format: uuid, nullable: true }
+        excludeEmployeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }
+        workOnHolidays: { type: boolean }
+        note: { type: string, maxLength: 500, nullable: true, description: Required for replacement }
+        scheduleTemplateId: { type: string, format: uuid, nullable: true, description: 'pattern/replacement; null means Libur' }
+        from: { type: string, format: date }
+        to: { type: string, format: date, nullable: true, description: 'pattern: null for no end' }
+        weekdays: { type: array, items: { type: integer, minimum: 1, maximum: 7 } }
+        untickedDays: { type: string, enum: ['off', keep] }
+        sourceWeekStart: { type: string, format: date }
+        targetWeekStarts: { type: array, maxItems: 8, items: { type: string, format: date } }
     AttendanceCalculationRun:
       type: object
       required: [id, status, position, from, to, totalPairs, processedPairs, failedPairs, uncoveredPairs, cancelRequested, errorCode, createdAt]

@@ -326,8 +326,13 @@ export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel }
       <Labelled label="Nama">
         <input className={field} required value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
       </Labelled>
-      <Labelled label="Penerbit">
-        <input className={field} value={draft.issuer ?? ""} onChange={(event) => onChange({ ...draft, issuer: event.target.value })} />
+      <Labelled label={draft.kind === "SERTIFIKAT" ? "Penerbit (wajib)" : "Penerbit"}>
+        <input
+          className={field}
+          required={draft.kind === "SERTIFIKAT"}
+          value={draft.issuer ?? ""}
+          onChange={(event) => onChange({ ...draft, issuer: event.target.value })}
+        />
       </Labelled>
       {draft.kind === "KEAHLIAN" ? (
         <Labelled label="Tingkat">
@@ -341,8 +346,16 @@ export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel }
           </select>
         </Labelled>
       ) : null}
-      <Labelled label="Tanggal terbit">
-        <input className={field} type="date" value={draft.issuedOn ?? ""} onChange={(event) => onChange({ ...draft, issuedOn: event.target.value })} />
+      {/* A certificate always names its issuer and issue date; the database
+          says so too, so the form asks rather than letting the API refuse. */}
+      <Labelled label={draft.kind === "SERTIFIKAT" ? "Tanggal terbit (wajib)" : "Tanggal terbit"}>
+        <input
+          className={field}
+          type="date"
+          required={draft.kind === "SERTIFIKAT"}
+          value={draft.issuedOn ?? ""}
+          onChange={(event) => onChange({ ...draft, issuedOn: event.target.value })}
+        />
       </Labelled>
       <Labelled label="Berlaku sampai">
         <input className={field} type="date" value={draft.expiresOn ?? ""} onChange={(event) => onChange({ ...draft, expiresOn: event.target.value })} />

@@ -188,10 +188,14 @@ describe("EMP-007 forms", () => {
     );
     expect(certificate).toContain("Berlaku sampai");
     expect(certificate).not.toContain("Tingkat");
+    // The table demands both of these for a certificate, so the form does too.
+    expect(certificate).toContain("Penerbit (wajib)");
+    expect(certificate).toContain("Tanggal terbit (wajib)");
     const plain = render(
       <SkillForm draft={{ ...EMPTY_SKILL, kind: "KEAHLIAN" }} editing={false} busy={false} onChange={() => undefined} onSubmit={() => undefined} onCancel={() => undefined} />,
     );
     expect(plain).toContain("Tingkat");
+    expect(plain).not.toContain("(wajib)");
   });
 
   it("names itself an amendment when it edits an existing record", () => {

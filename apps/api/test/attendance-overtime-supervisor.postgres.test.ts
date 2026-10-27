@@ -21,7 +21,7 @@ vi.mock("../src/modules/auth/service.js", async (importOriginal) => {
     async getSession(token: string | null) {
       if (!token) return null;
       return {
-        principal: { id: token, email: `${token}@example.invalid`, principalType: token === people.hc ? "SUPER_ADMIN" : "EMPLOYEE" },
+        principal: { id: token, email: `${token}@example.invalid`, principalType: "EMPLOYEE" },
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       };
     }
@@ -45,8 +45,8 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
   let pool: Pool;
   let client: PoolClient;
   let app: ReturnType<typeof Fastify>;
-  const ids = { staff: "", boss: "", other: "", loner: "" };
-  const accounts = { staff: "", boss: "", other: "", loner: "" };
+  const ids = { staff: "", boss: "", other: "", loner: "", officer: "" };
+  const accounts = { staff: "", boss: "", other: "", loner: "", officer: "" };
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
 
   beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
@@ -74,7 +74,7 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
     };
     const transactionPool = { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Pool;
 
-    for (const key of ["boss", "staff", "other", "loner"] as const) {
+    for (const key of ["boss", "staff", "other", "loner", "officer"] as const) {
       ids[key] = randomUUID();
       accounts[key] = randomUUID();
       await client.query(
@@ -87,8 +87,8 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
         [accounts[key], ids[key], `ot-${accounts[key]}@example.invalid`],
       );
     }
-    people.hc = randomUUID();
-    await client.query("INSERT INTO accounts (id, email, principal_type, status) VALUES ($1, $2, 'SUPER_ADMIN', 'active')", [people.hc, `hc-${people.hc}@example.invalid`]);
+    // The HC officer is an employee too: the account that holds attendance.overtime.manage.
+    people.hc = accounts.officer;
 
     app = Fastify({ logger: false });
     await registerAttendanceWorkforceRoutes(app, transactionPool, config, {
@@ -163,9 +163,8 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
   });
 
   it("refuses HC reassigning a request to their own employee record", async () => {
-    await client.query("UPDATE accounts SET employee_id = $2 WHERE id = $1", [people.hc, ids.other]);
     const id = (await as(accounts.staff)("POST", "/attendance/overtime", { workDate: today, requestedMinutes: 30 })).json().id as string;
-    const refused = await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.other, reason: "Atasan cuti" });
+    const refused = await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.officer, reason: "Atasan cuti" });
     expect(refused.statusCode).toBe(403);
     expect(refused.json().code).toBe("OVERTIME_REASSIGN_CONFLICT");
     expect(await request(id)).toMatchObject({ supervisorEmployeeId: ids.boss });

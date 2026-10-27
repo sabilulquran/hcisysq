@@ -1297,6 +1297,46 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedule-changes/preview",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedule-changes",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-changes",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-changes/:changeSetId",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-calendar",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/admin/attendance/schedules",

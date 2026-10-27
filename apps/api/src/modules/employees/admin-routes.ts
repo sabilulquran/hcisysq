@@ -28,6 +28,10 @@ const listQuerySchema = z.object({
 
 const importIdSchema = z.object({ importId: z.string().uuid() });
 
+const importRowsQuerySchema = pageQuerySchema.extend({
+  filter: z.enum(["all", "issues"]).default("all"),
+});
+
 interface EmployeeRow {
   id: string;
   employeeNumber: string;
@@ -235,7 +239,12 @@ export async function registerEmployeeAdminRoutes(
     const principal = await authenticateAdmin(request, reply, "employees.manage");
     if (!principal) return;
 
-    const result = await pool.query<ImportHistoryRow>(
+    const parsed = pageQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ code: "INVALID_QUERY", message: "Halaman riwayat import tidak valid." });
+    }
+
+    const [result, count] = await Promise.all([pool.query<ImportHistoryRow>(
       `
         SELECT
           j.id AS "importId",
@@ -254,10 +263,11 @@ export async function registerEmployeeAdminRoutes(
         FROM employee_import_jobs j
         LEFT JOIN accounts creator ON creator.id = j.created_by_account_id
         LEFT JOIN accounts committer ON committer.id = j.committed_by_account_id
-        ORDER BY j.created_at DESC
-        LIMIT 50
+        ORDER BY j.created_at DESC, j.id DESC
+        LIMIT $1 OFFSET $2
       `,
-    );
+      [parsed.data.pageSize, pageOffset(parsed.data)],
+    ), pool.query<CountRow>("SELECT count(*)::int AS total FROM employee_import_jobs")]);
 
     reply.header("Cache-Control", "no-store");
     return reply.send({
@@ -266,6 +276,7 @@ export async function registerEmployeeAdminRoutes(
         createdAt: row.createdAt.toISOString(),
         committedAt: row.committedAt?.toISOString() ?? null,
       })),
+      pagination: pagination(parsed.data, count.rows[0]?.total ?? 0),
     });
   });
 
@@ -303,8 +314,10 @@ export async function registerEmployeeAdminRoutes(
            WHERE id = $1 AND created_by_account_id IS NULL`,
           [preview.importId, principal.id],
         );
+        // The response carries the first page of rows; the rest is read through GET (ENG-LIST-001).
+        const firstPage = await imports.getPreviewPage(preview.importId, pageQuerySchema.parse({}));
         reply.header("Cache-Control", "no-store");
-        return reply.status(201).send(preview);
+        return reply.status(201).send(firstPage);
       } catch (error) {
         request.log.warn({ err: error }, "employee import preview rejected");
         return reply.status(400).send({
@@ -326,8 +339,12 @@ export async function registerEmployeeAdminRoutes(
     if (!parsed.success) {
       return reply.status(400).send({ code: "INVALID_IMPORT_ID", message: "Import ID tidak valid." });
     }
+    const query = importRowsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({ code: "INVALID_QUERY", message: "Halaman atau saringan baris import tidak valid." });
+    }
 
-    const preview = await imports.getPreview(parsed.data.importId);
+    const preview = await imports.getPreviewPage(parsed.data.importId, query.data, query.data.filter);
     if (!preview) {
       return reply.status(404).send({ code: "IMPORT_NOT_FOUND", message: "Riwayat import tidak ditemukan." });
     }

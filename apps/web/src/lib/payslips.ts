@@ -52,8 +52,28 @@ export interface PayslipImportRow {
   excludedAt: string | null;
 }
 
+export interface PayslipPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  pageCount: number;
+}
+
+/** Batch counters plus one page of rows; errorSummary covers every pending row (ENG-LIST-001). */
 export interface PayslipImportDetail extends PayslipImportBatch {
   rows: PayslipImportRow[];
+  pagination: PayslipPagination;
+  errorSummary: Array<{ message: string; count: number }>;
+}
+
+export type PayslipImportRowFilter = "all" | "errors";
+
+function pageParams(query: Record<string, string | number | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  return params.size ? `?${params.toString()}` : "";
 }
 
 export class PayslipApiError extends Error {}
@@ -75,12 +95,19 @@ export function getMyPayslip(id: string) {
   return request<PayslipDetail>(`/api/payslips/${encodeURIComponent(id)}`);
 }
 
-export function listPayslipImports() {
-  return request<{ items: PayslipImportBatch[] }>("/api/admin/payslip-imports");
+export function listPayslipImports(query: { page?: number; pageSize?: number } = {}) {
+  return request<{ items: PayslipImportBatch[]; pagination: PayslipPagination }>(
+    `/api/admin/payslip-imports${pageParams(query)}`,
+  );
 }
 
-export function getPayslipImport(batchId: string) {
-  return request<PayslipImportDetail>(`/api/admin/payslip-imports/${encodeURIComponent(batchId)}`);
+export function getPayslipImport(
+  batchId: string,
+  query: { page?: number; pageSize?: number; filter?: PayslipImportRowFilter } = {},
+) {
+  return request<PayslipImportDetail>(
+    `/api/admin/payslip-imports/${encodeURIComponent(batchId)}${pageParams(query)}`,
+  );
 }
 
 export function previewPayslipImport(file: File, fallbackPeriod?: string) {

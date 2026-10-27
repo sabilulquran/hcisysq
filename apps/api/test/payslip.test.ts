@@ -228,6 +228,8 @@ describe("payslip endpoint authorization", () => {
           },
         ]);
       }
+      if (normalized.startsWith("SELECT count(*)::int AS total FROM payslip_import_rows")) return result([{ total: 1 }]);
+      if (normalized.includes("jsonb_array_elements_text(validation_errors)")) return result([]);
       if (normalized.includes("FROM payslip_import_rows")) {
         expect(normalized).toContain("to_char(period, 'YYYY-MM') AS period");
         return result([
@@ -252,6 +254,75 @@ describe("payslip endpoint authorization", () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().rows[0]?.period).toBe("2026-07");
+    await app.close();
+  });
+
+  it("pages batch rows on the server, filters the error queue and audits every page read (ENG-LIST-001)", async () => {
+    const calls: Array<{ sql: string; values?: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      calls.push({ sql: normalized, values });
+      if (normalized.includes("FROM payslip_import_batches")) {
+        return result([{ id: batchId, sourceFilename: "synthetic.csv", status: "previewed", rowCount: 5299 }]);
+      }
+      if (normalized.startsWith("SELECT count(*)::int AS total FROM payslip_import_rows")) return result([{ total: 240 }]);
+      if (normalized.includes("jsonb_array_elements_text(validation_errors)")) {
+        return result([{ message: "employee_number tidak ditemukan", count: 240 }]);
+      }
+      if (normalized.includes("FROM payslip_import_rows")) {
+        return result([{ rowNumber: 102, employeeNumber: "SYN-102", period: "2026-07", lines: [], errors: ["x"] }]);
+      }
+      if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(adminPrincipal));
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/payslip-imports/${batchId}?filter=errors&page=2&pageSize=100`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().pagination).toEqual({ page: 2, pageSize: 100, total: 240, pageCount: 3 });
+    expect(response.json().errorSummary).toEqual([{ message: "employee_number tidak ditemukan", count: 240 }]);
+    const rowsQuery = calls.find((call) => call.sql.includes("LIMIT $3 OFFSET $4"));
+    expect(rowsQuery?.values).toEqual([batchId, true, 100, 100]);
+    const audit = calls.find((call) => call.sql.startsWith("INSERT INTO payslip_audit_events"));
+    expect(audit?.values?.[2]).toBe("payslip.import.review_opened");
+    expect(JSON.parse(String(audit?.values?.[6]))).toEqual({
+      rowCount: 240, filter: "errors", page: 2, pageSize: 100, returnedRows: 1,
+    });
+
+    for (const bad of ["pageSize=101", "page=0", "filter=pending"]) {
+      const refused = await app.inject({
+        method: "GET",
+        url: `/admin/payslip-imports/${batchId}?${bad}`,
+        headers: { cookie: "hcis_session=synthetic" },
+      });
+      expect(refused.statusCode, bad).toBe(400);
+    }
+    await app.close();
+  });
+
+  it("pages the batch history with a total instead of a silent LIMIT 50", async () => {
+    const calls: Array<{ sql: string; values?: unknown[] }> = [];
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      const normalized = compactSql(sql);
+      calls.push({ sql: normalized, values });
+      if (normalized.startsWith("SELECT count(*)::int AS total FROM payslip_import_batches")) return result([{ total: 61 }]);
+      if (normalized.includes("FROM payslip_import_batches")) return result([{ id: batchId }]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(adminPrincipal));
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/payslip-imports?page=3&pageSize=25",
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().pagination).toEqual({ page: 3, pageSize: 25, total: 61, pageCount: 3 });
+    expect(calls.find((call) => call.sql.includes("LIMIT $1 OFFSET $2"))?.values).toEqual([25, 50]);
     await app.close();
   });
 

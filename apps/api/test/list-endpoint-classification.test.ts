@@ -24,7 +24,7 @@ vi.mock("fastify", async (importOriginal) => {
 const { createApp } = await import("../src/app.js");
 
 // Lower this when a PAG package fixes routes; raising it needs an owner-approved exception.
-const DEBT_ROUTES = 55;
+const DEBT_ROUTES = 51;
 
 const KINDS = ["paged", "typeahead", "range", "bounded", "aggregate", "single", "export", "snapshot", "debt"] as const;
 

@@ -2,16 +2,19 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { pageOffset, pagination, type PageQuery } from "../../../lib/pagination.js";
 import type {
   EmployeeImportCandidate,
   EmployeeImportCommitResult,
   EmployeeImportPreview,
+  EmployeeImportPreviewPage,
   EmployeeImportSummary,
   ImportAction,
   ImportIssue,
 } from "../domain/employee-import.js";
 import { EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS, normalizeReferenceName } from "../domain/employee-import.js";
 import type {
+  EmployeeImportRowFilter,
   EmployeeImportStore,
   SaveEmployeeImportPreviewInput,
 } from "../application/employee-import-store.js";
@@ -157,6 +160,65 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         action: row.action,
         issues: row.messages,
       })),
+    };
+  }
+
+  async getPreviewPage(
+    importId: string,
+    page: PageQuery,
+    filter: EmployeeImportRowFilter,
+  ): Promise<EmployeeImportPreviewPage | null> {
+    const job = await this.pool.query<ImportJobRow>(
+      "SELECT * FROM employee_import_jobs WHERE id = $1",
+      [importId],
+    );
+    const jobRow = job.rows[0];
+    if (!jobRow) return null;
+
+    // "issues" keeps only rows with at least one warning or error, so HC can work through
+    // the problems of a long file page by page (ENG-LIST-001).
+    const onlyIssues = filter === "issues";
+    const matches = "($2::boolean IS FALSE OR jsonb_array_length(messages) > 0)";
+    const [rows, count, issues] = await Promise.all([
+      this.pool.query<ImportDetailRow>(
+        `SELECT row_number, action, payload, messages
+         FROM employee_import_rows
+         WHERE import_job_id = $1 AND ${matches}
+         ORDER BY row_number
+         LIMIT $3 OFFSET $4`,
+        [importId, onlyIssues, page.pageSize, pageOffset(page)],
+      ),
+      this.pool.query<{ total: number; skip: number }>(
+        `SELECT count(*) FILTER (WHERE ${matches})::int AS total,
+                count(*) FILTER (WHERE action = 'skip')::int AS skip
+         FROM employee_import_rows
+         WHERE import_job_id = $1`,
+        [importId, onlyIssues],
+      ),
+      // One count per issue code across the whole import, worst severity first.
+      this.pool.query<{ code: string; severity: "warning" | "error"; count: number }>(
+        `SELECT issue ->> 'code' AS code,
+                CASE WHEN bool_or(issue ->> 'severity' = 'error') THEN 'error' ELSE 'warning' END AS severity,
+                count(*)::int AS count
+         FROM employee_import_rows, jsonb_array_elements(messages) AS issue
+         WHERE import_job_id = $1
+         GROUP BY issue ->> 'code'
+         ORDER BY bool_or(issue ->> 'severity' = 'error') DESC, count(*) DESC, issue ->> 'code'`,
+        [importId],
+      ),
+    ]);
+    const total = count.rows[0]?.total ?? 0;
+
+    return {
+      ...toSummary(jobRow),
+      rows: rows.rows.map((row) => ({
+        rowNumber: row.row_number,
+        action: row.action,
+        issues: row.messages,
+      })),
+      pagination: pagination(page, total),
+      skipCount: count.rows[0]?.skip ?? 0,
+      issueSummary: issues.rows,
     };
   }
 

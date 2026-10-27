@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
@@ -24,6 +25,9 @@ function statusClass(status: EmployeeImportHistoryItem["status"]) {
 
 export function AdminEmployeeImportHistoryPage() {
   const [items, setItems] = useState<EmployeeImportHistoryItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -32,9 +36,11 @@ export function AdminEmployeeImportHistoryPage() {
     let mounted = true;
     setLoading(true);
     setError(null);
-    void listEmployeeImports()
+    void listEmployeeImports({ page, pageSize })
       .then((result) => {
-        if (mounted) setItems(result.items);
+        if (!mounted) return;
+        setItems(result.items);
+        setTotal(result.pagination.total);
       })
       .catch((cause: unknown) => {
         if (!mounted) return;
@@ -50,13 +56,13 @@ export function AdminEmployeeImportHistoryPage() {
     return () => {
       mounted = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, page, pageSize]);
 
   return (
     <AdminShell
       active="history"
       title="Riwayat Impor Pegawai"
-      description="Audit ringkas 50 proses import terbaru beserta checksum, counts, waktu, dan akun yang melakukan preview/commit."
+      description="Audit ringkas setiap proses import, terbaru di atas, beserta checksum, counts, waktu, dan akun yang melakukan preview/commit."
     >
       <div className="mb-4 flex justify-end">
         <button
@@ -76,47 +82,59 @@ export function AdminEmployeeImportHistoryPage() {
         ) : loading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Memuat riwayat import...</div>
         ) : items.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1050px] text-left text-sm">
-              <thead className="bg-surface text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Waktu</th>
-                  <th className="px-4 py-3 font-semibold">File</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Baris</th>
-                  <th className="px-4 py-3 font-semibold">Insert / Update</th>
-                  <th className="px-4 py-3 font-semibold">Warning / Error</th>
-                  <th className="px-4 py-3 font-semibold">Actor</th>
-                  <th className="px-4 py-3 font-semibold">Checksum</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {items.map((item) => (
-                  <tr key={item.importId} className="align-top hover:bg-surface/60">
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
-                      <p>{formatDate(item.createdAt)}</p>
-                      {item.committedAt ? <p className="mt-1">Commit: {formatDate(item.committedAt)}</p> : null}
-                    </td>
-                    <td className="max-w-64 px-4 py-3">
-                      <p className="truncate font-semibold text-foreground">{item.sourceFilename}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{item.importId}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(item.status)}`}>{item.status}</span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold">{item.rowCount}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.insertCount} / {item.updateCount}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.warningCount} / {item.errorCount}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      <p>Preview: {item.createdByEmail ?? "—"}</p>
-                      <p className="mt-1">Commit: {item.committedByEmail ?? "—"}</p>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{item.checksumSha256.slice(0, 16)}…</td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1050px] text-left text-sm">
+                <thead className="bg-surface text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Waktu</th>
+                    <th className="px-4 py-3 font-semibold">File</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Baris</th>
+                    <th className="px-4 py-3 font-semibold">Insert / Update</th>
+                    <th className="px-4 py-3 font-semibold">Warning / Error</th>
+                    <th className="px-4 py-3 font-semibold">Actor</th>
+                    <th className="px-4 py-3 font-semibold">Checksum</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-border/70">
+                  {items.map((item) => (
+                    <tr key={item.importId} className="align-top hover:bg-surface/60">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
+                        <p>{formatDate(item.createdAt)}</p>
+                        {item.committedAt ? <p className="mt-1">Commit: {formatDate(item.committedAt)}</p> : null}
+                      </td>
+                      <td className="max-w-64 px-4 py-3">
+                        <p className="truncate font-semibold text-foreground">{item.sourceFilename}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{item.importId}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(item.status)}`}>{item.status}</span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">{item.rowCount}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{item.insertCount} / {item.updateCount}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{item.warningCount} / {item.errorCount}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <p>Preview: {item.createdByEmail ?? "—"}</p>
+                        <p className="mt-1">Commit: {item.committedByEmail ?? "—"}</p>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{item.checksumSha256.slice(0, 16)}…</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <PaginationBar
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          </>
         ) : (
           <div className="p-10 text-center">
             <p className="text-sm font-semibold text-foreground">Belum ada riwayat import.</p>

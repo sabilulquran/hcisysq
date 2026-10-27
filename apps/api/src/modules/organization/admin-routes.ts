@@ -1345,6 +1345,7 @@ export async function registerOrganizationAdminRoutes(
     }),
     z.object({ type: z.literal("SET_UNIT_LEADER"), nodeKey: uuid, positionKey: uuid }),
     z.object({ type: z.literal("SET_UNIT_APPROVER"), nodeKey: uuid, positionKey: uuid }),
+    z.object({ type: z.literal("SET_PRIMARY_STRUCTURAL_POSITION"), employeeId: uuid, positionKey: uuid }),
     z.object({
       type: z.literal("SET_OVERRIDE"),
       employeeId: uuid,

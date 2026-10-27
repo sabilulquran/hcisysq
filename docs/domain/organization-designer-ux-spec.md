@@ -416,7 +416,8 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 **Sisa pekerjaan ORG-008 (2026-10-27):**
 - **Peringatan restrukturisasi (O-8):** saat jabatan yang dipakai aturan lembur ATT-011 dinonaktifkan atau dipindah di perubahan, layar memperingatkan. Ini menunggu aturan lembur ATT-011 menyimpan kunci jabatan; API pencarian jabatan (`GET /positions/search`) sudah tersedia.
-- **Alur jabatan utama (`SET_PRIMARY_STRUCTURAL_POSITION`, §5.3):** belum dibangun. Alur ini menyentuh data production hasil migrasi 0020–0023, dan bentuk datanya perlu diperiksa dulu di production secara read-only. Pemeriksaan itu menyangkut data pegawai, jadi tetap menunggu izin owner. Selama itu, layar menolak dengan `PRIMARY_STRUCTURAL_EDIT_REQUIRES_REVIEW` beserta kalimat yang menjelaskannya.
+- **Alur jabatan utama (`SET_PRIMARY_STRUCTURAL_POSITION`, §5.3): selesai di ORG-008-11.** Data production diperiksa secara read-only dan agregat saja (2026-10-27): ada 1 pegawai yang memegang dua jabatan, dan jabatan utamanya sudah ditandai dengan benar. Perintah ini hanya memindahkan tanda jabatan utama di dalam change set, sehingga penggantinya ikut tanggal berlaku dan pemeriksa kedua. Tombol "Jadikan jabatan utama" tampil pada jabatan lain milik pejabat itu. Mengganti pejabat di jabatan utama tetap ditolak sampai tanda dipindah, karena itu satu-satunya jangkar atasan bagi orang tersebut.
+- **Catatan operasional:** production memuat 10 change set yang masih terbuka (DRAFT/VALIDATED). Aturan O-7 menolak membuat change set baru selama masih ada yang terbuka. HC perlu meninjau daftar Perubahan lalu menerbitkan atau membuang yang lama. Tidak ada yang dibuang otomatis.
 
 Area dengan review tambahan (AGENTS.md §8): ORG-008-3 (migration + publish), ORG-008-4 (authority/permission), ORG-008-6 (migration + notifikasi), ORG-008-8 (permission).
 

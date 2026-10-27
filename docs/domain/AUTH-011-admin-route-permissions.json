@@ -2667,5 +2667,35 @@
     "permissions": [
       "payroll.inputs.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/report",
+    "permissions": [
+      "payroll.reports.read.organization",
+      "payroll.periods.manage",
+      "payroll.calculate",
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/transfers",
+    "permissions": [
+      "payroll.transfers.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/variance",
+    "permissions": [
+      "payroll.reports.read.organization",
+      "payroll.periods.manage",
+      "payroll.calculate",
+      "payroll.inputs.manage"
+    ]
   }
 ]

@@ -206,7 +206,17 @@ export async function attendanceTodayReadModel(
           [ids, date],
         ).then((result) => result.rows),
         pool.query<{ id: string; name: string }>(
-          `SELECT id, name FROM attendance_schedule_templates`,
+          // ATT-011-4a: the name of the version in force on the day.
+          `SELECT schedule.id, coalesce(version.name, schedule.name) AS name
+           FROM attendance_schedule_templates schedule
+           LEFT JOIN LATERAL (
+             SELECT candidate.name FROM attendance_schedule_versions candidate
+             WHERE candidate.schedule_template_id = schedule.id
+               AND candidate.effective_from <= (($1::date + time '12:00') AT TIME ZONE 'Asia/Jakarta')
+               AND (candidate.effective_to IS NULL OR candidate.effective_to > (($1::date + time '12:00') AT TIME ZONE 'Asia/Jakarta'))
+             ORDER BY candidate.version DESC LIMIT 1
+           ) version ON true`,
+          [date],
         ).then((result) => result.rows),
       ]);
 

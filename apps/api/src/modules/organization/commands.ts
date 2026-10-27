@@ -64,7 +64,7 @@ export interface OrganizationCommandResult {
  */
 export const REPLAYABLE_COMMAND_TYPES: ReadonlySet<string> = new Set([
   "ADD_UNIT", "PLACE_EMPLOYEES", "APPOINT_ACTING", "SET_REPORTS_TO",
-  "SET_UNIT_LEADER", "SET_UNIT_APPROVER", "SET_OVERRIDE",
+  "SET_UNIT_LEADER", "SET_UNIT_APPROVER", "SET_OVERRIDE", "SET_PRIMARY_STRUCTURAL_POSITION",
 ]);
 
 export type OrganizationCommand =
@@ -100,7 +100,9 @@ export type OrganizationCommand =
       reason: string;
       effectiveFrom?: string;
       effectiveTo?: string | null;
-    };
+    }
+  // ORG-008 §5.3: for someone holding two seats, which one their own approvals start from.
+  | { type: "SET_PRIMARY_STRUCTURAL_POSITION"; employeeId: string; positionKey: string };
 
 function dayBefore(date: string): string {
   const value = new Date(`${date}T00:00:00Z`);
@@ -376,6 +378,59 @@ function applyPlaceEmployees(
   return { nodeKey: command.nodeKey, placed: added.length, moved: moved.length };
 }
 
+/**
+ * ORG-008 §5.3 (SET_PRIMARY_STRUCTURAL_POSITION): a person holding more than one seat needs exactly
+ * one marked as primary, or the resolver cannot tell where their own requests start
+ * (PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED). The choice is the operator's, never inferred from a
+ * title or row order (0021). It moves the marker; it does not change who holds which seat.
+ */
+function applySetPrimaryStructural(
+  snapshot: OrganizationSnapshot,
+  command: Extract<OrganizationCommand, { type: "SET_PRIMARY_STRUCTURAL_POSITION" }>,
+  effectiveOn: string,
+  events: OrganizationCommandAudit[],
+): Record<string, unknown> {
+  const position = requirePosition(snapshot, command.positionKey);
+  const seats = snapshot.incumbencies.filter((item) =>
+    item.employeeId === command.employeeId
+    && item.kind === "PRIMARY"
+    && isEffective(item.effectiveFrom, item.effectiveTo, effectiveOn));
+  const target = seats.find((item) => item.positionKey === command.positionKey);
+  if (!target) {
+    throw new OrganizationCommandError(
+      "ORGANIZATION_EMPLOYEE_NOT_SEATED",
+      "This employee does not hold that position on the change's effective date.",
+      { employeeId: command.employeeId, positionKey: command.positionKey },
+    );
+  }
+  if (seats.length < 2) {
+    throw new OrganizationCommandError(
+      "ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT",
+      "This employee holds only one position, which is their primary one already.",
+      { employeeId: command.employeeId },
+    );
+  }
+  // Every other PRIMARY seat of this person whose period overlaps the chosen one loses the marker,
+  // including a seat that starts later: 0021 allows one marked seat per person per period.
+  const end = (value: string | null) => value ?? "9999-12-31";
+  const overlapsTarget = (seat: typeof target) =>
+    seat.effectiveFrom <= end(target.effectiveTo) && target.effectiveFrom <= end(seat.effectiveTo);
+  for (const seat of snapshot.incumbencies.filter((item) =>
+    item.employeeId === command.employeeId && item.kind === "PRIMARY")) {
+    const primary = seat.id === target.id;
+    if (!primary && !overlapsTarget(seat)) continue;
+    if ((seat.isPrimaryStructural ?? false) === primary) continue;
+    seat.isPrimaryStructural = primary;
+    events.push({
+      action: primary ? "organization.incumbency.primary_structural_set" : "organization.incumbency.primary_structural_cleared",
+      entityType: "organization_incumbency",
+      entityId: seat.id,
+      payload: { positionKey: seat.positionKey, employeeId: command.employeeId },
+    });
+  }
+  return { employeeId: command.employeeId, positionKey: command.positionKey, positionTitle: position.title, seats: seats.length };
+}
+
 function applyAppointActing(
   snapshot: OrganizationSnapshot,
   command: Extract<OrganizationCommand, { type: "APPOINT_ACTING" }>,
@@ -596,6 +651,9 @@ export function applyOrganizationCommand(
       break;
     case "SET_OVERRIDE":
       summary = applySetOverride(snapshot, command, effectiveOn, events);
+      break;
+    case "SET_PRIMARY_STRUCTURAL_POSITION":
+      summary = applySetPrimaryStructural(snapshot, command, effectiveOn, events);
       break;
     default: {
       const unknown = command as { type?: string };

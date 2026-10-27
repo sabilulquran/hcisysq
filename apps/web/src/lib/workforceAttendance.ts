@@ -211,6 +211,10 @@ export async function listAttendanceSchedules() {
     effectiveFrom: string | null;
     /** ATT-013: blocks 2-3 of the current version. */
     extraBlocks?: ShiftBlock[];
+    /** ATT-011-4a: a change that applies from a later date. */
+    pendingVersion?: { version: number; effectiveFrom: string; startTime: string; endTime: string; lateGraceMinutes: number; earlyLeaveToleranceMinutes: number } | null;
+    /** Employees with a schedule pattern on this shift today or later. */
+    employeeCount?: number;
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
 }
 
@@ -382,9 +386,11 @@ export async function updateAttendanceSchedule(
   input: Partial<{
     name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
     earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+    /** ATT-011-4a: today or later; default today (from now). */
+    effectiveFrom: string;
   }>,
 ) {
-  return readJson<{ id: string }>(await fetch(`/api/admin/attendance/schedules/${scheduleId}`, {
+  return readJson<{ id: string; effectiveFrom: string | null; affectedEmployees: number }>(await fetch(`/api/admin/attendance/schedules/${scheduleId}`, {
     method: "PATCH",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },

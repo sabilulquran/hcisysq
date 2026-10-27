@@ -13,7 +13,8 @@ export type OrganizationCommandType =
   | "SET_REPORTS_TO"
   | "SET_UNIT_LEADER"
   | "SET_UNIT_APPROVER"
-  | "SET_OVERRIDE";
+  | "SET_OVERRIDE"
+  | "SET_PRIMARY_STRUCTURAL_POSITION";
 
 export type OrganizationCommand =
   | {
@@ -48,7 +49,9 @@ export type OrganizationCommand =
       reason: string;
       effectiveFrom?: string;
       effectiveTo?: string | null;
-    };
+    }
+  // ORG-008-11: for someone holding two seats, which one their own approvals start from.
+  | { type: "SET_PRIMARY_STRUCTURAL_POSITION"; employeeId: string; positionKey: string };
 
 export interface OrganizationCommandResult {
   commandType: OrganizationCommandType;

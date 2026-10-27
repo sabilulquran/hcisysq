@@ -331,6 +331,131 @@ paths:
         '403': { $ref: '#/components/responses/PayrollForbidden' }
         '404': { $ref: '#/components/responses/PayrollNotFound' }
 
+  /payroll/periods/{periodId}/report:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollPeriodReport
+      summary: Read the period's totals per unit and per component
+      description: >-
+        The payroll report. It carries no bank account anywhere: the accounts live
+        in the transfer list, which has its own permission (specification section
+        7). Requires payroll.reports.read.organization, or one of the permissions
+        that run a period. Report readers see it once the period is approved; the
+        people running the period see it throughout. Every read is recorded.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Totals, per unit and per component
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report]
+                properties:
+                  report: { $ref: '#/components/schemas/PayrollPeriodReport' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period is not approved yet, and the reader does not run it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/periods/{periodId}/transfers:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollTransferList
+      summary: Read the transfer list for the period
+      description: >-
+        One row per recipient with the account to pay into. Requires
+        payroll.transfers.read.organization, which only finance holds: neither the
+        director nor human capital sees account numbers here. Available once the
+        period is approved. Every read and every export is recorded as a sensitive
+        access. With format=csv it returns a UTF-8 CSV attachment, still no-store.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: format
+          in: query
+          schema: { type: string, enum: [json, csv], default: json }
+      responses:
+        '200':
+          description: The recipients to pay, as JSON or as a CSV attachment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transfers]
+                properties:
+                  transfers:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollTransferRow' }
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period is not approved yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/periods/{periodId}/variance:
+    get:
+      tags: [Payroll]
+      operationId: getPayrollPeriodVariance
+      summary: Compare the period against the one before it
+      description: >-
+        What moved per employee and component since the previous period of the
+        same legal entity. A component is reported only when it clears both the
+        absolute and the relative threshold, so small components stay quiet; the
+        threshold comes from policy and falls back to the specification's default.
+        An employee who appears or leaves is reported once, not once per component.
+        The first period answers with an empty comparison rather than an error.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The differences worth a reviewer's attention
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [previousPeriodId, threshold, variances]
+                properties:
+                  previousPeriodId: { type: [string, 'null'], format: uuid }
+                  threshold:
+                    type: [object, 'null']
+                    properties:
+                      relative: { type: number }
+                      absolute: { type: number }
+                      manualInput: { type: number }
+                  variances:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollVarianceRow' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period is not approved yet, and the reader does not run it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
   /payroll/periods/{periodId}/transitions:
     post:
       tags: [Payroll]
@@ -500,6 +625,64 @@ components:
         amount: { type: string }
         basis: { type: [string, 'null'] }
         displayOrder: { type: integer }
+
+    PayrollPeriodReport:
+      type: object
+      required: [totals, byUnit, byComponent]
+      properties:
+        totals:
+          type: object
+          properties:
+            employeeCount: { type: integer }
+            gross: { type: string }
+            deductions: { type: string }
+            net: { type: string }
+            payable: { type: string }
+            employerCost: { type: string }
+            blockerCount: { type: integer }
+        byUnit:
+          type: array
+          items:
+            type: object
+            properties:
+              unitRef: { type: [string, 'null'], format: uuid }
+              employeeCount: { type: integer }
+              payable: { type: string }
+        byComponent:
+          type: array
+          items:
+            type: object
+            properties:
+              componentCode: { type: string }
+              category: { type: string, enum: [EARNING, DEDUCTION, EMPLOYER_COST] }
+              employeeCount: { type: integer }
+              amount: { type: string }
+
+    PayrollTransferRow:
+      type: object
+      required: [employeeNumber, fullName, payable]
+      properties:
+        employeeNumber: { type: string }
+        fullName: { type: string }
+        unitRef: { type: [string, 'null'], format: uuid }
+        payable: { type: string }
+        bankName: { type: [string, 'null'] }
+        bankAccountNumber: { type: [string, 'null'] }
+        bankAccountName: { type: [string, 'null'] }
+        paymentConfirmedAt: { type: [string, 'null'], format: date-time }
+
+    PayrollVarianceRow:
+      type: object
+      required: [employmentId, previousAmount, currentAmount, delta, kind]
+      properties:
+        employmentId: { type: string, format: uuid }
+        componentCode:
+          type: [string, 'null']
+          description: Null when the whole employee is new or leaving.
+        previousAmount: { type: string }
+        currentAmount: { type: string }
+        delta: { type: string }
+        kind: { type: string, enum: [COMPONENT, NEW_EMPLOYEE, LEAVING_EMPLOYEE, LARGE_MANUAL_INPUT] }
 
     PayrollPeriodTransition:
       type: object

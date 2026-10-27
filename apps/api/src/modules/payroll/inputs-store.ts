@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
-import { writeAudit } from "./store.js";
+import { LATEST_RESULTS_OF_PERIOD, writeAudit } from "./store.js";
 
 export const INPUT_KEYS = [
   "OVERTIME_HOURS",
@@ -201,24 +201,18 @@ export async function listResults(
   periodId: string,
 ): Promise<{ results: ResultRow[]; lines: ResultLineRow[] }> {
   const results = await pool.query<ResultRow>(
-    `SELECT DISTINCT ON (r.employment_id)
-            r.employment_id AS "employmentId", r.revision, r.gross, r.deductions, r.net, r.payable,
-            r.employer_cost AS "employerCost", r.pay_factor AS "payFactor",
-            r.pay_factor_reason AS "payFactorReason", r.bpjs_base AS "bpjsBase",
-            r.blockers, r.calculated_at AS "calculatedAt"
-     FROM payroll_results r
-     WHERE r.period_id = $1
-     ORDER BY r.employment_id, r.revision DESC`,
+    `SELECT latest.employment_id AS "employmentId", latest.revision, latest.gross, latest.deductions,
+            latest.net, latest.payable, latest.employer_cost AS "employerCost",
+            latest.pay_factor AS "payFactor", latest.pay_factor_reason AS "payFactorReason",
+            latest.bpjs_base AS "bpjsBase", latest.blockers, latest.calculated_at AS "calculatedAt"
+     FROM (${LATEST_RESULTS_OF_PERIOD}) latest
+     ORDER BY latest.employment_id`,
     [periodId],
   );
   const lines = await pool.query<ResultLineRow>(
     `SELECT latest.employment_id AS "employmentId", l.component_code AS "componentCode",
             l.category, l.amount, l.basis, l.display_order AS "displayOrder"
-     FROM (
-       SELECT DISTINCT ON (employment_id) id, employment_id
-       FROM payroll_results WHERE period_id = $1
-       ORDER BY employment_id, revision DESC
-     ) latest
+     FROM (${LATEST_RESULTS_OF_PERIOD}) latest
      JOIN payroll_result_lines l ON l.result_id = latest.id
      ORDER BY latest.employment_id, l.display_order`,
     [periodId],

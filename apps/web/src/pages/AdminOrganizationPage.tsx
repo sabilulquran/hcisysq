@@ -447,6 +447,15 @@ export function OrganizationDesignerWorkspace({
     [data?.positions, selection],
   );
   const selectedSeat = selectedPosition ? organizationSeatEditability(selectedPosition) : null;
+  // ORG-008-11: the selected seat's holder also holds another seat, and this one is not their primary.
+  const selectedHolder = selectedPosition?.primaryIncumbent ?? null;
+  const onChangeDate = data?.draft?.effectiveOn ?? effectiveDate;
+  const seatedOnChangeDate = (incumbent: OrganizationPosition["primaryIncumbent"]) => Boolean(incumbent
+    && incumbent.effectiveFrom <= onChangeDate && (!incumbent.effectiveTo || incumbent.effectiveTo >= onChangeDate));
+  const canMakePrimary = Boolean(selectedHolder?.employeeId && !selectedHolder.isPrimaryStructural
+    && seatedOnChangeDate(selectedHolder)
+    && (data?.positions ?? []).filter((item) => item.primaryIncumbent?.employeeId === selectedHolder.employeeId
+      && seatedOnChangeDate(item.primaryIncumbent)).length > 1);
   const canEdit = data?.draft?.status === "DRAFT";
   // ORG-005-1 (D-5-5): the location list belongs to schedule management, which Kepala HC does not hold.
   const canPickWorkLocation = Boolean(canEdit) && hasPermission(session, "attendance.schedule.manage");
@@ -998,6 +1007,15 @@ export function OrganizationDesignerWorkspace({
                 {selectedPosition.actingIncumbent ? <ActionButton onClick={() => askClearActing(selectedPosition)} icon={<X />}>Hapus Plt</ActionButton> : null}
                 <ActionButton onClick={() => askMarkVacant(selectedPosition)} icon={<PanelRightClose />}>Kosongkan</ActionButton>
               </> : null}
+              {canAssignIncumbents && canMakePrimary && selectedHolder?.employeeId ? (
+                <ActionButton
+                  onClick={() => void runCommand(
+                    { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: selectedHolder.employeeId!, positionKey: selectedPosition.stableKey },
+                    `${selectedPosition.title} kini jabatan utama ${selectedHolder.employeeName ?? "pejabatnya"}.`,
+                  )}
+                  icon={<CircleUserRound />}
+                >Jadikan jabatan utama</ActionButton>
+              ) : null}
               <ActionButton onClick={() => setAction({ type: "position", mode: "edit", nodeKey: selectedPosition.nodeKey, position: selectedPosition })} icon={<ArrowRightLeft />}>Ubah jabatan</ActionButton>
               <ActionButton onClick={() => setAction({ type: "reportsTo", position: selectedPosition })} icon={<Network />}>Melapor ke</ActionButton>
               <ActionButton onClick={() => setAction({ type: "visual", item: selectedPosition, kind: "position" })} icon={<ArrowDownToLine />}>Tampilan</ActionButton>

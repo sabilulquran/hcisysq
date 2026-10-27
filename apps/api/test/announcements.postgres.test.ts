@@ -237,9 +237,12 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
     expect(asB.statusCode, asB.body).toBe(200);
     const rows = await client.query<{ acknowledgedAt: Date | null }>(
       `SELECT acknowledged_at AS "acknowledgedAt"
-         FROM announcement_recipients WHERE announcement_id = $1 ORDER BY employee_id`,
-      [important],
+         FROM announcement_recipients
+        WHERE announcement_id = $1 AND employee_id = ANY($2::uuid[])
+        ORDER BY employee_id`,
+      [important, [employeeA, employeeB]],
     );
+    expect(rows.rows).toHaveLength(2);
     expect(rows.rows.every((row) => row.acknowledgedAt)).toBe(true);
   });
 
@@ -265,8 +268,15 @@ describe.skipIf(!allowed)("NOTIF-002 announcements", () => {
       },
     });
     expect(correction.statusCode, correction.body).toBe(201);
+    // N-06: the original keeps serving readers until the correction is itself published.
     const old = await client.query<{ status: string }>("SELECT status FROM announcements WHERE id = $1", [id]);
-    expect(old.rows[0]?.status).toBe("SUPERSEDED");
+    expect(old.rows[0]?.status).toBe("PUBLISHED");
+    const draftedCorrection = await client.query<{ status: string; supersedesId: string }>(
+      `SELECT status, supersedes_id AS "supersedesId" FROM announcements WHERE id = $1`,
+      [correction.json().id],
+    );
+    expect(draftedCorrection.rows[0]?.status).toBe("DRAFT");
+    expect(draftedCorrection.rows[0]?.supersedesId).toBe(id);
   });
 
   it("NOTIF-002-F: an unpublished announcement reaches nobody", async () => {

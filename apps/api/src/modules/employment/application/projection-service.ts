@@ -1,17 +1,18 @@
-// EMP-005 S5 projection refresh (spec §8.4). Scheduled actions and contract
-// ends change what the nine legacy `employees` columns should say on a given
-// day without anyone recording anything, so this runs once a day and after a
-// manual request. Counts only: no names, no NIP.
+// EMP-005 S5/S5A projection refresh (spec §8.4, §8.5.1). Scheduled actions and
+// contract ends change what the nine legacy `employees` columns should say on a
+// given day without anyone recording anything, and a termination dated in the
+// future closes the login account on the day after the last working day. This
+// job does both, once a day and on request. Counts only: no names, no NIP.
 
 import type { Pool } from "pg";
 
 import { deactivateAccountsForEndedEmployment, expireTemporaryReactivations } from "../../auth/employment-access.js";
-import { audit } from "../infrastructure/postgres-employment-store.js";
 import {
   employeesNeedingProjection,
   loadProjectedEmployeeIds,
   refreshProjection,
 } from "../infrastructure/postgres-action-store.js";
+import { audit, getRolloutMode } from "../infrastructure/postgres-employment-store.js";
 
 export interface ProjectionRefreshSummary {
   date: string;
@@ -20,10 +21,12 @@ export interface ProjectionRefreshSummary {
   updated: number;
   skipped: number;
   applied: boolean;
-  /** EMP-005 D-15: accounts closed because an employment ended by this date. */
+  /** Accounts closed because an employment ended by this date (D-15). */
   deactivatedAccounts: number;
   /** Temporary reactivations that reached their expiry. */
   expiredReactivations: number;
+  /** Set when OFF or SHADOW refused the write: import still owns the columns. */
+  refusedMode?: "OFF" | "SHADOW";
 }
 
 export interface ProjectionRefreshOptions {
@@ -44,6 +47,23 @@ export async function runProjectionRefresh(
   options: ProjectionRefreshOptions,
 ): Promise<ProjectionRefreshSummary> {
   const scope = options.scope ?? "due";
+  const empty = {
+    date: options.date,
+    mode: scope,
+    considered: 0,
+    updated: 0,
+    skipped: 0,
+    applied: false,
+    deactivatedAccounts: 0,
+    expiredReactivations: 0,
+  } satisfies ProjectionRefreshSummary;
+
+  // Spec §8.1: in OFF and SHADOW the nine columns still belong to the EMP-004
+  // import, so the projection writer stays silent there — the mirror image of
+  // the baseline CLI, which refuses in AUTHORITATIVE.
+  const { mode } = await getRolloutMode(pool);
+  if (options.apply && mode !== "AUTHORITATIVE") return { ...empty, refusedMode: mode };
+
   const targets = options.employeeIds?.length
     ? options.employeeIds
     : scope === "all"
@@ -51,33 +71,25 @@ export async function runProjectionRefresh(
       : await employeesNeedingProjection(pool, options.date);
 
   const summary: ProjectionRefreshSummary = {
-    date: options.date,
-    mode: scope,
+    ...empty,
     considered: targets.length,
-    updated: 0,
-    skipped: 0,
     applied: options.apply === true,
-    deactivatedAccounts: 0,
-    expiredReactivations: 0,
   };
   if (!options.apply || targets.length === 0) {
     summary.skipped = targets.length;
     return summary;
   }
 
+  // One transaction per batch: on Mi8VPS a single transaction over every
+  // employee would hold those rows for the whole run, blocking import commits.
+  const BATCH_SIZE = 200;
+  for (let offset = 0; offset < targets.length; offset += BATCH_SIZE) {
+    await refreshBatch(pool, targets.slice(offset, offset + BATCH_SIZE), options.date, summary);
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const employeeId of targets) {
-      const projection = await refreshProjection(client, employeeId, options.date);
-      if (projection) summary.updated += 1;
-      else summary.skipped += 1;
-      // EMP-005 §8.5.1: a termination recorded for a future date closes the
-      // account on the day after the last working day, not before.
-      if (projection?.endedOn && projection.endedOn < options.date) {
-        summary.deactivatedAccounts += (await deactivateAccountsForEndedEmployment(client, employeeId)).length;
-      }
-    }
     summary.expiredReactivations = (await expireTemporaryReactivations(client)).length;
     await audit(client, {
       actorAccountId: null,
@@ -102,4 +114,32 @@ export async function runProjectionRefresh(
     client.release();
   }
   return summary;
+}
+
+async function refreshBatch(
+  pool: Pool,
+  employeeIds: string[],
+  date: string,
+  summary: ProjectionRefreshSummary,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const employeeId of employeeIds) {
+      const projection = await refreshProjection(client, employeeId, date);
+      if (projection) summary.updated += 1;
+      else summary.skipped += 1;
+      // EMP-005 §8.5.1: a termination recorded for a future date closes the
+      // account on the day after the last working day, not before.
+      if (projection?.endedOn && projection.endedOn < date) {
+        summary.deactivatedAccounts += (await deactivateAccountsForEndedEmployment(client, employeeId)).length;
+      }
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }

@@ -330,7 +330,9 @@ paths:
       description: |
         Requires employment.manage, mode AUTHORITATIVE, and an Idempotency-Key header;
         a replayed key returns the original action with replayed=true and 200 instead
-        of writing again. Rows, action, document links, the nine projected employees
+        of writing again, and the same key used for another employee is refused with
+        IDEMPOTENCY_KEY_CONFLICT rather than silently dropping that action. The replay
+        lookup runs after authentication. Rows, action, document links, the nine projected employees
         columns and the audit events are written in one transaction. An employee whose
         own account records the action is refused (EMPLOYMENT_SELF_ACTION_FORBIDDEN).
       parameters:
@@ -365,7 +367,11 @@ paths:
                 properties:
                   actionId: { type: string, format: uuid }
                   replayed: { type: boolean, enum: [false] }
-                  projection: { $ref: '#/components/schemas/EmployeeProjection' }
+                  projection:
+                    oneOf:
+                      - { $ref: '#/components/schemas/EmployeeProjection' }
+                      - type: 'null'
+                    description: Absent values mean the history cannot speak for the employee yet.
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
@@ -401,7 +407,9 @@ components:
         EMPLOYMENT_REFERENCE_INVALID, EMPLOYMENT_CROSS_ENTITY_UNSUPPORTED,
         EMPLOYMENT_TERM_END_REQUIRED, EMPLOYMENT_TERM_INVALID, EMPLOYMENT_REASON_REQUIRED,
         EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED, EMPLOYMENT_BASELINE_MISSING,
-        DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH.
+        DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH, IDEMPOTENCY_KEY_CONFLICT
+        (409, the key already recorded an action for another employee),
+        EMPLOYEE_NOT_FOUND, INVALID_EMPLOYMENT_REQUEST, UNAUTHENTICATED.
       content:
         application/json:
           schema:
@@ -418,12 +426,14 @@ components:
     EmploymentPlacementInput:
       type: object
       additionalProperties: false
-      required: [jobTitleLabel]
-      description: One unit reference is required; ORG-004 keys win over the legacy ids.
+      required: [unitId, jobTitleLabel]
+      description: |
+        Package 1 records placements against the legacy unit/position tables,
+        the ones the nine projected employees columns point at. ORG-004 stable
+        keys arrive with S6 together with their mapping, so sending one is
+        rejected rather than silently clearing an employee's unit.
       properties:
-        unitKey: { type: [string, 'null'], format: uuid }
-        unitId: { type: [string, 'null'], format: uuid }
-        positionKey: { type: [string, 'null'], format: uuid }
+        unitId: { type: string, format: uuid }
         positionId: { type: [string, 'null'], format: uuid }
         jobTitleLabel: { type: string, minLength: 1, maxLength: 200 }
     EmploymentActionRequest:
@@ -495,7 +505,10 @@ components:
         next: { type: object, description: Display-only "menjadi" summary. }
         documentIds: { type: array, items: { type: string, format: uuid } }
         expectedVersion: { type: [integer, 'null'], description: Optimistic token of the affected employment. }
-        state: { type: string, enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA] }
+        state:
+          type: string
+          enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
+          description: The derived state the action produces, not the current one.
     EmployeeProjection:
       type: object
       description: The nine legacy employees columns as the action left them (spec §8.4).
@@ -671,7 +684,10 @@ components:
       properties:
         mode: { $ref: '#/components/schemas/EmploymentRolloutMode' }
         date: { type: string, format: date }
-        state: { type: string, enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA] }
+        state:
+          type: string
+          enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
+          description: The derived state the action produces, not the current one.
         flags:
           type: array
           items:

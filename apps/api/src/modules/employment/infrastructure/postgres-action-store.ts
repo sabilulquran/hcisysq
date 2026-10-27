@@ -34,6 +34,9 @@ const SETTABLE: Readonly<Record<RowTable, Readonly<Record<string, string>>>> = {
   PLACEMENT: { effectiveTo: "effective_to" },
 };
 
+/** Tables whose rows record the action that closed them. */
+const CLOSES_ROW: Readonly<Record<RowTable, boolean>> = { EMPLOYMENT: false, TERM: true, PLACEMENT: true };
+
 export class EmploymentVersionConflict extends Error {
   constructor() {
     super("EMPLOYMENT_VERSION_CONFLICT");
@@ -53,10 +56,23 @@ export async function loadDecisionDocumentRefs(db: Db, ids: string[]): Promise<D
   return result.rows;
 }
 
-/** A replayed Idempotency-Key returns the original action instead of writing again. */
-export async function findActionByIdempotencyKey(db: Db, key: string): Promise<{ id: string; employeeId: string } | null> {
-  const result = await db.query<{ id: string; employeeId: string }>(
-    `SELECT id, employee_id AS "employeeId" FROM employment_actions WHERE idempotency_key = $1`,
+export interface RecordedActionRef {
+  id: string;
+  employeeId: string;
+  actionType: string;
+  effectiveOn: string | null;
+}
+
+/**
+ * A replayed Idempotency-Key returns the original action instead of writing
+ * again. The caller compares the employee and the action type: the same key
+ * reused for another employee is a client bug, and answering "already done"
+ * would silently drop that second action.
+ */
+export async function findActionByIdempotencyKey(db: Db, key: string): Promise<RecordedActionRef | null> {
+  const result = await db.query<RecordedActionRef>(
+    `SELECT id, employee_id AS "employeeId", action_type AS "actionType", effective_on::text AS "effectiveOn"
+     FROM employment_actions WHERE idempotency_key = $1`,
     [key],
   );
   return result.rows[0] ?? null;
@@ -100,6 +116,12 @@ async function applyRowChanges(client: PoolClient, plan: ActionPlan): Promise<vo
       assignments.push(`${column} = $${values.length}`);
     }
     if (assignments.length === 0) continue;
+    // Closing a term or placement records which action closed it, so the
+    // history explains itself and S7 can reverse exactly what was closed.
+    if (CLOSES_ROW[change.table] && "effectiveTo" in change.next) {
+      values.push(plan.actionId);
+      assignments.push(`closed_by_action_id = $${values.length}`);
+    }
     await client.query(`UPDATE ${table} SET ${assignments.join(", ")} WHERE id = $1`, values);
   }
 }
@@ -165,15 +187,28 @@ export async function refreshProjection(
   const history = (await loadHistories(client, [employeeId])).get(employeeId);
   if (!history) return null;
   const resolved = resolveEmployment(history, date, DEFAULT_EMPLOYMENT_POLICY);
-  const labels = resolved.primaryPlacement
+  const current = await client.query<{ functionalPosition: string | null; structuralPosition: string | null }>(
+    `SELECT functional_position AS "functionalPosition", structural_position AS "structuralPosition"
+     FROM employees WHERE id = $1`,
+    [employeeId],
+  );
+  // A placement carries these two labels only when it came from the master
+  // baseline. Where it does not, the stored values are kept rather than
+  // cleared: the history has nothing to say about them, and the import guard
+  // means no later import would bring them back.
+  const stored = resolved.primaryPlacement
     ? (
         await client.query<{ functionalLabel: string | null; structuralLabel: string | null }>(
           `SELECT functional_label AS "functionalLabel", structural_label AS "structuralLabel"
            FROM employment_placements WHERE id = $1`,
           [resolved.primaryPlacement.id],
         )
-      ).rows[0] ?? { functionalLabel: null, structuralLabel: null }
-    : { functionalLabel: null, structuralLabel: null };
+      ).rows[0] ?? null
+    : null;
+  const labels = {
+    functionalLabel: stored?.functionalLabel ?? current.rows[0]?.functionalPosition ?? null,
+    structuralLabel: stored?.structuralLabel ?? current.rows[0]?.structuralPosition ?? null,
+  };
   const projection = projectEmployee(resolved, labels);
   if (!projection) return null;
   await client.query(

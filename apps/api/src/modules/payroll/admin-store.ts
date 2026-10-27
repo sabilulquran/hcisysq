@@ -296,9 +296,20 @@ const LOAN_COLUMNS = `
   (l.principal - coalesce(paid.total, 0))::text AS outstanding
 `;
 
+/**
+ * Only an instalment belonging to a period that actually reached approval counts
+ * against the balance (specification section 3.4). A deduction typed into a
+ * period that is still being worked on, and then dropped, must not shrink the
+ * loan for ever.
+ */
+export const FINAL_PERIOD_STATES = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
 const LOAN_PAID = `
   LEFT JOIN LATERAL (
-    SELECT sum(d.amount) AS total FROM payroll_loan_deductions d WHERE d.loan_id = l.id
+    SELECT sum(d.amount) AS total
+    FROM payroll_loan_deductions d
+    JOIN payroll_periods p ON p.id = d.period_id
+    WHERE d.loan_id = l.id AND p.state = ANY(ARRAY['APPROVED', 'PAYMENT_CONFIRMED', 'PUBLISHED', 'REOPEN_REQUESTED'])
   ) paid ON true
 `;
 
@@ -350,11 +361,20 @@ export async function createLoan(pool: Pool, loan: NewLoan, actorAccountId: stri
   }
 }
 
+/** An amount of 0 removes the instalment for this period. */
 export type LoanDeductionWrite = { loanId: string; amount: number };
 
 export type LoanDeductionOutcome =
-  | { ok: true }
-  | { ok: false; code: "PAYROLL_LOAN_LOCKED" | "PAYROLL_LOAN_NOT_FOUND" | "PAYROLL_LOAN_EXCEEDS_BALANCE" };
+  | { ok: true; written: number; removed: number }
+  | {
+      ok: false;
+      code:
+        | "PAYROLL_LOAN_LOCKED"
+        | "PAYROLL_LOAN_NOT_FOUND"
+        | "PAYROLL_LOAN_CLOSED"
+        | "PAYROLL_PERIOD_NOT_FOUND"
+        | "PAYROLL_LOAN_EXCEEDS_BALANCE";
+    };
 
 /**
  * Sets this period's instalments. Loans are locked once the period has left the
@@ -378,14 +398,42 @@ export async function setLoanDeductions(
     const state = period.rows[0]?.state;
     if (state === undefined) {
       await client.query("ROLLBACK");
-      return { ok: false, code: "PAYROLL_LOAN_NOT_FOUND" };
+      return { ok: false, code: "PAYROLL_PERIOD_NOT_FOUND" };
     }
     if (state !== "COLLECTING" && state !== "DRAFT") {
       await client.query("ROLLBACK");
       return { ok: false, code: "PAYROLL_LOAN_LOCKED" };
     }
 
+    let written = 0;
+    let removed = 0;
+
     for (const write of writes) {
+      if (write.amount === 0) {
+        const { rowCount } = await client.query(
+          "DELETE FROM payroll_loan_deductions WHERE loan_id = $1 AND period_id = $2",
+          [write.loanId, periodId],
+        );
+        removed += rowCount ?? 0;
+        continue;
+      }
+
+      // Lock the loan too: two periods can be collecting at once, and without
+      // this each could pass its own balance check and together exceed the
+      // principal.
+      const loan = await client.query<{ closedAt: string | null }>(
+        `SELECT closed_at AS "closedAt" FROM payroll_loans WHERE id = $1 FOR UPDATE`,
+        [write.loanId],
+      );
+      if (loan.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "PAYROLL_LOAN_NOT_FOUND" };
+      }
+      if (loan.rows[0]!.closedAt !== null) {
+        await client.query("ROLLBACK");
+        return { ok: false, code: "PAYROLL_LOAN_CLOSED" };
+      }
+
       const balance = await loanBalanceExcluding(client, write.loanId, periodId);
       if (balance === null) {
         await client.query("ROLLBACK");
@@ -404,17 +452,18 @@ export async function setLoanDeductions(
            recorded_at = now()`,
         [randomUUID(), write.loanId, periodId, write.amount, actorAccountId],
       );
+      written += 1;
     }
 
     await writeAudit(client, {
       actorAccountId,
       action: "payroll.loan.deductions_recorded",
       periodId,
-      payload: { loan_count: writes.length },
+      payload: { written, removed },
     });
 
     await client.query("COMMIT");
-    return { ok: true };
+    return { ok: true, written, removed };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -423,7 +472,10 @@ export async function setLoanDeductions(
   }
 }
 
-/** What is left to repay, ignoring whatever this period already deducts. */
+/**
+ * What is left to repay, counting only instalments from periods that reached
+ * approval and ignoring whatever this period itself deducts.
+ */
 async function loanBalanceExcluding(
   client: PoolClient,
   loanId: string,
@@ -431,11 +483,15 @@ async function loanBalanceExcluding(
 ): Promise<number | null> {
   const { rows } = await client.query<{ balance: string }>(
     `SELECT (l.principal - coalesce((
-       SELECT sum(d.amount) FROM payroll_loan_deductions d
-       WHERE d.loan_id = l.id AND d.period_id <> $2
+       SELECT sum(d.amount)
+       FROM payroll_loan_deductions d
+       JOIN payroll_periods p ON p.id = d.period_id
+       WHERE d.loan_id = l.id
+         AND d.period_id <> $2
+         AND p.state = ANY($3::text[])
      ), 0))::text AS balance
      FROM payroll_loans l WHERE l.id = $1 AND l.closed_at IS NULL`,
-    [loanId, periodId],
+    [loanId, periodId, FINAL_PERIOD_STATES],
   );
   return rows[0] ? Number(rows[0].balance) : null;
 }

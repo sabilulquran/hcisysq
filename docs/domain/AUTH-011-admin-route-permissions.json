@@ -2451,8 +2451,7 @@
     "method": "GET",
     "url": "/payroll/loans",
     "permissions": [
-      "payroll.loans.manage",
-      "payroll.calculate"
+      "payroll.loans.manage"
     ]
   },
   {

@@ -21,7 +21,7 @@ import {
   setLoanDeductions,
 } from "./admin-store.js";
 import { ownEmploymentIds } from "./inputs-store.js";
-import { POLICY_KEYS } from "./policy.js";
+import { POLICY_KEYS, validatePolicyPayload } from "./policy.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 
@@ -31,6 +31,9 @@ const policyBody = z.object({
   payload: z.record(z.string(), z.unknown()),
   source: z.string().trim().min(3).max(500),
   note: z.string().trim().max(500).optional(),
+  // Opening a version that reaches back into a period already calculated needs
+  // to be said out loud, with a reason that goes into the note.
+  backdateReason: z.string().trim().min(10).max(500).optional(),
 });
 
 const policyQuery = z.object({ policyKey: z.string().max(64).optional() });
@@ -39,6 +42,7 @@ const employmentParams = z.object({ employmentId: z.string().uuid() });
 
 const profileBody = z.object({
   effectiveFrom: isoDate,
+  backdateReason: z.string().trim().min(10).max(500).optional(),
   education: z.enum(["SD", "SMP", "SLTA", "D1_D2", "D3_D4", "S1", "S2_S3"]).nullable().optional(),
   workPattern: z.enum(["FULL", "HALF_DAY", "HALF_DAY_II"]).nullable().optional(),
   unitRef: z.string().uuid().nullable().optional(),
@@ -73,13 +77,59 @@ const loanBody = z.object({
 const loanQuery = z.object({ employeeId: z.string().uuid().optional() });
 
 const loanDeductionsBody = z.object({
+  // An amount of 0 removes this period's instalment for that loan, so finance
+  // can take one back while the period is still being collected.
   deductions: z
-    .array(z.object({ loanId: z.string().uuid(), amount: z.number().int().positive() }))
+    .array(z.object({ loanId: z.string().uuid(), amount: z.number().int().min(0) }))
     .min(1)
-    .max(500),
+    .max(500)
+    .superRefine((deductions, ctx) => {
+      const seen = new Set<string>();
+      for (const [index, deduction] of deductions.entries()) {
+        if (seen.has(deduction.loanId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "loanId"],
+            message: "Satu kasbon hanya boleh muncul sekali dalam satu permintaan.",
+          });
+        }
+        seen.add(deduction.loanId);
+      }
+    }),
 });
 
 const periodParams = z.object({ periodId: z.string().uuid() });
+
+/**
+ * A period that has been calculated rests on the reference data as it stood then.
+ * Opening a version or a profile that reaches back before such a period would
+ * change what a recalculation produces for a month already being paid, so it is
+ * refused unless the caller says so explicitly and gives a reason
+ * (specification section 3, "perubahan tidak menimpa histori").
+ */
+async function settledPeriodConflict(
+  pool: Pool,
+  effectiveFrom: string,
+): Promise<{ periodMonth: string } | null> {
+  const { rows } = await pool.query<{ periodMonth: string }>(
+    `SELECT to_char(period_month, 'YYYY-MM') AS "periodMonth"
+     FROM payroll_periods
+     WHERE state = ANY($2::text[]) AND pay_date >= $1::date
+     ORDER BY period_month
+     LIMIT 1`,
+    [effectiveFrom, SETTLED_STATES],
+  );
+  return rows[0] ?? null;
+}
+
+const SETTLED_STATES = [
+  "CALCULATED",
+  "SUBMITTED",
+  "APPROVED",
+  "PAYMENT_CONFIRMED",
+  "PUBLISHED",
+  "REOPEN_REQUESTED",
+];
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
@@ -133,8 +183,33 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
         message: body.error.issues[0]?.message ?? "Kebijakan tidak valid.",
       });
     }
+    const payloadCheck = validatePolicyPayload(body.data.policyKey, body.data.payload);
+    if (!payloadCheck.ok) {
+      return send(reply, 400, {
+        code: "PAYROLL_INVALID_POLICY",
+        message: `Isi kebijakan ${body.data.policyKey} tidak sesuai bentuk yang dibutuhkan: ${payloadCheck.message}.`,
+      });
+    }
+
+    const settled = await settledPeriodConflict(pool, body.data.effectiveFrom);
+    if (settled && !body.data.backdateReason) {
+      return send(reply, 409, {
+        code: "PAYROLL_BACKDATES_SETTLED_PERIOD",
+        message: `Periode ${settled.periodMonth} sudah dihitung dengan kebijakan yang berlaku saat itu; sertakan backdateReason bila perubahan ini memang harus berlaku mundur.`,
+      });
+    }
+
     try {
-      const policy = await openPolicyVersion(pool, body.data, actor.accountId);
+      const policy = await openPolicyVersion(
+        pool,
+        {
+          ...body.data,
+          note: body.data.backdateReason
+            ? `${body.data.note ?? ""} [berlaku mundur: ${body.data.backdateReason}]`.trim()
+            : body.data.note,
+        },
+        actor.accountId,
+      );
       return send(reply, 201, { policy });
     } catch (error) {
       // Two versions covering the same day are refused by an exclusion
@@ -180,6 +255,14 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
       });
     }
 
+    const settled = await settledPeriodConflict(pool, body.data.effectiveFrom);
+    if (settled && !body.data.backdateReason) {
+      return send(reply, 409, {
+        code: "PAYROLL_BACKDATES_SETTLED_PERIOD",
+        message: `Periode ${settled.periodMonth} sudah dihitung dengan profil yang berlaku saat itu; sertakan backdateReason bila perubahan ini memang harus berlaku mundur.`,
+      });
+    }
+
     try {
       const profile = await openCompensationProfile(
         pool,
@@ -208,8 +291,10 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
     }
   });
 
+  // Section 3.4: the loan register belongs to finance. The calculation reads the
+  // balances inside its own transaction, so human capital needs no way in here.
   app.get("/payroll/loans", async (request, reply) => {
-    const actor = await requireAny(request, reply, ["payroll.loans.manage", "payroll.calculate"]);
+    const actor = await requireAny(request, reply, ["payroll.loans.manage"]);
     if (!actor) return;
     const query = loanQuery.safeParse(request.query ?? {});
     if (!query.success) {
@@ -251,10 +336,16 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
 
     const outcome = await setLoanDeductions(pool, params.data.periodId, body.data.deductions, actor.accountId);
     if (outcome.ok) {
-      return send(reply, 200, { deductionCount: body.data.deductions.length });
+      return send(reply, 200, { written: outcome.written, removed: outcome.removed });
+    }
+    if (outcome.code === "PAYROLL_PERIOD_NOT_FOUND") {
+      return send(reply, 404, { code: outcome.code, message: "Periode tidak ditemukan." });
     }
     if (outcome.code === "PAYROLL_LOAN_NOT_FOUND") {
-      return send(reply, 404, { code: outcome.code, message: "Periode atau kasbon tidak ditemukan." });
+      return send(reply, 404, { code: outcome.code, message: "Kasbon tidak ditemukan." });
+    }
+    if (outcome.code === "PAYROLL_LOAN_CLOSED") {
+      return send(reply, 409, { code: outcome.code, message: "Kasbon sudah ditutup." });
     }
     if (outcome.code === "PAYROLL_LOAN_LOCKED") {
       return send(reply, 409, {

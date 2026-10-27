@@ -53,7 +53,9 @@ Aturan:
 
 ## 3. Data dasar (berlaku-efektif)
 
-Semua data dasar memiliki `effective_from`/`effective_to` (tanggal Asia/Jakarta, inklusif). Perubahan tidak menimpa histori.
+Semua data dasar memiliki `effective_from`/`effective_to` (tanggal Asia/Jakarta, inklusif). Perubahan tidak menimpa histori: membuka versi baru menutup pendahulunya sehari sebelumnya, sehingga rantainya kontigu dan tidak tumpang tindih.
+
+**Berlaku mundur (`DRAFT`, default agent 2026-10-27).** Membuka versi kebijakan atau profil kompensasi yang tanggal berlakunya mencapai periode yang sudah `CALCULATED` ke atas ditolak, kecuali penulis menyatakan alasannya secara eksplisit (`backdateReason`), yang ikut tersimpan pada catatan versi. Tanpa penolakan ini, menghitung ulang bulan yang sudah disahkan akan menghasilkan angka berbeda dari yang dibayarkan. Setiap baris hasil juga menyimpan id profil dan id versi kebijakan yang dipakainya, sehingga nilai lama tetap dapat dijelaskan.
 
 ### 3.1 Katalog komponen
 
@@ -125,7 +127,7 @@ Jabatan fungsional dan struktural dibaca dari placement EMP-005 dan dipetakan ke
 
 ### 3.4 Kasbon
 
-Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan final. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
+Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan **final**, yaitu potongan yang melekat pada periode yang sudah mencapai `APPROVED` ke atas; potongan pada periode yang masih dikerjakan tidak mengurangi sisa. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
 
 ## 4. Input periode
 

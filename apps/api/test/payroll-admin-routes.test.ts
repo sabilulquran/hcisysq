@@ -46,6 +46,9 @@ type Options = {
   periodState?: string;
   loanBalance?: number;
   insertError?: string;
+  /** A period already calculated whose pay date the write would reach back past. */
+  settledPeriodMonth?: string;
+  loanClosed?: boolean;
 };
 
 function createPool(persona: Persona, options: Options = {}) {
@@ -72,6 +75,18 @@ function createPool(persona: Persona, options: Options = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes('to_char(period_month')) {
+      return options.settledPeriodMonth
+        ? { rows: [{ periodMonth: options.settledPeriodMonth }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes('closed_at AS "closedAt" FROM payroll_loans')) {
+      return { rows: [{ closedAt: options.loanClosed ? "2026-06-01T00:00:00.000Z" : null }], rowCount: 1 };
+    }
+    if (sql.includes("DELETE FROM payroll_loan_deductions")) {
+      writes.push("loan_deduction_removed");
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes("JOIN accounts a ON a.employee_id = e.employee_id")) {
       return { rows: [{ id: OWN_EMPLOYMENT_ID }], rowCount: 1 };
     }
@@ -168,6 +183,38 @@ describe("PAY-003 policy versions", () => {
     expect(audits).toEqual(["payroll.policy.version_opened"]);
   });
 
+  it("refuses a payload the engine could not read later", async () => {
+    const { response, writes } = await call("hc", "POST", "/payroll/policies", {
+      payload: { ...VALID_POLICY, payload: { monthlyHoursDivisor: 173 } },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("PAYROLL_INVALID_POLICY");
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses to reach back into a period already calculated without a reason", async () => {
+    const { response, writes } = await call("hc", "POST", "/payroll/policies", {
+      payload: { ...VALID_POLICY, effectiveFrom: "2026-01-01" },
+      settledPeriodMonth: "2026-09",
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_BACKDATES_SETTLED_PERIOD");
+    expect(writes).toEqual([]);
+  });
+
+  it("allows it once the reason is given", async () => {
+    const { response, writes } = await call("hc", "POST", "/payroll/policies", {
+      payload: {
+        ...VALID_POLICY,
+        effectiveFrom: "2026-01-01",
+        backdateReason: "Koreksi tarif lembur sesuai keputusan yayasan",
+      },
+      settledPeriodMonth: "2026-09",
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toEqual(["policy"]);
+  });
+
   it("requires a source, because a statutory value has to say where it comes from", async () => {
     const { response } = await call("hc", "POST", "/payroll/policies", {
       payload: { ...VALID_POLICY, source: "" },
@@ -214,6 +261,16 @@ describe("PAY-003 compensation profiles", () => {
     );
     expect(response.statusCode).toBe(403);
     expect(response.json().code).toBe("PAYROLL_OWN_RECORD");
+  });
+
+  it("refuses a profile that reaches back into a period already calculated", async () => {
+    const { response, writes } = await call("hc", "POST", url, {
+      payload: { ...profile, effectiveFrom: "2026-01-01" },
+      settledPeriodMonth: "2026-09",
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_BACKDATES_SETTLED_PERIOD");
+    expect(writes).toEqual([]);
   });
 
   it("refuses an overlapping effective date", async () => {
@@ -267,11 +324,49 @@ describe("PAY-003 loans", () => {
     expect((await call("hc", "POST", "/payroll/loans", { payload: loan })).response.statusCode).toBe(403);
   });
 
+  it("keeps the loan register itself closed to human capital", async () => {
+    // Section 3.4: only payroll.loans.manage. The calculation reads the balances
+    // inside its own transaction, so payroll.calculate needs no way in.
+    expect((await call("hc", "GET", "/payroll/loans")).response.statusCode).toBe(403);
+  });
+
+  it("removes this period's instalment when the amount is zero", async () => {
+    const { response, writes } = await call("finance", "PUT", `/payroll/periods/${PERIOD_ID}/loan-deductions`, {
+      payload: { deductions: [{ loanId: LOAN_ID, amount: 0 }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ written: 0, removed: 1 });
+    expect(writes).toEqual(["loan_deduction_removed"]);
+  });
+
+  it("refuses the same loan twice in one request", async () => {
+    const { response } = await call("finance", "PUT", `/payroll/periods/${PERIOD_ID}/loan-deductions`, {
+      payload: {
+        deductions: [
+          { loanId: LOAN_ID, amount: 100_000 },
+          { loanId: LOAN_ID, amount: 200_000 },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("refuses an instalment against a loan that is already closed", async () => {
+    const { response, writes } = await call("finance", "PUT", `/payroll/periods/${PERIOD_ID}/loan-deductions`, {
+      payload: { deductions: [{ loanId: LOAN_ID, amount: 100_000 }] },
+      loanClosed: true,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_LOAN_CLOSED");
+    expect(writes).toEqual([]);
+  });
+
   it("records this period's instalments while the period is still collecting", async () => {
     const { response, writes, audits } = await call("finance", "PUT", `/payroll/periods/${PERIOD_ID}/loan-deductions`, {
       payload: { deductions: [{ loanId: LOAN_ID, amount: 300_000 }] },
     });
     expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ written: 1, removed: 0 });
     expect(writes).toEqual(["loan_deduction"]);
     expect(audits).toEqual(["payroll.loan.deductions_recorded"]);
   });

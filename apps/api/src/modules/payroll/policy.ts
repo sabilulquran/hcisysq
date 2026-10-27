@@ -94,6 +94,26 @@ const PAYLOAD_SCHEMAS = {
   VARIANCE_THRESHOLD: z.object({ relative: rate, absolute: rupiah, manualInput: rupiah }),
 } as const;
 
+/**
+ * Checks one policy payload against the shape the engine needs. The write path
+ * calls this so a typo comes back as a refused request, rather than as a period
+ * that cannot be calculated at all weeks later.
+ */
+export function validatePolicyPayload(
+  policyKey: string,
+  payload: unknown,
+): { ok: true } | { ok: false; message: string } {
+  const schema = (PAYLOAD_SCHEMAS as Record<string, { safeParse: (value: unknown) => { success: boolean; error?: { issues: Array<{ path: Array<string | number>; message: string }> } } }>)[policyKey];
+  // PPH21_TER has no schema yet: the engine does not read it, so it is stored as
+  // evidence and checked when the PPh21 report is built.
+  if (!schema) return { ok: true };
+  const result = schema.safeParse(payload);
+  if (result.success) return { ok: true };
+  const issue = result.error?.issues[0];
+  const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
+}
+
 export type PolicyResolution =
   | { ok: true; policy: PayrollPolicy; versionIds: string[]; variance: { relative: number; absolute: number; manualInput: number } }
   | { ok: false; problems: PolicyProblem[] };

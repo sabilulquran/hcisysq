@@ -57,6 +57,13 @@ paths:
                 payload: { type: object }
                 source: { type: string, minLength: 3, maxLength: 500 }
                 note: { type: string, maxLength: 500 }
+                backdateReason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                  description: >-
+                    Required when effectiveFrom reaches back into a period that
+                    has already been calculated. It is appended to the note.
       responses:
         '201':
           description: The version that now applies
@@ -71,7 +78,9 @@ paths:
         '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
         '409':
-          description: Another version already covers that date
+          description: >-
+            Another version already covers that date, or the date reaches back
+            into a period already calculated and no backdateReason was given
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollAdminError' }
@@ -137,7 +146,9 @@ paths:
               schema: { $ref: '#/components/schemas/PayrollAdminError' }
         '404': { $ref: '#/components/responses/PayrollAdminNotFound' }
         '409':
-          description: Another profile already covers that date
+          description: >-
+            Another profile already covers that date, or the date reaches back
+            into a period already calculated and no backdateReason was given
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollAdminError' }
@@ -231,7 +242,10 @@ paths:
                     required: [loanId, amount]
                     properties:
                       loanId: { type: string, format: uuid }
-                      amount: { type: integer, minimum: 1 }
+                      amount:
+                        type: integer
+                        minimum: 0
+                        description: 0 removes this period's instalment for that loan.
       responses:
         '200':
           description: The instalments were recorded
@@ -239,9 +253,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [deductionCount]
+                required: [written, removed]
                 properties:
-                  deductionCount: { type: integer }
+                  written: { type: integer }
+                  removed: { type: integer }
         '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
         '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
@@ -272,6 +287,9 @@ components:
             - PAYROLL_LOAN_LOCKED
             - PAYROLL_LOAN_EXCEEDS_BALANCE
             - PAYROLL_LOAN_NOT_FOUND
+            - PAYROLL_LOAN_CLOSED
+            - PAYROLL_PERIOD_NOT_FOUND
+            - PAYROLL_BACKDATES_SETTLED_PERIOD
             - PAYROLL_EMPLOYMENT_NOT_FOUND
             - PAYROLL_EMPLOYEE_NOT_FOUND
             - UNAUTHENTICATED
@@ -326,15 +344,38 @@ components:
         bankAccountName: { type: [string, 'null'] }
 
     PayrollCompensationProfile:
-      allOf:
-        - $ref: '#/components/schemas/PayrollCompensationProfileWrite'
-        - type: object
-          required: [id, employmentId]
-          properties:
-            id: { type: string, format: uuid }
-            employmentId: { type: string, format: uuid }
-            effectiveTo: { type: [string, 'null'], format: date }
-            recordedAt: { type: string, format: date-time }
+      type: object
+      description: >-
+        The stored profile. Numeric and bigint columns come back as strings, as
+        they do everywhere else in this API.
+      required: [id, employmentId, effectiveFrom]
+      properties:
+        id: { type: string, format: uuid }
+        employmentId: { type: string, format: uuid }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        education: { type: [string, 'null'] }
+        workPattern: { type: [string, 'null'] }
+        unitRef: { type: [string, 'null'], format: uuid }
+        functionalPositionRef: { type: [string, 'null'], format: uuid }
+        structuralPositionRef: { type: [string, 'null'], format: uuid }
+        teachingHoursPerWeek: { type: [string, 'null'] }
+        spouseCount: { type: integer }
+        childCount: { type: integer }
+        registeredDependants: { type: integer }
+        specialQualificationTarget: { type: [string, 'null'] }
+        annualPerformanceRate: { type: [string, 'null'] }
+        monthlyPerformanceRate: { type: [string, 'null'] }
+        bpjsSegment: { type: string }
+        bpjsActiveFrom: { type: [string, 'null'], format: date }
+        bpjsExtraFamilyOverride: { type: [integer, 'null'] }
+        bpjsExtraFamilyOverrideReason: { type: [string, 'null'] }
+        bpjsDecisionReference: { type: [string, 'null'] }
+        ptkpStatus: { type: [string, 'null'] }
+        pjMediaRatePerContent: { type: [string, 'null'] }
+        bankAccountNumber: { type: [string, 'null'] }
+        bankAccountName: { type: [string, 'null'] }
+        recordedAt: { type: string, format: date-time }
 
     PayrollLoan:
       type: object

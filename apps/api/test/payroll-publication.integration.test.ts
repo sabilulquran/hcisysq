@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { clearOwnPeriods } from "./support/payroll-cleanup.js";
+
 import {
   buildPayslipLines,
   draftPayslipsFromPeriod,
@@ -93,6 +95,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
   let pool: Pool;
   let legalEntityKey: string;
   let actorAccountId: string;
+  let ownedPeriodIds: string[] = [];
 
   beforeAll(() => {
     pool = new Pool({ connectionString: databaseUrl!, max: 2 });
@@ -104,20 +107,9 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
 
   beforeEach(async () => {
     legalEntityKey = randomUUID();
-    // Published slips are immutable by design, so clearing what an earlier test
-    // published means standing the guard down for the length of the cleanup.
-    await pool.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
-    try {
-      // Both links point at another payslip with ON DELETE RESTRICT, so they are
-      // broken before the rows go; a single DELETE of the pair would be refused.
-      await pool.query(
-        `UPDATE payslips SET superseded_by_id = NULL, revision_of = NULL
-         WHERE superseded_by_id IS NOT NULL OR revision_of IS NOT NULL`,
-      );
-      await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
-    } finally {
-      await pool.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");
-    }
+    // Only this suite's own rows: test files run in parallel against one database.
+    await clearOwnPeriods(pool, ownedPeriodIds);
+    ownedPeriodIds = [];
     const accounts = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
     if (accounts.rows[0]) {
       actorAccountId = accounts.rows[0].id;
@@ -163,6 +155,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
 
   async function newPeriod(state: string) {
     const periodId = randomUUID();
+    ownedPeriodIds.push(periodId);
     await pool.query(
       `INSERT INTO payroll_periods(
          id, legal_entity_key, period_month, pay_date, period_start, period_end, cutoff_start, cutoff_end, state)

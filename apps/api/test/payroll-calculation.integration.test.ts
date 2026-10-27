@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { clearOwnPeriods } from "./support/payroll-cleanup.js";
+
 import { calculatePeriod } from "../src/modules/payroll/calculation.js";
 import { getPeriod, hasCurrentCalculation } from "../src/modules/payroll/store.js";
 
@@ -52,6 +54,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
   let pool: Pool;
   let periodId: string;
   let actorAccountId: string;
+  let ownedPeriodIds: string[] = [];
   // Other suites leave employments behind in the shared CI database, and a
   // payroll period pays everyone in its legal entity. Each test therefore gets
   // its own entity key, which is exactly the filter the production query uses.
@@ -126,32 +129,16 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
   }
 
   beforeEach(async () => {
-    // A clean slate: this suite owns the payroll tables in the CI database.
-    await pool.query("DELETE FROM payroll_result_lines");
-    await pool.query("DELETE FROM payroll_results");
-    await pool.query("DELETE FROM payroll_loan_deductions");
-    await pool.query("DELETE FROM payroll_loans");
-    await pool.query("DELETE FROM payroll_period_inputs");
-    await pool.query("DELETE FROM payroll_period_transitions");
-    await pool.query("DELETE FROM payroll_audit_events");
-    // A slip drafted from a period holds it in place. A published slip is
-    // immutable by design (PAYSLIP-001), which is exactly what we want in
-    // production and exactly what has to be stood down to clean a test database.
-    await pool.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
-    try {
-      // Both links point at another payslip with ON DELETE RESTRICT, so they are
-      // broken before the rows go; a single DELETE of the pair would be refused.
-      await pool.query(
-        `UPDATE payslips SET superseded_by_id = NULL, revision_of = NULL
-         WHERE superseded_by_id IS NOT NULL OR revision_of IS NOT NULL`,
-      );
-      await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
-    } finally {
-      await pool.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");
-    }
-    await pool.query("DELETE FROM payroll_periods");
-    await pool.query("DELETE FROM payroll_policy_versions");
-    await pool.query("DELETE FROM payroll_compensation_profiles");
+    // Only this suite's own rows: test files run in parallel against one
+    // database, and clearing the payroll tables wholesale pulls the ground out
+    // from under whatever another suite is doing.
+    await clearOwnPeriods(pool, ownedPeriodIds);
+    ownedPeriodIds = [];
+    // Only the keys this suite is about to write: another suite owns a key of
+    // its own, and clearing the table would take that with it.
+    await pool.query("DELETE FROM payroll_policy_versions WHERE policy_key = ANY($1::text[])", [
+      Object.keys(POLICY_PAYLOADS),
+    ]);
 
     for (const [policyKey, payload] of Object.entries(POLICY_PAYLOADS)) {
       await pool.query(
@@ -162,6 +149,7 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     }
 
     periodId = randomUUID();
+    ownedPeriodIds.push(periodId);
     legalEntityKey = randomUUID();
     await pool.query(
       `INSERT INTO payroll_periods(

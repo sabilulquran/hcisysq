@@ -1,12 +1,16 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.3.0
+  version: 0.4.0
   description: |
-    Package 1 steps S2 and S4 (docs/domain/employment-administration-package1.md).
-    Read API, SHADOW consistency report, rollout mode, and the EMP-010 register of
-    Perjanjian Kerja and Surat Keputusan; employment actions arrive in S5/S6.
-    The register follows the same rollout gate: it is unavailable while the mode is OFF.
+    Package 1 steps S2, S4 and S5 (docs/domain/employment-administration-package1.md).
+    Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
+    Perjanjian Kerja and Surat Keputusan, and the four contract actions (HIRE,
+    CONTRACT_EXTENSION, CATEGORY_CHANGE, TERMINATION). Career actions arrive in S6
+    and reversal in S7.
+    Reads and the register need a mode other than OFF; recording or previewing an
+    action needs AUTHORITATIVE (spec §8.1), which stays unavailable until the
+    automatic account deactivation of S5A is released.
     employment.* is HC-only and never granted through legacy Super Admin compatibility.
     Read endpoints return 409 EMPLOYMENT_HISTORY_DISABLED while the rollout mode is OFF.
     All responses carry Cache-Control: no-store.
@@ -291,6 +295,84 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /admin/employees/{employeeId}/employment-actions/preview:
+    post:
+      tags: [Employment]
+      operationId: previewEmploymentAction
+      summary: Validate an action and show "dari -> menjadi" without writing (EMP-005)
+      description: |
+        Requires employment.manage and mode AUTHORITATIVE. Returns the planned result
+        and its warnings; the basis-document and warning-acknowledgement checks belong
+        to recording, so a preview succeeds without a document.
+      parameters: [{ $ref: '#/components/parameters/EmployeeId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmploymentActionRequest' }
+      responses:
+        '200':
+          description: Planned result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmploymentActionPreview' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/employees/{employeeId}/employment-actions:
+    post:
+      tags: [Employment]
+      operationId: recordEmploymentAction
+      summary: Record one contract action (EMP-005)
+      description: |
+        Requires employment.manage, mode AUTHORITATIVE, and an Idempotency-Key header;
+        a replayed key returns the original action with replayed=true and 200 instead
+        of writing again. Rows, action, document links, the nine projected employees
+        columns and the audit events are written in one transaction. An employee whose
+        own account records the action is refused (EMPLOYMENT_SELF_ACTION_FORBIDDEN).
+      parameters:
+        - { $ref: '#/components/parameters/EmployeeId' }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmploymentActionRequest' }
+      responses:
+        '200':
+          description: Replay of an already recorded action
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actionId, replayed]
+                properties:
+                  actionId: { type: string, format: uuid }
+                  replayed: { type: boolean, enum: [true] }
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actionId, replayed]
+                properties:
+                  actionId: { type: string, format: uuid }
+                  replayed: { type: boolean, enum: [false] }
+                  projection: { $ref: '#/components/schemas/EmployeeProjection' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
 components:
   parameters:
     EmployeeId:
@@ -312,7 +394,14 @@ components:
         DECISION_DOCUMENT_INVALID (with a field name), DECISION_DOCUMENT_NOT_FOUND,
         DECISION_DOCUMENT_NUMBER_TAKEN, DECISION_DOCUMENT_LOCKED,
         DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,
-        EMPLOYMENT_VERSION_CONFLICT.
+        EMPLOYMENT_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, and the action codes
+        of spec §12: EMPLOYMENT_SELF_ACTION_FORBIDDEN, EMPLOYMENT_NOT_ACTIVE,
+        EMPLOYMENT_ALREADY_ACTIVE, EMPLOYMENT_OVERLAP, EMPLOYMENT_ACTION_OUT_OF_ORDER,
+        EMPLOYMENT_BACKDATE_NOT_ALLOWED, EMPLOYMENT_BACKDATE_REASON_REQUIRED,
+        EMPLOYMENT_REFERENCE_INVALID, EMPLOYMENT_CROSS_ENTITY_UNSUPPORTED,
+        EMPLOYMENT_TERM_END_REQUIRED, EMPLOYMENT_TERM_INVALID, EMPLOYMENT_REASON_REQUIRED,
+        EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED, EMPLOYMENT_BASELINE_MISSING,
+        DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH.
       content:
         application/json:
           schema:
@@ -323,6 +412,103 @@ components:
               message: { type: string }
               field: { type: string, description: Set by DECISION_DOCUMENT_INVALID. }
   schemas:
+    EmploymentWarning:
+      type: string
+      enum: [BACKDATED, TERM_GAP, CONTRACT_DURATION_LONG, PROBATION_DURATION_LONG]
+    EmploymentPlacementInput:
+      type: object
+      additionalProperties: false
+      required: [jobTitleLabel]
+      description: One unit reference is required; ORG-004 keys win over the legacy ids.
+      properties:
+        unitKey: { type: [string, 'null'], format: uuid }
+        unitId: { type: [string, 'null'], format: uuid }
+        positionKey: { type: [string, 'null'], format: uuid }
+        positionId: { type: [string, 'null'], format: uuid }
+        jobTitleLabel: { type: string, minLength: 1, maxLength: 200 }
+    EmploymentActionRequest:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [actionType, effectiveOn, category, placement]
+          properties:
+            actionType: { type: string, enum: [HIRE] }
+            effectiveOn: { type: string, format: date }
+            category: { $ref: '#/components/schemas/PkCategoryOrPermanent' }
+            termEndOn: { type: [string, 'null'], format: date, description: Required for every fixed-term category (D-03). }
+            staffType: { type: [string, 'null'], enum: [PENDIDIK, KEPENDIDIKAN, null] }
+            contractReference: { type: [string, 'null'], maxLength: 200 }
+            placement: { $ref: '#/components/schemas/EmploymentPlacementInput' }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
+          required: [actionType, effectiveOn, termEndOn]
+          properties:
+            actionType: { type: string, enum: [CONTRACT_EXTENSION] }
+            effectiveOn: { type: string, format: date }
+            termEndOn: { type: string, format: date }
+            contractReference: { type: [string, 'null'], maxLength: 200 }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
+          required: [actionType, effectiveOn, category]
+          properties:
+            actionType: { type: string, enum: [CATEGORY_CHANGE] }
+            effectiveOn: { type: string, format: date }
+            category: { $ref: '#/components/schemas/PkCategoryOrPermanent' }
+            termEndOn: { type: [string, 'null'], format: date }
+            contractReference: { type: [string, 'null'], maxLength: 200 }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
+          required: [actionType, lastDayOn, reasonCode]
+          properties:
+            actionType: { type: string, enum: [TERMINATION] }
+            lastDayOn: { type: string, format: date, description: The last working day; the employment ends on it. }
+            reasonCode:
+              type: string
+              enum: [RESIGN, KONTRAK_BERAKHIR, PENSIUN, PEMBERHENTIAN, MENINGGAL_DUNIA, LAINNYA]
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+    PkCategoryOrPermanent:
+      type: string
+      enum: [TETAP, KONTRAK, KONTRAK_HONORER, MAGANG, PERCOBAAN, LEPAS]
+    EmploymentActionPreview:
+      type: object
+      required: [actionType, effectiveOn, warnings, previous, next, documentIds, state]
+      properties:
+        actionType: { type: string }
+        effectiveOn: { type: [string, 'null'], format: date }
+        reasonCode: { type: [string, 'null'] }
+        warnings:
+          type: array
+          items: { $ref: '#/components/schemas/EmploymentWarning' }
+          description: Warnings must be echoed in acknowledgedWarnings when recording (D-04).
+        previous: { type: object, description: Display-only "dari" summary. }
+        next: { type: object, description: Display-only "menjadi" summary. }
+        documentIds: { type: array, items: { type: string, format: uuid } }
+        expectedVersion: { type: [integer, 'null'], description: Optimistic token of the affected employment. }
+        state: { type: string, enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA] }
+    EmployeeProjection:
+      type: object
+      description: The nine legacy employees columns as the action left them (spec §8.4).
+      properties:
+        status: { type: string, enum: [active, inactive, resigned] }
+        employmentStatus: { type: [string, 'null'] }
+        employmentType: { type: [string, 'null'] }
+        organizationalUnitId: { type: [string, 'null'], format: uuid }
+        positionId: { type: [string, 'null'], format: uuid }
+        functionalPosition: { type: [string, 'null'] }
+        structuralPosition: { type: [string, 'null'] }
+        startedOn: { type: [string, 'null'], format: date }
+        endedOn: { type: [string, 'null'], format: date }
     DecisionDocumentKind:
       type: string
       enum: [PERJANJIAN_KERJA, SURAT_KEPUTUSAN]

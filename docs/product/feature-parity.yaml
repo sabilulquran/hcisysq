@@ -188,7 +188,7 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. Steps S1-S3 (history schema and resolver, baseline CLI, read API, employment permissions, admin read screens) are merged (#113, #117, #120) and released in hcis-5e4ddc96-20261017 with rollout mode OFF and empty tables. Contract actions (S5), account deactivation (S5A), reversal/self-service (S7) and the pilot runbook (S8) are not started; AUTHORITATIVE stays refused until S5/S5A.
+    planning_note: Package 1 workflow spec (contracts, baseline migration, rollout modes) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. Steps S1-S3 (history schema and resolver, baseline CLI, read API, employment permissions, admin read screens) are merged (#113, #117, #120) and released in hcis-5e4ddc96-20261017 with rollout mode OFF and empty tables. The contract actions of S5 (hire, contract extension, category change, termination) are implemented on the API side with the projection writer, the idempotent replay, the EMP-004 import guard and the projection-refresh CLI; their dialog (S5B), account deactivation (S5A), reversal/self-service (S7) and the pilot runbook (S8) are not started. AUTHORITATIVE stays refused by the rollout endpoint until S5A, so no action can be recorded in production yet.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md

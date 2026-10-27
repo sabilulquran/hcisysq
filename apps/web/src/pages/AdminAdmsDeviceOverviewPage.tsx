@@ -71,7 +71,7 @@ export function AdminAdmsDeviceOverviewPage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Ringkasan kondisi mesin">
         <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Radio className="h-4 w-4" /> Status koneksi</div><span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span><p className="mt-2 text-xs leading-5 text-muted-foreground">Terakhir terhubung {fmt(health?.lastSuccessfulRequestAt ?? device.lastSuccessfulRequestAt)}</p></div>
-        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><MapPin className="h-4 w-4" /> Lokasi / unit</div><p className="mt-3 text-sm font-bold text-brand-heading">{profile?.worksiteLabel || profile?.areaContext || "Belum diisi"}</p><p className="mt-1 text-xs text-muted-foreground">Atur pada tab Konfigurasi.</p></div>
+        <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><MapPin className="h-4 w-4" /> Lokasi / unit</div><p className="mt-3 text-sm font-bold text-brand-heading">{profile?.workLocationName || profile?.worksiteLabel || profile?.areaContext || "Belum diisi"}</p><p className="mt-1 text-xs text-muted-foreground">Atur pada tab Konfigurasi.</p></div>
         <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Activity className="h-4 w-4" /> Transaksi terakhir</div><p className="mt-3 text-sm font-bold text-brand-heading">{fmt(health?.lastTransactionActivityAt ?? null)}</p><p className="mt-1 text-xs text-muted-foreground">Aktivitas transaksi terakhir yang tercatat.</p></div>
         <div className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Fingerprint className="h-4 w-4" /> Status mesin</div><p className="mt-3 text-lg font-bold text-brand-heading">{lifecycleLabel(device.lifecycle)}</p><p className="mt-1 text-xs text-muted-foreground">{device.model ?? "Model belum terbaca"} · {device.firmwareVersion ?? "Firmware belum terbaca"}</p></div>
       </section>
@@ -102,7 +102,7 @@ export function AdminAdmsDeviceOverviewPage() {
           {[
             ["Nama mesin", device.displayName || "Belum diisi"],
             ["Serial", device.serialNumber],
-            ["Lokasi", profile?.worksiteLabel || "Belum diisi"],
+            ["Lokasi", profile?.workLocationName || profile?.worksiteLabel || "Belum diisi"],
             ["Konteks area", profile?.areaContext || "Belum diisi"],
             ["Zona waktu", device.timezone],
             ["Model", device.model ?? "Belum terbaca"],

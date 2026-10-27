@@ -38,6 +38,8 @@ import {
   restrictedMediaReady,
 } from "./restricted-media-crypto.js";
 import { attendanceTodayReadModel } from "./today.js";
+import { isEffective, jakartaBusinessDate } from "../organization/jakarta-date.js";
+import { PostgresOrganizationRepository } from "../organization/repository.js";
 import { attendanceTransactions } from "./transactions.js";
 import { unattributedPins, unscheduledEmployees } from "./unscheduled.js";
 
@@ -417,6 +419,27 @@ async function sendError(reply: FastifyReply, error: unknown) {
   if (!(error instanceof WorkforceAttendanceError)) throw error;
   reply.header("Cache-Control", "no-store");
   return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+}
+
+/**
+ * ORG-005-2 (D-5-7): what still uses a work location — units of the structure effective today and
+ * active attendance machines. Names only; nothing personal.
+ */
+async function workLocationUses(pool: Pool, locationId: string): Promise<Array<{ kind: "UNIT" | "DEVICE"; name: string }>> {
+  const asOf = jakartaBusinessDate();
+  const [snapshot, devices] = await Promise.all([
+    new PostgresOrganizationRepository(pool).loadEffectiveSnapshot(asOf),
+    pool.query<{ name: string }>(
+      `SELECT coalesce(display_name, serial_number) AS name FROM attendance_adms_devices
+       WHERE work_location_id = $1 AND lifecycle = 'active' ORDER BY name`,
+      [locationId],
+    ),
+  ]);
+  const units = (snapshot?.nodes ?? [])
+    .filter((node) => node.active && node.workLocationId === locationId
+      && isEffective(node.effectiveFrom, node.effectiveTo, asOf))
+    .map((node) => ({ kind: "UNIT" as const, name: node.name }));
+  return [...units, ...devices.rows.map((row) => ({ kind: "DEVICE" as const, name: row.name }))];
 }
 
 export async function registerAttendanceWorkforceRoutes(
@@ -944,6 +967,18 @@ export async function registerAttendanceWorkforceRoutes(
     );
     const item = current.rows[0];
     if (!item) return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
+    // ORG-005-2 (DRAFT D-5-7): a location still named by a unit of today's structure or by an active
+    // machine is not switched off; the refusal names what still uses it.
+    if (body.data.active === false && item.active) {
+      const uses = await workLocationUses(pool, params.data.locationId);
+      if (uses.length > 0) {
+        return reply.status(409).send({
+          code: "WORK_LOCATION_IN_USE",
+          message: "Lokasi kerja ini masih dipakai unit atau mesin absensi.",
+          details: { uses },
+        });
+      }
+    }
     const next = { ...item, ...body.data };
     await pool.query(
       `UPDATE attendance_work_locations

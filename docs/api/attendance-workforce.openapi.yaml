@@ -653,6 +653,11 @@ paths:
         - { name: locationId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: Work location updated without deleting historical references }
+        '409':
+          description: >-
+            WORK_LOCATION_IN_USE (ORG-005-2, DRAFT D-5-7) when `active: false` is requested while a unit of
+            the structure effective today or an active ADMS machine still names the location;
+            `details.uses` lists them as `{ kind: UNIT | DEVICE, name }`. Nothing is changed.
 
   /admin/attendance/schedules/{scheduleId}:
     patch:

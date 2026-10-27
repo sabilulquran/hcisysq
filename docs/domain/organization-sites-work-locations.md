@@ -63,8 +63,14 @@ Di luar v1 (TBD): beberapa lokasi untuk satu unit, penugasan sementara ke lokasi
 | Paket | Isi | Migration | Test minimum |
 |---|---|---|---|
 | **ORG-005-1** (selesai) | Kolom `organization_nodes.work_location_id`; tautan di panel unit Struktur (jendela "Lokasi, unit lama & staf HC"); `workLocation` di read model (warisan dari induk); hitungan Kesiapan | Ya, aditif. Rollback: `DROP COLUMN`; struktur lain tidak tersentuh. | Tautan tersimpan per change set; warisan dari induk; lokasi nonaktif ditolak; audit dan jurnal; izin `organization.manage` |
-| **ORG-005-2** | `attendance_adms_devices.work_location_id`; pilihan lokasi di layar mesin; penolakan nonaktif lokasi yang masih dipakai (D-5-7) | Ya, aditif | Tautan mesin; 409 dengan daftar pemakai; audit |
+| **ORG-005-2** (selesai) | `attendance_adms_devices.work_location_id`; pilihan lokasi di layar mesin; penolakan nonaktif lokasi yang masih dipakai (D-5-7) | Ya, aditif | Tautan mesin; 409 dengan daftar pemakai; audit |
 | ORG-005-3 (TBD) | Jadwal memakai lokasi unit sebagai bawaan | Tidak | Menunggu ATT-011 |
+
+**Catatan ORG-005-2 (dibangun):**
+- `PATCH /admin/attendance/adms/devices/:deviceId/wdms-profile` menerima `workLocationId`. Lokasinya harus ada dan aktif; kalau tidak, ditolak 400 `INVALID_WORK_LOCATION` dan di-*rollback*. Perubahan ini masuk ke audit `wdms_device_profile_updated`. Profil mesin mengembalikan `workLocationId` dan `workLocationName`.
+- `PATCH /admin/attendance/work-locations/:id` dengan `active: false` ditolak 409 `WORK_LOCATION_IN_USE` (beserta `details.uses`) bila lokasi itu masih dipakai unit di struktur yang berlaku hari ini atau oleh mesin aktif.
+- Migration `0090_adms_device_work_location.sql` diberi nomor 0090 supaya jauh dari rentang yang dipakai paket lain.
+- Di layar mesin: "Lokasi kerja" kini dipilih dari daftar organisasi, sedangkan `worksite_label` lama tetap tersimpan sebagai "Catatan lokasi (lama)". Pemilihnya hanya tampil bagi pemegang `attendance.schedule.manage` dan `attendance.devices.configure`.
 
 ## 6. Privasi
 

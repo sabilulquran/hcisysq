@@ -655,7 +655,7 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   `GET …/schedule-changes/{id}` (Riwayat, berhalaman), `GET /admin/attendance/schedule-calendar` (kalender,
   50 pegawai per halaman, 1–42 hari). Mutasi butuh `attendance.schedule.manage`; baca juga boleh dengan
   `attendance.reports.read` (D-1).
-- **Migration `0091`:** `attendance_schedule_change_sets`, `attendance_schedule_change_items`, dan kolom
+- **Migration `0092`:** `attendance_schedule_change_sets`, `attendance_schedule_change_items`, dan kolom
   nullable `change_set_id` pada assignment dan roster. Aditif; rollback di header. Berbeda dari rancangan §5.3:
   `base_state` tidak disimpan terpisah karena `preview_fingerprint` sudah mencakup input, pegawai, assignment,
   versi roster terakhir per minggu, draft, libur, tukar shift, dan rencana itu sendiri; status hanya

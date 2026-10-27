@@ -41,6 +41,7 @@ import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
+import { AdminAttendancePlannerPage } from "@/pages/AdminAttendancePlannerPage";
 import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
@@ -322,6 +323,13 @@ const adminAttendanceSchedulePatternsRoute = createRoute({
   component: AdminAttendanceAssignmentsPage,
 });
 
+const adminAttendanceScheduleCalendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/schedules/calendar",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules/calendar"),
+  component: AdminAttendancePlannerPage,
+});
+
 const adminAttendanceScheduleDatesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/schedules/dates",
@@ -594,6 +602,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceRoute,
   adminAttendanceShiftsRoute,
   adminAttendanceSchedulePatternsRoute,
+  adminAttendanceScheduleCalendarRoute,
   adminAttendanceScheduleDatesRoute,
   adminAttendanceShiftSwapsRoute,
   adminAttendanceDailyRoute,

@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.2.0
+  version: 0.3.0
   description: |
-    Package 1 step S2 (docs/domain/employment-administration-package1.md).
-    Read API, SHADOW consistency report, and rollout mode only; actions arrive in S5/S6.
+    Package 1 steps S2 and S4 (docs/domain/employment-administration-package1.md).
+    Read API, SHADOW consistency report, rollout mode, and the EMP-010 register of
+    Perjanjian Kerja and Surat Keputusan; employment actions arrive in S5/S6.
+    The register follows the same rollout gate: it is unavailable while the mode is OFF.
     employment.* is HC-only and never granted through legacy Super Admin compatibility.
     Read endpoints return 409 EMPLOYMENT_HISTORY_DISABLED while the rollout mode is OFF.
     All responses carry Cache-Control: no-store.
@@ -152,10 +154,152 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
+  /admin/decision-documents:
+    get:
+      tags: [Employment]
+      operationId: listDecisionDocuments
+      summary: Register of Perjanjian Kerja or Surat Keputusan (EMP-010)
+      description: Requires employment.read. One kind per request; PK and SK are separate series.
+      parameters:
+        - { name: kind, in: query, required: true, schema: { $ref: '#/components/schemas/DecisionDocumentKind' } }
+        - { name: search, in: query, schema: { type: string, maxLength: 120 }, description: Number, subject, employee name, or employee number. }
+        - { name: year, in: query, schema: { type: integer }, description: Signing year. }
+        - { name: pkType, in: query, schema: { $ref: '#/components/schemas/PkType' } }
+        - { name: skType, in: query, schema: { $ref: '#/components/schemas/SkType' } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/PkCategory' } }
+        - { name: employeeId, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: One page of the register
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kind, page, pageSize, total, rows]
+                properties:
+                  kind: { $ref: '#/components/schemas/DecisionDocumentKind' }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+                  rows: { type: array, items: { $ref: '#/components/schemas/DecisionDocument' } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Employment]
+      operationId: createDecisionDocument
+      summary: Record a Perjanjian Kerja or a Surat Keputusan (EMP-010)
+      description: |
+        Requires employment.manage. Package 1 stores metadata only; no file upload.
+        Audited as employment.document.recorded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionDocumentWrite' }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionDocument' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/decision-documents/{documentId}:
+    get:
+      tags: [Employment]
+      operationId: getDecisionDocument
+      summary: One document with the actions that use it and its corrections
+      description: Requires employment.read.
+      parameters: [{ $ref: '#/components/parameters/DocumentId' }]
+      responses:
+        '200':
+          description: Document detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionDocumentDetail' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Employment]
+      operationId: updateDecisionDocument
+      summary: Edit a document no action uses yet (EMP-010-B)
+      description: |
+        Requires employment.manage. The body replaces the document in full, so an
+        omitted optional field is cleared. Rejected with DECISION_DOCUMENT_LOCKED
+        once the document is linked to a recorded action; use the correction path
+        instead. The kind, and the employee of a Perjanjian Kerja, cannot change.
+        The lock and the kind are checked on the row read under FOR UPDATE, so an
+        action linking the document meanwhile is never missed.
+      parameters: [{ $ref: '#/components/parameters/DocumentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecisionDocumentEdit' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionDocument' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/decision-documents/{documentId}/corrections:
+    post:
+      tags: [Employment]
+      operationId: correctDecisionDocument
+      summary: Audited correction that keeps the prior values (EMP-010-B, D-09)
+      description: |
+        Requires employment.correct. Works on a locked document; the previous values
+        are stored as a correction record. Audited as employment.document.corrected.
+      parameters: [{ $ref: '#/components/parameters/DocumentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/DecisionDocumentEdit' }
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: Corrected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionDocument' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
 components:
   parameters:
     EmployeeId:
       name: employeeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DocumentId:
+      name: documentId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -164,7 +308,11 @@ components:
       description: |
         Error with code and Indonesian message. Codes: UNAUTHENTICATED, FORBIDDEN,
         EMPLOYMENT_FORBIDDEN, INVALID_EMPLOYMENT_REQUEST, INVALID_EMPLOYMENT_ROLLOUT,
-        EMPLOYEE_NOT_FOUND, EMPLOYMENT_HISTORY_DISABLED, EMPLOYMENT_MODE_NOT_AVAILABLE.
+        EMPLOYEE_NOT_FOUND, EMPLOYMENT_HISTORY_DISABLED, EMPLOYMENT_MODE_NOT_AVAILABLE,
+        DECISION_DOCUMENT_INVALID (with a field name), DECISION_DOCUMENT_NOT_FOUND,
+        DECISION_DOCUMENT_NUMBER_TAKEN, DECISION_DOCUMENT_LOCKED,
+        DECISION_DOCUMENT_KIND_INVALID, DECISION_DOCUMENT_EMPLOYEE_MISMATCH,
+        EMPLOYMENT_VERSION_CONFLICT.
       content:
         application/json:
           schema:
@@ -173,7 +321,102 @@ components:
             properties:
               code: { type: string }
               message: { type: string }
+              field: { type: string, description: Set by DECISION_DOCUMENT_INVALID. }
   schemas:
+    DecisionDocumentKind:
+      type: string
+      enum: [PERJANJIAN_KERJA, SURAT_KEPUTUSAN]
+    PkType:
+      type: string
+      enum: [PK_BARU, PK_PERPANJANGAN]
+    SkType:
+      type: string
+      enum: [SK_PENGANGKATAN, SK_MUTASI, SK_PROMOSI, SK_DEMOSI, SK_PEMBERHENTIAN, SK_PENEMPATAN, SK_LAINNYA]
+    PkCategory:
+      type: string
+      enum: [KONTRAK, KONTRAK_HONORER, MAGANG, PERCOBAAN, LEPAS]
+      description: A Perjanjian Kerja is always fixed-term (D-03); TETAP comes from an SK Pengangkatan.
+    DecisionDocumentWrite:
+      type: object
+      additionalProperties: false
+      required: [documentKind, documentNumber, signedOn]
+      description: |
+        Kind-specific fields: a PERJANJIAN_KERJA requires pkType, employeeId,
+        contractFrom, contractTo, and category; a SURAT_KEPUTUSAN requires skType,
+        subject, issuingAuthorityLabel, and effectiveOn. Fields of the other kind
+        are ignored and stored as null.
+      properties:
+        documentKind: { $ref: '#/components/schemas/DecisionDocumentKind' }
+        documentNumber: { type: string, minLength: 1, maxLength: 120 }
+        signedOn: { type: string, format: date }
+        externalReference: { type: [string, 'null'], maxLength: 500, description: Where the signed original is kept; no upload in Package 1. }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+        pkType: { oneOf: [{ $ref: '#/components/schemas/PkType' }, { type: 'null' }] }
+        employeeId: { type: [string, 'null'], format: uuid }
+        contractFrom: { type: [string, 'null'], format: date }
+        contractTo: { type: [string, 'null'], format: date }
+        category: { oneOf: [{ $ref: '#/components/schemas/PkCategory' }, { type: 'null' }] }
+        signatoryEmployerLabel: { type: [string, 'null'], maxLength: 500, description: Text only; grants no authority. }
+        previousPkId: { type: [string, 'null'], format: uuid, description: PK_PERPANJANGAN only; same employee. }
+        skType: { oneOf: [{ $ref: '#/components/schemas/SkType' }, { type: 'null' }] }
+        subject: { type: [string, 'null'], maxLength: 500 }
+        issuingAuthorityLabel: { type: [string, 'null'], maxLength: 500, description: Text only; proves no authority. }
+        effectiveOn: { type: [string, 'null'], format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+    DecisionDocumentEdit:
+      allOf:
+        - { $ref: '#/components/schemas/DecisionDocumentWrite' }
+        - type: object
+          properties:
+            expectedUpdatedAt:
+              type: string
+              format: date-time
+              description: |
+                The updatedAt the operator had on screen. When it no longer matches
+                the stored row the write is refused with EMPLOYMENT_VERSION_CONFLICT.
+                Omitted means last write wins.
+    DecisionDocument:
+      allOf:
+        - { $ref: '#/components/schemas/DecisionDocumentWrite' }
+        - type: object
+          required: [id, signedYear, linkedActionCount, locked, createdAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            signedYear: { type: integer, description: Derived from signedOn; numbering is unique per kind, number, and year. }
+            employeeNumber: { type: [string, 'null'] }
+            employeeName: { type: [string, 'null'] }
+            previousPkNumber: { type: [string, 'null'] }
+            linkedActionCount: { type: integer }
+            locked: { type: boolean, description: True once an action uses the document; only a correction may change it. }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    DecisionDocumentDetail:
+      allOf:
+        - { $ref: '#/components/schemas/DecisionDocument' }
+        - type: object
+          required: [links, corrections]
+          properties:
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  actionId: { type: string, format: uuid }
+                  actionType: { type: string }
+                  effectiveOn: { type: [string, 'null'], format: date }
+                  employeeId: { type: string, format: uuid }
+                  employeeNumber: { type: [string, 'null'] }
+                  employeeName: { type: [string, 'null'] }
+                  state: { type: string, enum: [RECORDED, REVERSED] }
+            corrections:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  previousValues: { type: object, description: The document values before this correction (D-09). }
+                  reason: { type: string }
+                  correctedAt: { type: string, format: date-time }
     EmploymentRolloutMode:
       type: string
       enum: [OFF, SHADOW, AUTHORITATIVE]

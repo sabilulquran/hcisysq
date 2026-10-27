@@ -209,7 +209,18 @@ export async function listAttendanceSchedules() {
     active: boolean; workLocationId: string | null; workLocationName: string | null;
     /** Date (WIB) the shift's first version applies from. */
     effectiveFrom: string | null;
+    /** ATT-013: blocks 2-3 of the current version. */
+    extraBlocks?: ShiftBlock[];
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
+}
+
+export interface ShiftBlock { startTime: string; endTime: string }
+
+/** "04:00–08:30 + 14:30–19:30" (ATT-013); a single block keeps "07:00–16:00". */
+export function shiftHoursText(item: { startTime: string; endTime: string; endDayOffset?: number; extraBlocks?: ShiftBlock[] }) {
+  const blocks = [{ startTime: item.startTime, endTime: item.endTime }, ...(item.extraBlocks ?? [])];
+  return blocks.map((block) => `${block.startTime.slice(0, 5)}–${block.endTime.slice(0, 5)}`).join(" + ")
+    + (item.endDayOffset === 1 ? " · +1 hari" : "");
 }
 
 /** ATT-014 §20.10 "Mundurkan awal berlaku" for the first version of a shift; audited, reason required. */
@@ -224,6 +235,7 @@ export async function backdateAttendanceSchedule(scheduleId: string, input: { ef
 export async function createAttendanceSchedule(input: {
   name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
   earlyLeaveToleranceMinutes: number; workLocationId: string | null; effectiveFrom?: string;
+  extraBlocks?: ShiftBlock[];
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
     method: "POST", credentials: "include",

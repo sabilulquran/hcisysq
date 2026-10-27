@@ -47,7 +47,7 @@ const family: FamilyMemberInput = {
   validFrom: "2020-05-17",
 };
 
-function expectField<T>(result: ReturnType<typeof validateEducation> | { ok: boolean }, field: string) {
+function expectField(result: ReturnType<typeof validateEducation> | { ok: boolean }, field: string) {
   expect(result.ok).toBe(false);
   if (!result.ok && "failure" in result) {
     expect(result.failure.code).toBe("EMPLOYEE_RECORD_INVALID");

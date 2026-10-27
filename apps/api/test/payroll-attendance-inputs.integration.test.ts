@@ -36,7 +36,12 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
 
   async function newEmployment(
     category: string,
-    options: { employeeId?: string; endBasis?: "RECORDED" | "UNKNOWN"; endedOn?: string | null } = {},
+    options: {
+      employeeId?: string;
+      endBasis?: "RECORDED" | "UNKNOWN";
+      endedOn?: string | null;
+      startedOn?: string;
+    } = {},
   ): Promise<{ employmentId: string; employeeId: string }> {
     const employeeId = options.employeeId ?? randomUUID();
     const employmentId = randomUUID();
@@ -53,7 +58,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
       `INSERT INTO employments(
          id, employee_id, legal_entity_key, started_on, start_basis, ended_on, end_basis,
          end_precision, end_reason, source, opened_by_action_id)
-       VALUES ($1, $2, $3, DATE '2016-07-01', 'RECORDED', $5::date, $6, $7, $8, 'ACTION', $4)`,
+       VALUES ($1, $2, $3, $9::date, 'RECORDED', $5::date, $6, $7, $8, 'ACTION', $4)`,
       [
         employmentId,
         employeeId,
@@ -63,17 +68,18 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
         options.endBasis ?? null,
         options.endBasis === "RECORDED" ? "DAY" : null,
         options.endBasis ? "RESIGN" : null,
+        options.startedOn ?? "2016-07-01",
       ],
     );
     await client.query(
       `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on)
-       VALUES ($1, $2, $3, 'BASELINE', DATE '2016-07-01')`,
-      [actionId, employeeId, employmentId],
+       VALUES ($1, $2, $3, 'BASELINE', $4::date)`,
+      [actionId, employeeId, employmentId, options.startedOn ?? "2016-07-01"],
     );
     await client.query(
       `INSERT INTO employment_terms(id, employment_id, sequence, category, effective_from, opened_by_action_id)
-       VALUES ($1, $2, 1, $3, DATE '2016-07-01', $4)`,
-      [randomUUID(), employmentId, category, actionId],
+       VALUES ($1, $2, 1, $3, $5::date, $4)`,
+      [randomUUID(), employmentId, category, actionId, options.startedOn ?? "2016-07-01"],
     );
     await client.query("COMMIT");
     client.release();
@@ -209,7 +215,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
 
   it("credits a rehired employee's day to one employment only", async () => {
     const first = await newEmployment("TETAP", { endBasis: "RECORDED", endedOn: "2026-08-31" });
-    const second = await newEmployment("TETAP", { employeeId: first.employeeId });
+    const second = await newEmployment("TETAP", { employeeId: first.employeeId, startedOn: "2026-09-01" });
     await approvedOvertime(first.employeeId, "2026-09-10", 120);
     const resolved = await resolveAttendanceInputs(pool, window());
     expect(resolved.overtime).toEqual([{ employmentId: second.employmentId, hours: 2 }]);
@@ -279,7 +285,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     await attendanceDay(employeeId, "2026-09-01", true);
 
     const counts = await applyAttendanceInputs(pool, window(), actorAccountId);
-    expect(counts).toEqual({ overtimeCount: 1, attendanceCount: 1 });
+    expect(counts).toEqual({ overtimeCount: 1, attendanceCount: 1, clearedCount: 0, skippedOwnCount: 0 });
 
     const inputs = await listInputs(pool, periodId);
     expect(inputs).toEqual([

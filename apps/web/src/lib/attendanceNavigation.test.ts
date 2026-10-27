@@ -80,6 +80,9 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
     const reader = session(["attendance.reports.read"]);
     expect(attendanceSectionHref(reader, "records")).toBe("/admin/attendance/daily");
     expect(attendanceSectionHref(reader, "settings")).toBeNull();
+    // ATT-011-5 (D-1): a report reader sees the Jadwal calendar read-only, and only that tab of Jadwal.
+    expect(attendanceSectionHref(reader, "schedules")).toBe("/admin/attendance/schedules/calendar");
+    expect(attendanceSectionHref(session(["attendance.schedule.manage"]), "schedules")).toBe("/admin/attendance/schedules/calendar");
 
     const devices = session(["attendance.devices.read"]);
     expect(attendanceSectionHref(devices, "devices")).toBe("/admin/attendance/adms");
@@ -91,6 +94,7 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/shifts": "attendance.schedule.manage",
       "/admin/attendance/schedules": "attendance.schedule.manage",
       "/admin/attendance/schedules/dates": "attendance.schedule.manage",
+      "/admin/attendance/schedules/calendar": "attendance.reports.read",
       "/admin/attendance/schedules/swaps": "attendance.shift_swap.manage",
       "/admin/attendance/daily": "attendance.reports.read",
       "/admin/attendance/corrections": "attendance.records.manage",

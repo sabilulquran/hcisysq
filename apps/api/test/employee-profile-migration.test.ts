@@ -1,4 +1,4 @@
-// Paket 2 P2-1 terhadap PostgreSQL sungguhan: constraint migrasi 0104 yang
+// Paket 2 P2-1 terhadap PostgreSQL sungguhan: constraint migrasi 0106 yang
 // menjaga "satu yang berlaku pada satu waktu" dan pasangan field yang harus
 // konsisten. Hanya berjalan pada basis data CI loopback; semua tulisan
 // di-rollback.
@@ -14,7 +14,7 @@ const allowed = (() => {
   return ["127.0.0.1", "localhost"].includes(url.hostname) && url.pathname === "/hcis_pr";
 })();
 
-describe.skipIf(!allowed)("0104 employee profile records migration", () => {
+describe.skipIf(!allowed)("0106 employee profile records migration", () => {
   let pool: Pool;
   let client: PoolClient;
   let employeeId: string;

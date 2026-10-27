@@ -18,11 +18,13 @@ type ScheduleRow = {
   longitude: number | null;
   radiusMeters: number | null;
   /** ATT-013: blocks 2-3 of the version, if any. */
-  extraBlocks?: Array<{ sequence: number; startTime: string; endTime: string }> | null;
+  extraBlocks?: Array<{ sequence: number; startTime: string; endTime: string; weight?: number | null }> | null;
+  /** ATT-013 D-13-6: "Hitungan hari" of block 1; NULL means an equal share. */
+  firstBlockWeight?: number | string | null;
 };
 
 /** ATT-013: one work block; single-block shifts have exactly one (or none on old fixtures). */
-export type ScheduleBlock = { sequence: number; startAt: Date; endAt: Date };
+export type ScheduleBlock = { sequence: number; startAt: Date; endAt: Date; /** D-13-6 day share, all blocks sum to 1. */ weight?: number };
 
 export type ResolvedSchedule = {
   state: "scheduled" | "off" | "configuration_error";
@@ -300,6 +302,10 @@ export type BlockComputation = {
   lateMinutes: number;
   earlyLeaveMinutes: number;
   workedMinutes: number;
+  /** D-13-6 Normal: the block's day share. */
+  expectedWorkday: number;
+  /** D-13-7 Riil: the share when attended, 0 when absent, null while incomplete or not yet over. */
+  creditedWorkday: number | null;
   sessions: AttendanceSession[];
 };
 
@@ -330,15 +336,18 @@ export function evaluateBlocks(input: {
   now?: Date;
 }): { computation: AttendanceComputation; blocks: BlockComputation[] } {
   const blocks = input.schedule.blocks!;
+  // §5.2 rule 3: a session belongs to the block whose window holds its check-in; a correction to the block
+  // whose window holds the corrected time.
+  const daySessions = buildSessions(input.events);
   const blockResults = blocks.map((block, index) => {
-    const events = input.events.filter((event) => blockIndexFor(blocks, event.occurredAt) === index);
+    const own = daySessions.filter((session) => blockIndexFor(blocks, session.checkInAt) === index);
     const corrections = input.corrections.map((correction) => ({
       proposedCheckInAt: correction.proposedCheckInAt && blockIndexFor(blocks, correction.proposedCheckInAt) === index ? correction.proposedCheckInAt : null,
       proposedCheckOutAt: correction.proposedCheckOutAt && blockIndexFor(blocks, correction.proposedCheckOutAt) === index ? correction.proposedCheckOutAt : null,
     })).filter((correction) => correction.proposedCheckInAt || correction.proposedCheckOutAt);
     const computed = evaluateSessions({
       schedule: { ...input.schedule, scheduledStartAt: block.startAt, scheduledEndAt: block.endAt, blocks: [block] },
-      sessions: applyBoundaryCorrections(buildSessions(events), corrections),
+      sessions: applyBoundaryCorrections(own, corrections),
       attendanceDisposition: null,
       lateJustified: input.lateJustified,
       earlyLeaveJustified: input.earlyLeaveJustified,
@@ -346,6 +355,7 @@ export function evaluateBlocks(input: {
       overtimeMinutes: 0,
       ...(input.now ? { now: input.now } : {}),
     });
+    const weight = block.weight ?? Math.round((1 / blocks.length) * 100) / 100;
     return {
       sequence: block.sequence,
       scheduledStartAt: block.startAt,
@@ -356,18 +366,22 @@ export function evaluateBlocks(input: {
       lateMinutes: computed.lateMinutes,
       earlyLeaveMinutes: computed.earlyLeaveMinutes,
       workedMinutes: computed.workedMinutes,
+      expectedWorkday: weight,
+      creditedWorkday: computed.status === "present" || computed.status === "late" ? weight : computed.status === "absent" ? 0 : null,
       sessions: computed.sessions,
     };
   });
   const statuses = blockResults.map((block) => block.status);
   const attended = (status: string) => status === "present" || status === "late";
+  // §5.4, evaluated top to bottom after schedule, holiday and leave decisions.
+  const open = (value: string) => value === "scheduled" || value === "pending";
   const status: AttendanceComputation["status"] =
     statuses.every((value) => value === "scheduled") ? "scheduled"
       : statuses.every((value) => value === "absent") ? "absent"
       : statuses.some((value) => value === "incomplete") || (statuses.some(attended) && statuses.some((value) => value === "absent")) ? "incomplete"
-      : statuses.some((value) => value === "pending" || value === "scheduled")
-        ? (statuses.some((value) => value === "late") ? "late" : statuses.some(attended) ? "present" : "pending")
+      : !statuses.some(attended) ? "pending"
       : statuses.some((value) => value === "late") ? "late"
+      : statuses.some(open) ? "pending"
       : "present";
   const sessions = blockResults.flatMap((block) => block.sessions);
   const sum = (key: "lateMinutes" | "earlyLeaveMinutes" | "workedMinutes") => blockResults.reduce((total, block) => total + block[key], 0);
@@ -450,8 +464,9 @@ export async function resolveSchedule(
        location.latitude,
        location.longitude,
        location.radius_meters AS "radiusMeters",
+       version.first_block_workday_weight AS "firstBlockWeight",
        (SELECT coalesce(json_agg(json_build_object('sequence', block.sequence, 'startTime', block.start_time::text,
-                 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+                 'endTime', block.end_time::text, 'weight', block.workday_weight) ORDER BY block.sequence), '[]'::json)
         FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks"
      FROM latest_roster latest
      LEFT JOIN attendance_roster_entries entry
@@ -492,8 +507,9 @@ export async function resolveSchedule(
        location.latitude,
        location.longitude,
        location.radius_meters AS "radiusMeters",
+       version.first_block_workday_weight AS "firstBlockWeight",
        (SELECT coalesce(json_agg(json_build_object('sequence', block.sequence, 'startTime', block.start_time::text,
-                 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+                 'endTime', block.end_time::text, 'weight', block.workday_weight) ORDER BY block.sequence), '[]'::json)
         FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks"
      FROM attendance_schedule_assignments assignment
      JOIN attendance_schedule_templates schedule ON schedule.id = assignment.schedule_template_id
@@ -559,6 +575,12 @@ function mapScheduleRow(row: ScheduleRow, workDate: string): ResolvedSchedule {
     startAt: jakartaTimestamp(workDate, block.startTime),
     endAt: jakartaTimestamp(workDate, block.endTime),
   }))];
+  // D-13-6: the stored "Hitungan hari" when every block has one, otherwise an equal share.
+  const weights = [row.firstBlockWeight, ...(row.extraBlocks ?? []).map((block) => block.weight)];
+  const stored = weights.every((weight) => weight !== null && weight !== undefined);
+  blocks.forEach((block, index) => {
+    block.weight = stored ? Number(weights[index]) : Math.round((1 / blocks.length) * 100) / 100;
+  });
   return {
     state: "scheduled",
     scheduleTemplateId: row.scheduleTemplateId,
@@ -798,7 +820,8 @@ export async function materializeAttendanceResult(
         // A block can change while the day's rollup stays the same; its rows must not go stale.
         ...(blockResults.length ? {
           blocks: blockResults.map((block) => [block.status, block.lateMinutes, block.earlyLeaveMinutes, block.workedMinutes,
-            block.firstCheckInAt?.toISOString() ?? null, block.lastCheckOutAt?.toISOString() ?? null]),
+            block.firstCheckInAt?.toISOString() ?? null, block.lastCheckOutAt?.toISOString() ?? null,
+            block.expectedWorkday, block.creditedWorkday]),
         } : {}),
       },
     };
@@ -895,12 +918,13 @@ export async function materializeAttendanceResult(
       await client.query(
         `INSERT INTO attendance_result_blocks (
            id, attendance_result_version_id, sequence, scheduled_start_at, scheduled_end_at,
-           first_check_in_at, last_check_out_at, status, late_minutes, early_leave_minutes, worked_minutes
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+           first_check_in_at, last_check_out_at, status, late_minutes, early_leave_minutes, worked_minutes,
+           expected_workday, credited_workday
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           randomUUID(), insertedResult.id, block.sequence, block.scheduledStartAt, block.scheduledEndAt,
           block.firstCheckInAt, block.lastCheckOutAt, block.status, block.lateMinutes, block.earlyLeaveMinutes,
-          block.workedMinutes,
+          block.workedMinutes, block.expectedWorkday, block.creditedWorkday,
         ],
       );
     }

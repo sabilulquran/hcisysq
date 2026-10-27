@@ -141,6 +141,8 @@ export function AdminAttendanceSchedulesPage() {
   const [form, setForm] = useState({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "10", earlyLeaveToleranceMinutes: "0", workLocationId: "", effectiveFrom: "" });
   // ATT-013: blocks 2-3 of a shift with more than one work block per day.
   const [extraBlocks, setExtraBlocks] = useState<ShiftBlock[]>([]);
+  // ATT-013 D-13-6: "Hitungan hari" per block; empty = an equal share for every block.
+  const [firstWeight, setFirstWeight] = useState("");
   // ATT-014 §20.10 "Mundurkan awal berlaku": one shift at a time, date + reason, audited by the API.
   const [backdating, setBackdating] = useState<{ id: string; effectiveFrom: string; reason: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -177,19 +179,31 @@ export function AdminAttendanceSchedulesPage() {
               <span className="text-xs font-semibold text-muted-foreground">Blok {index + 2}</span>
               <input className="h-10 rounded-xl border px-3" type="time" aria-label={`Mulai blok ${index + 2}`} value={block.startTime} onChange={(e) => setExtraBlocks(extraBlocks.map((item, at) => at === index ? { ...item, startTime: e.target.value } : item))} />
               <input className="h-10 rounded-xl border px-3" type="time" aria-label={`Selesai blok ${index + 2}`} value={block.endTime} onChange={(e) => setExtraBlocks(extraBlocks.map((item, at) => at === index ? { ...item, endTime: e.target.value } : item))} />
+              <input className="h-10 w-28 rounded-xl border px-3" type="number" min="0.01" max="1" step="0.01" placeholder="Hitungan hari" aria-label={`Hitungan hari blok ${index + 2}`} value={block.workdayWeight ?? ""} onChange={(e) => setExtraBlocks(extraBlocks.map((item, at) => {
+                if (at !== index) return item;
+                const { workdayWeight: _old, ...rest } = item;
+                void _old;
+                return e.target.value ? { ...rest, workdayWeight: Number(e.target.value) } : rest;
+              }))} />
               <button type="button" className="rounded-lg border p-2" aria-label={`Hapus blok ${index + 2}`} onClick={() => setExtraBlocks(extraBlocks.filter((_, at) => at !== index))}><X className="h-4 w-4" /></button>
             </div>
           ))}
+          {extraBlocks.length ? (
+            <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">Hitungan hari blok 1
+              <input className="h-10 w-28 rounded-xl border px-3 text-sm" type="number" min="0.01" max="1" step="0.01" value={firstWeight} onChange={(e) => setFirstWeight(e.target.value)} />
+            </label>
+          ) : null}
           {extraBlocks.length < 2 ? (
             <button type="button" className="inline-flex w-fit items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => setExtraBlocks([...extraBlocks, { startTime: "", endTime: "" }])}><Plus className="h-3.5 w-3.5" /> Tambah blok</button>
           ) : null}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">Blok tambahan untuk pegawai yang bekerja dua atau tiga kali sehari dengan jeda panjang (misalnya 04:00–08:30 dan 14:30–19:30). Setiap blok dinilai sendiri dengan toleransi yang sama.</p>
+        <p className="mt-2 text-xs text-muted-foreground">Blok tambahan untuk pegawai yang bekerja dua atau tiga kali sehari dengan jeda panjang (misalnya 04:00–08:30 dan 14:30–19:30). Setiap blok dinilai sendiri dengan toleransi yang sama. Jeda antarblok minimal 30 menit. Hitungan hari (misalnya 0,5 + 0,5) harus berjumlah 1; kosongkan semuanya untuk bagian yang sama rata.</p>
         <p className="mt-2 text-xs text-muted-foreground">Pilih "Selesai hari berikutnya" untuk shift malam. "Berlaku sejak" menentukan tanggal pertama shift ini dipakai (kosong = sejak disimpan); pola jadwal pada tanggal sebelumnya tidak dinilai. Perubahan jam shift langsung berlaku sejak disimpan, termasuk untuk hari ini.</p>
         <button className="mt-3 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50" disabled={busy || !form.name || extraBlocks.some((block) => !block.startTime || !block.endTime)} onClick={() => void run(async () => {
-          await createAttendanceSchedule({ name: form.name, startTime: form.startTime, endTime: form.endTime, endDayOffset: Number(form.endDayOffset), lateGraceMinutes: Number(form.lateGraceMinutes), earlyLeaveToleranceMinutes: Number(form.earlyLeaveToleranceMinutes), workLocationId: form.workLocationId || null, ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}), ...(extraBlocks.length ? { extraBlocks } : {}) });
+          await createAttendanceSchedule({ name: form.name, startTime: form.startTime, endTime: form.endTime, endDayOffset: Number(form.endDayOffset), lateGraceMinutes: Number(form.lateGraceMinutes), earlyLeaveToleranceMinutes: Number(form.earlyLeaveToleranceMinutes), workLocationId: form.workLocationId || null, ...(form.effectiveFrom ? { effectiveFrom: form.effectiveFrom } : {}), ...(extraBlocks.length ? { extraBlocks, ...(firstWeight ? { firstBlockWorkdayWeight: Number(firstWeight) } : {}) } : {}) });
           setForm({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "10", earlyLeaveToleranceMinutes: "0", workLocationId: "", effectiveFrom: "" });
           setExtraBlocks([]);
+          setFirstWeight("");
         }, "Shift ditambahkan.")}><Plus className="h-4 w-4" /> Tambah shift</button>
       </section>
 

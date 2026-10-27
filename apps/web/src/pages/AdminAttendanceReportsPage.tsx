@@ -11,6 +11,7 @@ import { EmployeeSearchField, type PickedEmployee } from "@/components/attendanc
 import { listEmployees } from "@/lib/adminEmployees";
 import {
   CALCULATION_RANGE_PRESETS,
+  blockSummaryText,
   calculationRange,
   calculationRowStatusLabel,
   cancelAttendanceCalculation,
@@ -432,7 +433,7 @@ export function AdminAttendanceReportsPage() {
                         <td className="p-3">{item.unitName ?? "—"}</td>
                         <td className="p-3 tabular-nums">{shortDate(item.workDate)}</td>
                         <td className="p-3 tabular-nums">{item.scheduledStartAt ? `${time(item.scheduledStartAt)}–${time(item.scheduledEndAt)}` : "—"}</td>
-                        <td className="p-3 tabular-nums">{item.firstCheckInAt || item.lastCheckOutAt ? `${time(item.firstCheckInAt)} → ${time(item.lastCheckOutAt)}` : "—"}</td>
+                        <td className="p-3 tabular-nums">{item.firstCheckInAt || item.lastCheckOutAt ? `${time(item.firstCheckInAt)} → ${time(item.lastCheckOutAt)}` : "—"}{item.blocks ? <p className="text-[11px] text-muted-foreground">{blockSummaryText(item.blocks)}</p> : null}</td>
                         <td className="p-3">
                           <p className="font-semibold">{calculationRowStatusLabel(item.status)}</p>
                           <div className="mt-1 flex flex-wrap gap-1">
@@ -442,7 +443,7 @@ export function AdminAttendanceReportsPage() {
                         </td>
                         <td className="p-3 tabular-nums">{minutes(item.lateMinutes)}</td>
                         <td className="p-3 tabular-nums">{minutes(item.earlyLeaveMinutes)}</td>
-                        <td className="p-3 tabular-nums">{item.normal === null ? "—" : `${item.normal}/${item.actual ?? "—"}`}</td>
+                        <td className="p-3 tabular-nums">{item.normal === null ? "—" : item.blocks ? `${item.actual ?? "—"} dari ${item.normal}` : `${item.normal}/${item.actual ?? "—"}`}</td>
                       </tr>
                     ))}
                     {rows && rows.items.length === 0 ? <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Tidak ada baris yang cocok dengan filter.</td></tr> : null}

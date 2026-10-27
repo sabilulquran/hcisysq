@@ -37,11 +37,18 @@ export async function listOvertimeForHc(pool: Pick<Pool, "query">, filter: Overt
          request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
          request.note, request.status, request.decision_note AS "decisionNote",
          request.created_at AS "createdAt", request.decided_at AS "decidedAt",
-         CASE WHEN EXISTS (
-           SELECT 1 FROM attendance_overtime_events submitted
-           WHERE submitted.overtime_request_id = request.id AND submitted.event_type = 'submitted'
-             AND submitted.payload->>'createdByHc' = 'true'
-         ) THEN 'hc' ELSE 'employee' END AS "initiatedBy",
+         -- ATT-011-6b-1: employee | supervisor | hc_legacy; "hc" marks a request HC filed (before or on behalf).
+         CASE WHEN request.initiated_by = 'supervisor' THEN 'supervisor'
+              WHEN EXISTS (
+                SELECT 1 FROM attendance_overtime_events submitted
+                WHERE submitted.overtime_request_id = request.id AND submitted.event_type = 'submitted'
+                  AND submitted.payload->>'createdByHc' = 'true'
+              ) THEN 'hc' ELSE 'employee' END AS "initiatedBy",
+         request.initiated_by = 'hc_legacy' AS "decidedByHc",
+         CASE WHEN request.status <> 'submitted' THEN NULL
+              WHEN request.initiated_by = 'supervisor' THEN 'employee'
+              WHEN request.initiated_by = 'employee' THEN 'supervisor' ELSE 'hc' END AS awaiting,
+         supervisor.full_name AS "supervisorName",
          result.day_type AS "dayType",
          CASE
            WHEN result.id IS NULL THEN NULL
@@ -55,6 +62,7 @@ export async function listOvertimeForHc(pool: Pick<Pool, "query">, filter: Overt
        FROM page request
        JOIN employees employee ON employee.id = request.employee_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+       LEFT JOIN employees supervisor ON supervisor.id = request.supervisor_employee_id
        LEFT JOIN LATERAL (
          SELECT version.id, version.day_type, version.scheduled_start_at, version.scheduled_end_at,
            version.first_check_in_at, version.last_check_out_at

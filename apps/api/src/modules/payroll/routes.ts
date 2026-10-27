@@ -29,6 +29,7 @@ import {
   createPeriod,
   getPeriod,
   hasCurrentCalculation,
+  listEmploymentIdentities,
   listPeriods,
   listTransitions,
   writeAudit,
@@ -623,7 +624,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       client.release();
     }
 
-    return send(reply, 200, { results, lines });
+    return send(reply, 200, { results, lines, employees: await listEmploymentIdentities(pool, period.id) });
   });
 
   app.get("/payroll/periods/:periodId/report", async (request, reply) => {
@@ -724,13 +725,21 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (previousId === null) {
       // The first period has nothing to compare against, which is an answer
       // rather than an error.
-      return send(reply, 200, { previousPeriodId: null, threshold: null, variances: [] });
+      return send(reply, 200, { previousPeriodId: null, threshold: null, variances: [], employees: [] });
     }
 
     const threshold = await varianceThreshold(period.payDate);
     const variances = await buildVariance(pool, period.id, previousId, threshold);
     await recordSensitiveRead(actor.accountId, period.id, "period_variance", variances.length);
-    return send(reply, 200, { previousPeriodId: previousId, threshold, variances });
+    // Only the people a variance row is actually about. An actor may hold
+    // payroll.calculate, which opens this comparison but not the result list,
+    // so naming the whole period here would hand them a roster they cannot
+    // read anywhere else.
+    const named = new Set(variances.map((row) => row.employmentId));
+    const identities = (await listEmploymentIdentities(pool, period.id)).filter((entry) =>
+      named.has(entry.employmentId),
+    );
+    return send(reply, 200, { previousPeriodId: previousId, threshold, variances, employees: identities });
   });
 
   app.post("/payroll/periods/:periodId/payslips", async (request, reply) => {

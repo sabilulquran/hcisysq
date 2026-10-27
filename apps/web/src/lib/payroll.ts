@@ -70,6 +70,13 @@ export interface PayrollBlocker {
   message: string;
 }
 
+/** Who an employment belongs to, so a reviewer reads names and not identifiers. */
+export interface PayrollEmployeeIdentity {
+  employmentId: string;
+  employeeNumber: string;
+  fullName: string;
+}
+
 export interface PayrollResult {
   employmentId: string;
   revision: number;
@@ -213,7 +220,11 @@ export function resolvePayrollAttendanceInputs(periodId: string) {
 }
 
 export function getPayrollResults(periodId: string) {
-  return request<{ results: PayrollResult[]; lines: PayrollResultLine[] }>(
+  return request<{
+    results: PayrollResult[];
+    lines: PayrollResultLine[];
+    employees: PayrollEmployeeIdentity[];
+  }>(
     `/api/payroll/periods/${encodeURIComponent(periodId)}/results`,
   );
 }
@@ -229,6 +240,7 @@ export function getPayrollVariance(periodId: string) {
     previousPeriodId: string | null;
     threshold: { relative: number; absolute: number; manualInput: number } | null;
     variances: PayrollVarianceRow[];
+    employees: PayrollEmployeeIdentity[];
   }>(`/api/payroll/periods/${encodeURIComponent(periodId)}/variance`);
 }
 
@@ -318,4 +330,18 @@ export function formatRupiah(amount: string): string {
   if (digits.length === 0) return amount;
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `${negative ? "-" : ""}Rp${grouped}`;
+}
+
+/**
+ * The name to print for an employment. Falling back to the identifier keeps a
+ * row visible when an employment has no employee record to read, which is a
+ * data problem the reviewer should see rather than an empty cell.
+ */
+export function employeeLabel(
+  employmentId: string,
+  identities: ReadonlyMap<string, PayrollEmployeeIdentity>,
+): string {
+  const identity = identities.get(employmentId);
+  if (!identity) return employmentId.slice(0, 8);
+  return identity.employeeNumber ? `${identity.fullName} · ${identity.employeeNumber}` : identity.fullName;
 }

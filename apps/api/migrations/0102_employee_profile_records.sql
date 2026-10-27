@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS employee_education (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT employee_education_year_order_check
     CHECK (started_year IS NULL OR completed_year IS NULL OR completed_year >= started_year),
-  CONSTRAINT employee_education_completed_year_check
+  -- Namanya bukan employee_education_completed_year_check: PostgreSQL sudah
+  -- memakai nama itu untuk CHECK rentang pada kolom completed_year.
+  CONSTRAINT employee_education_completion_year_required_check
     CHECK (completion_status <> 'SELESAI' OR completed_year IS NOT NULL),
   CONSTRAINT employee_education_verified_pair_check
     CHECK ((verification_status = 'DIVERIFIKASI') = (verified_at IS NOT NULL)),

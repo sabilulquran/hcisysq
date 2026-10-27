@@ -13,6 +13,7 @@ import {
   Grid2X2,
   Home,
   ShieldCheck,
+  TimerReset,
   WalletCards,
 } from "lucide-react";
 
@@ -50,6 +51,8 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
 
 const managementNavigation = [
   { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck, category: "task" },
+  // ATT-011-6b-2: supervisors approve and order overtime for their direct reports.
+  { label: "Lembur Tim", href: "/app/attendance/team-overtime", icon: TimerReset, category: "task" },
 ] as const;
 
 const humanCapitalNavigation = [

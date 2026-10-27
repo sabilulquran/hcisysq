@@ -96,6 +96,10 @@ export interface WorkforceSnapshot {
     decisionNote: string | null;
     createdAt: string;
     decidedAt: string | null;
+    /** ATT-011-6b: who started it and, while it waits, whose answer it waits for. */
+    initiatedBy?: OvertimeInitiator;
+    supervisorName?: string | null;
+    awaiting?: OvertimeAwaiting | null;
   }>;
   mobileEvidence: Array<{
     id: string;
@@ -620,11 +624,25 @@ export interface AttendanceOvertimeItem {
   decisionNote: string | null;
   createdAt: string;
   decidedAt: string | null;
-  /** ATT-011-6a HC list only. */
-  initiatedBy?: "employee" | "hc";
+  /** ATT-011-6a HC list: employee | supervisor | hc (filed by HC). */
+  initiatedBy?: "employee" | "supervisor" | "hc" | "hc_legacy";
+  /** ATT-011-6b: whose answer a waiting request needs; HC decides only requests from before 6b. */
+  awaiting?: OvertimeAwaiting | null;
+  supervisorName?: string | null;
+  decidedByHc?: boolean;
   dayType?: "working_day" | "rest_day" | "public_holiday" | null;
   /** Scan time outside the schedule (all scans on a day without one); information only. */
   scanOutsideScheduleMinutes?: number | null;
+}
+
+export type OvertimeInitiator = "employee" | "supervisor" | "hc_legacy";
+export type OvertimeAwaiting = "supervisor" | "employee" | "hc";
+
+export function awaitingLabel(value: OvertimeAwaiting | null | undefined, supervisorName?: string | null): string {
+  if (value === "supervisor") return supervisorName ? `Menunggu persetujuan ${supervisorName}` : "Menunggu persetujuan atasan";
+  if (value === "employee") return "Menunggu persetujuan pegawai";
+  if (value === "hc") return "Menunggu keputusan HC";
+  return "";
 }
 
 export type OvertimeStatusFilter = "all" | "submitted" | "approved" | "rejected" | "cancelled" | "closed";
@@ -738,6 +756,82 @@ export async function decideAttendanceOvertime(
       body: JSON.stringify(input),
     }),
   );
+}
+
+const jsonHeaders = { "Content-Type": "application/json", Accept: "application/json" };
+
+/** ATT-011-6b flow B: the employee agrees to or declines a supervisor's order. */
+export async function respondToOvertimeOrder(overtimeId: string, decision: "agree" | "decline", note?: string | null) {
+  return readJson<{ id: string; status: string }>(await fetch(`/api/attendance/overtime/${encodeURIComponent(overtimeId)}/respond`, {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify({ decision, note: note ?? null }),
+  }));
+}
+
+export interface TeamOvertimeItem {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber: string;
+  workDate: string;
+  requestedMinutes: number;
+  approvedMinutes: number | null;
+  note: string | null;
+  status: AttendanceOvertimeItem["status"];
+  decisionNote: string | null;
+  initiatedBy: OvertimeInitiator;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export type TeamOvertimeTab = "pending" | "orders" | "history";
+
+export async function listTeamOvertime(tab: TeamOvertimeTab, page = 1) {
+  return readJson<{ isSupervisor: boolean; tab: TeamOvertimeTab; page: number; pageSize: number; total: number; items: TeamOvertimeItem[] }>(
+    await fetch(`/api/attendance/team-overtime?tab=${tab}&page=${page}`, { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function listOvertimeSubordinates(q = "") {
+  const params = new URLSearchParams(q ? { q } : {});
+  return readJson<{ items: Array<{ id: string; employeeNumber: string; fullName: string }> }>(
+    await fetch(`/api/attendance/team-overtime/subordinates?${params.toString()}`, { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function decideTeamOvertime(overtimeId: string, input: { decision: "approve" | "reject"; approvedMinutes?: number | null; note?: string | null }) {
+  return readJson<{ id: string; status: string; approvedMinutes: number | null }>(
+    await fetch(`/api/attendance/team-overtime/${encodeURIComponent(overtimeId)}/decision`, {
+      method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function orderTeamOvertime(input: { employeeIds: string[]; workDate: string; requestedMinutes: number; note: string }) {
+  return readJson<{ ids: string[] }>(await fetch("/api/attendance/team-overtime/orders", {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
+  }));
+}
+
+export async function cancelTeamOvertimeOrder(overtimeId: string) {
+  const response = await fetch(`/api/attendance/team-overtime/${encodeURIComponent(overtimeId)}/cancel`, {
+    method: "POST", credentials: "include", headers: { Accept: "application/json" },
+  });
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+/** HC: Batalkan administratif (reason required). */
+export async function voidAttendanceOvertime(overtimeId: string, reason: string) {
+  return readJson(await fetch(`/api/admin/attendance/overtime/${encodeURIComponent(overtimeId)}/void`, {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify({ reason }),
+  }));
+}
+
+/** HC: Alihkan approver of a request waiting for the supervisor. */
+export async function reassignAttendanceOvertime(overtimeId: string, supervisorEmployeeId: string, reason: string) {
+  return readJson(await fetch(`/api/admin/attendance/overtime/${encodeURIComponent(overtimeId)}/reassign`, {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify({ supervisorEmployeeId, reason }),
+  }));
 }
 
 export async function createCanonicalManualCorrection(input: {

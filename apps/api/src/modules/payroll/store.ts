@@ -76,6 +76,10 @@ const LATEST_RESULTS = `
   SELECT DISTINCT ON (r.employment_id) r.*
   FROM payroll_results r
   WHERE r.period_id = p.id
+    -- Only the last run counts. Every row of one run shares its transaction
+    -- timestamp, so an employee who has left the population keeps their earlier
+    -- revision as history without blocking the period for ever.
+    AND r.calculated_at = (SELECT max(x.calculated_at) FROM payroll_results x WHERE x.period_id = p.id)
   ORDER BY r.employment_id, r.revision DESC
 `;
 
@@ -351,17 +355,22 @@ export async function applyTransition(
       ],
     );
 
-    await writeAudit(client, {
-      actorAccountId: input.actorAccountId,
-      action: input.auditAction,
-      periodId: input.periodId,
-      payload: {
-        from_state: input.fromState,
-        state: input.nextState,
-        blocker_count: input.blockerCount,
-        reason_given: input.reason !== null,
-      },
-    });
+    // A calculation writes its own audit event with the run's aggregates, so
+    // writing a second one here would duplicate the action with figures read
+    // before the run (specification section 6: one event per transition).
+    if (input.action !== "calculate") {
+      await writeAudit(client, {
+        actorAccountId: input.actorAccountId,
+        action: input.auditAction,
+        periodId: input.periodId,
+        payload: {
+          from_state: input.fromState,
+          state: input.nextState,
+          blocker_count: input.blockerCount,
+          reason_given: input.reason !== null,
+        },
+      });
+    }
 
     await client.query("COMMIT");
     return { applied: true, period: rows[0]! };

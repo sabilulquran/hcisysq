@@ -2412,5 +2412,102 @@
       "payroll.calculate",
       "payroll.submit"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/inputs",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "PUT",
+    "url": "/payroll/periods/:periodId/inputs",
+    "permissions": [
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "DELETE",
+    "url": "/payroll/periods/:periodId/inputs/:employmentId/:inputKey",
+    "permissions": [
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/results",
+    "permissions": [
+      "payroll.periods.manage",
+      "payroll.approve",
+      "payroll.reopen.approve",
+      "payroll.payments.confirm",
+      "payroll.reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "GET",
+    "url": "/payroll/policies",
+    "permissions": [
+      "payroll.policies.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "POST",
+    "url": "/payroll/policies",
+    "permissions": [
+      "payroll.policies.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "GET",
+    "url": "/payroll/employments/:employmentId/compensation-profiles",
+    "permissions": [
+      "payroll.profiles.manage",
+      "payroll.calculate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "POST",
+    "url": "/payroll/employments/:employmentId/compensation-profiles",
+    "permissions": [
+      "payroll.profiles.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "GET",
+    "url": "/payroll/loans",
+    "permissions": [
+      "payroll.loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "POST",
+    "url": "/payroll/loans",
+    "permissions": [
+      "payroll.loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "PUT",
+    "url": "/payroll/periods/:periodId/loan-deductions",
+    "permissions": [
+      "payroll.loans.manage"
+    ]
   }
 ]

@@ -13,11 +13,13 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 ### 1.1 Termasuk v1
 
 - Pegawai dengan employment aktif kategori tetap, masa percobaan, dan kontrak honorer/PKWT (EMP-005).
+- Pemetaan kategori EMP-005 (`DRAFT`, default agent 2026-10-27): `TETAP` → pegawai tetap; `PERCOBAAN` → masa percobaan; `KONTRAK`, `KONTRAK_HONORER`, dan `LEPAS` → PKWT/honorer, karena pekerja lepas dibayar per kehadiran dan per jam mengajar seperti PKWT. `MAGANG` dan `BELUM_DIKLASIFIKASIKAN` **di luar populasi payroll v1**: keduanya tidak dihitung dan tidak menghasilkan blocker, karena blocker atas kategori yang memang di luar cakupan tidak dapat diselesaikan dari dalam modul payroll.
 - Komponen pegawai tetap/percobaan: gaji pokok, kelebihan/kekurangan jam, tunjangan kinerja, tunjangan pasangan, tunjangan anak, tunjangan fungsional, tunjangan jabatan, tunjangan kualifikasi khusus, tunjangan BPJS Kesehatan, lembur, rapel, penyesuaian gaji.
 - Komponen PKWT/honorer: transport per kehadiran, honor per jam mengajar, pemasukan lain.
 - Potongan: kasbon, iuran BPJS Kesehatan, iuran anggota keluarga tambahan, pendidikan anak, kekurangan jam, penyesuaian.
 - Insentif Pj. Media untuk pegawai aktif (input periode).
 - Netto 80% selama 2 bulan pertama masa kerja; prorata sebagai penyesuaian berwenang.
+- Potongan kasbon diambil dari register kasbon (§3.4), bukan diketik sebagai input periode: sisa pinjaman dihitung dari pokok dikurangi potongan pada periode lain, dan potongan periode berjalan dibandingkan dengan sisa itu.
 - Lifecycle periode dengan pengesahan Direktur, laporan untuk Keuangan/Direktur/Pengurus, publikasi slip lewat PAY-002, laporan PPh21 TER.
 
 ### 1.2 Di luar v1
@@ -51,7 +53,9 @@ Aturan:
 
 ## 3. Data dasar (berlaku-efektif)
 
-Semua data dasar memiliki `effective_from`/`effective_to` (tanggal Asia/Jakarta, inklusif). Perubahan tidak menimpa histori.
+Semua data dasar memiliki `effective_from`/`effective_to` (tanggal Asia/Jakarta, inklusif). Perubahan tidak menimpa histori: membuka versi baru menutup pendahulunya sehari sebelumnya, sehingga rantainya kontigu dan tidak tumpang tindih.
+
+**Berlaku mundur (`DRAFT`, default agent 2026-10-27).** Membuka versi kebijakan atau profil kompensasi yang tanggal berlakunya mencapai periode yang sudah `CALCULATED` ke atas ditolak, kecuali penulis menyatakan alasannya secara eksplisit (`backdateReason`), yang ikut tersimpan pada catatan versi. Tanpa penolakan ini, menghitung ulang bulan yang sudah disahkan akan menghasilkan angka berbeda dari yang dibayarkan. Setiap baris hasil juga menyimpan id profil dan id versi kebijakan yang dipakainya, sehingga nilai lama tetap dapat dijelaskan.
 
 ### 3.1 Katalog komponen
 
@@ -123,7 +127,7 @@ Jabatan fungsional dan struktural dibaca dari placement EMP-005 dan dipetakan ke
 
 ### 3.4 Kasbon
 
-Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan final. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
+Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (tetap atau ditentukan Keuangan per periode). Sisa = pokok − total potongan **final**, yaitu potongan yang melekat pada periode yang sudah mencapai `APPROVED` ke atas; potongan pada periode yang masih dikerjakan tidak mengurangi sisa. Potongan tidak boleh melebihi sisa. Hanya `payroll.loans.manage`.
 
 ## 4. Input periode
 
@@ -225,6 +229,7 @@ PPh21 tidak dipotong dari gaji; dicatat sebagai `PPH21_EMPLOYER`. Penghasilan br
 Periode tidak dapat diajukan bila ada blocker:
 
 - MKG di luar tabel skala (D7);
+- kepegawaian sudah berakhir tetapi tanggal akhirnya `UNKNOWN` di EMP-005 (pegawai tidak dibayar sebulan penuh hanya karena tanggalnya belum diresolusi);
 - TMT berada setelah tanggal gajian (pegawai belum mulai bekerja pada periode ini);
 - pegawai berhenti di tengah periode tanpa faktor prorata atau pernyataan eksplisit dibayar penuh;
 - faktor prorata di luar rentang 0 < f ≤ 1;
@@ -273,7 +278,7 @@ Aturan:
 - APPROVED mengunci snapshot input, versi kebijakan, dan baris hasil. Hasil revisi menyimpan lineage ke versi sebelumnya.
 - Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi dengan penanda, mekanismenya §10 butir 8.
 - **Buka ulang setelah bayar atau setelah publikasi** tidak membatalkan pembayaran yang sudah terjadi. Hasil periode yang baru menyimpan `selisih_bayar = dibayar_baru − dibayar_lama` per pegawai. Selisih positif dibayarkan sebagai `ARREARS` pada periode berikutnya; selisih negatif menjadi `ADJUST_DEDUCT` pada periode berikutnya dengan alasan dan referensi keputusan. Konfirmasi bayar lama tetap tercatat sebagai fakta dan tidak dihapus.
-- Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED.
+- Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED. Sebelum itu, hanya aktor yang menjalankan periode (`payroll.periods.manage`, `payroll.calculate`, `payroll.inputs.manage`) yang melihat angkanya.
 
 ## 7. Output
 

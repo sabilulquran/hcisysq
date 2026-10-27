@@ -122,6 +122,165 @@ paths:
         '403': { $ref: '#/components/responses/PayrollForbidden' }
         '404': { $ref: '#/components/responses/PayrollNotFound' }
 
+  /payroll/periods/{periodId}/inputs:
+    get:
+      tags: [Payroll]
+      operationId: listPayrollPeriodInputs
+      summary: Read the period's inputs
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Every input recorded for the period
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inputs]
+                properties:
+                  inputs:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPeriodInput' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+    put:
+      tags: [Payroll]
+      operationId: savePayrollPeriodInputs
+      summary: Record or replace period inputs
+      description: >-
+        Requires payroll.inputs.manage, and only while the period is COLLECTING or
+        CALCULATED. Each row replaces the value for its employment and key, so
+        sending the same batch twice leaves the same state. ADJUSTMENT, ARREARS,
+        PRORATION_FACTOR and FULL_PAY_DESPITE_LEAVING need a reason, and an
+        ADJUSTMENT also needs the decision it rests on. Nobody may record inputs
+        for their own employment.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inputs]
+              properties:
+                inputs:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: object
+                    required: [employmentId, inputKey, value]
+                    properties:
+                      employmentId: { type: string, format: uuid }
+                      inputKey: { $ref: '#/components/schemas/PayrollInputKey' }
+                      value: { type: number }
+                      origin:
+                        type: string
+                        enum: [ATTENDANCE, MANUAL, IMPORT]
+                        default: MANUAL
+                      reason: { type: string, maxLength: 500 }
+                      decisionReference: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: The period's inputs after the write
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inputs]
+                properties:
+                  inputs:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPeriodInput' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403':
+          description: No payroll.inputs.manage, or the row is the actor's own employment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period has left COLLECTING and CALCULATED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
+    delete:
+      tags: [Payroll]
+      operationId: deletePayrollPeriodInput
+      summary: Remove one period input
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: employmentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: inputKey
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/PayrollInputKey' }
+      responses:
+        '204': { description: The input is gone }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period has left COLLECTING and CALCULATED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/periods/{periodId}/results:
+    get:
+      tags: [Payroll]
+      operationId: listPayrollPeriodResults
+      summary: Read the latest calculation of every employee in the period
+      description: >-
+        Per-person pay, so every read is recorded as a sensitive access
+        (payroll.report.read). Same read permissions as the period itself, with
+        one gate: report readers see the figures only once the period is
+        approved, while the people running it see them throughout
+        (specification section 6).
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The latest revision of each employee, with its component lines
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results, lines]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollResult' }
+                  lines:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollResultLine' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+
   /payroll/periods/{periodId}/transitions:
     post:
       tags: [Payroll]
@@ -133,7 +292,10 @@ paths:
         payroll.submit, return and approve need payroll.approve, confirm_payment
         needs payroll.payments.confirm, and the reopen decisions need
         payroll.reopen.approve. The account that submitted a period cannot approve
-        it. Submission requires a calculation newer than every input and no
+        it. The calculate action runs the engine over the period and stores a new
+        revision of every employee's result before the state moves; it is refused
+        with PAYROLL_POLICY_MISSING when no policy version covers the pay date.
+        Submission requires a calculation newer than every input and no
         blocker; approval requires no blocker, and does not ask for a fresh
         calculation the director could not run. Repeating an action that already
         happened is refused with PAYROLL_STATE_CONFLICT, since the period has
@@ -214,8 +376,80 @@ components:
             - PAYROLL_INVALID_PERIOD
             - PAYROLL_INVALID_QUERY
             - PAYROLL_INVALID_TRANSITION
+            - PAYROLL_INVALID_INPUT
+            - PAYROLL_DECISION_REQUIRED
+            - PAYROLL_OWN_RECORD
+            - PAYROLL_INPUT_NOT_FOUND
+            - PAYROLL_POLICY_MISSING
+            - PAYROLL_NOT_APPROVED_YET
             - UNAUTHENTICATED
         message: { type: string }
+        problems:
+          type: array
+          description: Present on PAYROLL_POLICY_MISSING; one entry per policy that is missing, duplicated or malformed.
+          items:
+            type: object
+            properties:
+              policyKey: { type: string }
+              code: { type: string, enum: [MISSING, DUPLICATE, INVALID] }
+              message: { type: string }
+
+    PayrollInputKey:
+      type: string
+      enum:
+        - OVERTIME_HOURS
+        - CONTRACT_ATTENDANCE_DAYS
+        - CONTRACT_TEACHING_HOURS
+        - CHILD_EDUCATION
+        - PJ_MEDIA
+        - ARREARS
+        - ADJUSTMENT
+        - PRORATION_FACTOR
+        - FULL_PAY_DESPITE_LEAVING
+        - OTHER_INCOME
+        - TEACHING_HOURS_PER_WEEK_OVERRIDE
+        - ANNUAL_PERFORMANCE_OVERRIDE
+        - MONTHLY_PERFORMANCE_OVERRIDE
+
+    PayrollPeriodInput:
+      type: object
+      required: [employmentId, inputKey, value, origin, recordedAt]
+      properties:
+        employmentId: { type: string, format: uuid }
+        inputKey: { $ref: '#/components/schemas/PayrollInputKey' }
+        value: { type: string, description: Rupiah, hours, days or a factor, depending on inputKey. }
+        origin: { type: string, enum: [ATTENDANCE, MANUAL, IMPORT] }
+        reason: { type: [string, 'null'] }
+        decisionReference: { type: [string, 'null'] }
+        recordedAt: { type: string, format: date-time }
+
+    PayrollResult:
+      type: object
+      required: [employmentId, revision, gross, deductions, net, payable]
+      properties:
+        employmentId: { type: string, format: uuid }
+        revision: { type: integer }
+        gross: { type: string }
+        deductions: { type: string }
+        net: { type: string }
+        payable: { type: string }
+        employerCost: { type: string }
+        payFactor: { type: string }
+        payFactorReason: { type: string, enum: [none, proration, early_service] }
+        bpjsBase: { type: string }
+        blockers: { type: array, items: { type: object } }
+        calculatedAt: { type: string, format: date-time }
+
+    PayrollResultLine:
+      type: object
+      required: [employmentId, componentCode, category, amount, displayOrder]
+      properties:
+        employmentId: { type: string, format: uuid }
+        componentCode: { type: string }
+        category: { type: string, enum: [EARNING, DEDUCTION, EMPLOYER_COST] }
+        amount: { type: string }
+        basis: { type: [string, 'null'] }
+        displayOrder: { type: integer }
 
     PayrollPeriodTransition:
       type: object

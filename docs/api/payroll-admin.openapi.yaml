@@ -1,0 +1,414 @@
+openapi: 3.1.0
+info:
+  title: HCIS Payroll Reference Data API
+  version: 0.0.1
+  description: >-
+    PAY-003 v1 reference data: versioned policy, effective-dated compensation
+    profiles, and loans. Every write opens a new row and closes the one it
+    supersedes, so a past period stays recomputable exactly as it was paid.
+    Every response is Cache-Control no-store.
+tags:
+  - name: Payroll reference data
+
+paths:
+  /payroll/policies:
+    get:
+      tags: [Payroll reference data]
+      operationId: listPayrollPolicies
+      summary: List policy versions, newest first
+      description: Requires payroll.policies.manage.
+      parameters:
+        - name: policyKey
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: The policy versions on record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [policies]
+                properties:
+                  policies:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPolicyVersion' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+    post:
+      tags: [Payroll reference data]
+      operationId: openPayrollPolicyVersion
+      summary: Open a new version of one policy
+      description: >-
+        Requires payroll.policies.manage. The version it supersedes is closed the
+        day before, so the two never overlap and no past period changes. A source
+        is mandatory: a statutory value has to say where it comes from.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [policyKey, effectiveFrom, payload, source]
+              properties:
+                policyKey: { type: string }
+                effectiveFrom: { type: string, format: date }
+                payload: { type: object }
+                source: { type: string, minLength: 3, maxLength: 500 }
+                note: { type: string, maxLength: 500 }
+                backdateReason:
+                  type: string
+                  minLength: 10
+                  maxLength: 500
+                  description: >-
+                    Required when effectiveFrom reaches back into a period that
+                    has already been calculated. It is appended to the note.
+      responses:
+        '201':
+          description: The version that now applies
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [policy]
+                properties:
+                  policy: { $ref: '#/components/schemas/PayrollPolicyVersion' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+        '409':
+          description: >-
+            Another version already covers that date, or the date reaches back
+            into a period already calculated and no backdateReason was given
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollAdminError' }
+
+  /payroll/employments/{employmentId}/compensation-profiles:
+    get:
+      tags: [Payroll reference data]
+      operationId: listPayrollCompensationProfiles
+      summary: Read an employment's compensation profile history
+      parameters:
+        - name: employmentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Every profile recorded for the employment, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollCompensationProfile' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+    post:
+      tags: [Payroll reference data]
+      operationId: openPayrollCompensationProfile
+      summary: Open a compensation profile that applies from a date
+      description: >-
+        Requires payroll.profiles.manage, and never for the actor's own
+        employment. The profile it supersedes is closed the day before.
+      parameters:
+        - name: employmentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayrollCompensationProfileWrite' }
+      responses:
+        '201':
+          description: The profile that now applies
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profile]
+                properties:
+                  profile: { $ref: '#/components/schemas/PayrollCompensationProfile' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403':
+          description: No payroll.profiles.manage, or the employment is the actor's own
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollAdminError' }
+        '404': { $ref: '#/components/responses/PayrollAdminNotFound' }
+        '409':
+          description: >-
+            Another profile already covers that date, or the date reaches back
+            into a period already calculated and no backdateReason was given
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollAdminError' }
+
+  /payroll/loans:
+    get:
+      tags: [Payroll reference data]
+      operationId: listPayrollLoans
+      summary: List loans with what is left to repay
+      parameters:
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The loans on record
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loans]
+                properties:
+                  loans:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollLoan' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+    post:
+      tags: [Payroll reference data]
+      operationId: createPayrollLoan
+      summary: Record a loan
+      description: Requires payroll.loans.manage, which human capital does not hold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeId, grantedOn, principal]
+              properties:
+                employeeId: { type: string, format: uuid }
+                grantedOn: { type: string, format: date }
+                principal: { type: integer, minimum: 1 }
+                instalment: { type: [integer, 'null'], minimum: 1 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: The loan, with its balance
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loan]
+                properties:
+                  loan: { $ref: '#/components/schemas/PayrollLoan' }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+        '404': { $ref: '#/components/responses/PayrollAdminNotFound' }
+
+  /payroll/periods/{periodId}/loan-deductions:
+    put:
+      tags: [Payroll reference data]
+      operationId: setPayrollLoanDeductions
+      summary: Set this period's loan instalments
+      description: >-
+        Requires payroll.loans.manage. Only while the period is DRAFT or
+        COLLECTING: once it has been calculated the instalments are locked, so
+        whoever confirms a payment cannot change the deduction it rests on. An
+        instalment larger than what is left to repay is refused.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deductions]
+              properties:
+                deductions:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [loanId, amount]
+                    properties:
+                      loanId: { type: string, format: uuid }
+                      amount:
+                        type: integer
+                        minimum: 0
+                        description: 0 removes this period's instalment for that loan.
+      responses:
+        '200':
+          description: The instalments were recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [written, removed]
+                properties:
+                  written: { type: integer }
+                  removed: { type: integer }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+        '404': { $ref: '#/components/responses/PayrollAdminNotFound' }
+        '409':
+          description: The period has been calculated, or the instalment exceeds the balance
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollAdminError' }
+
+components:
+  schemas:
+    PayrollAdminError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - PAYROLL_FORBIDDEN
+            - PAYROLL_OWN_RECORD
+            - PAYROLL_INVALID_QUERY
+            - PAYROLL_INVALID_POLICY
+            - PAYROLL_INVALID_PROFILE
+            - PAYROLL_INVALID_LOAN
+            - PAYROLL_POLICY_OVERLAP
+            - PAYROLL_PROFILE_OVERLAP
+            - PAYROLL_LOAN_LOCKED
+            - PAYROLL_LOAN_EXCEEDS_BALANCE
+            - PAYROLL_LOAN_NOT_FOUND
+            - PAYROLL_LOAN_CLOSED
+            - PAYROLL_PERIOD_NOT_FOUND
+            - PAYROLL_BACKDATES_SETTLED_PERIOD
+            - PAYROLL_EMPLOYMENT_NOT_FOUND
+            - PAYROLL_EMPLOYEE_NOT_FOUND
+            - UNAUTHENTICATED
+        message: { type: string }
+
+    PayrollPolicyVersion:
+      type: object
+      required: [id, policyKey, effectiveFrom, payload, source]
+      properties:
+        id: { type: string, format: uuid }
+        policyKey: { type: string }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        payload: { type: object }
+        source: { type: string }
+        note: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+
+    PayrollCompensationProfileWrite:
+      type: object
+      required: [effectiveFrom]
+      properties:
+        effectiveFrom: { type: string, format: date }
+        education:
+          type: [string, 'null']
+          enum: [SD, SMP, SLTA, D1_D2, D3_D4, S1, S2_S3, null]
+        workPattern:
+          type: [string, 'null']
+          enum: [FULL, HALF_DAY, HALF_DAY_II, null]
+        unitRef: { type: [string, 'null'], format: uuid }
+        functionalPositionRef: { type: [string, 'null'], format: uuid }
+        structuralPositionRef: { type: [string, 'null'], format: uuid }
+        teachingHoursPerWeek: { type: [number, 'null'], minimum: 0, maximum: 168 }
+        spouseCount: { type: integer, minimum: 0, maximum: 4 }
+        childCount: { type: integer, minimum: 0, maximum: 20 }
+        registeredDependants: { type: integer, minimum: 0, maximum: 24 }
+        specialQualificationTarget: { type: [integer, 'null'], minimum: 0 }
+        annualPerformanceRate: { type: [number, 'null'], minimum: 0, maximum: 2 }
+        monthlyPerformanceRate: { type: [number, 'null'], minimum: 0, maximum: 2 }
+        bpjsSegment:
+          type: string
+          enum: [PPU_YAYASAN, PBI, MANDIRI, BELUM_TERDAFTAR]
+        bpjsActiveFrom: { type: [string, 'null'], format: date }
+        bpjsExtraFamilyOverride:
+          type: [integer, 'null']
+          description: Normally derived from dependants; an override needs a reason.
+        bpjsExtraFamilyOverrideReason: { type: [string, 'null'] }
+        bpjsDecisionReference: { type: [string, 'null'] }
+        ptkpStatus: { type: [string, 'null'] }
+        pjMediaRatePerContent: { type: [integer, 'null'], minimum: 0 }
+        bankAccountNumber: { type: [string, 'null'] }
+        bankAccountName: { type: [string, 'null'] }
+
+    PayrollCompensationProfile:
+      type: object
+      description: >-
+        The stored profile. Numeric and bigint columns come back as strings, as
+        they do everywhere else in this API.
+      required: [id, employmentId, effectiveFrom]
+      properties:
+        id: { type: string, format: uuid }
+        employmentId: { type: string, format: uuid }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+        education: { type: [string, 'null'] }
+        workPattern: { type: [string, 'null'] }
+        unitRef: { type: [string, 'null'], format: uuid }
+        functionalPositionRef: { type: [string, 'null'], format: uuid }
+        structuralPositionRef: { type: [string, 'null'], format: uuid }
+        teachingHoursPerWeek: { type: [string, 'null'] }
+        spouseCount: { type: integer }
+        childCount: { type: integer }
+        registeredDependants: { type: integer }
+        specialQualificationTarget: { type: [string, 'null'] }
+        annualPerformanceRate: { type: [string, 'null'] }
+        monthlyPerformanceRate: { type: [string, 'null'] }
+        bpjsSegment: { type: string }
+        bpjsActiveFrom: { type: [string, 'null'], format: date }
+        bpjsExtraFamilyOverride: { type: [integer, 'null'] }
+        bpjsExtraFamilyOverrideReason: { type: [string, 'null'] }
+        bpjsDecisionReference: { type: [string, 'null'] }
+        ptkpStatus: { type: [string, 'null'] }
+        pjMediaRatePerContent: { type: [string, 'null'] }
+        bankAccountNumber: { type: [string, 'null'] }
+        bankAccountName: { type: [string, 'null'] }
+        recordedAt: { type: string, format: date-time }
+
+    PayrollLoan:
+      type: object
+      required: [id, employeeId, grantedOn, principal, outstanding]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        grantedOn: { type: string, format: date }
+        principal: { type: string }
+        instalment: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+        closedAt: { type: [string, 'null'], format: date-time }
+        deducted: { type: string }
+        outstanding: { type: string }
+
+  responses:
+    PayrollAdminUnauthenticated:
+      description: No session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PayrollAdminError' }
+    PayrollAdminForbidden:
+      description: The actor holds no payroll permission for this action
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PayrollAdminError' }
+    PayrollAdminBadRequest:
+      description: The request body or query is not valid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PayrollAdminError' }
+    PayrollAdminNotFound:
+      description: No such employment, employee, loan or period
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PayrollAdminError' }

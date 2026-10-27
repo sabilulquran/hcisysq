@@ -18,7 +18,37 @@ const config = {
   AUTH_SESSION_TTL_HOURS: 8,
 };
 
+// A complete, synthetic policy set, so a calculation run has something to read.
+const POLICY_PAYLOADS: Record<string, unknown> = {
+  SALARY_SCALE: { scale: { S1: Array.from({ length: 28 }, (_, mkg) => 2_000_000 + mkg * 100_000) } },
+  BASIC_MULTIPLIER: { units: {}, knownUnitRefs: [], workPatterns: { FULL: 1 } },
+  TEACHING_HOURS: { monthlyHourLimit: 96, overRatePerHour: 10_000, shortRatePerHour: 10_000, weeksPerMonth: 4 },
+  PERFORMANCE: {
+    defaultBase: 100_000, baseByPosition: {}, annualShare: 0.6, monthlyShare: 0.4,
+    unratedBelowOneYear: { annualRate: 0, monthlyRate: 1 },
+  },
+  FAMILY: { spouseRate: 0.05, childRate: 0.02 },
+  FUNCTIONAL_ALLOWANCE: { byPosition: {}, concurrentStructuralFactor: 0.7, excludedUnits: [], positionsWithoutAllowance: [] },
+  POSITIONAL_ALLOWANCE: { byPosition: {}, unitMultipliers: {}, positionsWithoutAllowance: [] },
+  OVERTIME: { monthlyHourDivisor: 173 },
+  BPJS_KESEHATAN: {
+    contributionRate: 0.05, extraFamilyRate: 0.01, floor: 2_878_646, ceiling: 12_000_000,
+    coveredChildren: 3, fixedAllowanceComponents: ["BASIC"],
+  },
+  CONTRACT_RATES: { transportPerAttendance: 15_000, teachingFeePerHour: 15_400 },
+  EARLY_SERVICE: { months: 2, netRate: 0.8 },
+  VARIANCE_THRESHOLD: { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 },
+};
+
+const POLICY_ROWS = Object.entries(POLICY_PAYLOADS).map(([policyKey, payload], index) => ({
+  id: `policy-${index}`,
+  policyKey,
+  payload,
+}));
+
 const PERIOD_ID = "50000000-0000-4000-8000-000000000001";
+const EMPLOYMENT_ID = "60000000-0000-4000-8000-000000000001";
+const OWN_EMPLOYMENT_ID = "60000000-0000-4000-8000-000000000002";
 const HC_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 const DIRECTOR_ACCOUNT = "00000000-0000-4000-8000-000000000002";
 
@@ -92,9 +122,15 @@ function periodRow(overrides: PeriodOverrides = {}) {
   };
 }
 
-function createPool(persona: Persona, overrides: PeriodOverrides, options: { versionRace?: boolean } = {}) {
+function createPool(
+  persona: Persona,
+  overrides: PeriodOverrides,
+  options: { versionRace?: boolean; policyComplete?: boolean } = {},
+) {
   const audits: string[] = [];
   const updates: string[] = [];
+  const inputWrites: Array<{ employmentId: string; inputKey: string; value: unknown }> = [];
+  const deletes: string[] = [];
   const transitions: Array<{ action: string; fromState: string; toState: string; reason: string | null }> = [];
   // The route reads the period again after a transition, so the fake has to move
   // with it rather than keep answering with the state before the write.
@@ -120,8 +156,98 @@ function createPool(persona: Persona, overrides: PeriodOverrides, options: { ver
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes("FOR UPDATE")) {
+      return { rows: [{ state: current.state ?? "DRAFT", version: current.version ?? 0 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_loans")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FROM payroll_period_transitions")) {
       return { rows: transitions, rowCount: transitions.length };
+    }
+    // The period query reads inputs and results in subqueries, so it has to be
+    // answered first or these branches would swallow it.
+    if (sql.includes("DELETE FROM payroll_period_inputs")) {
+      deletes.push(`${String(values?.[1] ?? "")}:${String(values?.[2] ?? "")}`);
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_period_inputs") && !sql.includes("FROM payroll_periods p")) {
+      if (sql.includes('count(*)::int AS "inputCount"')) {
+        return { rows: [{ inputCount: inputWrites.length, lastInputRecordedAt: null }], rowCount: 1 };
+      }
+      return {
+        rows: inputWrites.map((write) => ({
+          employmentId: write.employmentId,
+          inputKey: write.inputKey,
+          value: String(write.value),
+          origin: "MANUAL",
+          reason: null,
+          decisionReference: null,
+          recordedAt: "2026-09-19T00:00:00.000Z",
+        })),
+        rowCount: inputWrites.length,
+      };
+    }
+    if (sql.includes("INSERT INTO payroll_period_inputs")) {
+      inputWrites.push({
+        employmentId: String(values?.[2] ?? ""),
+        inputKey: String(values?.[3] ?? ""),
+        value: values?.[4],
+      });
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("JOIN accounts a ON a.employee_id = e.employee_id")) {
+      return { rows: [{ id: OWN_EMPLOYMENT_ID }], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_policy_versions")) {
+      return options.policyComplete === false ? { rows: [], rowCount: 0 } : { rows: POLICY_ROWS, rowCount: POLICY_ROWS.length };
+    }
+    if (sql.includes("FROM employments e") && sql.includes("employment_terms")) {
+      return {
+        rows: [{
+          employmentId: EMPLOYMENT_ID,
+          employeeId: "70000000-0000-4000-8000-000000000001",
+          serviceStartDate: "2016-07-01",
+          serviceEndDate: null,
+          termCategory: "TETAP",
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM payroll_compensation_profiles")) {
+      return {
+        rows: [{
+          employmentId: EMPLOYMENT_ID,
+          education: "S1",
+          workPattern: null,
+          unitRef: null,
+          functionalPositionRef: null,
+          structuralPositionRef: null,
+          teachingHoursPerWeek: null,
+          spouseCount: 0,
+          childCount: 0,
+          registeredDependants: 0,
+          specialQualificationTarget: null,
+          annualPerformanceRate: null,
+          monthlyPerformanceRate: null,
+          bpjsSegment: "BELUM_TERDAFTAR",
+          bpjsActiveFrom: null,
+          bpjsExtraFamilyOverride: null,
+          bankAccountNumber: "0000000001",
+          bankAccountName: "Pegawai Uji",
+        }],
+        rowCount: 1,
+      };
+    }
+    if ((sql.includes("FROM payroll_results r") || sql.includes("FROM payroll_results WHERE"))
+        && !sql.includes("FROM payroll_periods p")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("INSERT INTO payroll_results") || sql.includes("INSERT INTO payroll_result_lines")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("JOIN payroll_result_lines")) {
+      return { rows: [], rowCount: 0 };
     }
     if (sql.includes("FROM payroll_periods p")) {
       return { rows: [periodRow(current)], rowCount: 1 };
@@ -152,17 +278,23 @@ function createPool(persona: Persona, overrides: PeriodOverrides, options: { ver
     throw new Error(`Unexpected SQL in payroll routes test: ${sql}`);
   });
   const pool = { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Pool;
-  return { pool, audits, updates, transitions };
+  return { pool, audits, updates, transitions, inputWrites, deletes };
 }
 
 async function call(
   persona: Persona,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   url: string,
-  options: { payload?: object; period?: PeriodOverrides; versionRace?: boolean } = {},
+  options: {
+    payload?: object;
+    period?: PeriodOverrides;
+    versionRace?: boolean;
+    policyComplete?: boolean;
+  } = {},
 ) {
-  const { pool, audits, updates, transitions } = createPool(persona, options.period ?? {}, {
+  const { pool, audits, updates, transitions, inputWrites, deletes } = createPool(persona, options.period ?? {}, {
     ...(options.versionRace === undefined ? {} : { versionRace: options.versionRace }),
+    ...(options.policyComplete === undefined ? {} : { policyComplete: options.policyComplete }),
   });
   const app = Fastify({ logger: false });
   await registerPayrollRoutes(app, pool, config);
@@ -173,7 +305,7 @@ async function call(
     ...(options.payload ? { payload: options.payload } : {}),
   });
   await app.close();
-  return { response, audits, updates, transitions };
+  return { response, audits, updates, transitions, inputWrites, deletes };
 }
 
 const READ_ROUTES = ["/payroll/periods", `/payroll/periods/${PERIOD_ID}`];
@@ -511,5 +643,204 @@ describe("PAY-003 transitions", () => {
       period: { state: "DRAFT" },
     });
     expect(response.statusCode).toBe(400);
+  });
+});
+
+
+describe("PAY-003 period inputs", () => {
+  const collecting = { state: "COLLECTING" };
+
+  it("records an input and audits the batch without naming an amount", async () => {
+    const { response, inputWrites, audits } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: collecting,
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(inputWrites).toEqual([{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }]);
+    expect(audits).toEqual(["payroll.period.inputs_recorded"]);
+  });
+
+  it("refuses an actor without payroll.inputs.manage", async () => {
+    for (const persona of ["director", "finance", "employee", "board"] as const) {
+      const { response } = await call(persona, "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: collecting,
+        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+      });
+      expect(response.statusCode).toBe(403);
+    }
+  }, 20_000);
+
+  it("refuses an input recorded for the actor's own employment", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: collecting,
+      payload: { inputs: [{ employmentId: OWN_EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("PAYROLL_OWN_RECORD");
+  });
+
+  it("requires a reason for the inputs that change pay by hand", async () => {
+    for (const inputKey of ["ADJUSTMENT", "ARREARS", "PRORATION_FACTOR", "FULL_PAY_DESPITE_LEAVING"]) {
+      const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: collecting,
+        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey, value: 1 }] },
+      });
+      expect(response.json().code).toBe("PAYROLL_REASON_REQUIRED");
+    }
+  }, 20_000);
+
+  it("requires the decision an adjustment rests on", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: collecting,
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ADJUSTMENT", value: -500_000, reason: "koreksi" }] },
+    });
+    expect(response.json().code).toBe("PAYROLL_DECISION_REQUIRED");
+  });
+
+  it("refuses to change inputs once a period has left the working phase", async () => {
+    for (const state of ["SUBMITTED", "APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED"]) {
+      const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: { state },
+        payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 5 }] },
+      });
+      expect(response.statusCode).toBe(409);
+    }
+  }, 20_000);
+
+  it("removes one input and records that it went", async () => {
+    const { response, deletes, audits } = await call(
+      "hc",
+      "DELETE",
+      `/payroll/periods/${PERIOD_ID}/inputs/${EMPLOYMENT_ID}/OVERTIME_HOURS`,
+      { period: collecting },
+    );
+    expect(response.statusCode).toBe(204);
+    expect(deletes).toEqual([`${EMPLOYMENT_ID}:OVERTIME_HOURS`]);
+    expect(audits).toEqual(["payroll.period.input_removed"]);
+  });
+
+  it("refuses an input key it does not know", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: collecting,
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "BONUS_SIAPA_SAJA", value: 1 }] },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+});
+
+describe("PAY-003 calculation", () => {
+  it("calculates a collecting period and writes one audit event, with aggregates only", async () => {
+    const { response, audits } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      period: { state: "COLLECTING" },
+      payload: { action: "calculate" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().period.state).toBe("CALCULATED");
+    expect(audits).toEqual(["payroll.period.calculated"]);
+  });
+
+  it("refuses to calculate a period that has already left its working phase", async () => {
+    for (const state of ["SUBMITTED", "APPROVED", "PUBLISHED"]) {
+      const { response } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+        period: { state },
+        payload: { action: "calculate" },
+      });
+      expect(response.statusCode).toBe(409);
+    }
+  }, 20_000);
+
+  it("refuses to calculate when no policy covers the pay date", async () => {
+    const { response, audits } = await call("hc", "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+      period: { state: "COLLECTING" },
+      payload: { action: "calculate" },
+      policyComplete: false,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("PAYROLL_POLICY_MISSING");
+    expect(audits).toEqual([]);
+  });
+
+  it("lets only payroll.calculate run it", async () => {
+    for (const persona of ["director", "finance", "employee"] as const) {
+      const { response } = await call(persona, "POST", `/payroll/periods/${PERIOD_ID}/transitions`, {
+        period: { state: "COLLECTING" },
+        payload: { action: "calculate" },
+      });
+      expect(response.statusCode).toBe(403);
+    }
+  }, 20_000);
+});
+
+describe("PAY-003 results", () => {
+  it("records every read of per-person pay", async () => {
+    const { response, audits } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+      period: { state: "APPROVED" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(audits).toEqual(["payroll.report.read"]);
+  });
+
+  it("refuses a reader with no payroll permission", async () => {
+    for (const persona of ["employee", "board", "super_admin"] as const) {
+      const { response } = await call(persona, "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+        period: { state: "APPROVED" },
+      });
+      expect(response.statusCode).toBe(403);
+    }
+  }, 20_000);
+
+  it("keeps the figures from report readers until the period is approved", async () => {
+    for (const state of ["DRAFT", "COLLECTING", "CALCULATED", "SUBMITTED"]) {
+      const { response } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+        period: { state },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().code).toBe("PAYROLL_NOT_APPROVED_YET");
+    }
+  }, 20_000);
+
+  it("still shows them to the people running the period", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
+      period: { state: "CALCULATED" },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+});
+
+describe("PAY-003 input ranges", () => {
+  it("refuses a proration factor the database would reject anyway", async () => {
+    for (const value of [0, 1.5, -0.5]) {
+      const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+        period: { state: "COLLECTING" },
+        payload: {
+          inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "PRORATION_FACTOR", value, reason: "masuk pertengahan bulan" }],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+    }
+  }, 20_000);
+
+  it("refuses a negative count, hour or amount", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: -4 }] },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("accepts a negative adjustment, which is the one input that may be", async () => {
+    const { response } = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: {
+        inputs: [{
+          employmentId: EMPLOYMENT_ID,
+          inputKey: "ADJUSTMENT",
+          value: -500_000,
+          reason: "koreksi kualifikasi khusus",
+          decisionReference: "SK-UJI-001",
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
   });
 });

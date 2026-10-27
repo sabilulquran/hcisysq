@@ -209,7 +209,18 @@ export async function listAttendanceSchedules() {
     active: boolean; workLocationId: string | null; workLocationName: string | null;
     /** Date (WIB) the shift's first version applies from. */
     effectiveFrom: string | null;
+    /** ATT-013: blocks 2-3 of the current version. */
+    extraBlocks?: ShiftBlock[];
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
+}
+
+export interface ShiftBlock { startTime: string; endTime: string }
+
+/** "04:00–08:30 + 14:30–19:30" (ATT-013); a single block keeps "07:00–16:00". */
+export function shiftHoursText(item: { startTime: string; endTime: string; endDayOffset?: number; extraBlocks?: ShiftBlock[] }) {
+  const blocks = [{ startTime: item.startTime, endTime: item.endTime }, ...(item.extraBlocks ?? [])];
+  return blocks.map((block) => `${block.startTime.slice(0, 5)}–${block.endTime.slice(0, 5)}`).join(" + ")
+    + (item.endDayOffset === 1 ? " · +1 hari" : "");
 }
 
 /** ATT-014 §20.10 "Mundurkan awal berlaku" for the first version of a shift; audited, reason required. */
@@ -224,6 +235,7 @@ export async function backdateAttendanceSchedule(scheduleId: string, input: { ef
 export async function createAttendanceSchedule(input: {
   name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
   earlyLeaveToleranceMinutes: number; workLocationId: string | null; effectiveFrom?: string;
+  extraBlocks?: ShiftBlock[];
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
     method: "POST", credentials: "include",
@@ -602,6 +614,20 @@ export interface AttendanceOvertimeItem {
   decisionNote: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** ATT-011-6a HC list only. */
+  initiatedBy?: "employee" | "hc";
+  dayType?: "working_day" | "rest_day" | "public_holiday" | null;
+  /** Scan time outside the schedule (all scans on a day without one); information only. */
+  scanOutsideScheduleMinutes?: number | null;
+}
+
+export type OvertimeStatusFilter = "all" | "submitted" | "approved" | "rejected" | "cancelled" | "closed";
+
+export function dayTypeLabel(value: AttendanceOvertimeItem["dayType"]): string {
+  if (value === "working_day") return "Hari kerja";
+  if (value === "rest_day") return "Hari istirahat";
+  if (value === "public_holiday") return "Libur nasional";
+  return "Belum dihitung";
 }
 
 export async function listMyAttendanceOvertime() {
@@ -670,11 +696,11 @@ export async function cancelAttendanceOvertime(overtimeId: string) {
   await readJson<never>(response);
 }
 
-export async function listAttendanceOvertime(
-  status: "all" | "submitted" | "approved" | "rejected" | "cancelled" = "submitted",
-) {
-  return readJson<{ items: AttendanceOvertimeItem[] }>(
-    await fetch(`/api/admin/attendance/overtime?status=${encodeURIComponent(status)}`, {
+export async function listAttendanceOvertime(status: OvertimeStatusFilter = "submitted", page = 1, unitId?: string) {
+  const params = new URLSearchParams({ status, page: String(page) });
+  if (unitId) params.set("unitId", unitId);
+  return readJson<{ page: number; pageSize: number; total: number; pageCount: number; items: AttendanceOvertimeItem[] }>(
+    await fetch(`/api/admin/attendance/overtime?${params.toString()}`, {
       credentials: "include", headers: { Accept: "application/json" },
     }),
   );

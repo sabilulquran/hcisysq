@@ -28,8 +28,20 @@ import {
   hasCurrentCalculation,
   listPeriods,
   listTransitions,
+  writeAudit,
   type PeriodWithCalculation,
 } from "./store.js";
+import { calculatePeriod } from "./calculation.js";
+import {
+  deleteInput,
+  INPUT_KEYS,
+  INPUT_ORIGINS,
+  listInputs,
+  listResults,
+  ownEmploymentIds,
+  saveInputs,
+  type PeriodInputWrite,
+} from "./inputs-store.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 const firstOfMonth = isoDate.refine((value) => value.endsWith("-01"), "Periode harus tanggal 1 bulan tersebut");
@@ -48,6 +60,90 @@ const listQuery = z.object({
 });
 
 const periodParams = z.object({ periodId: z.string().uuid() });
+
+const inputParams = z.object({
+  periodId: z.string().uuid(),
+  employmentId: z.string().uuid(),
+  inputKey: z.enum(INPUT_KEYS),
+});
+
+const inputsBody = z.object({
+  inputs: z
+    .array(
+      z.object({
+        employmentId: z.string().uuid(),
+        inputKey: z.enum(INPUT_KEYS),
+        value: z.number().finite(),
+        origin: z.enum(INPUT_ORIGINS).default("MANUAL"),
+        reason: z.string().trim().max(500).optional(),
+        decisionReference: z.string().trim().max(200).optional(),
+      }),
+    )
+    .min(1)
+    .max(2000)
+    .superRefine((inputs, ctx) => {
+      for (const [index, input] of inputs.entries()) {
+        // Mirrors payroll_period_inputs_proration_range in migration 0069, so a
+        // value out of range comes back as a 400 rather than a failed INSERT.
+        if (input.inputKey === "PRORATION_FACTOR" && !(input.value > 0 && input.value <= 1)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: "Faktor prorata harus berada pada rentang 0 < f <= 1.",
+          });
+        }
+        if (input.inputKey === "FULL_PAY_DESPITE_LEAVING" && input.value !== 0 && input.value !== 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: "Pernyataan dibayar penuh bernilai 0 atau 1.",
+          });
+        }
+        if (NON_NEGATIVE_INPUTS.includes(input.inputKey) && input.value < 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "value"],
+            message: `Input ${input.inputKey} tidak boleh bernilai negatif.`,
+          });
+        }
+      }
+    }),
+});
+
+/** Only an adjustment may be negative; the rest are counts, hours or amounts. */
+const NON_NEGATIVE_INPUTS: readonly string[] = [
+  "OVERTIME_HOURS",
+  "CONTRACT_ATTENDANCE_DAYS",
+  "CONTRACT_TEACHING_HOURS",
+  "CHILD_EDUCATION",
+  "PJ_MEDIA",
+  "ARREARS",
+  "OTHER_INCOME",
+  "TEACHING_HOURS_PER_WEEK_OVERRIDE",
+  "ANNUAL_PERFORMANCE_OVERRIDE",
+  "MONTHLY_PERFORMANCE_OVERRIDE",
+];
+
+/** Report readers see a period's figures only from this state onwards (section 6). */
+const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
+const RUNNER_PERMISSIONS: readonly string[] = [
+  "payroll.periods.manage",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
+
+function runsPeriods(actor: TransitionActor): boolean {
+  return RUNNER_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
+}
+
+/** Section 4: these inputs change pay by hand, so they carry a reason. */
+const REASON_REQUIRED: readonly string[] = [
+  "ADJUSTMENT",
+  "ARREARS",
+  "PRORATION_FACTOR",
+  "FULL_PAY_DESPITE_LEAVING",
+];
 
 const transitionBody = z.object({
   action: z.enum(PERIOD_ACTIONS),
@@ -235,6 +331,171 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     });
   });
 
+  app.get("/payroll/periods/:periodId/inputs", async (request, reply) => {
+    const actor = await requireReader(request, reply);
+    if (!actor) return;
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    return send(reply, 200, { inputs: await listInputs(pool, period.id) });
+  });
+
+  app.put("/payroll/periods/:periodId/inputs", async (request, reply) => {
+    const actor = await requirePermission(request, reply, "payroll.inputs.manage");
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    const body = inputsBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) {
+      return send(reply, 400, {
+        code: "PAYROLL_INVALID_INPUT",
+        message: body.success ? "Identifier periode tidak valid." : (body.error.issues[0]?.message ?? "Input tidak valid."),
+      });
+    }
+
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    // Inputs belong to the collecting phase. Once a period is calculated and on
+    // its way to approval, changing them behind the calculation is not an edit
+    // but a different period (specification section 6).
+    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+      return send(reply, 409, {
+        code: "PAYROLL_STATE_CONFLICT",
+        message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
+      });
+    }
+
+    const missingReason = body.data.inputs.find(
+      (input) => REASON_REQUIRED.includes(input.inputKey) && (input.reason ?? "").trim().length === 0,
+    );
+    if (missingReason) {
+      return send(reply, 400, {
+        code: "PAYROLL_REASON_REQUIRED",
+        message: `Input ${missingReason.inputKey} membutuhkan alasan.`,
+      });
+    }
+    const missingDecision = body.data.inputs.find(
+      (input) => input.inputKey === "ADJUSTMENT" && (input.decisionReference ?? "").trim().length === 0,
+    );
+    if (missingDecision) {
+      return send(reply, 400, {
+        code: "PAYROLL_DECISION_REQUIRED",
+        message: "Penyesuaian gaji membutuhkan referensi keputusan.",
+      });
+    }
+
+    const own = await ownEmploymentIds(pool, actor.accountId);
+    if (body.data.inputs.some((input) => own.has(input.employmentId))) {
+      return send(reply, 403, {
+        code: "PAYROLL_OWN_RECORD",
+        message: "Anda tidak dapat mencatat input periode untuk diri sendiri.",
+      });
+    }
+
+    try {
+      await saveInputs(pool, period.id, body.data.inputs as PeriodInputWrite[], actor.accountId);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      // A check or foreign key the request violated is the caller's mistake, not
+      // a server fault: an unknown employment, or a value the schema refuses.
+      if (code === "23514") {
+        return send(reply, 400, { code: "PAYROLL_INVALID_INPUT", message: "Nilai input ditolak oleh aturan periode." });
+      }
+      if (code === "23503") {
+        return send(reply, 404, { code: "PAYROLL_INPUT_NOT_FOUND", message: "Employment tidak ditemukan." });
+      }
+      throw error;
+    }
+    return send(reply, 200, { inputs: await listInputs(pool, period.id) });
+  });
+
+  app.delete("/payroll/periods/:periodId/inputs/:employmentId/:inputKey", async (request, reply) => {
+    const actor = await requirePermission(request, reply, "payroll.inputs.manage");
+    if (!actor) return;
+
+    const params = inputParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_INPUT", message: "Identifier input tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+      return send(reply, 409, {
+        code: "PAYROLL_STATE_CONFLICT",
+        message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
+      });
+    }
+    const own = await ownEmploymentIds(pool, actor.accountId);
+    if (own.has(params.data.employmentId)) {
+      return send(reply, 403, {
+        code: "PAYROLL_OWN_RECORD",
+        message: "Anda tidak dapat mengubah input periode untuk diri sendiri.",
+      });
+    }
+
+    const removed = await deleteInput(
+      pool,
+      period.id,
+      params.data.employmentId,
+      params.data.inputKey,
+      actor.accountId,
+    );
+    if (!removed) {
+      return send(reply, 404, { code: "PAYROLL_INPUT_NOT_FOUND", message: "Input tidak ditemukan." });
+    }
+    return send(reply, 204, null);
+  });
+
+  app.get("/payroll/periods/:periodId/results", async (request, reply) => {
+    const actor = await requireReader(request, reply);
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+
+    // Section 6: the payroll report becomes visible to report readers only once
+    // the period is approved. Before that, only the people running the period
+    // see the figures they are still working on.
+    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+      return send(reply, 403, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Hasil periode baru dapat dibaca setelah periode disahkan.",
+      });
+    }
+
+    const { results, lines } = await listResults(pool, period.id);
+    // Per-person pay is sensitive, so reading it is itself recorded
+    // (specification section 2 and section 8).
+    const client = await pool.connect();
+    try {
+      await writeAudit(client, {
+        actorAccountId: actor.accountId,
+        action: "payroll.report.read",
+        periodId: period.id,
+        payload: { row_count: results.length, scope: "period_results" },
+      });
+    } finally {
+      client.release();
+    }
+
+    return send(reply, 200, { results, lines });
+  });
+
   app.post("/payroll/periods/:periodId/transitions", async (request, reply) => {
     const actor = await requireReader(request, reply);
     if (!actor) return;
@@ -258,6 +519,36 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!decision.allowed) {
       const status = decision.refusal.code === "PAYROLL_FORBIDDEN" ? 403 : 409;
       return send(reply, status, decision.refusal);
+    }
+
+    // Calculating is the one action that does work of its own before the state
+    // moves: the results it writes are what the next transitions are judged on.
+    if (body.data.action === "calculate") {
+      const outcome = await calculatePeriod(
+        pool,
+        {
+          id: period.id,
+          legalEntityKey: period.legalEntityKey,
+          periodStart: period.periodStart,
+          periodEnd: period.periodEnd,
+          payDate: period.payDate,
+        },
+        actor.accountId,
+        period.version,
+      );
+      if (outcome.conflict) {
+        return send(reply, 409, {
+          code: "PAYROLL_STATE_CONFLICT",
+          message: "Periode berubah saat perhitungan dimulai; muat ulang lalu coba lagi.",
+        });
+      }
+      if (outcome.policyProblems.length > 0) {
+        return send(reply, 409, {
+          code: "PAYROLL_POLICY_MISSING",
+          message: "Kebijakan payroll belum lengkap untuk tanggal gajian periode ini.",
+          problems: outcome.policyProblems,
+        });
+      }
     }
 
     const result = await applyTransition(pool, {

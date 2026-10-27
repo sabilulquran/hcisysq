@@ -28,6 +28,7 @@ import {
 import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
 import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
+import { listOvertimeForHc } from "./overtime-list.js";
 import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -78,6 +79,37 @@ const workLocationSchema = z.object({
 const workLocationPatchSchema = workLocationSchema.partial().extend({
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan lokasi kosong.");
+// ATT-013: blocks 2-3 of a shift, on the same day as block 1.
+const extraBlocksSchema = z.array(z.object({
+  startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+})).max(2);
+
+/** ATT-013 §3: blocks in order, no overlap, at least one minute apart, and no midnight crossing. */
+export function scheduleBlocksError(first: { startTime: string; endTime: string; endDayOffset: number }, extra: ReadonlyArray<{ startTime: string; endTime: string }>) {
+  if (extra.length === 0) return null;
+  if (first.endDayOffset !== 0 || first.endTime <= first.startTime) return "Shift dengan beberapa blok tidak boleh melewati tengah malam.";
+  let previousEnd = first.endTime.slice(0, 5);
+  for (const block of extra) {
+    const start = block.startTime.slice(0, 5);
+    const end = block.endTime.slice(0, 5);
+    if (end <= start) return "Setiap blok harus selesai setelah mulai, pada hari yang sama.";
+    if (start <= previousEnd) return "Blok harus berurutan dan tidak boleh bertumpuk.";
+    previousEnd = end;
+  }
+  return null;
+}
+
+async function writeVersionBlocks(client: PoolClient, versionId: string, blocks: ReadonlyArray<{ startTime: string; endTime: string }>) {
+  for (const [index, block] of blocks.entries()) {
+    await client.query(
+      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time)
+       VALUES ($1, $2, $3, $4::time, $5::time)`,
+      [randomUUID(), versionId, index + 2, block.startTime, block.endTime],
+    );
+  }
+}
+
 const scheduleTemplateSchema = z.object({
   name: z.string().trim().min(1).max(160),
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
@@ -88,6 +120,7 @@ const scheduleTemplateSchema = z.object({
   workLocationId: z.string().uuid().nullable().optional(),
   // ATT-014 §20.10: the date the shift's meaning applies from (00:00 WIB); default is the moment of creation.
   effectiveFrom: dateSchema.optional(),
+  extraBlocks: extraBlocksSchema.default([]),
 });
 const scheduleBackdateSchema = z.object({
   effectiveFrom: dateSchema,
@@ -100,6 +133,7 @@ const scheduleTemplatePatchSchema = z.object({
   endDayOffset: z.number().int().min(0).max(1).optional(),
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
+  extraBlocks: extraBlocksSchema.optional(),
   workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
@@ -243,6 +277,31 @@ function datesBetween(from: string, to: string, maximum: number) {
   return items;
 }
 
+const OVERTIME_DAY_LIMIT_MINUTES = 24 * 60;
+
+/**
+ * ATT-011-6a §7.6: overtime of one employee on one day may not add up to more than 24 hours. Counts
+ * approved and waiting requests (other than `excludeId`) plus the minutes being added.
+ */
+async function assertOvertimeDayTotal(
+  db: Pick<PoolClient, "query">,
+  employeeId: string,
+  workDate: string,
+  addMinutes: number,
+  excludeId: string | null = null,
+) {
+  const total = await db.query<{ minutes: number }>(
+    `SELECT coalesce(sum(CASE WHEN status = 'approved' THEN coalesce(approved_minutes, 0) ELSE requested_minutes END), 0)::int AS minutes
+     FROM attendance_overtime_requests
+     WHERE employee_id = $1 AND work_date = $2::date AND status IN ('submitted', 'approved')
+       AND ($3::uuid IS NULL OR id <> $3)`,
+    [employeeId, workDate, excludeId],
+  );
+  if ((total.rows[0]?.minutes ?? 0) + addMinutes > OVERTIME_DAY_LIMIT_MINUTES) {
+    throw new WorkforceAttendanceError(422, "OVERTIME_DAY_TOTAL_INVALID", "Total lembur satu hari tidak boleh lebih dari 24 jam.");
+  }
+}
+
 function shiftDateText(date: string, days: number) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -275,7 +334,8 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
        incomplete_session AS "incompleteSession", justified,
        late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
        outside_geofence_justified AS "outsideGeofenceJustified",
-       overtime_minutes AS "overtimeMinutes", created_at AS "createdAt"
+       overtime_minutes AS "overtimeMinutes", day_type AS "dayType",
+       holiday_scheduled_work AS "holidayScheduledWork", created_at AS "createdAt"
      FROM attendance_result_versions
      WHERE employee_id = $1 AND work_date = $2::date
      ORDER BY version DESC LIMIT 1`,
@@ -291,8 +351,24 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
      ORDER BY sequence`,
     [mapped.id],
   );
+  // ATT-013: per-block outcome of a multi-block day (none for a single-block day).
+  const blocks = await db.query(
+    `SELECT sequence, scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
+       first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt", status,
+       late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes", worked_minutes AS "workedMinutes"
+     FROM attendance_result_blocks WHERE attendance_result_version_id = $1 ORDER BY sequence`,
+    [mapped.id],
+  );
+  const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value ?? null);
   return {
     ...mapped,
+    blocks: blocks.rows.map((item: Record<string, unknown>) => ({
+      ...item,
+      scheduledStartAt: iso(item.scheduledStartAt),
+      scheduledEndAt: iso(item.scheduledEndAt),
+      firstCheckInAt: iso(item.firstCheckInAt),
+      lastCheckOutAt: iso(item.lastCheckOutAt),
+    })),
     sessions: sessions.rows.map((item: Record<string, unknown>) => ({
       ...item,
       checkInAt: item.checkInAt instanceof Date ? item.checkInAt.toISOString() : item.checkInAt ?? null,
@@ -908,6 +984,8 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
          version.id AS "currentVersionId", version.version AS "currentVersion",
+         (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+            FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks",
          (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
@@ -951,8 +1029,22 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
-      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId"]
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks"]
         .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
+      // ATT-013: without new blocks in the request, a new version keeps the current version's blocks.
+      const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string }>(
+        `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime"
+         FROM attendance_schedule_version_blocks block
+         JOIN attendance_schedule_versions version ON version.id = block.schedule_version_id
+         WHERE version.schedule_template_id = $1 AND version.effective_to IS NULL
+         ORDER BY block.sequence`,
+        [params.data.scheduleId],
+      )).rows;
+      const blocksError = scheduleBlocksError(next, blocks);
+      if (blocksError) {
+        await client.query("ROLLBACK");
+        return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
+      }
 
       await client.query(
         `UPDATE attendance_schedule_templates
@@ -992,6 +1084,7 @@ export async function registerAttendanceWorkforceRoutes(
             next.workLocationId ?? null, effectiveAt, principal.id,
           ],
         );
+        await writeVersionBlocks(client, versionId, blocks);
       }
 
       await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
@@ -1018,6 +1111,8 @@ export async function registerAttendanceWorkforceRoutes(
     const id = randomUUID();
     const versionId = randomUUID();
     const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
+    const blocksError = scheduleBlocksError({ startTime: body.data.startTime, endTime: body.data.endTime, endDayOffset }, body.data.extraBlocks);
+    if (blocksError) return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -1045,8 +1140,9 @@ export async function registerAttendanceWorkforceRoutes(
           body.data.workLocationId ?? null, principal.id, body.data.effectiveFrom ?? null,
         ],
       );
+      await writeVersionBlocks(client, versionId, body.data.extraBlocks);
       await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
-        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null,
+        versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null, extraBlocks: body.data.extraBlocks,
       });
       await client.query("COMMIT");
       return reply.status(201).send({ id, versionId, version: 1 });
@@ -1544,12 +1640,17 @@ export async function registerAttendanceWorkforceRoutes(
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${employee.id}:${body.data.workDate}`]);
+        await assertOvertimeDayTotal(client, employee.id, body.data.workDate, body.data.requestedMinutes);
         await client.query(
           `INSERT INTO attendance_overtime_requests (
              id, employee_id, work_date, requested_minutes, note, requested_by_account_id
            ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
           [id, employee.id, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
         );
+        await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+          workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "employee",
+        });
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1587,6 +1688,7 @@ export async function registerAttendanceWorkforceRoutes(
           [params.data.overtimeId, employee.id],
         );
         if (!changed.rows[0]) throw new WorkforceAttendanceError(409, "OVERTIME_NOT_CANCELLABLE", "Pengajuan lembur tidak dapat dibatalkan.");
+        await insertAudit(client, principal.id, "attendance.overtime.cancelled", "attendance_overtime_request", params.data.overtimeId, {});
         await client.query(
           `INSERT INTO attendance_overtime_events (
              id, overtime_request_id, actor_account_id, event_type, payload
@@ -1606,32 +1708,22 @@ export async function registerAttendanceWorkforceRoutes(
     }
   });
 
+  // ATT-011-6a §7.4: HC monitors overtime. Each row carries the kind of day of the stored result and the
+  // scan time outside the schedule, as information only: it never fills overtime minutes (I-7).
   app.get("/admin/attendance/overtime", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.overtime.manage");
     if (!principal) return;
-    const query = z.object({
-      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled"]).default("submitted"),
+    const query = pageQuerySchema.extend({
+      status: z.enum(["all", "submitted", "approved", "rejected", "cancelled", "closed"]).default("submitted"),
+      unitId: z.string().uuid().optional(),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
-    const values: unknown[] = [];
-    const clause = query.data.status === "all" ? "" : (values.push(query.data.status), "WHERE request.status = $1");
-    const rows = await pool.query(
-      `SELECT request.id, request.employee_id AS "employeeId",
-         employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
-         unit.name AS "unitName", request.work_date::text AS "workDate",
-         request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
-         request.note, request.status, request.decision_note AS "decisionNote",
-         request.created_at AS "createdAt", request.decided_at AS "decidedAt"
-       FROM attendance_overtime_requests request
-       JOIN employees employee ON employee.id = request.employee_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       ${clause}
-       ORDER BY request.work_date DESC, request.created_at DESC
-       LIMIT 1000`,
-      values,
-    );
+    const statuses = query.data.status === "all" ? null
+      : query.data.status === "closed" ? ["rejected", "cancelled"] : [query.data.status];
     reply.header("Cache-Control", "no-store");
-    return reply.send({ items: rows.rows });
+    return reply.send(await listOvertimeForHc(pool, {
+      page: query.data.page, pageSize: query.data.pageSize, statuses, unitId: query.data.unitId ?? null,
+    }));
   });
 
   app.post("/admin/attendance/overtime", async (request, reply) => {
@@ -1645,12 +1737,17 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${body.data.employeeId}:${body.data.workDate}`]);
+      await assertOvertimeDayTotal(client, body.data.employeeId, body.data.workDate, body.data.requestedMinutes);
       await client.query(
         `INSERT INTO attendance_overtime_requests (
            id, employee_id, work_date, requested_minutes, note, requested_by_account_id
          ) VALUES ($1, $2, $3::date, $4, $5, $6)`,
         [id, body.data.employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note ?? null, principal.id],
       );
+      await insertAudit(client, principal.id, "attendance.overtime.submitted", "attendance_overtime_request", id, {
+        workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, initiatedBy: "hc",
+      });
       await client.query(
         `INSERT INTO attendance_overtime_events (
            id, overtime_request_id, actor_account_id, event_type, payload
@@ -1661,7 +1758,7 @@ export async function registerAttendanceWorkforceRoutes(
       return reply.status(201).send({ id, status: "submitted" });
     } catch (error) {
       await client.query("ROLLBACK");
-      throw error;
+      return sendError(reply, error);
     } finally {
       client.release();
     }
@@ -1696,7 +1793,14 @@ export async function registerAttendanceWorkforceRoutes(
       if (approvedMinutes !== null && approvedMinutes > item.requestedMinutes) {
         throw new WorkforceAttendanceError(400, "OVERTIME_APPROVED_EXCEEDS_REQUEST", "Menit lembur disetujui tidak boleh melebihi pengajuan.");
       }
+      if (approvedMinutes !== null) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${item.employeeId}:${item.workDate}`]);
+        await assertOvertimeDayTotal(client, item.employeeId, item.workDate, approvedMinutes, params.data.overtimeId);
+      }
       const status = body.data.decision === "approve" ? "approved" : "rejected";
+      await insertAudit(client, principal.id, `attendance.overtime.${status}`, "attendance_overtime_request", params.data.overtimeId, {
+        workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes,
+      });
       await client.query(
         `UPDATE attendance_overtime_requests
          SET status = $2, approved_minutes = $3, decided_by_account_id = $4,

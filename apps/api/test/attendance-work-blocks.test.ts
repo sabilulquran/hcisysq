@@ -59,6 +59,8 @@ describe("ATT-013 B-5/B-7: the day from its blocks", () => {
   it("is Tidak hadir when no block was attended, and waits for a later block during the day", () => {
     expect(evaluate([]).computation.status).toBe("absent");
     expect(evaluate([punch("03:58"), punch("08:31")], at("12:00")).computation.status).toBe("present");
+    // A late block shows at once, before the later block has started.
+    expect(evaluate([punch("04:10"), punch("08:31")], at("12:00")).computation.status).toBe("late");
   });
 });
 

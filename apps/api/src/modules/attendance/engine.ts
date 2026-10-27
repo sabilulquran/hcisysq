@@ -365,7 +365,8 @@ export function evaluateBlocks(input: {
     statuses.every((value) => value === "scheduled") ? "scheduled"
       : statuses.every((value) => value === "absent") ? "absent"
       : statuses.some((value) => value === "incomplete") || (statuses.some(attended) && statuses.some((value) => value === "absent")) ? "incomplete"
-      : statuses.some((value) => value === "pending" || value === "scheduled") ? (statuses.some(attended) ? "present" : "pending")
+      : statuses.some((value) => value === "pending" || value === "scheduled")
+        ? (statuses.some((value) => value === "late") ? "late" : statuses.some(attended) ? "present" : "pending")
       : statuses.some((value) => value === "late") ? "late"
       : "present";
   const sessions = blockResults.flatMap((block) => block.sessions);
@@ -794,6 +795,11 @@ export async function materializeAttendanceResult(
         earlyLeaveJustified: computed.earlyLeaveJustified,
         outsideGeofenceJustified: computed.outsideGeofenceJustified,
         overtimeMinutes: computed.overtimeMinutes,
+        // A block can change while the day's rollup stays the same; its rows must not go stale.
+        ...(blockResults.length ? {
+          blocks: blockResults.map((block) => [block.status, block.lateMinutes, block.earlyLeaveMinutes, block.workedMinutes,
+            block.firstCheckInAt?.toISOString() ?? null, block.lastCheckOutAt?.toISOString() ?? null]),
+        } : {}),
       },
     };
     let inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");

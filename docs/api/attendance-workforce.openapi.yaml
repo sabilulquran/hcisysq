@@ -462,7 +462,8 @@ paths:
       x-required-permission: any of attendance.reports.read, attendance.records.manage, attendance.clarification.manage
       description: >-
         ATT-011-3 section 6.2 one employee-day: employee, resolved schedule (with shift name and tolerance),
-        latest stored result with sessions (no technical source summary), every punch of the day (GPS
+        latest stored result with sessions (no technical source summary) and, for a multi-block shift, its
+        blocks (ATT-013), every punch of the day (GPS
         fields only for attendance.clarification.manage; photos only through the evidence endpoint),
         clarifications, approved leave covering the date, and overtime requests.
       parameters:
@@ -1017,6 +1018,21 @@ components:
               workedMinutes: { type: [integer, 'null'], minimum: 0 }
               complete: { type: boolean }
               sourceSummary: { type: string }
+        blocks:
+          type: array
+          description: ATT-013 per-block outcome of a multi-block day; empty for a single-block day.
+          items:
+            type: object
+            properties:
+              sequence: { type: integer, minimum: 1, maximum: 3 }
+              scheduledStartAt: { type: string, format: date-time }
+              scheduledEndAt: { type: string, format: date-time }
+              firstCheckInAt: { type: [string, 'null'], format: date-time }
+              lastCheckOutAt: { type: [string, 'null'], format: date-time }
+              status: { type: string, enum: [scheduled, pending, present, late, incomplete, absent] }
+              lateMinutes: { type: integer, minimum: 0 }
+              earlyLeaveMinutes: { type: integer, minimum: 0 }
+              workedMinutes: { type: integer, minimum: 0 }
 
     AttendanceWorkforceSnapshot:
       type: object

@@ -244,7 +244,8 @@ export async function attendanceCalculationRows(
       earlyLeaveMinutes: stored?.earlyLeaveMinutes ?? null,
       overtimeMinutes: stored?.overtimeMinutes ?? null,
       incompleteSession: stored?.incompleteSession ?? null,
-      ...normalActual(status, stored ? { count: stored.blockCount ?? 0, attended: stored.blocksAttended ?? 0 } : undefined),
+      // Today is provisional: later blocks may still come, so no block share yet.
+      ...normalActual(status, stored && !provisional ? { count: stored.blockCount ?? 0, attended: stored.blocksAttended ?? 0 } : undefined),
     };
   })
     .filter((item) => !filter.status || item.status === filter.status)

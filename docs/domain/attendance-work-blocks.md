@@ -39,8 +39,9 @@ hadir satu blok sebagai Hadir dengan pulang cepat.
 
 - **Shift** (`attendance_schedule_versions`) tetap menyimpan blok pertama di `start_time`/`end_time`.
   Blok ke-2 dan ke-3 disimpan di tabel baru `attendance_schedule_version_blocks`
-  (`schedule_version_id`, `sequence` 2–3, `start_time`, `end_time`, `day_offset` 0–1 untuk awal blok,
-  `end_day_offset` 0–1). Blok tidak boleh tumpang tindih dan harus berurutan; jeda minimal 1 menit.
+  (`schedule_version_id`, `sequence` 2–3, `start_time`, `end_time`), pada tanggal yang sama dengan blok
+  pertama. Blok tidak boleh tumpang tindih dan harus berurutan; jeda minimal 1 menit. Shift berbeberapa blok
+  tidak boleh melewati tengah malam.
 - Versi shift tetap immutable: mengubah blok membuat versi baru, sama seperti mengubah jam.
 - `resolveSchedule` mengembalikan `blocks` (urut) di samping `scheduledStartAt` (awal blok pertama) dan
   `scheduledEndAt` (akhir blok terakhir), sehingga konsumen lama tetap melihat rentang hari.
@@ -79,6 +80,10 @@ hadir satu blok sebagai Hadir dengan pulang cepat.
   blok. `TBD`: baris per blok di tab Harian dan model Detail Harian; sekarang satu baris per hari dengan
   status hasil gulungan.
 - `TBD`: mengubah blok shift yang sudah ada dari layar (sekarang lewat API atau buat shift baru).
+- Selama hari berjalan, blok yang terlambat langsung membuat hari Terlambat; Riil per blok baru dihitung
+  setelah hari lewat (baris hari ini sementara).
+- `TBD`: Pantauan Hari Ini masih menilai selisih masuk terhadap awal blok pertama. Pegawai yang hanya hadir di
+  blok kedua tampil terlambat di layar itu sampai Kalkulasi; hasil Kalkulasi dan laporan sudah benar.
 
 ## 7. Di luar cakupan
 

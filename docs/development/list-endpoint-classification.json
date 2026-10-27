@@ -419,6 +419,11 @@
       "reason": "Berhalaman dengan total persis; temuan dihitung saat dibaca untuk semua pegawai lalu disaring dan dipotong di memori (read model, dibatasi jumlah pegawai)."
     },
     {
+      "url": "/admin/employment/contracts/expiring",
+      "list": "paged",
+      "reason": "Worklist kontrak akan berakhir dengan page/pageSize (maks 100) dan total; diurutkan per tanggal berakhir."
+    },
+    {
       "url": "/admin/employment/rollout",
       "list": "single"
     },
@@ -607,6 +612,11 @@
       "url": "/documents/me/types",
       "list": "bounded",
       "reason": "Katalog jenis surat yang dapat diminta pegawai; beberapa baris tetap."
+    },
+    {
+      "url": "/employees/me/employment",
+      "list": "single",
+      "reason": "Ringkasan kepegawaian milik pegawai yang masuk sendiri, dengan riwayat tindakannya sendiri."
     },
     {
       "url": "/governance/summary",

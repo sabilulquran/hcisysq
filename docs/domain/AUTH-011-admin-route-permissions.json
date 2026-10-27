@@ -2255,6 +2255,32 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/employment/self-service-routes.ts",
+    "method": "POST",
+    "url": "/admin/employment-actions/:actionId/reversal",
+    "permissions": [
+      "employment.correct"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/self-service-routes.ts",
+    "method": "GET",
+    "url": "/admin/employment/contracts/expiring",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/self-service-routes.ts",
+    "method": "GET",
+    "url": "/employees/me/employment",
+    "permissions": [],
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "GET",
     "url": "/admin/organization/designer/drafts",

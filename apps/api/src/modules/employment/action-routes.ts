@@ -41,7 +41,7 @@ import {
 import { getRolloutMode, jakartaToday, loadHistories } from "./infrastructure/postgres-employment-store.js";
 
 /** HTTP status per typed domain failure (spec §12). */
-const STATUS_BY_CODE: Readonly<Record<EmploymentFailureCode, number>> = {
+export const STATUS_BY_CODE: Readonly<Record<EmploymentFailureCode, number>> = {
   EMPLOYMENT_FORBIDDEN: 403,
   EMPLOYMENT_SELF_ACTION_FORBIDDEN: 403,
   EMPLOYMENT_EFFECTIVE_DATE_REQUIRED: 400,

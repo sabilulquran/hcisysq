@@ -76,6 +76,12 @@ describe("ATT-013 §5.2: scans split at the gap midpoint", () => {
     expect(computation.workedMinutes).toBe(302);
   });
 
+  it("reads a scan after the midpoint as the next block's, leaving block 1 open", () => {
+    const { blocks: parts } = evaluate([punch("03:58"), punch("12:00"), punch("19:31")]);
+    expect(parts[0]).toMatchObject({ status: "incomplete" });
+    expect(parts[1]).toMatchObject({ firstCheckInAt: at("12:00"), lastCheckOutAt: at("19:31") });
+  });
+
   it("reads a late check-out before the midpoint as block 1 leaving late (spec example 10.00)", () => {
     const { blocks: parts } = evaluate([punch("03:58"), punch("10:00"), punch("14:29"), punch("19:31")]);
     expect(parts[0]).toMatchObject({ status: "present", lastCheckOutAt: at("10:00") });

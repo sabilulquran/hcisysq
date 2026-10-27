@@ -2318,6 +2318,12 @@ paths:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1from-attendance'
   /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1{employmentId}~1{inputKey}'
+  /payroll/periods/{periodId}/report:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1report'
+  /payroll/periods/{periodId}/transfers:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transfers'
+  /payroll/periods/{periodId}/variance:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1variance'
   /payroll/periods/{periodId}/results:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1results'
   /payroll/policies:
@@ -3118,6 +3124,16 @@ components:
             reason: { type: string, minLength: 1, maxLength: 500 }
             effectiveFrom: { type: string, format: date }
             effectiveTo: { type: [string, 'null'], format: date }
+        - type: object
+          description: >
+            ORG-008-11. For an employee holding more than one seat on the change's effective date, marks
+            the chosen seat as their primary structural position and clears the marker on the others.
+            409 ORGANIZATION_EMPLOYEE_NOT_SEATED or ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT.
+          required: [type, employeeId, positionKey]
+          properties:
+            type: { type: string, enum: [SET_PRIMARY_STRUCTURAL_POSITION] }
+            employeeId: { type: string, format: uuid }
+            positionKey: { type: string, format: uuid }
 
     OrganizationDraftConflict:
       type: object

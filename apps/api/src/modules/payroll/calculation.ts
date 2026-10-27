@@ -67,6 +67,7 @@ type EmploymentRow = {
 };
 
 type ProfileRow = {
+  id: string;
   employmentId: string;
   education: string | null;
   workPattern: string | null;
@@ -303,7 +304,7 @@ export async function calculatePeriod(
 
     const profiles = await client.query<ProfileRow>(
       `SELECT DISTINCT ON (employment_id)
-              employment_id AS "employmentId", education, work_pattern AS "workPattern",
+              id, employment_id AS "employmentId", education, work_pattern AS "workPattern",
               unit_ref AS "unitRef", functional_position_ref AS "functionalPositionRef",
               structural_position_ref AS "structuralPositionRef",
               teaching_hours_per_week AS "teachingHoursPerWeek",
@@ -413,6 +414,9 @@ export async function calculatePeriod(
       resultRows.push({
         id: resultId,
         employment_id: employment.employmentId,
+        // Which profile row the figures came from, so a past period can be
+        // explained even after the profile moves on (migration 0080).
+        compensation_profile_id: profileByEmployment.get(employment.employmentId)?.id ?? null,
         revision: (previousRow?.revision ?? 0) + 1,
         previous_result_id: previousRow?.id ?? null,
         gross: result.gross,

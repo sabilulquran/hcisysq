@@ -11,7 +11,7 @@
 --   DROP TABLE IF EXISTS employee_data_change_requests, employee_addresses,
 --     employee_family_members, employee_skills, employee_education,
 --     employee_profile_audit_events;
---   DELETE FROM schema_migrations WHERE name = '0103_employee_profile_records';
+--   DELETE FROM schema_migrations WHERE name = '0104_employee_profile_records';
 --
 -- btree_gist dipakai untuk menjaga "satu yang berlaku pada satu waktu" di
 -- tingkat basis data, bukan di kode. Sudah aktif sejak migrasi 0021; tetap

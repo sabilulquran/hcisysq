@@ -134,10 +134,16 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     await pool.query("DELETE FROM payroll_period_inputs");
     await pool.query("DELETE FROM payroll_period_transitions");
     await pool.query("DELETE FROM payroll_audit_events");
-    // A slip drafted from a period holds it in place, and the pair of revision
-    // links points at itself, so both are cleared before the periods go.
-    await pool.query("UPDATE payslips SET superseded_by_id = NULL WHERE superseded_by_id IS NOT NULL");
-    await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
+    // A slip drafted from a period holds it in place. A published slip is
+    // immutable by design (PAYSLIP-001), which is exactly what we want in
+    // production and exactly what has to be stood down to clean a test database.
+    await pool.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
+    try {
+      await pool.query("UPDATE payslips SET superseded_by_id = NULL WHERE superseded_by_id IS NOT NULL");
+      await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
+    } finally {
+      await pool.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");
+    }
     await pool.query("DELETE FROM payroll_periods");
     await pool.query("DELETE FROM payroll_policy_versions");
     await pool.query("DELETE FROM payroll_compensation_profiles");

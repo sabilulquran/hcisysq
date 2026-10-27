@@ -104,6 +104,15 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
 
   beforeEach(async () => {
     legalEntityKey = randomUUID();
+    // Published slips are immutable by design, so clearing what an earlier test
+    // published means standing the guard down for the length of the cleanup.
+    await pool.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
+    try {
+      await pool.query("UPDATE payslips SET superseded_by_id = NULL WHERE superseded_by_id IS NOT NULL");
+      await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
+    } finally {
+      await pool.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");
+    }
     const accounts = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
     if (accounts.rows[0]) {
       actorAccountId = accounts.rows[0].id;

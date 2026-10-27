@@ -41,11 +41,10 @@ export async function clearOwnPeriods(pool: Pool, periodIds: readonly string[]):
        WHERE result_id IN (SELECT id FROM payroll_results WHERE period_id = ANY($1::uuid[]))`,
       [ids],
     );
-    // A revision points at the result it replaced, so the newest goes first.
-    await client.query(
-      `UPDATE payroll_results SET previous_result_id = NULL WHERE period_id = ANY($1::uuid[])`,
-      [ids],
-    );
+    // A revision points at the result it replaced with ON DELETE RESTRICT, but
+    // the replication role above stands the foreign keys down too, so the whole
+    // set goes in one statement. Nulling the link instead would break the check
+    // that a revision names what it replaced.
     await client.query("DELETE FROM payroll_results WHERE period_id = ANY($1::uuid[])", [ids]);
     await client.query("DELETE FROM payroll_loan_deductions WHERE period_id = ANY($1::uuid[])", [ids]);
     await client.query("DELETE FROM payroll_period_inputs WHERE period_id = ANY($1::uuid[])", [ids]);

@@ -17,6 +17,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "employment.read", "employment.manage",
   // DOC-002 D-13: migration 0102 grants documents.discipline.manage to human_capital_admin.
   "documents.read", "documents.manage", "documents.discipline.manage",
+  // NOTIF-002: migration 0105 grants both to human_capital_admin.
+  "announcements.read", "announcements.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
   // bundle here says the same. Legacy Super Admin compatibility reads
   // ADMIN_PERMISSIONS, which deliberately leaves it out.
@@ -29,6 +31,10 @@ export const HC_ADMIN_PERMISSIONS = [
  * documents.correct stays outside every bundle and is granted through the separate
  * document_corrector role (spec §6, D-16). */
 export const DOCUMENT_CORRECTOR_ROLE_KEY = "document_corrector";
+
+/** NOTIF-002: HC-only; never granted through legacy Super Admin compatibility. */
+export const ANNOUNCEMENT_PERMISSIONS = ["announcements.read", "announcements.manage"] as const;
+export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
 export const DOCUMENT_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
 ] as const;

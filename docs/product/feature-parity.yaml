@@ -74,9 +74,10 @@ features:
     module: employee
     name: Employee data change request
     legacy_evidence: data change request and notification exist
-    target_status: discovery
-    priority: later
+    target_status: planned
+    priority: post-attendance-simplification
     risk: medium
+    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27) together with addresses as dated records. An employee proposes a change to their own address, contact, family, education or skills; HC accepts or refuses with a reason, and accepting writes the change in the same transaction. One HC officer decides; no approval chain in this package.
 
   - id: EMP-004
     module: employee
@@ -227,8 +228,9 @@ features:
     name: Education and qualification
     legacy_evidence: benchmark HRIS includes education management
     target_status: planned
-    priority: later
+    priority: post-attendance-simplification
     risk: medium
+    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Several records per employee with level, institution, years, completion and degree; highest education is derived from verified completed records, never typed in. Metadata only, no file upload.
     docs:
       - docs/domain/employment-administration.md
 
@@ -237,8 +239,9 @@ features:
     name: Skills and competencies
     legacy_evidence: benchmark HRIS includes skill management
     target_status: planned
-    priority: later
+    priority: post-attendance-simplification
     risk: medium
+    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Skills and certificates share one record kind; an expired certificate is marked, never changed or removed, and a worklist lists the ones about to expire. Job competency matrices stay with PERF-001/TRAIN-001.
     docs:
       - docs/domain/employment-administration.md
 
@@ -247,9 +250,9 @@ features:
     name: Family, dependents, and employee relations
     legacy_evidence: benchmark HRIS roadmap includes employee relations/family data
     target_status: planned
-    priority: later
+    priority: post-attendance-simplification
     risk: high
-    planning_note: Privacy-by-purpose applies; do not collect family attributes without a documented HR purpose.
+    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Privacy-by-purpose applies and the spec names the purpose of every attribute; family identity numbers stay uncollected until column encryption exists, and audit payloads never carry family data. One spouse and one emergency-contact order per period, enforced by the database.
     docs:
       - docs/domain/employment-administration.md
 

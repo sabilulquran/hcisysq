@@ -167,6 +167,8 @@ const scheduleTemplatePatchSchema = z.object({
   firstBlockWorkdayWeight: workdayWeightSchema.optional(),
   workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
+  // ATT-011-4 §4.2: the date (WIB) a change of hours applies from; today (from now) or later, default now.
+  effectiveFrom: dateSchema.optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
 const assignmentSchema = z.object({
   employeeId: z.string().uuid(),
@@ -1010,11 +1012,23 @@ export async function registerAttendanceWorkforceRoutes(
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
     const result = await pool.query(
-      `SELECT schedule.id, schedule.name, schedule.start_time::text AS "startTime",
-         schedule.end_time::text AS "endTime", schedule.end_day_offset AS "endDayOffset",
-         schedule.late_grace_minutes AS "lateGraceMinutes",
-         schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
+      `SELECT schedule.id, coalesce(version.name, schedule.name) AS name,
+         coalesce(version.start_time, schedule.start_time)::text AS "startTime",
+         coalesce(version.end_time, schedule.end_time)::text AS "endTime",
+         coalesce(version.end_day_offset, schedule.end_day_offset) AS "endDayOffset",
+         coalesce(version.late_grace_minutes, schedule.late_grace_minutes) AS "lateGraceMinutes",
+         coalesce(version.early_leave_tolerance_minutes, schedule.early_leave_tolerance_minutes) AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
+         -- ATT-011-4 §4.2: a change that applies from a later date.
+         (SELECT json_build_object('version', pending.version, 'effectiveFrom', (pending.effective_from AT TIME ZONE 'Asia/Jakarta')::date::text,
+                   'startTime', pending.start_time::text, 'endTime', pending.end_time::text,
+                   'lateGraceMinutes', pending.late_grace_minutes, 'earlyLeaveToleranceMinutes', pending.early_leave_tolerance_minutes)
+            FROM attendance_schedule_versions pending
+            WHERE pending.schedule_template_id = schedule.id AND pending.effective_from > now()
+            ORDER BY pending.version DESC LIMIT 1) AS "pendingVersion",
+         (SELECT count(DISTINCT assignment.employee_id)::int FROM attendance_schedule_assignments assignment
+            WHERE assignment.schedule_template_id = schedule.id
+              AND (assignment.effective_to IS NULL OR assignment.effective_to >= (now() AT TIME ZONE 'Asia/Jakarta')::date)) AS "employeeCount",
          version.id AS "currentVersionId", version.version AS "currentVersion",
          (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text,
                    'workdayWeight', block.workday_weight) ORDER BY block.sequence), '[]'::json)
@@ -1024,8 +1038,12 @@ export async function registerAttendanceWorkforceRoutes(
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
        LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
-       LEFT JOIN attendance_schedule_versions version
-         ON version.schedule_template_id = schedule.id AND version.effective_to IS NULL
+       LEFT JOIN LATERAL (
+         SELECT candidate.* FROM attendance_schedule_versions candidate
+         WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= now()
+           AND (candidate.effective_to IS NULL OR candidate.effective_to > now())
+         ORDER BY candidate.version DESC LIMIT 1
+       ) version ON true
        ORDER BY schedule.active DESC, schedule.name`,
     );
     return reply.send({ items: result.rows });
@@ -1059,6 +1077,46 @@ export async function registerAttendanceWorkforceRoutes(
         await client.query("ROLLBACK");
         return reply.status(404).send({ code: "SCHEDULE_NOT_FOUND", message: "Template jadwal tidak ditemukan." });
       }
+      const today = jakartaWorkDate();
+      if (body.data.effectiveFrom && body.data.effectiveFrom < today) {
+        await client.query("ROLLBACK");
+        return reply.status(400).send({
+          code: "EFFECTIVE_DATE_IN_PAST",
+          message: "Perubahan jam shift tidak boleh mundur. Gunakan Koreksi pada Kehadiran untuk hari yang sudah lewat.",
+        });
+      }
+      // §4.2: a shift that still schedules someone today or later cannot be switched off.
+      if (body.data.active === false && item.active) {
+        const inUse = await client.query<{ employeeNumber: string; employeeName: string; fromDate: string; total: number }>(
+          `WITH used AS (
+             SELECT assignment.employee_id, greatest(assignment.effective_from, $2::date) AS from_date
+             FROM attendance_schedule_assignments assignment
+             WHERE assignment.schedule_template_id = $1
+               AND (assignment.effective_to IS NULL OR assignment.effective_to >= $2::date)
+             UNION ALL
+             SELECT entry.employee_id, entry.work_date
+             FROM attendance_roster_entries entry
+             JOIN attendance_rosters roster ON roster.id = entry.roster_id AND roster.status = 'PUBLISHED'
+             WHERE entry.schedule_template_id = $1 AND entry.work_date >= $2::date
+           ), per_employee AS (
+             SELECT employee_id, min(from_date) AS from_date FROM used GROUP BY employee_id
+           )
+           SELECT employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
+             per_employee.from_date::text AS "fromDate", count(*) OVER ()::int AS total
+           FROM per_employee JOIN employees employee ON employee.id = per_employee.employee_id
+           ORDER BY employee.full_name LIMIT 20`,
+          [params.data.scheduleId, today],
+        );
+        if (inUse.rows[0]) {
+          await client.query("ROLLBACK");
+          return reply.status(409).send({
+            code: "SCHEDULE_IN_USE",
+            message: `Shift masih dipakai ${inUse.rows[0].total} pegawai mulai hari ini. Pindahkan jadwal mereka dulu.`,
+            total: inUse.rows[0].total,
+            employees: inUse.rows.map(({ total, ...row }) => { void total; return row; }),
+          });
+        }
+      }
       const next = { ...item, ...body.data } as typeof item;
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
@@ -1086,23 +1144,51 @@ export async function registerAttendanceWorkforceRoutes(
         return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
       }
 
+      const future = Boolean(body.data.effectiveFrom && body.data.effectiveFrom > today);
+      // A future change leaves the template's current values alone until it applies; only `active` changes now.
       await client.query(
         `UPDATE attendance_schedule_templates
          SET name = $2, start_time = $3::time, end_time = $4::time, end_day_offset = $5,
              late_grace_minutes = $6, early_leave_tolerance_minutes = $7,
              work_location_id = $8, active = $9, updated_at = now()
          WHERE id = $1`,
-        [
-          params.data.scheduleId, next.name, next.startTime, next.endTime, next.endDayOffset,
-          next.lateGraceMinutes, next.earlyLeaveToleranceMinutes, next.workLocationId ?? null, next.active,
-        ],
+        future
+          ? [params.data.scheduleId, item.name, item.startTime, item.endTime, item.endDayOffset,
+            item.lateGraceMinutes, item.earlyLeaveToleranceMinutes, item.workLocationId ?? null, next.active]
+          : [params.data.scheduleId, next.name, next.startTime, next.endTime, next.endDayOffset,
+            next.lateGraceMinutes, next.earlyLeaveToleranceMinutes, next.workLocationId ?? null, next.active],
       );
 
       let versionId: string | null = null;
       let versionNumber: number | null = null;
+      let affectedEmployees = 0;
       if (semanticChanged) {
-        const atResult = await client.query<{ at: Date }>("SELECT clock_timestamp() AS at");
+        const atResult = await client.query<{ at: Date }>(
+          future ? "SELECT ($1::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS at" : "SELECT clock_timestamp() AS at",
+          future ? [body.data.effectiveFrom] : [],
+        );
         const effectiveAt = atResult.rows[0]?.at ?? new Date();
+        // §4.2: one future version at most; changing again replaces it while nothing uses it yet.
+        const pending = await client.query<{ id: string; used: boolean }>(
+          `SELECT version.id, EXISTS (SELECT 1 FROM attendance_roster_entries entry WHERE entry.schedule_version_id = version.id)
+             OR EXISTS (SELECT 1 FROM attendance_result_versions result WHERE result.schedule_version_id = version.id) AS used
+           FROM attendance_schedule_versions version
+           WHERE version.schedule_template_id = $1 AND version.effective_from > clock_timestamp()
+           FOR UPDATE`,
+          [params.data.scheduleId],
+        );
+        for (const row of pending.rows) {
+          if (row.used) throw new WorkforceAttendanceError(409, "SCHEDULE_FUTURE_VERSION_IN_USE", "Perubahan shift yang dijadwalkan sudah dipakai jadwal per tanggal dan tidak dapat diganti.");
+          await client.query("DELETE FROM attendance_schedule_version_blocks WHERE schedule_version_id = $1", [row.id]);
+          await client.query("DELETE FROM attendance_schedule_versions WHERE id = $1", [row.id]);
+        }
+        if (pending.rows.length) {
+          await client.query(
+            `UPDATE attendance_schedule_versions SET effective_to = NULL
+             WHERE id = (SELECT id FROM attendance_schedule_versions WHERE schedule_template_id = $1 ORDER BY version DESC LIMIT 1)`,
+            [params.data.scheduleId],
+          );
+        }
         const previous = await client.query<{ version: number }>(
           `UPDATE attendance_schedule_versions
            SET effective_to = $2
@@ -1110,6 +1196,12 @@ export async function registerAttendanceWorkforceRoutes(
            RETURNING version`,
           [params.data.scheduleId, effectiveAt],
         );
+        const affected = await client.query<{ count: number }>(
+          `SELECT count(DISTINCT employee_id)::int AS count FROM attendance_schedule_assignments
+           WHERE schedule_template_id = $1 AND (effective_to IS NULL OR effective_to >= ($2::timestamptz AT TIME ZONE 'Asia/Jakarta')::date)`,
+          [params.data.scheduleId, effectiveAt],
+        );
+        affectedEmployees = affected.rows[0]?.count ?? 0;
         versionNumber = (previous.rows[0]?.version ?? 0) + 1;
         versionId = randomUUID();
         await client.query(
@@ -1127,14 +1219,16 @@ export async function registerAttendanceWorkforceRoutes(
         await writeVersionBlocks(client, versionId, blocks, firstWeight);
       }
 
-      await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
-        fields: Object.keys(body.data), versionId, version: versionNumber,
-      });
+      await insertAudit(client, principal.id, body.data.active === false && item.active ? "attendance.schedule.deactivated" : "attendance.schedule.updated",
+        "attendance_schedule_template", params.data.scheduleId, {
+          fields: Object.keys(body.data), versionId, version: versionNumber,
+          effectiveFrom: semanticChanged ? (body.data.effectiveFrom ?? today) : null, affectedEmployees,
+        });
       await client.query("COMMIT");
-      return reply.send({ id: params.data.scheduleId, versionId, version: versionNumber });
+      return reply.send({ id: params.data.scheduleId, versionId, version: versionNumber, effectiveFrom: semanticChanged ? (body.data.effectiveFrom ?? today) : null, affectedEmployees });
     } catch (error) {
       await client.query("ROLLBACK");
-      throw error;
+      return sendError(reply, error);
     } finally {
       client.release();
     }

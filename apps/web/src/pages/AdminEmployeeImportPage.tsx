@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -46,6 +46,8 @@ export function AdminEmployeeImportPage() {
 
   const [rowFilter, setRowFilter] = useState<EmployeeImportRowFilter>("all");
   const [rowsLoading, setRowsLoading] = useState(false);
+  // Only the newest page request may land, so quick clicks cannot show an older page last.
+  const rowsRequest = useRef(0);
 
   // Counts come from the server for the whole import; only the row table is paged (ENG-LIST-001).
   const validationSummary = preview?.issueSummary ?? [];
@@ -53,10 +55,12 @@ export function AdminEmployeeImportPage() {
 
   const loadRows = async (page: number, filter: EmployeeImportRowFilter, pageSize = preview?.pagination.pageSize) => {
     if (!preview) return;
+    const request = ++rowsRequest.current;
     setRowsLoading(true);
     setError(null);
     try {
       const next = await getEmployeeImport(preview.importId, { page, pageSize, filter });
+      if (request !== rowsRequest.current) return;
       // Keep the commit outcome this screen already knows about.
       setPreview((current) => (current ? { ...next, status: current.status, committedAt: current.committedAt } : next));
       setRowFilter(filter);

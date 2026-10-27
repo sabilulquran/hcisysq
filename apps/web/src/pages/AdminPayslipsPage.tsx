@@ -111,6 +111,8 @@ export function AdminPayslipsPage() {
 
   const fetchReview = (batchId: string, filter: ReviewFilter, page: number) =>
     getPayslipImport(batchId, { filter, page, pageSize: reviewPageSize });
+  // Only the newest page request may land, so quick clicks cannot show an older page last.
+  const reviewRequest = useRef(0);
 
   // Remember each pending row the first time it is seen, so edits survive page changes.
   const showReviewPage = (detail: PayslipImportDetail) => {
@@ -134,20 +136,31 @@ export function AdminPayslipsPage() {
   };
 
   const reloadReview = async (batchId: string) => {
-    let detail = await fetchReview(batchId, reviewFilter, review?.pagination.page ?? 1);
-    // Resolving rows can empty the page the user was on; fall back to the last one that exists.
-    if (detail.rows.length === 0 && detail.pagination.page > detail.pagination.pageCount) {
-      detail = await fetchReview(batchId, reviewFilter, detail.pagination.pageCount);
+    const request = ++reviewRequest.current;
+    let filter = reviewFilter;
+    let detail = await fetchReview(batchId, filter, review?.pagination.page ?? 1);
+    if (filter === "errors" && detail.unresolvedCount === 0) {
+      // Nothing left to fix: show the whole batch instead of an empty queue.
+      filter = "all";
+      detail = await fetchReview(batchId, filter, 1);
+    } else if (detail.rows.length === 0 && detail.pagination.page > detail.pagination.pageCount) {
+      // Resolving rows can empty the page the user was on; fall back to the last one that exists.
+      detail = await fetchReview(batchId, filter, detail.pagination.pageCount);
     }
+    if (request !== reviewRequest.current) return;
+    setReviewFilter(filter);
     applyReview(detail);
   };
 
   const goToReview = async (filter: ReviewFilter, page: number) => {
     if (!review) return;
+    const request = ++reviewRequest.current;
     setBusy(true);
     setError(null);
     try {
-      showReviewPage(await fetchReview(review.id, filter, page));
+      const detail = await fetchReview(review.id, filter, page);
+      if (request !== reviewRequest.current) return;
+      showReviewPage(detail);
       setReviewFilter(filter);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Baris batch tidak dapat dimuat.");
@@ -190,15 +203,19 @@ export function AdminPayslipsPage() {
   };
 
   const openReview = async (batchId: string) => {
+    const request = ++reviewRequest.current;
     setBusy(true);
     setError(null);
     try {
-      let filter: ReviewFilter = "errors";
+      // The batch list already knows whether rows need action, so one audited page read is enough.
+      const known = items?.find((item) => item.id === batchId);
+      let filter: ReviewFilter = known && known.unresolvedCount === 0 ? "all" : "errors";
       let detail = await fetchReview(batchId, filter, 1);
-      if (detail.unresolvedCount === 0) {
+      if (filter === "errors" && detail.unresolvedCount === 0) {
         filter = "all";
         detail = await fetchReview(batchId, filter, 1);
       }
+      if (request !== reviewRequest.current) return;
       setReviewFilter(filter);
       applyReview(detail);
     } catch (cause) {
@@ -269,14 +286,28 @@ export function AdminPayslipsPage() {
   ) => {
     if (!review || corrections.length === 0) return;
     await run(async () => {
+      // Each request of up to 500 rows is its own transaction. If a later one is refused
+      // (for example a row was drafted after the CSV was downloaded), say what already landed.
+      let applied = 0;
       for (let offset = 0; offset < corrections.length; offset += 500) {
-        await bulkCorrectPayslipImportRows(review.id, corrections.slice(offset, offset + 500));
+        const chunk = corrections.slice(offset, offset + 500);
+        try {
+          await bulkCorrectPayslipImportRows(review.id, chunk);
+        } catch (cause) {
+          const reason = cause instanceof Error ? cause.message : "Koreksi ditolak.";
+          if (applied === 0) throw cause;
+          await reloadReview(review.id);
+          throw new Error(
+            `${applied} dari ${corrections.length} koreksi sudah tersimpan; sisanya ditolak: ${reason} Unduh ulang CSV koreksi untuk baris yang tersisa.`,
+          );
+        }
+        applied += chunk.length;
       }
     }, success, review.id);
   };
 
-  // The server accepts only rows that are still pending and refuses the request otherwise,
-  // so a stale correction file asks for a fresh download instead of half-applying.
+  // The server accepts only rows that are still pending and refuses a request that holds any
+  // other row; a refused file is fixed by downloading a fresh correction CSV.
   const uploadCorrectionFile = async (selectedFile: File) => {
     if (!review) return;
     try {
@@ -378,7 +409,7 @@ export function AdminPayslipsPage() {
                 <input type="month" value={fallbackPeriod} onChange={(event) => setFallbackPeriod(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm font-normal" />
               </label>
               <p className="text-[11px] leading-5 text-muted-foreground">Opsional. Dipakai bila CSV tetap/honorer tidak memiliki kolom TANGGAL.</p>
-              <button type="button" disabled={!file || busy} onClick={() => file && void run(() => previewPayslipImport(file, fallbackPeriod || undefined), "Preview disimpan. Baris valid siap dimasukkan ke draft; baris error dapat diperbaiki dari Review.")} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" disabled={!file || busy} onClick={() => file && void run(async () => { await previewPayslipImport(file, fallbackPeriod || undefined); setBatchPage(1); }, "Preview disimpan. Baris valid siap dimasukkan ke draft; baris error dapat diperbaiki dari Review.")} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:cursor-not-allowed disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Preview CSV
               </button>
             </div>

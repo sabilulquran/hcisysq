@@ -16,13 +16,15 @@ const allowed = (() => {
   return ["127.0.0.1", "localhost"].includes(url.hostname) && url.pathname === "/hcis_pr";
 })();
 
-// 30 synthetic rows: every tenth has no NIP (an error), the rest are inserts except two skips.
+// 30 synthetic rows: every tenth has no NIP (an error), the rest are clean inserts except two skips.
+// Every row carries UNIT and JABATAN so the only issues are the three missing NIPs.
 function plannedRows() {
   return Array.from({ length: 30 }, (_, index) => {
     const n = index + 1;
+    const placement = { UNIT: "Unit Sintetis PAG4", JABATAN: "Staf Sintetis" };
     const source = n % 10 === 0
-      ? { NAMA: `Tanpa NIP ${n}` }
-      : { NIP: `PAG4-${String(n).padStart(4, "0")}`, NAMA: `Pegawai Sintetis ${n}`, "STATUS AKTIF": "Aktif" };
+      ? { NAMA: `Tanpa NIP ${n}`, "STATUS AKTIF": "Aktif", ...placement }
+      : { NIP: `PAG4-${String(n).padStart(4, "0")}`, NAMA: `Pegawai Sintetis ${n}`, "STATUS AKTIF": "Aktif", ...placement };
     const normalized = normalizeEmployeeImportRow(n + 2, source);
     const action = n % 10 === 0 ? ("error" as const) : n === 3 || n === 4 ? ("skip" as const) : ("insert" as const);
     return { ...normalized, action };
@@ -86,14 +88,14 @@ describe.skipIf(!allowed)("PAG-4 employee import preview paging on PostgreSQL", 
   });
 
   it("filters to rows with issues and keeps the aggregates for the whole import", async () => {
+    const all = await store.getPreviewPage(importId, { page: 1, pageSize: 25 }, "all");
+    expect(all?.rows.some((row) => row.issues.length === 0)).toBe(true);
+
     const issues = await store.getPreviewPage(importId, { page: 1, pageSize: 25 }, "issues");
-    expect(issues?.rows.length).toBeGreaterThanOrEqual(3);
-    expect(issues?.rows.every((row) => row.issues.length > 0)).toBe(true);
-    expect(issues?.pagination.total).toBe(issues?.rows.length);
+    expect(issues?.rows.map((row) => row.rowNumber)).toEqual([12, 22, 32]);
+    expect(issues?.pagination).toEqual({ page: 1, pageSize: 25, total: 3, pageCount: 1 });
     expect(issues?.skipCount).toBe(2);
-    const missing = issues?.issueSummary.find((item) => item.code === "missing_employee_number");
-    expect(missing).toEqual({ code: "missing_employee_number", severity: "error", count: 3 });
-    expect(issues?.issueSummary[0]?.severity).toBe("error");
+    expect(issues?.issueSummary).toEqual([{ code: "missing_employee_number", severity: "error", count: 3 }]);
   });
 
   it("returns null for an unknown import", async () => {

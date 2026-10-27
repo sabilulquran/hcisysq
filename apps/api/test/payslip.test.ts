@@ -287,6 +287,10 @@ describe("payslip endpoint authorization", () => {
     expect(response.json().errorSummary).toEqual([{ message: "employee_number tidak ditemukan", count: 240 }]);
     const rowsQuery = calls.find((call) => call.sql.includes("LIMIT $3 OFFSET $4"));
     expect(rowsQuery?.values).toEqual([batchId, true, 100, 100]);
+    const errorQueue = "resolution_status = 'pending' AND jsonb_array_length(validation_errors) > 0";
+    expect(rowsQuery?.sql).toContain(errorQueue);
+    expect(calls.find((call) => call.sql.startsWith("SELECT count(*)::int AS total FROM payslip_import_rows"))?.sql)
+      .toContain(errorQueue);
     const audit = calls.find((call) => call.sql.startsWith("INSERT INTO payslip_audit_events"));
     expect(audit?.values?.[2]).toBe("payslip.import.review_opened");
     expect(JSON.parse(String(audit?.values?.[6]))).toEqual({

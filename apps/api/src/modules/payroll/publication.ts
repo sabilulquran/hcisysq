@@ -15,8 +15,12 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { notifyEmployee } from "../notifications/service.js";
 import { formatRupiah } from "./reports.js";
 import { LATEST_RESULTS_OF_PERIOD, writeAudit } from "./store.js";
+
+/** Drafting is only sensible while the period is paid and not reopened. */
+const DRAFTABLE_STATES = ["PAYMENT_CONFIRMED", "PUBLISHED"];
 
 type PayslipLine = { label: string; value: string; section: "identity" | "income" | "deduction" | "summary" };
 
@@ -52,11 +56,15 @@ export function buildPayslipLines(
   result: ResultRow,
   lines: readonly LineRow[],
   period: { periodMonth: string; payDate: string },
+  options: { revision?: boolean } = {},
 ): PayslipLine[] {
   const earnings = lines.filter((line) => line.category === "EARNING");
   const deductions = lines.filter((line) => line.category === "DEDUCTION");
 
   const payslip: PayslipLine[] = [
+    // Section 10 item 8: a revised slip says so, so the employee can tell which
+    // one they are looking at.
+    ...(options.revision ? [{ label: "Status", value: "Revisi", section: "identity" as const }] : []),
     { label: "NIP", value: result.employeeNumber, section: "identity" },
     { label: "Nama", value: result.fullName, section: "identity" },
     { label: "Periode", value: period.periodMonth.slice(0, 7), section: "identity" },
@@ -93,8 +101,20 @@ export function buildPayslipLines(
 }
 
 export type PublicationOutcome =
-  | { ok: true; drafted: number; revised: number; alreadyCurrent: number }
-  | { ok: false; code: "PAYROLL_BLOCKERS_PRESENT" | "PAYROLL_NOTHING_TO_PUBLISH"; blockerCount?: number };
+  | {
+      ok: true;
+      drafted: number;
+      revised: number;
+      alreadyCurrent: number;
+      /** Employees whose current slip belongs to an import batch; left untouched. */
+      importConflicts: string[];
+    }
+  | {
+      ok: false;
+      code: "PAYROLL_BLOCKERS_PRESENT" | "PAYROLL_NOTHING_TO_PUBLISH" | "PAYROLL_STATE_CONFLICT";
+      blockerCount?: number;
+      state?: string;
+    };
 
 /**
  * Writes the period's results as payslip drafts. It does not publish them: the
@@ -122,6 +142,13 @@ export async function draftPayslipsFromPeriod(
       await client.query("ROLLBACK");
       return { ok: false, code: "PAYROLL_NOTHING_TO_PUBLISH" };
     }
+    // Under the lock, not before it: an approved reopen that commits between the
+    // caller's read and this transaction would otherwise draft slips for a period
+    // that has gone back to being worked on.
+    if (!DRAFTABLE_STATES.includes(periodRow.state)) {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYROLL_STATE_CONFLICT", state: periodRow.state };
+    }
 
     const results = await loadResults(client, periodId);
     if (results.length === 0) {
@@ -146,17 +173,29 @@ export async function draftPayslipsFromPeriod(
     let drafted = 0;
     let revised = 0;
     let alreadyCurrent = 0;
+    const importConflicts: string[] = [];
 
     for (const result of results) {
-      const payslipLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow);
-      const serialized = JSON.stringify(payslipLines);
+      // Built twice because a revision carries one more line than a first draft,
+      // and the comparison below has to be against the shape that would be stored.
+      const draftLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow);
+      const revisionLines = buildPayslipLines(result, linesByResult.get(result.resultId) ?? [], periodRow, {
+        revision: true,
+      });
+      const serialized = JSON.stringify(draftLines);
 
-      const existing = await client.query<{ id: string; publishedAt: string | null; lines: unknown }>(
-        `SELECT id, published_at AS "publishedAt", lines
+    const existing = await client.query<{
+        id: string;
+        publishedAt: string | null;
+        sourceBatchId: string | null;
+        sameLines: boolean;
+      }>(
+        `SELECT id, published_at AS "publishedAt", source_batch_id AS "sourceBatchId",
+                (lines = $3::jsonb OR lines = $4::jsonb) AS "sameLines"
          FROM payslips
          WHERE employee_id = $1 AND period = $2::date AND superseded_by_id IS NULL
          FOR UPDATE`,
-        [result.employeeId, periodRow.periodMonth],
+        [result.employeeId, periodRow.periodMonth, serialized, JSON.stringify(revisionLines)],
       );
       const current = existing.rows[0];
 
@@ -170,8 +209,17 @@ export async function draftPayslipsFromPeriod(
         continue;
       }
 
-      if (JSON.stringify(current.lines) === serialized) {
+      if (current.sourceBatchId !== null) {
+        // The current slip belongs to a PAY-001 import batch. Overwriting it
+        // would take the slip out of that batch and leave PAY-002 unable to
+        // publish it, so the employee is reported and left alone instead.
+        importConflicts.push(result.employeeNumber);
+        continue;
+      }
+
+      if (current.sameLines) {
         // Nothing moved for this employee, so there is nothing to draft again.
+        // Compared as jsonb, not as text, so a different key order is not a change.
         alreadyCurrent += 1;
         continue;
       }
@@ -179,8 +227,7 @@ export async function draftPayslipsFromPeriod(
       if (current.publishedAt === null) {
         // An unpublished draft is still being prepared, so it is simply updated.
         await client.query(
-          `UPDATE payslips SET lines = $2::jsonb, source_batch_id = NULL, source_period_id = $3
-           WHERE id = $1`,
+          `UPDATE payslips SET lines = $2::jsonb, source_period_id = $3 WHERE id = $1`,
           [current.id, serialized, periodId],
         );
         drafted += 1;
@@ -196,7 +243,14 @@ export async function draftPayslipsFromPeriod(
         `INSERT INTO payslips(
            id, employee_id, period, lines, source_format, source_batch_id, source_period_id, revision_of)
          VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5, $6)`,
-        [revisionId, result.employeeId, periodRow.periodMonth, serialized, periodId, current.id],
+        [
+          revisionId,
+          result.employeeId,
+          periodRow.periodMonth,
+          JSON.stringify(revisionLines),
+          periodId,
+          current.id,
+        ],
       );
       revised += 1;
     }
@@ -205,17 +259,124 @@ export async function draftPayslipsFromPeriod(
       actorAccountId,
       action: "payroll.payslips.drafted",
       periodId,
-      payload: { drafted, revised, already_current: alreadyCurrent },
+      payload: {
+        drafted,
+        revised,
+        already_current: alreadyCurrent,
+        import_conflicts: importConflicts.length,
+      },
+    });
+    // The payslip module keeps its own trail, and a slip written from payroll
+    // belongs on it too.
+    await writePayslipAudit(client, actorAccountId, "payslip.payroll.drafted", {
+      drafted,
+      revised,
+      already_current: alreadyCurrent,
     });
 
     await client.query("COMMIT");
-    return { ok: true, drafted, revised, alreadyCurrent };
+    return { ok: true, drafted, revised, alreadyCurrent, importConflicts };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+}
+
+export type PublishOutcome =
+  | { ok: true; published: number }
+  | { ok: false; code: "PAYROLL_NOTHING_TO_PUBLISH" | "PAYROLL_STATE_CONFLICT"; state?: string };
+
+/**
+ * Publishes the period's drafts. This is the PAY-002 decision, not payroll's, so
+ * the route asks for payslips.publish: the batch publish path is batch-scoped and
+ * cannot see a slip that came from a period, which is why payroll needs its own
+ * door rather than a second source column on a batch.
+ */
+export async function publishPayslipsOfPeriod(
+  pool: Pool,
+  periodId: string,
+  actorAccountId: string,
+): Promise<PublishOutcome> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const period = await client.query<{ state: string; periodMonth: string }>(
+      `SELECT state, to_char(period_month, 'YYYY-MM') AS "periodMonth"
+       FROM payroll_periods WHERE id = $1 FOR UPDATE`,
+      [periodId],
+    );
+    const periodRow = period.rows[0];
+    if (!periodRow) {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYROLL_NOTHING_TO_PUBLISH" };
+    }
+    if (!DRAFTABLE_STATES.includes(periodRow.state)) {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYROLL_STATE_CONFLICT", state: periodRow.state };
+    }
+
+    const published = await client.query<{ id: string; employeeId: string }>(
+      `UPDATE payslips
+          SET published_at = now(), published_by_account_id = $2
+        WHERE source_period_id = $1
+          AND published_at IS NULL
+          AND superseded_by_id IS NULL
+      RETURNING id, employee_id AS "employeeId"`,
+      [periodId, actorAccountId],
+    );
+
+    if (published.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, code: "PAYROLL_NOTHING_TO_PUBLISH" };
+    }
+
+    for (const slip of published.rows) {
+      await notifyEmployee(client, slip.employeeId, {
+        eventKey: `payslip:${slip.id}:published`,
+        category: "payslip",
+        title: "Slip gaji tersedia",
+        body: `Slip gaji periode ${periodRow.periodMonth} sudah dipublikasikan.`,
+        href: "/app/payslips",
+        actorAccountId,
+        metadata: { payslipId: slip.id, period: periodRow.periodMonth },
+      });
+    }
+
+    await writeAudit(client, {
+      actorAccountId,
+      action: "payroll.payslips.published",
+      periodId,
+      payload: { published: published.rows.length },
+    });
+    await writePayslipAudit(client, actorAccountId, "payslip.payroll.published", {
+      published: published.rows.length,
+    });
+
+    await client.query("COMMIT");
+    return { ok: true, published: published.rows.length };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** A row on the payslip module's own audit trail, so slip history stays in one place. */
+async function writePayslipAudit(
+  client: PoolClient,
+  actorAccountId: string,
+  action: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO payslip_audit_events(id, actor_account_id, action, payload)
+     VALUES ($1, $2, $3, $4::jsonb)`,
+    [randomUUID(), actorAccountId, action, JSON.stringify(payload)],
+  );
 }
 
 /** The latest revision of the latest run, which is what the period actually pays. */

@@ -8,7 +8,11 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { buildPayslipLines, draftPayslipsFromPeriod } from "../src/modules/payroll/publication.js";
+import {
+  buildPayslipLines,
+  draftPayslipsFromPeriod,
+  publishPayslipsOfPeriod,
+} from "../src/modules/payroll/publication.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -76,6 +80,12 @@ describe("PAY-003 payslip lines", () => {
     const plain = buildPayslipLines(result, lines, period);
     expect(plain.some((line) => line.label.includes("Prorata"))).toBe(false);
     expect(plain.some((line) => line.label.includes("Masa kerja awal"))).toBe(false);
+  });
+
+  it("marks a revision on the slip itself, so the employee can tell them apart", () => {
+    const revision = buildPayslipLines(result, lines, period, { revision: true });
+    expect(revision[0]).toEqual({ label: "Status", value: "Revisi", section: "identity" });
+    expect(buildPayslipLines(result, lines, period)[0]!.label).toBe("NIP");
   });
 });
 
@@ -178,6 +188,34 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     return resultId;
   }
 
+  /** A minimal PAY-001 import batch, so its draft can be left alone on purpose. */
+  async function newImportBatch(): Promise<string> {
+    const batchId = randomUUID();
+    await pool.query(
+      `INSERT INTO payslip_import_batches(
+         id, source_filename, checksum_sha256, status, row_count, valid_count, created_by_account_id)
+       VALUES ($1, 'uji.csv', $2, 'committed', 1, 1, $3)`,
+      [batchId, randomUUID().replace(/-/g, ""), actorAccountId],
+    );
+    return batchId;
+  }
+
+  /** Replaces the period's results with a new run, as a recalculation would. */
+  async function replaceResult(
+    periodId: string,
+    employmentId: string,
+    basic: number,
+    runAt: string,
+  ): Promise<void> {
+    await pool.query(
+      `DELETE FROM payroll_result_lines
+       WHERE result_id IN (SELECT id FROM payroll_results WHERE period_id = $1)`,
+      [periodId],
+    );
+    await pool.query("DELETE FROM payroll_results WHERE period_id = $1", [periodId]);
+    await writeResult(periodId, employmentId, { basic, runAt });
+  }
+
   async function slipsOf(employeeId: string) {
     const { rows } = await pool.query<{
       id: string;
@@ -203,7 +241,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
 
     const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
-    expect(outcome).toEqual({ ok: true, drafted: 1, revised: 0, alreadyCurrent: 0 });
+    expect(outcome).toEqual({ ok: true, drafted: 1, revised: 0, alreadyCurrent: 0, importConflicts: [] });
 
     const slips = await slipsOf(employee.employeeId);
     expect(slips).toHaveLength(1);
@@ -239,7 +277,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
 
     await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
     const second = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
-    expect(second).toEqual({ ok: true, drafted: 0, revised: 0, alreadyCurrent: 1 });
+    expect(second).toEqual({ ok: true, drafted: 0, revised: 0, alreadyCurrent: 1, importConflicts: [] });
     expect(await slipsOf(employee.employeeId)).toHaveLength(1);
   });
 
@@ -254,7 +292,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     await writeResult(periodId, employee.employmentId, { basic: 3_500_000, runAt: "2026-09-21T00:00:00.000Z" });
 
     const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
-    expect(outcome).toEqual({ ok: true, drafted: 1, revised: 0, alreadyCurrent: 0 });
+    expect(outcome).toEqual({ ok: true, drafted: 1, revised: 0, alreadyCurrent: 0, importConflicts: [] });
     const slips = await slipsOf(employee.employeeId);
     expect(slips).toHaveLength(1);
     expect(slips[0]!.lines).toContainEqual({ label: "Gaji pokok", value: "Rp3.500.000", section: "income" });
@@ -274,7 +312,7 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     await writeResult(periodId, employee.employmentId, { basic: 3_500_000, runAt: "2026-09-22T00:00:00.000Z" });
 
     const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
-    expect(outcome).toEqual({ ok: true, drafted: 0, revised: 1, alreadyCurrent: 0 });
+    expect(outcome).toEqual({ ok: true, drafted: 0, revised: 1, alreadyCurrent: 0, importConflicts: [] });
 
     const slips = await slipsOf(employee.employeeId);
     expect(slips).toHaveLength(2);
@@ -319,19 +357,152 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
       [periodId],
     );
     expect(rows.map((row) => row.action)).toEqual(["payroll.payslips.drafted"]);
-    expect(rows[0]!.payload).toEqual({ drafted: 1, revised: 0, already_current: 0 });
+    expect(rows[0]!.payload).toEqual({ drafted: 1, revised: 0, already_current: 0, import_conflicts: 0 });
+  });
+
+  it("refuses to draft for a period that has gone back to being worked on", async () => {
+    const periodId = await newPeriod("COLLECTING");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    expect(outcome).toEqual({ ok: false, code: "PAYROLL_STATE_CONFLICT", state: "COLLECTING" });
+    expect(await slipsOf(employee.employeeId)).toEqual([]);
+  });
+
+  it("leaves an import batch's draft alone and reports the employee instead", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+
+    const batchId = await newImportBatch();
+    const importedSlipId = randomUUID();
+    await pool.query(
+      `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_batch_id)
+       VALUES ($1, $2, DATE '2026-09-01', '[{"label":"Impor","value":"Rp1"}]'::jsonb, 'tetap', $3)`,
+      [importedSlipId, employee.employeeId, batchId],
+    );
+
+    const outcome = await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.drafted).toBe(0);
+    expect(outcome.importConflicts).toHaveLength(1);
+
+    const slips = await slipsOf(employee.employeeId);
+    expect(slips).toHaveLength(1);
+    // The batch keeps its draft, so PAY-002 can still publish it.
+    expect(slips[0]!.sourceBatchId).toBe(batchId);
+    expect(slips[0]!.sourcePeriodId).toBeNull();
+  });
+
+  it("publishes the period's drafts, and only those", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+
+    const outcome = await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+    expect(outcome).toEqual({ ok: true, published: 1 });
+
+    const slips = await slipsOf(employee.employeeId);
+    expect(slips[0]!.publishedAt).not.toBeNull();
+  });
+
+  it("says plainly when there is no draft to publish", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    expect(await publishPayslipsOfPeriod(pool, periodId, actorAccountId)).toEqual({
+      ok: false,
+      code: "PAYROLL_NOTHING_TO_PUBLISH",
+    });
+  });
+
+  it("refuses to publish for a period that has gone back to being worked on", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await pool.query("UPDATE payroll_periods SET state = 'COLLECTING' WHERE id = $1", [periodId]);
+
+    expect(await publishPayslipsOfPeriod(pool, periodId, actorAccountId)).toEqual({
+      ok: false,
+      code: "PAYROLL_STATE_CONFLICT",
+      state: "COLLECTING",
+    });
+  });
+
+  it("publishes a revision without touching the slip it replaced", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+
+    await replaceResult(periodId, employee.employmentId, 3_500_000, "2026-09-22T00:00:00.000Z");
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    expect(await publishPayslipsOfPeriod(pool, periodId, actorAccountId)).toEqual({ ok: true, published: 1 });
+
+    const slips = await slipsOf(employee.employeeId);
+    expect(slips).toHaveLength(2);
+    expect(slips.every((slip) => slip.publishedAt !== null)).toBe(true);
+    const revision = slips.find((slip) => slip.revisionOf !== null)!;
+    expect(revision.lines[0]).toEqual({ label: "Status", value: "Revisi", section: "identity" });
+  });
+
+  it("keeps a second reopen a chain rather than a tangle", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+
+    await replaceResult(periodId, employee.employmentId, 3_500_000, "2026-09-22T00:00:00.000Z");
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+
+    await replaceResult(periodId, employee.employmentId, 3_700_000, "2026-09-23T00:00:00.000Z");
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+
+    const slips = await slipsOf(employee.employeeId);
+    expect(slips).toHaveLength(3);
+    const current = slips.filter((slip) => slip.supersededById === null);
+    expect(current).toHaveLength(1);
+    expect(current[0]!.revisionOf).not.toBeNull();
+  });
+
+  it("shows the employee only the slip that counts", async () => {
+    const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    const employee = await newEmployee();
+    await writeResult(periodId, employee.employmentId, { basic: 3_000_000 });
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+    await replaceResult(periodId, employee.employmentId, 3_500_000, "2026-09-22T00:00:00.000Z");
+    await draftPayslipsFromPeriod(pool, periodId, actorAccountId);
+    await publishPayslipsOfPeriod(pool, periodId, actorAccountId);
+
+    // The same query the employee's own payslip list runs.
+    const { rows } = await pool.query<{ id: string; isRevision: boolean }>(
+      `SELECT id, (revision_of IS NOT NULL) AS "isRevision"
+       FROM payslips
+       WHERE employee_id = $1 AND published_at IS NOT NULL AND superseded_by_id IS NULL`,
+      [employee.employeeId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.isRevision).toBe(true);
   });
 
   it("refuses a slip that claims both an import batch and a payroll period", async () => {
     const employee = await newEmployee();
     const periodId = await newPeriod("PAYMENT_CONFIRMED");
+    // A real batch, so the check constraint is what refuses this and not a
+    // foreign key to a batch that never existed.
+    const batchId = await newImportBatch();
     await expect(
       pool.query(
         `INSERT INTO payslips(id, employee_id, period, lines, source_format, source_batch_id, source_period_id)
          VALUES ($1, $2, DATE '2026-09-01', '[]'::jsonb, 'generic', $3, $4)`,
-        [randomUUID(), employee.employeeId, randomUUID(), periodId],
+        [randomUUID(), employee.employeeId, batchId, periodId],
       ),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/^(23514|23503)$/) });
+    ).rejects.toMatchObject({ code: "23514" });
   });
 
   it("refuses a slip that claims neither source", async () => {

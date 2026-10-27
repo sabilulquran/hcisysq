@@ -14,14 +14,24 @@
 -- index over the slips that have not been superseded: exactly one current slip
 -- per employee and period, revisions beside it.
 --
--- Down:
---   DROP INDEX payslips_current_per_period_idx;
---   ALTER TABLE payslips ADD CONSTRAINT payslips_employee_id_period_key UNIQUE (employee_id, period);
---     (only possible while no superseded slip exists)
---   ALTER TABLE payslips DROP CONSTRAINT payslips_exactly_one_source,
---     DROP CONSTRAINT payslips_superseded_by_fk,
---     DROP COLUMN superseded_by_id, DROP COLUMN revision_of, DROP COLUMN source_period_id,
---     ALTER COLUMN source_batch_id SET NOT NULL;
+-- Down, and what it costs. This migration comes down cleanly only while no slip
+-- has been published from a payroll period:
+--   1. SELECT count(*) FROM payslips WHERE source_period_id IS NOT NULL;  -- must be 0
+--      If it is not, stop. Restoring source_batch_id NOT NULL would have nothing
+--      to put in it, and dropping source_period_id would erase the only record of
+--      where those slips came from. Withdraw the payroll endpoints instead and
+--      leave the columns in place.
+--   2. The revision pair references itself, so break the links first:
+--        UPDATE payslips SET superseded_by_id = NULL WHERE superseded_by_id IS NOT NULL;
+--        UPDATE payslips SET revision_of = NULL WHERE revision_of IS NOT NULL;
+--   3. DROP INDEX payslips_current_per_period_idx;
+--      ALTER TABLE payslips ADD CONSTRAINT payslips_employee_id_period_key UNIQUE (employee_id, period);
+--      This succeeds only once every revision row is gone, since two rows would
+--      share (employee_id, period).
+--   4. ALTER TABLE payslips DROP CONSTRAINT payslips_exactly_one_source,
+--        DROP CONSTRAINT payslips_superseded_by_fk, DROP CONSTRAINT payslips_revision_is_not_itself,
+--        DROP COLUMN superseded_by_id, DROP COLUMN revision_of, DROP COLUMN source_period_id,
+--        ALTER COLUMN source_batch_id SET NOT NULL;
 
 ALTER TABLE payslips
   ALTER COLUMN source_batch_id DROP NOT NULL,

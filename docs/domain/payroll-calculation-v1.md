@@ -268,7 +268,8 @@ DRAFT → COLLECTING → CALCULATED → SUBMITTED → APPROVED → PAYMENT_CONFI
 | kembalikan | Direktur | SUBMITTED, alasan wajib, tujuan COLLECTING | `payroll.period.returned` |
 | sahkan | Direktur (`payroll.approve`), bukan pengaju | SUBMITTED | `payroll.period.approved` |
 | konfirmasi bayar | Keuangan (`payroll.payments.confirm`) | APPROVED | `payroll.payment.confirmed` |
-| publikasi slip | HC | PAYMENT_CONFIRMED | `payroll.payslips.published` |
+| siapkan slip | HC (`payroll.periods.manage`) | PAYMENT_CONFIRMED atau PUBLISHED, tanpa blocker | `payroll.payslips.drafted` |
+| terbitkan slip | pemegang `payslips.publish` | ada draft dari periode ini | `payroll.payslips.published` |
 | minta buka ulang | HC | APPROVED/PAYMENT_CONFIRMED/PUBLISHED, alasan wajib | `payroll.reopen.requested` |
 | setujui buka ulang | Direktur | REOPEN_REQUESTED | `payroll.reopen.approved` (periode kembali ke COLLECTING) |
 | tolak buka ulang | Direktur | REOPEN_REQUESTED, alasan wajib | `payroll.reopen.rejected` (periode kembali ke state sebelumnya) |
@@ -277,7 +278,7 @@ Aturan:
 
 - Satu periode per bulan per legal entity; operasi bersifat idempoten (mengulang aksi tidak menggandakan hasil).
 - APPROVED mengunci snapshot input, versi kebijakan, dan baris hasil. Hasil revisi menyimpan lineage ke versi sebelumnya.
-- Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi dengan penanda, mekanismenya §10 butir 8.
+- Slip yang sudah dipublikasikan tidak diubah (PAYSLIP-001). Koreksi setelah publikasi memakai slip revisi yang membawa baris penanda `Status: Revisi` pada slip itu sendiri; slip lama ditandai `superseded_by_id` dan tidak lagi muncul di daftar slip pegawai, tetapi tetap tersimpan. Mekanismenya §10 butir 8.
 - **Buka ulang setelah bayar atau setelah publikasi** tidak membatalkan pembayaran yang sudah terjadi. Hasil periode yang baru menyimpan `selisih_bayar = dibayar_baru − dibayar_lama` per pegawai. Selisih positif dibayarkan sebagai `ARREARS` pada periode berikutnya; selisih negatif menjadi `ADJUST_DEDUCT` pada periode berikutnya dengan alasan dan referensi keputusan. Konfirmasi bayar lama tetap tercatat sebagai fakta dan tidak dihapus.
 - Laporan payroll baru terlihat oleh pembaca laporan setelah APPROVED. Sebelum itu, hanya aktor yang menjalankan periode (`payroll.periods.manage`, `payroll.calculate`, `payroll.inputs.manage`) yang melihat angkanya.
 
@@ -289,7 +290,7 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - **Laporan payroll final** (`payroll.reports.read.organization`; aktor yang menjalankan periode juga membacanya selama periode berjalan): rekap per unit dan per komponen, jumlah penerima, total bruto/potongan/netto/dibayar, dan biaya yayasan. **Tanpa nomor rekening.** Memegang `payroll.approve` atau `payroll.payments.confirm` saja tidak cukup untuk membacanya. Unit diambil dari profil yang dipakai saat hitung, sehingga laporan periode lampau terbaca seperti saat dibayar.
 - Pengurus Yayasan tidak memperoleh kedua laporan di v1 (§2).
 - **Perbandingan periode** (`payroll.reports.read.organization`, serta aktor yang menjalankan periode): selisih per pegawai per komponen terhadap periode sebelumnya pada legal entity yang sama, disaring ambang §10 butir 6. Pegawai yang baru masuk atau keluar dilaporkan satu baris, bukan satu baris per komponen. Periode pertama menjawab perbandingan kosong, bukan error.
-- **Slip pegawai:** hasil final dipetakan ke draft slip (`lines` label/value sesuai urutan katalog komponen) setelah pembayaran dikonfirmasi, lalu dipublikasikan lewat alur PAY-002 yang sudah ada — payroll menyiapkan, PAY-002 menerbitkan, sehingga keputusan menampilkan slip tetap di pemegang `payslips.publish`. Slip bersumber periode payroll (`payslips.source_period_id`), bukan batch impor; tepat satu sumber per baris. Slip yang belum terbit diperbarui di tempat; slip yang sudah terbit tidak pernah diubah.
+- **Slip pegawai:** hasil final dipetakan ke draft slip (`lines` label/value sesuai urutan katalog komponen) setelah pembayaran dikonfirmasi, lalu diterbitkan lewat aksi tersendiri yang meminta `payslips.publish` — payroll menyiapkan, pemegang permission itu menerbitkan. Jalur publish batch PAY-002 bekerja per batch impor dan tidak dapat melihat slip bersumber periode, sehingga payroll memakai pintunya sendiri dengan permission yang sama. Slip bersumber periode payroll (`payslips.source_period_id`), bukan batch impor; tepat satu sumber per baris. Slip yang belum terbit diperbarui di tempat; slip yang sudah terbit tidak pernah diubah. Bila slip berlaku untuk bulan itu ternyata milik batch impor PAY-001, payroll tidak menyentuhnya dan melaporkan pegawainya sebagai konflik, supaya batch impor tidak kehilangan draftnya.
 - **Laporan PPh21 TER** per masa pajak dari hasil final.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
 

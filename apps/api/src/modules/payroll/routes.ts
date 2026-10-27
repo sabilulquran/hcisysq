@@ -40,7 +40,7 @@ import {
   transferListToCsv,
 } from "./reports.js";
 import { calculatePeriod } from "./calculation.js";
-import { draftPayslipsFromPeriod } from "./publication.js";
+import { draftPayslipsFromPeriod, publishPayslipsOfPeriod } from "./publication.js";
 import {
   deleteInput,
   INPUT_KEYS,
@@ -749,17 +749,45 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
         message:
           outcome.code === "PAYROLL_BLOCKERS_PRESENT"
             ? `Periode masih memiliki ${outcome.blockerCount} blocker; slip tidak disiapkan.`
-            : "Periode belum memiliki hasil yang dapat dijadikan slip.",
+            : outcome.code === "PAYROLL_STATE_CONFLICT"
+              ? `Periode berubah menjadi ${outcome.state} saat slip disiapkan; muat ulang lalu coba lagi.`
+              : "Periode belum memiliki hasil yang dapat dijadikan slip.",
       });
     }
 
-    // Drafting is where payroll stops. PAY-002 publishes, so whoever holds
-    // payslips.publish keeps the decision to show a slip to an employee.
+    // Drafting is where payroll stops. Publishing is a separate call that asks
+    // for payslips.publish, so the decision to show a slip stays where PAY-002
+    // put it.
     return send(reply, 200, {
       drafted: outcome.drafted,
       revised: outcome.revised,
       alreadyCurrent: outcome.alreadyCurrent,
+      importConflicts: outcome.importConflicts,
     });
+  });
+
+  app.post("/payroll/periods/:periodId/payslips/publish", async (request, reply) => {
+    // payslips.publish, not a payroll permission: showing a slip to an employee
+    // is the PAY-002 decision, and payroll does not take it over by calculating.
+    const actor = await requirePermission(request, reply, "payslips.publish");
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+
+    const outcome = await publishPayslipsOfPeriod(pool, params.data.periodId, actor.accountId);
+    if (!outcome.ok) {
+      return send(reply, 409, {
+        code: outcome.code,
+        message:
+          outcome.code === "PAYROLL_STATE_CONFLICT"
+            ? `Periode berstatus ${outcome.state}; slip hanya dapat diterbitkan setelah pembayaran dikonfirmasi.`
+            : "Tidak ada slip draft dari periode ini untuk diterbitkan.",
+      });
+    }
+    return send(reply, 200, { published: outcome.published });
   });
 
   app.post("/payroll/periods/:periodId/transitions", async (request, reply) => {

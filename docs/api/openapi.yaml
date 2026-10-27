@@ -2312,6 +2312,8 @@ paths:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}'
   /payroll/periods/{periodId}/payslips:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1payslips'
+  /payroll/periods/{periodId}/payslips/publish:
+    $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1payslips~1publish'
   /payroll/periods/{periodId}/transitions:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1transitions'
   /payroll/periods/{periodId}/inputs:

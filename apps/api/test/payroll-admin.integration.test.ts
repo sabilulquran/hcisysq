@@ -215,8 +215,10 @@ describe.skipIf(!allowed)("PAY-003 reference data against PostgreSQL", () => {
         [randomUUID(), loan.id, approved],
       );
 
-      const loans = await listLoans(pool, employeeId);
+      const { loans, total } = await listLoans(pool, { employeeId, page: 1, pageSize: 25 });
+      expect(total).toBe(1);
       expect(loans[0]!.outstanding).toBe("1000000");
+      expect(loans[0]!.fullName).toBeTruthy();
     });
 
     it("refuses an instalment larger than what is left to repay", async () => {

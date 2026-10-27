@@ -279,6 +279,8 @@ export async function openCompensationProfile(
 export type LoanRow = {
   id: string;
   employeeId: string;
+  employeeNumber: string | null;
+  fullName: string;
   grantedOn: string;
   principal: string;
   instalment: string | null;
@@ -290,6 +292,7 @@ export type LoanRow = {
 
 const LOAN_COLUMNS = `
   l.id, l.employee_id AS "employeeId",
+  emp.employee_number AS "employeeNumber", emp.full_name AS "fullName",
   to_char(l.granted_on, 'YYYY-MM-DD') AS "grantedOn",
   l.principal::text AS principal, l.instalment::text AS instalment, l.note, l.closed_at AS "closedAt",
   coalesce(paid.total, 0)::text AS deducted,
@@ -313,14 +316,80 @@ const LOAN_PAID = `
   ) paid ON true
 `;
 
-export async function listLoans(pool: Pool, employeeId?: string): Promise<LoanRow[]> {
+/**
+ * The loan register, a page at a time (ENG-LIST-001). The register grows with
+ * every kasbon ever granted, so it is never read whole: finance filters by
+ * employee, or walks it page by page with the total in hand.
+ */
+export async function listLoans(
+  pool: Pool,
+  options: { employeeId?: string | null; page: number; pageSize: number },
+): Promise<{ loans: LoanRow[]; total: number }> {
+  const employeeId = options.employeeId ?? null;
   const { rows } = await pool.query<LoanRow>(
-    `SELECT ${LOAN_COLUMNS} FROM payroll_loans l ${LOAN_PAID}
+    `SELECT ${LOAN_COLUMNS} FROM payroll_loans l
+     JOIN employees emp ON emp.id = l.employee_id
+     ${LOAN_PAID}
      WHERE ($1::uuid IS NULL OR l.employee_id = $1)
-     ORDER BY l.granted_on DESC, l.id`,
-    [employeeId ?? null],
+     ORDER BY l.granted_on DESC, l.id
+     LIMIT $2 OFFSET $3`,
+    [employeeId, options.pageSize, (options.page - 1) * options.pageSize],
   );
-  return rows;
+  // Counted with the same filter, so the pager never promises a page that the
+  // filter would leave empty.
+  const { rows: counted } = await pool.query<{ total: number }>(
+    `SELECT count(*)::int AS total FROM payroll_loans l
+     WHERE ($1::uuid IS NULL OR l.employee_id = $1)`,
+    [employeeId],
+  );
+  return { loans: rows, total: counted[0]?.total ?? 0 };
+}
+
+export type PayrollEmploymentRow = {
+  employmentId: string;
+  employeeId: string;
+  employeeNumber: string | null;
+  fullName: string;
+  startedOn: string;
+  endedOn: string | null;
+  profileCount: number;
+};
+
+/**
+ * The employments a compensation profile can be opened against, searched by
+ * name or employee number (ENG-LIST-001: a picker over employees is a
+ * typeahead, never a dropdown of everyone).
+ */
+export async function listPayrollEmployments(
+  pool: Pool,
+  options: { q?: string | null; page: number; pageSize: number },
+): Promise<{ employments: PayrollEmploymentRow[]; total: number }> {
+  const q = (options.q ?? "").trim();
+  const pattern = q.length > 0 ? `%${q}%` : null;
+  const { rows } = await pool.query<PayrollEmploymentRow>(
+    `SELECT e.id AS "employmentId", e.employee_id AS "employeeId",
+            emp.employee_number AS "employeeNumber", emp.full_name AS "fullName",
+            to_char(e.started_on, 'YYYY-MM-DD') AS "startedOn",
+            to_char(e.ended_on, 'YYYY-MM-DD') AS "endedOn",
+            coalesce(profiles.total, 0)::int AS "profileCount"
+     FROM employments e
+     JOIN employees emp ON emp.id = e.employee_id
+     LEFT JOIN LATERAL (
+       SELECT count(*) AS total FROM payroll_compensation_profiles p WHERE p.employment_id = e.id
+     ) profiles ON true
+     WHERE ($1::text IS NULL OR emp.full_name ILIKE $1 OR emp.employee_number ILIKE $1)
+     ORDER BY emp.employee_number, e.started_on DESC
+     LIMIT $2 OFFSET $3`,
+    [pattern, options.pageSize, (options.page - 1) * options.pageSize],
+  );
+  const { rows: counted } = await pool.query<{ total: number }>(
+    `SELECT count(*)::int AS total
+     FROM employments e
+     JOIN employees emp ON emp.id = e.employee_id
+     WHERE ($1::text IS NULL OR emp.full_name ILIKE $1 OR emp.employee_number ILIKE $1)`,
+    [pattern],
+  );
+  return { employments: rows, total: counted[0]?.total ?? 0 };
 }
 
 export type NewLoan = {
@@ -349,7 +418,9 @@ export async function createLoan(pool: Pool, loan: NewLoan, actorAccountId: stri
     });
     await client.query("COMMIT");
     const { rows } = await pool.query<LoanRow>(
-      `SELECT ${LOAN_COLUMNS} FROM payroll_loans l ${LOAN_PAID} WHERE l.id = $1`,
+      `SELECT ${LOAN_COLUMNS} FROM payroll_loans l
+       JOIN employees emp ON emp.id = l.employee_id
+       ${LOAN_PAID} WHERE l.id = $1`,
       [id],
     );
     return rows[0]!;

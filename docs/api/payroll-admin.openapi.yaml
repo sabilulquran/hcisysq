@@ -85,6 +85,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollAdminError' }
 
+  /payroll/employments:
+    get:
+      tags: [Payroll reference data]
+      operationId: listPayrollEmployments
+      summary: Search the employments a compensation profile can be opened against
+      description: >-
+        ENG-LIST-001: a picker over employees is a typeahead, never a dropdown of
+        everyone. Requires payroll.profiles.manage or payroll.calculate.
+      parameters:
+        - name: q
+          in: query
+          description: Matches the employee's name or number, case-insensitively.
+          schema: { type: string, maxLength: 120 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: One page of employments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [employments, total, page, pageSize]
+                properties:
+                  employments:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollEmployment' }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+        '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
+
   /payroll/employments/{employmentId}/compensation-profiles:
     get:
       tags: [Payroll reference data]
@@ -158,22 +196,34 @@ paths:
       tags: [Payroll reference data]
       operationId: listPayrollLoans
       summary: List loans with what is left to repay
+      description: >-
+        ENG-LIST-001: the register grows with every kasbon, so it is read a page
+        at a time with the total beside it.
       parameters:
         - name: employeeId
           in: query
           schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
       responses:
         '200':
-          description: The loans on record
+          description: One page of the loan register
           content:
             application/json:
               schema:
                 type: object
-                required: [loans]
+                required: [loans, total, page, pageSize]
                 properties:
                   loans:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollLoan' }
+                  total: { type: integer }
+                  page: { type: integer }
+                  pageSize: { type: integer }
         '400': { $ref: '#/components/responses/PayrollAdminBadRequest' }
         '401': { $ref: '#/components/responses/PayrollAdminUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollAdminForbidden' }
@@ -377,12 +427,28 @@ components:
         bankAccountName: { type: [string, 'null'] }
         recordedAt: { type: string, format: date-time }
 
+    PayrollEmployment:
+      type: object
+      required: [employmentId, employeeId, employeeNumber, fullName, startedOn, endedOn, profileCount]
+      properties:
+        employmentId: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: [string, 'null'] }
+        fullName: { type: string }
+        startedOn: { type: string, format: date }
+        endedOn: { type: [string, 'null'], format: date }
+        profileCount:
+          description: How many compensation profiles this employment already has.
+          type: integer
+
     PayrollLoan:
       type: object
-      required: [id, employeeId, grantedOn, principal, outstanding]
+      required: [id, employeeId, employeeNumber, fullName, grantedOn, principal, outstanding]
       properties:
         id: { type: string, format: uuid }
         employeeId: { type: string, format: uuid }
+        employeeNumber: { type: [string, 'null'] }
+        fullName: { type: string }
         grantedOn: { type: string, format: date }
         principal: { type: string }
         instalment: { type: [string, 'null'] }

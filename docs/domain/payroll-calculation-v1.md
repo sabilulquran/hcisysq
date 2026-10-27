@@ -302,6 +302,8 @@ Layar periode menampilkan status, tindakan yang benar-benar tersedia bagi aktor 
 
 Daftar transfer tidak diambil otomatis: ia memuat nomor rekening dan setiap pembacaannya dicatat sebagai akses sensitif, sehingga operator membukanya dengan sengaja. Bagian yang ditolak menampilkan satu kalimat penjelasan, bukan ruang kosong, supaya Direktur tidak mengesahkan periode yang tampak kosong padahal hanya belum boleh dibaca.
 
+Data acuan dibaca berhalaman: `GET /payroll/loans` dan `GET /payroll/employments` (pencarian typeahead untuk memilih employment saat membuka profil kompensasi) memakai `page`/`pageSize` default 25 maksimum 100 dengan `total`. Register kasbon bertambah setiap kali kasbon diberikan, dan daftar pegawai jauh di atas 50 opsi, sehingga keduanya tidak pernah dibaca utuh. `GET /payroll/employments` meminta permission yang sama dengan profil kompensasi (`payroll.profiles.manage` atau `payroll.calculate`) karena ia menyebut nama orang.
+
 **Pengecualian ENG-LIST-001 (`DRAFT`).** Daftar periode berhalaman server-side. Dua tabel pada layar periode — hasil per pegawai dan daftar transfer — menampilkan seluruh baris satu periode tanpa halaman, karena keduanya adalah satu periode gaji yang dibatasi jumlah pegawai aktif yayasan (±330 pada 2026) dan keduanya memang dibaca utuh saat ditinjau atau dibayarkan. Bila jumlah pegawai melewati sekitar 1.000, keduanya dipindahkan ke endpoint berhalaman.
 
 ## 8. Privasi dan audit

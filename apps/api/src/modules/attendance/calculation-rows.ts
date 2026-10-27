@@ -33,9 +33,11 @@ type StoredResult = {
   createdAt: Date;
   calculatedAt: Date;
   changed: boolean;
-  /** ATT-013: blocks of a multi-block day and how many were attended; 0/0 for a single-block day. */
+  /** ATT-013: blocks of a multi-block day (0 for a single-block day) and their outcome. */
   blockCount: number;
-  blocksAttended: number;
+  /** D-13-7: sum of the credited block shares that are known. */
+  creditedWorkday: number | null;
+  blocks: Array<{ sequence: number; status: string; firstCheckInAt: string | null; lastCheckOutAt: string | null }> | null;
 };
 
 const CLOCK_STATUSES = new Set(["scheduled", "pending", "absent"]);
@@ -54,12 +56,13 @@ export function provisionalStatus(result: Pick<StoredResult, "status" | "schedul
 }
 
 /**
- * §6.3: Normal 1 for a scheduled day; Riil 1 present/late, 0 absent, empty otherwise. ATT-013 B-6: on a
- * multi-block day Riil is the share of blocks attended (two decimals), also when the day is incomplete.
+ * §6.3: Normal 1 for a scheduled day; Riil 1 present/late, 0 absent, empty otherwise. ATT-013 §5.3: on a
+ * multi-block day Riil is the sum of the block shares that are known (attended = its share, absent = 0,
+ * incomplete or still open = not counted yet).
  */
-export function normalActual(status: CalculationRowStatus, blocks?: { count: number; attended: number }) {
+export function normalActual(status: CalculationRowStatus, blocks?: { count: number; credited: number | null }) {
   if (blocks && blocks.count > 1 && ["present", "late", "incomplete", "absent"].includes(status)) {
-    return { normal: 1, actual: Math.round((blocks.attended / blocks.count) * 100) / 100 };
+    return { normal: 1, actual: blocks.credited === null ? null : Math.round(blocks.credited * 100) / 100 };
   }
   if (status === "present" || status === "late") return { normal: 1, actual: 1 };
   if (status === "absent") return { normal: 1, actual: 0 };
@@ -124,8 +127,13 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
        ) AS "hasScheduleCoverage",
        checked.created_at AS "createdAt", checked.calculated_at AS "calculatedAt",
        (SELECT count(*)::int FROM attendance_result_blocks block WHERE block.attendance_result_version_id = checked.id) AS "blockCount",
-       (SELECT count(*)::int FROM attendance_result_blocks block
-        WHERE block.attendance_result_version_id = checked.id AND block.status IN ('present', 'late')) AS "blocksAttended",
+       -- Rows written before shares existed carry no share and give no Riil until recalculated.
+       (SELECT sum(block.credited_workday)::float8
+        FROM attendance_result_blocks block WHERE block.attendance_result_version_id = checked.id) AS "creditedWorkday",
+       (SELECT json_agg(json_build_object('sequence', block.sequence, 'status', block.status,
+                 'firstCheckInAt', block.first_check_in_at, 'lastCheckOutAt', block.last_check_out_at) ORDER BY block.sequence)
+        FROM attendance_result_blocks block WHERE block.attendance_result_version_id = checked.id
+        HAVING count(*) > 1) AS "blocks",
        (
          EXISTS (
            SELECT 1
@@ -245,7 +253,9 @@ export async function attendanceCalculationRows(
       overtimeMinutes: stored?.overtimeMinutes ?? null,
       incompleteSession: stored?.incompleteSession ?? null,
       // Today is provisional: later blocks may still come, so no block share yet.
-      ...normalActual(status, stored && !provisional ? { count: stored.blockCount ?? 0, attended: stored.blocksAttended ?? 0 } : undefined),
+      ...normalActual(status, stored && !provisional ? { count: stored.blockCount ?? 0, credited: stored.creditedWorkday ?? null } : undefined),
+      // ATT-013 §3: per-block text under the day row of a multi-block shift.
+      blocks: stored?.blocks ?? null,
     };
   })
     .filter((item) => !filter.status || item.status === filter.status)

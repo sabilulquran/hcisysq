@@ -81,32 +81,61 @@ const workLocationPatchSchema = workLocationSchema.partial().extend({
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan lokasi kosong.");
 // ATT-013: blocks 2-3 of a shift, on the same day as block 1.
+const workdayWeightSchema = z.number().gt(0).max(1).multipleOf(0.01);
 const extraBlocksSchema = z.array(z.object({
   startTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/),
+  // D-13-6 "Hitungan hari"; when every block has one they must add up to 1,00.
+  workdayWeight: workdayWeightSchema.optional(),
 })).max(2);
 
-/** ATT-013 §3: blocks in order, no overlap, at least one minute apart, and no midnight crossing. */
-export function scheduleBlocksError(first: { startTime: string; endTime: string; endDayOffset: number }, extra: ReadonlyArray<{ startTime: string; endTime: string }>) {
+const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/**
+ * ATT-013 (attendance-multi-block-schedule.md §4.1): blocks in order on one day, Jeda Antarblok at least
+ * 30 minutes (D-13-2), at most 20 hours of blocks, and day shares that are all given or all left out and
+ * then add up to 1,00 (D-13-6). The message names the block.
+ */
+export function scheduleBlocksError(
+  first: { startTime: string; endTime: string; endDayOffset: number; workdayWeight?: number | null },
+  extra: ReadonlyArray<{ startTime: string; endTime: string; workdayWeight?: number | null | undefined }>,
+) {
   if (extra.length === 0) return null;
   if (first.endDayOffset !== 0 || first.endTime <= first.startTime) return "Shift dengan beberapa blok tidak boleh melewati tengah malam.";
-  let previousEnd = first.endTime.slice(0, 5);
-  for (const block of extra) {
-    const start = block.startTime.slice(0, 5);
-    const end = block.endTime.slice(0, 5);
-    if (end <= start) return "Setiap blok harus selesai setelah mulai, pada hari yang sama.";
-    if (start <= previousEnd) return "Blok harus berurutan dan tidak boleh bertumpuk.";
+  let previousEnd = minutesOf(first.endTime);
+  let total = previousEnd - minutesOf(first.startTime);
+  for (const [index, block] of extra.entries()) {
+    const start = minutesOf(block.startTime);
+    const end = minutesOf(block.endTime);
+    if (end <= start) return `Blok ${index + 2} harus selesai setelah mulai, pada hari yang sama.`;
+    if (start - previousEnd < 30) return `Jeda sebelum blok ${index + 2} minimal 30 menit; jeda lebih pendek adalah istirahat di dalam satu blok.`;
+    total += end - start;
     previousEnd = end;
+  }
+  if (total > 20 * 60) return "Total seluruh blok tidak boleh lebih dari 20 jam.";
+  const weights = [first.workdayWeight, ...extra.map((block) => block.workdayWeight)];
+  const given = weights.filter((weight) => weight !== undefined && weight !== null);
+  if (given.length > 0 && given.length < weights.length) return "Isi Hitungan hari untuk semua blok, atau kosongkan semuanya.";
+  if (given.length && Math.round(given.reduce((sum, weight) => sum + Number(weight), 0) * 100) !== 100) {
+    return "Jumlah Hitungan hari seluruh blok harus 1,00.";
   }
   return null;
 }
 
-async function writeVersionBlocks(client: PoolClient, versionId: string, blocks: ReadonlyArray<{ startTime: string; endTime: string }>) {
+async function writeVersionBlocks(
+  client: PoolClient,
+  versionId: string,
+  blocks: ReadonlyArray<{ startTime: string; endTime: string; workdayWeight?: number | null | undefined }>,
+  firstBlockWorkdayWeight: number | null = null,
+) {
+  if (blocks.length && firstBlockWorkdayWeight !== null) {
+    await client.query("UPDATE attendance_schedule_versions SET first_block_workday_weight = $2 WHERE id = $1", [versionId, firstBlockWorkdayWeight]);
+  }
   for (const [index, block] of blocks.entries()) {
     await client.query(
-      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time)
-       VALUES ($1, $2, $3, $4::time, $5::time)`,
-      [randomUUID(), versionId, index + 2, block.startTime, block.endTime],
+      `INSERT INTO attendance_schedule_version_blocks (id, schedule_version_id, sequence, start_time, end_time, workday_weight)
+       VALUES ($1, $2, $3, $4::time, $5::time, $6)`,
+      [randomUUID(), versionId, index + 2, block.startTime, block.endTime, block.workdayWeight ?? null],
     );
   }
 }
@@ -122,6 +151,7 @@ const scheduleTemplateSchema = z.object({
   // ATT-014 §20.10: the date the shift's meaning applies from (00:00 WIB); default is the moment of creation.
   effectiveFrom: dateSchema.optional(),
   extraBlocks: extraBlocksSchema.default([]),
+  firstBlockWorkdayWeight: workdayWeightSchema.optional(),
 });
 const scheduleBackdateSchema = z.object({
   effectiveFrom: dateSchema,
@@ -135,6 +165,7 @@ const scheduleTemplatePatchSchema = z.object({
   lateGraceMinutes: z.number().int().min(0).max(240).optional(),
   earlyLeaveToleranceMinutes: z.number().int().min(0).max(240).optional(),
   extraBlocks: extraBlocksSchema.optional(),
+  firstBlockWorkdayWeight: workdayWeightSchema.optional(),
   workLocationId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, "Perubahan jadwal kosong.");
@@ -356,7 +387,8 @@ async function latestResult(db: Pool | PoolClient, employeeId: string, workDate:
   const blocks = await db.query(
     `SELECT sequence, scheduled_start_at AS "scheduledStartAt", scheduled_end_at AS "scheduledEndAt",
        first_check_in_at AS "firstCheckInAt", last_check_out_at AS "lastCheckOutAt", status,
-       late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes", worked_minutes AS "workedMinutes"
+       late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes", worked_minutes AS "workedMinutes",
+       expected_workday::float8 AS "expectedWorkday", credited_workday::float8 AS "creditedWorkday"
      FROM attendance_result_blocks WHERE attendance_result_version_id = $1 ORDER BY sequence`,
     [mapped.id],
   );
@@ -1052,8 +1084,10 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
          version.id AS "currentVersionId", version.version AS "currentVersion",
-         (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+         (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text,
+                   'workdayWeight', block.workday_weight::float8) ORDER BY block.sequence), '[]'::json)
             FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks",
+         version.first_block_workday_weight::float8 AS "firstBlockWorkdayWeight",
          (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
@@ -1097,18 +1131,24 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
-      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks"]
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks", "firstBlockWorkdayWeight"]
         .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
       // ATT-013: without new blocks in the request, a new version keeps the current version's blocks.
-      const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string }>(
-        `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime"
+      const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string; workdayWeight: number | null }>(
+        `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime",
+           block.workday_weight::float8 AS "workdayWeight"
          FROM attendance_schedule_version_blocks block
          JOIN attendance_schedule_versions version ON version.id = block.schedule_version_id
          WHERE version.schedule_template_id = $1 AND version.effective_to IS NULL
          ORDER BY block.sequence`,
         [params.data.scheduleId],
       )).rows;
-      const blocksError = scheduleBlocksError(next, blocks);
+      const firstWeight = body.data.firstBlockWorkdayWeight ?? (body.data.extraBlocks ? null : (await client.query<{ weight: number | null }>(
+        `SELECT first_block_workday_weight::float8 AS weight FROM attendance_schedule_versions
+         WHERE schedule_template_id = $1 AND effective_to IS NULL`,
+        [params.data.scheduleId],
+      )).rows[0]?.weight ?? null);
+      const blocksError = scheduleBlocksError({ ...next, workdayWeight: firstWeight }, blocks);
       if (blocksError) {
         await client.query("ROLLBACK");
         return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
@@ -1152,7 +1192,7 @@ export async function registerAttendanceWorkforceRoutes(
             next.workLocationId ?? null, effectiveAt, principal.id,
           ],
         );
-        await writeVersionBlocks(client, versionId, blocks);
+        await writeVersionBlocks(client, versionId, blocks, firstWeight);
       }
 
       await insertAudit(client, principal.id, "attendance.schedule.updated", "attendance_schedule_template", params.data.scheduleId, {
@@ -1179,7 +1219,9 @@ export async function registerAttendanceWorkforceRoutes(
     const id = randomUUID();
     const versionId = randomUUID();
     const endDayOffset = body.data.endDayOffset ?? (body.data.endTime <= body.data.startTime ? 1 : 0);
-    const blocksError = scheduleBlocksError({ startTime: body.data.startTime, endTime: body.data.endTime, endDayOffset }, body.data.extraBlocks);
+    const blocksError = scheduleBlocksError({
+      startTime: body.data.startTime, endTime: body.data.endTime, endDayOffset, workdayWeight: body.data.firstBlockWorkdayWeight ?? null,
+    }, body.data.extraBlocks);
     if (blocksError) return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
     const client = await pool.connect();
     try {
@@ -1208,7 +1250,7 @@ export async function registerAttendanceWorkforceRoutes(
           body.data.workLocationId ?? null, principal.id, body.data.effectiveFrom ?? null,
         ],
       );
-      await writeVersionBlocks(client, versionId, body.data.extraBlocks);
+      await writeVersionBlocks(client, versionId, body.data.extraBlocks, body.data.firstBlockWorkdayWeight ?? null);
       await insertAudit(client, principal.id, "attendance.schedule.created", "attendance_schedule_template", id, {
         versionId, version: 1, effectiveFrom: body.data.effectiveFrom ?? null, extraBlocks: body.data.extraBlocks,
       });

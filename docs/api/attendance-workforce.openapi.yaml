@@ -1038,6 +1038,8 @@ components:
               lateMinutes: { type: integer, minimum: 0 }
               earlyLeaveMinutes: { type: integer, minimum: 0 }
               workedMinutes: { type: integer, minimum: 0 }
+              expectedWorkday: { type: [number, 'null'], description: "D-13-6 Normal share of the block" }
+              creditedWorkday: { type: [number, 'null'], description: "D-13-7 Riil share; null while incomplete or not yet over" }
 
     AttendanceWorkforceSnapshot:
       type: object
@@ -1112,14 +1114,19 @@ components:
           type: array
           maxItems: 2
           description: >-
-            ATT-013 work blocks 2-3 on the same day as block 1 (startTime/endTime). Blocks must be in order,
-            not overlap, and a multi-block shift may not cross midnight; otherwise 422 SCHEDULE_BLOCKS_INVALID.
+            ATT-013 work blocks 2-3 on the same day as block 1. Blocks must be in order with at least 30
+            minutes between them (D-13-2), at most 20 hours in total, and a multi-block shift may not cross
+            midnight. `workdayWeight` ("Hitungan hari", D-13-6) is given for every block including
+            `firstBlockWorkdayWeight` and adds up to 1.00, or left out everywhere for an equal share.
+            Otherwise 422 SCHEDULE_BLOCKS_INVALID naming the block.
           items:
             type: object
             required: [startTime, endTime]
             properties:
               startTime: { type: string }
               endTime: { type: string }
+              workdayWeight: { type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.01 }
+        firstBlockWorkdayWeight: { type: number, exclusiveMinimum: 0, maximum: 1, multipleOf: 0.01, description: "ATT-013 Hitungan hari of block 1; only with extraBlocks." }
 
     AttendanceOvertimeInput:
       type: object

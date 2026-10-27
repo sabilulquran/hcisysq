@@ -33,6 +33,7 @@ import {
 import {
   getRolloutMode,
   jakartaToday,
+  listExpiringContracts,
   loadHistories,
   loadTimeline,
 } from "./infrastructure/postgres-employment-store.js";
@@ -246,68 +247,20 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
 
     const today = jakartaToday();
     const { withinDays, page, pageSize } = query.data;
-    const filters = query.data.unitId ? "AND e.organizational_unit_id = $4::uuid" : "";
-    const params: unknown[] = [today, withinDays, pageSize * (page - 1)];
-    if (query.data.unitId) params.push(query.data.unitId);
-
-    /**
-     * The term the employee is on *now* — chosen without looking at whether it
-     * ends, because a permanent term has no end date and filtering those out
-     * first would make the CTE fall back to the closed contract before it and
-     * report a permanent employee as overdue forever. A term whose start is
-     * unknown (baseline) still counts: its end date may well need a decision.
-     */
-    const currentTerm = `
-      WITH current_term AS (
-        SELECT DISTINCT ON (em.employee_id)
-               em.employee_id, t.effective_to, t.category, t.sequence
-        FROM employments em
-        JOIN employment_terms t ON t.employment_id = em.id AND t.voided_by_action_id IS NULL
-        WHERE em.voided_by_action_id IS NULL
-          AND em.ended_on IS NULL
-          AND (t.effective_from IS NULL OR t.effective_from <= $1::date)
-        ORDER BY em.employee_id, t.effective_from DESC NULLS LAST, t.sequence DESC
-      )`;
-    const where = `
-      WHERE ct.effective_to IS NOT NULL
-        AND ct.effective_to <= $1::date + $2::int ${filters}`;
-
-    const [rows, count] = await Promise.all([
-      pool.query<{
-        employeeId: string; employeeNumber: string; fullName: string; unitName: string | null;
-        category: string; endsOn: string; sequence: number; daysLeft: number;
-      }>(
-        `${currentTerm}
-         SELECT ct.employee_id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
-                u.name AS "unitName", ct.category, ct.effective_to::text AS "endsOn", ct.sequence,
-                (ct.effective_to - $1::date)::int AS "daysLeft"
-         FROM current_term ct
-         JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
-         LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-         ${where}
-         ORDER BY ct.effective_to, e.full_name, ct.employee_id
-         LIMIT ${pageSize} OFFSET $3`,
-        params,
-      ),
-      // Counted separately, so paging past the last page still reports how
-      // many there are instead of zero.
-      pool.query<{ total: number }>(
-        `${currentTerm}
-         SELECT count(*)::int AS total
-         FROM current_term ct
-         JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
-         ${where}`,
-        query.data.unitId ? [today, withinDays, 0, query.data.unitId] : [today, withinDays, 0],
-      ),
-    ]);
-    const result = rows;
+    const result = await listExpiringContracts(pool, {
+      today,
+      withinDays,
+      unitId: query.data.unitId ?? null,
+      page,
+      pageSize,
+    });
 
     return send(reply, 200, {
       date: today,
       withinDays,
       page,
       pageSize,
-      total: count.rows[0]?.total ?? 0,
+      total: result.total,
       rows: result.rows.map((row) => ({
         ...row,
         // A term already past its end is the urgent case (§6.2 flag).

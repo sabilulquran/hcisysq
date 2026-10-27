@@ -335,3 +335,75 @@ export async function loadTimeline(db: Db, employeeId: string): Promise<Timeline
   );
   return result.rows.map((row) => ({ ...row, recordedAt: row.recordedAt.toISOString() }));
 }
+
+export interface ExpiringContract {
+  employeeId: string;
+  employeeNumber: string;
+  fullName: string;
+  unitName: string | null;
+  category: string;
+  endsOn: string;
+  sequence: number;
+  daysLeft: number;
+}
+
+/**
+ * Kontrak yang akan berakhir, termasuk yang sudah lewat tanpa tindak lanjut
+ * (spec §13.4, §6.2: tidak pernah berakhir sendiri).
+ *
+ * Term yang sedang berlaku dipilih tanpa melihat apakah ia punya tanggal
+ * akhir: menyaring term tanpa akhir lebih dulu membuat pilihan jatuh ke
+ * kontrak lama yang sudah ditutup, sehingga pegawai yang baru diangkat tetap
+ * terus muncul sebagai kontrak lewat tempo. Term yang tanggal mulainya belum
+ * diketahui (data awal) tetap dihitung: tanggal akhirnya sama butuh keputusan.
+ */
+export async function listExpiringContracts(
+  db: Db,
+  input: { today: string; withinDays: number; unitId: string | null; page: number; pageSize: number },
+): Promise<{ total: number; rows: ExpiringContract[] }> {
+  const filters = input.unitId ? "AND e.organizational_unit_id = $4::uuid" : "";
+  const params: unknown[] = [input.today, input.withinDays, input.pageSize * (input.page - 1)];
+  if (input.unitId) params.push(input.unitId);
+
+  const currentTerm = `
+    WITH current_term AS (
+      SELECT DISTINCT ON (em.employee_id)
+             em.employee_id, t.effective_to, t.category, t.sequence
+      FROM employments em
+      JOIN employment_terms t ON t.employment_id = em.id AND t.voided_by_action_id IS NULL
+      WHERE em.voided_by_action_id IS NULL
+        AND em.ended_on IS NULL
+        AND (t.effective_from IS NULL OR t.effective_from <= $1::date)
+      ORDER BY em.employee_id, t.effective_from DESC NULLS LAST, t.sequence DESC
+    )`;
+  const where = `
+    WHERE ct.effective_to IS NOT NULL
+      AND ct.effective_to <= $1::date + $2::int ${filters}`;
+
+  const [rows, count] = await Promise.all([
+    db.query<ExpiringContract>(
+      `${currentTerm}
+       SELECT ct.employee_id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
+              u.name AS "unitName", ct.category, ct.effective_to::text AS "endsOn", ct.sequence,
+              (ct.effective_to - $1::date)::int AS "daysLeft"
+       FROM current_term ct
+       JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
+       LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
+       ${where}
+       ORDER BY ct.effective_to, e.full_name, ct.employee_id
+       LIMIT ${input.pageSize} OFFSET $3`,
+      params,
+    ),
+    // Dihitung terpisah agar halaman yang melewati batas tetap melaporkan
+    // jumlah sebenarnya, bukan nol.
+    db.query<{ total: number }>(
+      `${currentTerm}
+       SELECT count(*)::int AS total
+       FROM current_term ct
+       JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
+       ${where}`,
+      input.unitId ? [input.today, input.withinDays, 0, input.unitId] : [input.today, input.withinDays, 0],
+    ),
+  ]);
+  return { total: count.rows[0]?.total ?? 0, rows: rows.rows };
+}

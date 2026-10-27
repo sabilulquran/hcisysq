@@ -280,17 +280,24 @@ export async function listExpiringCertificates(
   db: Db,
   input: { today: string; withinDays: number; unitId: string | null; page: number; pageSize: number },
 ): Promise<{ total: number; rows: ExpiringCertificate[] }> {
-  const filters = input.unitId ? "AND e.organizational_unit_id = $4::uuid" : "";
-  const params: unknown[] = [input.today, input.withinDays, input.pageSize * (input.page - 1)];
-  if (input.unitId) params.push(input.unitId);
-  const from = `
+  // Hitungan tidak memakai OFFSET, jadi ia punya daftar parameternya sendiri:
+  // menumpang daftar query baris membuat PostgreSQL menolak karena $3 tidak
+  // pernah dirujuk, atau karena jumlah parameternya tidak cocok.
+  const rowParams: unknown[] = [input.today, input.withinDays, input.pageSize * (input.page - 1)];
+  const countParams: unknown[] = [input.today, input.withinDays];
+  if (input.unitId) {
+    rowParams.push(input.unitId);
+    countParams.push(input.unitId);
+  }
+  const from = (unitIndex: number) => `
     FROM employee_skills s
     JOIN employees e ON e.id = s.employee_id AND e.removed_at IS NULL
     LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
     WHERE s.kind = 'SERTIFIKAT'
       AND s.voided_at IS NULL
       AND s.expires_on IS NOT NULL
-      AND s.expires_on <= $1::date + $2::int ${filters}`;
+      AND s.expires_on <= $1::date + $2::int
+      ${input.unitId ? `AND e.organizational_unit_id = $${unitIndex}::uuid` : ""}`;
 
   const [rows, count] = await Promise.all([
     db.query<ExpiringCertificate>(
@@ -298,14 +305,14 @@ export async function listExpiringCertificates(
               e.full_name AS "fullName", u.name AS "unitName", s.name, s.issuer,
               s.expires_on::text AS "expiresOn", (s.expires_on - $1::date)::int AS "daysLeft",
               s.verification_status AS "verificationStatus"
-       ${from}
+       ${from(4)}
        ORDER BY s.expires_on, e.full_name, s.id
        LIMIT ${input.pageSize} OFFSET $3`,
-      params,
+      rowParams,
     ),
     db.query<{ total: number }>(
-      `SELECT count(*)::int AS total ${from}`,
-      input.unitId ? [input.today, input.withinDays, 0, input.unitId] : [input.today, input.withinDays, 0],
+      `SELECT count(*)::int AS total ${from(3)}`,
+      countParams,
     ),
   ]);
   return { total: count.rows[0]?.total ?? 0, rows: rows.rows };

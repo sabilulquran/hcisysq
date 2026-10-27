@@ -3079,5 +3079,69 @@
     "permissions": [
       "announcements.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/family",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/family",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/family-records/:recordId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "POST",
+    "url": "/admin/family-records/:recordId/void",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/addresses",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/addresses",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/address-records/:recordId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-relations-routes.ts",
+    "method": "POST",
+    "url": "/admin/address-records/:recordId/void",
+    "permissions": [
+      "employees.manage"
+    ]
   }
 ]

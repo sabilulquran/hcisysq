@@ -141,8 +141,11 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
-    if (sql.includes("SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL")) {
-      return options.employeeMissing ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
+    if (/SELECT id FROM employees WHERE id = \$1/.test(sql)) {
+      // employeeMissing stands for "removed from the master": reads, which do
+      // not filter on removed_at, still find the row.
+      const hidden = options.employeeMissing && sql.includes("removed_at IS NULL");
+      return hidden ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
     }
     if (sql.includes("FOR UPDATE")) {
       if (options.recordMissing) return { rows: [], rowCount: 0 };
@@ -283,6 +286,14 @@ describe("EMP-007 education", () => {
       payload: { ...EDUCATION_BODY, level: "S1" },
     });
     expect(response.json()).toMatchObject({ code: "EMPLOYEE_RECORD_INVALID" });
+  });
+
+  it("still reads the records of an employee removed from the master", async () => {
+    // D-14: removed is read-only, not invisible.
+    expect((await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/education`, { employeeMissing: true }))
+      .response.statusCode).toBe(200);
+    expect((await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/skills`, { employeeMissing: true }))
+      .response.statusCode).toBe(200);
   });
 
   it("refuses an unknown employee before touching anything", async () => {

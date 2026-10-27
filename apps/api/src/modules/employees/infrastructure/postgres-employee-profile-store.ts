@@ -7,7 +7,13 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
-import type { EducationValues, SkillValues, VerificationStatus } from "../domain/employee-profile.js";
+import type {
+  AddressValues,
+  EducationValues,
+  FamilyMemberValues,
+  SkillValues,
+  VerificationStatus,
+} from "../domain/employee-profile.js";
 
 type Db = Pick<Pool, "query"> | PoolClient;
 
@@ -203,6 +209,12 @@ export async function updateSkill(client: PoolClient, recordId: string, values: 
 export type ProfileTable = "employee_education" | "employee_skills";
 
 /**
+ * Every table in this package carries employee_id and voided_at, so one lock
+ * and one void serve them all. Only the two above carry a verification.
+ */
+export type VoidableTable = ProfileTable | "employee_family_members" | "employee_addresses";
+
+/**
  * Memverifikasi atau mencabut verifikasi. Pencabutan tidak menghapus siapa dan
  * kapan memverifikasi (spec §5.2): yang bertambah hanyalah alasan pencabutan.
  */
@@ -234,7 +246,7 @@ export async function setVerification(
 
 export async function voidRecord(
   client: PoolClient,
-  table: ProfileTable,
+  table: VoidableTable,
   recordId: string,
   reason: string,
 ): Promise<void> {
@@ -255,7 +267,7 @@ export async function voidRecord(
  */
 export async function lockProfileRecord(
   client: PoolClient,
-  table: ProfileTable,
+  table: VoidableTable,
   recordId: string,
 ): Promise<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean } | null> {
   const result = await client.query<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean }>(
@@ -329,4 +341,199 @@ export async function listExpiringCertificates(
     ),
   ]);
   return { total: count.rows[0]?.total ?? 0, rows: rows.rows };
+}
+
+// ------------------------------------------------------- EMP-009 keluarga
+
+export interface FamilyMemberRow extends FamilyMemberValues {
+  id: string;
+  employeeId: string;
+  voidedAt: string | null;
+  voidedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const FAMILY_COLUMNS = `
+  id, employee_id AS "employeeId", relation, full_name AS "fullName", birth_date::text AS "birthDate",
+  gender, is_dependent AS "isDependent", dependent_order AS "dependentOrder",
+  is_emergency_contact AS "isEmergencyContact", emergency_phone AS "emergencyPhone",
+  emergency_priority AS "emergencyPriority", valid_from::text AS "validFrom", valid_to::text AS "validTo",
+  notes, voided_at AS "voidedAt", voided_reason AS "voidedReason",
+  created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+function toIsoPeriod<T extends { voidedAt: Date | null; createdAt: Date; updatedAt: Date }>(row: T) {
+  return {
+    ...row,
+    voidedAt: row.voidedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+type Dated<T> = Omit<T, "voidedAt" | "createdAt" | "updatedAt"> & {
+  voidedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export async function listFamilyMembers(db: Db, employeeId: string, includeVoided = false): Promise<FamilyMemberRow[]> {
+  const result = await db.query<Dated<FamilyMemberRow>>(
+    `SELECT ${FAMILY_COLUMNS} FROM employee_family_members
+     WHERE employee_id = $1 ${includeVoided ? "" : "AND voided_at IS NULL"}
+     ORDER BY is_emergency_contact DESC, emergency_priority NULLS LAST, relation, valid_from DESC, id`,
+    [employeeId],
+  );
+  return result.rows.map(toIsoPeriod);
+}
+
+export async function getFamilyMember(db: Db, recordId: string): Promise<FamilyMemberRow | null> {
+  const result = await db.query<Dated<FamilyMemberRow>>(
+    `SELECT ${FAMILY_COLUMNS} FROM employee_family_members WHERE id = $1`,
+    [recordId],
+  );
+  const row = result.rows[0];
+  return row ? toIsoPeriod(row) : null;
+}
+
+/**
+ * identity_number is deliberately absent from both writes: the column exists
+ * so that the owner's decision needs no migration, and nothing may start
+ * filling it before column encryption does (spec 8).
+ */
+export async function insertFamilyMember(
+  client: PoolClient,
+  employeeId: string,
+  values: FamilyMemberValues,
+  actorAccountId: string,
+): Promise<string> {
+  const id = randomUUID();
+  await client.query(
+    `INSERT INTO employee_family_members
+       (id, employee_id, relation, full_name, birth_date, gender, is_dependent, dependent_order,
+        is_emergency_contact, emergency_phone, emergency_priority, valid_from, valid_to, notes,
+        created_by_account_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [id, employeeId, values.relation, values.fullName, values.birthDate, values.gender, values.isDependent,
+      values.dependentOrder, values.isEmergencyContact, values.emergencyPhone, values.emergencyPriority,
+      values.validFrom, values.validTo, values.notes, actorAccountId],
+  );
+  return id;
+}
+
+export async function updateFamilyMember(
+  client: PoolClient,
+  recordId: string,
+  values: FamilyMemberValues,
+): Promise<void> {
+  await client.query(
+    `UPDATE employee_family_members SET relation = $2, full_name = $3, birth_date = $4, gender = $5,
+       is_dependent = $6, dependent_order = $7, is_emergency_contact = $8, emergency_phone = $9,
+       emergency_priority = $10, valid_from = $11, valid_to = $12, notes = $13, updated_at = now()
+     WHERE id = $1`,
+    [recordId, values.relation, values.fullName, values.birthDate, values.gender, values.isDependent,
+      values.dependentOrder, values.isEmergencyContact, values.emergencyPhone, values.emergencyPriority,
+      values.validFrom, values.validTo, values.notes],
+  );
+}
+
+// --------------------------------------------------------- EMP-003 alamat
+
+export interface AddressRow extends AddressValues {
+  id: string;
+  employeeId: string;
+  voidedAt: string | null;
+  voidedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const ADDRESS_COLUMNS = `
+  id, employee_id AS "employeeId", kind, address_line AS "addressLine", village, district, city, province,
+  postal_code AS "postalCode", valid_from::text AS "validFrom", valid_to::text AS "validTo", source, notes,
+  voided_at AS "voidedAt", voided_reason AS "voidedReason",
+  created_at AS "createdAt", updated_at AS "updatedAt"`;
+
+export async function listAddresses(db: Db, employeeId: string, includeVoided = false): Promise<AddressRow[]> {
+  const result = await db.query<Dated<AddressRow>>(
+    `SELECT ${ADDRESS_COLUMNS} FROM employee_addresses
+     WHERE employee_id = $1 ${includeVoided ? "" : "AND voided_at IS NULL"}
+     ORDER BY kind, valid_from DESC, id`,
+    [employeeId],
+  );
+  return result.rows.map(toIsoPeriod);
+}
+
+export async function getAddress(db: Db, recordId: string): Promise<AddressRow | null> {
+  const result = await db.query<Dated<AddressRow>>(
+    `SELECT ${ADDRESS_COLUMNS} FROM employee_addresses WHERE id = $1`,
+    [recordId],
+  );
+  const row = result.rows[0];
+  return row ? toIsoPeriod(row) : null;
+}
+
+/**
+ * The address of one kind that is still open, locked for the move that is
+ * about to close it.
+ *
+ * The lock serialises two moves; it does not by itself prevent two current
+ * addresses. Under READ COMMITTED the second mover's snapshot predates the
+ * first commit, so it sees no open address and tries to insert one anyway —
+ * employee_addresses_single_current_excl is what refuses that, as a 409 the
+ * operator retries. What the lock buys is that the two moves do not interleave
+ * half-applied.
+ */
+export async function lockOpenAddress(
+  client: PoolClient,
+  employeeId: string,
+  kind: string,
+): Promise<{ id: string; validFrom: string; validTo: string | null } | null> {
+  const result = await client.query<{ id: string; validFrom: string; validTo: string | null }>(
+    `SELECT id, valid_from::text AS "validFrom", valid_to::text AS "validTo"
+     FROM employee_addresses
+     WHERE employee_id = $1 AND kind = $2 AND voided_at IS NULL AND valid_to IS NULL
+     ORDER BY valid_from DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [employeeId, kind],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function closeAddress(client: PoolClient, recordId: string, on: string): Promise<void> {
+  await client.query(
+    "UPDATE employee_addresses SET valid_to = $2::date, updated_at = now() WHERE id = $1",
+    [recordId, on],
+  );
+}
+
+export async function insertAddress(
+  client: PoolClient,
+  employeeId: string,
+  values: AddressValues,
+  actorAccountId: string,
+): Promise<string> {
+  const id = randomUUID();
+  await client.query(
+    `INSERT INTO employee_addresses
+       (id, employee_id, kind, address_line, village, district, city, province, postal_code,
+        valid_from, valid_to, source, notes, created_by_account_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [id, employeeId, values.kind, values.addressLine, values.village, values.district, values.city,
+      values.province, values.postalCode, values.validFrom, values.validTo, values.source, values.notes,
+      actorAccountId],
+  );
+  return id;
+}
+
+export async function updateAddress(client: PoolClient, recordId: string, values: AddressValues): Promise<void> {
+  await client.query(
+    `UPDATE employee_addresses SET kind = $2, address_line = $3, village = $4, district = $5, city = $6,
+       province = $7, postal_code = $8, valid_from = $9, valid_to = $10, source = $11, notes = $12,
+       updated_at = now()
+     WHERE id = $1`,
+    [recordId, values.kind, values.addressLine, values.village, values.district, values.city, values.province,
+      values.postalCode, values.validFrom, values.validTo, values.source, values.notes],
+  );
 }

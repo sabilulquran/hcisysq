@@ -6,6 +6,7 @@
 **ADR:** ADR-0004 (PROPOSED)  
 **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011  
 **Evidence:** `apps/api/migrations/0019_dynamic_organization.sql`, `apps/api/migrations/0056_employment_history_foundation.sql`, `docs/domain/payroll-calculation-v1.md`, `docs/product/roadmap.md` bagian C
+**Kontrak payroll:** dikonfirmasi sesi PAY-003 pada 2026-10-27 (bentuk kebijakan `byPosition`, resolver dua slot, aturan rangkap 70%, kode blocker, nasib `*_position_ref`)
 
 Spesifikasi ini menutup gap roadmap C: HCIS belum punya cara stabil untuk menyebut *klasifikasi pekerjaan* dan *golongan*, sehingga tunjangan fungsional/jabatan masih dicocokkan lewat label teks.
 
@@ -79,7 +80,7 @@ Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasi
 
 Satu employment dapat memegang beberapa placement yang berlaku bersamaan (`PRIMARY` dan `ADDITIONAL`). Resolver karena itu mengembalikan **dua slot**, fungsional dan struktural, hasil agregasi seluruh placement yang berlaku pada tanggal itu — bukan satu klasifikasi tunggal. Ini cocok dengan `payroll_compensation_profiles` yang memang menyimpan dua referensi.
 
-Bila dua placement yang berlaku mengisi slot yang sama (dua klasifikasi `STRUCTURAL` sekaligus), resolver **gagal eksplisit**, tidak memilih salah satu diam-diam.
+Bila dua placement yang berlaku mengisi slot yang sama (dua klasifikasi `STRUCTURAL` sekaligus), resolver **gagal eksplisit** dengan kode `CLASSIFICATION_AMBIGUOUS`, tidak memilih salah satu diam-diam.
 
 `functional_label` dan `structural_label` tetap ada sebagai teks tampilan/legacy dan **tidak boleh** dipakai sebagai kunci perhitungan setelah ORG-011 aktif.
 
@@ -110,6 +111,8 @@ Aturan konsumsi:
 - Skala gaji pokok tidak membaca ORG-011 sama sekali pada v1.
 - Hasil payroll sudah menyimpan `compensation_profile_id` dan `policy_version_ids` per baris. Resolusi klasifikasi harus ikut tersimpan dengan cara yang sama, sehingga bulan yang sudah dibayar tetap dapat dijelaskan setelah katalog berubah.
 - Unit atau klasifikasi yang tidak terpetakan ke kebijakan **memblokir periode** (`UNIT_NOT_MAPPED` / `POSITION_NOT_MAPPED`), tidak dibayar penuh diam-diam. ORG-011 tidak melonggarkan ini.
+- **Urutan pemeriksaan tunjangan fungsional tidak berubah**, dan klasifikasi masuk di tempat yang sama dengan referensi kursi hari ini (`engine.ts:425-446`): slot `functional` kosong → 0; unit ada di `functionalAllowance.excludedUnits` (legacy: Pesantren Tahfizh) → 0, diperiksa **sebelum** tabel tunjangan; lalu pencarian di `byPosition`; lalu `positionsWithoutAllowance` → 0; baru blocker. Pegawai di unit yang dikecualikan tetap bernilai 0 berapa pun klasifikasinya, dan itu memang perilaku yang diharapkan pada parallel run.
+- **Kode blocker baru `CLASSIFICATION_AMBIGUOUS`** untuk slot yang diisi dua klasifikasi sekaligus. Tidak dipetakan ke `POSITION_NOT_MAPPED`: sebabnya berbeda (ambigu, bukan tak terpetakan) dan penyelesaiannya ada di penempatan ORG, bukan di kebijakan payroll. Mengikuti pola `UNIT_NOT_MAPPED` / `WORK_PATTERN_NOT_MAPPED`; ditambahkan sesi PAY-003 di engine saat menyambungkan resolver.
 
 ## 5. Permission (usulan)
 
@@ -138,7 +141,7 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 4. Backfill placement hanya untuk kasus yang berbeda dari position-nya.
 5. Petakan setiap `functional_position_ref` / `structural_position_ref` yang dipakai `payroll_compensation_profiles` ke klasifikasi, lalu salin kunci kebijakan `byPosition` dari uuid kursi ke `classificationCode`. Dilakukan sesi PAY-003 di berkasnya sendiri.
 6. Payroll beralih ke `resolveJobClassifications` setelah parallel run menunjukkan nominal identik dengan resolusi berbasis kursi.
-7. Referensi kursi dan label teks dibekukan menjadi read-only setelah langkah 6 lolos.
+7. Referensi kursi dan label teks dibekukan menjadi read-only setelah langkah 6 lolos. `functional_position_ref` dan `structural_position_ref` **tidak dihapus**: baris hasil payroll menunjuk `compensation_profile_id`, dan profil itulah yang memuat referensi tersebut, sehingga menghapus kolomnya membuat periode lampau tidak dapat dijelaskan lagi. Komentar kolom diubah untuk menyebut penggantinya.
 
 ## 8. Keputusan terbuka
 
@@ -149,5 +152,5 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 | Siapa yang mengelola katalog | Kepala HCM dan staf HC | ya |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
-| Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | resolver gagal eksplisit, periode diblokir | ya |
-| Apakah `*_position_ref` payroll dihapus atau dipertahankan sebagai cadangan | dipertahankan read-only setelah parallel run | ya (bersama sesi PAY-003) |
+| Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |
+| Apakah `*_position_ref` payroll dihapus | **ditutup 2026-10-27** bersama sesi PAY-003: tidak dihapus, berhenti dibaca, read-only selamanya demi keterjelasan periode lampau | tidak |

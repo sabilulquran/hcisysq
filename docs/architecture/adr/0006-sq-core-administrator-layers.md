@@ -1,10 +1,10 @@
 # ADR-0006: Tiga Lapis Administrator SQ Core (AUTH-014)
 
 - **Status:** ACCEPTED
-- **Date:** 2026-10-27
+- **Date:** 2026-10-27 (revisi 2 pada hari yang sama, setelah review keamanan independen)
 - **Decider:** Owner Yayasan Sabilul Qur'an
 - **Related:** AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`; ADR-0005
-- **Evidence:** `docs/domain/hcis-authorization-modernization.md`, `docs/domain/access-model.md`, `docs/domain/sq-core-administrator-layers.md`, `apps/api/src/modules/auth/role-assignment.ts`, `apps/api/src/modules/auth/permissions.ts`, inspeksi production read-only 2026-10-27
+- **Evidence:** `docs/domain/hcis-authorization-modernization.md`, `docs/domain/access-model.md`, `docs/domain/sq-core-administrator-layers.md`, `apps/api/src/modules/auth/role-assignment.ts`, `apps/api/src/modules/auth/permissions.ts`, `apps/api/src/modules/organization-directory/machine-auth.ts`, inspeksi production read-only 2026-10-27
 
 ## Context
 
@@ -74,15 +74,21 @@ Akun SUPER_ADMIN tidak dihapus. Ia turun menjadi **break-glass yang nonaktif sec
 
 HCIS tidak menyimpan siapa Admin Platform. Pemberian peran masuk melalui satu kanal mesin terotentikasi dari SQ Hub (`/internal/v1/role-administration/*`), mengikuti pola `staff-identity` dan `organization-directory` yang sudah ada: token mesin Keycloak, client allowlist, scope wajib.
 
-HCIS **tidak memercayai kanal itu secara buta**. Setiap permintaan membawa subject Keycloak manusia yang bertindak; HCIS menyelesaikannya menjadi akun lokal dan menerapkan seluruh invarian domainnya sendiri — allowlist role, allowlist permission, validasi scope dan tanggal, mandat wajib untuk role istimewa, dan larangan memberi peran kepada diri sendiri — terhadap manusia itu, bukan terhadap akun mesin. Subject yang tidak bisa diselesaikan berarti **ditolak**, bukan diterima.
+Setiap permintaan membawa **dua bukti terpisah**: token mesin yang membuktikan permintaan datang dari SQ Hub, dan **assertion aktor** — token yang ditandatangani Keycloak untuk sesi manusia yang bertindak, diterbitkan lewat token exchange dengan audience HCIS. Identitas aktor diambil dari assertion itu, **tidak pernah dari body permintaan**. HCIS menyelesaikannya menjadi akun lokal dan menerapkan invariannya sendiri terhadap manusia itu: allowlist role, allowlist permission, validasi scope dan tanggal, mandat wajib, larangan self-grant, dan penolakan `requestId` yang diputar ulang. Aktor yang tidak terselesaikan berarti **ditolak**.
+
+Rancangan pertama mengirim identitas aktor sebagai dua field JSON biasa. Review keamanan independen menunjukkan itu runtuh seketika: SQ Hub yang dikuasai penyerang, atau satu Admin Platform yang nakal, cukup menyebut subject orang lain untuk melewati larangan self-grant dan membuat audit menuding orang yang tidak bersalah. Bila token exchange belum tersedia di realm, kanal tidak dihidupkan; tidak ada mode sementara dengan klaim polos.
+
+**Batas yang jujur.** HCIS tidak memverifikasi bahwa aktor *berwenang* memberi peran — SQ Hub yang melakukannya, dan kewenangan pada jalur ini berasal dari kanal, bukan dari permission yang dipegang aktor. Kompromi penuh SQ Hub berarti penyerang dapat memberi peran HCIS apa pun kepada akun mana pun selain akun aktor yang ia pakai. Yang membatasi kerusakannya adalah D-5, larangan self-grant, dan syarat H-9/H-10 di sisi Hub — bukan pemeriksaan kewenangan di HCIS. AUTH-014 §2.5 menuliskan pelonggaran ini secara eksplisit, karena menerapkan `requireDelegation` apa adanya justru membuat kanal tidak pernah bisa memberi apa pun.
 
 Rinciannya, termasuk apa yang masuk kewenangan Admin Modul HCIS dan jalur migrasinya, ada di **AUTH-014** (`docs/domain/sq-core-administrator-layers.md`).
 
 ### D-5. `access.roles.assign` dan kerabatnya tidak pernah diberikan lewat HCIS
 
-Permission `access.roles.assign`, `access.roles.delegate`, dan `access.governance.manage` dikeluarkan dari daftar permission yang boleh dibawa role HCIS mana pun yang dapat diberikan melalui kanal SQ Hub. Keanggotaan Admin Platform hanya ada di SQ Hub.
+Permission `access.roles.assign`, `access.roles.delegate`, dan `access.governance.manage` tidak boleh dibawa role HCIS mana pun yang dapat diberikan, **pada kedua jalur** — kanal SQ Hub maupun break-glass. Larangannya dipasang di `canDelegateRole` dan `HCIS_PERMISSIONS`, bukan di route. Keanggotaan Admin Platform hanya ada di SQ Hub.
 
-Tanpa aturan ini, keputusan D-3 membuka **penutupan eskalasi**: seorang Admin Platform dilarang memberi peran kepada dirinya sendiri, tetapi bisa memberi `access.roles.assign` kepada akun kedua, masuk sebagai akun kedua, dan memberi apa pun kepada akun pertamanya. Larangan self-grant hanya bermakna bila kewenangan memberi peran itu sendiri tidak dapat dibagikan dari dalam.
+Tanpa aturan ini, keputusan D-3 membuka lingkaran eskalasi: seorang Admin Platform dilarang memberi peran kepada dirinya sendiri, tetapi bisa memberi `access.roles.assign` kepada akun kedua, masuk sebagai akun kedua, dan memberi apa pun kepada akun pertamanya. Larangan self-grant hanya bermakna bila kewenangan memberi peran itu sendiri tidak dapat dibagikan dari dalam.
+
+Dua batas kejujuran atas klaim ini. Pertama, bila larangan ini hanya dipasang di route kanal — seperti rancangan pertama — break-glass tetap dapat membuat dan memberi role berisi `access.roles.assign`, dan lingkarannya terbuka kembali secara permanen. Kedua, D-5 menutup lingkaran **pemberian peran**, bukan pengambilalihan akun: `access.manage` dan `access.accounts.temporary_reactivate` tetap dapat diberikan di dalam bundle HC. Pengambilalihan akun itu terbatas (`assertAccountManagementTarget` menolak diri sendiri, menolak SUPER_ADMIN, menuntut `access.governance.manage` untuk akun board, dan menolak target yang memegang peran di luar bundle operasional HC) dan **tidak** menghasilkan kewenangan memberi peran. Lingkaran yang benar-benar tersisa ada di luar HCIS dan ditangani R-6.
 
 ## Consequences
 
@@ -108,17 +114,29 @@ Bagian ini bukan pengulangan keputusan. Ini yang menurut kami bisa rusak.
 
 Pengaman yang kami wajibkan:
 
-1. **Akun mesin terpisah per kewenangan.** `manage-users` hanya pada satu akun mesin (`sq-hub-identity-management`), tidak pada keempatnya. Kanal pemberian peran memakai scope sendiri (`role-administration.manage`) pada akun mesin lain. Satu secret bocor tidak membuka keduanya.
+1. **Akun mesin terpisah per kewenangan.** `manage-users` hanya pada `sq-hub-identity-management`. Kanal pemberian peran memakai akun mesin **lain**, `sq-hub-role-administration`, dengan scope `role-administration.manage` dan tanpa `manage-users`. Satu secret bocor tidak membuka keduanya. (Rancangan pertama menamai satu client yang sama untuk keduanya dan dengan demikian melanggar syaratnya sendiri; AUTH-014 §2.2 memperbaikinya.)
 2. **Rotasi secret akun mesin terjadwal**, dan rotasi wajib setiap kali ada orang yang pernah memegangnya berhenti.
-3. **Larangan self-grant diterapkan di HCIS, bukan hanya di SQ Hub.** Modul tidak boleh bergantung pada pemeriksaan yang dilakukan di seberang kanal. Penyerang yang menguasai SQ Hub tetap tidak bisa menaikkan satu akun pegawai menjadi administrator HCIS dari akun itu sendiri.
+3. **Larangan self-grant diterapkan di HCIS terhadap aktor yang terbukti, bukan yang diklaim.** Aktor diambil dari assertion yang ditandatangani Keycloak (D-4), sehingga penyerang yang menguasai SQ Hub tidak dapat menaikkan akun yang sedang ia pakai. Ia **dapat** menaikkan akun lain; itu batas yang dinyatakan di D-4 dan tidak boleh dibaca lebih jauh.
 4. **Allowlist role dan permission di sisi HCIS tetap berlaku penuh** terhadap permintaan dari Hub. Hub tidak bisa meminta permission yang tidak dikenal HCIS, dan tidak bisa meminta `access.roles.*` (D-5).
-5. **Audit dua sisi.** Pemberian peran tercatat di SQ Hub dan di HCIS secara terpisah, dengan `requestId` yang sama. Riwayat yang hanya muncul di satu sisi adalah tanda bahaya yang bisa diperiksa.
+5. **Audit dua sisi dengan `requestId` unik.** Pemberian peran tercatat di SQ Hub dan di HCIS secara terpisah dengan `requestId` yang sama, dan HCIS menolak `requestId` yang sudah pernah dipakai. Tanpa keunikan itu pengaman ini tidak mendeteksi ancamannya sendiri: satu permintaan yang diputar ulang menghasilkan dua event HCIS atas satu event Hub, dan rekonsiliasi berbasis `requestId` justru menganggapnya cocok.
 6. **Peringatan keluar-jalur.** Setiap pemberian peran HCIS yang tidak membawa `requestId` dari Hub (yakni jalur break-glass) menghasilkan audit event dengan penanda khusus, supaya pemakaian break-glass tidak tenggelam di antara pemberian normal.
-7. **Tidak ada impersonation.** Dipertahankan di D-2 justru karena ini: tanpa `impersonation`, kompromi SQ Hub tidak memberi penyerang kemampuan menjadi pegawai tertentu tanpa jejak.
+7. **Tidak ada `impersonation` di Keycloak.** Dipertahankan di D-2 karena ia memberi penyamaran tanpa jejak sama sekali. Ini **tidak** berarti penyamaran menjadi mustahil: `manage-users` mencakup pengelolaan credential, sehingga reset kata sandi adalah penyamaran dengan satu baris log tambahan. Konsekuensinya ditangani R-6, bukan di sini.
+
+**R-6. Lingkaran eskalasi yang tersisa ada di luar HCIS.** Dua jalan yang tidak disentuh D-5, keduanya cukup dilakukan **satu** Admin Platform tanpa kolusi: (a) menambahkan Admin Platform kedua yang ia kuasai, lalu memakainya untuk memberi dirinya peran apa pun; (b) mereset kata sandi Admin Platform lain lewat `manage-users`, masuk sebagai orang itu, dan memberi dirinya peran apa pun. Larangan self-grant di HCIS tidak menyentuh keduanya, karena pada saat pemberian terjadi aktornya memang orang lain.
+
+Pengaman, yang seluruhnya harus dipasang di SQ Hub (AUTH-014 §7.2 H-9, H-10, H-11):
+
+- penambahan Admin Platform menuntut **dua Admin Platform berbeda**, dan tidak seorang pun boleh menambahkan dirinya sendiri;
+- reset kata sandi lewat SQ Hub **dilarang** untuk akun yang merupakan Admin Platform atau memegang peran istimewa modul; akun seperti itu hanya lewat konsol Keycloak;
+- daftar Admin Platform dan setiap perubahannya tampil di layar audit yang dapat dibaca owner tanpa akses database.
+
+Tanpa ketiganya, D-5 menutup pintu depan sementara pintu samping terbuka. Ini syarat sebelum F5 dihidupkan, bukan perbaikan belakangan.
 
 Kami **tidak** mengusulkan membatalkan sentralisasi ini. Keadaan sekarang, dengan empat lapis yang saling tidak mengenal, bukan lebih aman — hanya lebih sulit diaudit. Tetapi pemusatan ini membuat pengerasan SQ Hub (rate limit pada `/admin/access`, review keamanan sendiri, log yang tidak bisa dihapus dari dalam aplikasi) berpindah dari "baik untuk dimiliki" menjadi prasyarat, dan itu pekerjaan yang belum dijadwalkan.
 
-**R-2. Kehilangan akses saat transisi.** Urutan yang salah mengunci semua orang keluar. Pengaman: urutan di AUTH-014 §6 bersifat **aditif lebih dulu, pencabutan paling akhir**, setiap langkah punya jalan mundur yang tidak bergantung pada langkah berikutnya, dan akun break-glass dihidupkan serta diuji **sebelum** `assertRoleGrantor` disentuh.
+**R-2. Kehilangan akses saat transisi.** Urutan yang salah mengunci semua orang keluar. Pengaman: urutan di AUTH-014 §6 bersifat **aditif lebih dulu, pencabutan paling akhir**, setiap langkah punya jalan mundur yang tidak bergantung pada langkah berikutnya, dan akun break-glass diuji login **sebelum** kanal dihidupkan.
+
+Dua jebakan yang ditemukan review dan kini tertutup. Pertama, break-glass hari ini hanya berfungsi karena memintas `hasLegacySuperAdminCompatibility`; penghapusan shim itu — yang AUTH-011 memang jadwalkan — akan diam-diam mematikan satu-satunya jalan cadangan, dan tidak ada yang tahu sampai hari SQ Hub mati. AUTH-014 §3.1 memindahkan kewenangan break-glass lepas dari shim di F3 dan melarang penghapusan shim sebelum latihan break-glass tanpa shim berhasil. Kedua, prosedur break-glass menuntut dua perintah CLI yang **belum ada** (pengubah status dan pemutar kredensial); keduanya menjadi prasyarat F1, bukan pekerjaan belakangan.
 
 **R-3. `manage-users` lebih luas daripada yang dibutuhkan.** Di Keycloak, `manage-users` mencakup membuat, mengubah, menonaktifkan, dan menghapus pengguna, serta mengelola credential. Owner hanya meminta tiga kemampuan: membuat akun, menonaktifkan akun, reset kata sandi. Tidak ada role Keycloak bawaan yang lebih sempit. Pengaman: penghapusan pengguna dilarang di tingkat aplikasi SQ Hub (nonaktifkan, jangan hapus), dan pelanggarannya terlihat karena jumlah pengguna realm dipantau. Ini pengaman aplikasi, bukan pengaman platform, dan harus dicatat sebagai keterbatasan yang diterima.
 

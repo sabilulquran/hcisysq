@@ -194,7 +194,7 @@ export async function registerDocumentRoutes(
       // submissions, so a double click cannot count three and insert a fourth. There is no
       // constraint that can express "at most three open", and the lock is released on COMMIT
       // or ROLLBACK whatever happens.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`hr_document_request:${self.employeeId}`]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`hr_document_request:${self.employeeId}`]);
       const open = await client.query<{ count: number }>(
         `SELECT count(*)::int AS count
            FROM hr_document_requests

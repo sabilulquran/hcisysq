@@ -36,7 +36,7 @@ WHERE role.role_key = 'human_capital_admin'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO roles (id, role_key, name, description, is_system) VALUES
-  ('10000000-0000-4000-8000-000000000012', 'document_corrector', 'Korektor Dokumen Kepegawaian',
+  ('10000000-0000-4000-8000-000000000015', 'document_corrector', 'Korektor Dokumen Kepegawaian',
    'DOC-001/DOC-002: membatalkan surat keterangan atau surat peringatan yang sudah terbit, dengan alasan tertulis. Nomor surat tetap terpakai dan tidak pernah didaur ulang. Hanya Super Admin yang memberikan; scope organisasi dan alasan penugasan wajib.', true)
 ON CONFLICT (role_key) DO NOTHING;
 

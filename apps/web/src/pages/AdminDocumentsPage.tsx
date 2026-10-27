@@ -88,7 +88,14 @@ export function AdminDocumentsPage() {
 
   useEffect(() => {
     void load();
-    void getCurrentSession().then(setSession).catch(() => setSession(null));
+    void getCurrentSession()
+      .then(setSession)
+      .catch(() => {
+        // Without the session the page cannot tell which actions to offer, so say so rather
+        // than silently hiding Batalkan from someone who does hold documents.correct.
+        setSession(null);
+        setError("Izin akun tidak dapat dibaca, sehingga sebagian tindakan disembunyikan. Muat ulang halaman.");
+      });
   }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {

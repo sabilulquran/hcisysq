@@ -416,12 +416,11 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect([...grouped.keys()].sort()).toEqual(["document_corrector", "human_capital_admin"]);
   });
 
-  it("DOC-001-J: a repeated submission cannot push past the open-request limit", async () => {
+  it("D-08: a repeated submission is refused once three are open", async () => {
     await submitRequest("Keperluan pertama untuk keluarga");
     await submitRequest("Keperluan kedua untuk bank");
     await submitRequest("Keperluan ketiga untuk sekolah");
-    // The advisory lock and the count both live inside the insert transaction now, so the
-    // fourth submission is refused with the three rows already committed.
+    // Sequential, through the savepoint pool: the limit itself, not the serialization.
     const fourth = await app.inject({
       method: "POST",
       url: "/documents/me/requests",
@@ -430,6 +429,82 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(fourth.statusCode, fourth.body).toBe(409);
     const rows = await client.query<{ total: number }>(
       `SELECT count(*)::int AS total FROM hr_document_requests WHERE employee_id = $1`,
+      [employeeId],
+    );
+    expect(rows.rows[0]?.total).toBe(3);
+  });
+});
+
+/**
+ * DOC-001-J needs two real connections, so this suite commits its rows and deletes them
+ * afterwards instead of running inside one rolled-back transaction.
+ */
+describe.skipIf(!allowed)("DOC-001-J concurrent submissions", () => {
+  let pool: Pool;
+  let app: ReturnType<typeof Fastify>;
+  let employeeId: string;
+  let accountId: string;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString: databaseUrl!, max: 4 });
+    employeeId = randomUUID();
+    accountId = randomUUID();
+    await pool.query(
+      `INSERT INTO employees(id, employee_number, full_name, status, started_on)
+       VALUES ($1,$2,'Dokumen Konkuren','active','2020-01-06')`,
+      [employeeId, `DOC-C-${employeeId.slice(0, 8)}`],
+    );
+    await pool.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status)
+       VALUES ($1,$2,$3,'EMPLOYEE','active')`,
+      [accountId, employeeId, `doc-c-${accountId}@example.invalid`],
+    );
+    const config = { NODE_ENV: "test", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SESSION_TTL_HOURS: 8 } as ApiConfig;
+    app = Fastify({ logger: false });
+    await registerDocumentRoutes(app, pool, config, {
+      getSession: async () => ({
+        principal: { id: accountId, email: "doc-c@example.invalid", principalType: "EMPLOYEE" },
+        expiresAt: "2099-01-01T00:00:00Z",
+      }),
+      getAuthorizationContext: async () => ({ organizationPermissions: [] }),
+    } as never);
+  });
+
+  afterAll(async () => {
+    try {
+      await app?.close();
+      if (pool) {
+        await pool.query("DELETE FROM hr_document_audit_events WHERE employee_id = $1", [employeeId]);
+        await pool.query("DELETE FROM hr_document_requests WHERE employee_id = $1", [employeeId]);
+        await pool.query("DELETE FROM accounts WHERE id = $1", [accountId]);
+        await pool.query("DELETE FROM employees WHERE id = $1", [employeeId]);
+      }
+    } finally {
+      await pool?.end();
+    }
+  });
+
+  it("refuses the fourth of two simultaneous submissions when two are already open", async () => {
+    const submit = (purpose: string) => app.inject({
+      method: "POST",
+      url: "/documents/me/requests",
+      payload: { documentCode: "KETERANGAN_KERJA", purpose },
+    });
+    for (const purpose of ["Keperluan pertama untuk bank", "Keperluan kedua untuk sekolah"]) {
+      expect((await submit(purpose)).statusCode).toBe(201);
+    }
+
+    // Two genuinely simultaneous submissions on separate connections: the advisory lock must
+    // let exactly one through, because a third open request fills the quota.
+    const [first, second] = await Promise.all([
+      submit("Keperluan ketiga yang berlomba A"),
+      submit("Keperluan ketiga yang berlomba B"),
+    ]);
+    const statuses = [first.statusCode, second.statusCode].sort();
+    expect(statuses, `${first.body} | ${second.body}`).toEqual([201, 409]);
+
+    const rows = await pool.query<{ total: number }>(
+      "SELECT count(*)::int AS total FROM hr_document_requests WHERE employee_id = $1",
       [employeeId],
     );
     expect(rows.rows[0]?.total).toBe(3);

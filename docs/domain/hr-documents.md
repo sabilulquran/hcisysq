@@ -207,3 +207,5 @@ Semua dijawab dengan default `DRAFT` di §3 supaya implementasi tidak berhenti. 
 3. apakah atasan langsung berhak melihat SP bawahannya (D-13);
 4. apakah surat keterangan perlu persetujuan di atas HC untuk kasus tertentu (D-07);
 5. siapa yang memegang role `document_corrector` di YSQ (D-16); sampai Super Admin memberikannya, pembatalan surat tidak tersedia bagi siapa pun dan tombolnya tidak ditampilkan.
+
+Follow-up yang diketahui, di luar paket ini: resolver penandatangan (`modules/documents/signer-authority.ts`, warisan PAYSLIP-005) masih memakai `current_date` basis data, sehingga masa jabatan penanda tangan berganti pada 00:00 UTC (07:00 WIB), bukan tengah malam Jakarta. Perbaikannya menyentuh slip gaji juga, jadi menjadi perubahan tersendiri.

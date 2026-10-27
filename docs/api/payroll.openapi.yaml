@@ -222,11 +222,14 @@ paths:
       summary: Fill the period's attendance-derived inputs
       description: >-
         Requires payroll.inputs.manage, and only while the period is COLLECTING or
-        CALCULATED. Reads approved overtime (ATT-010) and, for contract workers,
-        the days with a recorded check-in inside the period's cutoff window, and
-        stores both as ordinary period inputs with origin ATTENDANCE. It replaces
-        whatever those two keys held, including a correction typed by hand, which
-        is why it is an explicit action rather than part of the calculation.
+        CALCULATED. Reads approved overtime (ATT-010) for permanent and probation
+        employments, and, for contract workers, the working days with a recorded
+        check-in inside the period's cutoff window; both are stored as ordinary
+        period inputs with origin ATTENDANCE. It replaces the whole set: a row an
+        earlier resolve wrote and attendance no longer supports is removed, so a
+        cancelled overtime request stops being paid. A correction typed by hand is
+        overwritten too, which is why this is an explicit action rather than part
+        of the calculation. The actor's own employment is left alone.
       parameters:
         - name: periodId
           in: path
@@ -239,10 +242,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [overtimeCount, attendanceCount, inputs]
+                required: [overtimeCount, attendanceCount, clearedCount, skippedOwnCount, inputs]
                 properties:
                   overtimeCount: { type: integer }
                   attendanceCount: { type: integer }
+                  clearedCount:
+                    type: integer
+                    description: Rows an earlier resolve wrote that attendance no longer supports.
+                  skippedOwnCount:
+                    type: integer
+                    description: Rows left alone because they belong to the actor's own employment.
                   inputs:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollPeriodInput' }

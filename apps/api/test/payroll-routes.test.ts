@@ -174,6 +174,10 @@ function createPool(
     // The period query reads inputs and results in subqueries, so it has to be
     // answered first or these branches would swallow it.
     if (sql.includes("DELETE FROM payroll_period_inputs")) {
+      if (sql.includes("origin = 'ATTENDANCE'")) {
+        deletes.push("attendance_sweep");
+        return { rows: [], rowCount: 2 };
+      }
       deletes.push(`${String(values?.[1] ?? "")}:${String(values?.[2] ?? "")}`);
       return { rows: [], rowCount: 1 };
     }
@@ -860,12 +864,22 @@ describe("PAY-003 attendance-derived inputs", () => {
       period: { state: "COLLECTING" },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ overtimeCount: 1, attendanceCount: 1 });
+    expect(response.json()).toMatchObject({
+      overtimeCount: 1,
+      attendanceCount: 1,
+      clearedCount: 2,
+      skippedOwnCount: 0,
+    });
     expect(inputWrites).toEqual([
       { employmentId: EMPLOYMENT_ID, inputKey: "OVERTIME_HOURS", value: 2 },
       { employmentId: EMPLOYMENT_ID, inputKey: "CONTRACT_ATTENDANCE_DAYS", value: 18 },
     ]);
-    expect(audits).toEqual(["payroll.period.inputs_recorded"]);
+    expect(audits).toEqual(["payroll.period.attendance_resolved"]);
+  });
+
+  it("clears what an earlier resolve wrote before writing again", async () => {
+    const { deletes } = await call("hc", "POST", url, { period: { state: "COLLECTING" } });
+    expect(deletes).toEqual(["attendance_sweep"]);
   });
 
   it("needs payroll.inputs.manage", async () => {

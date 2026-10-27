@@ -18,11 +18,11 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
-import { ownEmploymentIds, type InputKey } from "./inputs-store.js";
+import { ATTENDANCE_INPUT_KEYS, ownEmploymentIds } from "./inputs-store.js";
 import { writeAudit } from "./store.js";
 
 /** The two keys this resolver owns. Nothing else it writes, nothing else it clears. */
-export const ATTENDANCE_INPUT_KEYS: readonly InputKey[] = ["OVERTIME_HOURS", "CONTRACT_ATTENDANCE_DAYS"];
+export { ATTENDANCE_INPUT_KEYS };
 
 /**
  * Only these categories have an overtime component (specification section 5.2:

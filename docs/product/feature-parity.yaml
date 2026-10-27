@@ -622,9 +622,13 @@ features:
     module: notification
     name: Announcement and urgent announcement
     legacy_evidence: announcement notifications exist
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
+    notes: >-
+      Package 1 implemented 2026-10-27 (docs/domain/announcements-and-reminders.md):
+      unit or organization audiences, frozen recipient snapshot, read and
+      acknowledgement tracking, corrections. Scheduled auto-publication waits for NOTIF-003.
 
   - id: NOTIF-003
     module: notification

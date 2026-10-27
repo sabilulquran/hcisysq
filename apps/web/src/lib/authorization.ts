@@ -31,6 +31,12 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
     "attendance.calculation.run",
+    // PAY-003: payroll roles hold none of the permissions above, so without
+    // these the admin shell bounced a Director or a finance account straight
+    // back to the home page, whatever the payroll rules below said.
+    "payroll.periods.manage", "payroll.approve", "payroll.reopen.approve", "payroll.payments.confirm",
+    "payroll.reports.read.organization", "payroll.policies.manage", "payroll.loans.manage",
+    "payroll.profiles.manage",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which
@@ -45,6 +51,18 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // PAY-003: exactly the permissions the API lets read a period
   // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
   // anyone else would show them a menu entry leading to a 403.
+  // PAY-003 reference data: a different set of permissions from the periods.
+  // Finance holds the loan register and nothing else here; human capital holds
+  // the policy and the profiles. Checked before the period rule below, which
+  // would otherwise answer for this path too. The rule after it is the one
+  // about reading a period (PERIOD_READ_PERMISSIONS in the payroll lifecycle).
+  if (path === "/admin/payroll/reference") {
+    return [
+      "payroll.policies.manage",
+      "payroll.loans.manage",
+      "payroll.profiles.manage",
+    ].some((permission) => hasPermission(session, permission));
+  }
   if (/^\/admin\/payroll(?:\/|$)/.test(path)) {
     return [
       "payroll.periods.manage",
@@ -82,6 +100,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   // DOC-001/DOC-002: HC-only; Super Admin legacy compatibility never carries documents.*.
   if (path === "/admin/documents") return hasPermission(session, "documents.read");
+  // NOTIF-002: HC-only; Super Admin legacy compatibility never carries announcements.*.
+  if (path === "/admin/announcements") return hasPermission(session, "announcements.read");
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }

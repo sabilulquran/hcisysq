@@ -2892,6 +2892,16 @@
   {
     "file": "apps/api/src/modules/payroll/admin-routes.ts",
     "method": "GET",
+    "url": "/payroll/employments",
+    "permissions": [
+      "payroll.profiles.manage",
+      "payroll.calculate",
+      "payroll.loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "GET",
     "url": "/payroll/employments/:employmentId/compensation-profiles",
     "permissions": [
       "payroll.profiles.manage",
@@ -2982,6 +2992,92 @@
     "url": "/payroll/periods/:periodId/payslips/publish",
     "permissions": [
       "payslips.publish"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "GET",
+    "url": "/announcements/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/announcements/me/:id/read",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/announcements/me/:id/acknowledge",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "GET",
+    "url": "/admin/announcements",
+    "permissions": [
+      "announcements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "GET",
+    "url": "/admin/announcements/:id",
+    "permissions": [
+      "announcements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/admin/announcements",
+    "permissions": [
+      "announcements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "PUT",
+    "url": "/admin/announcements/:id",
+    "permissions": [
+      "announcements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/admin/announcements/:id/publish",
+    "permissions": [
+      "announcements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/admin/announcements/:id/correction",
+    "permissions": [
+      "announcements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/announcements/routes.ts",
+    "method": "POST",
+    "url": "/admin/announcements/:id/archive",
+    "permissions": [
+      "announcements.manage"
     ]
   }
 ]

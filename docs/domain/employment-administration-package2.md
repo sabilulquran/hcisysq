@@ -263,7 +263,7 @@ Rollback: revert PR; tabel baru ditinggalkan kosong atau dihapus dengan down scr
 
 | Langkah | Isi |
 | --- | --- |
-| **P2-1** | Migrasi lima tabel (0104), aturan validasi murni (domain), tanpa route — **selesai** |
+| **P2-1** | Migrasi lima tabel (0106), aturan validasi murni (domain), tanpa route — **selesai** |
 | **P2-2** | API dan layar EMP-007 + EMP-008 (termasuk laporan §7.5) — **selesai** |
 | **P2-3** | API dan layar EMP-009 + alamat EMP-003 (§4.3, §4.4) |
 | **P2-4** | Alur usulan perubahan data: pengajuan pegawai (§7.3) dan keputusan HC (§7.4) |

@@ -2,6 +2,7 @@ import { AlertTriangle, Download, Loader2, RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 
+import { PeriodInputsPanel } from "@/components/payroll/PeriodInputsPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -78,6 +79,7 @@ export function AdminPayrollPeriodPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const canReadTransfers = hasPermission(session, "payroll.transfers.read.organization");
+  const canManageInputs = hasPermission(session, "payroll.inputs.manage");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -266,6 +268,13 @@ export function AdminPayrollPeriodPage() {
             ))}
           </div>
         </section>
+
+        <PeriodInputsPanel
+          period={period}
+          identities={identities}
+          canManage={canManageInputs}
+          onChanged={() => void load()}
+        />
 
         {panelNotes.report ? (
           <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{panelNotes.report}</p>

@@ -70,7 +70,7 @@ export type Gender = (typeof GENDERS)[number];
 export const ADDRESS_SOURCES = ["IMPOR", "HC", "USULAN_PEGAWAI"] as const;
 export type AddressSource = (typeof ADDRESS_SOURCES)[number];
 
-/** Batas yang sama dengan CHECK di migrasi 0102. */
+/** Batas yang sama dengan CHECK di migrasi 0106. */
 export const MAX_DEPENDENT_ORDER = 20;
 export const MAX_EMERGENCY_PRIORITY = 9;
 

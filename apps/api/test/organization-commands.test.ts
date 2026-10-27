@@ -377,3 +377,18 @@ describe("ORG-008-11 choosing the primary seat of someone holding two", () => {
     ).code).toBe("ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT");
   });
 });
+
+describe("ORG-008-11 review: a later marked seat does not collide", () => {
+  it("clears the marker on a later-starting seat whose period overlaps the chosen one", () => {
+    const row = (id: string, positionKey: string, from: string, primary: boolean) => ({
+      id, positionKey, employeeId: "employee-rangkap", accountId: null, kind: "PRIMARY" as const,
+      isPrimaryStructural: primary, effectiveFrom: from, effectiveTo: null, reason: null,
+    });
+    const result = apply(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: VICE },
+      snapshot({ incumbencies: [row("head-now", HEAD, "2026-01-01", false), row("vice", VICE, "2026-01-01", false),
+        row("head-later", HEAD, "2027-03-01", true)] }),
+    );
+    expect(result.snapshot.incumbencies.filter((item) => item.isPrimaryStructural).map((item) => item.id)).toEqual(["vice"]);
+  });
+});

@@ -410,8 +410,15 @@ function applySetPrimaryStructural(
       { employeeId: command.employeeId },
     );
   }
-  for (const seat of seats) {
+  // Every other PRIMARY seat of this person whose period overlaps the chosen one loses the marker,
+  // including a seat that starts later: 0021 allows one marked seat per person per period.
+  const end = (value: string | null) => value ?? "9999-12-31";
+  const overlapsTarget = (seat: typeof target) =>
+    seat.effectiveFrom <= end(target.effectiveTo) && target.effectiveFrom <= end(seat.effectiveTo);
+  for (const seat of snapshot.incumbencies.filter((item) =>
+    item.employeeId === command.employeeId && item.kind === "PRIMARY")) {
     const primary = seat.id === target.id;
+    if (!primary && !overlapsTarget(seat)) continue;
     if ((seat.isPrimaryStructural ?? false) === primary) continue;
     seat.isPrimaryStructural = primary;
     events.push({

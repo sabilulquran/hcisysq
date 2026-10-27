@@ -177,6 +177,10 @@ export function organizationIssueSentence(
 }
 
 const API_MESSAGES: Record<string, string> = {
+  ORGANIZATION_EMPLOYEE_NOT_SEATED:
+    "Pegawai itu tidak memegang jabatan ini pada tanggal berlaku perubahan. Muat ulang lalu pilih jabatan yang benar.",
+  ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT:
+    "Pegawai ini hanya memegang satu jabatan, jadi jabatan itu sudah menjadi jabatan utamanya.",
   INVALID_WORK_LOCATION:
     "Lokasi kerja itu tidak ada atau sudah dinonaktifkan. Pilih lokasi lain.",
   ORGANIZATION_DRAFT_NOT_FOUND:

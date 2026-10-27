@@ -449,9 +449,13 @@ export function OrganizationDesignerWorkspace({
   const selectedSeat = selectedPosition ? organizationSeatEditability(selectedPosition) : null;
   // ORG-008-11: the selected seat's holder also holds another seat, and this one is not their primary.
   const selectedHolder = selectedPosition?.primaryIncumbent ?? null;
+  const onChangeDate = data?.draft?.effectiveOn ?? effectiveDate;
+  const seatedOnChangeDate = (incumbent: OrganizationPosition["primaryIncumbent"]) => Boolean(incumbent
+    && incumbent.effectiveFrom <= onChangeDate && (!incumbent.effectiveTo || incumbent.effectiveTo >= onChangeDate));
   const canMakePrimary = Boolean(selectedHolder?.employeeId && !selectedHolder.isPrimaryStructural
-    && (data?.positions ?? []).filter((item) =>
-      item.primaryIncumbent?.employeeId === selectedHolder.employeeId).length > 1);
+    && seatedOnChangeDate(selectedHolder)
+    && (data?.positions ?? []).filter((item) => item.primaryIncumbent?.employeeId === selectedHolder.employeeId
+      && seatedOnChangeDate(item.primaryIncumbent)).length > 1);
   const canEdit = data?.draft?.status === "DRAFT";
   // ORG-005-1 (D-5-5): the location list belongs to schedule management, which Kepala HC does not hold.
   const canPickWorkLocation = Boolean(canEdit) && hasPermission(session, "attendance.schedule.manage");

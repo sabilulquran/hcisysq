@@ -245,6 +245,10 @@ Setelah AUTH-014, bundle itu menjadi **peran kerja HC saja**: permission di §4.
 | 11 | Kontrak endpoint internal | `docs/api/openapi.yaml` |
 | 12 | `/admin/access`: notis read-only + tautan "Kelola di SQ Hub", filter `actorSource` di layar audit | `apps/web` |
 | 13 | Pencabutan permission §4.2 dari `human_capital_admin` | migration terpisah, fase F6 |
+| 14 | Hapus form pemberian peran dan pengelolaan akun dari `/admin/access`; menu menjadi "Peran & Akses" baca saja; sapu penunjuk di `AdminEmployeeDetailPage` dan `AdminPage` (§8) | `apps/web` — fase F5b |
+| 15 | Pengalihan `/admin/access` dan halaman penunjuk berbatas waktu untuk URL tanpa padanan (§8.4) | `apps/web/src/router.tsx` — fase F5b |
+| 16 | Pita konteks, warna header berbeda, prefiks judul tab, penanda di mobile, pendaratan di akar ruang, konfirmasi form belum tersimpan (§9) | `apps/web/src/layouts/CoreShell.tsx`, `AdminShell.tsx`, `components/shell/SpaceSwitcher.tsx` |
+| 17 | Penjaga route dievaluasi ulang saat kewenangan berubah; jatuh ke ruang pegawai atau akhiri sesi (§9.5) | `apps/web/src/lib/authorization.ts`, `router.tsx` |
 
 Migration 1, 2, 13 dan perubahan 3–8 menyentuh otorisasi; setiap PR-nya wajib melewati satu putaran review independen sebelum merge.
 
@@ -266,6 +270,8 @@ Prinsipnya: **aditif lebih dulu, pencabutan paling akhir; setiap fase punya jala
 | **F3** | Kode: `assertRoleGrantor(actor, channel)`; break-glass lepas dari shim (§3.1); `IDENTITY_PERMISSIONS` ditolak di `canDelegateRole` untuk **kedua** jalur; jalur `sq_hub` ada tetapi route belum terdaftar | rendah — perilaku break-glass setara, sumber kewenangannya berubah | revert kode; database tidak berubah |
 | **F4** | Prasyarat: token exchange tersedia di realm (§2.2) dan F1 lulus. Route internal didaftarkan dengan `HCIS_ROLE_ADMIN_ENABLED` **mati** | nihil (`503`) | saklar tetap mati |
 | **F5** | Saklar dihidupkan. SQ Hub memberi satu peran uji ke satu akun uji, lalu mencabutnya. Diverifikasi: assignment benar; audit `actor_source = "sq_hub"` ada; self-grant ditolak; assertion palsu/kedaluwarsa ditolak; replay `requestId` ditolak; permission identitas ditolak | rendah; jalur lama utuh | matikan saklar; jalur break-glass tidak tersentuh |
+| **F5a** | SQ Hub bisa memberi/mencabut peran HCIS **dan** mengelola akun (buat, nonaktifkan, reset kata sandi); diverifikasi owner dari ujung ke ujung | nihil (menambah kemampuan) | matikan saklar kanal |
+| **F5b** | Baru setelah F5a tercatat lulus: hapus form pemberian peran dan pengelolaan akun dari HCIS beserta penunjuknya; menu menjadi "Peran & Akses" baca saja (§8) | rendah — API break-glass tetap hidup, hanya pintunya di UI yang hilang | revert perubahan frontend; tidak ada perubahan database |
 | **F6** | Setelah F5 stabil (minimal dua minggu pemakaian nyata): berikan `hcis_module_admin` kepada pemegang yang dituju, **amati**, lalu migration pencabutan permission §4.2 dari `human_capital_admin` | sedang — satu-satunya fase yang mencabut | migration pembalik mengembalikan permission ke bundle |
 | **F7** | Latihan break-glass penuh dengan shim dimatikan sementara (§3.1 butir 2). Akun SUPER_ADMIN dikembalikan ke `inactive` sebagai keadaan normal | rendah | aktifkan kembali lewat prosedur break-glass |
 
@@ -277,6 +283,7 @@ Pencabutan `hasLegacySuperAdminCompatibility` **bukan** bagian AUTH-014; syaratn
 - Tidak ada fase yang mencabut permission dari role yang sedang dipakai sebelum penggantinya diberikan dan diamati.
 - Tidak ada fase yang mengubah `principal_type`, `identity_issuer`, `identity_subject`, kredensial, atau sesi akun mana pun.
 - Kanal tidak dihidupkan tanpa assertion aktor. Tidak ada mode "sementara pakai klaim polos".
+- Tidak ada jeda di mana sebuah kewenangan tidak tersedia di kedua tempat. Layar HCIS dihapus hanya setelah penggantinya di SQ Hub terbukti dipakai (F5a sebelum F5b).
 - F5 tidak dijalankan pada hari yang sama dengan rilis payroll atau penutupan periode kehadiran.
 
 ### Verifikasi tiap fase
@@ -315,10 +322,119 @@ Ditulis sebagai kebutuhan, bukan perubahan. Repository SQ Hub tidak disentuh dar
 | **H-9** | **Penambahan baris `platform_administrators` membutuhkan dua Admin Platform berbeda (empat mata), dan tidak seorang pun boleh menambahkan dirinya sendiri** | tanpa ini, satu Admin Platform membuat Admin Platform kedua lalu memakainya untuk memberi dirinya apa pun — larangan self-grant di HCIS tidak menyentuh lubang ini. ADR-0006 R-6 |
 | **H-10** | **Reset kata sandi dilarang di SQ Hub untuk akun yang merupakan Admin Platform atau memegang peran istimewa modul; akun seperti itu hanya lewat konsol Keycloak** | reset kata sandi adalah impersonation dengan satu baris log; tanpa batas ini `manage-users` memberi satu Admin Platform jalan menjadi Admin Platform lain. ADR-0006 R-6 |
 | **H-11** | **Daftar Admin Platform dan setiap perubahannya dipublikasikan ke layar audit yang dapat dibaca owner tanpa akses database** | lingkaran eskalasi yang tersisa berada di luar HCIS, jadi deteksinya juga harus di luar HCIS |
+| **H-12** | **Layar Admin Platform membawa penanda konteks sendiri yang setara dengan §9.2** | tanpa itu kebingungan "sedang jadi admin atau pegawai" hanya berpindah dari HCIS ke SQ Hub |
 
 ---
 
-## 8. Asumsi yang belum diverifikasi
+## 8. Layar HCIS yang ikut pindah
+
+**Keputusan owner 2026-10-27:** begitu sebuah kewenangan tidak lagi berada di HCIS, layar dan menunya di HCIS **dihapus**, bukan dibiarkan menganggur atau sekadar dikunci izin. Tidak boleh ada halaman yang masih ada tetapi selalu menolak.
+
+Hari ini satu menu, **"Account & Akses"** (`/admin/access`), memuat empat hal yang di bawah AUTH-014 jatuh ke dua lapis berbeda.
+
+### 8.1 Apa yang hilang, apa yang tinggal
+
+| Isi `/admin/access` hari ini | Nasibnya | Alasan |
+|---|---|---|
+| Form "Tambah role tambahan" dan tombol "Cabut" per assignment | **dihapus dari HCIS** | pemberian peran pindah ke Admin Platform |
+| "Account Organ Yayasan": pembuatan undangan aktivasi, status akun, reaktivasi sementara (EMP-005) | **dihapus dari HCIS** | akun orang adalah lapis Admin Platform |
+| Tombol ubah status akun per pegawai | **dihapus dari HCIS** | sama |
+| Daftar pemegang peran (siapa memegang apa, sejak kapan, mandatnya) | **tinggal, baca saja** | HC perlu tahu ke siapa pekerjaan dialirkan; ini membaca, bukan memberi |
+| Katalog "Role system" (definisi peran HCIS dan permission-nya) | **tinggal, baca saja** | definisi peran adalah milik HCIS; SQ Hub justru membacanya lewat `GET /catalog` (§2.1) |
+| Tautan peran–jabatan dan peringatan ketidakcocokan Kepala HC (ORG-008-9) | **tinggal, pindah kewenangan ke Admin Modul** | menautkan peran ke kursi adalah data acuan; ia tidak memberi peran, hanya memunculkan peringatan |
+
+Hasilnya: menu "Account & Akses" **diganti** menjadi **"Peran & Akses"** yang seluruhnya baca saja, kecuali tautan peran–jabatan. Permission penjaganya berubah dari `access.manage` menjadi permission baca; `access.manage` tidak lagi menjaga layar HCIS mana pun.
+
+Di halaman itu, satu-satunya jalan ke tindakan adalah tautan keluar ke SQ Hub: "Pemberian peran dan pengelolaan akun ada di SQ Hub" dengan tautan langsung ke layar Admin Platform. Bukan tombol yang menolak, bukan form yang disembunyikan.
+
+### 8.2 Titik lain yang menunjuk ke layar lama
+
+`AdminEmployeeDetailPage` memuat tautan ke `/admin/access`, dan `AdminPage` (ringkasan) memuat kartu "Account & Akses" yang hanya tampil bila akun punya `access.manage`. Keduanya ikut berubah pada rilis yang sama: tautan menjadi tautan ke SQ Hub, kartu ringkasan menjadi kartu baca saja atau hilang bila akun tidak memegang permission baca. Menghapus halaman tanpa menyapu penunjuknya meninggalkan tautan mati, yang sama buruknya dengan halaman yang menolak.
+
+### 8.3 Urutan: SQ Hub dulu, baru HCIS dihapus
+
+Aturan kerasnya: **tidak boleh ada jeda di mana kewenangannya tidak ada di kedua tempat.**
+
+Urutannya menjadi bagian §6 sebagai dua fase baru:
+
+| Fase | Isi | Prasyarat |
+|---|---|---|
+| **F5a** | SQ Hub sudah bisa memberi dan mencabut peran HCIS, dan sudah bisa mengelola akun (buat, nonaktifkan, reset kata sandi). Diverifikasi owner dengan satu pemberian nyata dari ujung ke ujung | F5 lulus; K-1, K-2, K-4 selesai |
+| **F5b** | Baru setelah F5a: HCIS menghapus form pemberian peran, pengelolaan akun, dan penunjuknya (§8.1, §8.2). Menu berganti nama menjadi "Peran & Akses" | **F5a lulus dan tercatat**, bukan sekadar "SQ Hub sudah dirilis" |
+
+F5b adalah penghapusan layar, bukan penghapusan API. Route API lama (`POST /admin/access/accounts/:id/role-assignments` dan kawan-kawan) tetap hidup untuk jalur break-glass sampai F7, karena itulah jalan cadangan ketika SQ Hub mati. Yang hilang adalah pintunya di UI pegawai biasa, bukan kemampuan sistemnya.
+
+### 8.4 Deep link ke layar yang sudah dihapus
+
+Orang menyimpan URL dan mengirimnya lewat pesan. Tiga perlakuan, dan yang di tengah sengaja dibatasi waktunya:
+
+1. `/admin/access` → **dialihkan** ke "Peran & Akses" yang baru. Bukan 404, bukan halaman menolak.
+2. URL yang tidak punya padanan sama sekali (misalnya layar undangan aktivasi) → **satu halaman penunjuk** berisi satu kalimat dan satu tautan ke SQ Hub, hidup **maksimal satu siklus rilis**, lalu route-nya dihapus seluruhnya.
+3. Setelah masa itu → 404 biasa, sama seperti URL yang tidak pernah ada.
+
+Halaman penunjuk di nomor 2 adalah satu-satunya pengecualian terhadap "jangan tinggalkan halaman menganggur", dan ia bukan halaman yang menolak: ia tidak pernah mencoba memuat data dan tidak pernah mengembalikan 403. Tanggal matinya ditulis di komentar route, bukan diserahkan pada ingatan.
+
+---
+
+## 9. Ruang admin dan ruang pegawai tidak boleh tercampur
+
+**Keputusan owner 2026-10-27:** akun yang sedang bertindak sebagai admin tidak boleh sekaligus menampilkan ruang pegawai, supaya tidak pernah ambigu sedang berada di mana.
+
+Masalahnya nyata dan akan bertambah, bukan berkurang: setelah AUTH-014 orang yang sama bisa menjadi pegawai, Admin Modul HCIS, dan Admin Platform SQ Hub sekaligus. Solusinya **bukan** melarang satu orang memegang ketiganya — itu justru mengembalikan masalah berganti akun yang AUTH-014 ada untuk menyelesaikannya. Solusinya adalah membuat konteks yang sedang dipakai tidak pernah ambigu.
+
+### 9.1 Satu konteks aktif, tidak pernah dua
+
+| Aturan | Isinya |
+|---|---|
+| **Satu konteks per tab** | sebuah tab berada di ruang pegawai **atau** ruang administrasi, tidak pernah keduanya |
+| **Ruang admin bersih dari ruang pegawai** | tidak ada kartu self-service, tidak ada "cuti saya", tidak ada slip gaji pribadi, tidak ada notifikasi pribadi di ruang admin. `AdminShell` tidak merender elemen ruang pegawai sama sekali |
+| **Ruang pegawai bersih dari administrasi** | tidak ada pintasan tindakan administratif di ruang pegawai; satu-satunya jalan masuk adalah pemindah ruang |
+| **Akun tanpa data pegawai** | akun break-glass tidak punya ruang pegawai; pemindah ruang tidak muncul untuknya |
+
+`CoreShell` sudah memisahkan `space`, dan `SpaceSwitcher` sudah menjadi satu-satunya pintu. Yang kurang adalah penandanya cukup halus sehingga owner tetap bisa bingung: satu segmen tab aktif di header, tanpa perbedaan lain.
+
+### 9.2 Penanda konteks yang tidak bisa dilewatkan
+
+1. **Pita konteks yang selalu terlihat** di ruang administrasi, melekat di atas header, tidak ikut menggulung, berbunyi: **"Mode Administrasi HCIS — <nama peran yang sedang dipakai>"**. Di ruang pegawai tidak ada pita; ketiadaannya adalah penandanya.
+2. **Warna header berbeda** antara kedua ruang, cukup kontras untuk dikenali dari sudut mata, dan tetap memenuhi kontras WCAG AA.
+3. **Judul tab browser diawali `[Admin]`** di ruang administrasi, supaya tab yang berjejer pun terbaca.
+4. **Penanda yang sama hadir di mobile.** Pita tidak boleh dikorbankan di layar sempit; justru di sanalah sidebar tidak terlihat dan konteks paling mudah hilang.
+
+Nama peran di pita penting: "Mode Administrasi HCIS — Admin Modul" berbeda dari "— Human Capital", dan itu menjawab pertanyaan kedua yang akan segera muncul, yaitu *admin yang mana*.
+
+### 9.3 Perpindahan harus disengaja
+
+- Pemindah ruang tetap ada (orang yang sama memang boleh punya dua-duanya) tetapi perpindahan **selalu mendarat di akar ruang tujuan** (`/app` atau `/admin`), tidak pernah mempertahankan halaman yang sedang dibuka. Mendarat di tempat yang sama dengan tampilan berbeda persis adalah sumber kebingungan yang dikeluhkan.
+- Bila ada formulir yang belum tersimpan, perpindahan **meminta konfirmasi** lebih dulu.
+- Perpindahan tidak membuat sesi baru dan tidak meminta login ulang. Ini perpindahan tampilan, bukan perpindahan identitas — justru itu intinya.
+
+### 9.4 Deep link
+
+| Keadaan | Perilaku |
+|---|---|
+| Membuka URL `/admin/...` sementara tab berada di ruang pegawai | konteks berpindah ke administrasi, halaman yang diminta dibuka, pita konteks muncul, dan satu toast "Mode Administrasi aktif" ditampilkan sekali. Tanpa layar antara — gesekan tambahan di setiap tautan akan dimatikan orang, sedangkan pita tetap terlihat selamanya |
+| Membuka URL `/admin/...` tanpa kewenangan untuk halaman itu | tidak ada halaman administrasi yang terbuka sebagian. Dialihkan ke ruang pegawai dengan satu pesan yang menyebut halaman mana yang ditolak |
+| Membuka URL `/admin/...` oleh akun tanpa kewenangan administrasi apa pun | sama seperti di atas; menu administrasi memang tidak pernah muncul untuknya |
+| Membuka URL ruang pegawai oleh akun break-glass tanpa data pegawai | dialihkan ke `/admin` dengan pesan bahwa akun ini tidak punya ruang pegawai |
+
+### 9.5 Sesi yang sedang berjalan saat kewenangannya berubah
+
+Admin Platform dapat mencabut peran seseorang saat orang itu sedang membuka ruang administrasi. Yang terjadi:
+
+1. Penjaga route dievaluasi ulang pada navigasi berikutnya dan pada pemuatan ulang konteks otorisasi; halaman yang tidak lagi diizinkan **tidak dibuka**.
+2. Bila akun kehilangan seluruh kewenangan administrasi, konteks jatuh ke ruang pegawai dengan satu pesan yang jelas — bukan layar kosong dan bukan menu yang masih tampil tetapi setiap kliknya 403.
+3. Bila akun itu juga tidak punya data pegawai aktif (kasus break-glass), sesi diakhiri.
+4. Tidak ada menu administrasi yang bertahan di layar setelah kewenangannya hilang. Menu yang tersisa setelah izinnya dicabut adalah bentuk lain dari "halaman menganggur" yang §8 larang.
+
+Pencabutan tidak memutus sesi yang sedang berjalan secara paksa di tengah pekerjaan; perubahan terasa pada navigasi berikutnya. Itu pilihan sadar: pemutusan seketika di tengah pengisian formulir menghilangkan pekerjaan orang, sedangkan API tetap menolak setiap tindakan yang sudah tidak diizinkan, jadi tidak ada kewenangan nyata yang bocor dalam jeda itu.
+
+### 9.6 Catatan untuk SQ Hub
+
+Kebutuhan yang sama berlaku di sana dan ditambahkan ke §7.2 sebagai **H-12**: layar Admin Platform di SQ Hub harus membawa penanda konteks sendiri yang setara, supaya "sedang jadi Admin Platform" tidak tertukar dengan "sedang jadi pegawai yang membuka SQ Hub". Tanpa itu, kebingungan yang dihapus dari HCIS hanya berpindah tempat.
+
+---
+
+## 10. Asumsi yang belum diverifikasi
 
 | Tanda | Asumsi |
 |---|---|
@@ -328,4 +444,6 @@ Ditulis sebagai kebutuhan, bukan perubahan. Repository SQ Hub tidak disentuh dar
 | `DRAFT` | `payroll.profiles.manage` dan `payroll.inputs.manage` ditempatkan di peran kerja Keuangan (§4.3). Bila PAY-003 memutuskan lain, §4.2 menyesuaikan |
 | `TBD` | Permission tersendiri untuk template dokumen belum ada; bila dibuat, ia masuk Admin Modul |
 | `TBD` | Apakah realm `sq-staff` sudah mendukung token exchange. Bila tidak, F4 tertahan sampai K-4 selesai |
+| `DRAFT` | Daftar pemegang peran tetap ada di HCIS sebagai tampilan baca saja karena HC diperkirakan membutuhkannya untuk mengalirkan pekerjaan. Bila ternyata tidak dipakai, halaman itu ikut dihapus dan HC membacanya di SQ Hub |
+| `DRAFT` | Masa hidup halaman penunjuk deep link (§8.4) ditetapkan satu siklus rilis |
 | `TBD` | Apakah aplikasi SQ Core lain (Aset SQ, SPMB, Karir SQ) memakai kanal berbentuk sama. Rancangan §2 sengaja tidak memuat apa pun yang khas HCIS selain katalog perannya |

@@ -663,8 +663,10 @@ paths:
         A semantic change (hours, tolerances, location, `extraBlocks` or `firstBlockWorkdayWeight`) writes a
         new version. Without `extraBlocks` in the request the new version keeps the current blocks (ATT-013).
         ATT-011-4a: `effectiveFrom` (date, today or later) makes the new version apply from that date 00:00 WIB;
-        today or omitted means from now. At most one future version: changing again replaces it while no roster
-        entry or result uses it. `active: false` is refused while a schedule pattern or published roster entry
+        today or omitted means from now. Fields not sent come from the version in force now, or from the
+        scheduled version when a later change replaces it. At most one future version: changing again from a
+        later date replaces it while no roster entry or result uses it; a change from now while one is scheduled
+        is refused (`SCHEDULE_CHANGE_PENDING`). `active: false` is refused while a schedule pattern or published roster entry
         uses the shift today or later. Audited as `attendance.schedule.updated` (or `.deactivated`) with
         `effectiveFrom` and the number of employees affected.
       parameters:
@@ -679,7 +681,7 @@ paths:
       responses:
         '200': { description: '`{ id, versionId, version, effectiveFrom, affectedEmployees }`' }
         '400': { description: EFFECTIVE_DATE_IN_PAST or INVALID_SCHEDULE_UPDATE }
-        '409': { description: 'SCHEDULE_IN_USE (`total`, `employees[]` up to 20) or SCHEDULE_FUTURE_VERSION_IN_USE' }
+        '409': { description: 'SCHEDULE_IN_USE (`total`, `employees[]` up to 20), SCHEDULE_FUTURE_VERSION_IN_USE or SCHEDULE_CHANGE_PENDING' }
         '422': { description: SCHEDULE_BLOCKS_INVALID }
 
   /admin/attendance/schedule-assignments/{assignmentId}:

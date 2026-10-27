@@ -1037,13 +1037,14 @@ export async function registerAttendanceWorkforceRoutes(
          (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
-       LEFT JOIN attendance_work_locations location ON location.id = schedule.work_location_id
        LEFT JOIN LATERAL (
          SELECT candidate.* FROM attendance_schedule_versions candidate
          WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= now()
            AND (candidate.effective_to IS NULL OR candidate.effective_to > now())
          ORDER BY candidate.version DESC LIMIT 1
        ) version ON true
+       LEFT JOIN attendance_work_locations location
+         ON location.id = CASE WHEN version.id IS NULL THEN schedule.work_location_id ELSE version.work_location_id END
        ORDER BY schedule.active DESC, schedule.name`,
     );
     return reply.send({ items: result.rows });
@@ -1061,15 +1062,28 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // ATT-011-4a: fields not in the request come from the version in force now. The template columns
+      // only mirror it as of the last change, so a change from a later date leaves them behind.
       const current = await client.query<{
         name: string; startTime: string; endTime: string; endDayOffset: number; lateGraceMinutes: number;
-        earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean;
+        earlyLeaveToleranceMinutes: number; workLocationId: string | null; active: boolean; versionId: string | null;
       }>(
-        `SELECT name, start_time::text AS "startTime", end_time::text AS "endTime",
-           end_day_offset AS "endDayOffset", late_grace_minutes AS "lateGraceMinutes",
-           early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes",
-           work_location_id AS "workLocationId", active
-         FROM attendance_schedule_templates WHERE id = $1 FOR UPDATE`,
+        `SELECT coalesce(version.name, schedule.name) AS name,
+           coalesce(version.start_time, schedule.start_time)::text AS "startTime",
+           coalesce(version.end_time, schedule.end_time)::text AS "endTime",
+           coalesce(version.end_day_offset, schedule.end_day_offset) AS "endDayOffset",
+           coalesce(version.late_grace_minutes, schedule.late_grace_minutes) AS "lateGraceMinutes",
+           coalesce(version.early_leave_tolerance_minutes, schedule.early_leave_tolerance_minutes) AS "earlyLeaveToleranceMinutes",
+           CASE WHEN version.id IS NULL THEN schedule.work_location_id ELSE version.work_location_id END AS "workLocationId",
+           schedule.active, version.id AS "versionId"
+         FROM attendance_schedule_templates schedule
+         LEFT JOIN LATERAL (
+           SELECT candidate.* FROM attendance_schedule_versions candidate
+           WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= clock_timestamp()
+             AND (candidate.effective_to IS NULL OR candidate.effective_to > clock_timestamp())
+           ORDER BY candidate.version DESC LIMIT 1
+         ) version ON true
+         WHERE schedule.id = $1 FOR UPDATE OF schedule`,
         [params.data.scheduleId],
       );
       const item = current.rows[0];
@@ -1097,13 +1111,13 @@ export async function registerAttendanceWorkforceRoutes(
              SELECT entry.employee_id, entry.work_date
              FROM attendance_roster_entries entry
              JOIN attendance_rosters roster ON roster.id = entry.roster_id AND roster.status = 'PUBLISHED'
-             WHERE entry.schedule_template_id = $1 AND entry.work_date >= $2::date
+             WHERE entry.schedule_template_id = $1 AND entry.work_date >= $2::date AND NOT entry.is_off
            ), per_employee AS (
              SELECT employee_id, min(from_date) AS from_date FROM used GROUP BY employee_id
            )
            SELECT employee.employee_number AS "employeeNumber", employee.full_name AS "employeeName",
              per_employee.from_date::text AS "fromDate", count(*) OVER ()::int AS total
-           FROM per_employee JOIN employees employee ON employee.id = per_employee.employee_id
+           FROM per_employee JOIN employees employee ON employee.id = per_employee.employee_id AND employee.status = 'active'
            ORDER BY employee.full_name LIMIT 20`,
           [params.data.scheduleId, today],
         );
@@ -1117,7 +1131,19 @@ export async function registerAttendanceWorkforceRoutes(
           });
         }
       }
-      const next = { ...item, ...body.data } as typeof item;
+      const future = Boolean(body.data.effectiveFrom && body.data.effectiveFrom > today);
+      // A change from a later date replaces the scheduled one and builds on it; any other builds on now.
+      const scheduled = future ? (await client.query<typeof item>(
+        `SELECT id AS "versionId", name, start_time::text AS "startTime", end_time::text AS "endTime",
+           end_day_offset AS "endDayOffset", late_grace_minutes AS "lateGraceMinutes",
+           early_leave_tolerance_minutes AS "earlyLeaveToleranceMinutes", work_location_id AS "workLocationId", $2::boolean AS active
+         FROM attendance_schedule_versions
+         WHERE schedule_template_id = $1 AND effective_from > clock_timestamp()
+         ORDER BY version DESC LIMIT 1`,
+        [params.data.scheduleId, item.active],
+      )).rows[0] : undefined;
+      const { versionId: baseVersionId, ...base } = scheduled ?? item;
+      const next = { ...base, ...body.data } as typeof base;
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
@@ -1128,15 +1154,13 @@ export async function registerAttendanceWorkforceRoutes(
         `SELECT block.start_time::text AS "startTime", block.end_time::text AS "endTime",
            block.workday_weight::float8 AS "workdayWeight"
          FROM attendance_schedule_version_blocks block
-         JOIN attendance_schedule_versions version ON version.id = block.schedule_version_id
-         WHERE version.schedule_template_id = $1 AND version.effective_to IS NULL
+         WHERE block.schedule_version_id = $1
          ORDER BY block.sequence`,
-        [params.data.scheduleId],
+        [baseVersionId],
       )).rows;
       const firstWeight = body.data.firstBlockWorkdayWeight ?? (body.data.extraBlocks ? null : (await client.query<{ weight: number | null }>(
-        `SELECT first_block_workday_weight::float8 AS weight FROM attendance_schedule_versions
-         WHERE schedule_template_id = $1 AND effective_to IS NULL`,
-        [params.data.scheduleId],
+        "SELECT first_block_workday_weight::float8 AS weight FROM attendance_schedule_versions WHERE id = $1",
+        [baseVersionId],
       )).rows[0]?.weight ?? null);
       const blocksError = scheduleBlocksError({ ...next, workdayWeight: firstWeight }, blocks);
       if (blocksError) {
@@ -1144,8 +1168,7 @@ export async function registerAttendanceWorkforceRoutes(
         return reply.status(422).send({ code: "SCHEDULE_BLOCKS_INVALID", message: blocksError });
       }
 
-      const future = Boolean(body.data.effectiveFrom && body.data.effectiveFrom > today);
-      // A future change leaves the template's current values alone until it applies; only `active` changes now.
+      // A future change leaves the template at the values in force now until it applies; only `active` changes now.
       await client.query(
         `UPDATE attendance_schedule_templates
          SET name = $2, start_time = $3::time, end_time = $4::time, end_day_offset = $5,
@@ -1162,6 +1185,7 @@ export async function registerAttendanceWorkforceRoutes(
       let versionId: string | null = null;
       let versionNumber: number | null = null;
       let affectedEmployees = 0;
+      let replacedVersionIds: string[] = [];
       if (semanticChanged) {
         const atResult = await client.query<{ at: Date }>(
           future ? "SELECT ($1::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS at" : "SELECT clock_timestamp() AS at",
@@ -1177,6 +1201,11 @@ export async function registerAttendanceWorkforceRoutes(
            FOR UPDATE`,
           [params.data.scheduleId],
         );
+        if (pending.rows.length && !future) {
+          throw new WorkforceAttendanceError(409, "SCHEDULE_CHANGE_PENDING",
+            "Shift ini punya perubahan terjadwal. Ubah dengan tanggal Berlaku mulai setelah hari ini untuk menggantinya.");
+        }
+        replacedVersionIds = pending.rows.map((row) => row.id);
         for (const row of pending.rows) {
           if (row.used) throw new WorkforceAttendanceError(409, "SCHEDULE_FUTURE_VERSION_IN_USE", "Perubahan shift yang dijadwalkan sudah dipakai jadwal per tanggal dan tidak dapat diganti.");
           await client.query("DELETE FROM attendance_schedule_version_blocks WHERE schedule_version_id = $1", [row.id]);
@@ -1223,6 +1252,7 @@ export async function registerAttendanceWorkforceRoutes(
         "attendance_schedule_template", params.data.scheduleId, {
           fields: Object.keys(body.data), versionId, version: versionNumber,
           effectiveFrom: semanticChanged ? (body.data.effectiveFrom ?? today) : null, affectedEmployees,
+          ...(replacedVersionIds.length ? { replacedVersionIds } : {}),
         });
       await client.query("COMMIT");
       return reply.send({ id: params.data.scheduleId, versionId, version: versionNumber, effectiveFrom: semanticChanged ? (body.data.effectiveFrom ?? today) : null, affectedEmployees });
@@ -1351,7 +1381,7 @@ export async function registerAttendanceWorkforceRoutes(
       `SELECT assignment.id,
          employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
          employee.full_name AS "employeeName", unit.name AS "unitName",
-         schedule.id AS "scheduleTemplateId", schedule.name AS "scheduleName",
+         schedule.id AS "scheduleTemplateId", coalesce(version.name, schedule.name) AS "scheduleName",
          assignment.weekday_mask AS "weekdayMask",
          assignment.effective_from::text AS "effectiveFrom",
          assignment.effective_to::text AS "effectiveTo",
@@ -1359,6 +1389,12 @@ export async function registerAttendanceWorkforceRoutes(
        FROM attendance_schedule_assignments assignment
        JOIN employees employee ON employee.id = assignment.employee_id
        JOIN attendance_schedule_templates schedule ON schedule.id = assignment.schedule_template_id
+       LEFT JOIN LATERAL (
+         SELECT candidate.* FROM attendance_schedule_versions candidate
+         WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= now()
+           AND (candidate.effective_to IS NULL OR candidate.effective_to > now())
+         ORDER BY candidate.version DESC LIMIT 1
+       ) version ON true
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
        ORDER BY employee.full_name, assignment.effective_from DESC`,
     );
@@ -1454,8 +1490,17 @@ export async function registerAttendanceWorkforceRoutes(
         [query.data.weekStart],
       ),
       pool.query(
-        `SELECT id, name, start_time::text AS "startTime", end_time::text AS "endTime", active
-         FROM attendance_schedule_templates ORDER BY active DESC, name`,
+        `SELECT schedule.id, coalesce(version.name, schedule.name) AS name,
+           coalesce(version.start_time, schedule.start_time)::text AS "startTime",
+           coalesce(version.end_time, schedule.end_time)::text AS "endTime", schedule.active
+         FROM attendance_schedule_templates schedule
+         LEFT JOIN LATERAL (
+           SELECT candidate.* FROM attendance_schedule_versions candidate
+           WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= now()
+             AND (candidate.effective_to IS NULL OR candidate.effective_to > now())
+           ORDER BY candidate.version DESC LIMIT 1
+         ) version ON true
+         ORDER BY schedule.active DESC, 2`,
       ),
     ]);
     reply.header("Cache-Control", "no-store");
@@ -1632,7 +1677,8 @@ export async function registerAttendanceWorkforceRoutes(
            AND entry.is_off = false
            AND entry.schedule_version_id IS NULL
            AND version.schedule_template_id = entry.schedule_template_id
-           AND version.effective_to IS NULL`,
+           AND version.effective_from <= ((entry.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta')
+           AND (version.effective_to IS NULL OR version.effective_to > ((entry.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta'))`,
         [params.data.rosterId],
       );
       const unresolved = await client.query<{ count: number }>(

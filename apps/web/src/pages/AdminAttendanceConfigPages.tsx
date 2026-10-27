@@ -56,6 +56,40 @@ function dayBefore(date: string) {
 function todayJakarta() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date()); }
 function tomorrowJakarta() { const value = new Date(`${todayJakarta()}T00:00:00Z`); value.setUTCDate(value.getUTCDate() + 1); return value.toISOString().slice(0, 10); }
 
+type ScheduleItem = Awaited<ReturnType<typeof listAttendanceSchedules>>["items"][number];
+type ScheduleEditForm = { name: string; startTime: string; endTime: string; endDayOffset: string; lateGraceMinutes: string; earlyLeaveToleranceMinutes: string; workLocationId: string; active: boolean; effectiveFrom: string };
+// ATT-011-4a: editing starts from a scheduled change when there is one, so saving does not undo it.
+function scheduleEditForm(item: ScheduleItem): ScheduleEditForm {
+  const pending = item.pendingVersion;
+  return {
+    name: item.name, startTime: pending?.startTime ?? item.startTime, endTime: pending?.endTime ?? item.endTime,
+    endDayOffset: String(item.endDayOffset ?? 0), lateGraceMinutes: String(pending?.lateGraceMinutes ?? item.lateGraceMinutes),
+    earlyLeaveToleranceMinutes: String(pending?.earlyLeaveToleranceMinutes ?? item.earlyLeaveToleranceMinutes),
+    workLocationId: item.workLocationId ?? "", active: item.active, effectiveFrom: pending?.effectiveFrom ?? tomorrowJakarta(),
+  };
+}
+function hoursChanges(item: ScheduleItem, form: ScheduleEditForm) {
+  const changes: { startTime?: string; endTime?: string; endDayOffset?: number; lateGraceMinutes?: number; earlyLeaveToleranceMinutes?: number; workLocationId?: string | null } = {};
+  if (form.startTime.slice(0, 5) !== item.startTime.slice(0, 5)) changes.startTime = form.startTime;
+  if (form.endTime.slice(0, 5) !== item.endTime.slice(0, 5)) changes.endTime = form.endTime;
+  if (Number(form.endDayOffset) !== (item.endDayOffset ?? 0)) changes.endDayOffset = Number(form.endDayOffset);
+  if (Number(form.lateGraceMinutes) !== item.lateGraceMinutes) changes.lateGraceMinutes = Number(form.lateGraceMinutes);
+  if (Number(form.earlyLeaveToleranceMinutes) !== item.earlyLeaveToleranceMinutes) changes.earlyLeaveToleranceMinutes = Number(form.earlyLeaveToleranceMinutes);
+  if ((form.workLocationId || null) !== (item.workLocationId ?? null)) changes.workLocationId = form.workLocationId || null;
+  return changes;
+}
+function hoursChanged(item: ScheduleItem, form: ScheduleEditForm) { return Object.keys(hoursChanges(item, form)).length > 0; }
+// Only what changed is sent: hours and location from "Berlaku mulai", a rename or deactivation from now.
+function scheduleChanges(item: ScheduleItem, form: ScheduleEditForm) {
+  const hours = hoursChanges(item, form);
+  return {
+    ...hours,
+    ...(Object.keys(hours).length ? { effectiveFrom: form.effectiveFrom || todayJakarta() } : {}),
+    ...(form.name !== item.name ? { name: form.name } : {}),
+    ...(form.active !== item.active ? { active: form.active } : {}),
+  };
+}
+
 export function AdminAttendanceLocationsPage() {
   const [items, setItems] = useState<Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean }>>([]);
   const [form, setForm] = useState({ name: "", latitude: "", longitude: "", radiusMeters: "150" });
@@ -147,7 +181,7 @@ export function AdminAttendanceSchedulesPage() {
   // ATT-014 §20.10 "Mundurkan awal berlaku": one shift at a time, date + reason, audited by the API.
   const [backdating, setBackdating] = useState<{ id: string; effectiveFrom: string; reason: string } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "0", earlyLeaveToleranceMinutes: "0", workLocationId: "", active: true, effectiveFrom: "" });
+  const [editForm, setEditForm] = useState<ScheduleEditForm>({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "0", earlyLeaveToleranceMinutes: "0", workLocationId: "", active: true, effectiveFrom: "" });
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
 
   const load = async () => {
@@ -220,11 +254,11 @@ export function AdminAttendanceSchedulesPage() {
               <td className="p-3"><select className="h-9 rounded-lg border px-2" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi</option>{locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></td>
               <td className="p-3 text-xs"><label className="grid gap-1">Berlaku mulai<input className="h-9 rounded-lg border px-2" type="date" min={todayJakarta()} value={editForm.effectiveFrom} onChange={(e) => setEditForm({ ...editForm, effectiveFrom: e.target.value })} /></label><span className="mt-1 block text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai; jadwal sebelum tanggal ini tidak berubah.</span></td>
               <td className="p-3"><label className="flex gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label></td>
-              <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => { await updateAttendanceSchedule(item.id, { name: editForm.name, startTime: editForm.startTime, endTime: editForm.endTime, endDayOffset: Number(editForm.endDayOffset), lateGraceMinutes: Number(editForm.lateGraceMinutes), earlyLeaveToleranceMinutes: Number(editForm.earlyLeaveToleranceMinutes), workLocationId: editForm.workLocationId || null, active: editForm.active, ...(editForm.effectiveFrom ? { effectiveFrom: editForm.effectiveFrom } : {}) }); setEditing(null); }, editForm.effectiveFrom && editForm.effectiveFrom > todayJakarta() ? `Shift diperbarui mulai ${editForm.effectiveFrom}.` : "Shift diperbarui.")}><Save className="h-4 w-4" /></button><button className="rounded-lg border p-2" onClick={() => setEditing(null)}><X className="h-4 w-4" /></button></div></td>
+              <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => { const changes = scheduleChanges(item, editForm); if (Object.keys(changes).length) await updateAttendanceSchedule(item.id, changes); setEditing(null); }, editForm.effectiveFrom > todayJakarta() && hoursChanged(item, editForm) ? `Shift diperbarui mulai ${editForm.effectiveFrom}.` : "Shift diperbarui.")}><Save className="h-4 w-4" /></button><button className="rounded-lg border p-2" onClick={() => setEditing(null)}><X className="h-4 w-4" /></button></div></td>
             </tr>
           ) : (
             <Fragment key={item.id}>
-            <tr><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? "—"}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm({ name: item.name, startTime: item.startTime, endTime: item.endTime, endDayOffset: String(item.endDayOffset ?? 0), lateGraceMinutes: String(item.lateGraceMinutes), earlyLeaveToleranceMinutes: String(item.earlyLeaveToleranceMinutes), workLocationId: item.workLocationId ?? "", active: item.active, effectiveFrom: tomorrowJakarta() }); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
+            <tr><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? "—"}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
             {backdating?.id === item.id ? (
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">

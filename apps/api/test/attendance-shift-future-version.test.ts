@@ -45,11 +45,13 @@ describe("ATT-011-4a shift versions from a date", () => {
   const statements: Array<{ sql: string; values: unknown[] }> = [];
   let pending: Array<{ id: string; used: boolean }> = [];
   let inUse: Array<Record<string, unknown>> = [];
+  const CURRENT = "00000000-0000-4000-8000-000000026004";
+  let inForce: Record<string, unknown> = {};
+  let scheduled: Record<string, unknown> | null = null;
   const clientQuery = vi.fn(async (sql: string, values: unknown[] = []) => {
     statements.push({ sql, values });
-    if (sql.includes("FROM attendance_schedule_templates WHERE id = $1 FOR UPDATE")) {
-      return { rows: [{ name: "Regular", startTime: "08:00:00", endTime: "16:00:00", endDayOffset: 0, lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0, workLocationId: null, active: true }] };
-    }
+    if (sql.includes("FOR UPDATE OF schedule")) return { rows: [inForce] };
+    if (sql.includes("effective_from > clock_timestamp()") && sql.includes("LIMIT 1")) return { rows: scheduled ? [scheduled] : [] };
     if (sql.includes("effective_from > clock_timestamp()")) return { rows: pending };
     if (sql.includes("AT TIME ZONE 'Asia/Jakarta') AS at")) return { rows: [{ at: new Date(`${String(values[0])}T00:00:00+07:00`) }] };
     if (sql.includes("clock_timestamp() AS at")) return { rows: [{ at: new Date("2026-10-27T03:00:00Z") }] };
@@ -66,6 +68,8 @@ describe("ATT-011-4a shift versions from a date", () => {
     statements.length = 0;
     pending = [];
     inUse = [];
+    inForce = { name: "Regular", startTime: "08:00:00", endTime: "16:00:00", endDayOffset: 0, lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0, workLocationId: null, active: true, versionId: CURRENT };
+    scheduled = null;
     granted.permissions = ["attendance.schedule.manage"];
     app = Fastify({ logger: false });
     await registerAttendanceWorkforceRoutes(app, { query: vi.fn(async () => ({ rows: [] })), connect } as unknown as Pool, config, {
@@ -96,13 +100,40 @@ describe("ATT-011-4a shift versions from a date", () => {
 
   it("replaces a pending change that nothing uses, and refuses one that a roster already uses", async () => {
     pending = [{ id: PENDING, used: false }];
-    expect((await patch({ startTime: "07:00", effectiveFrom: "2026-11-02" })).statusCode).toBe(200);
-    expect(statements.some((item) => item.sql.startsWith("DELETE FROM attendance_schedule_versions") && item.values[0] === PENDING)).toBe(true);
+    scheduled = { ...inForce, versionId: PENDING, startTime: "07:30:00", endTime: "15:30:00" };
+    const replaced = await patch({ lateGraceMinutes: 5, effectiveFrom: "2026-11-02" });
+    expect(replaced.statusCode, replaced.body).toBe(200);
+    // Delete the pending version, reopen the latest remaining one, then close it at the new date.
+    const order = ["DELETE FROM attendance_schedule_versions", "SET effective_to = NULL", "SET effective_to = $2", "INSERT INTO attendance_schedule_versions"]
+      .map((fragment) => statements.findIndex((item) => item.sql.includes(fragment)));
+    expect(order.every((index, position) => index >= 0 && (position === 0 || index > order[position - 1]!))).toBe(true);
+    expect(statements[order[0]!]!.values[0]).toBe(PENDING);
+    // A partial change to the scheduled version keeps its hours.
+    expect(versionInsert()!.values.slice(4, 8)).toEqual(["07:30:00", "15:30:00", 0, 5]);
+    expect(statements.find((item) => item.sql.includes("FROM attendance_schedule_version_blocks block"))!.values).toEqual([PENDING]);
+    const audit = statements.find((item) => item.sql.includes("INSERT INTO access_audit_events"))!;
+    expect(JSON.parse(String(audit.values[5]))).toMatchObject({ replacedVersionIds: [PENDING] });
     statements.length = 0;
     pending = [{ id: PENDING, used: true }];
     const refused = await patch({ startTime: "07:00", effectiveFrom: "2026-11-02" });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().code).toBe("SCHEDULE_FUTURE_VERSION_IN_USE");
+    expect(statements.at(-1)?.sql).toBe("ROLLBACK");
+  });
+
+  it("builds a later partial change on the version in force, not on the template columns", async () => {
+    inForce = { ...inForce, startTime: "07:30:00", endTime: "15:30:00" };
+    expect((await patch({ lateGraceMinutes: 5 })).statusCode).toBe(200);
+    expect(versionInsert()!.values.slice(4, 8)).toEqual(["07:30:00", "15:30:00", 0, 5]);
+    expect(statements.find((item) => item.sql.includes("FROM attendance_schedule_version_blocks block"))!.values).toEqual([CURRENT]);
+  });
+
+  it("refuses a change from now while a change from a later date is scheduled", async () => {
+    pending = [{ id: PENDING, used: false }];
+    const refused = await patch({ lateGraceMinutes: 5 });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().code).toBe("SCHEDULE_CHANGE_PENDING");
+    expect(statements.some((item) => item.sql.startsWith("DELETE FROM attendance_schedule_versions"))).toBe(false);
     expect(statements.at(-1)?.sql).toBe("ROLLBACK");
   });
 

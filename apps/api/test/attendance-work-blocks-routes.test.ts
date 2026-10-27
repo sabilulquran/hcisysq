@@ -45,8 +45,8 @@ describe("ATT-013 schedule blocks", () => {
   let currentBlocks: Array<{ startTime: string; endTime: string }> = [];
   const clientQuery = vi.fn(async (sql: string, values: unknown[] = []) => {
     statements.push({ sql, values });
-    if (sql.includes("FROM attendance_schedule_templates WHERE id = $1 FOR UPDATE")) {
-      return { rows: [{ name: "Pesantren Tahfizh", startTime: "04:00:00", endTime: "08:30:00", endDayOffset: 0, lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0, workLocationId: null, active: true }] };
+    if (sql.includes("FOR UPDATE OF schedule")) {
+      return { rows: [{ name: "Pesantren Tahfizh", startTime: "04:00:00", endTime: "08:30:00", endDayOffset: 0, lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0, workLocationId: null, active: true, versionId: "00000000-0000-4000-8000-000000021003" }] };
     }
     if (sql.includes("FROM attendance_schedule_version_blocks block")) return { rows: currentBlocks };
     if (sql.includes("effective_from > clock_timestamp()")) return { rows: [] };

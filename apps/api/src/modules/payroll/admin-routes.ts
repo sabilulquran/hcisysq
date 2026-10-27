@@ -237,11 +237,16 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
     }
   });
 
-  // The picker behind the compensation-profile screen. It names people, so it
-  // asks for the same permission as the profiles themselves, and it searches
-  // rather than listing everyone (ENG-LIST-001).
+  // The picker behind both reference screens: a compensation profile is opened
+  // against an employment, and a kasbon is recorded against the employee behind
+  // one. It names people, so it asks for a permission that already reaches
+  // names, and it searches rather than listing everyone (ENG-LIST-001).
   app.get("/payroll/employments", async (request, reply) => {
-    const actor = await requireAny(request, reply, ["payroll.profiles.manage", "payroll.calculate"]);
+    const actor = await requireAny(request, reply, [
+      "payroll.profiles.manage",
+      "payroll.calculate",
+      "payroll.loans.manage",
+    ]);
     if (!actor) return;
     const query = employmentQuery.safeParse(request.query ?? {});
     if (!query.success) {

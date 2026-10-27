@@ -53,6 +53,39 @@ function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof PayrollApiError ? cause.message : fallback;
 }
 
+/**
+ * ENG-LIST-001-J: the open tab and the register's page live in the query
+ * string, so the screen can be shared, refreshed and backed out of.
+ */
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab");
+  const page = Number(params.get("page"));
+  const pageSize = Number(params.get("pageSize"));
+  return {
+    tab: tab === "policies" || tab === "loans" || tab === "profiles" ? (tab as Tab) : null,
+    page: Number.isInteger(page) && page >= 1 ? page : 1,
+    pageSize: Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 100 ? pageSize : 25,
+  };
+}
+
+function writeUrlState(next: { tab?: Tab; page?: number; pageSize?: number }) {
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(next)) {
+    if (value === undefined) continue;
+    url.searchParams.set(key, String(value));
+  }
+  window.history.replaceState(null, "", url);
+}
+
+/** A field an operator typed that has to be a whole number, or nothing at all. */
+function wholeNumber(value: string): number | null | "invalid" {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : "invalid";
+}
+
 function PolicyPanel() {
   const [policies, setPolicies] = useState<PayrollPolicyVersion[]>([]);
   const [filter, setFilter] = useState("");
@@ -222,8 +255,8 @@ function PolicyPanel() {
 
 function LoanPanel() {
   const [loans, setLoans] = useState<PayrollLoan[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(() => readUrlState().page);
+  const [pageSize, setPageSize] = useState(() => readUrlState().pageSize);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -244,16 +277,21 @@ function LoanPanel() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    writeUrlState({ page, pageSize });
+  }, [load, page, pageSize]);
 
   async function submit() {
     if (!picked) return;
-    const principal = Number(form.principal);
-    if (!Number.isInteger(principal) || principal <= 0) {
+    const principal = wholeNumber(form.principal);
+    if (principal === "invalid" || principal === null || principal <= 0) {
       setError("Pokok kasbon harus bilangan bulat lebih dari nol.");
       return;
     }
-    const instalment = form.instalment.trim() === "" ? null : Number(form.instalment);
+    const instalment = wholeNumber(form.instalment);
+    if (instalment === "invalid" || instalment === 0) {
+      setError("Angsuran per bulan harus bilangan bulat lebih dari nol, atau dikosongkan.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -433,6 +471,14 @@ function ProfilePanel() {
 
   async function submit() {
     if (!picked) return;
+    const teachingHours = wholeNumber(form.teachingHoursPerWeek);
+    const spouse = wholeNumber(form.spouseCount);
+    const child = wholeNumber(form.childCount);
+    const dependants = wholeNumber(form.registeredDependants);
+    if ([teachingHours, spouse, child, dependants].includes("invalid")) {
+      setError("Jam mengajar dan jumlah tanggungan harus bilangan bulat, atau dikosongkan.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -441,10 +487,10 @@ function ProfilePanel() {
         effectiveFrom: form.effectiveFrom,
         education: form.education || null,
         workPattern: form.workPattern || null,
-        teachingHoursPerWeek: form.teachingHoursPerWeek === "" ? null : Number(form.teachingHoursPerWeek),
-        spouseCount: Number(form.spouseCount),
-        childCount: Number(form.childCount),
-        registeredDependants: Number(form.registeredDependants),
+        teachingHoursPerWeek: teachingHours,
+        spouseCount: spouse,
+        childCount: child,
+        registeredDependants: dependants,
         bpjsSegment: form.bpjsSegment,
         bankName: form.bankName || null,
         bankAccountNumber: form.bankAccountNumber || null,
@@ -471,6 +517,8 @@ function ProfilePanel() {
         <p className="mt-1 text-sm text-muted-foreground">
           Profil kompensasi menentukan pendidikan, pola kerja, tanggungan, segmen BPJS, dan rekening tujuan transfer.
           Tanpa profil yang berlaku pada tanggal gajian, perhitungan menolak pegawai itu dengan blocker PROFILE_MISSING.
+          Profil baru tidak menghapus apa pun: isian yang tidak ada di formulir ini — unit, jabatan, nilai kinerja,
+          PTKP, tarif Pj. Media — dibawa dari profil yang sedang berlaku.
         </p>
         <div className="mt-3">
           <EmploymentPicker label="Pegawai" picked={picked} onPick={setPicked} />
@@ -773,7 +821,9 @@ export function AdminPayrollReferencePage() {
       .then((value) => {
         if (!active) return;
         setSession(value);
-        setTab(permittedTabs(value)[0] ?? null);
+        const allowed = permittedTabs(value);
+        const fromUrl = readUrlState().tab;
+        setTab(fromUrl && allowed.includes(fromUrl) ? fromUrl : (allowed[0] ?? null));
       })
       .finally(() => {
         if (active) setResolved(true);
@@ -797,7 +847,10 @@ export function AdminPayrollReferencePage() {
             <button
               key={key}
               type="button"
-              onClick={() => setTab(key)}
+              onClick={() => {
+                setTab(key);
+                writeUrlState({ tab: key });
+              }}
               className={
                 "h-9 rounded-md border px-3 text-sm"
                 + (tab === key ? " border-primary bg-primary/10 font-medium" : "")

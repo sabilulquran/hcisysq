@@ -440,7 +440,11 @@ describe("PAY-003 the employment picker", () => {
     expect((await call("hc", "GET", "/payroll/employments?pageSize=101")).response.statusCode).toBe(400);
   });
 
-  it("is closed to finance, who do not open compensation profiles", async () => {
-    expect((await call("finance", "GET", "/payroll/employments")).response.statusCode).toBe(403);
+  it("opens for finance too, who record a kasbon against an employee", async () => {
+    expect((await call("finance", "GET", "/payroll/employments")).response.statusCode).toBe(200);
+  });
+
+  it("stays closed to an employee holding no payroll permission", async () => {
+    expect((await call("employee", "GET", "/payroll/employments")).response.statusCode).toBe(403);
   });
 });

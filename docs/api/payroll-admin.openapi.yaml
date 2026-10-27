@@ -435,7 +435,7 @@ components:
       properties:
         employmentId: { type: string, format: uuid }
         employeeId: { type: string, format: uuid }
-        employeeNumber: { type: [string, 'null'] }
+        employeeNumber: { type: string }
         fullName: { type: string }
         startedOn: { type: string, format: date }
         endedOn: { type: [string, 'null'], format: date }
@@ -449,7 +449,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         employeeId: { type: string, format: uuid }
-        employeeNumber: { type: [string, 'null'] }
+        employeeNumber: { type: string }
         fullName: { type: string }
         grantedOn: { type: string, format: date }
         principal: { type: string }

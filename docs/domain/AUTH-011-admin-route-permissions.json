@@ -2705,7 +2705,8 @@
     "url": "/payroll/employments",
     "permissions": [
       "payroll.profiles.manage",
-      "payroll.calculate"
+      "payroll.calculate",
+      "payroll.loans.manage"
     ]
   },
   {

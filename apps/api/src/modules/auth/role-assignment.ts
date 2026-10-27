@@ -115,6 +115,13 @@ export async function createRoleAssignment(
       (input.scopeType !== "organization" || !input.reason?.trim())) {
       throw new AuthError(400, "ADMIN_ORGANIZATION_MANDATE_REQUIRED", "Kepala HC memerlukan scope organisasi dan alasan penugasan.");
     }
+    // DOC-001/DOC-002 D-16: revoking an issued document is an act on the register, which has no
+    // unit dimension, so a unit-scoped grant would satisfy no guard and is refused rather than
+    // stored as an assignment that silently does nothing. The reason names who authorized it.
+    if (role.roleKey === DOCUMENT_CORRECTOR_ROLE_KEY &&
+      (input.scopeType !== "organization" || input.organizationalUnitId || !input.reason?.trim())) {
+      throw new AuthError(400, "ADMIN_ORGANIZATION_MANDATE_REQUIRED", "Korektor Dokumen Kepegawaian memerlukan scope organisasi dan alasan penugasan.");
+    }
     // ORG-010 §1.1: the board-view role is organization scope only and needs a reason naming the mandate.
     if (role.roleKey === BOARD_VIEWER_ROLE_KEY) {
       if (input.scopeType !== "organization" || input.organizationalUnitId) {

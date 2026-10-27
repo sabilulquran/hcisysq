@@ -54,8 +54,9 @@ export function AdminDocumentsPage() {
     subject: "", narrative: "", effectiveDate: todayInJakarta(),
   });
   const [session, setSession] = useState<AuthSession | null>(null);
-  // DOC-001/DOC-002: revoking needs documents.correct, which is a separate role grant. Without
-  // it the button would only produce a raw 403, so it is not offered.
+  // DOC-001/DOC-002: revoking needs documents.correct, which is a separate role grant (D-16).
+  // The button stays visible but disabled, with the reason in its title, so the capability is
+  // discoverable instead of silently absent.
   const canRevoke = hasPermission(session, "documents.correct");
 
   const load = async () => {
@@ -88,14 +89,10 @@ export function AdminDocumentsPage() {
 
   useEffect(() => {
     void load();
-    void getCurrentSession()
-      .then(setSession)
-      .catch(() => {
-        // Without the session the page cannot tell which actions to offer, so say so rather
-        // than silently hiding Batalkan from someone who does hold documents.correct.
-        setSession(null);
-        setError("Izin akun tidak dapat dibaca, sehingga sebagian tindakan disembunyikan. Muat ulang halaman.");
-      });
+    // getCurrentSession resolves to null on 401, on a failed response and on a network
+    // error alike, so a catch here would never run. The button below is therefore rendered
+    // disabled rather than hidden when the permission cannot be confirmed.
+    void getCurrentSession().then(setSession);
   }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
@@ -202,8 +199,9 @@ export function AdminDocumentsPage() {
                         {document.status === "REVOKED" ? " · dibatalkan" : ""}
                       </p>
                     </div>
-                    {document.status === "ISSUED" && canRevoke ? (
-                      <button type="button" disabled={busy} onClick={() => revoke(document.id)}
+                    {document.status === "ISSUED" ? (
+                      <button type="button" disabled={busy || !canRevoke} onClick={() => revoke(document.id)}
+                        title={canRevoke ? undefined : "Pembatalan memerlukan peran Korektor Dokumen Kepegawaian."}
                         className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
                         Batalkan
                       </button>

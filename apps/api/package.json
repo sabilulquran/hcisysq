@@ -13,7 +13,8 @@
     "auth:bootstrap-super-admin": "node --env-file=.env.local --import tsx src/modules/auth/cli/bootstrap-super-admin.ts",
     "auth:map-oidc-identity": "node --env-file=.env.local --import tsx src/modules/auth/cli/map-oidc-identity.ts",
     "employees:import": "node --env-file=.env.local --import tsx src/modules/employees/cli/import-employees.ts",
-    "employment:baseline": "node --env-file=.env.local --import tsx src/modules/employment/cli/employment-baseline.ts"
+    "employment:baseline": "node --env-file=.env.local --import tsx src/modules/employment/cli/employment-baseline.ts",
+    "employment:refresh-projection": "node --env-file=.env.local --import tsx src/modules/employment/cli/employment-refresh-projection.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

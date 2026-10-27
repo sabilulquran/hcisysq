@@ -15,6 +15,9 @@ import type {
   EmployeeImportStore,
   SaveEmployeeImportPreviewInput,
 } from "../application/employee-import-store.js";
+import { PROJECTED_IMPORT_FIELDS } from "../../employment/domain/index.js";
+import { loadEmploymentManagedEmployeeIds } from "../../employment/infrastructure/postgres-action-store.js";
+import { audit } from "../../employment/infrastructure/postgres-employment-store.js";
 
 interface ImportJobRow {
   id: string;
@@ -189,10 +192,14 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
 
       let insertCount = 0;
       let updateCount = 0;
+      let employmentFieldsIgnoredCount = 0;
+      const employmentManaged = await loadEmploymentManagedEmployeeIds(client);
 
       for (const row of rows.rows) {
         if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
-        const { action: actualAction, employeeId } = await this.upsertEmployee(client, row.payload, importId);
+        const { action: actualAction, employeeId, employmentFieldsIgnored } =
+          await this.upsertEmployee(client, row.payload, importId, employmentManaged);
+        if (employmentFieldsIgnored) employmentFieldsIgnoredCount += 1;
         await this.writeSourceSnapshot(client, job, row.row_number, employeeId, row.payload);
         if (actualAction === "insert") insertCount += 1;
         if (actualAction === "update") updateCount += 1;
@@ -203,6 +210,17 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
            WHERE import_job_id = $1 AND row_number = $2`,
           [importId, row.row_number, actualAction],
         );
+      }
+
+      if (employmentFieldsIgnoredCount > 0) {
+        await audit(client, {
+          actorAccountId: null,
+          action: "employment.import.fields_ignored",
+          entityType: "employee_import_job",
+          entityId: importId,
+          employeeId: null,
+          payload: { employeeCount: employmentFieldsIgnoredCount, fields: [...PROJECTED_IMPORT_FIELDS] },
+        });
       }
 
       const committed = await client.query<ImportJobRow>(
@@ -228,7 +246,8 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     client: PoolClient,
     candidate: EmployeeImportCandidate,
     importId: string,
-  ): Promise<{ action: "insert" | "update"; employeeId: string }> {
+    employmentManaged: ReadonlySet<string> = new Set(),
+  ): Promise<{ action: "insert" | "update"; employeeId: string; employmentFieldsIgnored: boolean }> {
     const existing = await client.query<{ id: string }>(
       "SELECT id FROM employees WHERE employee_number = $1 FOR UPDATE",
       [candidate.employeeNumber],
@@ -240,6 +259,30 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     const positionId = candidate.positionName
       ? await this.upsertReference(client, "positions", candidate.positionName)
       : null;
+
+    // EMP-005 §8.1: in AUTHORITATIVE the nine employment columns belong to the
+    // employment history, so the import updates only the rest of the master.
+    if (existing.rows[0] && employmentManaged.has(existing.rows[0].id)) {
+      await client.query(
+        `UPDATE employees SET
+          full_name = $2,
+          email = $3,
+          phone = $4,
+          education = $5,
+          source_last_import_job_id = $6,
+          updated_at = now()
+        WHERE employee_number = $1`,
+        [
+          candidate.employeeNumber,
+          candidate.fullName,
+          candidate.email,
+          candidate.phone,
+          candidate.education,
+          importId,
+        ],
+      );
+      return { action: "update", employeeId: existing.rows[0].id, employmentFieldsIgnored: true };
+    }
 
     if (existing.rows[0]) {
       await client.query(
@@ -278,7 +321,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
           importId,
         ],
       );
-      return { action: "update", employeeId: existing.rows[0].id };
+      return { action: "update", employeeId: existing.rows[0].id, employmentFieldsIgnored: false };
     }
 
     const employeeId = randomUUID();
@@ -308,7 +351,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         importId,
       ],
     );
-    return { action: "insert", employeeId };
+    return { action: "insert", employeeId, employmentFieldsIgnored: false };
   }
 
   /**

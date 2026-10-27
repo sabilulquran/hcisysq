@@ -2199,6 +2199,22 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/employment/action-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/employment-actions/preview",
+    "permissions": [
+      "employment.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/action-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/employment-actions",
+    "permissions": [
+      "employment.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "GET",
     "url": "/admin/organization/designer/drafts",

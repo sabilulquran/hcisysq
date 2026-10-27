@@ -75,7 +75,7 @@ describe("ATT-013 schedule blocks", () => {
     const shift = { name: "Pesantren Tahfizh", startTime: "04:00", endTime: "08:30", lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0 };
     const created = await send("POST", "/admin/attendance/schedules", { ...shift, extraBlocks: [{ startTime: "14:30", endTime: "19:30" }] });
     expect(created.statusCode, created.body).toBe(201);
-    expect(blockInserts().map((item) => item.values.slice(2))).toEqual([[2, "14:30", "19:30"]]);
+    expect(blockInserts().map((item) => item.values.slice(2))).toEqual([[2, "14:30", "19:30", null]]);
     statements.length = 0;
     const bad = await send("POST", "/admin/attendance/schedules", { ...shift, extraBlocks: [{ startTime: "08:00", endTime: "10:00" }] });
     expect(bad.statusCode).toBe(422);
@@ -83,11 +83,31 @@ describe("ATT-013 schedule blocks", () => {
     expect(statements).toHaveLength(0);
   });
 
+  it("stores the day share of each block when all are given (D-13-6)", async () => {
+    const created = await send("POST", "/admin/attendance/schedules", {
+      name: "Pesantren Tahfizh", startTime: "04:00", endTime: "08:30", lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0,
+      firstBlockWorkdayWeight: 0.4, extraBlocks: [{ startTime: "14:30", endTime: "19:30", workdayWeight: 0.6 }],
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(blockInserts()[0]!.values[5]).toBe(0.6);
+    const first = statements.find((item) => item.sql.includes("SET first_block_workday_weight"))!;
+    expect(first.values[1]).toBe(0.4);
+  });
+
+  it("writes a new version when only the block-1 share changes, keeping the block shares", async () => {
+    currentBlocks = [{ startTime: "14:30:00", endTime: "19:30:00", workdayWeight: 0.6 } as never];
+    const response = await send("PATCH", `/admin/attendance/schedules/${SCHEDULE}`, { firstBlockWorkdayWeight: 0.4 });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().versionId).toBeTruthy();
+    expect(blockInserts()[0]!.values[5]).toBe(0.6);
+    expect(statements.find((item) => item.sql.includes("SET first_block_workday_weight"))!.values[1]).toBe(0.4);
+  });
+
   it("keeps the current blocks when an edit sends none, and clears them with an empty list", async () => {
     currentBlocks = [{ startTime: "14:30:00", endTime: "19:30:00" }];
     const kept = await send("PATCH", `/admin/attendance/schedules/${SCHEDULE}`, { lateGraceMinutes: 2 });
     expect(kept.statusCode, kept.body).toBe(200);
-    expect(blockInserts().map((item) => item.values.slice(2))).toEqual([[2, "14:30:00", "19:30:00"]]);
+    expect(blockInserts().map((item) => item.values.slice(2))).toEqual([[2, "14:30:00", "19:30:00", null]]);
     statements.length = 0;
     const cleared = await send("PATCH", `/admin/attendance/schedules/${SCHEDULE}`, { extraBlocks: [] });
     expect(cleared.statusCode, cleared.body).toBe(200);

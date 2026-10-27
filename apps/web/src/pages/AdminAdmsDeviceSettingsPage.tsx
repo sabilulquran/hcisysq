@@ -8,6 +8,7 @@ import { capabilityByKey, confirmTypedPhrase, getAdmsDeviceProfile, operatorCapa
 import { activeTimeSync, setDuplicatePunch, setNtp } from "@/lib/admsPhysicalParity";
 import { hasPermission } from "@/lib/authorization";
 import { updateAdmsDevice, type AdmsDeviceLifecycle } from "@/lib/attendance";
+import { listAttendanceWorkLocations } from "@/lib/workforceAttendance";
 
 export function AdminAdmsDeviceSettingsPage() {
   const { deviceId, detail, session, refresh } = useDeviceAdmin();
@@ -21,6 +22,11 @@ export function AdminAdmsDeviceSettingsPage() {
   const [lifecycle, setLifecycle] = useState<AdmsDeviceLifecycle>("active");
   const [organizationalUnitId, setOrganizationalUnitId] = useState("");
   const [worksiteLabel, setWorksiteLabel] = useState("");
+  // ORG-005-2: the organisation's list of places; the free-text label stays as an old note.
+  const [workLocationId, setWorkLocationId] = useState("");
+  const [workLocations, setWorkLocations] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
+  const [workLocationsFailed, setWorkLocationsFailed] = useState(false);
+  const canPickWorkLocation = canConfigure && hasPermission(session, "attendance.schedule.manage");
   const [areaContext, setAreaContext] = useState("");
   const [duplicateSeconds, setDuplicateSeconds] = useState("");
   const [ntpHost, setNtpHost] = useState("");
@@ -37,7 +43,13 @@ export function AdminAdmsDeviceSettingsPage() {
     setProfile(profileResult);
     setCapabilities(operations.capabilities);
     setUnits(employees.filters.units);
-  }, [deviceId]);
+    if (canPickWorkLocation) {
+      // A failed list only hides the picker; the rest of the page still works.
+      await listAttendanceWorkLocations()
+        .then((result) => { setWorkLocations(result.items); setWorkLocationsFailed(false); })
+        .catch(() => { setWorkLocations([]); setWorkLocationsFailed(true); });
+    }
+  }, [deviceId, canPickWorkLocation]);
 
   useEffect(() => {
     if (!device) return;
@@ -56,6 +68,7 @@ export function AdminAdmsDeviceSettingsPage() {
     if (!profile) return;
     setOrganizationalUnitId(profile.organizationalUnitId ?? "");
     setWorksiteLabel(profile.worksiteLabel ?? "");
+    setWorkLocationId(profile.workLocationId ?? "");
     setAreaContext(profile.areaContext ?? "");
   }, [profile]);
 
@@ -77,6 +90,7 @@ export function AdminAdmsDeviceSettingsPage() {
           organizationalUnitId: organizationalUnitId || null,
           worksiteLabel: worksiteLabel.trim() || null,
           areaContext: areaContext.trim() || null,
+          ...(canPickWorkLocation ? { workLocationId: workLocationId || null } : {}),
         }),
       ]);
       setNotice("Identitas dan lokasi mesin sudah disimpan.");
@@ -150,7 +164,13 @@ export function AdminAdmsDeviceSettingsPage() {
           <label className="text-xs font-semibold text-muted-foreground">Nama mesin<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Serial<input value={device?.serialNumber ?? ""} disabled className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Unit<select value={organizationalUnitId} onChange={(e) => setOrganizationalUnitId(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm disabled:bg-surface"><option value="">Belum ditentukan</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
-          <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja<input value={worksiteLabel} onChange={(e) => setWorksiteLabel(e.target.value)} disabled={!canConfigure} placeholder="Contoh: Gedung Utama Lt. 1" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
+          <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja{canPickWorkLocation ? (<>
+            <select value={workLocationId} onChange={(e) => setWorkLocationId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm"><option value="">Belum ditentukan</option>{workLocations.filter((item) => item.active || item.id === workLocationId).map((item) => <option key={item.id} value={item.id}>{item.name}{item.active ? "" : " (nonaktif)"}</option>)}</select>
+            {workLocationsFailed ? <span className="mt-1 block text-[11px] font-normal text-danger-ink">Daftar lokasi kerja tidak dapat dimuat; lokasi yang sudah tersimpan tidak berubah.</span> : null}
+          </>) : (
+            <input value={profile?.workLocationName ?? ""} disabled placeholder="Belum ditentukan" className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" />
+          )}</label>
+          <label className="text-xs font-semibold text-muted-foreground">Catatan lokasi (lama)<input value={worksiteLabel} onChange={(e) => setWorksiteLabel(e.target.value)} disabled={!canConfigure} placeholder="Contoh: Gedung Utama Lt. 1" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Konteks area<input value={areaContext} onChange={(e) => setAreaContext(e.target.value)} disabled={!canConfigure} placeholder="Opsional" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Zona waktu<input value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Status<select value={lifecycle} onChange={(e) => setLifecycle(e.target.value as AdmsDeviceLifecycle)} disabled={!canConfigure || device?.lifecycle === "retired"} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm disabled:bg-surface"><option value="active">Aktif</option><option value="disabled">Dinonaktifkan</option><option value="quarantined">Karantina</option>{device?.lifecycle === "retired" ? <option value="retired">Dipensiunkan</option> : null}</select></label>

@@ -52,6 +52,18 @@ export interface AttendanceCalculationRow {
   incompleteSession: boolean | null;
   normal: number | null;
   actual: number | null;
+  /** ATT-013: the blocks of a multi-block day, null for a single-block day. */
+  blocks?: Array<{ sequence: number; status: string; firstCheckInAt: string | null; lastCheckOutAt: string | null }> | null;
+}
+
+/** ATT-013 §3: "Blok 1 04.02–08.28 · Blok 2 tidak hadir" under a multi-block day row. */
+export function blockSummaryText(blocks: NonNullable<AttendanceCalculationRow["blocks"]>) {
+  const clock = (value: string | null) => value
+    ? new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" }).format(new Date(value))
+    : "?";
+  return blocks.map((block) => block.status === "absent" ? `Blok ${block.sequence} tidak hadir`
+    : block.status === "scheduled" || block.status === "pending" ? `Blok ${block.sequence} belum`
+    : `Blok ${block.sequence} ${clock(block.firstCheckInAt)}–${clock(block.lastCheckOutAt)}`).join(" · ");
 }
 
 export interface AttendanceCalculationRows {

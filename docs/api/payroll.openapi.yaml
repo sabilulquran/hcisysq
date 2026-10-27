@@ -215,6 +215,56 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
 
+  /payroll/periods/{periodId}/inputs/from-attendance:
+    post:
+      tags: [Payroll]
+      operationId: resolvePayrollAttendanceInputs
+      summary: Fill the period's attendance-derived inputs
+      description: >-
+        Requires payroll.inputs.manage, and only while the period is COLLECTING or
+        CALCULATED. Reads approved overtime (ATT-010) for permanent and probation
+        employments, and, for contract workers, the working days with a recorded
+        check-in inside the period's cutoff window; both are stored as ordinary
+        period inputs with origin ATTENDANCE. It replaces the whole set: a row an
+        earlier resolve wrote and attendance no longer supports is removed, so a
+        cancelled overtime request stops being paid. A correction typed by hand is
+        overwritten too, which is why this is an explicit action rather than part
+        of the calculation. The actor's own employment is left alone.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: How many employments each key produced, and the period's inputs afterwards
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [overtimeCount, attendanceCount, clearedCount, skippedOwnCount, inputs]
+                properties:
+                  overtimeCount: { type: integer }
+                  attendanceCount: { type: integer }
+                  clearedCount:
+                    type: integer
+                    description: Rows an earlier resolve wrote that attendance no longer supports.
+                  skippedOwnCount:
+                    type: integer
+                    description: Rows left alone because they belong to the actor's own employment.
+                  inputs:
+                    type: array
+                    items: { $ref: '#/components/schemas/PayrollPeriodInput' }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period has left COLLECTING and CALCULATED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
   /payroll/periods/{periodId}/inputs/{employmentId}/{inputKey}:
     delete:
       tags: [Payroll]

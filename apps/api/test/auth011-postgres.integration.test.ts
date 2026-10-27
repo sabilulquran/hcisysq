@@ -190,7 +190,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(229);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(230);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(39);
@@ -649,6 +649,24 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
 
     expect((await organization.listChangeSetComposers(draft.changeSet.id)).sort()).toEqual([creator, editor].sort());
     await pool.query("UPDATE organization_change_sets SET status = 'DISCARDED' WHERE id = $1", [draft.changeSet.id]);
+  }, 60000);
+
+  it("ORG-005-2: device location and the in-use guard run against PostgreSQL", async () => {
+    const created = await request("admin", "POST", "/admin/attendance/work-locations",
+      { name: "Synthetic Kampus", latitude: -6.2, longitude: 106.8, radiusMeters: 100 });
+    expect(created.statusCode, created.body).toBe(201);
+    const locationId = created.json().id as string;
+
+    // The device profile reads the location name with a correlated subselect.
+    const missing = randomUUID();
+    expect((await request("admin", "GET", `/admin/attendance/adms/devices/${missing}/wdms-profile`)).statusCode).toBe(404);
+    expect((await request("admin", "PATCH", `/admin/attendance/adms/devices/${missing}/wdms-profile`,
+      { workLocationId: locationId })).statusCode).toBe(404);
+
+    // Nothing uses it yet, so it can be switched off; the uses query runs on the real schema.
+    const off = await request("admin", "PATCH", `/admin/attendance/work-locations/${locationId}`, { active: false });
+    expect(off.statusCode, off.body).toBe(200);
+    expect((await pool.query("SELECT active FROM attendance_work_locations WHERE id = $1", [locationId])).rows[0].active).toBe(false);
   }, 60000);
 });
 

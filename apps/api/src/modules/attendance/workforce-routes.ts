@@ -38,6 +38,7 @@ import {
   restrictedMediaReady,
 } from "./restricted-media-crypto.js";
 import { attendanceTodayReadModel } from "./today.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import { attendanceTransactions } from "./transactions.js";
 import { unattributedPins, unscheduledEmployees } from "./unscheduled.js";
 
@@ -449,6 +450,45 @@ async function sendError(reply: FastifyReply, error: unknown) {
   if (!(error instanceof WorkforceAttendanceError)) throw error;
   reply.header("Cache-Control", "no-store");
   return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+}
+
+/**
+ * ORG-005-2 (D-5-7): what still uses a work location — units of the structure effective today or of
+ * any structure published to take effect later, and every machine that is not retired. Names only.
+ * Runs on the caller's transaction, after the location row is locked.
+ */
+async function workLocationUses(
+  db: PoolClient,
+  locationId: string,
+): Promise<Array<{ kind: "UNIT" | "DEVICE"; name: string }>> {
+  const asOf = jakartaBusinessDate();
+  const units = await db.query<{ name: string }>(
+    `WITH current_structure AS (
+       SELECT id FROM organization_change_sets
+       WHERE status = 'PUBLISHED' AND effective_on <= $2::date
+       ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+       LIMIT 1
+     )
+     SELECT DISTINCT node.name
+     FROM organization_nodes node
+     JOIN organization_change_sets change_set ON change_set.id = node.change_set_id
+     WHERE change_set.status = 'PUBLISHED'
+       AND node.work_location_id = $1
+       AND node.active
+       AND (node.effective_to IS NULL OR node.effective_to >= $2::date)
+       AND (change_set.effective_on > $2::date OR change_set.id IN (SELECT id FROM current_structure))
+     ORDER BY node.name`,
+    [locationId, asOf],
+  );
+  const devices = await db.query<{ name: string }>(
+    `SELECT coalesce(display_name, serial_number) AS name FROM attendance_adms_devices
+     WHERE work_location_id = $1 AND lifecycle <> 'retired' ORDER BY name`,
+    [locationId],
+  );
+  return [
+    ...units.rows.map((row) => ({ kind: "UNIT" as const, name: row.name })),
+    ...devices.rows.map((row) => ({ kind: "DEVICE" as const, name: row.name })),
+  ];
 }
 
 export async function registerAttendanceWorkforceRoutes(
@@ -967,26 +1007,54 @@ export async function registerAttendanceWorkforceRoutes(
     if (!params.success || !body.success) {
       return reply.status(400).send({ code: "INVALID_WORK_LOCATION_UPDATE", message: "Perubahan lokasi kerja tidak valid." });
     }
-    const current = await pool.query<{
-      name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean;
-    }>(
-      `SELECT name, latitude, longitude, radius_meters AS "radiusMeters", active
-       FROM attendance_work_locations WHERE id = $1`,
-      [params.data.locationId],
-    );
-    const item = current.rows[0];
-    if (!item) return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
-    const next = { ...item, ...body.data };
-    await pool.query(
-      `UPDATE attendance_work_locations
-       SET name = $2, latitude = $3, longitude = $4, radius_meters = $5,
-           active = $6, updated_at = now()
-       WHERE id = $1`,
-      [params.data.locationId, next.name, next.latitude, next.longitude, next.radiusMeters, next.active],
-    );
-    await insertAudit(pool, principal.id, "attendance.work_location.updated", "attendance_work_location", params.data.locationId, {
-      fields: Object.keys(body.data),
-    });
+    // ORG-005-2: the row is locked, so a machine cannot be linked between the in-use check and the
+    // switch-off (a link takes a share lock on the same row).
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query<{
+        name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean;
+      }>(
+        `SELECT name, latitude, longitude, radius_meters AS "radiusMeters", active
+         FROM attendance_work_locations WHERE id = $1 FOR UPDATE`,
+        [params.data.locationId],
+      );
+      const item = current.rows[0];
+      if (!item) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "WORK_LOCATION_NOT_FOUND", message: "Lokasi kerja tidak ditemukan." });
+      }
+      // ORG-005-2 (DRAFT D-5-7): a location still named by a published unit or a machine is not
+      // switched off; the refusal names what still uses it.
+      if (body.data.active === false && item.active) {
+        const uses = await workLocationUses(client, params.data.locationId);
+        if (uses.length > 0) {
+          await client.query("ROLLBACK");
+          return reply.status(409).send({
+            code: "WORK_LOCATION_IN_USE",
+            message: "Lokasi kerja ini masih dipakai unit atau mesin absensi.",
+            details: { uses },
+          });
+        }
+      }
+      const next = { ...item, ...body.data };
+      await client.query(
+        `UPDATE attendance_work_locations
+         SET name = $2, latitude = $3, longitude = $4, radius_meters = $5,
+             active = $6, updated_at = now()
+         WHERE id = $1`,
+        [params.data.locationId, next.name, next.latitude, next.longitude, next.radiusMeters, next.active],
+      );
+      await insertAudit(client, principal.id, "attendance.work_location.updated", "attendance_work_location", params.data.locationId, {
+        fields: Object.keys(body.data),
+      });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
     return reply.send({ id: params.data.locationId });
   });
 

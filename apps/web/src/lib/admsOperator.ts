@@ -8,6 +8,9 @@ export interface AdmsDeviceProfile {
   organizationalUnitId: string | null;
   areaContext: string | null;
   worksiteLabel: string | null;
+  /** ORG-005-2 (DRAFT D-5-4): the work location this machine stands at. */
+  workLocationId?: string | null;
+  workLocationName?: string | null;
   heartbeatIntervalSeconds: number;
   desiredPushProtocolVersion: string | null;
 }
@@ -30,7 +33,7 @@ export async function getAdmsDeviceProfile(deviceId: string) {
 
 export async function updateAdmsDeviceProfile(
   deviceId: string,
-  input: Partial<Pick<AdmsDeviceProfile, "organizationalUnitId" | "areaContext" | "worksiteLabel">>,
+  input: Partial<Pick<AdmsDeviceProfile, "organizationalUnitId" | "areaContext" | "worksiteLabel" | "workLocationId">>,
 ) {
   const result = await readJson<{ item: AdmsDeviceProfile }>(
     await fetch(`/api/admin/attendance/adms/devices/${deviceId}/wdms-profile`, {

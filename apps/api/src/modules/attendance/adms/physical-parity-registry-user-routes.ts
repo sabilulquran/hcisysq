@@ -26,6 +26,8 @@ const profileSchema = z.object({
   organizationalUnitId: z.string().uuid().nullable().optional(),
   areaContext: z.string().trim().min(1).max(160).nullable().optional(),
   worksiteLabel: z.string().trim().min(1).max(160).nullable().optional(),
+  // ORG-005-2 (DRAFT D-5-4): the work location this machine stands at.
+  workLocationId: z.string().uuid().nullable().optional(),
   heartbeatIntervalSeconds: z.number().int().min(5).max(3600).optional(),
   desiredPushProtocolVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/).nullable().optional(),
 }).refine((value) => Object.values(value).some((entry) => entry !== undefined), {
@@ -133,6 +135,8 @@ type Device = {
   organizationalUnitId: string | null;
   areaContext: string | null;
   worksiteLabel: string | null;
+  workLocationId?: string | null;
+  workLocationName?: string | null;
   deviceRole: string;
   transferMode: string;
   heartbeatIntervalSeconds: number;
@@ -282,6 +286,9 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
       `SELECT id, serial_number AS "serialNumber", lifecycle, timezone,
               organizational_unit_id AS "organizationalUnitId",
               area_context AS "areaContext", worksite_label AS "worksiteLabel",
+              work_location_id AS "workLocationId",
+              (SELECT location.name FROM attendance_work_locations location
+               WHERE location.id = attendance_adms_devices.work_location_id) AS "workLocationName",
               device_role AS "deviceRole", transfer_mode AS "transferMode",
               heartbeat_interval_seconds AS "heartbeatIntervalSeconds",
               desired_push_protocol_version AS "desiredPushProtocolVersion"
@@ -306,6 +313,15 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
           const unit = await client.query<{ id: string }>(`SELECT id FROM organizational_units WHERE id = $1`, [body.data.organizationalUnitId]);
           if (!unit.rows[0]) throw new RegistryParityError(404, "ORGANIZATIONAL_UNIT_NOT_FOUND", "Unit organisasi tidak ditemukan.");
         }
+        if (body.data.workLocationId) {
+          const location = await client.query<{ active: boolean }>(
+            // Share lock: a concurrent switch-off waits, then sees this machine as a use.
+            "SELECT active FROM attendance_work_locations WHERE id = $1 FOR SHARE", [body.data.workLocationId],
+          );
+          if (location.rows[0]?.active !== true) {
+            throw new RegistryParityError(400, "INVALID_WORK_LOCATION", "Lokasi kerja tidak ada atau sudah dinonaktifkan.");
+          }
+        }
         await client.query(
           `UPDATE attendance_adms_devices
            SET organizational_unit_id = CASE WHEN $2::boolean THEN $3::uuid ELSE organizational_unit_id END,
@@ -313,6 +329,7 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
                worksite_label = CASE WHEN $6::boolean THEN $7::text ELSE worksite_label END,
                heartbeat_interval_seconds = COALESCE($8, heartbeat_interval_seconds),
                desired_push_protocol_version = CASE WHEN $9::boolean THEN $10::text ELSE desired_push_protocol_version END,
+               work_location_id = CASE WHEN $11::boolean THEN $12::uuid ELSE work_location_id END,
                device_role = 'attendance_only', transfer_mode = 'push', updated_at = now()
            WHERE id = $1`,
           [
@@ -326,6 +343,8 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
             body.data.heartbeatIntervalSeconds ?? null,
             body.data.desiredPushProtocolVersion !== undefined,
             body.data.desiredPushProtocolVersion ?? null,
+            body.data.workLocationId !== undefined,
+            body.data.workLocationId ?? null,
           ],
         );
         await audit(client, {
@@ -338,6 +357,9 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
           `SELECT id, serial_number AS "serialNumber", lifecycle, timezone,
                   organizational_unit_id AS "organizationalUnitId",
                   area_context AS "areaContext", worksite_label AS "worksiteLabel",
+                  work_location_id AS "workLocationId",
+                  (SELECT location.name FROM attendance_work_locations location
+               WHERE location.id = attendance_adms_devices.work_location_id) AS "workLocationName",
                   device_role AS "deviceRole", transfer_mode AS "transferMode",
                   heartbeat_interval_seconds AS "heartbeatIntervalSeconds",
                   desired_push_protocol_version AS "desiredPushProtocolVersion"

@@ -15,6 +15,7 @@ import {
   createLoan,
   listCompensationProfiles,
   listLoans,
+  listPayrollEmployments,
   listPolicyVersions,
   openCompensationProfile,
   openPolicyVersion,
@@ -62,6 +63,9 @@ const profileBody = z.object({
   bpjsDecisionReference: z.string().trim().max(200).nullable().optional(),
   ptkpStatus: z.string().trim().max(16).nullable().optional(),
   pjMediaRatePerContent: z.number().int().min(0).nullable().optional(),
+  // The transfer list prints the bank beside the account, so the profile has
+  // to be able to carry one; before this it could only ever be empty there.
+  bankName: z.string().trim().max(120).nullable().optional(),
   bankAccountNumber: z.string().trim().max(64).nullable().optional(),
   bankAccountName: z.string().trim().max(200).nullable().optional(),
 });
@@ -74,7 +78,16 @@ const loanBody = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-const loanQuery = z.object({ employeeId: z.string().uuid().optional() });
+// ENG-LIST-001: the register grows with every kasbon, so it is read a page at
+// a time with the total beside it.
+const pageQuery = {
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+};
+
+const loanQuery = z.object({ employeeId: z.string().uuid().optional(), ...pageQuery });
+
+const employmentQuery = z.object({ q: z.string().trim().max(120).optional(), ...pageQuery });
 
 const loanDeductionsBody = z.object({
   // An amount of 0 removes this period's instalment for that loan, so finance
@@ -224,6 +237,29 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
     }
   });
 
+  // The picker behind both reference screens: a compensation profile is opened
+  // against an employment, and a kasbon is recorded against the employee behind
+  // one. It names people, so it asks for a permission that already reaches
+  // names, and it searches rather than listing everyone (ENG-LIST-001).
+  app.get("/payroll/employments", async (request, reply) => {
+    const actor = await requireAny(request, reply, [
+      "payroll.profiles.manage",
+      "payroll.calculate",
+      "payroll.loans.manage",
+    ]);
+    if (!actor) return;
+    const query = employmentQuery.safeParse(request.query ?? {});
+    if (!query.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Parameter tidak valid." });
+    }
+    const { employments, total } = await listPayrollEmployments(pool, {
+      q: query.data.q ?? null,
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+    });
+    return send(reply, 200, { employments, total, page: query.data.page, pageSize: query.data.pageSize });
+  });
+
   app.get("/payroll/employments/:employmentId/compensation-profiles", async (request, reply) => {
     const actor = await requireAny(request, reply, ["payroll.profiles.manage", "payroll.calculate"]);
     if (!actor) return;
@@ -300,7 +336,12 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
     if (!query.success) {
       return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Parameter tidak valid." });
     }
-    return send(reply, 200, { loans: await listLoans(pool, query.data.employeeId) });
+    const { loans, total } = await listLoans(pool, {
+      employeeId: query.data.employeeId ?? null,
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+    });
+    return send(reply, 200, { loans, total, page: query.data.page, pageSize: query.data.pageSize });
   });
 
   app.post("/payroll/loans", async (request, reply) => {

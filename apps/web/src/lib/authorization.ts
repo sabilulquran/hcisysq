@@ -31,6 +31,12 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
     "attendance.calculation.run",
+    // PAY-003: payroll roles hold none of the permissions above, so without
+    // these the admin shell bounced a Director or a finance account straight
+    // back to the home page, whatever the payroll rules below said.
+    "payroll.periods.manage", "payroll.approve", "payroll.reopen.approve", "payroll.payments.confirm",
+    "payroll.reports.read.organization", "payroll.policies.manage", "payroll.loans.manage",
+    "payroll.profiles.manage",
   ].some((permission) => hasPermission(session, permission));
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   // EMP-005: HC-only; Super Admin legacy compatibility never carries employment.*.
@@ -41,6 +47,18 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // PAY-003: exactly the permissions the API lets read a period
   // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
   // anyone else would show them a menu entry leading to a 403.
+  // PAY-003 reference data: a different set of permissions from the periods.
+  // Finance holds the loan register and nothing else here; human capital holds
+  // the policy and the profiles. Checked before the period rule below, which
+  // would otherwise answer for this path too. The rule after it is the one
+  // about reading a period (PERIOD_READ_PERMISSIONS in the payroll lifecycle).
+  if (path === "/admin/payroll/reference") {
+    return [
+      "payroll.policies.manage",
+      "payroll.loans.manage",
+      "payroll.profiles.manage",
+    ].some((permission) => hasPermission(session, permission));
+  }
   if (/^\/admin\/payroll(?:\/|$)/.test(path)) {
     return [
       "payroll.periods.manage",

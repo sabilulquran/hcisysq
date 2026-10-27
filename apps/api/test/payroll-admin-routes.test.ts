@@ -116,6 +116,23 @@ function createPool(persona: Persona, options: Options = {}) {
       writes.push("loan");
       return { rows: [], rowCount: 1 };
     }
+    if (sql.includes("count(*)::int AS total")) {
+      return { rows: [{ total: 1 }], rowCount: 1 };
+    }
+    if (sql.includes("FROM employments e")) {
+      return {
+        rows: [{
+          employmentId: EMPLOYMENT_ID,
+          employeeId: EMPLOYEE_ID,
+          employeeNumber: "YSQ-0001",
+          fullName: "Pegawai Uji",
+          startedOn: "2020-01-01",
+          endedOn: null,
+          profileCount: 1,
+        }],
+        rowCount: 1,
+      };
+    }
     // The balance query also reads payroll_loans, so it has to be matched first.
     if (sql.includes("balance")) {
       return { rows: [{ balance: String(options.loanBalance ?? 900_000) }], rowCount: 1 };
@@ -324,6 +341,16 @@ describe("PAY-003 loans", () => {
     expect((await call("hc", "POST", "/payroll/loans", { payload: loan })).response.statusCode).toBe(403);
   });
 
+  it("reads the register a page at a time, with the total", async () => {
+    const { response } = await call("finance", "GET", "/payroll/loans?page=1&pageSize=25");
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ total: 1, page: 1, pageSize: 25 });
+  });
+
+  it("refuses a page larger than the standard allows", async () => {
+    expect((await call("finance", "GET", "/payroll/loans?pageSize=101")).response.statusCode).toBe(400);
+  });
+
   it("keeps the loan register itself closed to human capital", async () => {
     // Section 3.4: only payroll.loans.manage. The calculation reads the balances
     // inside its own transaction, so payroll.calculate needs no way in.
@@ -396,5 +423,28 @@ describe("PAY-003 loans", () => {
   it("answers every response with no-store", async () => {
     const { response } = await call("finance", "GET", "/payroll/loans");
     expect(response.headers["cache-control"]).toBe("no-store");
+  });
+});
+
+describe("PAY-003 the employment picker", () => {
+  it("answers a search with one page and the total beside it", async () => {
+    const { response } = await call("hc", "GET", "/payroll/employments?q=Pegawai&page=1&pageSize=25");
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ total: 1, page: 1, pageSize: 25 });
+    expect(response.json().employments[0]).toMatchObject({ fullName: "Pegawai Uji" });
+  });
+
+  it("refuses a page larger than the standard allows", async () => {
+    // ENG-LIST-001: 100 is the ceiling, and asking for more is a mistake the
+    // caller is told about rather than quietly trimmed.
+    expect((await call("hc", "GET", "/payroll/employments?pageSize=101")).response.statusCode).toBe(400);
+  });
+
+  it("opens for finance too, who record a kasbon against an employee", async () => {
+    expect((await call("finance", "GET", "/payroll/employments")).response.statusCode).toBe(200);
+  });
+
+  it("stays closed to an employee holding no payroll permission", async () => {
+    expect((await call("employee", "GET", "/payroll/employments")).response.statusCode).toBe(403);
   });
 });

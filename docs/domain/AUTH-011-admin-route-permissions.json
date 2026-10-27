@@ -2804,6 +2804,16 @@
   {
     "file": "apps/api/src/modules/payroll/admin-routes.ts",
     "method": "GET",
+    "url": "/payroll/employments",
+    "permissions": [
+      "payroll.profiles.manage",
+      "payroll.calculate",
+      "payroll.loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/admin-routes.ts",
+    "method": "GET",
     "url": "/payroll/employments/:employmentId/compensation-profiles",
     "permissions": [
       "payroll.profiles.manage",

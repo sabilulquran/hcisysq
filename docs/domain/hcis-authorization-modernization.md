@@ -4,6 +4,13 @@
 
 **Status:** ACCEPTED product decision; implementation pending independent review.
 
+> **Superseded in part by AUTH-014 (ADR-0006, owner decision 2026-10-27).** The 2026-10-16 rule
+> "only Super Admin grants or removes roles" is replaced: granting moves to the Platform
+> Administrator layer in SQ Hub over an authenticated machine channel, and the separate
+> SUPER_ADMIN account becomes a dormant break-glass path. The self-grant prohibition, the role
+> and permission allowlists, the mandate requirements and atomic audit are unchanged and still
+> apply to both channels. See `docs/domain/sq-core-administrator-layers.md`.
+
 This specification supersedes principal-only admin eligibility in AUTH-010,
 ORG-001 and the existing administrative module contracts for this transitional
 release. Authentication and workflow decision contracts remain unchanged.

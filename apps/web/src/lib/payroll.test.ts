@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   employeeLabel,
   formatRupiah,
+  payrollInputLabel,
+  payrollInputValue,
   payrollActionLabel,
   payrollOperationLabel,
   payrollStateLabel,
@@ -82,5 +84,32 @@ describe("PAY-003 who a row belongs to", () => {
     // An employment with no employee record is a data problem the reviewer has
     // to see, so the row stays on screen with something to search for.
     expect(employeeLabel("0f8a1c7d-2b64-4a9e-9d1f-77a0c2b3e456", identities)).toBe("0f8a1c7d");
+  });
+});
+
+describe("PAY-003 period input vocabulary", () => {
+  it("names the inputs an operator types", () => {
+    expect(payrollInputLabel("ADJUSTMENT")).toBe("Penyesuaian");
+    expect(payrollInputLabel("PRORATION_FACTOR")).toBe("Faktor prorata");
+    expect(payrollInputLabel("PJ_MEDIA")).toBe("Konten Pj. Media");
+  });
+
+  it("names the ones the attendance resolver writes, which are read-only here", () => {
+    expect(payrollInputLabel("OVERTIME_HOURS")).toBe("Jam lembur");
+    expect(payrollInputLabel("CONTRACT_ATTENDANCE_DAYS")).toBe("Hari hadir PKWT");
+  });
+});
+
+describe("PAY-003 how an input value reads", () => {
+  it("shows rupiah where the value is rupiah", () => {
+    expect(payrollInputValue("ADJUSTMENT", "250000.0000")).toBe("Rp250.000");
+    expect(payrollInputValue("ARREARS", "1500000")).toBe("Rp1.500.000");
+  });
+
+  it("leaves a factor or an hour count as a number", () => {
+    // A proration factor is not money, and 0.5 must not read as fifty rupiah.
+    expect(payrollInputValue("PRORATION_FACTOR", "0.5000")).toBe("0.5");
+    expect(payrollInputValue("CONTRACT_TEACHING_HOURS", "18.0000")).toBe("18");
+    expect(payrollInputValue("PJ_MEDIA", "3")).toBe("3");
   });
 });

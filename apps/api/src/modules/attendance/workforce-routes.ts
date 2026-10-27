@@ -631,12 +631,18 @@ export async function registerAttendanceWorkforceRoutes(
           [employee.id, workDate],
         ),
         pool.query(
-          `SELECT id, work_date::text AS "workDate", requested_minutes AS "requestedMinutes",
-             approved_minutes AS "approvedMinutes", note, status,
-             decision_note AS "decisionNote", created_at AS "createdAt", decided_at AS "decidedAt"
-           FROM attendance_overtime_requests
-           WHERE employee_id = $1
-           ORDER BY work_date DESC, created_at DESC
+          `SELECT request.id, request.work_date::text AS "workDate", request.requested_minutes AS "requestedMinutes",
+             request.approved_minutes AS "approvedMinutes", request.note, request.status,
+             request.decision_note AS "decisionNote", request.created_at AS "createdAt", request.decided_at AS "decidedAt",
+             -- ATT-011-6b-2: an order from the supervisor shows as a card the employee agrees to or declines.
+             request.initiated_by AS "initiatedBy", supervisor.full_name AS "supervisorName",
+             CASE WHEN request.status <> 'submitted' THEN NULL
+                  WHEN request.initiated_by = 'supervisor' THEN 'employee'
+                  WHEN request.initiated_by = 'employee' THEN 'supervisor' ELSE 'hc' END AS awaiting
+           FROM attendance_overtime_requests request
+           LEFT JOIN employees supervisor ON supervisor.id = request.supervisor_employee_id
+           WHERE request.employee_id = $1
+           ORDER BY request.work_date DESC, request.created_at DESC
            LIMIT 20`,
           [employee.id],
         ),

@@ -1,6 +1,11 @@
 # Access Model
 
 > AUTH-011 supersedes principal-only administrative eligibility in this document.
+> AUTH-014 (ADR-0006, owner decision 2026-10-27) supersedes "only Super Admin grants roles":
+> role granting moves to the Platform Administrator layer in SQ Hub through an authenticated
+> machine channel, the separate SUPER_ADMIN account becomes a dormant break-glass, and HCIS
+> gains a module-administrator role that never grants roles and never touches accounts.
+> See `docs/domain/sq-core-administrator-layers.md`.
 > See [HCIS authorization modernization](hcis-authorization-modernization.md) for
 > domain/platform boundaries, granular permissions and transitional legacy compatibility.
 

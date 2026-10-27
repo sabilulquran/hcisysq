@@ -7,6 +7,7 @@ import {
   CalendarRange,
   ClipboardCheck,
   Clock3,
+  FileSignature,
   Grid2X2,
   History,
   Fingerprint,
@@ -34,6 +35,7 @@ export type AdminNavKey =
   | "import"
   | "history"
   | "employment-consistency"
+  | "decision-documents"
   | "organization"
   | "attendance"
   | "attendance-shifts"
@@ -77,6 +79,7 @@ const navGroups: AdminNavGroup[] = [
       { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
       { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
       { key: "employment-consistency", label: "Kecocokan Data", href: "/admin/employment/consistency", icon: ClipboardCheck },
+      { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
     ],
   },
   {

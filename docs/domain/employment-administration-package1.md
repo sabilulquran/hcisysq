@@ -534,6 +534,10 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `DECISION_DOCUMENT_KIND_INVALID` | 422 | Wrong kind/type for the action (e.g. SK for an extension). | "Jenis dokumen tidak sesuai. Perpanjangan kontrak memakai Perjanjian Kerja; mutasi/promosi/demosi/pengangkatan/pemberhentian memakai SK." |
 | `PK_TERM_MISMATCH` | 422 | Contract period/category differs from the linked PK. | "Masa kontrak tidak sama dengan yang tertulis di Perjanjian Kerja." |
 | `DECISION_DOCUMENT_LOCKED` | 409 | Editing a PK/SK already linked. | "Dokumen sudah dipakai pada tindakan; gunakan koreksi." |
+| `DECISION_DOCUMENT_NOT_FOUND` | 404 | The PK/SK, or the previous PK referenced, does not exist. (Added with S4.) | "Dokumen tidak ditemukan." |
+| `DECISION_DOCUMENT_NUMBER_TAKEN` | 409 | The number already exists in the same kind and signing year. (Added with S4.) | "Nomor dokumen ini sudah tercatat untuk tahun yang sama." |
+| `DECISION_DOCUMENT_INVALID` | 400 | A required field of the kind is missing or inconsistent; the response carries the offending `field`. (Added with S4.) | Field-specific, e.g. "Tanggal akhir kontrak wajib diisi." |
+| `EMPLOYEE_NOT_FOUND` | 404 | The employee of a Perjanjian Kerja does not exist. (Added with S4.) | "Pegawai tidak ditemukan." |
 | `EMPLOYMENT_ACTION_NOT_REVERSIBLE` | 409 | Not the latest action, already reversed, or baseline. | "Tindakan ini tidak dapat dibatalkan." |
 | `EMPLOYMENT_VERSION_CONFLICT` | 409 | `expectedVersion` stale (concurrent edit). | "Data berubah sejak Anda membuka halaman. Muat ulang lalu ulangi." |
 | `EMPLOYMENT_BASELINE_MISSING` | 409 | Action on an employee without baseline in AUTHORITATIVE. | "Data awal kepegawaian pegawai ini belum tersedia." |

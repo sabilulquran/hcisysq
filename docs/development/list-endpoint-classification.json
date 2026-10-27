@@ -821,6 +821,16 @@
     {
       "url": "/ready",
       "list": "single"
+    },
+    {
+      "url": "/admin/employees/:employeeId/family",
+      "list": "bounded",
+      "reason": "Anggota keluarga satu pegawai; beberapa baris per orang."
+    },
+    {
+      "url": "/admin/employees/:employeeId/addresses",
+      "list": "bounded",
+      "reason": "Riwayat alamat satu pegawai; dua jenis dengan beberapa periode."
     }
   ]
 }

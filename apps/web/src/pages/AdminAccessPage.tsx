@@ -126,8 +126,13 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     const request = ++listRequest.current;
     setListLoading(true);
     try {
-      const result = await getAccessAdmin(next);
+      let result = await getAccessAdmin(next);
+      // A change can empty the last page (an account deactivated while inactive ones are hidden).
+      if (result.accounts.length === 0 && next.page > 1 && result.pagination.pageCount < next.page) {
+        result = await getAccessAdmin({ ...next, page: result.pagination.pageCount });
+      }
       if (request !== listRequest.current) return;
+      if (result.pagination.page !== page) setPage(result.pagination.page);
       onDataChange(result);
       if (!roleId) setRoleId(result.roles[0]?.id ?? "");
       if (!unitId) setUnitId(result.units[0]?.id ?? "");
@@ -251,6 +256,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     setNotice(null);
     try {
       await updateAccountStatus(accountId, status);
+      if (status === "inactive" && accountId === selectedAccountId) setSelectedAccount(null);
       setNotice("Status account berhasil diperbarui.");
       await reload();
     } catch (cause) {

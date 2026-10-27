@@ -296,8 +296,7 @@ export class PostgresOrganizationRepository {
     );
   }
 
-  /** ORG-008-4a: the "Yang berubah" list for one change set, oldest first. */
-  /** One page of a change set's journal, newest step first, with the total (ENG-LIST-001). */
+  /** ORG-008-4a: one page of the "Yang berubah" list, newest step first, with the total (ENG-LIST-001). */
   async pageJournal(changeSetId: string, page: { limit: number; offset: number }): Promise<{
     items: Array<{
       id: string;

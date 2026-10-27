@@ -25,7 +25,7 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   OrganizationChart,
@@ -507,12 +507,16 @@ export function OrganizationDesignerWorkspace({
   const revision = data?.draft?.revision;
 
   // Newest step first, one page at a time (ENG-LIST-001); a new step always lands on page 1.
+  const journalRequest = useRef(0);
   const loadJournal = (page = 1) => {
+    const request = ++journalRequest.current;
     if (!draftId) { setJournal([]); setJournalTotal(0); setJournalPage(1); return; }
     setJournalLoading(true);
     setJournalError(null);
     void listOrganizationJournal(draftId, page)
       .then((result) => {
+        // Only the newest request may land, so quick pager clicks cannot show an older page last.
+        if (request !== journalRequest.current) return;
         setJournal(result.items);
         setJournalTotal(result.pagination.total);
         setJournalPage(result.pagination.page);

@@ -469,7 +469,8 @@ export async function registerOrgAccessAdminRoutes(
       return reply.status(400).send({ code: "INVALID_QUERY", message: "Pencarian atau halaman account tidak valid." });
     }
     // ENG-LIST-001: accounts are searched and paged in SQL; inactive ones stay out unless asked for.
-    const search = query.data.q?.trim() || null;
+    // % and _ typed by the admin are matched literally, not as wildcards.
+    const search = query.data.q?.trim().replace(/[\\%_]/g, (character) => `\\${character}`) || null;
     const accountFilter = `
           WHERE ($1::text IS NULL
             OR a.email ILIKE '%' || $1 || '%'

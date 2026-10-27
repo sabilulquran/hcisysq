@@ -267,6 +267,7 @@ export function EmployeePayslipsPage() {
   const chooseYear = async (nextYear: number) => {
     setError(null);
     setSelectedId(null);
+    setSelected(null);
     setSelectorValue("");
     try {
       const result = await getMyPayslips(nextYear);

@@ -1227,8 +1227,10 @@ describe("PAYSLIP-007 employment status contract", () => {
     // Every query stays scoped to the signed-in employee.
     expect(calls.filter((call) => call.sql.includes("FROM payslips payslip")).every((call) => call.values?.[0] === employeeId)).toBe(true);
 
-    const invalid = await app.inject({ method: "GET", url: "/payslips?year=abc", headers: { cookie: "hcis_session=synthetic" } });
-    expect(invalid.statusCode).toBe(400);
+    for (const bad of ["abc", "1999", "2101", "2025.5"]) {
+      const invalid = await app.inject({ method: "GET", url: `/payslips?year=${bad}`, headers: { cookie: "hcis_session=synthetic" } });
+      expect(invalid.statusCode, bad).toBe(400);
+    }
     await app.close();
   });
 });

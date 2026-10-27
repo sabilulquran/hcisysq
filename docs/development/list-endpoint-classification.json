@@ -410,7 +410,8 @@
     },
     {
       "url": "/admin/employment/consistency",
-      "list": "paged"
+      "list": "paged",
+      "reason": "Berhalaman dengan total persis; temuan dihitung saat dibaca untuk semua pegawai lalu disaring dan dipotong di memori (read model, dibatasi jumlah pegawai)."
     },
     {
       "url": "/admin/employment/rollout",
@@ -475,7 +476,8 @@
     },
     {
       "url": "/admin/organization/people",
-      "list": "paged"
+      "list": "paged",
+      "reason": "Berhalaman dengan total persis; baris dihitung resolver dari satu snapshot organisasi lalu disaring dan dipotong di memori (read model, dibatasi jumlah pegawai, bukan tabel yang bertumbuh)."
     },
     {
       "url": "/admin/organization/positions/search",

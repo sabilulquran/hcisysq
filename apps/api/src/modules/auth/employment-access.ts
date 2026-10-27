@@ -35,7 +35,7 @@ export async function loadEmploymentAccessState(db: Db, accountId: string): Prom
        FROM employments e
        JOIN account_employee ae ON ae.employee_id = e.employee_id
        WHERE e.voided_by_action_id IS NULL
-       ORDER BY e.started_on DESC NULLS FIRST, e.created_at DESC
+       ORDER BY e.started_on DESC NULLS LAST, e.created_at DESC
        LIMIT 1
      )
      SELECT
@@ -68,7 +68,9 @@ const RESTRICTED_ALLOWLIST: readonly RegExp[] = [
   /^\/leave\/me\/summary$/,
   /^\/leave\/planned\/me\/summary$/,
   /^\/leave\/special\/me\/summary$/,
-  /^\/auth\/session$/,
+  // The SPA cannot show any of the three pages without these two.
+  /^\/auth\/me$/,
+  /^\/auth\/launcher$/,
   /^\/auth\/logout$/,
 ];
 
@@ -121,6 +123,20 @@ export async function deactivateAccountsForEndedEmployment(
   client: PoolClient,
   employeeId: string,
 ): Promise<string[]> {
+  // A second, still-running employment (or a rehire) keeps the account open:
+  // ending one contract must not lock out someone who still works here.
+  const stillWorking = await client.query<{ present: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM employments
+       WHERE employee_id = $1 AND voided_by_action_id IS NULL
+         AND (started_on IS NULL OR started_on <= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+         AND (ended_on IS NULL OR ended_on >= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+         AND end_basis IS DISTINCT FROM 'UNKNOWN'
+     ) AS present`,
+    [employeeId],
+  );
+  if (stillWorking.rows[0]?.present) return [];
+
   const accounts = await client.query<{ id: string }>(
     `UPDATE accounts SET status = 'inactive', updated_at = now()
      WHERE employee_id = $1 AND principal_type = 'EMPLOYEE' AND status IN ('invited', 'active')
@@ -142,15 +158,26 @@ export async function deactivateAccountsForEndedEmployment(
   return ids;
 }
 
-/** Expired grants return the account to inactive; run by the daily job. */
+/**
+ * Closes grants that reached their expiry and returns those accounts to
+ * inactive. The grant is marked as ended in the same step, so a later run
+ * cannot act on it again — otherwise a rehired employee would be locked out
+ * every night by a grant from a previous employment.
+ */
 export async function expireTemporaryReactivations(client: PoolClient): Promise<string[]> {
   const expired = await client.query<{ accountId: string }>(
-    `SELECT DISTINCT account_id AS "accountId"
-     FROM account_temporary_reactivations
-     WHERE revoked_at IS NULL AND expires_at <= now()`,
+    `UPDATE account_temporary_reactivations
+     SET revoked_at = expires_at
+     WHERE revoked_at IS NULL AND expires_at <= now()
+     RETURNING account_id AS "accountId"`,
   );
-  const ids = expired.rows.map((row) => row.accountId);
+  const ids = [...new Set(expired.rows.map((row) => row.accountId))];
+  const closed: string[] = [];
   for (const accountId of ids) {
+    // The employment decides, as everywhere else: a rehired employee keeps
+    // the account the expiry would otherwise close.
+    const state = await loadEmploymentAccessState(client, accountId);
+    if (!state.employmentEnded) continue;
     await client.query(
       `UPDATE accounts SET status = 'inactive', updated_at = now()
        WHERE id = $1 AND principal_type = 'EMPLOYEE' AND status IN ('invited', 'active')`,
@@ -161,6 +188,25 @@ export async function expireTemporaryReactivations(client: PoolClient): Promise<
        WHERE account_id = $1 AND revoked_at IS NULL`,
       [accountId],
     );
+    closed.push(accountId);
   }
-  return ids;
+  return closed;
+}
+
+/**
+ * The latest employment's end date, the same one the guard reads. Used by the
+ * grant path, where "has an ended employment" must not be satisfied by an old
+ * employment of someone who was rehired.
+ */
+export async function latestEmploymentEnd(db: Db, accountId: string): Promise<string | null> {
+  const result = await db.query<{ endedOn: string | null }>(
+    `SELECT e.ended_on::text AS "endedOn"
+     FROM employments e
+     JOIN accounts a ON a.employee_id = e.employee_id
+     WHERE a.id = $1 AND a.principal_type = 'EMPLOYEE' AND e.voided_by_action_id IS NULL
+     ORDER BY e.started_on DESC NULLS LAST, e.created_at DESC
+     LIMIT 1`,
+    [accountId],
+  );
+  return result.rows[0]?.endedOn ?? null;
 }

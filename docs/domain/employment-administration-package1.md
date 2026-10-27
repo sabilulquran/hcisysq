@@ -555,6 +555,9 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `REACTIVATION_EXPIRY_REQUIRED` | 400 | Temporary reactivation without expiry or beyond maximum. | "Tentukan tanggal berakhir akses (maksimal 30 hari)." |
 | `REACTIVATION_SELF_FORBIDDEN` | 403 | Admin targets own account. | "Anda tidak dapat mengaktifkan kembali akun Anda sendiri." |
 | `REACTIVATION_NOT_APPLICABLE` | 409 | Employment still active or account suspended. | "Akun ini tidak memerlukan aktivasi sementara." |
+| `REACTIVATION_NOT_FOUND` | 404 | No live grant to revoke. (Added with S5A.) | "Aktivasi sementara tidak ditemukan." |
+| `EMPLOYMENT_ENDED` | 401 | The latest employment ended and no grant is valid. (Added with S5A.) | "Hubungan kerja sudah berakhir, sehingga akun HCIS tidak aktif." |
+| `EMPLOYMENT_ENDED_READ_ONLY` | 403 | A reactivated account outside the allowlist. (Added with S5A.) | "Akses sementara hanya untuk slip gaji, riwayat kehadiran, dan riwayat cuti Anda sendiri." |
 
 `POST` requests that record actions require an `Idempotency-Key`; a replay returns the original result.
 

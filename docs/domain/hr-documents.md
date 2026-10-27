@@ -58,9 +58,11 @@ Termasuk (Paket 1):
 | D-10 | Tingkat surat peringatan: `SP1`, `SP2`, `SP3`. Masa berlaku bawaan **6 bulan** sejak tanggal berlaku. | DRAFT |
 | D-11 | Sistem **tidak** memaksa urutan SP1 → SP2 → SP3, tetapi memperingatkan bila ada SP aktif tingkat lebih tinggi atau bila tingkat melompat. Keputusan tetap pada HC. | DRAFT |
 | D-12 | Pegawai **wajib** melihat SP-nya dan dapat menekan "Saya telah membaca". Tanda terima dicatat dengan waktu; ketiadaan tanda terima tidak membatalkan SP. | DRAFT |
-| D-13 | Surat peringatan hanya terlihat oleh pegawai ybs dan pemegang `documents.discipline.manage`. **Atasan tidak otomatis melihat**nya di Paket 1. | DRAFT |
+| D-13 | Surat peringatan hanya terlihat oleh pegawai ybs dan pemegang `documents.discipline.manage`. **Atasan tidak otomatis melihat**nya di Paket 1. Sejak migrasi 0101 izin itu dibawa `human_capital_admin`, karena di YSQ administrator HC-lah yang menerbitkan surat peringatan; tidak ada role bercakupan unit yang membawanya. | DRAFT (revisi 2026-10-27) |
 | D-14 | Pembatalan SP yang sudah terbit butuh permission terpisah `documents.correct` dan alasan; nilai lama tetap tersimpan. | ACCEPTED |
 | D-15 | Isi surat tidak boleh memuat gaji, NIK lengkap, nomor rekening, data medis, atau alamat rumah. Nomor identitas ditampilkan tersamar bila diperlukan. | ACCEPTED |
+| D-16 | `documents.correct` dibawa role tersendiri `document_corrector`, bukan bundel mana pun. Konsekuensi yang **disengaja**: pemegangnya dapat membatalkan surat peringatan yang tidak dapat ia baca isinya, karena pembatalan adalah tindakan atas register (nomor dan status), bukan atas isi surat. Alasan pembatalan wajib dan tercatat di audit. | ACCEPTED (2026-10-27) |
+| D-17 | Setiap migrasi yang menambahkan izin ke sebuah role harus dijalankan **setelah** build yang mengenal kunci izin itu berjalan. `canDelegateRole` menolak role yang membawa izin di luar allowlist-nya, sehingga build lama akan menolak pemberian/pencabutan role tersebut selama jendela antara migrasi dan restart. | ACCEPTED (2026-10-27) |
 
 ## 4. Objek
 
@@ -121,12 +123,16 @@ ISSUED/ACKNOWLEDGED -> EXPIRED  (turunan tanggal, bukan state tersimpan)
 | `documents.discipline.manage` | Menerbitkan dan membaca surat peringatan |
 | `documents.correct` | Membatalkan surat yang sudah terbit |
 
-Bundel:
+Bundel (migrasi 0094 dan 0101):
 
-- `documents.read` dan `documents.manage` masuk `human_capital_admin`;
-- `documents.discipline.manage` **tidak** dibundel — diberikan terpisah, karena isinya sensitif (D-13);
-- `documents.correct` **tidak** dibundel (pola yang sama dengan `employment.correct`);
-- Super Admin **tidak** menerima `documents.*` melalui kompatibilitas legacy.
+| Izin | Pembawa |
+| --- | --- |
+| `documents.read` | `human_capital_admin`, `document_corrector` |
+| `documents.manage` | `human_capital_admin` |
+| `documents.discipline.manage` | `human_capital_admin` (D-13 revisi) |
+| `documents.correct` | `document_corrector` saja (D-16) |
+
+Super Admin **tidak** menerima `documents.*` melalui kompatibilitas legacy. Role `document_corrector` hanya diberikan oleh Super Admin, dengan scope organisasi dan alasan penugasan.
 
 Pegawai mengakses surat miliknya sendiri melalui endpoint self, bukan permission.
 
@@ -189,6 +195,8 @@ DOC-002:
 - DOC-002-F: pembatalan membutuhkan `documents.correct` dan alasan; nomor tetap terpakai.
 - DOC-002-G: pratinjau notifikasi tidak memuat isi naratif.
 - DOC-002-H: atasan tanpa `documents.discipline.manage` tidak melihat SP bawahannya (D-13).
+- DOC-002-I: `human_capital_admin` dapat menerbitkan dan membaca surat peringatan; `documents.correct` hanya dibawa `document_corrector` (D-16).
+- DOC-001-J: dua pengajuan bersamaan dari satu pegawai tidak dapat menembus batas D-08.
 
 ## 11. Pertanyaan terbuka
 
@@ -197,4 +205,5 @@ Semua dijawab dengan default `DRAFT` di §3 supaya implementasi tidak berhenti. 
 1. format nomor surat yang berlaku di YSQ (D-04);
 2. masa berlaku surat peringatan (D-10);
 3. apakah atasan langsung berhak melihat SP bawahannya (D-13);
-4. apakah surat keterangan perlu persetujuan di atas HC untuk kasus tertentu (D-07).
+4. apakah surat keterangan perlu persetujuan di atas HC untuk kasus tertentu (D-07);
+5. siapa yang memegang role `document_corrector` di YSQ (D-16); sampai Super Admin memberikannya, pembatalan surat tidak tersedia bagi siapa pun dan tombolnya tidak ditampilkan.

@@ -398,14 +398,40 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(audit.rows[0]!.reason).toBeNull();
   });
 
-  it("grants documents.read and documents.manage to Human Capital Admin, and nothing sensitive", async () => {
-    const result = await client.query<{ permissionKey: string }>(
-      `SELECT role_permission.permission_key AS "permissionKey"
+  it("DOC-002-I: Human Capital Admin issues warning letters; only document_corrector revokes", async () => {
+    const byRole = await client.query<{ roleKey: string; permissionKey: string }>(
+      `SELECT role.role_key AS "roleKey", role_permission.permission_key AS "permissionKey"
          FROM role_permissions role_permission
          JOIN roles role ON role.id = role_permission.role_id
-        WHERE role.role_key = 'human_capital_admin' AND role_permission.permission_key LIKE 'documents.%'
-        ORDER BY role_permission.permission_key`,
+        WHERE role_permission.permission_key LIKE 'documents.%'
+        ORDER BY role.role_key, role_permission.permission_key`,
     );
-    expect(result.rows.map((row) => row.permissionKey)).toEqual(["documents.manage", "documents.read"]);
+    const grouped = new Map<string, string[]>();
+    for (const row of byRole.rows) grouped.set(row.roleKey, [...(grouped.get(row.roleKey) ?? []), row.permissionKey]);
+    expect(grouped.get("human_capital_admin")).toEqual([
+      "documents.discipline.manage", "documents.manage", "documents.read",
+    ]);
+    expect(grouped.get("document_corrector")).toEqual(["documents.correct", "documents.read"]);
+    // No other role carries any documents.* permission, so no unit-scoped role sees warning letters.
+    expect([...grouped.keys()].sort()).toEqual(["document_corrector", "human_capital_admin"]);
+  });
+
+  it("DOC-001-J: a repeated submission cannot push past the open-request limit", async () => {
+    await submitRequest("Keperluan pertama untuk keluarga");
+    await submitRequest("Keperluan kedua untuk bank");
+    await submitRequest("Keperluan ketiga untuk sekolah");
+    // The advisory lock and the count both live inside the insert transaction now, so the
+    // fourth submission is refused with the three rows already committed.
+    const fourth = await app.inject({
+      method: "POST",
+      url: "/documents/me/requests",
+      payload: { documentCode: "KETERANGAN_KERJA", purpose: "Keperluan keempat yang ditolak" },
+    });
+    expect(fourth.statusCode, fourth.body).toBe(409);
+    const rows = await client.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM hr_document_requests WHERE employee_id = $1`,
+      [employeeId],
+    );
+    expect(rows.rows[0]?.total).toBe(3);
   });
 });

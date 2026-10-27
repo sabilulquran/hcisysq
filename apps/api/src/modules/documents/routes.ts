@@ -186,22 +186,28 @@ export async function registerDocumentRoutes(
     if (!type || !type.selfRequestable || !type.available) {
       return send(reply, 409, { code: "DOCUMENT_TYPE_UNAVAILABLE", message: "Jenis surat ini belum tersedia." });
     }
-    const open = await pool.query<{ count: number }>(
-      `SELECT count(*)::int AS count
-         FROM hr_document_requests
-        WHERE employee_id = $1 AND status = ANY($2::text[])`,
-      [self.employeeId, [...OPEN_REQUEST_STATES]],
-    );
-    if ((open.rows[0]?.count ?? 0) >= MAX_OPEN_REQUESTS) {
-      return send(reply, 409, {
-        code: "DOCUMENT_REQUEST_LIMIT",
-        message: `Anda masih memiliki ${MAX_OPEN_REQUESTS} permintaan yang belum selesai.`,
-      });
-    }
     const id = randomUUID();
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // D-08: a transaction-scoped advisory lock per employee serializes this employee's
+      // submissions, so a double click cannot count three and insert a fourth. There is no
+      // constraint that can express "at most three open", and the lock is released on COMMIT
+      // or ROLLBACK whatever happens.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`hr_document_request:${self.employeeId}`]);
+      const open = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+           FROM hr_document_requests
+          WHERE employee_id = $1 AND status = ANY($2::text[])`,
+        [self.employeeId, [...OPEN_REQUEST_STATES]],
+      );
+      if ((open.rows[0]?.count ?? 0) >= MAX_OPEN_REQUESTS) {
+        await client.query("ROLLBACK");
+        return send(reply, 409, {
+          code: "DOCUMENT_REQUEST_LIMIT",
+          message: `Anda masih memiliki ${MAX_OPEN_REQUESTS} permintaan yang belum selesai.`,
+        });
+      }
       await client.query(
         `INSERT INTO hr_document_requests (id, employee_id, document_code, purpose, status)
          VALUES ($1,$2,$3,$4,'SUBMITTED')`,
@@ -673,9 +679,11 @@ export async function registerDocumentRoutes(
            JOIN hr_issued_documents issued ON issued.id = letter.issued_document_id
           WHERE letter.employee_id = $1
             AND issued.status = 'ISSUED'
-            AND letter.effective_date <= current_date
-            AND letter.expires_on >= current_date`,
-        [employee.id],
+            AND letter.effective_date <= $2::date
+            AND letter.expires_on >= $2::date`,
+        // The Jakarta date, not the database's current_date: between 00:00 and 07:00 WIB the
+        // two differ by a day, and the warning must agree with what the lists show.
+        [employee.id, today()],
       );
       const warnings = buildLevelWarnings(body.data.level, existing.rows.map((row) => row.level));
       const issued = await issueDocument(client, {

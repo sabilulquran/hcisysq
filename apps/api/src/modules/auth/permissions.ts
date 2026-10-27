@@ -15,12 +15,15 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
   "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
-  "documents.read", "documents.manage",
+  "documents.read", "documents.manage", "documents.discipline.manage",
 ] as const;
 
 /** DOC-001/DOC-002: HC-only; never granted through legacy Super Admin compatibility.
- * documents.discipline.manage and documents.correct stay outside every bundle and are
- * granted through a separate, explicit role assignment (spec §6). */
+ * documents.discipline.manage joins human_capital_admin in migration 0101: at YSQ the HC
+ * administrator issues warning letters, and no unit-scoped role carries it.
+ * documents.correct stays outside every bundle and is granted through the separate
+ * document_corrector role (spec §6, D-16). */
+export const DOCUMENT_CORRECTOR_ROLE_KEY = "document_corrector";
 export const DOCUMENT_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
 ] as const;

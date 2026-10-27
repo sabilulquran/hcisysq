@@ -662,6 +662,16 @@
       "package": "PAG-5"
     },
     {
+      "url": "/payroll/employments/:employmentId/compensation-profiles",
+      "list": "bounded",
+      "reason": "Riwayat profil satu employment."
+    },
+    {
+      "url": "/payroll/loans",
+      "list": "bounded",
+      "reason": "Kasbon aktif; disaring per pegawai bila diminta."
+    },
+    {
       "url": "/payroll/periods",
       "list": "paged",
       "reason": "Daftar periode payroll dengan page dan pageSize, urutan stabil."
@@ -679,6 +689,11 @@
       "url": "/payroll/periods/:periodId/results",
       "list": "bounded",
       "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."
+    },
+    {
+      "url": "/payroll/policies",
+      "list": "bounded",
+      "reason": "Daftar versi kebijakan payroll; jumlahnya kecil dan tumbuh per perubahan aturan."
     },
     {
       "url": "/payslips",

@@ -2318,6 +2318,14 @@ paths:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1inputs~1{employmentId}~1{inputKey}'
   /payroll/periods/{periodId}/results:
     $ref: './payroll.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1results'
+  /payroll/policies:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1policies'
+  /payroll/employments/{employmentId}/compensation-profiles:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1employments~1{employmentId}~1compensation-profiles'
+  /payroll/loans:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1loans'
+  /payroll/periods/{periodId}/loan-deductions:
+    $ref: './payroll-admin.openapi.yaml#/paths/~1payroll~1periods~1{periodId}~1loan-deductions'
 
   /admin/payslip-imports:
     $ref: './payslips.openapi.yaml#/paths/~1admin~1payslip-imports'

@@ -450,16 +450,16 @@ export async function calculatePeriod(
            id, period_id, employment_id, revision, previous_result_id,
            gross, deductions, net, payable, employer_cost,
            pay_factor, pay_factor_reason, bpjs_base, extra_family_members,
-           blockers, input_snapshot, policy_version_ids)
+           blockers, input_snapshot, policy_version_ids, compensation_profile_id)
          SELECT r.id, $1, r.employment_id, r.revision, r.previous_result_id,
                 r.gross, r.deductions, r.net, r.payable, r.employer_cost,
                 r.pay_factor, r.pay_factor_reason, r.bpjs_base, r.extra_family_members,
-                r.blockers, r.input_snapshot, $3::jsonb
+                r.blockers, r.input_snapshot, $3::jsonb, r.compensation_profile_id
          FROM jsonb_to_recordset($2::jsonb) AS r(
            id uuid, employment_id uuid, revision integer, previous_result_id uuid,
            gross bigint, deductions bigint, net bigint, payable bigint, employer_cost bigint,
            pay_factor numeric, pay_factor_reason text, bpjs_base bigint, extra_family_members integer,
-           blockers jsonb, input_snapshot jsonb)`,
+           blockers jsonb, input_snapshot jsonb, compensation_profile_id uuid)`,
         [period.id, JSON.stringify(resultRows), JSON.stringify(resolved.versionIds)],
       );
     }

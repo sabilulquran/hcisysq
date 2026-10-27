@@ -682,6 +682,20 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - `TBD`: preview belum menandai tanggal yang tetap memakai jadwal pengganti (roster) di dalam rentang Atur
   jadwal; jadwal pengganti tetap menang sesuai urutan resolver.
 
+### 10.7 Catatan implementasi ATT-011-4c (2026-10-27)
+
+- **Kembalikan seperti sebelumnya** adalah Perubahan Jadwal `kind = revert` (`changeSetId`, keterangan wajib)
+  lewat Lihat dampak → Terapkan yang sama. Berlaku **mulai besok**, sehingga shift yang sudah berjalan hari
+  ini tidak tersentuh (D-3); tanggal yang sudah lewat tidak dikembalikan.
+- Kebalikan tiap item: pola yang dibuat perubahan itu dihapus (bila belum mulai) atau diakhiri hari ini; pola
+  lama yang diakhiri atau dihapus dibuat ulang dari besok sampai akhir aslinya; entri roster kembali ke
+  keadaan sebelum (shift dengan versi yang dikunci saat itu, Libur, atau dihapus).
+- Pegawai yang jadwalnya sudah diubah lagi oleh perubahan yang lebih baru, atau pola/entrinya diubah langsung,
+  diberi masalah `changed_later` yang memblokir; kecualikan pegawai itu atau kembalikan perubahan yang lebih
+  baru dulu. Perubahan hanya dapat dikembalikan sekali (`409 SCHEDULE_CHANGE_ALREADY_REVERTED`).
+- Change set menyimpan `reverts_change_set_id`; audit `attendance.schedule_change.reverted`. `applied_at`
+  memakai jam saat ditulis agar urutan "lebih baru" tepat. Tidak ada migration atau permission baru.
+
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

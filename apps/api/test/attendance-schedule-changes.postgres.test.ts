@@ -278,6 +278,48 @@ describe.skipIf(!allowed)("ATT-011-4b schedule change sets (PostgreSQL)", () => 
     expect(reused.json().code).toBe("IDEMPOTENCY_KEY_REUSED");
   });
 
+  it("reverts a pattern from tomorrow on, once, and is audited as a revert (ATT-011-4c)", async () => {
+    const pattern = {
+      kind: "pattern", employeeIds: [first, second], scheduleTemplateId: afternoon,
+      from: week, to: addDays(week, 27), weekdays: [1, 2, 3], untickedDays: "keep",
+    };
+    const changed = (await apply(pattern)).applied.json().id as string;
+    expect((await preview({ kind: "revert", changeSetId: changed })).statusCode).toBe(400);
+
+    const revert = { kind: "revert", changeSetId: changed, note: "Salah unit" };
+    const { previewed, applied } = await apply(revert);
+    expect(previewed.summary).toMatchObject({ employees: 2, blockingIssues: 0 });
+    expect(applied.statusCode, applied.body).toBe(201);
+    expect(await assignments(first)).toEqual([
+      { template: morning, mask: 31, from: "2026-01-01", to: addDays(week, -1) },
+      { template: morning, mask: 31, from: week, to: null },
+    ]);
+    expect(await assignments(second)).toEqual([]);
+
+    const history = (await call("GET", "/admin/attendance/schedule-changes")).json();
+    expect(history.items[0]).toMatchObject({ id: applied.json().id, kind: "revert", revertsChangeSetId: changed });
+    const audit = await client.query("SELECT action FROM access_audit_events WHERE entity_id = $1", [applied.json().id]);
+    expect(audit.rows.map((row) => row.action)).toEqual(["attendance.schedule_change.reverted"]);
+
+    const again = await preview(revert);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().code).toBe("SCHEDULE_CHANGE_ALREADY_REVERTED");
+  });
+
+  it("blocks a revert for an employee a later change touched", async () => {
+    const changed = (await apply({
+      kind: "pattern", employeeIds: [first, second], scheduleTemplateId: afternoon, from: week, to: null, weekdays: [1, 2], untickedDays: "off",
+    })).applied.json().id as string;
+    expect((await apply({ kind: "replacement", employeeIds: [first], scheduleTemplateId: null, from: addDays(week, 7), to: addDays(week, 7), note: "Izin" })).applied.statusCode).toBe(201);
+
+    const blocked = await preview({ kind: "revert", changeSetId: changed, note: "Batal" });
+    expect(blocked.json().issues).toEqual([expect.objectContaining({ employeeId: first, code: "changed_later", blocking: true })]);
+    const { applied } = await apply({ kind: "revert", changeSetId: changed, note: "Batal", excludeEmployeeIds: [first] });
+    expect(applied.statusCode, applied.body).toBe(201);
+    expect(await assignments(second)).toEqual([]);
+    expect((await assignments(first)).some((row) => row.template === afternoon)).toBe(true);
+  });
+
   it("copies the schedule in force on the source week, pattern included", async () => {
     const { applied } = await apply({ kind: "copy", employeeIds: [first], sourceWeekStart: week, targetWeekStarts: [addDays(week, 7)] });
     expect(applied.statusCode, applied.body).toBe(201);

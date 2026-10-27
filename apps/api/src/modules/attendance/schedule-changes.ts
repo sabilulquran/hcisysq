@@ -24,10 +24,12 @@ export type ScheduleChangeInput = ScheduleChangeScope & (
   | { kind: "pattern"; scheduleTemplateId: string | null; from: string; to: string | null; weekdays: number[]; untickedDays: "off" | "keep" }
   | { kind: "replacement"; scheduleTemplateId: string | null; from: string; to: string }
   | { kind: "copy"; sourceWeekStart: string; targetWeekStarts: string[] }
+  /** ATT-011-4c "Kembalikan seperti sebelumnya": restores what a change set replaced, from tomorrow on. */
+  | { kind: "revert"; changeSetId: string }
 );
 
 export type ScheduleChangeOp =
-  | { action: "assignment_created"; employeeId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string | null; reason: "new" | "continuation" | "kept_days" }
+  | { action: "assignment_created"; employeeId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string | null; reason: "new" | "continuation" | "kept_days" | "restored" }
   | { action: "assignment_ended"; employeeId: string; assignmentId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string; previousTo: string | null }
   | { action: "assignment_removed"; employeeId: string; assignmentId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string | null }
   | { action: "roster_entry_set"; employeeId: string; workDate: string; scheduleTemplateId: string; scheduleVersionId: string }
@@ -43,7 +45,7 @@ function isRosterOp(op: ScheduleChangeOp): op is RosterOp {
 export type ScheduleChangeIssue = {
   employeeId: string | null;
   employeeName: string | null;
-  code: "inactive" | "ended" | "shift_swap" | "draft_roster" | "started" | "source_conflict" | "shift_not_valid";
+  code: "inactive" | "ended" | "shift_swap" | "draft_roster" | "started" | "source_conflict" | "shift_not_valid" | "changed_later";
   date: string | null;
   message: string;
   /** Blocking issues stop "Terapkan" until the employee is excluded or the cause is resolved. */
@@ -87,6 +89,7 @@ function inMask(mask: number, date: string) {
 
 /** The dates a change touches, and the last date considered for an open-ended pattern. */
 export function changeRange(input: ScheduleChangeInput): { from: string; to: string; openEnded: boolean } {
+  if (input.kind === "revert") throw new Error("A revert takes its dates from the change set it reverts.");
   if (input.kind === "copy") {
     const weeks = [...input.targetWeekStarts].sort();
     return { from: weeks[0]!, to: addDays(weeks.at(-1)!, 6), openEnded: false };
@@ -129,13 +132,68 @@ async function versionValidOn(db: Db, scheduleTemplateId: string, workDate: stri
   return result.rows[0]?.id ?? null;
 }
 
+type RevertItem = {
+  employeeId: string;
+  action: ScheduleChangeOp["action"];
+  from: string;
+  to: string | null;
+  mask: number | null;
+  template: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+};
+type RevertSource = { appliedAt: string; items: RevertItem[]; employeeIds: string[]; range: { from: string; to: string; openEnded: boolean } };
+
+/** The last date an item's restoration reaches; null when it has no end. */
+function restoredUntil(item: RevertItem): string | null {
+  if (item.action === "assignment_ended") return (item.before?.effectiveTo as string | null | undefined) ?? null;
+  return item.to;
+}
+
+/**
+ * ATT-011-4c: what a revert works from. It starts tomorrow, so a shift already running today is never
+ * touched (D-3), and ends where the reverted change's last restored date ends.
+ */
+async function loadRevertSource(db: Db, changeSetId: string, today: string): Promise<RevertSource> {
+  const changeSet = await db.query<{ appliedAt: string; revertedBy: string | null }>(
+    `SELECT change_set.applied_at::text AS "appliedAt",
+       (SELECT later.id::text FROM attendance_schedule_change_sets later WHERE later.reverts_change_set_id = change_set.id LIMIT 1) AS "revertedBy"
+     FROM attendance_schedule_change_sets change_set WHERE change_set.id = $1`,
+    [changeSetId],
+  );
+  if (!changeSet.rows[0]) throw new ScheduleChangeError(404, "SCHEDULE_CHANGE_NOT_FOUND", "Perubahan jadwal tidak ditemukan.");
+  if (changeSet.rows[0].revertedBy) {
+    throw new ScheduleChangeError(409, "SCHEDULE_CHANGE_ALREADY_REVERTED", "Perubahan ini sudah dikembalikan.");
+  }
+  const items = await db.query<RevertItem>(
+    `SELECT employee_id AS "employeeId", action, work_date_from::text AS "from", work_date_to::text AS "to",
+       weekday_mask AS mask, schedule_template_id AS template, before_state AS before, after_state AS after
+     FROM attendance_schedule_change_items WHERE change_set_id = $1 ORDER BY sequence`,
+    [changeSetId],
+  );
+  const from = addDays(today, 1);
+  const ends = items.rows.map(restoredUntil);
+  const openEnded = ends.some((end) => end === null);
+  const to = openEnded ? addDays(from, MAX_DAYS - 1) : ends.filter((end): end is string => end !== null).sort().at(-1) ?? today;
+  if (to < from) {
+    throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_IN_PAST", "Perubahan ini sudah lewat seluruhnya; tidak ada yang dapat dikembalikan.");
+  }
+  return {
+    appliedAt: changeSet.rows[0].appliedAt,
+    items: items.rows,
+    employeeIds: [...new Set(items.rows.map((row) => row.employeeId))],
+    range: { from, to, openEnded },
+  };
+}
+
 /**
  * Plans the change from the data as it is now: no write. The fingerprint covers the normalized input
  * and every fact the plan was built on, so applying can tell whether anything changed since.
  */
 export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now = new Date()): Promise<ScheduleChangePlan> {
   const today = jakartaWorkDate(now);
-  const range = changeRange(input);
+  const revert = input.kind === "revert" ? await loadRevertSource(db, input.changeSetId, today) : null;
+  const range = revert ? revert.range : changeRange(input);
   if (range.from < today) {
     throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_IN_PAST", "Jadwal tanggal yang sudah lewat tidak dapat diubah. Gunakan Perbaiki jam pada Kehadiran.");
   }
@@ -154,7 +212,7 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
      WHERE (employee.id = ANY($1::uuid[]) OR ($2::uuid IS NOT NULL AND employee.organizational_unit_id = $2 AND employee.status = 'active'))
        AND NOT (employee.id = ANY($3::uuid[]))
      ORDER BY employee.full_name, employee.id`,
-    [input.employeeIds ?? [], input.unitId ?? null, input.excludeEmployeeIds ?? []],
+    [revert ? revert.employeeIds : input.employeeIds ?? [], revert ? null : input.unitId ?? null, input.excludeEmployeeIds ?? []],
   );
   const employees = employeeRows.rows;
   if (employees.length === 0) throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_NO_EMPLOYEES", "Tidak ada pegawai aktif yang dipilih.");
@@ -301,7 +359,10 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
         }
       }
     }
-  } else {
+  } else if (input.kind === "revert" && revert) {
+    replacedEmployees = active.length;
+    await planRevert(db, revert, active, lastDate, ops, issues, pinned);
+  } else if (input.kind === "copy") {
     // Salin jadwal: the schedule in force on each source day (pattern and replacements), not only the roster (J-5).
     for (const employee of active) {
       for (let offset = 0; offset < 7; offset += 1) {
@@ -397,6 +458,124 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
   };
 }
 
+/**
+ * ATT-011-4c: the inverse of each item from `revert.range.from` on. Anything a later change set or a hand
+ * edit touched since blocks that employee: reverting over it would silently undo newer work.
+ */
+async function planRevert(
+  db: Db,
+  revert: RevertSource,
+  active: EmployeeRow[],
+  lastDate: Map<string, string>,
+  ops: ScheduleChangeOp[],
+  issues: ScheduleChangeIssue[],
+  pinned: (employeeId: string, scheduleTemplateId: string, workDate: string) => Promise<string | null>,
+) {
+  const start = revert.range.from;
+  const activeIds = new Set(active.map((employee) => employee.id));
+  const nameOf = (employeeId: string) => active.find((employee) => employee.id === employeeId)?.fullName ?? null;
+  const blockedIds = new Set<string>();
+  const block = (employeeId: string, message: string) => {
+    if (blockedIds.has(employeeId)) return;
+    blockedIds.add(employeeId);
+    issues.push({ employeeId, employeeName: nameOf(employeeId), code: "changed_later", date: null, message, blocking: true });
+  };
+
+  const later = await db.query<{ employeeId: string }>(
+    `SELECT DISTINCT item.employee_id AS "employeeId"
+     FROM attendance_schedule_change_items item
+     JOIN attendance_schedule_change_sets later ON later.id = item.change_set_id
+     WHERE later.applied_at > $1::timestamptz AND item.employee_id = ANY($2::uuid[])
+       AND (item.action = 'assignment_ended' OR coalesce(item.work_date_to, 'infinity'::date) >= $3::date)`,
+    [revert.appliedAt, [...activeIds], start],
+  );
+  for (const row of later.rows) block(row.employeeId, "Jadwal pegawai ini sudah diubah lagi oleh perubahan yang lebih baru; kembalikan perubahan itu dulu.");
+
+  const assignmentIds = revert.items.flatMap((item) => {
+    const id = item.action === "assignment_created" ? item.after?.assignmentId : item.action === "assignment_ended" ? item.before?.assignmentId : undefined;
+    return typeof id === "string" ? [id] : [];
+  });
+  const current = await db.query<{ id: string; from: string; to: string | null; mask: number; template: string }>(
+    `SELECT id, effective_from::text AS "from", effective_to::text AS "to", weekday_mask AS mask, schedule_template_id AS template
+     FROM attendance_schedule_assignments WHERE id = ANY($1::uuid[])`,
+    [assignmentIds],
+  );
+  const assignmentById = new Map(current.rows.map((row) => [row.id, row]));
+  const rosterPairs = revert.items.filter((item) => item.action.startsWith("roster_entry_") && item.from >= start);
+  const rosterNow = await db.query<{ employeeId: string; workDate: string; template: string | null; isOff: boolean }>(
+    `WITH pairs AS (
+       SELECT * FROM unnest($1::uuid[], $2::date[]) AS pair(employee_id, work_date)
+     ), latest AS (
+       SELECT DISTINCT ON (week_start) id, week_start FROM attendance_rosters
+       WHERE status = 'PUBLISHED' AND week_start IN (SELECT date_trunc('week', work_date)::date FROM pairs)
+       ORDER BY week_start, version DESC
+     )
+     SELECT pairs.employee_id AS "employeeId", pairs.work_date::text AS "workDate", entry.schedule_template_id AS template, entry.is_off AS "isOff"
+     FROM pairs
+     JOIN latest ON latest.week_start = date_trunc('week', pairs.work_date)::date
+     JOIN attendance_roster_entries entry
+       ON entry.roster_id = latest.id AND entry.employee_id = pairs.employee_id AND entry.work_date = pairs.work_date`,
+    [rosterPairs.map((item) => item.employeeId), rosterPairs.map((item) => item.from)],
+  );
+  const rosterOf = new Map(rosterNow.rows.map((row) => [`${row.employeeId}:${row.workDate}`, row]));
+
+  for (const item of revert.items) {
+    if (!activeIds.has(item.employeeId) || blockedIds.has(item.employeeId)) continue;
+    const last = lastDate.get(item.employeeId) ?? revert.range.to;
+    if (item.action === "assignment_created") {
+      const id = item.after?.assignmentId as string | undefined;
+      const row = id ? assignmentById.get(id) : undefined;
+      if (!row || row.from !== item.from || row.to !== item.to || row.mask !== item.mask) {
+        block(item.employeeId, "Pola jadwal dari perubahan ini sudah diubah langsung; kembalikan secara manual.");
+        continue;
+      }
+      if (row.to !== null && row.to < start) continue;
+      if (row.from >= start) {
+        ops.push({ action: "assignment_removed", employeeId: item.employeeId, assignmentId: row.id, scheduleTemplateId: row.template, weekdayMask: row.mask, from: row.from, to: row.to });
+      } else {
+        ops.push({ action: "assignment_ended", employeeId: item.employeeId, assignmentId: row.id, scheduleTemplateId: row.template, weekdayMask: row.mask, from: row.from, to: addDays(start, -1), previousTo: row.to });
+      }
+    } else if (item.action === "assignment_ended" || item.action === "assignment_removed") {
+      if (item.action === "assignment_ended") {
+        const row = assignmentById.get(item.before?.assignmentId as string);
+        if (row && row.to !== item.to) {
+          block(item.employeeId, "Pola jadwal lama sudah diubah langsung; kembalikan secara manual.");
+          continue;
+        }
+      }
+      const restoredFrom = item.action === "assignment_ended" ? addDays(item.to!, 1) : item.from;
+      const from = restoredFrom > start ? restoredFrom : start;
+      // Clipped only by the employee leaving; an open-ended pattern comes back open-ended.
+      const until = restoredUntil(item);
+      const leaving = lastDate.get(item.employeeId);
+      const to = leaving && (until === null || until > leaving) ? leaving : until;
+      if (item.template === null || item.mask === null || (to !== null && to < from)) continue;
+      ops.push({ action: "assignment_created", employeeId: item.employeeId, scheduleTemplateId: item.template, weekdayMask: item.mask, from, to, reason: "restored" });
+    } else if (item.from >= start && item.from <= last) {
+      const now = rosterOf.get(`${item.employeeId}:${item.from}`);
+      const after = item.after as { scheduleTemplateId?: string | null; isOff?: boolean } | null;
+      const unchanged = after === null ? !now : Boolean(now) && now!.isOff === Boolean(after.isOff) && (now!.template ?? null) === (after.scheduleTemplateId ?? null);
+      if (!unchanged) {
+        block(item.employeeId, `Jadwal ${item.from} sudah diubah lagi; kembalikan secara manual.`);
+        continue;
+      }
+      const before = item.before as { scheduleTemplateId?: string | null; scheduleVersionId?: string | null; isOff?: boolean } | null;
+      if (before === null) {
+        if (now) ops.push({ action: "roster_entry_cleared", employeeId: item.employeeId, workDate: item.from });
+      } else if (before.isOff || !before.scheduleTemplateId) {
+        ops.push({ action: "roster_entry_off", employeeId: item.employeeId, workDate: item.from });
+      } else {
+        const versionId = before.scheduleVersionId ?? await pinned(item.employeeId, before.scheduleTemplateId, item.from);
+        if (versionId) ops.push({ action: "roster_entry_set", employeeId: item.employeeId, workDate: item.from, scheduleTemplateId: before.scheduleTemplateId, scheduleVersionId: versionId });
+      }
+    }
+  }
+  // A blocked employee contributes nothing: drop what was planned for them before the block was found.
+  for (let index = ops.length - 1; index >= 0; index -= 1) {
+    if (blockedIds.has(ops[index]!.employeeId)) ops.splice(index, 1);
+  }
+}
+
 function normalizeInput(input: ScheduleChangeInput) {
   return {
     ...input,
@@ -453,10 +632,10 @@ export async function applyScheduleChange(
   const changeSetId = randomUUID();
   await client.query(
     `INSERT INTO attendance_schedule_change_sets (
-       id, kind, requested_by_account_id, note, input, scope_summary, preview_fingerprint, idempotency_key
-     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)`,
+       id, kind, requested_by_account_id, note, input, scope_summary, preview_fingerprint, idempotency_key, reverts_change_set_id, applied_at
+     ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, clock_timestamp())`,
     [changeSetId, input.kind, actorAccountId, input.note ?? null, JSON.stringify(normalizeInput(input)),
-      JSON.stringify(plan.summary), plan.fingerprint, idempotencyKey],
+      JSON.stringify(plan.summary), plan.fingerprint, idempotencyKey, input.kind === "revert" ? input.changeSetId : null],
   );
   // Items are written in one statement at the end (a replacement can touch 500 employees x 62 days).
   const items: Array<{ op: ScheduleChangeOp; from: string; to: string | null; mask: number | null; template: string | null; before: unknown; after: unknown }> = [];
@@ -592,8 +771,11 @@ export async function applyScheduleChange(
 
   await client.query(
     `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
-     VALUES ($1, $2, 'attendance.schedule_change.applied', 'attendance_schedule_change_set', $3, $4::jsonb)`,
-    [randomUUID(), actorAccountId, changeSetId, JSON.stringify({ kind: input.kind, ...plan.summary, items: items.length })],
+     VALUES ($1, $2, $5, 'attendance_schedule_change_set', $3, $4::jsonb)`,
+    [randomUUID(), actorAccountId, changeSetId, JSON.stringify({
+      kind: input.kind, ...plan.summary, items: items.length,
+      ...(input.kind === "revert" ? { revertsChangeSetId: input.changeSetId } : {}),
+    }), input.kind === "revert" ? "attendance.schedule_change.reverted" : "attendance.schedule_change.applied"],
   );
   return { id: changeSetId, replayed: false, summary: plan.summary, employeeIds: plan.employees.map((employee) => employee.id) };
 }

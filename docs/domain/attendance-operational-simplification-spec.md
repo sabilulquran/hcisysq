@@ -28,7 +28,7 @@ ATT-011 **tidak** mengganti model kebenaran backend. Yang tetap:
 | I-7 Lembur hanya dari keputusan eksplisit | ATT-010 | Scan di luar jadwal ditampilkan sebagai fakta, bukan lembur otomatis. |
 | I-8 Tidak ada kalkulasi payroll | MVP, PAY-003 | Lembur yang diakui adalah input masa depan PAY-003. |
 
-Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention foto, payroll, multi-shift per pegawai per hari, approval atasan baru untuk cuti.
+Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention foto, payroll, multi-shift per pegawai per hari, approval atasan baru untuk cuti. Beberapa **blok kerja** dalam satu shift kini didukung oleh ATT-013 (`attendance-work-blocks.md`); dua pola jadwal pada tanggal yang sama tetap "Jadwal bermasalah".
 
 ## 2. Actor
 

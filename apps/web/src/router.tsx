@@ -49,7 +49,9 @@ import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePa
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminDecisionDocumentsPage } from "@/pages/AdminDecisionDocumentsPage";
 import { AdminEmploymentConsistencyPage } from "@/pages/AdminEmploymentConsistencyPage";
+import { AdminDataChangeRequestsPage } from "@/pages/AdminDataChangeRequestsPage";
 import { AdminExpiringCertificatesPage } from "@/pages/AdminExpiringCertificatesPage";
+import { EmployeeDataChangesPage } from "@/pages/EmployeeDataChangesPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
 import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
@@ -204,6 +206,20 @@ const employeeLeaveRoute = createRoute({
   path: "/app/leave",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeLeavePage,
+});
+
+const employeeDataChangesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/my-data",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeDataChangesPage,
+});
+
+const adminDataChangeRequestsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees/data-changes",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employees/data-changes"),
+  component: AdminDataChangeRequestsPage,
 });
 
 const employeePayslipsRoute = createRoute({
@@ -658,6 +674,8 @@ const routeTree = rootRoute.addChildren([
   employeeDocumentsRoute,
   employeeAnnouncementsRoute,
   employeeLeaveRoute,
+  employeeDataChangesRoute,
+  adminDataChangeRequestsRoute,
   employeePayslipsRoute,
   employeeSpecialLeaveRoute,
   employeePlannedLeaveRoute,

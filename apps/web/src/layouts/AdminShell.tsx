@@ -38,6 +38,7 @@ export type AdminNavKey =
   | "history"
   | "employment-consistency"
   | "expiring-certificates"
+  | "data-changes"
   | "decision-documents"
   | "organization"
   | "attendance"
@@ -84,6 +85,7 @@ const navGroups: AdminNavGroup[] = [
       { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
       { key: "employment-consistency", label: "Kecocokan Data", href: "/admin/employment/consistency", icon: ClipboardCheck },
       { key: "expiring-certificates", label: "Sertifikat Akan Berakhir", href: "/admin/employees/certificates/expiring", icon: BadgeCheck },
+      { key: "data-changes", label: "Usulan Perubahan Data", href: "/admin/employees/data-changes", icon: FileSignature },
       { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
     ],
   },

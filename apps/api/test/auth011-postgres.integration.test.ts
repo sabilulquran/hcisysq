@@ -190,10 +190,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(292);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(295);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(56);
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(59);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
     const personas = ["employee", "hc", "unit_hc", "unit_admin", "board", "admin", "legacy"];

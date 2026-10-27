@@ -3151,5 +3151,59 @@
     "permissions": [
       "employees.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "GET",
+    "url": "/employees/me/data-changes",
+    "permissions": [],
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "POST",
+    "url": "/employees/me/data-changes",
+    "permissions": [],
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "POST",
+    "url": "/employees/me/data-changes/:requestId/cancel",
+    "permissions": [],
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/data-changes",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/data-change-requests/:requestId/accept",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-data-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/data-change-requests/:requestId/reject",
+    "permissions": [
+      "employees.manage"
+    ]
   }
 ]

@@ -24,6 +24,10 @@ const listQuerySchema = z.object({
   status: z.enum(["active", "inactive", "resigned"]).optional(),
   unitId: z.string().uuid().optional(),
   positionId: z.string().uuid().optional(),
+  // EMP-005 S2B §8.7: records outside HCIS management are hidden by default,
+  // with a filter to find them. "ALL" exists so HC can see the whole master
+  // in one place when reconciling, which is the only time that is useful.
+  scope: z.enum(["MANAGED", "OUTSIDE_HCIS", "ALL"]).default("MANAGED"),
 }).extend(pageQuerySchema.shape);
 
 const importIdSchema = z.object({ importId: z.string().uuid() });
@@ -50,6 +54,8 @@ interface EmployeeRow {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  managementScope: "MANAGED" | "OUTSIDE_HCIS";
+  managementScopeReason: string | null;
   updatedAt: Date;
 }
 
@@ -62,6 +68,7 @@ interface SummaryRow {
   active: number;
   inactive: number;
   resigned: number;
+  outsideHcis: number;
 }
 
 interface ReferenceRow {
@@ -147,10 +154,14 @@ export async function registerEmployeeAdminRoutes(
       });
     }
 
-    const { pageSize, status, unitId, positionId } = parsed.data;
+    const { pageSize, status, unitId, positionId, scope } = parsed.data;
     const search = parsed.data.q?.trim() || null;
     const offset = pageOffset(parsed.data);
     const filterValues = [search, status ?? null, unitId ?? null, positionId ?? null];
+    // The scope is a closed enum, so this is three fixed clauses, not input.
+    const scopeClause = scope === "ALL"
+      ? ""
+      : `AND e.management_scope = '${scope}'`;
     const where = `
       WHERE ($1::text IS NULL
         OR e.employee_number ILIKE '%' || $1 || '%'
@@ -159,6 +170,7 @@ export async function registerEmployeeAdminRoutes(
         AND ($2::text IS NULL OR e.status = $2)
         AND ($3::uuid IS NULL OR e.organizational_unit_id = $3)
         AND ($4::uuid IS NULL OR e.position_id = $4)
+        ${scopeClause}
     `;
 
     const [items, count, summary, units, positions] = await Promise.all([
@@ -182,6 +194,8 @@ export async function registerEmployeeAdminRoutes(
             e.education,
             e.started_on AS "startedOn",
             e.ended_on AS "endedOn",
+            e.management_scope AS "managementScope",
+            e.management_scope_reason AS "managementScopeReason",
             e.updated_at AS "updatedAt"
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
@@ -197,12 +211,17 @@ export async function registerEmployeeAdminRoutes(
         filterValues,
       ),
       pool.query<SummaryRow>(
+        // The headline counts are of the population HCIS manages; the marked
+        // records are counted separately rather than folded in, because an
+        // "active employee" figure that includes BUMY staff is wrong wherever
+        // it is read.
         `
           SELECT
-            count(*)::int AS total,
-            count(*) FILTER (WHERE status = 'active')::int AS active,
-            count(*) FILTER (WHERE status = 'inactive')::int AS inactive,
-            count(*) FILTER (WHERE status = 'resigned')::int AS resigned
+            count(*) FILTER (WHERE management_scope = 'MANAGED')::int AS total,
+            count(*) FILTER (WHERE management_scope = 'MANAGED' AND status = 'active')::int AS active,
+            count(*) FILTER (WHERE management_scope = 'MANAGED' AND status = 'inactive')::int AS inactive,
+            count(*) FILTER (WHERE management_scope = 'MANAGED' AND status = 'resigned')::int AS resigned,
+            count(*) FILTER (WHERE management_scope = 'OUTSIDE_HCIS')::int AS "outsideHcis"
           FROM employees
         `,
       ),
@@ -218,6 +237,7 @@ export async function registerEmployeeAdminRoutes(
       active: 0,
       inactive: 0,
       resigned: 0,
+      outsideHcis: 0,
     };
 
     reply.header("Cache-Control", "no-store");
@@ -228,6 +248,7 @@ export async function registerEmployeeAdminRoutes(
       })),
       pagination: pagination(parsed.data, total),
       summary: globalSummary,
+      scope,
       filters: {
         units: units.rows,
         positions: positions.rows,

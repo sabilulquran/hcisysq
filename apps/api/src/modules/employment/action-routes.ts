@@ -15,6 +15,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
 import type { EmploymentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
@@ -344,12 +345,19 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
 
     // A record removed from the master (EMP-001) is read-only history; an
     // action on it would re-project it as an active employee.
-    const employee = await pool.query<{ id: string }>(
-      "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
+    const employee = await pool.query<{ id: string; outside: boolean }>(
+      `SELECT id, management_scope = 'OUTSIDE_HCIS' AS outside
+       FROM employees WHERE id = $1 AND removed_at IS NULL`,
       [params.data.employeeId],
     );
     if (!employee.rows[0]) {
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+      return null;
+    }
+    // S2B §8.7: BUMY and Pengurus Yayasan records are read-only, so no
+    // employment action may be recorded or even previewed against one.
+    if (employee.rows[0].outside) {
+      await send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
       return null;
     }
 

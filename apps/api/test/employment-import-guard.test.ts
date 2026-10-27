@@ -29,7 +29,12 @@ const CANDIDATE = {
   sourceClassification: null,
 };
 
-function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmployment: boolean }) {
+function createStore(options: {
+  mode: "OFF" | "SHADOW" | "AUTHORITATIVE";
+  hasEmployment: boolean;
+  /** The candidate is marked outside HCIS management (S2B §8.7). */
+  outsideHcis?: boolean;
+}) {
   const statements: string[] = [];
   const query = vi.fn(async (sql: string) => {
     statements.push(sql);
@@ -48,6 +53,13 @@ function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmp
     if (sql.includes("jsonb_array_elements(messages)")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employee_import_rows")) {
       return { rows: [{ row_number: 1, action: "update", payload: CANDIDATE, messages: [] }], rowCount: 1 };
+    }
+    // S2B §8.7 asks the same shape of question; answer it separately, or the
+    // employment-managed set and the outside-HCIS set become the same thing.
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS'") && sql.includes("employee_number = ANY")) {
+      return options.outsideHcis
+        ? { rows: [{ employeeNumber: CANDIDATE.employeeNumber }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
     }
     if (sql.includes("WHERE employee_number = ANY")) {
       return { rows: [{ employeeNumber: CANDIDATE.employeeNumber }], rowCount: 1 };

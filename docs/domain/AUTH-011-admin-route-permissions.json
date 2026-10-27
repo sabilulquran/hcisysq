@@ -3143,5 +3143,13 @@
     "permissions": [
       "employees.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-management-scope-routes.ts",
+    "method": "PUT",
+    "url": "/admin/employees/:employeeId/management-scope",
+    "permissions": [
+      "employees.manage"
+    ]
   }
 ]

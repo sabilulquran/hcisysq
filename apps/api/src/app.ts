@@ -32,6 +32,7 @@ import { registerStaffIdentityRoutes } from "./modules/employees/staff-identity-
 import { registerGovernanceSummaryRoutes } from "./modules/governance/routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
 import { registerTemporaryReactivationRoutes } from "./modules/auth/temporary-reactivation-routes.js";
+import { registerEmployeeManagementScopeRoutes } from "./modules/employees/employee-management-scope-routes.js";
 import { registerEmployeeProfileRoutes } from "./modules/employees/employee-profile-routes.js";
 import { registerEmployeeRelationsRoutes } from "./modules/employees/employee-relations-routes.js";
 import { registerEmploymentActionRoutes } from "./modules/employment/action-routes.js";
@@ -152,6 +153,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerBoardDashboardRoutes(app, pool, config);
   registerGovernanceSummaryRoutes(app, pool, config);
   await registerEmployeeAdminRoutes(app, pool, config);
+  await registerEmployeeManagementScopeRoutes(app, pool, config);
   await registerEmployeeProfileRoutes(app, pool, config);
   await registerEmployeeRelationsRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);

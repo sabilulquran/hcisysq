@@ -10,6 +10,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
@@ -444,6 +445,16 @@ export async function registerOrgAccessAdminRoutes(
           code: "REPORTING_LINE_CYCLE",
           message: "Assignment ini akan membentuk siklus pada reporting line.",
         });
+      }
+    }
+
+    // EMP-005 S2B: a record outside HCIS management is read-only (§8.7), and
+    // so is one proposed as the manager — a marked record must not appear in
+    // anyone's reporting line.
+    for (const target of [employeeId, managerId]) {
+      if (target && await isOutsideHcis(pool, target)) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
       }
     }
 

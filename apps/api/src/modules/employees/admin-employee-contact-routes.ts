@@ -1,6 +1,8 @@
 import type { AdminPermission } from "../auth/permissions.js";
 import { randomUUID } from "node:crypto";
 
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -59,6 +61,12 @@ export async function registerEmployeeContactAdminRoutes(
         code: "INVALID_EMPLOYEE_CONTACT",
         message: "Email atau nomor telepon tidak valid.",
       });
+    }
+
+    // EMP-005 S2B: a record outside HCIS management is read-only (§8.7).
+    if (await isOutsideHcis(pool, params.data.employeeId)) {
+      reply.header("Cache-Control", "no-store");
+      return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
     }
 
     const email = body.data.email?.toLowerCase() ?? null;

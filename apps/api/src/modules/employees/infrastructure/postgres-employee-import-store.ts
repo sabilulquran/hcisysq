@@ -20,6 +20,7 @@ import type {
 } from "../application/employee-import-store.js";
 import { PROJECTED_IMPORT_FIELDS } from "../../employment/domain/index.js";
 import { loadEmploymentManagedEmployeeIds } from "../../employment/infrastructure/postgres-action-store.js";
+import { IMPORT_SKIPPED_MESSAGE, outsideHcisEmployeeNumbers } from "../management-scope.js";
 import { audit } from "../../employment/infrastructure/postgres-employment-store.js";
 
 interface ImportJobRow {
@@ -230,21 +231,43 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     // that has an employment are left to the history, so the preview says so
     // instead of promising a change the commit will not make.
     const managed = await this.employmentManagedNumbers(rows.rows);
+    // S2B §8.7: a record outside HCIS management is read-only, so the preview
+    // says the row will be skipped rather than promising an update the commit
+    // will not make. The import never marks a record itself.
+    const outside = await outsideHcisEmployeeNumbers(
+      this.pool,
+      rows.rows.map((row) => row.payload?.employeeNumber).filter((value): value is string => Boolean(value)),
+    );
 
     return {
       ...toSummary(jobRow),
-      rows: rows.rows.map((row) => ({
-        rowNumber: row.row_number,
-        action: row.action,
-        issues: managed.has(row.payload?.employeeNumber ?? "")
-          ? [...row.messages, {
+      rows: rows.rows.map((row) => {
+        const number = row.payload?.employeeNumber ?? "";
+        if (outside.has(number)) {
+          return {
+            rowNumber: row.row_number,
+            action: row.action,
+            issues: [...row.messages, {
               severity: "warning" as const,
-              code: "EMPLOYMENT_FIELDS_IGNORED",
+              code: "EMPLOYEE_OUTSIDE_HCIS_SKIPPED",
               field: null,
-              message: "Diabaikan — status, unit, jabatan, dan tanggal dikelola lewat riwayat kepegawaian.",
-            }]
-          : row.messages,
-      })),
+              message: IMPORT_SKIPPED_MESSAGE,
+            }],
+          };
+        }
+        return {
+          rowNumber: row.row_number,
+          action: row.action,
+          issues: managed.has(number)
+            ? [...row.messages, {
+                severity: "warning" as const,
+                code: "EMPLOYMENT_FIELDS_IGNORED",
+                field: null,
+                message: "Diabaikan — status, unit, jabatan, dan tanggal dikelola lewat riwayat kepegawaian.",
+              }]
+            : row.messages,
+        };
+      }),
       pagination: pagination(page, total),
       skipCount: count.rows[0]?.skip ?? 0,
       issueSummary: issues.rows,
@@ -281,10 +304,28 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       let insertCount = 0;
       let updateCount = 0;
       let employmentFieldsIgnoredCount = 0;
+      let outsideHcisSkipped = 0;
       const employmentManaged = await loadEmploymentManagedEmployeeIds(client);
+      // Read inside the transaction, so a mark applied while the preview was
+      // open is already in force for this commit.
+      const outside = await outsideHcisEmployeeNumbers(
+        client,
+        rows.rows.map((row) => row.payload?.employeeNumber).filter((value): value is string => Boolean(value)),
+      );
 
       for (const row of rows.rows) {
         if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
+        if (outside.has(row.payload.employeeNumber)) {
+          // Skipped whole: not the master row, and not a source snapshot
+          // either, because a snapshot is a record of what the import would
+          // have written.
+          outsideHcisSkipped += 1;
+          await client.query(
+            `UPDATE employee_import_rows SET action = 'skip' WHERE import_job_id = $1 AND row_number = $2`,
+            [importId, row.row_number],
+          );
+          continue;
+        }
         const { action: actualAction, employeeId, employmentFieldsIgnored } =
           await this.upsertEmployee(client, row.payload, importId, employmentManaged);
         if (employmentFieldsIgnored) employmentFieldsIgnoredCount += 1;
@@ -298,6 +339,17 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
            WHERE import_job_id = $1 AND row_number = $2`,
           [importId, row.row_number, actualAction],
         );
+      }
+
+      if (outsideHcisSkipped > 0) {
+        await audit(client, {
+          actorAccountId: null,
+          action: "employee.import.outside_hcis_skipped",
+          entityType: "employee_import_job",
+          entityId: importId,
+          employeeId: null,
+          payload: { employeeCount: outsideHcisSkipped },
+        });
       }
 
       if (employmentFieldsIgnoredCount > 0) {

@@ -103,6 +103,8 @@ interface PoolOptions {
   /** SQLSTATE the action insert raises, to exercise the refusal mapping. */
   insertSqlState?: string;
   employeeRemoved?: boolean;
+  /** The record is marked outside HCIS management (S2B §8.7). */
+  employeeOutsideHcis?: boolean;
   /** An additional duty running beside the primary placement. */
   withAdditionalPlacement?: boolean;
   /** The destination unit or position does not exist. */
@@ -154,6 +156,10 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("FROM positions WHERE id = $1")) {
       const known = options.unknownReference !== "position";
       return { rows: known ? [{ "?column?": 1 }] : [], rowCount: known ? 1 : 0 };
+    }
+    if (/SELECT id, management_scope .* FROM employees WHERE id = \$1/s.test(sql)) {
+      if (options.employeeRemoved) return { rows: [], rowCount: 0 };
+      return { rows: [{ id: EMPLOYEE_ID, outside: options.employeeOutsideHcis === true }], rowCount: 1 };
     }
     if (sql.includes("SELECT id FROM employees WHERE id = $1")) {
       return options.employeeRemoved ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };

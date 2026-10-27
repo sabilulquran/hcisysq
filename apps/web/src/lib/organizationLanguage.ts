@@ -177,6 +177,10 @@ export function organizationIssueSentence(
 }
 
 const API_MESSAGES: Record<string, string> = {
+  ORGANIZATION_EMPLOYEE_NOT_SEATED:
+    "Pegawai itu tidak memegang jabatan ini pada tanggal berlaku perubahan. Muat ulang lalu pilih jabatan yang benar.",
+  ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT:
+    "Pegawai ini hanya memegang satu jabatan, jadi jabatan itu sudah menjadi jabatan utamanya.",
   INVALID_WORK_LOCATION:
     "Lokasi kerja itu tidak ada atau sudah dinonaktifkan. Pilih lokasi lain.",
   ORGANIZATION_DRAFT_NOT_FOUND:
@@ -234,7 +238,7 @@ export function organizationSeatEditability(position: OrganizationPosition): Org
       editable: false,
       badge: "Belum bisa diubah di sini",
       reason:
-        "Pejabat ini memegang lebih dari satu jabatan. Jabatan utamanya harus ditentukan lebih dulu sebelum pejabatnya diubah di sini.",
+        "Ini jabatan utama pejabatnya, yang memegang lebih dari satu jabatan. Untuk mengganti pejabatnya, pilih dulu jabatan lain orang itu lalu tekan \u201cJadikan jabatan utama\u201d.",
     };
   }
   return { editable: true, badge: null, reason: null };
@@ -450,6 +454,12 @@ export function organizationJournalSentence(entry: {
       return "Penyetuju cuti unit diganti.";
     case "SET_OVERRIDE":
       return "Atasan khusus ditetapkan untuk satu pegawai.";
+    case "SET_PRIMARY_STRUCTURAL_POSITION": {
+      const title = text("positionTitle");
+      return title
+        ? `${title} dijadikan jabatan utama pejabatnya.`
+        : "Jabatan utama satu pejabat ditentukan.";
+    }
     case "SEED_FROM_LEGACY": {
       const units = count("units");
       const placements = count("placements");
@@ -550,6 +560,7 @@ const COMMAND_LABELS: Record<string, string> = {
   SET_UNIT_LEADER: "Pemimpin unit",
   SET_UNIT_APPROVER: "Penyetuju cuti unit",
   SET_OVERRIDE: "Atasan khusus",
+  SET_PRIMARY_STRUCTURAL_POSITION: "Jabatan utama",
   SEED_FROM_LEGACY: "Usulan dari data lama",
   MANUAL_EDIT: "Suntingan langsung",
 };

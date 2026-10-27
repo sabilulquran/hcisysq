@@ -1297,6 +1297,46 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedule-changes/preview",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/schedule-changes",
+    "permissions": [
+      "attendance.schedule.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-changes",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-changes/:changeSetId",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/schedule-change-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/schedule-calendar",
+    "permissions": [
+      "attendance.reports.read"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/admin/attendance/schedules",
@@ -2555,6 +2595,36 @@
     "method": "POST",
     "url": "/payroll/periods/:periodId/inputs/from-attendance",
     "permissions": [
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/report",
+    "permissions": [
+      "payroll.reports.read.organization",
+      "payroll.periods.manage",
+      "payroll.calculate",
+      "payroll.inputs.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/transfers",
+    "permissions": [
+      "payroll.transfers.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "GET",
+    "url": "/payroll/periods/:periodId/variance",
+    "permissions": [
+      "payroll.reports.read.organization",
+      "payroll.periods.manage",
+      "payroll.calculate",
       "payroll.inputs.manage"
     ]
   }

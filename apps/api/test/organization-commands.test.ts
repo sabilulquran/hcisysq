@@ -337,3 +337,58 @@ describe("ORG-008-4a a refused command changes nothing", () => {
     expect(JSON.stringify(base)).toBe(before);
   });
 });
+
+describe("ORG-008-11 choosing the primary seat of someone holding two", () => {
+  const seat = (positionKey: string, primary: boolean) => ({
+    id: `inc-${positionKey}`, positionKey, employeeId: "employee-rangkap", accountId: null, kind: "PRIMARY" as const,
+    isPrimaryStructural: primary, effectiveFrom: "2026-01-01", effectiveTo: null, reason: null,
+  });
+
+  it("moves the marker to the chosen seat and clears it on the other, with an audit event each", () => {
+    const result = apply(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: VICE },
+      snapshot({ incumbencies: [seat(HEAD, true), seat(VICE, false)] }),
+    );
+    expect(result.snapshot.incumbencies.map((item) => [item.positionKey, item.isPrimaryStructural]))
+      .toEqual([[HEAD, false], [VICE, true]]);
+    expect(result.events.map((event) => event.action)).toEqual([
+      "organization.incumbency.primary_structural_cleared",
+      "organization.incumbency.primary_structural_set",
+    ]);
+    expect(result.summary).toMatchObject({ positionKey: VICE, positionTitle: "Wakil Kepala", seats: 2 });
+  });
+
+  it("writes nothing when the chosen seat is already the primary one", () => {
+    const result = apply(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: HEAD },
+      snapshot({ incumbencies: [seat(HEAD, true), seat(VICE, false)] }),
+    );
+    expect(result.events).toEqual([]);
+  });
+
+  it("refuses a seat the person does not hold, and a person with only one seat", () => {
+    expect(expectRefusal(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: VICE },
+      snapshot({ incumbencies: [seat(HEAD, false)] }),
+    ).code).toBe("ORGANIZATION_EMPLOYEE_NOT_SEATED");
+    expect(expectRefusal(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: HEAD },
+      snapshot({ incumbencies: [seat(HEAD, false)] }),
+    ).code).toBe("ORGANIZATION_PRIMARY_STRUCTURAL_SINGLE_SEAT");
+  });
+});
+
+describe("ORG-008-11 review: a later marked seat does not collide", () => {
+  it("clears the marker on a later-starting seat whose period overlaps the chosen one", () => {
+    const row = (id: string, positionKey: string, from: string, primary: boolean) => ({
+      id, positionKey, employeeId: "employee-rangkap", accountId: null, kind: "PRIMARY" as const,
+      isPrimaryStructural: primary, effectiveFrom: from, effectiveTo: null, reason: null,
+    });
+    const result = apply(
+      { type: "SET_PRIMARY_STRUCTURAL_POSITION", employeeId: "employee-rangkap", positionKey: VICE },
+      snapshot({ incumbencies: [row("head-now", HEAD, "2026-01-01", false), row("vice", VICE, "2026-01-01", false),
+        row("head-later", HEAD, "2027-03-01", true)] }),
+    );
+    expect(result.snapshot.incumbencies.filter((item) => item.isPrimaryStructural).map((item) => item.id)).toEqual(["vice"]);
+  });
+});

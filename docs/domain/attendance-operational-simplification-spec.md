@@ -625,6 +625,83 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   memutuskan belum berubah (HC); persetujuan atasan, perintah lembur, peringatan PP 35/2021, jendela D-9,
   dan aturan Direktur adalah ATT-011-6b.
 
+### 10.5 Catatan implementasi ATT-011-4a (2026-10-27)
+
+- **Ubah shift berlaku mulai tanggal (§4.2):** `PATCH /admin/attendance/schedules/{id}` menerima
+  `effectiveFrom`. Tanggal depan membuat versi baru yang berlaku sejak tanggal itu 00.00 WIB; hari ini atau
+  kosong berarti sejak disimpan. Tanggal lampau ditolak `400 EFFECTIVE_DATE_IN_PAST`. Nilai shift yang tampil
+  sekarang tidak berubah sampai tanggal itu.
+- **Satu versi masa depan:** mengubah lagi dengan tanggal depan menggantikan versi masa depan yang belum dipakai
+  jadwal per tanggal atau hasil kehadiran (bila sudah dipakai, `409 SCHEDULE_FUTURE_VERSION_IN_USE`) dan
+  meneruskan nilainya untuk field yang tidak diubah. Perubahan yang berlaku sekarang selagi ada perubahan
+  terjadwal ditolak `409 SCHEDULE_CHANGE_PENDING` agar perubahan terjadwal tidak hilang diam-diam.
+- **Versi yang berlaku:** perubahan tanpa tanggal, daftar Shift, grid jadwal per tanggal, daftar pola jadwal
+  dan Hari Ini membaca versi yang berlaku (bukan kolom template). Publikasi jadwal per tanggal mengunci versi
+  yang berlaku pada tanggal masing-masing entri.
+- **Nonaktifkan:** ditolak `409 SCHEDULE_IN_USE` bila pola jadwal atau jadwal per tanggal yang dipublikasikan
+  masih memakai shift itu hari ini atau sesudahnya (pegawai aktif, hari kerja); respons memuat jumlah dan sampai 20 pegawai beserta tanggal
+  mulainya. Audit `attendance.schedule.deactivated`.
+- **Daftar Shift:** jam sesuai versi yang berlaku sekarang, catatan "Mulai 1 Nov: 07:30–15:30" untuk perubahan
+  yang terjadwal, dan "Dipakai N pegawai". Form ubah memakai **Berlaku mulai** (bawaan besok, atau tanggal
+  perubahan terjadwal) dan terisi dari perubahan terjadwal bila ada. Hanya field yang berubah dikirim: jam,
+  toleransi dan lokasi memakai Berlaku mulai; ganti nama dan nonaktifkan berlaku sekarang.
+- Audit `attendance.schedule.updated` mencatat `effectiveFrom` dan jumlah pegawai terdampak. Tidak ada
+  migration atau permission baru.
+
+### 10.6 Catatan implementasi ATT-011-4b (2026-10-27)
+
+- **API:** `POST /admin/attendance/schedule-changes/preview` (Lihat dampak, tanpa menulis),
+  `POST /admin/attendance/schedule-changes` (Terapkan, `Idempotency-Key`), `GET …/schedule-changes` dan
+  `GET …/schedule-changes/{id}` (Riwayat, berhalaman), `GET /admin/attendance/schedule-calendar` (kalender,
+  50 pegawai per halaman, 1–42 hari). Mutasi butuh `attendance.schedule.manage`; baca juga boleh dengan
+  `attendance.reports.read` (D-1).
+- **Migration `0092`:** `attendance_schedule_change_sets`, `attendance_schedule_change_items`, dan kolom
+  nullable `change_set_id` pada assignment dan roster. Aditif; rollback di header. Berbeda dari rancangan §5.3:
+  `base_state` tidak disimpan terpisah karena `preview_fingerprint` sudah mencakup input, pegawai, assignment,
+  versi roster terakhir per minggu, draft, libur, tukar shift, dan rencana itu sendiri; status hanya
+  `applied` (transaksi gagal tidak meninggalkan baris); aksi tambahan `assignment_removed` untuk pola yang
+  belum mulai. `roster_entry_cleared` menghapus entri roster pada libur yang dilewati (misalnya shift libur dari
+  perubahan sebelumnya) sehingga hari itu kembali Libur.
+- **Konkurensi:** kunci per pegawai dan per minggu roster memakai kunci yang sama dengan Tukar Shift
+  (`attendance-roster-week:<minggu>`). Halaman roster/pola lama tidak bertransaksi; tabrakannya tertangkap oleh
+  pemeriksaan pola tumpang tindih setelah penulisan dan oleh unique constraint, keduanya menjadi
+  `409 SCHEDULE_CHANGED_SINCE_PREVIEW`. `Idempotency-Key` yang dipakai untuk isi lain → `422
+  IDEMPOTENCY_KEY_REUSED`; shift hari ini sudah mulai → `422 SCHEDULE_CHANGE_STARTED`.
+- **Salin jadwal:** libur pada minggu sumber tidak disalin (hari itu di minggu tujuan dibiarkan).
+- **Atur jadwal:** pola lama yang tumpang tindih diakhiri sehari sebelum mulai (atau dihapus bila belum mulai),
+  sisa sesudah periode dibuat ulang, dan "biarkan seperti sekarang" membuat pola lama khusus hari yang tidak
+  dicentang. Pola tanpa shift = Libur di semua hari.
+- **Ganti/Salin jadwal:** satu versi roster published baru per minggu (entri published terakhir + perubahan),
+  tiap entri dikunci ke versi shift yang berlaku pada tanggalnya. Ganti jadwal maks 62 hari; Salin maks 8
+  minggu tujuan.
+- **Pegawai:** tidak aktif dikecualikan otomatis; berhenti di tengah rentang diubah sampai tanggal berhenti.
+  Masalah yang memblokir: Tukar Shift yang masih berjalan, draft roster, shift hari ini sudah mulai, shift
+  belum berlaku pada tanggalnya.
+- **Hitung ulang:** perubahan yang mulai hari ini menghitung ulang hasil hari ini setelah commit (best effort,
+  seperti Tukar Shift). Tanggal lampau selalu ditolak.
+- `TBD`: preview belum menandai tanggal yang tetap memakai jadwal pengganti (roster) di dalam rentang Atur
+  jadwal; jadwal pengganti tetap menang sesuai urutan resolver.
+
+### 10.7 Catatan implementasi ATT-011-4c (2026-10-27)
+
+- **Kembalikan seperti sebelumnya** adalah Perubahan Jadwal `kind = revert` (`changeSetId`, keterangan wajib)
+  lewat Lihat dampak → Terapkan yang sama. Berlaku **mulai besok**, sehingga shift yang sudah berjalan hari
+  ini tidak tersentuh (D-3); tanggal yang sudah lewat tidak dikembalikan.
+- Kebalikan tiap item: pola yang dibuat perubahan itu dihapus (bila belum mulai) atau diakhiri hari ini; pola
+  lama yang diakhiri atau dihapus dibuat ulang dari besok sampai akhir aslinya; entri roster kembali ke
+  keadaan sebelum (shift dengan versi yang dikunci saat itu, Libur, atau dihapus).
+- Pegawai yang jadwalnya sudah diubah lagi oleh perubahan yang lebih baru (yang belum dikembalikan), atau
+  pola/entrinya diubah, dihapus, atau ditabrak pola yang dibuat langsung, diberi masalah `changed_later` yang
+  memblokir; kecualikan pegawai itu dan atur ulang dengan Atur/Ganti jadwal. Mengembalikan perubahan yang
+  lebih baru dulu hanya membuka jalan untuk entri jadwal per tanggal; pola yang sudah dibuat ulang tetap perlu
+  diatur ulang.
+- Pengembalian berlaku per pegawai: pegawai yang dikecualikan tetap dapat dikembalikan belakangan; bila semua
+  pegawai sudah dikembalikan → `409 SCHEDULE_CHANGE_ALREADY_REVERTED`. Pengembalian satu change set saling
+  menunggu (advisory lock). Pola dengan tanggal akhir jauh dibatasi 400 hari pertama seperti pola tanpa akhir
+  (sisanya tetap dibuat ulang sampai tanggal akhir aslinya).
+- Change set menyimpan `reverts_change_set_id`; audit `attendance.schedule_change.reverted`. `applied_at`
+  memakai jam saat ditulis agar urutan "lebih baru" tepat. Tidak ada migration atau permission baru.
+
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

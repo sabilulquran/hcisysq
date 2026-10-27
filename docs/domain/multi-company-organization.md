@@ -3,7 +3,9 @@
 **Status:** PROPOSED / DISCOVERY  
 **Specification:** ORG-007  
 **Proposed:** 2026-09-22  
-**Related:** ORG-001, ORG-004, ORG-005, ORG-006, EMP-005, EMP-006, AUTH-010
+**Related:** ORG-001, ORG-004, ORG-005, ORG-006, ORG-011, EMP-005, EMP-006, AUTH-010  
+**ADR:** ADR-0005 (PROPOSED)  
+**Lanjutan:** `docs/domain/multi-entity-readiness.md` — penilaian terhadap skema yang ada sekarang, dampak per domain, rencana bertahap E1..E6, dan default DRAFT untuk daftar keputusan terbuka di bawah
 
 ## Question
 
@@ -145,7 +147,7 @@ Proposed compatibility path:
 
 ## Open decisions
 
-Sebelum status berubah menjadi ACCEPTED/IMPLEMENTATION, tentukan:
+Setiap butir di bawah sudah mempunyai default DRAFT di `docs/domain/multi-entity-readiness.md` §4. Sebelum status berubah menjadi ACCEPTED/IMPLEMENTATION, owner menegaskan atau mengubah default tersebut:
 
 - apakah "company" selalu badan hukum atau boleh unit usaha non-badan-hukum;
 - siapa yang boleh membuat entity;

@@ -6,6 +6,7 @@ import {
   ADMIN_PERMISSIONS,
   BOARD_READ_PERMISSION,
   ACCESS_REACTIVATION_PERMISSION,
+  DOCUMENT_PERMISSIONS,
   EMPLOYMENT_PERMISSIONS,
   HC_ADMIN_PERMISSIONS,
   PAYROLL_PERMISSIONS,
@@ -125,9 +126,11 @@ describe("AUTH-011 route manifest coverage", () => {
     // PAY-003 permissions are a known guard but deliberately outside both bundles:
     // legacy Super Admin compatibility grants no payroll permission (ADR-0003).
     // EMP-010: employment.correct is likewise a real guard no bundle carries by default (D-16).
+    // DOC-002: documents.discipline.manage and documents.correct are outside every bundle too.
     const known = new Set<string>([
       ...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve",
-      ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ACCESS_REACTIVATION_PERMISSION,
+      ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
+      ACCESS_REACTIVATION_PERMISSION,
     ]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;

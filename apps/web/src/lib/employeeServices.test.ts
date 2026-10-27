@@ -19,6 +19,8 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("notifications")?.stage).toBe("available");
     expect(getEmployeeService("notifications")?.href).toBe("/app/notifications");
     expect(getEmployeeService("reminders")?.stage).toBe("discovery");
+    expect(getEmployeeService("documents")?.stage).toBe("available");
+    expect(getEmployeeService("documents")?.href).toBe("/app/documents");
     expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");
   });
 

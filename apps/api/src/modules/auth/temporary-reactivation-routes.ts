@@ -13,14 +13,17 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { hashSessionToken } from "./crypto.js";
 import { ACCESS_REACTIVATION_PERMISSION } from "./permissions.js";
 import {
   MAX_REACTIVATION_DAYS,
   isAllowedWhileReactivated,
+  latestEmploymentEnd,
   listTemporaryReactivations,
   loadEmploymentAccessState,
 } from "./employment-access.js";
-import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "./service.js";
+import { assertAccountManagementTarget } from "./role-assignment.js";
+import { AUTH_COOKIE_NAME, AuthError, AuthService, readCookie, type AuthPrincipal } from "./service.js";
 
 const accountParams = z.object({ accountId: z.string().uuid() });
 const grantParams = accountParams.extend({ grantId: z.string().uuid() });
@@ -32,6 +35,26 @@ const grantBody = z.object({
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
   return reply.status(status).send(body);
+}
+
+/**
+ * The account behind a live session, but only when it is an employee's: the
+ * guard runs on every request, so it avoids the session write getSession does
+ * and the state query for principals the rule cannot apply to.
+ */
+async function employeeAccountOfSession(pool: Pool, token: string): Promise<string | null> {
+  const result = await pool.query<{ accountId: string }>(
+    `SELECT a.id AS "accountId"
+     FROM auth_sessions s
+     JOIN accounts a ON a.id = s.account_id
+     WHERE s.token_hash = $1
+       AND s.revoked_at IS NULL
+       AND s.expires_at > now()
+       AND a.principal_type = 'EMPLOYEE'
+     LIMIT 1`,
+    [hashSessionToken(token)],
+  );
+  return result.rows[0]?.accountId ?? null;
 }
 
 export async function registerTemporaryReactivationRoutes(app: FastifyInstance, pool: Pool, config: ApiConfig) {
@@ -55,9 +78,9 @@ export async function registerTemporaryReactivationRoutes(app: FastifyInstance, 
   app.addHook("onRequest", async (request, reply) => {
     const token = readCookie(request.headers.cookie, AUTH_COOKIE_NAME);
     if (!token) return;
-    const session = await auth.getSession(token);
-    if (!session || session.principal.principalType !== "EMPLOYEE") return;
-    const access = await loadEmploymentAccessState(pool, session.principal.id);
+    const account = await employeeAccountOfSession(pool, token);
+    if (!account) return;
+    const access = await loadEmploymentAccessState(pool, account);
     if (!access.employmentEnded) return;
     if (!access.reactivationExpiresAt) {
       return send(reply, 401, {
@@ -126,10 +149,8 @@ export async function registerTemporaryReactivationRoutes(app: FastifyInstance, 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const account = await client.query<{ id: string; status: string; principalType: string; endedOn: string | null }>(
-        `SELECT a.id, a.status, a.principal_type AS "principalType",
-                (SELECT max(e.ended_on)::text FROM employments e
-                 WHERE e.employee_id = a.employee_id AND e.voided_by_action_id IS NULL) AS "endedOn"
+      const account = await client.query<{ id: string; status: string; principalType: string }>(
+        `SELECT a.id, a.status, a.principal_type AS "principalType"
          FROM accounts a WHERE a.id = $1 FOR UPDATE OF a`,
         [params.data.accountId],
       );
@@ -138,7 +159,20 @@ export async function registerTemporaryReactivationRoutes(app: FastifyInstance, 
         await client.query("ROLLBACK");
         return send(reply, 404, { code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
       }
-      if (row.principalType !== "EMPLOYEE" || row.status === "suspended" || !row.endedOn) {
+      // The same scope and delegation rules the manual status change applies:
+      // this path must not become a way around them.
+      try {
+        await assertAccountManagementTarget(client, principal, row.id);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        if (error instanceof AuthError) return send(reply, error.statusCode, { code: error.code, message: error.message });
+        throw error;
+      }
+      // "Ended" means the latest employment, not any employment ever: someone
+      // rehired after a termination is a current employee again.
+      const state = await loadEmploymentAccessState(client, row.id);
+      const endedOn = await latestEmploymentEnd(client, row.id);
+      if (row.principalType !== "EMPLOYEE" || row.status === "suspended" || !endedOn || !state.employmentEnded) {
         await client.query("ROLLBACK");
         return send(reply, 409, {
           code: "REACTIVATION_NOT_APPLICABLE",
@@ -158,6 +192,11 @@ export async function registerTemporaryReactivationRoutes(app: FastifyInstance, 
         [id, row.id, body.data.reason, expiresAt.toISOString(), principal.id],
       );
       await client.query("UPDATE accounts SET status = 'active', updated_at = now() WHERE id = $1", [row.id]);
+      await client.query(
+        `UPDATE auth_sessions SET revoked_at = coalesce(revoked_at, now())
+         WHERE account_id = $1 AND revoked_at IS NULL`,
+        [row.id],
+      );
       await client.query(
         `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
          VALUES ($1, $2, 'account.temporary_reactivation.granted', 'account', $3, $4::jsonb)`,
@@ -193,16 +232,21 @@ export async function registerTemporaryReactivationRoutes(app: FastifyInstance, 
         await client.query("ROLLBACK");
         return send(reply, 404, { code: "REACTIVATION_NOT_FOUND", message: "Aktivasi sementara tidak ditemukan." });
       }
-      await client.query(
-        `UPDATE accounts SET status = 'inactive', updated_at = now()
-         WHERE id = $1 AND principal_type = 'EMPLOYEE' AND status IN ('invited', 'active')`,
-        [params.data.accountId],
-      );
-      await client.query(
-        `UPDATE auth_sessions SET revoked_at = coalesce(revoked_at, now())
-         WHERE account_id = $1 AND revoked_at IS NULL`,
-        [params.data.accountId],
-      );
+      // Revoking the grant closes the account only while the employment is
+      // still ended; a rehired employee keeps the access their work gives them.
+      const state = await loadEmploymentAccessState(client, params.data.accountId);
+      if (state.employmentEnded) {
+        await client.query(
+          `UPDATE accounts SET status = 'inactive', updated_at = now()
+           WHERE id = $1 AND principal_type = 'EMPLOYEE' AND status IN ('invited', 'active')`,
+          [params.data.accountId],
+        );
+        await client.query(
+          `UPDATE auth_sessions SET revoked_at = coalesce(revoked_at, now())
+           WHERE account_id = $1 AND revoked_at IS NULL`,
+          [params.data.accountId],
+        );
+      }
       await client.query(
         `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
          VALUES ($1, $2, 'account.temporary_reactivation.revoked', 'account', $3, $4::jsonb)`,

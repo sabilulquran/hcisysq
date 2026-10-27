@@ -41,6 +41,7 @@ import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
+import { AdminAttendancePlannerPage } from "@/pages/AdminAttendancePlannerPage";
 import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
@@ -53,12 +54,14 @@ import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminDocumentsPage } from "@/pages/AdminDocumentsPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { AdminServicesPage } from "@/pages/AdminServicesPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePage";
+import { EmployeeDocumentsPage } from "@/pages/EmployeeDocumentsPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
@@ -165,6 +168,13 @@ const employeeNotificationsRoute = createRoute({
   path: "/app/notifications",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeNotificationsPage,
+});
+
+const employeeDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/documents",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeDocumentsPage,
 });
 
 const employeeLeaveRoute = createRoute({
@@ -320,6 +330,13 @@ const adminAttendanceSchedulePatternsRoute = createRoute({
   path: "/admin/attendance/schedules",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules"),
   component: AdminAttendanceAssignmentsPage,
+});
+
+const adminAttendanceScheduleCalendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/schedules/calendar",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/schedules/calendar"),
+  component: AdminAttendancePlannerPage,
 });
 
 const adminAttendanceScheduleDatesRoute = createRoute({
@@ -536,6 +553,13 @@ const adminPayslipsRoute = createRoute({
   component: AdminPayslipsPage,
 });
 
+const adminDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/documents",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/documents"),
+  component: AdminDocumentsPage,
+});
+
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
@@ -572,6 +596,7 @@ const routeTree = rootRoute.addChildren([
   employeeMobileAttendanceRoute,
   employeeShiftSwapRoute,
   employeeNotificationsRoute,
+  employeeDocumentsRoute,
   employeeLeaveRoute,
   employeePayslipsRoute,
   employeeSpecialLeaveRoute,
@@ -594,6 +619,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceRoute,
   adminAttendanceShiftsRoute,
   adminAttendanceSchedulePatternsRoute,
+  adminAttendanceScheduleCalendarRoute,
   adminAttendanceScheduleDatesRoute,
   adminAttendanceShiftSwapsRoute,
   adminAttendanceDailyRoute,
@@ -624,6 +650,7 @@ const routeTree = rootRoute.addChildren([
   adminLeaveRoute,
   adminLeaveCalendarRoute,
   adminPayslipsRoute,
+  adminDocumentsRoute,
   adminAccessRoute,
   adminServicesRoute,
   adminComingSoonRoute,

@@ -47,7 +47,13 @@ interface PoolOptions {
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
   const writes: string[] = [];
-  const query = vi.fn(async (sql: string) => {
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("FROM auth_sessions s") && sql.includes("a.principal_type = 'EMPLOYEE'")) {
+      // The guard's own lookup: employees only.
+      return persona === "employee"
+        ? { rows: [{ accountId: ACCOUNT_ID }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FROM auth_sessions s")) {
       if (persona === "anonymous") return { rows: [], rowCount: 0 };
       return {
@@ -65,6 +71,20 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) {
       const keys = PERMISSIONS[persona];
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
+    }
+    if (sql.includes("FROM account_role_assignments assignment") && sql.includes("role_permission.permission_key = $2")) {
+      // hasOrganizationPermission for the acting account: access.manage only.
+      const allowed = params?.[1] === "access.manage" && PERMISSIONS[persona].includes("access.manage");
+      return { rows: [{ allowed }], rowCount: 1 };
+    }
+    // assertAccountManagementTarget: the actor's effective permissions, the
+    // target's principal type, and the roles it carries.
+    if (sql.includes("FROM accounts WHERE id = $1") && sql.includes('principal_type AS "principalType"')) {
+      return { rows: [{ principalType: options.principalType ?? "EMPLOYEE" }], rowCount: 1 };
+    }
+    if (sql.includes("FROM account_role_assignments assignment")) return { rows: [], rowCount: 0 };
+    if (sql.includes("FROM employments e") && sql.includes('e.ended_on::text AS "endedOn"')) {
+      return { rows: [{ endedOn: options.endedOn === undefined ? "2027-09-30" : options.endedOn }], rowCount: 1 };
     }
     if (sql.includes("WITH account_employee AS")) {
       return {
@@ -95,6 +115,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("INSERT INTO account_temporary_reactivations")) {
       writes.push("INSERT grant");
       return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("SELECT EXISTS")) {
+      return { rows: [{ present: false }], rowCount: 1 };
     }
     if (sql.includes("UPDATE accounts SET status")) {
       writes.push(`SET account ${sql.includes("SET status = 'active'") ? "active" : "inactive"}`);
@@ -137,6 +160,8 @@ function inDays(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString();
 }
 
+const ENDED = { employmentEnded: true } as const;
+
 const GRANT_URL = `/admin/access/accounts/${ACCOUNT_ID}/temporary-reactivations`;
 
 describe("EMP-005 D-15 granting a temporary reactivation", () => {
@@ -149,10 +174,11 @@ describe("EMP-005 D-15 granting a temporary reactivation", () => {
 
   it("grants with a reason and an expiry, reactivating the account", async () => {
     const { response, writes } = await call("hc_admin", "POST", GRANT_URL, {
+      ...ENDED,
       payload: { reason: "Menyelesaikan serah terima pekerjaan", expiresAt: inDays(7) },
     });
     expect(response.statusCode).toBe(201);
-    expect(writes).toEqual(["REVOKE grant", "INSERT grant", "SET account active", "INSERT audit"]);
+    expect(writes).toEqual(["REVOKE grant", "INSERT grant", "SET account active", "REVOKE sessions", "INSERT audit"]);
   });
 
   it("refuses an expiry beyond the maximum, a past expiry, and a short reason", async () => {
@@ -161,7 +187,7 @@ describe("EMP-005 D-15 granting a temporary reactivation", () => {
       { reason: "Mengambil slip gaji terakhir", expiresAt: inDays(-1) },
       { reason: "lupa", expiresAt: inDays(7) },
     ]) {
-      const { response, writes } = await call("hc_admin", "POST", GRANT_URL, { payload });
+      const { response, writes } = await call("hc_admin", "POST", GRANT_URL, { ...ENDED, payload });
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({ code: "REACTIVATION_EXPIRY_REQUIRED" });
       expect(writes).toEqual([]);
@@ -179,18 +205,36 @@ describe("EMP-005 D-15 granting a temporary reactivation", () => {
 
   it("refuses an account whose employment has not ended, and a suspended one", async () => {
     const payload = { reason: "Mengambil slip gaji terakhir", expiresAt: inDays(7) };
-    const active = await call("hc_admin", "POST", GRANT_URL, { endedOn: null, payload });
+    const active = await call("hc_admin", "POST", GRANT_URL, { endedOn: null, employmentEnded: false, payload });
     expect(active.response.json()).toMatchObject({ code: "REACTIVATION_NOT_APPLICABLE" });
-    const suspended = await call("hc_admin", "POST", GRANT_URL, { accountStatus: "suspended", payload });
+    const suspended = await call("hc_admin", "POST", GRANT_URL, { ...ENDED, accountStatus: "suspended", payload });
     expect(suspended.response.json()).toMatchObject({ code: "REACTIVATION_NOT_APPLICABLE" });
     expect(active.writes).toEqual([]);
     expect(suspended.writes).toEqual([]);
   });
 
   it("revokes early, closing the account and its sessions", async () => {
-    const { response, writes } = await call("hc_admin", "POST", `${GRANT_URL}/${GRANT_ID}/revoke`);
+    const { response, writes } = await call("hc_admin", "POST", `${GRANT_URL}/${GRANT_ID}/revoke`, ENDED);
     expect(response.statusCode).toBe(200);
     expect(writes).toEqual(["REVOKE grant", "SET account inactive", "REVOKE sessions", "INSERT audit"]);
+  });
+
+  it("leaves a rehired employee's account alone when a grant is revoked", async () => {
+    const { response, writes } = await call("hc_admin", "POST", `${GRANT_URL}/${GRANT_ID}/revoke`, {
+      employmentEnded: false,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(writes).toEqual(["REVOKE grant", "INSERT audit"]);
+  });
+
+  it("refuses an account the actor may not manage", async () => {
+    const { response, writes } = await call("hc_admin", "POST", GRANT_URL, {
+      ...ENDED,
+      principalType: "SUPER_ADMIN",
+      payload: { reason: "Mengambil slip gaji terakhir", expiresAt: inDays(7) },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(writes).toEqual([]);
   });
 
   it("answers 404 when there is no live grant to revoke", async () => {

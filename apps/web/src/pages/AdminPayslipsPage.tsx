@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -32,7 +33,9 @@ import {
 import type { AuthSession } from "@/types/hcis";
 
 type ReviewFilter = "errors" | "all";
-type RowEdit = { employeeNumber: string; period: string };
+type RowValues = { employeeNumber: string; period: string };
+/** Current input plus the value the server last returned, to know what changed. */
+type RowEdit = RowValues & { original: RowValues };
 
 function sourceFormatLabel(value: PayslipSourceFormat) {
   if (value === "tetap") return "Tetap";
@@ -87,45 +90,93 @@ export function AdminPayslipsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("errors");
-  const [reviewPage, setReviewPage] = useState(1);
   const [rowEdits, setRowEdits] = useState<Record<number, RowEdit>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [bulkPeriod, setBulkPeriod] = useState("");
+  const [batchPage, setBatchPage] = useState(1);
+  const [batchTotal, setBatchTotal] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const correctionFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canPublish = hasPermission(session, "payslips.publish");
+  // Rows are paged on the server (ENG-LIST-001); edits and selection are kept per row number across pages.
   const reviewPageSize = 100;
+  const batchPageSize = 25;
 
-  const refresh = async () => {
-    const result = await listPayslipImports();
+  const refresh = async (page = batchPage) => {
+    const result = await listPayslipImports({ page, pageSize: batchPageSize });
     setItems(result.items);
+    setBatchTotal(result.pagination.total);
+  };
+
+  const fetchReview = (batchId: string, filter: ReviewFilter, page: number) =>
+    getPayslipImport(batchId, { filter, page, pageSize: reviewPageSize });
+  // Only the newest page request may land, so quick clicks cannot show an older page last.
+  const reviewRequest = useRef(0);
+
+  // Remember each pending row the first time it is seen, so edits survive page changes.
+  const showReviewPage = (detail: PayslipImportDetail) => {
+    setReview(detail);
+    setRowEdits((current) => {
+      const next = { ...current };
+      for (const row of detail.rows) {
+        if (row.resolutionStatus !== "pending" || next[row.rowNumber]) continue;
+        const original = { employeeNumber: row.employeeNumber, period: row.period ?? "" };
+        next[row.rowNumber] = { ...original, original };
+      }
+      return next;
+    });
   };
 
   const applyReview = (detail: PayslipImportDetail) => {
-    setReview(detail);
-    setRowEdits(
-      Object.fromEntries(
-        detail.rows.map((row) => [
-          row.rowNumber,
-          { employeeNumber: row.employeeNumber, period: row.period ?? "" },
-        ]),
-      ),
-    );
+    setRowEdits({});
     setSelectedRows(new Set());
     setBulkPeriod("");
-    if (detail.unresolvedCount === 0 && reviewFilter === "errors") setReviewFilter("all");
-    setReviewPage(1);
+    showReviewPage(detail);
   };
 
   const reloadReview = async (batchId: string) => {
-    applyReview(await getPayslipImport(batchId));
+    const request = ++reviewRequest.current;
+    let filter = reviewFilter;
+    let detail = await fetchReview(batchId, filter, review?.pagination.page ?? 1);
+    if (filter === "errors" && detail.unresolvedCount === 0) {
+      // Nothing left to fix: show the whole batch instead of an empty queue.
+      filter = "all";
+      detail = await fetchReview(batchId, filter, 1);
+    } else if (detail.rows.length === 0 && detail.pagination.page > detail.pagination.pageCount) {
+      // Resolving rows can empty the page the user was on; fall back to the last one that exists.
+      detail = await fetchReview(batchId, filter, detail.pagination.pageCount);
+    }
+    if (request !== reviewRequest.current) return;
+    setReviewFilter(filter);
+    applyReview(detail);
+  };
+
+  const goToReview = async (filter: ReviewFilter, page: number) => {
+    if (!review) return;
+    const request = ++reviewRequest.current;
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await fetchReview(review.id, filter, page);
+      if (request !== reviewRequest.current) return;
+      showReviewPage(detail);
+      setReviewFilter(filter);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Baris batch tidak dapat dimuat.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   useEffect(() => {
-    void refresh().catch((cause: unknown) =>
+    void refresh(batchPage).catch((cause: unknown) =>
       setError(cause instanceof Error ? cause.message : "Riwayat payslip tidak dapat dimuat."),
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh only reads batchPage
+  }, [batchPage]);
+
+  useEffect(() => {
     void getCurrentSession().then(setSession).catch(() => setSession(null));
   }, []);
 
@@ -152,11 +203,20 @@ export function AdminPayslipsPage() {
   };
 
   const openReview = async (batchId: string) => {
+    const request = ++reviewRequest.current;
     setBusy(true);
     setError(null);
     try {
-      const detail = await getPayslipImport(batchId);
-      setReviewFilter(detail.unresolvedCount > 0 ? "errors" : "all");
+      // The batch list already knows whether rows need action, so one audited page read is enough.
+      const known = items?.find((item) => item.id === batchId);
+      let filter: ReviewFilter = known && known.unresolvedCount === 0 ? "all" : "errors";
+      let detail = await fetchReview(batchId, filter, 1);
+      if (filter === "errors" && detail.unresolvedCount === 0) {
+        filter = "all";
+        detail = await fetchReview(batchId, filter, 1);
+      }
+      if (request !== reviewRequest.current) return;
+      setReviewFilter(filter);
       applyReview(detail);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Detail batch tidak dapat dimuat.");
@@ -165,77 +225,59 @@ export function AdminPayslipsPage() {
     }
   };
 
-  const errorRows = useMemo(
-    () =>
-      review?.rows.filter(
-        (row) => row.resolutionStatus === "pending" && row.errors.length > 0,
-      ) ?? [],
-    [review],
-  );
-
-  const errorSummary = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of errorRows) {
-      for (const message of row.errors) {
-        counts.set(message, (counts.get(message) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [errorRows]);
-
-  const visibleRows = useMemo(() => {
-    if (!review) return [];
-    return reviewFilter === "errors" ? errorRows : review.rows;
-  }, [review, reviewFilter, errorRows]);
-
-  const pageCount = Math.max(1, Math.ceil(visibleRows.length / reviewPageSize));
-  const safePage = Math.min(reviewPage, pageCount);
-  const pagedRows = visibleRows.slice(
-    (safePage - 1) * reviewPageSize,
-    safePage * reviewPageSize,
-  );
+  const errorSummary = review?.errorSummary ?? [];
+  const pagedRows = review?.rows ?? [];
   const selectablePageRows = pagedRows.filter((row) => row.resolutionStatus === "pending");
   const pageFullySelected =
     selectablePageRows.length > 0 &&
     selectablePageRows.every((row) => selectedRows.has(row.rowNumber));
 
-  const changedCorrections = useMemo(() => {
-    if (!review) return [];
-    return review.rows.flatMap((row) => {
-      if (row.resolutionStatus !== "pending") return [];
-      const edit = rowEdits[row.rowNumber];
-      if (!edit) return [];
-      const changed =
-        edit.employeeNumber.trim() !== row.employeeNumber ||
-        edit.period !== (row.period ?? "");
-      if (!changed || !edit.employeeNumber.trim() || !edit.period) return [];
-      return [{
-        rowNumber: row.rowNumber,
-        employeeNumber: edit.employeeNumber.trim(),
-        period: edit.period,
-      }];
-    });
-  }, [review, rowEdits]);
+  const changedCorrections = useMemo(
+    () =>
+      Object.entries(rowEdits).flatMap(([rowNumber, edit]) => {
+        const changed =
+          edit.employeeNumber.trim() !== edit.original.employeeNumber ||
+          edit.period !== edit.original.period;
+        if (!changed || !edit.employeeNumber.trim() || !edit.period) return [];
+        return [{ rowNumber: Number(rowNumber), employeeNumber: edit.employeeNumber.trim(), period: edit.period }];
+      }),
+    [rowEdits],
+  );
 
-  const downloadCorrections = () => {
-    if (!review || errorRows.length === 0) return;
-    const rows = [
-      ["row", "employee_number", "period", "errors"],
-      ...errorRows.map((row) => [
-        String(row.rowNumber),
-        row.employeeNumber,
-        row.period ?? "",
-        row.errors.join(" | "),
-      ]),
-    ];
-    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `payslip-corrections-${review.id}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  // The file holds every row that still needs action, read page by page from the server.
+  const downloadCorrections = async () => {
+    if (!review || review.unresolvedCount === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const errorRows: PayslipImportRow[] = [];
+      for (let page = 1; ; page += 1) {
+        const detail = await fetchReview(review.id, "errors", page);
+        errorRows.push(...detail.rows);
+        if (page >= detail.pagination.pageCount) break;
+      }
+      const rows = [
+        ["row", "employee_number", "period", "errors"],
+        ...errorRows.map((row) => [
+          String(row.rowNumber),
+          row.employeeNumber,
+          row.period ?? "",
+          row.errors.join(" | "),
+        ]),
+      ];
+      const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `payslip-corrections-${review.id}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "CSV koreksi tidak dapat disiapkan.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveCorrections = async (
@@ -244,12 +286,28 @@ export function AdminPayslipsPage() {
   ) => {
     if (!review || corrections.length === 0) return;
     await run(async () => {
+      // Each request of up to 500 rows is its own transaction. If a later one is refused
+      // (for example a row was drafted after the CSV was downloaded), say what already landed.
+      let applied = 0;
       for (let offset = 0; offset < corrections.length; offset += 500) {
-        await bulkCorrectPayslipImportRows(review.id, corrections.slice(offset, offset + 500));
+        const chunk = corrections.slice(offset, offset + 500);
+        try {
+          await bulkCorrectPayslipImportRows(review.id, chunk);
+        } catch (cause) {
+          const reason = cause instanceof Error ? cause.message : "Koreksi ditolak.";
+          if (applied === 0) throw cause;
+          await reloadReview(review.id);
+          throw new Error(
+            `${applied} dari ${corrections.length} koreksi sudah tersimpan; sisanya ditolak: ${reason} Unduh ulang CSV koreksi untuk baris yang tersisa.`,
+          );
+        }
+        applied += chunk.length;
       }
     }, success, review.id);
   };
 
+  // The server accepts only rows that are still pending and refuses a request that holds any
+  // other row; a refused file is fixed by downloading a fresh correction CSV.
   const uploadCorrectionFile = async (selectedFile: File) => {
     if (!review) return;
     try {
@@ -263,9 +321,6 @@ export function AdminPayslipsPage() {
       if (rowIndex < 0 || employeeIndex < 0 || periodIndex < 0) {
         throw new Error("Header koreksi wajib memuat row, employee_number, period.");
       }
-      const pendingNumbers = new Set(
-        review.rows.filter((row) => row.resolutionStatus === "pending").map((row) => row.rowNumber),
-      );
       const corrections = lines.slice(1).map((line) => {
         const values = parseCsvLine(line);
         return {
@@ -275,12 +330,12 @@ export function AdminPayslipsPage() {
         };
       }).filter((row) =>
         Number.isInteger(row.rowNumber) &&
-        pendingNumbers.has(row.rowNumber) &&
+        row.rowNumber > 0 &&
         row.employeeNumber.length > 0 &&
         /^\d{4}-(0[1-9]|1[0-2])$/.test(row.period),
       );
       if (corrections.length === 0) {
-        throw new Error("Tidak ada baris koreksi pending yang valid di file tersebut.");
+        throw new Error("Tidak ada baris koreksi yang valid di file tersebut.");
       }
       await saveCorrections(corrections, `${corrections.length} baris dari CSV koreksi sudah direvalidasi.`);
     } catch (cause) {
@@ -354,7 +409,7 @@ export function AdminPayslipsPage() {
                 <input type="month" value={fallbackPeriod} onChange={(event) => setFallbackPeriod(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm font-normal" />
               </label>
               <p className="text-[11px] leading-5 text-muted-foreground">Opsional. Dipakai bila CSV tetap/honorer tidak memiliki kolom TANGGAL.</p>
-              <button type="button" disabled={!file || busy} onClick={() => file && void run(() => previewPayslipImport(file, fallbackPeriod || undefined), "Preview disimpan. Baris valid siap dimasukkan ke draft; baris error dapat diperbaiki dari Review.")} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" disabled={!file || busy} onClick={() => file && void run(async () => { await previewPayslipImport(file, fallbackPeriod || undefined); setBatchPage(1); }, "Preview disimpan. Baris valid siap dimasukkan ke draft; baris error dapat diperbaiki dari Review.")} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-brand-foreground disabled:cursor-not-allowed disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Preview CSV
               </button>
             </div>
@@ -393,7 +448,7 @@ export function AdminPayslipsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-warning-ink">{review.unresolvedCount} baris perlu keputusan sebelum Publish.</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {errorSummary.map(([message, count]) => <span key={message} className="rounded-full bg-surface-raised px-2.5 py-1 text-[11px] font-semibold text-warning-ink">{count} × {message}</span>)}
+                        {errorSummary.map(({ message, count }) => <span key={message} className="rounded-full bg-surface-raised px-2.5 py-1 text-[11px] font-semibold text-warning-ink">{count} × {message}</span>)}
                       </div>
                     </div>
                   </div>
@@ -404,12 +459,12 @@ export function AdminPayslipsPage() {
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => { setReviewFilter("errors"); setReviewPage(1); setSelectedRows(new Set()); }} className={`rounded-xl px-3 py-2 text-xs font-bold ${reviewFilter === "errors" ? "bg-brand-primary text-brand-foreground" : "border border-border bg-surface-raised"}`}>Perlu tindakan ({review.unresolvedCount})</button>
-                  <button type="button" onClick={() => { setReviewFilter("all"); setReviewPage(1); setSelectedRows(new Set()); }} className={`rounded-xl px-3 py-2 text-xs font-bold ${reviewFilter === "all" ? "bg-brand-primary text-brand-foreground" : "border border-border bg-surface-raised"}`}>Semua ({review.rowCount})</button>
+                  <button type="button" onClick={() => void goToReview("errors", 1)} className={`rounded-xl px-3 py-2 text-xs font-bold ${reviewFilter === "errors" ? "bg-brand-primary text-brand-foreground" : "border border-border bg-surface-raised"}`}>Perlu tindakan ({review.unresolvedCount})</button>
+                  <button type="button" onClick={() => void goToReview("all", 1)} className={`rounded-xl px-3 py-2 text-xs font-bold ${reviewFilter === "all" ? "bg-brand-primary text-brand-foreground" : "border border-border bg-surface-raised"}`}>Semua ({review.rowCount})</button>
                 </div>
-                {errorRows.length > 0 ? (
+                {review.unresolvedCount > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={downloadCorrections} className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs font-bold"><Download className="h-4 w-4" /> Unduh CSV koreksi</button>
+                    <button type="button" disabled={busy} onClick={() => void downloadCorrections()} className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 py-2 text-xs font-bold"><Download className="h-4 w-4" /> Unduh CSV koreksi</button>
                     <input ref={correctionFileInputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => event.target.files?.[0] && void uploadCorrectionFile(event.target.files[0])} />
                     <button type="button" disabled={busy} onClick={() => correctionFileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-brand-primary/30 bg-surface-raised px-3 py-2 text-xs font-bold text-brand-primary-deep disabled:opacity-50"><Upload className="h-4 w-4" /> Unggah CSV koreksi</button>
                   </div>
@@ -462,7 +517,8 @@ export function AdminPayslipsPage() {
                 <tbody className="divide-y divide-border">
                   {pagedRows.map((row) => {
                     const editable = row.resolutionStatus === "pending";
-                    const edit = rowEdits[row.rowNumber] ?? { employeeNumber: row.employeeNumber, period: row.period ?? "" };
+                    const values = { employeeNumber: row.employeeNumber, period: row.period ?? "" };
+                    const edit = rowEdits[row.rowNumber] ?? { ...values, original: values };
                     return (
                       <tr key={row.rowNumber} className={row.errors.length > 0 && row.resolutionStatus === "pending" ? "bg-warning-soft/30" : undefined}>
                         <td className="px-3 py-2.5 align-top">
@@ -514,14 +570,13 @@ export function AdminPayslipsPage() {
               {pagedRows.length === 0 ? <div className="p-8 text-center text-sm text-muted-foreground">Tidak ada baris pada filter ini.</div> : null}
             </div>
 
-            {visibleRows.length > reviewPageSize ? (
-              <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs">
-                <span className="text-muted-foreground">Menampilkan {(safePage - 1) * reviewPageSize + 1}–{Math.min(safePage * reviewPageSize, visibleRows.length)} dari {visibleRows.length} baris</span>
-                <div className="flex gap-2">
-                  <button type="button" disabled={safePage <= 1} onClick={() => { setReviewPage((value) => Math.max(1, value - 1)); setSelectedRows(new Set()); }} className="rounded-lg border border-border px-3 py-1.5 font-bold disabled:opacity-40">Sebelumnya</button>
-                  <button type="button" disabled={safePage >= pageCount} onClick={() => { setReviewPage((value) => Math.min(pageCount, value + 1)); setSelectedRows(new Set()); }} className="rounded-lg border border-border px-3 py-1.5 font-bold disabled:opacity-40">Berikutnya</button>
-                </div>
-              </div>
+            {review.pagination.pageCount > 1 ? (
+              <PaginationBar
+                page={review.pagination.page}
+                pageSize={review.pagination.pageSize}
+                total={review.pagination.total}
+                onPageChange={(page) => void goToReview(reviewFilter, page)}
+              />
             ) : null}
           </section>
         ) : null}
@@ -562,6 +617,7 @@ export function AdminPayslipsPage() {
                   </div>
                 );
               })}
+              <PaginationBar page={batchPage} pageSize={batchPageSize} total={batchTotal} onPageChange={setBatchPage} />
             </div>
           )}
         </section>

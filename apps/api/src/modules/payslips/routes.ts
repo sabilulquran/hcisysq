@@ -1,5 +1,6 @@
 import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
 import { notifyEmployee } from "../notifications/service.js";
+import { resolveDocumentSigner } from "../documents/signer-authority.js";
 import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
@@ -8,6 +9,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import {
   AUTH_COOKIE_NAME,
   AuthService,
@@ -19,6 +21,10 @@ export type PayslipPermission = "payslips.import" | "payslips.publish";
 
 const idSchema = z.object({ id: z.string().uuid() });
 const batchIdSchema = z.object({ batchId: z.string().uuid() });
+// "errors" is the review queue: pending rows that still fail validation (ENG-LIST-001 paging).
+const batchRowsQuerySchema = pageQuerySchema.extend({
+  filter: z.enum(["all", "errors"]).default("all"),
+});
 const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const importRowParamsSchema = z.object({
   batchId: z.string().uuid(),
@@ -192,140 +198,6 @@ async function refreshBatchValidationCounts(database: QueryTarget, batchId: stri
   );
 }
 
-type PayslipSignerTitle = "Kepala Human Capital Management" | "Direktur";
-
-interface PayslipSignerCandidate {
-  employeeId: string;
-  name: string;
-}
-
-async function findDynamicSignerCandidate(
-  database: QueryTarget,
-  role: "hcm" | "director",
-): Promise<PayslipSignerCandidate | null> {
-  const result = await database.query<PayslipSignerCandidate>(
-    `WITH latest AS (
-       SELECT id
-         FROM organization_change_sets
-        WHERE status = 'PUBLISHED'
-          AND effective_on <= current_date
-        ORDER BY effective_on DESC, published_at DESC NULLS LAST, created_at DESC, id DESC
-        LIMIT 1
-     )
-     SELECT employee.id AS "employeeId", employee.full_name AS name
-       FROM latest
-       JOIN organization_positions position
-         ON position.change_set_id = latest.id
-       JOIN organization_nodes node
-         ON node.change_set_id = position.change_set_id
-        AND node.stable_key = position.node_key
-       JOIN organization_incumbencies incumbent
-         ON incumbent.change_set_id = position.change_set_id
-        AND incumbent.position_key = position.stable_key
-       JOIN employees employee
-         ON employee.id = incumbent.employee_id
-      WHERE (
-        (
-          $1 = 'hcm'
-          AND (
-            lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'kepala human capital management'
-            OR (
-              lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'kepala'
-              AND lower(regexp_replace(btrim(node.name), '\\s+', ' ', 'g')) = 'human capital management'
-            )
-          )
-        )
-        OR (
-          $1 = 'director'
-          AND lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'direktur'
-        )
-      )
-        AND position.active = true
-        AND node.active = true
-        AND position.effective_from <= current_date
-        AND (position.effective_to IS NULL OR position.effective_to >= current_date)
-        AND node.effective_from <= current_date
-        AND (node.effective_to IS NULL OR node.effective_to >= current_date)
-        AND incumbent.effective_from <= current_date
-        AND (incumbent.effective_to IS NULL OR incumbent.effective_to >= current_date)
-        AND incumbent.employee_id IS NOT NULL
-        AND employee.status = 'active'
-      ORDER BY CASE incumbent.kind WHEN 'PRIMARY' THEN 0 ELSE 1 END,
-               incumbent.effective_from DESC,
-               employee.full_name ASC
-      LIMIT 1`,
-    [role],
-  );
-  return result.rows[0] ?? null;
-}
-
-async function findLegacySignerCandidate(
-  database: QueryTarget,
-  role: "hcm" | "director",
-): Promise<PayslipSignerCandidate | null> {
-  const result = await database.query<PayslipSignerCandidate>(
-    `SELECT employee.id AS "employeeId", employee.full_name AS name
-       FROM employees employee
-       LEFT JOIN positions position ON position.id = employee.position_id
-       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-      WHERE employee.status = 'active'
-        AND (
-          (
-            $1 = 'hcm'
-            AND (
-              lower(regexp_replace(btrim(coalesce(position.name, '')), '\\s+', ' ', 'g')) = 'kepala human capital management'
-              OR lower(regexp_replace(btrim(coalesce(employee.structural_position, '')), '\\s+', ' ', 'g')) = 'kepala human capital management'
-              OR (
-                lower(regexp_replace(btrim(coalesce(position.name, '')), '\\s+', ' ', 'g')) = 'kepala'
-                AND lower(regexp_replace(btrim(coalesce(unit.name, '')), '\\s+', ' ', 'g')) = 'human capital management'
-              )
-            )
-          )
-          OR (
-            $1 = 'director'
-            AND (
-              lower(regexp_replace(btrim(coalesce(position.name, '')), '\\s+', ' ', 'g')) = 'direktur'
-              OR lower(regexp_replace(btrim(coalesce(employee.structural_position, '')), '\\s+', ' ', 'g')) = 'direktur'
-            )
-          )
-        )
-      ORDER BY employee.full_name ASC
-      LIMIT 1`,
-    [role],
-  );
-  return result.rows[0] ?? null;
-}
-
-async function findPayslipSignerCandidate(
-  database: QueryTarget,
-  role: "hcm" | "director",
-): Promise<PayslipSignerCandidate | null> {
-  return (
-    (await findDynamicSignerCandidate(database, role))
-    ?? (await findLegacySignerCandidate(database, role))
-  );
-}
-
-async function resolvePayslipSigner(
-  database: QueryTarget,
-  payslipOwnerEmployeeId: string,
-): Promise<{ title: PayslipSignerTitle; name: string | null }> {
-  const hcm = await findPayslipSignerCandidate(database, "hcm");
-  if (hcm && hcm.employeeId !== payslipOwnerEmployeeId) {
-    return { title: "Kepala Human Capital Management", name: hcm.name };
-  }
-
-  const director = await findPayslipSignerCandidate(database, "director");
-  if (director && director.employeeId !== payslipOwnerEmployeeId) {
-    return { title: "Direktur", name: director.name };
-  }
-
-  if (hcm?.employeeId === payslipOwnerEmployeeId || !hcm) {
-    return { title: "Direktur", name: null };
-  }
-
-  return { title: "Kepala Human Capital Management", name: null };
-}
 
 function decodeFilename(value: string | undefined): string {
   if (!value) return "payslip-import.csv";
@@ -730,7 +602,14 @@ export async function registerPayslipRoutes(
   app.get("/admin/payslip-imports", async (request, reply) => {
     const principal = await requireCapability(request, reply, "payslips.import");
     if (!principal) return;
-    const result = await pool.query(
+    const page = pageQuerySchema.safeParse(request.query);
+    if (!page.success) {
+      return reply.status(400).send({
+        code: "INVALID_QUERY",
+        message: "Halaman riwayat batch tidak valid.",
+      });
+    }
+    const [result, count] = await Promise.all([pool.query(
       `SELECT batch.id, batch.source_filename AS "sourceFilename",
               batch.source_format AS "sourceFormat", batch.status,
               batch.row_count AS "rowCount", batch.valid_count AS "validCount",
@@ -755,11 +634,12 @@ export async function registerPayslipRoutes(
              FROM payslip_import_rows
             WHERE batch_id = batch.id
          ) stats ON true
-        ORDER BY batch.created_at DESC
-        LIMIT 50`,
-    );
+        ORDER BY batch.created_at DESC, batch.id DESC
+        LIMIT $1 OFFSET $2`,
+      [page.data.pageSize, pageOffset(page.data)],
+    ), pool.query<{ total: number }>("SELECT count(*)::int AS total FROM payslip_import_batches")]);
     reply.header("Cache-Control", "private, no-store");
-    return reply.send({ items: result.rows });
+    return reply.send({ items: result.rows, pagination: pagination(page.data, count.rows[0]?.total ?? 0) });
   });
 
   app.post(
@@ -903,7 +783,6 @@ export async function registerPayslipRoutes(
         rowCount: rows.length,
         validCount,
         errorCount,
-        rows,
       });
     },
   );
@@ -916,6 +795,13 @@ export async function registerPayslipRoutes(
       return reply.status(400).send({
         code: "INVALID_BATCH_ID",
         message: "Batch ID tidak valid.",
+      });
+    }
+    const query = batchRowsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({
+        code: "INVALID_QUERY",
+        message: "Halaman atau saringan baris batch tidak valid.",
       });
     }
 
@@ -954,24 +840,56 @@ export async function registerPayslipRoutes(
       });
     }
 
-    const rows = await pool.query(
-      `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
-              to_char(period, 'YYYY-MM') AS period, lines,
-              validation_errors AS errors,
-              resolution_status AS "resolutionStatus",
-              draft_payslip_id AS "draftPayslipId",
-              excluded_at AS "excludedAt"
-         FROM payslip_import_rows
-        WHERE batch_id = $1
-        ORDER BY row_number`,
-      [parsed.data.batchId],
-    );
+    const onlyErrors = query.data.filter === "errors";
+    const matches = `($2::boolean IS FALSE
+            OR (resolution_status = 'pending' AND jsonb_array_length(validation_errors) > 0))`;
+    const [rows, count, errorSummary] = await Promise.all([
+      pool.query(
+        `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
+                to_char(period, 'YYYY-MM') AS period, lines,
+                validation_errors AS errors,
+                resolution_status AS "resolutionStatus",
+                draft_payslip_id AS "draftPayslipId",
+                excluded_at AS "excludedAt"
+           FROM payslip_import_rows
+          WHERE batch_id = $1 AND ${matches}
+          ORDER BY row_number
+          LIMIT $3 OFFSET $4`,
+        [parsed.data.batchId, onlyErrors, query.data.pageSize, pageOffset(query.data)],
+      ),
+      pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM payslip_import_rows WHERE batch_id = $1 AND ${matches}`,
+        [parsed.data.batchId, onlyErrors],
+      ),
+      // How often each validation message occurs among unresolved rows, across the whole batch.
+      pool.query<{ message: string; count: number }>(
+        `SELECT message, count(*)::int AS count
+           FROM payslip_import_rows, jsonb_array_elements_text(validation_errors) AS message
+          WHERE batch_id = $1 AND resolution_status = 'pending'
+          GROUP BY message
+          ORDER BY count(*) DESC, message`,
+        [parsed.data.batchId],
+      ),
+    ]);
+    const total = count.rows[0]?.total ?? 0;
+    // Every page read is logged: each one exposes payroll lines (AGENTS.md §8).
     await writeAudit(pool, principal.id, "payslip.import.review_opened", {
       batchId: parsed.data.batchId,
-      payload: { rowCount: rows.rowCount ?? rows.rows.length },
+      payload: {
+        rowCount: total,
+        filter: query.data.filter,
+        page: query.data.page,
+        pageSize: query.data.pageSize,
+        returnedRows: rows.rows.length,
+      },
     });
     reply.header("Cache-Control", "private, no-store");
-    return reply.send({ ...batch.rows[0], rows: rows.rows });
+    return reply.send({
+      ...batch.rows[0],
+      rows: rows.rows,
+      pagination: pagination(query.data, total),
+      errorSummary: errorSummary.rows,
+    });
   });
 
   app.patch("/admin/payslip-imports/:batchId/rows", async (request, reply) => {
@@ -1682,11 +1600,15 @@ export async function registerPayslipRoutes(
       `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
               payslip.source_format AS "sourceFormat",
               employee.employment_status AS "employmentStatus",
-              payslip.published_at AS "publishedAt"
+              payslip.published_at AS "publishedAt",
+              (payslip.revision_of IS NOT NULL) AS "isRevision"
          FROM payslips payslip
          JOIN employees employee ON employee.id = payslip.employee_id
         WHERE payslip.employee_id = $1
           AND payslip.published_at IS NOT NULL
+          -- PAY-003: a slip a revision replaced is history, not the slip for the
+          -- month. Listing both would show one period twice with two amounts.
+          AND payslip.superseded_by_id IS NULL
         ORDER BY payslip.period DESC`,
       [self.employeeId],
     );
@@ -1734,7 +1656,7 @@ export async function registerPayslipRoutes(
       });
     }
 
-    const signer = await resolvePayslipSigner(pool, self.employeeId);
+    const signer = await resolveDocumentSigner(pool, self.employeeId);
     await writeAudit(pool, self.principal.id, "payslip.read", {
       payslipId: payslip.id,
       employeeId: self.employeeId,

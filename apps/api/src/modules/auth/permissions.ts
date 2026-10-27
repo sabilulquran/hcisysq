@@ -15,8 +15,9 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.shift_swap.manage", "attendance.devices.read", "attendance.devices.configure",
   "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
-  "documents.read", "documents.manage",
-  // NOTIF-002: migration 0103 grants both to human_capital_admin.
+  // DOC-002 D-13: migration 0102 grants documents.discipline.manage to human_capital_admin.
+  "documents.read", "documents.manage", "documents.discipline.manage",
+  // NOTIF-002: migration 0105 grants both to human_capital_admin.
   "announcements.read", "announcements.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
   // bundle here says the same. Legacy Super Admin compatibility reads
@@ -25,12 +26,15 @@ export const HC_ADMIN_PERMISSIONS = [
 ] as const;
 
 /** DOC-001/DOC-002: HC-only; never granted through legacy Super Admin compatibility.
- * documents.discipline.manage and documents.correct stay outside every bundle and are
- * granted through a separate, explicit role assignment (spec §6). */
+ * documents.discipline.manage joins human_capital_admin in migration 0102: at YSQ the HC
+ * administrator issues warning letters, and no unit-scoped role carries it.
+ * documents.correct stays outside every bundle and is granted through the separate
+ * document_corrector role (spec §6, D-16). */
+export const DOCUMENT_CORRECTOR_ROLE_KEY = "document_corrector";
+
 /** NOTIF-002: HC-only; never granted through legacy Super Admin compatibility. */
 export const ANNOUNCEMENT_PERMISSIONS = ["announcements.read", "announcements.manage"] as const;
 export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
-
 export const DOCUMENT_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
 ] as const;

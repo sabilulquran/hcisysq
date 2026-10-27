@@ -41,11 +41,21 @@ const inputSchema = z.discriminatedUnion("kind", [
     from: dateSchema, to: dateSchema,
   }).strict(),
   z.object({
+    kind: z.literal("revert"),
+    changeSetId: z.string().uuid(),
+    excludeEmployeeIds: scope.excludeEmployeeIds,
+    note: scope.note,
+  }).strict(),
+  z.object({
     kind: z.literal("copy"), ...scope,
     sourceWeekStart: mondaySchema,
     targetWeekStarts: z.array(mondaySchema).min(1).max(8),
   }).strict(),
 ]).superRefine((value, context) => {
+  if (value.kind === "revert") {
+    if (!value.note) context.addIssue({ code: "custom", message: "Keterangan wajib untuk Kembalikan seperti sebelumnya." });
+    return;
+  }
   if (!value.employeeIds?.length && !value.unitId) context.addIssue({ code: "custom", message: "Pilih unit atau pegawai." });
   if (value.kind === "replacement" && !value.note) context.addIssue({ code: "custom", message: "Keterangan wajib untuk Ganti jadwal." });
   if (value.kind !== "copy" && value.to !== null && value.to < value.from) context.addIssue({ code: "custom", message: "Tanggal selesai sebelum tanggal mulai." });

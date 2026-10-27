@@ -70,15 +70,22 @@ describe.skipIf(!allowed)("EMP-009 §4.3 and EMP-003 §4.4 against PostgreSQL", 
   beforeEach(async () => {
     client = await pool.connect();
     await client.query("BEGIN");
-    actorId = randomUUID();
-    await client.query(
-      "INSERT INTO accounts(id, email, principal_type, status) VALUES ($1, $2, 'EMPLOYEE', 'active')",
-      [actorId, `p23-${actorId}@example.org`],
-    );
     employeeId = randomUUID();
     await client.query(
       "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Pegawai Sintetis', 'active')",
       [employeeId, `EMP-P23-${employeeId}`],
+    );
+    // An EMPLOYEE account must name its employee, so the acting HC officer
+    // gets a record of their own.
+    const actorEmployeeId = randomUUID();
+    await client.query(
+      "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Petugas HC Sintetis', 'active')",
+      [actorEmployeeId, `EMP-HC-${actorEmployeeId}`],
+    );
+    actorId = randomUUID();
+    await client.query(
+      "INSERT INTO accounts(id, email, principal_type, status, employee_id) VALUES ($1, $2, 'EMPLOYEE', 'active', $3)",
+      [actorId, `p23-${actorId}@example.org`, actorEmployeeId],
     );
   });
 

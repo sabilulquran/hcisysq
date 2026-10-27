@@ -38,6 +38,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "payroll.reports.read.organization", "payroll.policies.manage", "payroll.loans.manage",
     "payroll.profiles.manage",
   ].some((permission) => hasPermission(session, permission));
+  // EMP-007 §5.1: a read-only worklist over employee master data, so
+  // employees.read.all is enough. It has to come before the rule below, which
+  // would otherwise demand employees.manage for every /admin/employees path.
+  if (path === "/admin/employees/certificates/expiring") return hasPermission(session, "employees.read.all");
   if (/^\/admin\/employees(?:\/|$)/.test(path)) return hasPermission(session, "employees.manage");
   // EMP-005: HC-only; Super Admin legacy compatibility never carries employment.*.
   if (path === "/admin/employment/consistency") return hasPermission(session, "employment.read");

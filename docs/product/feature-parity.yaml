@@ -227,23 +227,27 @@ features:
     module: employee
     name: Education and qualification
     legacy_evidence: benchmark HRIS includes education management
-    target_status: planned
+    target_status: implemented
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Several records per employee with level, institution, years, completion and degree; highest education is derived from verified completed records, never typed in. Metadata only, no file upload.
+    planning_note: Implemented in Package 2 step P2-2 (docs/domain/employment-administration-package2.md, 2026-10-27). Several records per employee with level, institution, years, completion and degree; highest education is derived from verified completed records, never typed in. A record is amended or voided with a reason, never deleted, and taking a verification back keeps who verified it. Metadata only, no file upload. Screen - Pegawai -> detail -> Pendidikan & Keahlian. Reading needs employees.read.all and writing employees.manage; Package 2 adds no permission.
     docs:
       - docs/domain/employment-administration.md
+      - docs/domain/employment-administration-package2.md
+      - docs/api/employment.openapi.yaml
 
   - id: EMP-008
     module: employee
     name: Skills and competencies
     legacy_evidence: benchmark HRIS includes skill management
-    target_status: planned
+    target_status: implemented
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Specified in Package 2 (docs/domain/employment-administration-package2.md, 2026-10-27). Skills and certificates share one record kind; an expired certificate is marked, never changed or removed, and a worklist lists the ones about to expire. Job competency matrices stay with PERF-001/TRAIN-001.
+    planning_note: Implemented in Package 2 step P2-2 (docs/domain/employment-administration-package2.md, 2026-10-27). Skills and certificates share one record kind; an expired certificate is marked, never changed or removed, and the worklist Pegawai -> Sertifikat Akan Berakhir lists the ones about to expire together with those already past. Job competency matrices stay with PERF-001/TRAIN-001.
     docs:
       - docs/domain/employment-administration.md
+      - docs/domain/employment-administration-package2.md
+      - docs/api/employment.openapi.yaml
 
   - id: EMP-009
     module: employee

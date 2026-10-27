@@ -470,8 +470,10 @@ export function closingDateFor(
  * berbentuk objek akan selalu terbaca berubah.
  */
 export function changedFields(
-  previous: Record<string, unknown>,
-  next: Record<string, unknown>,
+  previous: Readonly<Record<string, unknown>> | object,
+  next: Readonly<Record<string, unknown>> | object,
 ): string[] {
-  return Object.keys(next).filter((field) => previous[field] !== next[field]);
+  const before = previous as Record<string, unknown>;
+  const after = next as Record<string, unknown>;
+  return Object.keys(after).filter((field) => before[field] !== after[field]);
 }

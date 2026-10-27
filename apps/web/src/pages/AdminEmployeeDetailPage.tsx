@@ -1,6 +1,7 @@
 import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
 import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
 import {
   EmploymentActionButtons,
@@ -32,24 +33,35 @@ import {
   type EmploymentView,
 } from "@/lib/employment";
 
-export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan";
+export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan" | "pendidikan";
 
 const TABS: Array<{ key: EmployeeDetailTab; label: string }> = [
   { key: "ringkasan", label: "Ringkasan" },
   { key: "kepegawaian", label: "Kepegawaian & Kontrak" },
   { key: "penempatan", label: "Penempatan & Karier" },
+  { key: "pendidikan", label: "Pendidikan & Keahlian" },
 ];
 
-/** Tab bar; employment tabs appear only for employment.read (the API still authorizes). */
-export function EmployeeDetailTabs({ active, canReadEmployment, onSelect }: {
+/**
+ * Tab bar. The employment tabs need employment.read; Pendidikan & Keahlian is
+ * employee master data, so it follows employees.read.all instead (EMP-007
+ * §5.1). The API authorizes either way.
+ */
+export function EmployeeDetailTabs({ active, canReadEmployment, canReadProfile = false, onSelect }: {
   active: EmployeeDetailTab;
   canReadEmployment: boolean;
+  canReadProfile?: boolean;
   onSelect: (tab: EmployeeDetailTab) => void;
 }) {
-  if (!canReadEmployment) return null;
+  const visible = TABS.filter((tab) => {
+    if (tab.key === "pendidikan") return canReadProfile;
+    if (tab.key === "ringkasan") return true;
+    return canReadEmployment;
+  });
+  if (!canReadEmployment && !canReadProfile) return null;
   return (
     <div role="tablist" aria-label="Bagian detail pegawai" className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-surface p-1">
-      {TABS.map((tab) => (
+      {visible.map((tab) => (
         <button
           key={tab.key}
           type="button"
@@ -92,6 +104,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [tab, setTab] = useState<EmployeeDetailTab>("ringkasan");
   const [canReadEmployment, setCanReadEmployment] = useState(false);
   const [canManageEmployment, setCanManageEmployment] = useState(false);
+  const [canReadProfile, setCanReadProfile] = useState(false);
+  const [canManageProfile, setCanManageProfile] = useState(false);
   const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | "PLACEMENT_END" | null>(null);
   const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
@@ -103,6 +117,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       if (!mounted) return;
       setCanReadEmployment(hasPermission(session, "employment.read"));
       setCanManageEmployment(hasPermission(session, "employment.manage"));
+      setCanReadProfile(hasPermission(session, "employees.read.all"));
+      setCanManageProfile(hasPermission(session, "employees.manage"));
     });
     return () => {
       mounted = false;
@@ -110,7 +126,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   }, []);
 
   useEffect(() => {
-    if (tab === "ringkasan" || employmentView !== null) return;
+    if (tab === "ringkasan" || tab === "pendidikan" || employmentView !== null) return;
     setEmploymentView({ kind: "loading" });
     void getEmployeeEmployment(employeeId)
       .then((data) => setEmploymentView({ kind: "ready", data }))
@@ -286,7 +302,16 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         </section>
       ) : null}
 
-      <EmployeeDetailTabs active={tab} canReadEmployment={canReadEmployment} onSelect={setTab} />
+      <EmployeeDetailTabs
+        active={tab}
+        canReadEmployment={canReadEmployment}
+        canReadProfile={canReadProfile}
+        onSelect={setTab}
+      />
+
+      {tab === "pendidikan" ? (
+        <EducationSkillsPanel employeeId={employeeId} canManage={canManageProfile} />
+      ) : null}
 
       {tab === "kepegawaian" ? (
         <EmploymentContractPanel

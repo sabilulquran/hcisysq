@@ -413,6 +413,11 @@
       "package": "PAG-1"
     },
     {
+      "url": "/admin/employees/:employeeId/education",
+      "list": "bounded",
+      "reason": "Riwayat pendidikan satu pegawai; beberapa baris per orang."
+    },
+    {
       "url": "/admin/employees/:employeeId/employment",
       "list": "bounded",
       "reason": "Riwayat kepegawaian satu pegawai."
@@ -421,6 +426,16 @@
       "url": "/admin/employees/:employeeId/employment/timeline",
       "list": "bounded",
       "reason": "Linimasa kepegawaian satu pegawai."
+    },
+    {
+      "url": "/admin/employees/:employeeId/skills",
+      "list": "bounded",
+      "reason": "Keahlian dan sertifikat satu pegawai."
+    },
+    {
+      "url": "/admin/employees/certificates/expiring",
+      "list": "paged",
+      "reason": "Sertifikat akan berakhir lintas pegawai dengan page/pageSize (maks 100) dan total."
     },
     {
       "url": "/admin/employment/consistency",

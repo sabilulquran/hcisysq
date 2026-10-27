@@ -921,6 +921,94 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/education",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/education",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/education-records/:recordId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/education-records/:recordId/verification",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/education-records/:recordId/void",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/skills",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/employees/:employeeId/skills",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/skill-records/:recordId",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/skill-records/:recordId/verification",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "POST",
+    "url": "/admin/skill-records/:recordId/void",
+    "permissions": [
+      "employees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/employee-profile-routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/certificates/expiring",
+    "permissions": [
+      "employees.read.all"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/leave/admin-routes.ts",
     "method": "GET",
     "url": "/admin/leave/configuration",

@@ -6,6 +6,7 @@ import {
   employeeLabel,
   getPayrollInputs,
   payrollInputLabel,
+  payrollInputValue,
   PayrollApiError,
   savePayrollInputs,
   type PayrollEmployeeIdentity,
@@ -49,7 +50,9 @@ export function PeriodInputsPanel({
     decisionReference: "",
   });
 
-  const rules = period.inputRules ?? { manual: [], reasonRequired: [], decisionRequired: [] };
+  const rules = period.inputRules ?? { editable: false, manual: [], reasonRequired: [], decisionRequired: [] };
+  // The period, not the screen, decides whether inputs may change now.
+  const editable = canManage && rules.editable;
   const needsReason = form.inputKey !== "" && rules.reasonRequired.includes(form.inputKey);
   const needsDecision = form.inputKey !== "" && rules.decisionRequired.includes(form.inputKey);
 
@@ -73,7 +76,7 @@ export function PeriodInputsPanel({
     if (!picked || form.inputKey === "") return;
     const value = Number(form.value.trim());
     if (form.value.trim() === "" || !Number.isFinite(value)) {
-      setError("Nilai input harus angka.");
+      setError("Nilai input harus angka: pakai titik untuk desimal dan tanpa pemisah ribuan, misalnya 1500000 atau 0.5.");
       return;
     }
     setBusy(true);
@@ -135,7 +138,14 @@ export function PeriodInputsPanel({
         ) : null}
         {notice ? <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">{notice}</p> : null}
 
-        {canManage ? (
+        {canManage && !rules.editable ? (
+          <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Periode ini tidak lagi menerima perubahan input. Input hanya dapat diubah saat periode masih dikumpulkan
+            atau sudah dihitung tetapi belum diajukan; buka ulang periode bila angkanya memang harus berubah.
+          </p>
+        ) : null}
+
+        {editable ? (
           <div className="space-y-3 rounded-md border p-3">
             <EmploymentPicker label="Pegawai" picked={picked} onPick={setPicked} />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -143,7 +153,17 @@ export function PeriodInputsPanel({
                 <span className="mb-1 block text-muted-foreground">Jenis input</span>
                 <select
                   value={form.inputKey}
-                  onChange={(event) => setForm({ ...form, inputKey: event.target.value as PayrollInputKey })}
+                  onChange={(event) =>
+                    // A reason typed for one input must not travel to another:
+                    // the fields disappear from the screen but would still be
+                    // sent, and nobody could see what was attached.
+                    setForm({
+                      ...form,
+                      inputKey: event.target.value as PayrollInputKey,
+                      reason: "",
+                      decisionReference: "",
+                    })
+                  }
                   className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   <option value="">Pilih jenis</option>
@@ -213,7 +233,7 @@ export function PeriodInputsPanel({
                   <th scope="col" className="px-3 py-2 text-right">Nilai</th>
                   <th scope="col" className="px-3 py-2">Asal</th>
                   <th scope="col" className="px-3 py-2">Alasan</th>
-                  {canManage ? <th scope="col" className="px-3 py-2" /> : null}
+                  {editable ? <th scope="col" className="px-3 py-2" /> : null}
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -221,14 +241,19 @@ export function PeriodInputsPanel({
                   <tr key={`${input.employmentId}-${input.inputKey}`}>
                     <td className="px-3 py-2">{employeeLabel(input.employmentId, identities)}</td>
                     <td className="px-3 py-2">{payrollInputLabel(input.inputKey)}</td>
-                    <td className="px-3 py-2 text-right">{input.value}</td>
+                    <td className="px-3 py-2 text-right">{payrollInputValue(input.inputKey, input.value)}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">{input.origin}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {input.reason ?? ""}
                       {input.decisionReference ? ` · ${input.decisionReference}` : ""}
                     </td>
-                    {canManage ? (
+                    {editable ? (
                       <td className="px-3 py-2 text-right">
+                        {input.origin === "ATTENDANCE" ? (
+                          // The resolver owns this row; deleting it here would
+                          // lose the resolved value until it runs again.
+                          <span className="text-xs text-muted-foreground">dari kehadiran</span>
+                        ) : (
                         <button
                           type="button"
                           onClick={() => void remove(input)}
@@ -238,6 +263,7 @@ export function PeriodInputsPanel({
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         </button>
+                        )}
                       </td>
                     ) : null}
                   </tr>

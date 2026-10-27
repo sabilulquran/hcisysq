@@ -869,8 +869,11 @@ components:
             Which period inputs are typed by hand, and which of those are refused
             without a reason or a decision reference. A screen keeps no copy of
             these: the same lists decide the refusal on PUT .../inputs.
-          required: [manual, reasonRequired, decisionRequired]
+          required: [editable, manual, reasonRequired, decisionRequired]
           properties:
+            editable:
+              description: Whether this period still accepts a change to its inputs.
+              type: boolean
             manual:
               type: array
               items: { type: string }

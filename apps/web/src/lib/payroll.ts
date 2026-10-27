@@ -60,6 +60,8 @@ export interface PayrollPeriod {
    * server: the screen keeps no copy of a payroll rule.
    */
   inputRules: {
+    /** Whether this period accepts a change to its inputs at all. */
+    editable: boolean;
     manual: PayrollInputKey[];
     reasonRequired: PayrollInputKey[];
     decisionRequired: PayrollInputKey[];
@@ -404,7 +406,8 @@ export function savePayrollInputs(
 }
 
 export function deletePayrollInput(periodId: string, employmentId: string, inputKey: PayrollInputKey) {
-  return request<{ deleted: boolean }>(
+  // The route answers 204 with no body.
+  return request<void>(
     `/api/payroll/periods/${encodeURIComponent(periodId)}/inputs/${encodeURIComponent(employmentId)}/${encodeURIComponent(inputKey)}`,
     { method: "DELETE" },
   );
@@ -428,4 +431,20 @@ const INPUT_LABELS: Record<PayrollInputKey, string> = {
 
 export function payrollInputLabel(key: PayrollInputKey): string {
   return INPUT_LABELS[key] ?? key;
+}
+
+/** The keys whose value is an amount of rupiah; the rest are factors or counts. */
+const RUPIAH_INPUT_KEYS: readonly PayrollInputKey[] = [
+  "CHILD_EDUCATION",
+  "ARREARS",
+  "ADJUSTMENT",
+  "OTHER_INCOME",
+];
+
+/** One input's value as an operator reads it: rupiah where it is rupiah. */
+export function payrollInputValue(key: PayrollInputKey, value: string): string {
+  if (RUPIAH_INPUT_KEYS.includes(key)) return formatRupiah(value);
+  // A trailing numeric scale is noise on a factor or an hour count.
+  const trimmed = value.includes(".") ? value.replace(/\.?0+$/, "") : value;
+  return trimmed === "" ? "0" : trimmed;
 }

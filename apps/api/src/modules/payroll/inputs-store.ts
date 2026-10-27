@@ -30,23 +30,19 @@ export const INPUT_KEYS = [
 export type InputKey = (typeof INPUT_KEYS)[number];
 
 /**
- * The inputs an operator types. The other two arrive from attendance and are
- * overwritten by `resolve_attendance`, so offering them by hand would only
- * invite work that the next resolve throws away.
+ * The two keys the attendance resolver owns. It writes them and clears them,
+ * so nothing else may.
  */
-export const MANUAL_INPUT_KEYS: readonly InputKey[] = [
-  "CHILD_EDUCATION",
-  "PJ_MEDIA",
-  "ARREARS",
-  "ADJUSTMENT",
-  "PRORATION_FACTOR",
-  "FULL_PAY_DESPITE_LEAVING",
-  "OTHER_INCOME",
-  "CONTRACT_TEACHING_HOURS",
-  "TEACHING_HOURS_PER_WEEK_OVERRIDE",
-  "ANNUAL_PERFORMANCE_OVERRIDE",
-  "MONTHLY_PERFORMANCE_OVERRIDE",
-];
+export const ATTENDANCE_INPUT_KEYS: readonly InputKey[] = ["OVERTIME_HOURS", "CONTRACT_ATTENDANCE_DAYS"];
+
+/**
+ * The inputs an operator types: everything the resolver does not own. Derived
+ * rather than listed, so a key added to INPUT_KEYS cannot quietly go missing
+ * from the screen that offers them.
+ */
+export const MANUAL_INPUT_KEYS: readonly InputKey[] = INPUT_KEYS.filter(
+  (key) => !ATTENDANCE_INPUT_KEYS.includes(key),
+);
 
 /** Section 4: these change pay by hand, so they carry a reason. */
 export const REASON_REQUIRED_INPUT_KEYS: readonly InputKey[] = [

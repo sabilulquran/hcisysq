@@ -157,6 +157,13 @@ function runsPeriods(actor: TransitionActor): boolean {
 
 const REASON_REQUIRED: readonly string[] = REASON_REQUIRED_INPUT_KEYS;
 
+/**
+ * Inputs belong to the collecting phase. Once a period is calculated and on its
+ * way to approval, changing them behind the calculation is not an edit but a
+ * different period (specification section 6).
+ */
+const INPUT_EDITABLE_STATES: readonly PeriodState[] = ["COLLECTING", "CALCULATED"];
+
 const transitionBody = z.object({
   action: z.enum(PERIOD_ACTIONS),
   reason: z.string().trim().max(500).optional(),
@@ -330,6 +337,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       // will refuse without a reason or a decision reference. A screen must not
       // keep its own copy of a payroll rule.
       inputRules: {
+        // Whether this period accepts a change to its inputs at all. The same
+        // condition refuses the write below, so a screen never has to know the
+        // state table.
+        editable: INPUT_EDITABLE_STATES.includes(period.state),
         manual: MANUAL_INPUT_KEYS,
         reasonRequired: REASON_REQUIRED_INPUT_KEYS,
         decisionRequired: DECISION_REQUIRED_INPUT_KEYS,
@@ -442,7 +453,19 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
-    return send(reply, 200, { inputs: await listInputs(pool, period.id) });
+    // An input row carries one person's rapel, penyesuaian or other income, so
+    // it is as sensitive as the result it feeds. Same gate as the results list
+    // (section 6): before approval only the people running the period see the
+    // figures they are still working on.
+    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+      return send(reply, 409, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Input periode baru dapat dibaca setelah periode disahkan.",
+      });
+    }
+    const inputs = await listInputs(pool, period.id);
+    await recordSensitiveRead(actor.accountId, period.id, "period_inputs", inputs.length);
+    return send(reply, 200, { inputs });
   });
 
   app.put("/payroll/periods/:periodId/inputs", async (request, reply) => {
@@ -465,10 +488,21 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // Inputs belong to the collecting phase. Once a period is calculated and on
     // its way to approval, changing them behind the calculation is not an edit
     // but a different period (specification section 6).
-    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+    if (!INPUT_EDITABLE_STATES.includes(period.state)) {
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",
         message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
+      });
+    }
+
+    // The resolver owns its two keys: it writes them and clears them. A hand
+    // written value would be thrown away by the next resolve, so this route
+    // refuses what it does not publish as manual.
+    const resolverOwned = body.data.inputs.find((input) => !MANUAL_INPUT_KEYS.includes(input.inputKey));
+    if (resolverOwned) {
+      return send(reply, 409, {
+        code: "PAYROLL_INPUT_RESOLVER_OWNED",
+        message: `Input ${resolverOwned.inputKey} berasal dari kehadiran dan ditulis ulang oleh "Ambil lembur & kehadiran"; tidak dapat diketik di sini.`,
       });
     }
 
@@ -530,7 +564,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
-    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+    if (!INPUT_EDITABLE_STATES.includes(period.state)) {
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",
         message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
@@ -566,7 +600,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     if (!period) {
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
-    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+    if (!INPUT_EDITABLE_STATES.includes(period.state)) {
       return send(reply, 409, {
         code: "PAYROLL_STATE_CONFLICT",
         message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,

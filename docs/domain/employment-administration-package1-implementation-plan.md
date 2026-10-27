@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 API implemented (#208; the dialog is its own step S5B); S5A implemented; S2B and S6–S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S2B, S7 and S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -176,6 +176,15 @@ Independent security review (2026-10-27) closed on this step: the expiry sweep n
 - **Rollback:** revert PR; existing reactivation rows become inert; accounts already deactivated stay inactive (fail closed) and are reactivated manually through the existing access flow if needed.
 
 ## S6 — Career actions
+
+**Status:** IMPLEMENTED on branch `feat/emp-s6-career-actions`. No migration: the planner and the tables came with S1. Delivered: `PLACEMENT`, `PLACEMENT_END`, `TRANSFER`, `PROMOTION` and `DEMOTION` on the S5 endpoints; the preview carries a `structureNote`; the consistency report gains `STRUCTURE_SEAT_WITHOUT_PLACEMENT` and `PLACEMENT_WITHOUT_STRUCTURE_SEAT`; the **Penempatan & Karier** tab gains its four buttons and the dialog its career variants. Tests: 34 route cases and 15 UI cases.
+
+Decisions taken here, DRAFT until the owner says otherwise:
+
+- **Ending an additional duty is its own request** (`PLACEMENT_END` with the placement id) rather than an overloaded `PLACEMENT`: the two differ in everything but the name, and one shape per request keeps the refusals readable.
+- **Career reason codes** are `RESTRUKTURISASI`, `KINERJA`, `DISIPLIN`, `PERMINTAAN_PEGAWAI`, `KEBUTUHAN_ORGANISASI`, `LAINNYA`. A demotion must name one (spec §5); the others may.
+- **Structure and placement are compared, never reconciled** (D-18). The report names both directions — a seat in ORG-004 without a placement, and a placement without a seat — and leaves the decision to HC. Units are not compared at all: a placement points at the legacy unit table and a seat at an ORG-004 node key, and no accepted mapping exists yet (the same reason S5 refuses `unitKey`).
+- **The preview says what a move does not do.** Every placement or career move returns "Penempatan ini tidak mengubah Struktur Organisasi maupun kewenangan approval", which §11 asks the dialog to show.
 
 **Spec:** EMP-006-A/B/C/D.  
 **Prerequisite decisions:** D-06 (accepted), D-08 (accepted: SK Mutasi/Promosi/Demosi required), D-18 (accepted: no ORG-004 change, mismatch warning/report only). ORG-004 acceptance state determines whether placements use stable keys or legacy references for pilot.

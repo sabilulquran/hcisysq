@@ -203,7 +203,7 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: high
-    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. The read-only placement/career tab shipped with S3; career actions (S6) are not started.
+    planning_note: Package 1 workflow spec (placement, transfer, promotion, demotion, derived career history) is accepted with all owner decisions D-01..D-19 closed on 2026-10-16. The read-only placement/career tab shipped with S3; the career actions of S6 (placement, additional duty and its end, transfer, promotion, demotion) are implemented with their dialog, and the consistency report names both directions of a structure-versus-placement mismatch. ORG-004 is never written by an employment action (D-18).
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md

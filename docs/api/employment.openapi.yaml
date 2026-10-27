@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.5.0
+  version: 0.6.0
   description: |
-    Package 1 steps S2, S4 and S5 (docs/domain/employment-administration-package1.md).
+    Package 1 steps S2, S4, S5, S5A and S6 (docs/domain/employment-administration-package1.md).
     Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
-    Perjanjian Kerja and Surat Keputusan, and the four contract actions (HIRE,
-    CONTRACT_EXTENSION, CATEGORY_CHANGE, TERMINATION). Career actions arrive in S6
-    and reversal in S7.
+    Perjanjian Kerja and Surat Keputusan, the four contract actions (HIRE,
+    CONTRACT_EXTENSION, CATEGORY_CHANGE, TERMINATION) and the career actions
+    (PLACEMENT, PLACEMENT_END, TRANSFER, PROMOTION, DEMOTION). Reversal arrives in S7.
     Reads and the register need a mode other than OFF; recording or previewing an
     action needs AUTHORITATIVE (spec §8.1), which S5A made available — switching
     production to it still follows the S8 runbook.
@@ -592,6 +592,53 @@ components:
             acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
         - type: object
           additionalProperties: false
+          required: [actionType, effectiveOn, placement]
+          description: |
+            EMP-006 PLACEMENT: opens the primary placement when none is effective,
+            or adds an additional duty. It is not a career move and needs no basis
+            document, though an SK may be linked.
+          properties:
+            actionType: { type: string, enum: [PLACEMENT] }
+            effectiveOn: { type: string, format: date }
+            placement:
+              allOf:
+                - { $ref: '#/components/schemas/EmploymentPlacementInput' }
+                - type: object
+                  properties:
+                    kind: { type: string, enum: [PRIMARY, ADDITIONAL], default: PRIMARY }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
+          required: [actionType, effectiveOn, placementId]
+          description: EMP-006 — ends an additional duty from effectiveOn; the primary placement is untouched.
+          properties:
+            actionType: { type: string, enum: [PLACEMENT_END] }
+            effectiveOn: { type: string, format: date }
+            placementId: { type: string, format: uuid }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
+          required: [actionType, effectiveOn, placement]
+          description: |
+            EMP-006 career move: closes the current primary placement the day
+            before effectiveOn and opens the new one. Each kind needs its own SK
+            (Mutasi, Promosi, Demosi); a demotion also needs a reason code.
+            Whether a move is a promotion is declared by Human Capital with the
+            SK, not computed: Package 1 has no grade model.
+          properties:
+            actionType: { type: string, enum: [TRANSFER, PROMOTION, DEMOTION] }
+            effectiveOn: { type: string, format: date }
+            placement: { $ref: '#/components/schemas/EmploymentPlacementInput' }
+            reasonCode: { oneOf: [{ $ref: '#/components/schemas/CareerReasonCode' }, { type: 'null' }] }
+            reasonNote: { type: [string, 'null'], maxLength: 1000 }
+            documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
+            acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+        - type: object
+          additionalProperties: false
           required: [actionType, lastDayOn, reasonCode]
           properties:
             actionType: { type: string, enum: [TERMINATION] }
@@ -602,6 +649,9 @@ components:
             reasonNote: { type: [string, 'null'], maxLength: 1000 }
             documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
             acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+    CareerReasonCode:
+      type: string
+      enum: [RESTRUKTURISASI, KINERJA, DISIPLIN, PERMINTAAN_PEGAWAI, KEBUTUHAN_ORGANISASI, LAINNYA]
     PkCategoryOrPermanent:
       type: string
       enum: [TETAP, KONTRAK, KONTRAK_HONORER, MAGANG, PERCOBAAN, LEPAS]
@@ -624,6 +674,12 @@ components:
           type: string
           enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
           description: The derived state the action produces, not the current one.
+        structureNote:
+          type: [string, 'null']
+          description: |
+            EMP-006 D-18 — set on every placement or career move: the action
+            records where the employee works and never writes ORG-004 or moves
+            approval authority.
         accountDeactivation:
           type: object
           description: EMP-005 D-15 — when the employee's login account closes.
@@ -809,6 +865,12 @@ components:
           type: string
           enum: [AKTIF, AKAN_MULAI, BERAKHIR, TANPA_DATA]
           description: The derived state the action produces, not the current one.
+        structureNote:
+          type: [string, 'null']
+          description: |
+            EMP-006 D-18 — set on every placement or career move: the action
+            records where the employee works and never writes ORG-004 or moves
+            approval authority.
         accountDeactivation:
           type: object
           description: EMP-005 D-15 — when the employee's login account closes.

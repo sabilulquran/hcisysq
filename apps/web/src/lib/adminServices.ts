@@ -131,7 +131,7 @@ export const adminServices: AdminServiceDefinition[] = [
     stage: "available",
     category: "payroll-benefits",
     href: "/admin/payroll",
-    accessRoles: ["Kepala Human Capital", "Direktur", "Kepala Keuangan", "Keuangan"],
+    accessRoles: ["Kepala Human Capital", "Direktur", "Kepala Keuangan"],
   },
   {
     key: "reimbursement",

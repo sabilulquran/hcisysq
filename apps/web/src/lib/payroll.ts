@@ -73,7 +73,7 @@ export interface PayrollBlocker {
 /** Who an employment belongs to, so a reviewer reads names and not identifiers. */
 export interface PayrollEmployeeIdentity {
   employmentId: string;
-  employeeNumber: string | null;
+  employeeNumber: string;
   fullName: string;
 }
 

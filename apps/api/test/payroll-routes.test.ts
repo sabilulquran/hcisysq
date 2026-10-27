@@ -205,6 +205,14 @@ function createPool(
         rowCount: 1,
       };
     }
+    // The identity lookup reads the same two employee columns as the transfer
+    // list, so it has to be answered before it.
+    if (sql.includes('latest.employment_id AS "employmentId"') && sql.includes('emp.full_name AS "fullName"')) {
+      return {
+        rows: [{ employmentId: EMPLOYMENT_ID, employeeNumber: "YSQ-0001", fullName: "Pegawai Uji" }],
+        rowCount: 1,
+      };
+    }
     if (sql.includes('emp.employee_number AS "employeeNumber"')) {
       return {
         rows: [{
@@ -1116,6 +1124,11 @@ describe("PAY-003 variance", () => {
     expect(body.variances[0]).toMatchObject({ componentCode: "PERF", delta: "300000" });
     expect(body.threshold).toEqual({ relative: 0.1, absolute: 50_000, manualInput: 1_000_000 });
     expect(audits).toEqual(["payroll.report.read"]);
+    // Only the people a variance row is about: payroll.calculate opens this
+    // comparison but not the result list, so the whole roster must not leak.
+    expect(body.employees).toEqual([
+      { employmentId: body.variances[0].employmentId, employeeNumber: "YSQ-0001", fullName: "Pegawai Uji" },
+    ]);
   });
 
   it("answers plainly when there is no earlier period to compare against", async () => {

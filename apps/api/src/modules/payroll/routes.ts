@@ -731,12 +731,15 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     const threshold = await varianceThreshold(period.payDate);
     const variances = await buildVariance(pool, period.id, previousId, threshold);
     await recordSensitiveRead(actor.accountId, period.id, "period_variance", variances.length);
-    return send(reply, 200, {
-      previousPeriodId: previousId,
-      threshold,
-      variances,
-      employees: await listEmploymentIdentities(pool, period.id),
-    });
+    // Only the people a variance row is actually about. An actor may hold
+    // payroll.calculate, which opens this comparison but not the result list,
+    // so naming the whole period here would hand them a roster they cannot
+    // read anywhere else.
+    const named = new Set(variances.map((row) => row.employmentId));
+    const identities = (await listEmploymentIdentities(pool, period.id)).filter((entry) =>
+      named.has(entry.employmentId),
+    );
+    return send(reply, 200, { previousPeriodId: previousId, threshold, variances, employees: identities });
   });
 
   app.post("/payroll/periods/:periodId/payslips", async (request, reply) => {

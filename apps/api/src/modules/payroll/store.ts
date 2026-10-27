@@ -406,7 +406,7 @@ export async function applyTransition(
 
 export type EmploymentIdentity = {
   employmentId: string;
-  employeeNumber: string | null;
+  employeeNumber: string;
   fullName: string;
 };
 

@@ -701,7 +701,7 @@ components:
       required: [employmentId, employeeNumber, fullName]
       properties:
         employmentId: { type: string, format: uuid }
-        employeeNumber: { type: [string, 'null'] }
+        employeeNumber: { type: string }
         fullName: { type: string }
 
     PayrollResult:

@@ -67,14 +67,14 @@ describe("PAY-003 period vocabulary", () => {
 describe("PAY-003 who a row belongs to", () => {
   const identities = new Map([
     ["emp-1", { employmentId: "emp-1", employeeNumber: "YSQ-0042", fullName: "Siti Aminah" }],
-    ["emp-2", { employmentId: "emp-2", employeeNumber: null, fullName: "Budi Santoso" }],
+    ["emp-2", { employmentId: "emp-2", employeeNumber: "", fullName: "Budi Santoso" }],
   ]);
 
   it("names the employee and the number a reviewer checks against", () => {
     expect(employeeLabel("emp-1", identities)).toBe("Siti Aminah · YSQ-0042");
   });
 
-  it("names someone who has no employee number yet", () => {
+  it("names someone whose employee number has not been filled in", () => {
     expect(employeeLabel("emp-2", identities)).toBe("Budi Santoso");
   });
 

@@ -102,8 +102,8 @@ export function AdminPayrollPeriodPage() {
       // Results and variance carry the same identity list; whichever the actor
       // is allowed to read names the people on the other.
       const named = [
-        ...(resultsOutcome.status === "fulfilled" ? resultsOutcome.value.employees : []),
-        ...(varianceOutcome.status === "fulfilled" ? varianceOutcome.value.employees : []),
+        ...(resultsOutcome.status === "fulfilled" ? (resultsOutcome.value.employees ?? []) : []),
+        ...(varianceOutcome.status === "fulfilled" ? (varianceOutcome.value.employees ?? []) : []),
       ];
       setIdentities(new Map(named.map((entry) => [entry.employmentId, entry])));
       setReport(reportOutcome.status === "fulfilled" ? reportOutcome.value.report : null);

@@ -10,7 +10,7 @@ export type AttendanceSectionKey = "summary" | "shifts" | "schedules" | "records
 export type AttendanceTabKey =
   | "summary"
   | "shifts"
-  | "patterns" | "dates" | "swaps"
+  | "calendar" | "patterns" | "dates" | "swaps"
   | "daily" | "queue" | "corrections" | "reports"
   | "overtime"
   | "devices"
@@ -43,6 +43,8 @@ export const attendanceSections: AttendanceSection[] = [
     key: "schedules",
     label: "Jadwal",
     tabs: [
+      // ATT-011-5: the planner is the main Jadwal screen; Pola jadwal and Jadwal per tanggal stay until UAT (ATT-011-8).
+      { key: "calendar", label: "Kalender", href: "/admin/attendance/schedules/calendar" },
       { key: "patterns", label: "Pola jadwal", href: "/admin/attendance/schedules" },
       { key: "dates", label: "Jadwal per tanggal", href: "/admin/attendance/schedules/dates" },
       { key: "swaps", label: "Tukar shift", href: "/admin/attendance/schedules/swaps" },

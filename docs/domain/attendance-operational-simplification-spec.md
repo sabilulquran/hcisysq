@@ -682,6 +682,46 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - `TBD`: preview belum menandai tanggal yang tetap memakai jadwal pengganti (roster) di dalam rentang Atur
   jadwal; jadwal pengganti tetap menang sesuai urutan resolver.
 
+### 10.7 Catatan implementasi ATT-011-4c (2026-10-27)
+
+- **Kembalikan seperti sebelumnya** adalah Perubahan Jadwal `kind = revert` (`changeSetId`, keterangan wajib)
+  lewat Lihat dampak → Terapkan yang sama. Berlaku **mulai besok**, sehingga shift yang sudah berjalan hari
+  ini tidak tersentuh (D-3); tanggal yang sudah lewat tidak dikembalikan.
+- Kebalikan tiap item: pola yang dibuat perubahan itu dihapus (bila belum mulai) atau diakhiri hari ini; pola
+  lama yang diakhiri atau dihapus dibuat ulang dari besok sampai akhir aslinya; entri roster kembali ke
+  keadaan sebelum (shift dengan versi yang dikunci saat itu, Libur, atau dihapus).
+- Pegawai yang jadwalnya sudah diubah lagi oleh perubahan yang lebih baru (yang belum dikembalikan), atau
+  pola/entrinya diubah, dihapus, atau ditabrak pola yang dibuat langsung, diberi masalah `changed_later` yang
+  memblokir; kecualikan pegawai itu dan atur ulang dengan Atur/Ganti jadwal. Mengembalikan perubahan yang
+  lebih baru dulu hanya membuka jalan untuk entri jadwal per tanggal; pola yang sudah dibuat ulang tetap perlu
+  diatur ulang.
+- Pengembalian berlaku per pegawai: pegawai yang dikecualikan tetap dapat dikembalikan belakangan; bila semua
+  pegawai sudah dikembalikan → `409 SCHEDULE_CHANGE_ALREADY_REVERTED`. Pengembalian satu change set saling
+  menunggu (advisory lock). Pola dengan tanggal akhir jauh dibatasi 400 hari pertama seperti pola tanpa akhir
+  (sisanya tetap dibuat ulang sampai tanggal akhir aslinya).
+- Change set menyimpan `reverts_change_set_id`; audit `attendance.schedule_change.reverted`. `applied_at`
+  memakai jam saat ditulis agar urutan "lebih baru" tepat. Tidak ada migration atau permission baru.
+
+### 10.8 Catatan implementasi ATT-011-5 (2026-10-27)
+
+- Layar **Jadwal → Kalender** (`/admin/attendance/schedules/calendar`), tab pertama di bagian Jadwal: filter
+  unit, cari pegawai, rentang Minggu / 2 Minggu / Bulan (5 minggu), 50 pegawai per halaman. Sel: nama shift,
+  `Libur`, `Libur nasional`, `!` (jadwal bermasalah), `—` (belum ada jadwal) dan titik untuk jadwal pengganti;
+  banner jumlah pegawai tanpa jadwal pada rentang itu.
+- **Atur jadwal** dan **Salin jadwal** (minggu yang tampil ke 1–8 minggu berikutnya) untuk pegawai yang dicentang
+  atau unit yang dipilih; **Ganti jadwal** untuk sel yang dipilih (tanggal pertama sampai terakhir dari sel
+  terpilih, keterangan wajib). Semuanya lewat **Lihat dampak**: ringkasan, libur nasional, masalah dengan tombol
+  **Kecualikan**, daftar pegawai terdampak; **Terapkan** nonaktif selama ada masalah yang memblokir. Terapkan
+  memakai `Idempotency-Key` yang sama untuk percobaan ulang; 409 meminta Lihat dampak lagi.
+- **Riwayat perubahan** berhalaman dengan **Kembalikan seperti sebelumnya** (keterangan wajib, lalu Lihat
+  dampak) untuk perubahan selain pengembalian.
+- D-1: pemegang `attendance.reports.read` melihat kalender dan riwayat tanpa tombol ubah. D-8: di layar < 768px
+  kalender menjadi daftar kartu per pegawai (7 hari pertama), Atur/Salin jadwal disembunyikan dengan pesan
+  "Gunakan layar lebih besar untuk perubahan massal"; Ganti jadwal tetap tersedia.
+- Pola jadwal dan Jadwal per tanggal lama tetap ada sampai UAT ATT-011-8 memutuskan pensiunnya. `TBD`: detail
+  item per perubahan di Riwayat (API sudah ada), tanda "diganti 3 Okt oleh Siti" pada sel (API memberi
+  `changeSetId`), dan sub-unit pada filter unit.
+
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

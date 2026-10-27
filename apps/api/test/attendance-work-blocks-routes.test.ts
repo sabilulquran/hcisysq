@@ -94,6 +94,15 @@ describe("ATT-013 schedule blocks", () => {
     expect(first.values[1]).toBe(0.4);
   });
 
+  it("writes a new version when only the block-1 share changes, keeping the block shares", async () => {
+    currentBlocks = [{ startTime: "14:30:00", endTime: "19:30:00", workdayWeight: 0.6 } as never];
+    const response = await send("PATCH", `/admin/attendance/schedules/${SCHEDULE}`, { firstBlockWorkdayWeight: 0.4 });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().versionId).toBeTruthy();
+    expect(blockInserts()[0]!.values[5]).toBe(0.6);
+    expect(statements.find((item) => item.sql.includes("SET first_block_workday_weight"))!.values[1]).toBe(0.4);
+  });
+
   it("keeps the current blocks when an edit sends none, and clears them with an empty list", async () => {
     currentBlocks = [{ startTime: "14:30:00", endTime: "19:30:00" }];
     const kept = await send("PATCH", `/admin/attendance/schedules/${SCHEDULE}`, { lateGraceMinutes: 2 });

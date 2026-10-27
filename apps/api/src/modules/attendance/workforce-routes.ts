@@ -1017,9 +1017,9 @@ export async function registerAttendanceWorkforceRoutes(
          schedule.active, location.id AS "workLocationId", location.name AS "workLocationName",
          version.id AS "currentVersionId", version.version AS "currentVersion",
          (SELECT coalesce(json_agg(json_build_object('startTime', block.start_time::text, 'endTime', block.end_time::text,
-                   'workdayWeight', block.workday_weight) ORDER BY block.sequence), '[]'::json)
+                   'workdayWeight', block.workday_weight::float8) ORDER BY block.sequence), '[]'::json)
             FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks",
-         version.first_block_workday_weight AS "firstBlockWorkdayWeight",
+         version.first_block_workday_weight::float8 AS "firstBlockWorkdayWeight",
          (SELECT (min(first.effective_from) AT TIME ZONE 'Asia/Jakarta')::date::text
             FROM attendance_schedule_versions first WHERE first.schedule_template_id = schedule.id) AS "effectiveFrom"
        FROM attendance_schedule_templates schedule
@@ -1063,7 +1063,7 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.endDayOffset === undefined && (body.data.startTime !== undefined || body.data.endTime !== undefined)) {
         next.endDayOffset = next.endTime <= next.startTime ? 1 : 0;
       }
-      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks"]
+      const semanticChanged = ["name", "startTime", "endTime", "endDayOffset", "lateGraceMinutes", "earlyLeaveToleranceMinutes", "workLocationId", "extraBlocks", "firstBlockWorkdayWeight"]
         .some((key) => Object.prototype.hasOwnProperty.call(body.data, key));
       // ATT-013: without new blocks in the request, a new version keeps the current version's blocks.
       const blocks = body.data.extraBlocks ?? (await client.query<{ startTime: string; endTime: string; workdayWeight: number | null }>(

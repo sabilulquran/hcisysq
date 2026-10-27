@@ -73,6 +73,10 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/operations")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/diagnostics")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/settings")).toBe(true);
+    // DOC-001/DOC-002: the screen follows documents.read alone, not the rest of this fixture.
+    expect(canAccessAdminPath(actor, "/admin/documents")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["documents.read"]), "/admin/documents")).toBe(true);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/documents")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/data")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/maintenance")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);

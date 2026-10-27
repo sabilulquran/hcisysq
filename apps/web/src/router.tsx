@@ -54,6 +54,7 @@ import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminDocumentsPage } from "@/pages/AdminDocumentsPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
@@ -62,6 +63,7 @@ import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePage";
+import { EmployeeDocumentsPage } from "@/pages/EmployeeDocumentsPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
@@ -168,6 +170,13 @@ const employeeNotificationsRoute = createRoute({
   path: "/app/notifications",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeNotificationsPage,
+});
+
+const employeeDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/documents",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeDocumentsPage,
 });
 
 const employeeLeaveRoute = createRoute({
@@ -560,6 +569,13 @@ const adminPayslipsRoute = createRoute({
   component: AdminPayslipsPage,
 });
 
+const adminDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/documents",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/documents"),
+  component: AdminDocumentsPage,
+});
+
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
@@ -596,6 +612,7 @@ const routeTree = rootRoute.addChildren([
   employeeMobileAttendanceRoute,
   employeeShiftSwapRoute,
   employeeNotificationsRoute,
+  employeeDocumentsRoute,
   employeeLeaveRoute,
   employeePayslipsRoute,
   employeeSpecialLeaveRoute,
@@ -651,6 +668,7 @@ const routeTree = rootRoute.addChildren([
   adminPayrollRoute,
   adminPayrollPeriodRoute,
   adminPayslipsRoute,
+  adminDocumentsRoute,
   adminAccessRoute,
   adminServicesRoute,
   adminComingSoonRoute,

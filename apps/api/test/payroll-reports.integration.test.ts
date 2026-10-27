@@ -13,6 +13,7 @@ import {
   buildVariance,
   previousPeriodId,
 } from "../src/modules/payroll/reports.js";
+import { listEmploymentIdentities } from "../src/modules/payroll/store.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -242,6 +243,45 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       const report = await buildPeriodReport(pool, periodId);
       expect(report.totals.employeeCount).toBe(1);
       expect(report.totals.payable).toBe("2000000");
+    });
+  });
+
+  describe("who a result belongs to", () => {
+    it("names the employee behind every employment in the period", async () => {
+      const periodId = await newPeriod("2026-09-01", "CALCULATED");
+      const employee = await newEmployee(unitPusat);
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        payable: 1_500_000,
+        lines: [{ code: "BASIC", category: "EARNING", amount: 1_500_000 }],
+      });
+
+      const identities = await listEmploymentIdentities(pool, periodId);
+      expect(identities).toHaveLength(1);
+      expect(identities[0]).toMatchObject({
+        employmentId: employee.employmentId,
+        fullName: "Pegawai Laporan",
+      });
+      expect(identities[0]!.employeeNumber).toMatch(/^EMP-RPT-/);
+    });
+
+    it("counts only the last run, like the figures beside it", async () => {
+      const periodId = await newPeriod("2026-09-01", "CALCULATED");
+      const employee = await newEmployee(unitPusat);
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        payable: 1_000_000,
+        calculatedAt: "2026-09-20T00:00:00.000Z",
+        lines: [{ code: "BASIC", category: "EARNING", amount: 1_000_000 }],
+      });
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        payable: 1_200_000,
+        calculatedAt: "2026-09-21T00:00:00.000Z",
+        lines: [{ code: "BASIC", category: "EARNING", amount: 1_200_000 }],
+      });
+
+      expect(await listEmploymentIdentities(pool, periodId)).toHaveLength(1);
     });
   });
 

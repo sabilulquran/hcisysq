@@ -1124,7 +1124,7 @@ describe("PAY-003 variance", () => {
       hasPreviousPeriod: false,
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ previousPeriodId: null, threshold: null, variances: [] });
+    expect(response.json()).toEqual({ previousPeriodId: null, threshold: null, variances: [], employees: [] });
   });
 
   it("keeps it from report readers until the period is approved", async () => {

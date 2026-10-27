@@ -7,7 +7,7 @@ import { AttendanceSectionTabs } from "@/components/attendance/workforce/Attenda
 import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
 import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import { getEmployeeService } from "@/lib/employeeServices";
-import { getAdminService } from "@/lib/adminServices";
+import { getAdminService, lockedNote } from "@/lib/adminServices";
 import { AdminServiceTile } from "@/pages/AdminServicesPage";
 import { canOpenAvailableAdminService } from "@/pages/AdminComingSoonPage";
 import type { AuthSession } from "@/types/hcis";
@@ -131,6 +131,19 @@ describe("HC and device-operator navigation", () => {
     const locked = renderToStaticMarkup(<AdminServiceTile service={getAdminService("adms")!} canOpen={false} />);
     expect(locked).not.toContain('href="/admin/attendance/adms"');
     expect(locked).toContain("akun ini belum memiliki akses");
+  });
+
+  it("names the roles that open a locked module instead of only refusing", () => {
+    // PAY-003: payroll is deliberately outside the HC roles, so an HC admin who
+    // finds the card locked has to be told which role to ask for.
+    const payroll = renderToStaticMarkup(<AdminServiceTile service={getAdminService("payroll")!} canOpen={false} />);
+    expect(payroll).toContain("Kepala Human Capital");
+    expect(payroll).toContain("Direktur");
+    expect(payroll).toContain("Kepala Keuangan");
+    expect(payroll).toContain("administrator akses");
+
+    // A module with no role list keeps the short sentence.
+    expect(lockedNote(getAdminService("adms")!)).toBe("Tersedia di HCIS · akun ini belum memiliki akses");
   });
 
   it("keeps read-only ADMS saved filters non-mutating", () => {

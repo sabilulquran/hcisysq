@@ -9,6 +9,7 @@ import {
   draftPayrollPayslips,
   formatRupiah,
   getPayrollPeriod,
+  employeeLabel,
   getPayrollReport,
   getPayrollResults,
   getPayrollTransfers,
@@ -21,6 +22,7 @@ import {
   resolvePayrollAttendanceInputs,
   transitionPayrollPeriod,
   PayrollApiError,
+  type PayrollEmployeeIdentity,
   type PayrollPeriod,
   type PayrollPeriodAction,
   type PayrollPeriodOperation,
@@ -68,6 +70,7 @@ export function AdminPayrollPeriodPage() {
   const [report, setReport] = useState<PayrollReport | null>(null);
   const [variances, setVariances] = useState<PayrollVarianceRow[]>([]);
   const [transfers, setTransfers] = useState<PayrollTransferRow[] | null>(null);
+  const [identities, setIdentities] = useState<Map<string, PayrollEmployeeIdentity>>(new Map());
   const [panelNotes, setPanelNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -96,6 +99,13 @@ export function AdminPayrollPeriodPage() {
         getPayrollVariance(periodId),
       ]);
       setResults(resultsOutcome.status === "fulfilled" ? resultsOutcome.value.results : []);
+      // Results and variance carry the same identity list; whichever the actor
+      // is allowed to read names the people on the other.
+      const named = [
+        ...(resultsOutcome.status === "fulfilled" ? resultsOutcome.value.employees : []),
+        ...(varianceOutcome.status === "fulfilled" ? varianceOutcome.value.employees : []),
+      ];
+      setIdentities(new Map(named.map((entry) => [entry.employmentId, entry])));
       setReport(reportOutcome.status === "fulfilled" ? reportOutcome.value.report : null);
       setVariances(varianceOutcome.status === "fulfilled" ? varianceOutcome.value.variances : []);
       setTransfers(null);
@@ -307,8 +317,11 @@ export function AdminPayrollPeriodPage() {
               {variances.map((row) => (
                 <li key={`${row.employmentId}-${row.componentCode ?? row.kind}`} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                   <span>
-                    <span className="font-medium">{VARIANCE_LABELS[row.kind]}</span>
-                    {row.componentCode ? <span className="text-muted-foreground"> · {row.componentCode}</span> : null}
+                    <span className="font-medium">{employeeLabel(row.employmentId, identities)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {VARIANCE_LABELS[row.kind]}
+                      {row.componentCode ? ` · ${row.componentCode}` : ""}
+                    </span>
                   </span>
                   <span className="text-muted-foreground">
                     {formatRupiah(row.previousAmount)} → {formatRupiah(row.currentAmount)}{" "}
@@ -332,7 +345,7 @@ export function AdminPayrollPeriodPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
-                    <th scope="col" className="px-4 py-2">Employment</th>
+                    <th scope="col" className="px-4 py-2">Pegawai</th>
                     <th scope="col" className="px-4 py-2 text-right">Bruto</th>
                     <th scope="col" className="px-4 py-2 text-right">Potongan</th>
                     <th scope="col" className="px-4 py-2 text-right">Dibayar</th>
@@ -342,7 +355,7 @@ export function AdminPayrollPeriodPage() {
                 <tbody className="divide-y">
                   {results.map((result) => (
                     <tr key={result.employmentId}>
-                      <td className="px-4 py-2 font-mono text-xs">{result.employmentId.slice(0, 8)}</td>
+                      <td className="px-4 py-2">{employeeLabel(result.employmentId, identities)}</td>
                       <td className="px-4 py-2 text-right">{formatRupiah(result.gross)}</td>
                       <td className="px-4 py-2 text-right">{formatRupiah(result.deductions)}</td>
                       <td className="px-4 py-2 text-right font-medium">{formatRupiah(result.payable)}</td>

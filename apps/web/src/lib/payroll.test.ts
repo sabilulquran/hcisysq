@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  employeeLabel,
   formatRupiah,
   payrollActionLabel,
   payrollOperationLabel,
@@ -60,5 +61,26 @@ describe("PAY-003 period vocabulary", () => {
 
   it("escapes a period id rather than pasting it into the path", () => {
     expect(payrollTransfersCsvUrl("a/b c")).toBe("/api/payroll/periods/a%2Fb%20c/transfers?format=csv");
+  });
+});
+
+describe("PAY-003 who a row belongs to", () => {
+  const identities = new Map([
+    ["emp-1", { employmentId: "emp-1", employeeNumber: "YSQ-0042", fullName: "Siti Aminah" }],
+    ["emp-2", { employmentId: "emp-2", employeeNumber: null, fullName: "Budi Santoso" }],
+  ]);
+
+  it("names the employee and the number a reviewer checks against", () => {
+    expect(employeeLabel("emp-1", identities)).toBe("Siti Aminah · YSQ-0042");
+  });
+
+  it("names someone who has no employee number yet", () => {
+    expect(employeeLabel("emp-2", identities)).toBe("Budi Santoso");
+  });
+
+  it("falls back to the identifier rather than an empty cell", () => {
+    // An employment with no employee record is a data problem the reviewer has
+    // to see, so the row stays on screen with something to search for.
+    expect(employeeLabel("0f8a1c7d-2b64-4a9e-9d1f-77a0c2b3e456", identities)).toBe("0f8a1c7d");
   });
 });

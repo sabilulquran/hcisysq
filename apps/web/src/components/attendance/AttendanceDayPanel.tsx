@@ -106,6 +106,7 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
                   <li key={block.sequence}>
                     Blok {block.sequence} · {time(block.scheduledStartAt)}–{time(block.scheduledEndAt)} · scan {block.firstCheckInAt || block.lastCheckOutAt ? `${time(block.firstCheckInAt)} – ${time(block.lastCheckOutAt)}` : "—"} · {calculationRowStatusLabel(block.status as AttendanceCalculationRowStatus)}
                     {block.lateMinutes ? ` · terlambat ${block.lateMinutes} mnt` : ""}{block.earlyLeaveMinutes ? ` · pulang cepat ${block.earlyLeaveMinutes} mnt` : ""}
+                    {block.expectedWorkday !== undefined && block.expectedWorkday !== null ? ` · hari kerja ${block.creditedWorkday ?? "—"} dari ${block.expectedWorkday}` : ""}
                   </li>
                 ))}
               </ul>

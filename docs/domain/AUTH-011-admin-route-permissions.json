@@ -2509,5 +2509,13 @@
     "permissions": [
       "payroll.loans.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/payroll/routes.ts",
+    "method": "POST",
+    "url": "/payroll/periods/:periodId/inputs/from-attendance",
+    "permissions": [
+      "payroll.inputs.manage"
+    ]
   }
 ]

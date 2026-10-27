@@ -31,6 +31,7 @@ import {
   writeAudit,
   type PeriodWithCalculation,
 } from "./store.js";
+import { applyAttendanceInputs } from "./attendance-inputs.js";
 import { calculatePeriod } from "./calculation.js";
 import {
   deleteInput,
@@ -414,6 +415,42 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       throw error;
     }
     return send(reply, 200, { inputs: await listInputs(pool, period.id) });
+  });
+
+  app.post("/payroll/periods/:periodId/inputs/from-attendance", async (request, reply) => {
+    const actor = await requirePermission(request, reply, "payroll.inputs.manage");
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_INPUT", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    if (period.state !== "COLLECTING" && period.state !== "CALCULATED") {
+      return send(reply, 409, {
+        code: "PAYROLL_STATE_CONFLICT",
+        message: `Input hanya dapat diubah saat periode COLLECTING atau CALCULATED; periode ini ${period.state}.`,
+      });
+    }
+
+    // Resolving is an explicit action rather than something the calculation does,
+    // because it overwrites whatever is stored for those two keys, including a
+    // correction human capital typed by hand.
+    const counts = await applyAttendanceInputs(
+      pool,
+      {
+        periodId: period.id,
+        cutoffStart: period.cutoffStart,
+        cutoffEnd: period.cutoffEnd,
+        legalEntityKey: period.legalEntityKey,
+      },
+      actor.accountId,
+    );
+
+    return send(reply, 200, { ...counts, inputs: await listInputs(pool, period.id) });
   });
 
   app.delete("/payroll/periods/:periodId/inputs/:employmentId/:inputKey", async (request, reply) => {

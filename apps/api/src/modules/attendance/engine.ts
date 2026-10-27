@@ -17,7 +17,12 @@ type ScheduleRow = {
   latitude: number | null;
   longitude: number | null;
   radiusMeters: number | null;
+  /** ATT-013: blocks 2-3 of the version, if any. */
+  extraBlocks?: Array<{ sequence: number; startTime: string; endTime: string }> | null;
 };
+
+/** ATT-013: one work block; single-block shifts have exactly one (or none on old fixtures). */
+export type ScheduleBlock = { sequence: number; startAt: Date; endAt: Date };
 
 export type ResolvedSchedule = {
   state: "scheduled" | "off" | "configuration_error";
@@ -35,6 +40,8 @@ export type ResolvedSchedule = {
     longitude: number;
     radiusMeters: number;
   };
+  /** ATT-013: the work blocks of the day in order; scheduledStartAt/EndAt span all of them. */
+  blocks?: ScheduleBlock[];
   reason?: string;
 };
 
@@ -106,6 +113,8 @@ type ResultRow = {
   outsideGeofenceJustified: boolean;
   overtimeMinutes: number;
   inputHash: string;
+  dayType: DayType | null;
+  holidayScheduledWork: boolean | null;
   createdAt: Date;
 };
 
@@ -281,6 +290,110 @@ export function evaluateSessions(input: {
   };
 }
 
+export type BlockComputation = {
+  sequence: number;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  status: "scheduled" | "pending" | "present" | "late" | "incomplete" | "absent";
+  firstCheckInAt: Date | null;
+  lastCheckOutAt: Date | null;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  workedMinutes: number;
+  sessions: AttendanceSession[];
+};
+
+/**
+ * ATT-013 B-4: an instant belongs to the block whose window holds it, the gap between two blocks being
+ * split at its midpoint.
+ */
+export function blockIndexFor(blocks: readonly ScheduleBlock[], at: Date): number {
+  for (let index = 0; index < blocks.length - 1; index += 1) {
+    const boundary = (blocks[index]!.endAt.getTime() + blocks[index + 1]!.startAt.getTime()) / 2;
+    if (at.getTime() < boundary) return index;
+  }
+  return blocks.length - 1;
+}
+
+/**
+ * ATT-013: evaluates each block as its own single-block day (B-3 tolerances), then rolls the day up
+ * (B-5 status, B-7 sums). Leave, absence decisions and schedule states are handled by the caller.
+ */
+export function evaluateBlocks(input: {
+  schedule: ResolvedSchedule;
+  events: readonly AttendanceEventRow[];
+  corrections: ReadonlyArray<{ proposedCheckInAt: Date | null; proposedCheckOutAt: Date | null }>;
+  lateJustified: boolean;
+  earlyLeaveJustified: boolean;
+  outsideGeofenceJustified: boolean;
+  overtimeMinutes: number;
+  now?: Date;
+}): { computation: AttendanceComputation; blocks: BlockComputation[] } {
+  const blocks = input.schedule.blocks!;
+  const blockResults = blocks.map((block, index) => {
+    const events = input.events.filter((event) => blockIndexFor(blocks, event.occurredAt) === index);
+    const corrections = input.corrections.map((correction) => ({
+      proposedCheckInAt: correction.proposedCheckInAt && blockIndexFor(blocks, correction.proposedCheckInAt) === index ? correction.proposedCheckInAt : null,
+      proposedCheckOutAt: correction.proposedCheckOutAt && blockIndexFor(blocks, correction.proposedCheckOutAt) === index ? correction.proposedCheckOutAt : null,
+    })).filter((correction) => correction.proposedCheckInAt || correction.proposedCheckOutAt);
+    const computed = evaluateSessions({
+      schedule: { ...input.schedule, scheduledStartAt: block.startAt, scheduledEndAt: block.endAt, blocks: [block] },
+      sessions: applyBoundaryCorrections(buildSessions(events), corrections),
+      attendanceDisposition: null,
+      lateJustified: input.lateJustified,
+      earlyLeaveJustified: input.earlyLeaveJustified,
+      outsideGeofenceJustified: input.outsideGeofenceJustified,
+      overtimeMinutes: 0,
+      ...(input.now ? { now: input.now } : {}),
+    });
+    return {
+      sequence: block.sequence,
+      scheduledStartAt: block.startAt,
+      scheduledEndAt: block.endAt,
+      status: computed.status as BlockComputation["status"],
+      firstCheckInAt: computed.firstCheckInAt,
+      lastCheckOutAt: computed.lastCheckOutAt,
+      lateMinutes: computed.lateMinutes,
+      earlyLeaveMinutes: computed.earlyLeaveMinutes,
+      workedMinutes: computed.workedMinutes,
+      sessions: computed.sessions,
+    };
+  });
+  const statuses = blockResults.map((block) => block.status);
+  const attended = (status: string) => status === "present" || status === "late";
+  const status: AttendanceComputation["status"] =
+    statuses.every((value) => value === "scheduled") ? "scheduled"
+      : statuses.every((value) => value === "absent") ? "absent"
+      : statuses.some((value) => value === "incomplete") || (statuses.some(attended) && statuses.some((value) => value === "absent")) ? "incomplete"
+      : statuses.some((value) => value === "pending" || value === "scheduled")
+        ? (statuses.some((value) => value === "late") ? "late" : statuses.some(attended) ? "present" : "pending")
+      : statuses.some((value) => value === "late") ? "late"
+      : "present";
+  const sessions = blockResults.flatMap((block) => block.sessions);
+  const sum = (key: "lateMinutes" | "earlyLeaveMinutes" | "workedMinutes") => blockResults.reduce((total, block) => total + block[key], 0);
+  const justified = input.lateJustified || input.earlyLeaveJustified || input.outsideGeofenceJustified;
+  return {
+    blocks: blockResults,
+    computation: {
+      status,
+      firstCheckInAt: blockResults.find((block) => block.firstCheckInAt)?.firstCheckInAt ?? null,
+      lastCheckOutAt: [...blockResults].reverse().find((block) => block.lastCheckOutAt)?.lastCheckOutAt ?? null,
+      workedMinutes: sum("workedMinutes"),
+      // B-7: the gap between blocks is neither work nor break.
+      breakMinutes: 0,
+      lateMinutes: sum("lateMinutes"),
+      earlyLeaveMinutes: sum("earlyLeaveMinutes"),
+      incompleteSession: sessions.some((session) => !session.checkOutAt),
+      justified,
+      lateJustified: input.lateJustified,
+      earlyLeaveJustified: input.earlyLeaveJustified,
+      outsideGeofenceJustified: input.outsideGeofenceJustified,
+      overtimeMinutes: input.overtimeMinutes,
+      sessions,
+    },
+  };
+}
+
 function emptyComputation(
   status: AttendanceComputation["status"],
   input: {
@@ -336,7 +449,10 @@ export async function resolveSchedule(
        location.name AS "locationName",
        location.latitude,
        location.longitude,
-       location.radius_meters AS "radiusMeters"
+       location.radius_meters AS "radiusMeters",
+       (SELECT coalesce(json_agg(json_build_object('sequence', block.sequence, 'startTime', block.start_time::text,
+                 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+        FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks"
      FROM latest_roster latest
      LEFT JOIN attendance_roster_entries entry
        ON entry.roster_id = latest.id
@@ -375,7 +491,10 @@ export async function resolveSchedule(
        location.name AS "locationName",
        location.latitude,
        location.longitude,
-       location.radius_meters AS "radiusMeters"
+       location.radius_meters AS "radiusMeters",
+       (SELECT coalesce(json_agg(json_build_object('sequence', block.sequence, 'startTime', block.start_time::text,
+                 'endTime', block.end_time::text) ORDER BY block.sequence), '[]'::json)
+        FROM attendance_schedule_version_blocks block WHERE block.schedule_version_id = version.id) AS "extraBlocks"
      FROM attendance_schedule_assignments assignment
      JOIN attendance_schedule_templates schedule ON schedule.id = assignment.schedule_template_id
      JOIN LATERAL (
@@ -433,13 +552,21 @@ function mapScheduleRow(row: ScheduleRow, workDate: string): ResolvedSchedule {
         radiusMeters: Number(row.radiusMeters),
       }
     : null;
+  const first = { sequence: 1, startAt: jakartaTimestamp(workDate, row.startTime), endAt: jakartaTimestamp(workDate, row.endTime, endDayOffset) };
+  // ATT-013: extra blocks are on the work date itself (a multi-block shift never crosses midnight).
+  const blocks: ScheduleBlock[] = [first, ...(row.extraBlocks ?? []).map((block) => ({
+    sequence: block.sequence,
+    startAt: jakartaTimestamp(workDate, block.startTime),
+    endAt: jakartaTimestamp(workDate, block.endTime),
+  }))];
   return {
     state: "scheduled",
     scheduleTemplateId: row.scheduleTemplateId,
     scheduleVersionId: row.scheduleVersionId,
     rosterId: row.rosterId,
-    scheduledStartAt: jakartaTimestamp(workDate, row.startTime),
-    scheduledEndAt: jakartaTimestamp(workDate, row.endTime, endDayOffset),
+    scheduledStartAt: first.startAt,
+    scheduledEndAt: blocks.at(-1)!.endAt,
+    blocks,
     lateGraceMinutes: row.lateGraceMinutes ?? 0,
     earlyLeaveToleranceMinutes: row.earlyLeaveToleranceMinutes ?? 0,
     workLocation: location,
@@ -471,6 +598,14 @@ async function normalizeAdmsForWindow(
      ON CONFLICT (source_reference) DO NOTHING`,
     [employeeId, start, end],
   );
+}
+
+export type DayType = "working_day" | "rest_day" | "public_holiday";
+
+/** §5.6: a calendar holiday stays a holiday even when the employee is scheduled to work it. */
+export function dayTypeFor(state: ResolvedSchedule["state"], publicHoliday: boolean): DayType {
+  if (publicHoliday) return "public_holiday";
+  return state === "off" ? "rest_day" : "working_day";
 }
 
 export async function materializeAttendanceResult(
@@ -558,17 +693,28 @@ export async function materializeAttendanceResult(
     );
     const disposition = leaveDisposition.rows[0] ?? null;
 
+    // ATT-011-6a §7.5: every approved request of the day counts, summed (no longer the latest only).
     const overtime = await client.query<OvertimeRow>(
       `SELECT id, approved_minutes AS "approvedMinutes"
        FROM attendance_overtime_requests
        WHERE employee_id = $1
          AND work_date = $2::date
          AND status = 'approved'
-       ORDER BY decided_at DESC NULLS LAST, created_at DESC
-       LIMIT 1`,
+       ORDER BY decided_at NULLS LAST, created_at, id`,
       [employeeId, workDate],
     );
-    const overtimeMinutes = Number(overtime.rows[0]?.approvedMinutes ?? 0);
+    const overtimeMinutes = overtime.rows.reduce((sum, row) => sum + Number(row.approvedMinutes ?? 0), 0);
+    const overtimeIds = overtime.rows.map((row) => row.id);
+
+    // ATT-011-6a §5.6: the kind of day, stored so payroll can tell a holiday from a rest day without
+    // guessing. A holiday on which the employee is scheduled is a working day that is also a holiday.
+    const calendar = await client.query<{ isWorkingDay: boolean }>(
+      "SELECT is_working_day AS \"isWorkingDay\" FROM leave_calendar_exceptions WHERE calendar_date = $1::date",
+      [workDate],
+    );
+    const publicHoliday = calendar.rows[0]?.isWorkingDay === false;
+    const dayType = dayTypeFor(schedule.state, publicHoliday);
+    const holidayScheduledWork = publicHoliday && schedule.state === "scheduled";
 
     const events: AttendanceEventRow[] = [];
     if (schedule.scheduledStartAt && schedule.scheduledEndAt) {
@@ -590,7 +736,7 @@ export async function materializeAttendanceResult(
       buildSessions(events),
       clarifications.rows.filter((item) => item.mode === "correction"),
     );
-    const computed = evaluateSessions({
+    let computed = evaluateSessions({
       schedule,
       sessions,
       attendanceDisposition: disposition?.disposition ?? null,
@@ -600,6 +746,22 @@ export async function materializeAttendanceResult(
       overtimeMinutes,
       now,
     });
+    // ATT-013: a scheduled multi-block day without a leave or absence decision is judged per block.
+    let blockResults: BlockComputation[] = [];
+    if (schedule.state === "scheduled" && (schedule.blocks?.length ?? 0) > 1 && !disposition) {
+      const multi = evaluateBlocks({
+        schedule,
+        events,
+        corrections: clarifications.rows.filter((item) => item.mode === "correction"),
+        lateJustified,
+        earlyLeaveJustified,
+        outsideGeofenceJustified,
+        overtimeMinutes,
+        now,
+      });
+      computed = multi.computation;
+      blockResults = multi.blocks;
+    }
     const input = {
       schedule: {
         state: schedule.state,
@@ -610,12 +772,17 @@ export async function materializeAttendanceResult(
         end: schedule.scheduledEndAt?.toISOString() ?? null,
         lateGraceMinutes: schedule.lateGraceMinutes,
         earlyLeaveToleranceMinutes: schedule.earlyLeaveToleranceMinutes,
+        // Only multi-block days carry blocks, so single-block days keep their input hash.
+        ...((schedule.blocks?.length ?? 0) > 1 ? { blocks: schedule.blocks!.map((block) => [block.startAt.toISOString(), block.endAt.toISOString()]) } : {}),
       },
       events: events.map((event) => [event.id, event.eventKind, event.occurredAt.toISOString()]),
       clarifications: clarifications.rows.map((item) => item.id),
       leave: disposition?.leaveRequestId ?? null,
       resolutionCase: disposition?.resolutionCaseId ?? null,
-      overtime: overtime.rows[0]?.id ?? null,
+      overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
+      // The kind of day is part of the input: versions are immutable, so a day calculated before
+      // ATT-011-6a gets one new version carrying day_type on its next Kalkulasi, then stays stable.
+      dayType,
       computed: {
         status: computed.status,
         workedMinutes: computed.workedMinutes,
@@ -628,9 +795,14 @@ export async function materializeAttendanceResult(
         earlyLeaveJustified: computed.earlyLeaveJustified,
         outsideGeofenceJustified: computed.outsideGeofenceJustified,
         overtimeMinutes: computed.overtimeMinutes,
+        // A block can change while the day's rollup stays the same; its rows must not go stale.
+        ...(blockResults.length ? {
+          blocks: blockResults.map((block) => [block.status, block.lateMinutes, block.earlyLeaveMinutes, block.workedMinutes,
+            block.firstCheckInAt?.toISOString() ?? null, block.lastCheckOutAt?.toISOString() ?? null]),
+        } : {}),
       },
     };
-    const inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    let inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
 
     const existing = await client.query<ResultRow>(
       `SELECT
@@ -644,15 +816,22 @@ export async function materializeAttendanceResult(
          late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
          outside_geofence_justified AS "outsideGeofenceJustified",
          overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
+         day_type AS "dayType", holiday_scheduled_work AS "holidayScheduledWork",
          created_at AS "createdAt"
        FROM attendance_result_versions
-       WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3
+       WHERE employee_id = $1 AND work_date = $2::date
+       ORDER BY version DESC
        LIMIT 1`,
-      [employeeId, workDate, inputHash],
+      [employeeId, workDate],
     );
-    if (existing.rows[0]) {
+    // Idempotent against the latest version only: inputs that return to an older state (a holiday added
+    // then removed) must produce a new latest version, not silently keep the newer one.
+    const latest = existing.rows[0];
+    const sameAsLatest = latest && (latest.inputHash === inputHash
+      || latest.inputHash === createHash("sha256").update(JSON.stringify({ ...input, recurrence: latest.version })).digest("hex"));
+    if (latest && sameAsLatest) {
       await client.query("COMMIT");
-      return existing.rows[0];
+      return latest;
     }
 
     const versionResult = await client.query<{ version: number }>(
@@ -661,6 +840,14 @@ export async function materializeAttendanceResult(
        WHERE employee_id = $1 AND work_date = $2::date`,
       [employeeId, workDate],
     );
+    // The hash is unique per day; an older version with the same inputs gets the new version number mixed in.
+    const repeated = await client.query(
+      "SELECT 1 FROM attendance_result_versions WHERE employee_id = $1 AND work_date = $2::date AND input_hash = $3",
+      [employeeId, workDate, inputHash],
+    );
+    if (repeated.rows[0]) {
+      inputHash = createHash("sha256").update(JSON.stringify({ ...input, recurrence: versionResult.rows[0]?.version ?? 1 })).digest("hex");
+    }
     const result = await client.query<ResultRow>(
       `INSERT INTO attendance_result_versions (
          id, employee_id, work_date, version, status, schedule_template_id, schedule_version_id, roster_id,
@@ -668,10 +855,12 @@ export async function materializeAttendanceResult(
          worked_minutes, break_minutes, late_minutes, early_leave_minutes,
          incomplete_session, justified, late_justified, early_leave_justified,
          outside_geofence_justified, overtime_minutes, input_hash, source_event_ids,
-         source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata
+         source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata,
+         day_type, holiday_scheduled_work
        ) VALUES (
          $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb
+         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb,
+         $29, $30
        )
        RETURNING
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
@@ -684,6 +873,7 @@ export async function materializeAttendanceResult(
          late_justified AS "lateJustified", early_leave_justified AS "earlyLeaveJustified",
          outside_geofence_justified AS "outsideGeofenceJustified",
          overtime_minutes AS "overtimeMinutes", input_hash AS "inputHash",
+         day_type AS "dayType", holiday_scheduled_work AS "holidayScheduledWork",
          created_at AS "createdAt"`,
       [
         randomUUID(), employeeId, workDate, versionResult.rows[0]?.version ?? 1, computed.status,
@@ -695,11 +885,25 @@ export async function materializeAttendanceResult(
         computed.overtimeMinutes, inputHash, JSON.stringify(events.map((event) => event.id)),
         JSON.stringify(clarifications.rows.map((item) => item.id)), disposition?.leaveRequestId ?? null,
         disposition?.resolutionCaseId ?? null,
-        JSON.stringify({ overtimeRequestId: overtime.rows[0]?.id ?? null }),
+        JSON.stringify({ overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds }),
+        dayType, holidayScheduledWork,
       ],
     );
     const insertedResult = result.rows[0];
     if (!insertedResult) throw new Error("Attendance result insert did not return a row");
+    for (const block of blockResults) {
+      await client.query(
+        `INSERT INTO attendance_result_blocks (
+           id, attendance_result_version_id, sequence, scheduled_start_at, scheduled_end_at,
+           first_check_in_at, last_check_out_at, status, late_minutes, early_leave_minutes, worked_minutes
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          randomUUID(), insertedResult.id, block.sequence, block.scheduledStartAt, block.scheduledEndAt,
+          block.firstCheckInAt, block.lastCheckOutAt, block.status, block.lateMinutes, block.earlyLeaveMinutes,
+          block.workedMinutes,
+        ],
+      );
+    }
     for (const [index, session] of computed.sessions.entries()) {
       await client.query(
         `INSERT INTO attendance_result_sessions (

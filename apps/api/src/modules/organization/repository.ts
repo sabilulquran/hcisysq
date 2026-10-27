@@ -45,6 +45,7 @@ interface ChangeSetRow {
   createdAt: Date;
   validatedAt: Date | null;
   publishedAt: Date | null;
+  revision: number;
 }
 
 interface NodeRow extends Omit<OrganizationNode, "effectiveFrom" | "effectiveTo"> {
@@ -127,7 +128,7 @@ export class PostgresOrganizationRepository {
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets
         WHERE status = 'PUBLISHED' AND effective_on <= $1::date
         ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
@@ -145,7 +146,7 @@ export class PostgresOrganizationRepository {
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets WHERE id = $1
       `,
       [changeSetId],
@@ -154,18 +155,219 @@ export class PostgresOrganizationRepository {
     return row ? this.loadSnapshotRows(mapChangeSet(row)) : null;
   }
 
-  async listChangeSets(): Promise<OrganizationChangeSet[]> {
+  async listChangeSets(statuses?: readonly OrganizationChangeSet["status"][]): Promise<OrganizationChangeSet[]> {
     const result = await this.db.query<ChangeSetRow>(
       `
         SELECT id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
         FROM organization_change_sets
+        WHERE $1::text[] IS NULL OR status = ANY($1::text[])
         ORDER BY effective_on DESC, created_at DESC, id DESC
       `,
+      [statuses && statuses.length > 0 ? [...statuses] : null],
     );
     return result.rows.map(mapChangeSet);
+  }
+
+  /**
+   * ORG-008-4b: has this stable key ever appeared in a published change set?
+   *
+   * Published structure is history: it can be deactivated or ended, never deleted. A key that only
+   * exists inside the change set being composed was never anywhere else, so removing it loses
+   * nothing.
+   */
+  async isStableKeyPublished(kind: "node" | "position", stableKey: string): Promise<boolean> {
+    const table = kind === "node" ? "organization_nodes" : "organization_positions";
+    const result = await this.db.query<{ published: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM ${table} item
+         JOIN organization_change_sets change_set ON change_set.id = item.change_set_id
+         WHERE item.stable_key = $1 AND change_set.status = 'PUBLISHED'
+       ) AS published`,
+      [stableKey],
+    );
+    return result.rows[0]?.published === true;
+  }
+
+  /** ORG-008-4a: record one applied command, in the operator's own order. */
+  async appendJournalEntry(input: {
+    changeSetId: string;
+    commandType: string;
+    payload: Record<string, unknown>;
+    summary: Record<string, unknown>;
+    actorAccountId: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ seq: number }>(
+      `INSERT INTO organization_change_set_journal
+         (id, change_set_id, seq, command_type, payload, summary, actor_account_id)
+       SELECT $1, $2, COALESCE(MAX(seq), 0) + 1, $3, $4::jsonb, $5::jsonb, $6
+       FROM organization_change_set_journal WHERE change_set_id = $2
+       RETURNING seq`,
+      [
+        randomUUID(),
+        input.changeSetId,
+        input.commandType,
+        JSON.stringify(input.payload),
+        JSON.stringify(input.summary),
+        input.actorAccountId,
+      ],
+    );
+    return result.rows[0]?.seq ?? 1;
+  }
+
+  /** ORG-008-4c: the journal with payloads, which is what a replay needs. */
+  async loadJournalForReplay(changeSetId: string): Promise<Array<{
+    id: string; seq: number; commandType: string;
+    payload: Record<string, unknown>; summary: Record<string, unknown>;
+  }>> {
+    const result = await this.db.query<{
+      id: string; seq: number; commandType: string;
+      payload: Record<string, unknown>; summary: Record<string, unknown>;
+    }>(
+      `SELECT id, seq, command_type AS "commandType", payload, summary
+       FROM organization_change_set_journal
+       WHERE change_set_id = $1
+       ORDER BY seq`,
+      [changeSetId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * ORG-008-4c: replace the journal with the lines that survived a replay, renumbered.
+   * Lines that no longer fit are dropped here only after the caller has reported them.
+   */
+  async replaceJournal(
+    changeSetId: string,
+    entries: Array<{ seq: number; commandType: string; payload: Record<string, unknown>; summary: Record<string, unknown> }>,
+    actorAccountId: string,
+  ): Promise<void> {
+    await this.db.query("DELETE FROM organization_change_set_journal WHERE change_set_id = $1", [changeSetId]);
+    for (const entry of entries) {
+      await this.db.query(
+        `INSERT INTO organization_change_set_journal
+           (id, change_set_id, seq, command_type, payload, summary, actor_account_id)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7)`,
+        [
+          randomUUID(), changeSetId, entry.seq, entry.commandType,
+          JSON.stringify(entry.payload), JSON.stringify(entry.summary), actorAccountId,
+        ],
+      );
+    }
+  }
+
+  /** ORG-008-4c: point a change set at the base it was rebuilt from. */
+  async setBaseChangeSet(changeSetId: string, baseChangeSetId: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE organization_change_sets
+       SET base_change_set_id = $2, updated_at = now()
+       WHERE id = $1 AND status = 'DRAFT'`,
+      [changeSetId, baseChangeSetId],
+    );
+  }
+
+  /** ORG-008-4a: the "Yang berubah" list for one change set, oldest first. */
+  async listJournal(changeSetId: string): Promise<Array<{
+    id: string;
+    seq: number;
+    commandType: string;
+    summary: Record<string, unknown>;
+    actorAccountId: string;
+    createdAt: string;
+  }>> {
+    const result = await this.db.query<{
+      id: string; seq: number; commandType: string;
+      summary: Record<string, unknown>; actorAccountId: string; createdAt: Date;
+    }>(
+      `SELECT id, seq, command_type AS "commandType", summary,
+        actor_account_id AS "actorAccountId", created_at AS "createdAt"
+       FROM organization_change_set_journal
+       WHERE change_set_id = $1
+       ORDER BY seq`,
+      [changeSetId],
+    );
+    return result.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
+  /**
+   * ORG-008-10 (DRAFT default, 2026-10-27): every account that composed this change set — the one
+   * that created it, and every actor of an organization audit event for it other than checking,
+   * reopening or publishing. Read from the audit trail rather than the journal so seeded and
+   * single-record edits count too.
+   */
+  async listChangeSetComposers(changeSetId: string): Promise<string[]> {
+    const result = await this.db.query<{ accountId: string }>(
+      `SELECT created_by_account_id AS "accountId" FROM organization_change_sets
+       WHERE id = $1 AND created_by_account_id IS NOT NULL
+       UNION
+       SELECT actor_account_id FROM organization_audit_events
+       WHERE change_set_id = $1 AND actor_account_id IS NOT NULL
+         AND action NOT IN ('organization.draft.validated', 'organization.draft.reopened', 'organization.draft.published')`,
+      [changeSetId],
+    );
+    return result.rows.map((row) => row.accountId);
+  }
+
+  /** ORG-005-1: which of these work locations have been switched off since a unit named them. */
+  async inactiveWorkLocationIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const result = await this.db.query<{ id: string }>(
+      "SELECT id FROM attendance_work_locations WHERE id = ANY($1::uuid[]) AND active = false", [ids],
+    );
+    return result.rows.map((row) => row.id);
+  }
+
+  /** ORG-008-3b (O-7): the one change set that is still being composed, if any. */
+  async findOpenChangeSet(): Promise<OrganizationChangeSet | null> {
+    const open = await this.listChangeSets(["DRAFT", "VALIDATED"]);
+    return open[0] ?? null;
+  }
+
+  /**
+   * ORG-008-3b concurrency guard. Compare-and-swap on one row: the mutation proceeds only when the
+   * caller carried the revision it last saw. Returns the new revision, or null when the revision did
+   * not match or the change set is no longer a draft.
+   */
+  async bumpDraftRevision(changeSetId: string, expectedRevision: number): Promise<number | null> {
+    const result = await this.db.query<{ revision: number }>(
+      `UPDATE organization_change_sets
+       SET revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status = 'DRAFT' AND revision = $2
+       RETURNING revision`,
+      [changeSetId, expectedRevision],
+    );
+    return result.rows[0]?.revision ?? null;
+  }
+
+  /** ORG-008-3b: VALIDATED -> DRAFT. The validation report is cleared, so it must be checked again. */
+  async markReopened(changeSetId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE organization_change_sets
+       SET status = 'DRAFT', validation_report = '{}'::jsonb,
+           validated_by_account_id = NULL, validated_at = NULL,
+           revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status = 'VALIDATED'`,
+      [changeSetId],
+    );
+    return result.rowCount === 1;
+  }
+
+  /**
+   * ORG-008-3b: DRAFT or VALIDATED -> DISCARDED. Rows and audit stay; nothing is deleted, and a
+   * discarded change set can never become effective structure because only PUBLISHED is loaded.
+   */
+  async markDiscarded(changeSetId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE organization_change_sets
+       SET status = 'DISCARDED', validation_report = '{}'::jsonb,
+           validated_by_account_id = NULL, validated_at = NULL,
+           revision = revision + 1, updated_at = now()
+       WHERE id = $1 AND status IN ('DRAFT', 'VALIDATED')`,
+      [changeSetId],
+    );
+    return result.rowCount === 1;
   }
 
   async createDraft(input: CreateOrganizationDraftInput): Promise<OrganizationSnapshot> {
@@ -187,7 +389,7 @@ export class PostgresOrganizationRepository {
         RETURNING id, name, effective_on AS "effectiveOn", status,
           base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
           created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-          validated_at AS "validatedAt", published_at AS "publishedAt"
+          validated_at AS "validatedAt", published_at AS "publishedAt", revision
       `,
       [changeSetId, input.name.trim(), input.effectiveOn, base?.changeSet.id ?? null, input.actorAccountId],
     );
@@ -245,11 +447,13 @@ export class PostgresOrganizationRepository {
       await this.db.query(
         `INSERT INTO organization_nodes
           (id, change_set_id, stable_key, name, node_type, parent_node_key, active,
-           effective_from, effective_to, visual_rank_offset, integration_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+           effective_from, effective_to, visual_rank_offset, integration_code, legacy_unit_id,
+           work_location_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.name, item.nodeType,
           item.parentNodeKey, item.active, item.effectiveFrom, item.effectiveTo,
-          item.visualRankOffset, item.integrationCode],
+          item.visualRankOffset, item.integrationCode, item.legacyUnitId ?? null,
+          item.workLocationId ?? null],
       );
     }
     for (const item of snapshot.jobProfiles) {
@@ -437,7 +641,8 @@ export class PostgresOrganizationRepository {
           `SELECT id, stable_key AS "stableKey", name, node_type AS "nodeType",
             parent_node_key AS "parentNodeKey", active, effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
-            integration_code AS "integrationCode"
+            integration_code AS "integrationCode", legacy_unit_id AS "legacyUnitId",
+            work_location_id AS "workLocationId"
            FROM organization_nodes WHERE change_set_id = $1`, [id]),
         this.db.query<JobProfileRow>(
           `SELECT id, stable_key AS "stableKey", name, active,

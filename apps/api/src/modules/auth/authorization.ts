@@ -24,6 +24,26 @@ export async function requirePermissionsFromCookie(
   return session.principal;
 }
 
+/**
+ * Like requirePermissionsFromCookie, but passes when the account holds at least one of the listed
+ * permissions. Returns the principal with the permissions it holds, so a handler can hide actions
+ * the account may not perform.
+ */
+export async function requireAnyPermissionFromCookie(
+  auth: Pick<AuthService, "getSession" | "getAuthorizationContext">,
+  cookieHeader: string | undefined,
+  anyOf: readonly AdminPermission[],
+): Promise<{ principal: AuthPrincipal; permissions: AdminPermission[] }> {
+  const session = await auth.getSession(readCookie(cookieHeader, AUTH_COOKIE_NAME));
+  if (!session) throw new AuthError(401, "UNAUTHENTICATED", "Sesi tidak ditemukan atau sudah berakhir.");
+  const context = await auth.getAuthorizationContext(session.principal);
+  const held = anyOf.filter((key) => context.organizationPermissions.includes(key));
+  if (!held.length) {
+    throw new AuthError(403, "FORBIDDEN", "Akun ini tidak memiliki izin administrasi yang diperlukan.");
+  }
+  return { principal: session.principal, permissions: held };
+}
+
 export async function requirePrincipalFromCookie(
   auth: Pick<AuthService, "getSession">,
   cookieHeader: string | undefined,

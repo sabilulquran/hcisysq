@@ -33,9 +33,10 @@ Non-goal: perubahan protokol/mesin ADMS (ATT-012), face recognition, retention f
 > **Dibatalkan 2026-10-24 (keputusan owner):** non-goal "multi-shift per pegawai per hari" tidak
 > berlaku lagi. Draf SK Jadwal Kerja YSQ menyusun jadwal di atas Blok Kerja dan empat kelompok
 > memakai dua Blok Kerja dalam satu hari, sehingga owner memutuskan HCIS yang menyesuaikan.
-> Pekerjaannya berada di spesifikasi tersendiri **ATT-013** (`attendance-multi-block-schedule.md`),
-> bukan di paket ATT-011 mana pun. Paket ATT-011 tetap mengasumsikan satu shift per hari sampai
-> ATT-013-1 dirilis.
+> Pekerjaannya berada di spesifikasi tersendiri **ATT-013** (`attendance-multi-block-schedule.md`,
+> rancangan; implementasi tercatat di `attendance-work-blocks.md`), bukan di paket ATT-011 mana pun.
+> Beberapa Blok Kerja dalam satu shift kini didukung; dua pola jadwal pada tanggal yang sama tetap
+> "Jadwal bermasalah".
 
 ## 2. Actor
 
@@ -331,6 +332,12 @@ Status backend ATT-007 tidak berubah. Label pengecualian (bukan status): Terlamb
 
 ### 6.4 Hitung ulang otomatis (baru, backend)
 
+> **Diganti 2026-10-24 (keputusan owner):** kehadiran tidak dihitung otomatis di latar belakang.
+> HCIS memakai model **Laporan & Kalkulasi** — operator memilih unit dan rentang lalu menekan
+> Kalkulasi — dan layar harian menjadi **Pantauan Hari Ini** yang hanya menampilkan fakta scan.
+> Spesifikasinya **ATT-014** (`attendance-report-calculation.md`). Kontrak di bawah dipertahankan
+> sebagai riwayat; bagian antrean, worker, dan pemicu otomatis tidak dikerjakan.
+
 Masalah K-1/K-2/J-8: hasil tidak mengikuti scan mesin, publish jadwal, dan keputusan cuti.
 
 **Kontrak:**
@@ -531,7 +538,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1); paket lain belum dimulai.
+Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (lihat §10.3). **ATT-011-6a** diimplementasikan 2026-10-27 (lihat §10.4); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -546,6 +553,77 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - Lembur, Koreksi HC, dan filter Laporan memakai pencarian pegawai server-side (`GET /admin/employees?q=`), bukan 100 pegawai pertama (L-4). Form "Catat lembur atas nama pegawai" hanya tampil dengan `employees.manage`.
 - Belum termasuk (paket berikutnya): panel detail dan kartu mobile Kehadiran (ATT-011-3), planner Jadwal (ATT-011-5); Assignment/Roster lama masih menjadi tab Pola jadwal dan Jadwal per tanggal sampai ATT-011-5 diterima.
 - Tidak ada perubahan API, migration, atau permission.
+
+### 10.2 Catatan implementasi ATT-011-7 (2026-10-27)
+
+- **Kehadiran Saya** (`/app/attendance`) memuat: Hari ini, Ajukan lembur dan pengajuan terakhir (dengan
+  Batalkan), **Jadwal saya** (minggu ini + minggu depan dari `GET /attendance/me/schedule`; tanggal dari
+  roster ditandai "Jadwal diganti"), **Klarifikasi saya** (status, catatan keputusan, Batalkan selama
+  Menunggu), dan **Riwayat 30 hari** dengan tombol **Ajukan klarifikasi** pada hari Terlambat, Belum
+  lengkap, atau Tidak hadir, hari ini sampai 7 hari ke belakang. Riwayat tampil sebagai kartu di HP.
+- Form klarifikasi menjadi satu komponen (`ClarificationForm`) yang dipakai Clock In/Out (hari ini) dan
+  Riwayat (tanggal lalu).
+- `POST /attendance/clarifications` menolak tanggal depan dan tanggal lebih lama dari 7 hari dengan `422
+  CLARIFICATION_DATE_OUT_OF_RANGE`, sebelum query apa pun.
+- Keputusan HC atas klarifikasi **pegawai** mengirim notifikasi in-app ("Klarifikasi disetujui/ditolak",
+  tautan ke Klarifikasi saya) dalam transaksi keputusan. Koreksi HC tidak memberi notifikasi.
+- Tautan "Klarifikasi" di navigasi pegawai menuju bagian Klarifikasi saya, bukan anchor di halaman lain.
+- Lembur Tim dan perintah lembur atasan (butir 5–6 §8) menunggu ATT-011-6b.
+- Tidak ada migration atau permission baru.
+
+### 10.3 Catatan implementasi ATT-011-3 (2026-10-27)
+
+- **Perlu Tindakan** (`/admin/attendance/action-queue`) menjadi tab kedua di **Ringkasan** (§3), bukan di
+  Kehadiran, karena Kehadiran tetap tiga tab (ATT-014 §19.8). Antrean `GET /admin/attendance/action-queue`
+  menggabungkan, urut tanggal terlama: klarifikasi menunggu dan absen HP perlu ditinjau
+  (`attendance.clarification.manage`), hari Tidak lengkap yang sudah lewat lebih dari 1 hari
+  (`attendance.records.manage` atau `attendance.reports.read`), dan Jadwal bermasalah
+  (`attendance.reports.read` atau `attendance.schedule.manage`). Setiap jenis hanya tampil untuk akun yang
+  bisa menindaklanjutinya. Bawaan 31 hari terakhir, berhalaman standar, jumlah per jenis.
+- Aturan antrean (`DRAFT`): absen HP perlu ditinjau keluar dari antrean begitu ada klarifikasi untuk hari
+  itu (yang menunggu sudah tampil sebagai klarifikasi; yang diputuskan sudah menyelesaikannya), dan
+  ditanggali menurut tanggal kalender scan, sehingga scan pulang lewat tengah malam pada shift malam
+  tercatat di hari berikutnya. Pemegang `attendance.reports.read` saja melihat hari Tidak lengkap dan Jadwal
+  bermasalah tetapi tidak dapat memperbaikinya. Belum ada aksi "Tandai sudah ditinjau", karena status
+  tinjauan belum disimpan; itu butuh migration terpisah. Hari Tidak lengkap keluar dari antrean selama klarifikasi pegawai untuk
+  hari itu menunggu, dan saat versi hasil terbaru tidak lagi Tidak lengkap.
+- **Panel detail satu hari** (`GET /admin/attendance/daily/{employeeId}/{workDate}`, termasuk scan hari
+  berikutnya sampai 6 jam setelah shift yang melewati tengah malam berakhir) dibuka dari baris
+  antrean dan dari baris tab Harian di Laporan: jadwal (nama shift, jam, toleransi), status, scan per
+  sumber (GPS dan foto hanya untuk `attendance.clarification.manage`, foto tetap lewat endpoint bukti yang
+  diaudit), sesi (jam hilang tampil "?", tidak pernah diisi dari jadwal), cuti, lembur, klarifikasi, dan
+  detail teknis yang terlipat. Aksi: **Setujui/Tolak** klarifikasi, **Perbaiki jam** (koreksi HC),
+  **Minta klarifikasi pegawai**, dan **Buka di Jadwal** untuk jadwal bermasalah.
+- **Minta klarifikasi pegawai** (`POST …/request-clarification`): notifikasi in-app satu kali per pegawai
+  dan tanggal, audit `attendance.clarification.requested`, hanya untuk tanggal yang masih bisa
+  diklarifikasi pegawai (D-7).
+- `TBD`: penyelesaian cuti (LEAVE-007) tetap di halaman HC-nya sendiri; izinnya bukan izin admin sehingga
+  belum masuk antrean.
+- Manifest AUTH-011 +3 route. Tidak ada migration atau permission baru.
+
+### 10.4 Catatan implementasi ATT-011-6a (2026-10-27)
+
+- **Engine (§7.5):** `overtime_minutes` = jumlah `approved_minutes` semua lembur disetujui pada tanggal itu,
+  bukan lagi yang terbaru saja. Jenis hari ikut menjadi input hasil; karena versi hasil tidak boleh diubah,
+  setiap hari yang dihitung sebelum rilis ini mendapat **satu** versi baru berisi `day_type` pada Kalkulasi
+  berikutnya, lalu stabil lagi.
+- **Idempoten terhadap versi terakhir saja:** bila input kembali ke keadaan lama (libur ditambah lalu
+  dihapus), engine menulis versi baru sebagai versi terakhir, bukan diam-diam mempertahankan versi yang lebih
+  baru. Sebelumnya hasil bisa tertahan pada keadaan libur.
+- **Jenis hari (§5.6):** migration `0071` menambah kolom nullable `day_type` (`working_day | rest_day |
+  public_holiday`) dan `holiday_scheduled_work` pada `attendance_result_versions`. Libur kalender tetap
+  `public_holiday` walaupun dijadwalkan masuk lewat jadwal per tanggal (`holiday_scheduled_work = true`).
+  Versi lama tetap `NULL` dan tidak di-backfill; versi berikutnya terisi saat inputnya berubah.
+- **Batas teknis 24 jam (§7.6):** total lembur menunggu + disetujui satu pegawai pada satu tanggal tidak
+  boleh lebih dari 24 jam, dicek saat pegawai mengajukan, HC mencatat atas nama pegawai, dan saat
+  persetujuan (`422 OVERTIME_DAY_TOTAL_INVALID`), di bawah kunci per pegawai-tanggal.
+- **Audit:** `attendance.overtime.submitted` (pegawai/HC), `attendance.overtime.approved`,
+  `attendance.overtime.rejected`, `attendance.overtime.cancelled` di `access_audit_events`.
+- **Layar HC (§7.4):** tab Menunggu · Disetujui · Ditolak/Dibatalkan, kolom Jenis hari, Dimulai oleh, Fakta
+  scan (selisih scan terhadap jadwal, atau seluruh scan pada hari tanpa jadwal; hanya informasi), kartu di
+  HP, dan halaman standar (halaman dipilih dulu, fakta scan hanya dihitung untuk baris halaman itu) (`GET /admin/attendance/overtime` keluar dari daftar utang PAG-5). Siapa yang
+  memutuskan belum berubah (HC); persetujuan atasan, perintah lembur, peringatan PP 35/2021, jendela D-9,
+  dan aturan Direktur adalah ATT-011-6b.
 
 ## 11. Keputusan owner
 

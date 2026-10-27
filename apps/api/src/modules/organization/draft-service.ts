@@ -1,6 +1,8 @@
 import type {
+  OrganizationChangeSet,
   OrganizationImpactPreview,
   OrganizationSnapshot,
+  OrganizationStaleBaseConflict,
   OrganizationValidationIssue,
   OrganizationValidationReport,
 } from "./domain.js";
@@ -22,6 +24,7 @@ export class OrganizationDraftService {
     this.validateCycles(snapshot, issues);
     this.validateOverlaps(snapshot, issues);
     await this.validateIncumbents(snapshot, issues);
+    await this.validateWorkLocations(snapshot, issues);
     const report: OrganizationValidationReport = {
       valid: issues.length === 0,
       issues,
@@ -103,6 +106,53 @@ export class OrganizationDraftService {
     };
   }
 
+  /**
+   * ORG-008-3a stale-base guard.
+   *
+   * A change set stores a complete snapshot, and `loadEffectiveSnapshot` picks one by
+   * `effective_on DESC, published_at DESC`. A draft clones its base once, when it is created, and is
+   * never refreshed. So a change set published after that clone, taking effect no later than the
+   * draft, is absent from the draft's snapshot and would be replaced by it on its effective date —
+   * silently, because nothing today compares the two.
+   *
+   * The rule, finalized here and recorded in the ORG-008 spec: another PUBLISHED change set that is
+   * not this one's base, whose `publishedAt` is later than this one's `createdAt`, and whose
+   * `effectiveOn` is on or before this one's. `effectiveOn` is compared with `<=` and not `<`,
+   * because on an equal effective date the second ordering key `published_at DESC` still makes the
+   * later publication win, so the earlier one is shadowed just the same.
+   *
+   * Returns the most recently published conflict, or null when the base is still current. This is a
+   * read-only comparison: it does not touch snapshots, the resolver, effective dating, or rollout.
+   */
+  async findStaleBaseConflict(changeSet: OrganizationChangeSet): Promise<OrganizationStaleBaseConflict | null> {
+    const others = await this.repository.listChangeSets();
+    // The cutoff is when the base this change set carries was published, not when the change set was
+    // created. The two are the same until it is rebuilt from newer structure (ORG-008-4c): after a
+    // rebuild the contents are as new as the base, so only publications that landed after that base
+    // are missing from them. Measuring from createdAt would keep reporting a publication the rebuilt
+    // contents already contain. With no base at all, creation time is the only cutoff there is.
+    const base = changeSet.baseChangeSetId
+      ? others.find((candidate) => candidate.id === changeSet.baseChangeSetId)
+      : undefined;
+    const cutoff = base?.publishedAt ?? changeSet.createdAt;
+    const conflicts = others.filter((candidate): candidate is OrganizationChangeSet & { publishedAt: string } =>
+      candidate.status === "PUBLISHED"
+      && candidate.id !== changeSet.id
+      && candidate.id !== changeSet.baseChangeSetId
+      && candidate.publishedAt !== null
+      && candidate.publishedAt > cutoff
+      && candidate.effectiveOn <= changeSet.effectiveOn);
+    if (conflicts.length === 0) return null;
+    const latest = conflicts.reduce((newest, candidate) =>
+      candidate.publishedAt > newest.publishedAt ? candidate : newest);
+    return {
+      changeSetId: latest.id,
+      name: latest.name,
+      effectiveOn: latest.effectiveOn,
+      publishedAt: latest.publishedAt,
+    };
+  }
+
   async publish(changeSetId: string, actorAccountId: string): Promise<void> {
     const snapshot = await this.repository.loadChangeSetSnapshot(changeSetId);
     if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
@@ -110,6 +160,14 @@ export class OrganizationDraftService {
       throw new OrganizationDraftError(
         "CHANGE_SET_NOT_VALIDATED",
         "Organization change set must pass validation before publish.",
+      );
+    }
+    const stale = await this.findStaleBaseConflict(snapshot.changeSet);
+    if (stale) {
+      throw new OrganizationDraftError(
+        "CHANGE_SET_BASE_STALE",
+        "Organization change set was built from a base that another publication has already replaced.",
+        { ...stale },
       );
     }
     await this.repository.publishValidated(changeSetId, actorAccountId);
@@ -128,7 +186,28 @@ export class OrganizationDraftService {
     if (snapshot.changeSet.status === "PUBLISHED") {
       throw new OrganizationDraftError("CHANGE_SET_PUBLISHED", "Published organization history is immutable.");
     }
+    // ORG-008-3b: a discarded change set keeps its rows for the history, but is never worked on again.
+    if (snapshot.changeSet.status === "DISCARDED") {
+      throw new OrganizationDraftError("CHANGE_SET_DISCARDED", "Discarded organization change set cannot be changed.");
+    }
     return snapshot;
+  }
+
+  /**
+   * ORG-005-1: a location switched off after a unit named it must not be published as where that
+   * unit works. Only looked up when some active unit names a location.
+   */
+  private async validateWorkLocations(snapshot: OrganizationSnapshot, issues: OrganizationValidationIssue[]): Promise<void> {
+    const linked = snapshot.nodes.filter((node) => node.active && node.workLocationId);
+    if (linked.length === 0) return;
+    const inactive = new Set(await this.repository.inactiveWorkLocationIds(
+      [...new Set(linked.map((node) => node.workLocationId!))],
+    ));
+    for (const node of linked) {
+      if (inactive.has(node.workLocationId!)) {
+        issues.push(issue("WORK_LOCATION_INACTIVE", "Unit names a work location that is no longer active.", "node", node.stableKey));
+      }
+    }
   }
 
   private validateReferences(snapshot: OrganizationSnapshot, issues: OrganizationValidationIssue[]): void {

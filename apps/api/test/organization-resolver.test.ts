@@ -513,6 +513,9 @@ describe("ORG-004 draft validation and impact", () => {
         draft.changeSet.status = report.valid ? "VALIDATED" : "DRAFT";
         draft.changeSet.validationReport = { valid: report.valid, issues: [] };
       },
+      // ORG-008-3a: publish now checks for a publication that landed after this draft cloned its
+      // base. This draft is the only change set here, so there is nothing that could shadow it.
+      listChangeSets: async () => [draft.changeSet],
       publishValidated: async () => {
         draft.changeSet.status = "PUBLISHED";
       },

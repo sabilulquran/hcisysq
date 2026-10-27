@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 const employeeAttendanceLinks = [
   { label: "Riwayat & Jadwal", href: "/app/attendance", icon: CalendarRange },
   { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera },
-  { label: "Klarifikasi", href: "/app/attendance/clock#clarification", icon: ClipboardCheck },
+  { label: "Klarifikasi", href: "/app/attendance#clarifications", icon: ClipboardCheck },
   { label: "Lembur", href: "/app/attendance#overtime", icon: TimerReset },
   { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight },
 ] as const;

@@ -21,6 +21,7 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk finalisasi Manajemen ADMS, baca `domain/attendance-adms-operational-management.md` (ATT-012).
    - untuk administrasi kepegawaian klasik, baca `domain/employment-administration.md` (EMP-005 s.d. EMP-010), lalu Package 1 di `domain/employment-administration-package1.md` dan rencana implementasinya.
    - untuk payroll calculation engine discovery, baca `domain/payroll-engine-discovery.md` (PAY-003); PAY-001/PAY-002 tetap current operational boundary.
+   - untuk payroll v1 (DRAFT), baca `domain/payroll-legacy-flow-audit.md` (audit alur spreadsheet + keputusan owner), `domain/payroll-calculation-v1.md`, dan `architecture/adr/0003-payroll-calculation-in-hcis.md` (PROPOSED).
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
    - untuk akses Panel Organ Yayasan bagi Employee dan governance summary ke SQ Hub Ringkasan Yayasan, baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
    - untuk evidence benchmarking SemartHRIS dan guardrail yang tidak boleh dicopy, baca `product/semarthris-benchmark-2026-09-22.md`.
@@ -50,6 +51,11 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 - `domain/attendance-wdms-package3-operations-closure.md` untuk Work Code/message planning, export, offline ATTLOG import, saved filters, safe queue maintenance, capability matrix, dan final Package 3 closure semantics;
 - `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2;
 - `api/attendance-adms-wave3.openapi.yaml` untuk kontrak API operasi Package 3 yang tetap fail-closed terhadap hardware yang belum terverifikasi.
+
+## Engineering standards
+
+- `development/list-pagination-standard.md` — ENG-LIST-001 (DIUSULKAN): aturan pagination, kontrak `page`/`pageSize`/kursor, pengecualian, dan penegakan untuk setiap daftar SQ Core.
+- `development/list-pagination-audit-2026-10-24.md` — audit daftar panjang di HCIS, SQ Hub, Aset, Karir, SPMB, dan Keluarga SQ beserta paket perbaikan berprioritas.
 
 ## Deployment dan repository operations
 

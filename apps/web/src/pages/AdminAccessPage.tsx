@@ -13,10 +13,15 @@ import { AdminApiError } from "@/lib/adminEmployees";
 import {
   createRoleAssignment,
   getAccessAdmin,
+  getRoleSeatChecks,
   removeRoleAssignment,
+  setRoleSeatLink,
   updateAccountStatus,
   type AccessAdminResponse,
+  type RoleSeatCheck,
 } from "@/lib/adminOrgAccess";
+import { RoleSeatPanel } from "@/components/access/RoleSeatPanel";
+import { searchOrganizationPositions } from "@/lib/organizationReadModel";
 import type { AuthSession } from "@/types/hcis";
 
 function statusLabel(status: string) {
@@ -90,10 +95,27 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
   const [showInactiveAccounts, setShowInactiveAccounts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [seatChecks, setSeatChecks] = useState<RoleSeatCheck[] | null>(null);
+  const [seatError, setSeatError] = useState<string | null>(null);
+
+  // ORG-008-9: refreshed with every role change, so a grant or removal shows its effect at once.
+  const reloadSeatChecks = async () => {
+    try {
+      setSeatChecks((await getRoleSeatChecks()).items);
+      setSeatError(null);
+    } catch (cause) {
+      setSeatError(cause instanceof AdminApiError ? cause.message : "Pemeriksaan peran Kepala HC tidak dapat dimuat.");
+    }
+  };
+
+  useEffect(() => {
+    void reloadSeatChecks();
+  }, []);
 
   const reload = async () => {
     const result = await getAccessAdmin();
     onDataChange(result);
+    await reloadSeatChecks();
     if (!selectedAccountId) setSelectedAccountId(firstEmployeeAccountId(result));
     if (!roleId) setRoleId(result.roles[0]?.id ?? "");
     if (!unitId) setUnitId(result.units[0]?.id ?? "");
@@ -229,6 +251,23 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     }
   };
 
+  const setSeat = async (roleKey: string, positionKey: string | null, seatReason: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const check = await setRoleSeatLink(roleKey, { positionKey, reason: seatReason });
+      setSeatChecks((current) => (current ?? []).map((item) => item.roleKey === roleKey ? check : item));
+      setNotice(positionKey ? "Jabatan acuan disimpan." : "Jabatan acuan dilepas.");
+      return true;
+    } catch (cause) {
+      setError(cause instanceof AdminApiError ? cause.message : "Jabatan acuan gagal disimpan.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const summary = data.summary;
   const summaryCards = [
     { label: "Semua account", value: summary.accounts, icon: UsersRound },
@@ -281,6 +320,15 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
           </article>
         ))}
       </section>
+
+      <RoleSeatPanel
+        checks={seatChecks}
+        error={seatError}
+        canSetSeat={canManageRoles}
+        busy={busy}
+        onSetSeat={setSeat}
+        onSearchPositions={async (query) => (await searchOrganizationPositions({ q: query || undefined })).items}
+      />
 
       {canPrepareBoard ? (
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">

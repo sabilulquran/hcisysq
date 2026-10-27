@@ -138,7 +138,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "announcements", label: "Pengumuman",
     description: "Informasi dan pengumuman penting dari organisasi.",
-    featureIds: ["NOTIF-002"], stage: "discovery", category: "information", href: "/app/services/announcements",
+    featureIds: ["NOTIF-002"], stage: "available", category: "information", href: "/app/announcements",
   },
   {
     key: "notifications", label: "Notifikasi",

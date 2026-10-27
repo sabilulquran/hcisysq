@@ -16,6 +16,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
   "documents.read", "documents.manage",
+  // NOTIF-002: migration 0103 grants both to human_capital_admin.
+  "announcements.read", "announcements.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
   // bundle here says the same. Legacy Super Admin compatibility reads
   // ADMIN_PERMISSIONS, which deliberately leaves it out.
@@ -25,6 +27,10 @@ export const HC_ADMIN_PERMISSIONS = [
 /** DOC-001/DOC-002: HC-only; never granted through legacy Super Admin compatibility.
  * documents.discipline.manage and documents.correct stay outside every bundle and are
  * granted through a separate, explicit role assignment (spec §6). */
+/** NOTIF-002: HC-only; never granted through legacy Super Admin compatibility. */
+export const ANNOUNCEMENT_PERMISSIONS = ["announcements.read", "announcements.manage"] as const;
+export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
+
 export const DOCUMENT_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
 ] as const;

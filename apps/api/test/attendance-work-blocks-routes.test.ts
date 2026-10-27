@@ -49,6 +49,7 @@ describe("ATT-013 schedule blocks", () => {
       return { rows: [{ name: "Pesantren Tahfizh", startTime: "04:00:00", endTime: "08:30:00", endDayOffset: 0, lateGraceMinutes: 1, earlyLeaveToleranceMinutes: 0, workLocationId: null, active: true }] };
     }
     if (sql.includes("FROM attendance_schedule_version_blocks block")) return { rows: currentBlocks };
+    if (sql.includes("effective_from > clock_timestamp()")) return { rows: [] };
     if (sql.includes("clock_timestamp()")) return { rows: [{ at: new Date("2026-10-26T03:00:00Z") }] };
     if (sql.includes("RETURNING version")) return { rows: [{ version: 1 }] };
     return { rows: [] };

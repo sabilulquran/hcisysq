@@ -42,6 +42,7 @@ import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwaps
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
 import { AdminAttendancePlannerPage } from "@/pages/AdminAttendancePlannerPage";
+import { EmployeeTeamOvertimePage } from "@/pages/EmployeeTeamOvertimePage";
 import { AdminAttendanceSummaryPage } from "@/pages/AdminAttendanceSummaryPage";
 import { AdminComingSoonPage } from "@/pages/AdminComingSoonPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
@@ -163,6 +164,14 @@ const employeeShiftSwapRoute = createRoute({
   path: "/app/attendance/shift-swap",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeShiftSwapPage,
+});
+
+// ATT-011-6b-2 Lembur Tim: open to every employee; the API shows only what the signed-in supervisor decides.
+const employeeTeamOvertimeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/attendance/team-overtime",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeTeamOvertimePage,
 });
 
 const employeeNotificationsRoute = createRoute({
@@ -611,6 +620,7 @@ const routeTree = rootRoute.addChildren([
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
   employeeShiftSwapRoute,
+  employeeTeamOvertimeRoute,
   employeeNotificationsRoute,
   employeeDocumentsRoute,
   employeeLeaveRoute,

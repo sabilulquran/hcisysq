@@ -90,6 +90,18 @@ Tanpa aturan ini, keputusan D-3 membuka lingkaran eskalasi: seorang Admin Platfo
 
 Dua batas kejujuran atas klaim ini. Pertama, bila larangan ini hanya dipasang di route kanal — seperti rancangan pertama — break-glass tetap dapat membuat dan memberi role berisi `access.roles.assign`, dan lingkarannya terbuka kembali secara permanen. Kedua, D-5 menutup lingkaran **pemberian peran**, bukan pengambilalihan akun: `access.manage` dan `access.accounts.temporary_reactivate` tetap dapat diberikan di dalam bundle HC. Pengambilalihan akun itu terbatas (`assertAccountManagementTarget` menolak diri sendiri, menolak SUPER_ADMIN, menuntut `access.governance.manage` untuk akun board, dan menolak target yang memegang peran di luar bundle operasional HC) dan **tidak** menghasilkan kewenangan memberi peran. Lingkaran yang benar-benar tersisa ada di luar HCIS dan ditangani R-6.
 
+### D-6. Layar mengikuti kewenangan, dan konteks tidak pernah ambigu
+
+Dua keputusan owner pada hari yang sama, keduanya soal tampilan tetapi keduanya punya akibat keamanan.
+
+**Layar ikut pindah.** Begitu sebuah kewenangan tidak lagi berada di HCIS, layar dan menunya di HCIS dihapus, bukan dibiarkan menganggur atau sekadar dikunci izin. Tidak boleh ada halaman yang masih ada tetapi selalu menolak. Urutannya ketat: kemampuan baru tersedia dan terbukti dipakai di SQ Hub lebih dulu, **baru** layar lama di HCIS dihapus — tidak boleh ada jeda di mana kewenangannya tidak ada di kedua tempat. AUTH-014 §8 memecahnya menjadi dua fase, F5a lalu F5b.
+
+Ini bukan sekadar kerapian. Halaman yang selalu menolak mengajari orang bahwa 403 itu normal, sehingga penolakan yang sebenarnya — tanda ada yang salah — berhenti diperhatikan. Menu yang bertahan setelah izinnya dicabut juga membuat orang tidak pernah tahu kewenangannya sudah hilang sampai pekerjaannya gagal.
+
+**Satu konteks, tidak pernah dua.** Akun yang sedang bertindak sebagai admin tidak menampilkan ruang pegawai sekaligus. Orang yang sama boleh memegang ketiganya — pegawai, Admin Modul, Admin Platform — karena melarangnya justru mengembalikan masalah berganti akun yang ADR ini ada untuk menyelesaikannya. Yang dilarang adalah ambiguitas: satu konteks aktif per tab, penanda yang selalu terlihat beserta nama peran yang sedang dipakai, dan perpindahan yang disengaja. AUTH-014 §9 merincinya, termasuk perilaku deep link dan apa yang terjadi pada sesi yang sedang berjalan ketika perannya dicabut.
+
+Akibat keamanannya: orang yang tidak tahu sedang berada di konteks mana adalah orang yang melakukan tindakan administratif tanpa bermaksud. Pita konteks lebih murah daripada audit yang mencatat tindakan yang tidak pernah diniatkan.
+
 ## Consequences
 
 ### Positif

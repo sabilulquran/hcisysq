@@ -205,8 +205,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     try {
       await client.query("BEGIN");
       const locked = await lockProfileRecord(client, "employee_education", params.data.recordId);
-      const refused = await refuseMissingOrVoided(client, reply, locked);
-      if (refused) return refused;
+      if (await refuseMissingOrVoided(client, reply, locked)) return;
       const before = await getEducation(client, params.data.recordId);
       await updateEducation(client, params.data.recordId, validation.value);
       await audit(client, {
@@ -290,8 +289,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     try {
       await client.query("BEGIN");
       const locked = await lockProfileRecord(client, "employee_skills", params.data.recordId);
-      const refused = await refuseMissingOrVoided(client, reply, locked);
-      if (refused) return refused;
+      if (await refuseMissingOrVoided(client, reply, locked)) return;
       const before = await getSkill(client, params.data.recordId);
       await updateSkill(client, params.data.recordId, validation.value);
       await audit(client, {
@@ -326,20 +324,28 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     }
   }
 
+  /**
+   * True ketika permintaan sudah dijawab dan pemanggil harus berhenti. Sengaja
+   * bukan reply yang dikembalikan: FastifyReply adalah thenable, sehingga
+   * `await` atasnya menghasilkan undefined dan handler akan jalan terus lalu
+   * tetap menulis sesudah membalas 404/409.
+   */
   async function refuseMissingOrVoided(
     client: { query: (sql: string) => Promise<unknown> },
     reply: FastifyReply,
     locked: { employeeId: string; voidedAt: Date | null } | null,
-  ) {
+  ): Promise<boolean> {
     if (!locked) {
       await rollback(client);
-      return send(reply, 404, { code: "EMPLOYEE_RECORD_NOT_FOUND", message: "Catatan tidak ditemukan." });
+      await send(reply, 404, { code: "EMPLOYEE_RECORD_NOT_FOUND", message: "Catatan tidak ditemukan." });
+      return true;
     }
     if (locked.voidedAt !== null) {
       await rollback(client);
-      return send(reply, 409, { code: "EMPLOYEE_RECORD_VOIDED", message: "Catatan ini sudah dibatalkan." });
+      await send(reply, 409, { code: "EMPLOYEE_RECORD_VOIDED", message: "Catatan ini sudah dibatalkan." });
+      return true;
     }
-    return null;
+    return false;
   }
 
   for (const prefix of ["/admin/education-records", "/admin/skill-records"]) {
@@ -359,8 +365,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
       try {
         await client.query("BEGIN");
         const locked = await lockProfileRecord(client, table, params.data.recordId);
-        const refused = await refuseMissingOrVoided(client, reply, locked);
-        if (refused) return refused;
+        if (await refuseMissingOrVoided(client, reply, locked)) return;
         await setVerification(client, table, params.data.recordId, body.data.verified, reason || null, principal.id);
         await audit(client, {
           actorAccountId: principal.id,
@@ -399,8 +404,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
       try {
         await client.query("BEGIN");
         const locked = await lockProfileRecord(client, table, params.data.recordId);
-        const refused = await refuseMissingOrVoided(client, reply, locked);
-        if (refused) return refused;
+        if (await refuseMissingOrVoided(client, reply, locked)) return;
         await voidRecord(client, table, params.data.recordId, body.data.reason);
         await audit(client, {
           actorAccountId: principal.id,

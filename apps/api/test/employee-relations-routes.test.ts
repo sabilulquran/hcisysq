@@ -104,6 +104,8 @@ interface PoolOptions {
   recordMissing?: boolean;
   recordVoided?: boolean;
   ownerRemoved?: boolean;
+  /** The employee is marked outside HCIS management (S2B §8.7). */
+  ownerOutsideHcis?: boolean;
   /** The open address of the same kind, if any, that a move must close. */
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
   /** The address rows a list returns, for the derived "in force" answer. */
@@ -144,6 +146,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
+      return { rows: [{ outside: options.ownerOutsideHcis === true }], rowCount: 1 };
+    }
     if (/SELECT id FROM employees WHERE id = \$1/.test(sql)) {
       // employeeMissing stands for "removed from the master": the read, which
       // does not filter on removed_at, still finds the row.
@@ -161,6 +166,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           employeeId: EMPLOYEE_ID,
           voidedAt: options.recordVoided ? new Date("2026-10-02T00:00:00Z") : null,
           employeeRemoved: options.ownerRemoved === true,
+          employeeOutsideHcis: options.ownerOutsideHcis === true,
         }],
         rowCount: 1,
       };

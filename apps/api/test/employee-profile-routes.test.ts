@@ -108,6 +108,8 @@ interface PoolOptions {
   recordVoided?: boolean;
   /** The record's employee has been removed from the master. */
   ownerRemoved?: boolean;
+  /** The employee is marked outside HCIS management (S2B §8.7). */
+  ownerOutsideHcis?: boolean;
   /** The education rows a list returns, for the derived highest level. */
   educationRows?: Array<Record<string, unknown>>;
   payload?: object;
@@ -141,6 +143,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
+      return { rows: [{ outside: options.ownerOutsideHcis === true }], rowCount: 1 };
+    }
     if (/SELECT id FROM employees WHERE id = \$1/.test(sql)) {
       // employeeMissing stands for "removed from the master": reads, which do
       // not filter on removed_at, still find the row.
@@ -154,6 +159,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           employeeId: EMPLOYEE_ID,
           voidedAt: options.recordVoided ? new Date("2026-10-02T00:00:00Z") : null,
           employeeRemoved: options.ownerRemoved === true,
+          employeeOutsideHcis: options.ownerOutsideHcis === true,
         }],
         rowCount: 1,
       };

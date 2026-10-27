@@ -1,0 +1,155 @@
+// EMP-005 S2B against real PostgreSQL: the CHECKs that keep the marker
+// honest, and the two questions every consumer will ask of it. A fake pool
+// can prove neither.
+// Loopback CI database only; every write is rolled back.
+
+import { randomUUID } from "node:crypto";
+import { Pool, type PoolClient } from "pg";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
+import { isOutsideHcis, outsideHcisEmployeeNumbers } from "../src/modules/employees/management-scope.js";
+
+const databaseUrl = process.env.DATABASE_URL;
+const allowed = (() => {
+  if (!databaseUrl || process.env.NODE_ENV !== "test") return false;
+  const url = new URL(databaseUrl);
+  return ["127.0.0.1", "localhost"].includes(url.hostname) && url.pathname === "/hcis_pr";
+})();
+
+describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", () => {
+  let pool: Pool;
+  let client: PoolClient;
+  let employeeId: string;
+  let employeeNumber: string;
+  let accountId: string;
+  let savepoint = 0;
+
+  beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
+  afterAll(async () => { await pool?.end(); });
+
+  beforeEach(async () => {
+    client = await pool.connect();
+    await client.query("BEGIN");
+    employeeId = randomUUID();
+    employeeNumber = `EMP-S2B-${employeeId}`;
+    await client.query(
+      "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Pegawai Sintetis', 'active')",
+      [employeeId, employeeNumber],
+    );
+    accountId = randomUUID();
+    await client.query(
+      "INSERT INTO accounts(id, email, principal_type, status, employee_id) VALUES ($1, $2, 'EMPLOYEE', 'active', $3)",
+      [accountId, `s2b-${accountId}@example.org`, employeeId],
+    );
+  });
+
+  afterEach(async () => {
+    await client.query("ROLLBACK");
+    client.release();
+  });
+
+  async function expectViolation(work: () => Promise<unknown>, code: string) {
+    savepoint += 1;
+    const name = `sp_${savepoint}`;
+    await client.query(`SAVEPOINT ${name}`);
+    let thrown: { code?: string } | null = null;
+    try {
+      await work();
+    } catch (error) {
+      thrown = error as { code?: string };
+    }
+    await client.query(`ROLLBACK TO SAVEPOINT ${name}`);
+    expect(thrown?.code).toBe(code);
+  }
+
+  function mark(reason: string | null, markedAt: string | null = "now()") {
+    return client.query(
+      `UPDATE employees
+       SET management_scope = 'OUTSIDE_HCIS',
+           management_scope_reason = $2,
+           management_scope_marked_at = ${markedAt ?? "NULL"},
+           management_scope_marked_by_account_id = $3
+       WHERE id = $1`,
+      [employeeId, reason, accountId],
+    );
+  }
+
+  it("starts every record managed by HCIS", async () => {
+    const row = (await client.query<{ scope: string }>(
+      "SELECT management_scope AS scope FROM employees WHERE id = $1",
+      [employeeId],
+    )).rows[0];
+    expect(row?.scope).toBe("MANAGED");
+    expect(await isOutsideHcis(client, employeeId)).toBe(false);
+  });
+
+  it("marks a record with a reason, and reports it to every write path", async () => {
+    await mark("BUMY");
+    expect(await isOutsideHcis(client, employeeId)).toBe(true);
+    expect(await outsideHcisEmployeeNumbers(client, [employeeNumber])).toEqual(new Set([employeeNumber]));
+  });
+
+  it("refuses a mark with no reason, an unknown reason, and no marked-at", async () => {
+    await expectViolation(() => mark(null), "23514");
+    await expectViolation(() => mark("LAINNYA"), "23514");
+    await expectViolation(() => mark("BUMY", null), "23514");
+  });
+
+  it("refuses a reason left behind on a record that is managed again", async () => {
+    await mark("BUMY");
+    await expectViolation(
+      () => client.query("UPDATE employees SET management_scope = 'MANAGED' WHERE id = $1", [employeeId]),
+      "23514",
+    );
+    // Unmarking clears the marker whole, which is what the route does.
+    await client.query(
+      `UPDATE employees SET management_scope = 'MANAGED', management_scope_reason = NULL,
+         management_scope_marked_at = NULL, management_scope_marked_by_account_id = NULL
+       WHERE id = $1`,
+      [employeeId],
+    );
+    expect(await isOutsideHcis(client, employeeId)).toBe(false);
+  });
+
+  it("refuses a scope we do not know", async () => {
+    await expectViolation(
+      () => client.query("UPDATE employees SET management_scope = 'SEPARUH' WHERE id = $1", [employeeId]),
+      "23514",
+    );
+  });
+
+  it("is separate from removal and from employment status", async () => {
+    // All three say different things, and marking must not disturb the others.
+    await mark("PENGURUS_YAYASAN");
+    const row = (await client.query<{ removedAt: Date | null; status: string; reason: string }>(
+      `SELECT removed_at AS "removedAt", status, management_scope_reason AS reason
+       FROM employees WHERE id = $1`,
+      [employeeId],
+    )).rows[0];
+    expect(row).toMatchObject({ removedAt: null, status: "active", reason: "PENGURUS_YAYASAN" });
+  });
+
+  it("answers the import's question in numbers, and leaves managed rows out", async () => {
+    const otherId = randomUUID();
+    const otherNumber = `EMP-S2B-${otherId}`;
+    await client.query(
+      "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Pegawai Lain', 'active')",
+      [otherId, otherNumber],
+    );
+    await mark("BUMY");
+    expect(await outsideHcisEmployeeNumbers(client, [employeeNumber, otherNumber]))
+      .toEqual(new Set([employeeNumber]));
+    expect(await outsideHcisEmployeeNumbers(client, [])).toEqual(new Set());
+  });
+
+  it("keeps the record's own history readable", async () => {
+    // §8.7: nothing is deleted and nothing is rewritten; the row is still
+    // there, with its number and name, for every reader that may see it.
+    await mark("BUMY");
+    const row = (await client.query<{ fullName: string; employeeNumber: string }>(
+      `SELECT full_name AS "fullName", employee_number AS "employeeNumber" FROM employees WHERE id = $1`,
+      [employeeId],
+    )).rows[0];
+    expect(row).toMatchObject({ fullName: "Pegawai Sintetis", employeeNumber });
+  });
+});

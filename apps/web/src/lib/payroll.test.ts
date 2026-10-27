@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   employeeLabel,
   formatRupiah,
+  payrollInputLabel,
   payrollActionLabel,
   payrollOperationLabel,
   payrollStateLabel,
@@ -82,5 +83,18 @@ describe("PAY-003 who a row belongs to", () => {
     // An employment with no employee record is a data problem the reviewer has
     // to see, so the row stays on screen with something to search for.
     expect(employeeLabel("0f8a1c7d-2b64-4a9e-9d1f-77a0c2b3e456", identities)).toBe("0f8a1c7d");
+  });
+});
+
+describe("PAY-003 period input vocabulary", () => {
+  it("names the inputs an operator types", () => {
+    expect(payrollInputLabel("ADJUSTMENT")).toBe("Penyesuaian");
+    expect(payrollInputLabel("PRORATION_FACTOR")).toBe("Faktor prorata");
+    expect(payrollInputLabel("PJ_MEDIA")).toBe("Konten Pj. Media");
+  });
+
+  it("names the ones the attendance resolver writes, which are read-only here", () => {
+    expect(payrollInputLabel("OVERTIME_HOURS")).toBe("Jam lembur");
+    expect(payrollInputLabel("CONTRACT_ATTENDANCE_DAYS")).toBe("Hari hadir PKWT");
   });
 });

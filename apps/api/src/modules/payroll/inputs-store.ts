@@ -29,6 +29,36 @@ export const INPUT_KEYS = [
 
 export type InputKey = (typeof INPUT_KEYS)[number];
 
+/**
+ * The inputs an operator types. The other two arrive from attendance and are
+ * overwritten by `resolve_attendance`, so offering them by hand would only
+ * invite work that the next resolve throws away.
+ */
+export const MANUAL_INPUT_KEYS: readonly InputKey[] = [
+  "CHILD_EDUCATION",
+  "PJ_MEDIA",
+  "ARREARS",
+  "ADJUSTMENT",
+  "PRORATION_FACTOR",
+  "FULL_PAY_DESPITE_LEAVING",
+  "OTHER_INCOME",
+  "CONTRACT_TEACHING_HOURS",
+  "TEACHING_HOURS_PER_WEEK_OVERRIDE",
+  "ANNUAL_PERFORMANCE_OVERRIDE",
+  "MONTHLY_PERFORMANCE_OVERRIDE",
+];
+
+/** Section 4: these change pay by hand, so they carry a reason. */
+export const REASON_REQUIRED_INPUT_KEYS: readonly InputKey[] = [
+  "ADJUSTMENT",
+  "ARREARS",
+  "PRORATION_FACTOR",
+  "FULL_PAY_DESPITE_LEAVING",
+];
+
+/** A salary adjustment also names the decision it comes from. */
+export const DECISION_REQUIRED_INPUT_KEYS: readonly InputKey[] = ["ADJUSTMENT"];
+
 export const INPUT_ORIGINS = ["ATTENDANCE", "MANUAL", "IMPORT"] as const;
 export type InputOrigin = (typeof INPUT_ORIGINS)[number];
 

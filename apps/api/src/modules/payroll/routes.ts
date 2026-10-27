@@ -46,8 +46,11 @@ import {
 import { calculatePeriod } from "./calculation.js";
 import { draftPayslipsFromPeriod, publishPayslipsOfPeriod } from "./publication.js";
 import {
+  DECISION_REQUIRED_INPUT_KEYS,
   deleteInput,
   INPUT_KEYS,
+  MANUAL_INPUT_KEYS,
+  REASON_REQUIRED_INPUT_KEYS,
   INPUT_ORIGINS,
   listInputs,
   listResults,
@@ -152,13 +155,7 @@ function runsPeriods(actor: TransitionActor): boolean {
   return RUNNER_PERMISSIONS.some((permission) => actor.organizationPermissions.includes(permission));
 }
 
-/** Section 4: these inputs change pay by hand, so they carry a reason. */
-const REASON_REQUIRED: readonly string[] = [
-  "ADJUSTMENT",
-  "ARREARS",
-  "PRORATION_FACTOR",
-  "FULL_PAY_DESPITE_LEAVING",
-];
+const REASON_REQUIRED: readonly string[] = REASON_REQUIRED_INPUT_KEYS;
 
 const transitionBody = z.object({
   action: z.enum(PERIOD_ACTIONS),
@@ -329,6 +326,14 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       // reason: a screen must not re-derive either from a state of its own.
       availableOperations: availableOperations(snapshot, actor),
       reasonRequiredActions: reasonRequiredActions(),
+      // Which period inputs are typed by hand, and which of those the server
+      // will refuse without a reason or a decision reference. A screen must not
+      // keep its own copy of a payroll rule.
+      inputRules: {
+        manual: MANUAL_INPUT_KEYS,
+        reasonRequired: REASON_REQUIRED_INPUT_KEYS,
+        decisionRequired: DECISION_REQUIRED_INPUT_KEYS,
+      },
     };
   }
 
@@ -477,7 +482,9 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       });
     }
     const missingDecision = body.data.inputs.find(
-      (input) => input.inputKey === "ADJUSTMENT" && (input.decisionReference ?? "").trim().length === 0,
+      (input) =>
+        DECISION_REQUIRED_INPUT_KEYS.includes(input.inputKey)
+        && (input.decisionReference ?? "").trim().length === 0,
     );
     if (missingDecision) {
       return send(reply, 400, {

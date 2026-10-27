@@ -54,6 +54,16 @@ export interface PayrollPeriod {
   availableOperations: PayrollPeriodOperation[];
   /** Which actions carry a reason, so the screen need not know the table. */
   reasonRequiredActions: PayrollPeriodAction[];
+  /**
+   * Which period inputs are typed by hand, and which of those the server will
+   * refuse without a reason or a decision reference. Also decided by the
+   * server: the screen keeps no copy of a payroll rule.
+   */
+  inputRules: {
+    manual: PayrollInputKey[];
+    reasonRequired: PayrollInputKey[];
+    decisionRequired: PayrollInputKey[];
+  };
 }
 
 export interface PayrollPeriodTransition {
@@ -138,6 +148,31 @@ export interface PayrollVarianceRow {
   currentAmount: string;
   delta: string;
   kind: "COMPONENT" | "NEW_EMPLOYEE" | "LEAVING_EMPLOYEE" | "LARGE_MANUAL_INPUT";
+}
+
+export type PayrollInputKey =
+  | "OVERTIME_HOURS"
+  | "CONTRACT_ATTENDANCE_DAYS"
+  | "CONTRACT_TEACHING_HOURS"
+  | "CHILD_EDUCATION"
+  | "PJ_MEDIA"
+  | "ARREARS"
+  | "ADJUSTMENT"
+  | "PRORATION_FACTOR"
+  | "FULL_PAY_DESPITE_LEAVING"
+  | "OTHER_INCOME"
+  | "TEACHING_HOURS_PER_WEEK_OVERRIDE"
+  | "ANNUAL_PERFORMANCE_OVERRIDE"
+  | "MONTHLY_PERFORMANCE_OVERRIDE";
+
+export interface PayrollPeriodInput {
+  employmentId: string;
+  inputKey: PayrollInputKey;
+  value: string;
+  origin: "ATTENDANCE" | "MANUAL" | "IMPORT";
+  reason: string | null;
+  decisionReference: string | null;
+  recordedAt: string;
 }
 
 export class PayrollApiError extends Error {
@@ -344,4 +379,53 @@ export function employeeLabel(
   const identity = identities.get(employmentId);
   if (!identity) return employmentId.slice(0, 8);
   return identity.employeeNumber ? `${identity.fullName} · ${identity.employeeNumber}` : identity.fullName;
+}
+
+export function getPayrollInputs(periodId: string) {
+  return request<{ inputs: PayrollPeriodInput[] }>(
+    `/api/payroll/periods/${encodeURIComponent(periodId)}/inputs`,
+  );
+}
+
+export function savePayrollInputs(
+  periodId: string,
+  inputs: ReadonlyArray<{
+    employmentId: string;
+    inputKey: PayrollInputKey;
+    value: number;
+    reason?: string;
+    decisionReference?: string;
+  }>,
+) {
+  return request<{ inputs: PayrollPeriodInput[] }>(
+    `/api/payroll/periods/${encodeURIComponent(periodId)}/inputs`,
+    { method: "PUT", body: JSON.stringify({ inputs }) },
+  );
+}
+
+export function deletePayrollInput(periodId: string, employmentId: string, inputKey: PayrollInputKey) {
+  return request<{ deleted: boolean }>(
+    `/api/payroll/periods/${encodeURIComponent(periodId)}/inputs/${encodeURIComponent(employmentId)}/${encodeURIComponent(inputKey)}`,
+    { method: "DELETE" },
+  );
+}
+
+const INPUT_LABELS: Record<PayrollInputKey, string> = {
+  OVERTIME_HOURS: "Jam lembur",
+  CONTRACT_ATTENDANCE_DAYS: "Hari hadir PKWT",
+  CONTRACT_TEACHING_HOURS: "Jam mengajar PKWT",
+  CHILD_EDUCATION: "Pendidikan anak",
+  PJ_MEDIA: "Konten Pj. Media",
+  ARREARS: "Rapel",
+  ADJUSTMENT: "Penyesuaian",
+  PRORATION_FACTOR: "Faktor prorata",
+  FULL_PAY_DESPITE_LEAVING: "Bayar penuh meski berhenti",
+  OTHER_INCOME: "Penghasilan lain",
+  TEACHING_HOURS_PER_WEEK_OVERRIDE: "Override jam mengajar/minggu",
+  ANNUAL_PERFORMANCE_OVERRIDE: "Override kinerja tahunan",
+  MONTHLY_PERFORMANCE_OVERRIDE: "Override kinerja bulanan",
+};
+
+export function payrollInputLabel(key: PayrollInputKey): string {
+  return INPUT_LABELS[key] ?? key;
 }

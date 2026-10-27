@@ -1113,6 +1113,41 @@ describe("PAY-003 transfer list", () => {
   });
 });
 
+describe("PAY-003 input rules on the period", () => {
+  it("tells the screen which inputs are typed by hand and which carry a reason", async () => {
+    const { response } = await call("hc", "GET", `/payroll/periods/${PERIOD_ID}`, {
+      period: { state: "COLLECTING" },
+    });
+    expect(response.statusCode).toBe(200);
+    const rules = response.json().period.inputRules;
+    // Overtime and PKWT attendance come from the resolver, so they are not
+    // offered by hand: typing one would be thrown away by the next resolve.
+    expect(rules.manual).not.toContain("OVERTIME_HOURS");
+    expect(rules.manual).not.toContain("CONTRACT_ATTENDANCE_DAYS");
+    expect(rules.manual).toContain("ADJUSTMENT");
+    expect(rules.reasonRequired).toEqual(["ADJUSTMENT", "ARREARS", "PRORATION_FACTOR", "FULL_PAY_DESPITE_LEAVING"]);
+    expect(rules.decisionRequired).toEqual(["ADJUSTMENT"]);
+  });
+
+  it("refuses by the same lists it published", async () => {
+    const withoutReason = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: { inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ARREARS", value: 100000 }] },
+    });
+    expect(withoutReason.response.statusCode).toBe(400);
+    expect(withoutReason.response.json().code).toBe("PAYROLL_REASON_REQUIRED");
+
+    const withoutDecision = await call("hc", "PUT", `/payroll/periods/${PERIOD_ID}/inputs`, {
+      period: { state: "COLLECTING" },
+      payload: {
+        inputs: [{ employmentId: EMPLOYMENT_ID, inputKey: "ADJUSTMENT", value: 250000, reason: "SK kenaikan" }],
+      },
+    });
+    expect(withoutDecision.response.statusCode).toBe(400);
+    expect(withoutDecision.response.json().code).toBe("PAYROLL_DECISION_REQUIRED");
+  });
+});
+
 describe("PAY-003 variance", () => {
   const url = `/payroll/periods/${PERIOD_ID}/variance`;
 

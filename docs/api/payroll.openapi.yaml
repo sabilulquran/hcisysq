@@ -863,6 +863,23 @@ components:
           type: array
           description: The actions that carry a reason, so a caller need not know the table.
           items: { type: string }
+        inputRules:
+          type: object
+          description: >-
+            Which period inputs are typed by hand, and which of those are refused
+            without a reason or a decision reference. A screen keeps no copy of
+            these: the same lists decide the refusal on PUT .../inputs.
+          required: [manual, reasonRequired, decisionRequired]
+          properties:
+            manual:
+              type: array
+              items: { type: string }
+            reasonRequired:
+              type: array
+              items: { type: string }
+            decisionRequired:
+              type: array
+              items: { type: string }
 
   responses:
     PayrollUnauthenticated:

@@ -110,12 +110,22 @@ export interface EmployeeImportSummary {
   committedAt: string | null;
 }
 
+export interface EmployeeImportPreviewRow {
+  rowNumber: number;
+  action: ImportAction;
+  issues: ImportIssue[];
+}
+
 export interface EmployeeImportPreview extends EmployeeImportSummary {
-  rows: Array<{
-    rowNumber: number;
-    action: ImportAction;
-    issues: ImportIssue[];
-  }>;
+  rows: EmployeeImportPreviewRow[];
+}
+
+/** One page of a preview's rows plus whole-import aggregates (ENG-LIST-001). */
+export interface EmployeeImportPreviewPage extends EmployeeImportSummary {
+  rows: EmployeeImportPreviewRow[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  skipCount: number;
+  issueSummary: Array<{ code: string; severity: "warning" | "error"; count: number }>;
 }
 
 export interface EmployeeImportCommitResult extends EmployeeImportSummary {

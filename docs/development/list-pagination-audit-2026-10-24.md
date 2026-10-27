@@ -185,6 +185,11 @@ Setiap paket satu PR (atau satu PR per repository), dengan specification ID send
 HCIS: helper offset, komponen OpenAPI, dan klasifikasi seluruh 127 rute `GET` di
 [list-endpoint-classification.json](list-endpoint-classification.json); 56 rute tercatat sebagai `debt` per paket.
 
+**Status 27 Oktober 2026:** PAG-4 selesai: riwayat import pegawai dan riwayat batch slip gaji berhalaman dengan total;
+pratinjau import pegawai berhalaman dengan saringan "hanya yang bermasalah" dan ringkasan isu dari server (potongan
+200 baris dihapus); review batch slip gaji (5.299 baris di production) diambil 100 per halaman dengan ringkasan galat
+dari server. Utang tercatat turun ke 51 rute.
+
 Urutan yang disarankan: PAG-0 → PAG-2 (repository lain, bisa paralel) → PAG-1 → PAG-4 → PAG-3, lalu P2 sesuai
 jadwal peluncuran aplikasi masing-masing.
 

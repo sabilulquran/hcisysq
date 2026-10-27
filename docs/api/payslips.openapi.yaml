@@ -11,19 +11,24 @@ paths:
     get:
       tags: [Payslips]
       operationId: listPayslipImports
-      summary: List payslip import batches
+      summary: Page through payslip import batches, newest first (ENG-LIST-001)
+      parameters:
+        - $ref: './openapi.yaml#/components/parameters/Page'
+        - $ref: './openapi.yaml#/components/parameters/PageSize'
       responses:
         '200':
-          description: Authorized import batch history
+          description: One page of the authorized import batch history
           content:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, pagination]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/PayslipImportBatch' }
+                  pagination: { $ref: './openapi.yaml#/components/schemas/Pagination' }
+        '400': { description: 'INVALID_QUERY: page or pageSize out of range' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -65,16 +70,27 @@ paths:
     get:
       tags: [Payslips]
       operationId: getPayslipImport
+      description: >
+        Batch counters plus one page of rows (ENG-LIST-001). filter=errors returns only pending rows
+        that still fail validation. errorSummary counts each validation message across every pending
+        row of the batch. Every call writes a payslip.import.review_opened audit event with the page read.
       parameters:
         - $ref: '#/components/parameters/BatchId'
+        - $ref: './openapi.yaml#/components/parameters/Page'
+        - $ref: './openapi.yaml#/components/parameters/PageSize'
+        - name: filter
+          in: query
+          required: false
+          schema: { type: string, enum: [all, errors], default: all }
       responses:
         '200':
-          description: Batch and row review detail
+          description: Batch and one page of row review detail
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PayslipImportDetail' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '400': { description: 'INVALID_BATCH_ID or INVALID_QUERY' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /admin/payslip-imports/{batchId}/rows:
@@ -397,24 +413,37 @@ components:
           format: date-time
 
     PayslipImportPreview:
-      allOf:
-        - $ref: '#/components/schemas/PayslipImportBatch'
-        - type: object
-          required: [rows]
-          properties:
-            rows:
-              type: array
-              items: { $ref: '#/components/schemas/PayslipImportRow' }
+      description: >
+        Counters of the persisted preview. Rows are not returned here; read them page by page through
+        GET /admin/payslip-imports/{batchId} (ENG-LIST-001).
+      type: object
+      required: [batchId, sourceFormat, status, rowCount, validCount, errorCount]
+      properties:
+        batchId: { type: string, format: uuid }
+        sourceFormat: { $ref: '#/components/schemas/PayslipSourceFormat' }
+        status: { type: string, const: previewed }
+        rowCount: { type: integer }
+        validCount: { type: integer }
+        errorCount: { type: integer }
 
     PayslipImportDetail:
       allOf:
         - $ref: '#/components/schemas/PayslipImportBatch'
         - type: object
-          required: [rows]
+          required: [rows, pagination, errorSummary]
           properties:
             rows:
               type: array
               items: { $ref: '#/components/schemas/PayslipImportRow' }
+            pagination: { $ref: './openapi.yaml#/components/schemas/Pagination' }
+            errorSummary:
+              type: array
+              items:
+                type: object
+                required: [message, count]
+                properties:
+                  message: { type: string }
+                  count: { type: integer }
 
     PayslipSummary:
       type: object

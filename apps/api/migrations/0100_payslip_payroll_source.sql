@@ -28,7 +28,9 @@
 --      ALTER TABLE payslips ADD CONSTRAINT payslips_employee_id_period_key UNIQUE (employee_id, period);
 --      This succeeds only once every revision row is gone, since two rows would
 --      share (employee_id, period).
---   4. ALTER TABLE payslips DROP CONSTRAINT payslips_exactly_one_source,
+--   4. Restore the 0018 immutability guard, which this migration narrows:
+--        see apps/api/migrations/0018_payslip_published_immutability.sql.
+--   5. ALTER TABLE payslips DROP CONSTRAINT payslips_exactly_one_source,
 --        DROP CONSTRAINT payslips_superseded_by_fk, DROP CONSTRAINT payslips_revision_is_not_itself,
 --        DROP COLUMN superseded_by_id, DROP COLUMN revision_of, DROP COLUMN source_period_id,
 --        ALTER COLUMN source_batch_id SET NOT NULL;
@@ -88,3 +90,41 @@ COMMENT ON COLUMN payslips.revision_of IS
   'PAY-003 section 10 item 8: the published slip this one replaces after an approved reopen.';
 COMMENT ON COLUMN payslips.superseded_by_id IS
   'PAY-003: set on a slip that a revision replaced. It stays readable; it is no longer the current slip.';
+
+-- PAYSLIP-001 makes a published slip immutable, which is exactly right: the
+-- content an employee was shown must never change. Marking a slip as replaced is
+-- not a change to that content, though, and without it a correction could never
+-- be recorded at all. The guard is narrowed to allow that one transition and
+-- nothing else: superseded_by_id going from NULL to a value, with every other
+-- column identical. A published slip still cannot be edited or deleted.
+CREATE OR REPLACE FUNCTION prevent_published_payslip_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.published_at IS NOT NULL THEN
+    IF TG_OP = 'UPDATE'
+       AND OLD.superseded_by_id IS NULL
+       AND NEW.superseded_by_id IS NOT NULL
+       AND NEW.id IS NOT DISTINCT FROM OLD.id
+       AND NEW.employee_id IS NOT DISTINCT FROM OLD.employee_id
+       AND NEW.period IS NOT DISTINCT FROM OLD.period
+       AND NEW.lines IS NOT DISTINCT FROM OLD.lines
+       AND NEW.source_format IS NOT DISTINCT FROM OLD.source_format
+       AND NEW.source_batch_id IS NOT DISTINCT FROM OLD.source_batch_id
+       AND NEW.source_period_id IS NOT DISTINCT FROM OLD.source_period_id
+       AND NEW.revision_of IS NOT DISTINCT FROM OLD.revision_of
+       AND NEW.published_at IS NOT DISTINCT FROM OLD.published_at
+       AND NEW.published_by_account_id IS NOT DISTINCT FROM OLD.published_by_account_id
+    THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'published payslip is immutable';
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;

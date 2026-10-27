@@ -1,4 +1,4 @@
-// Paket 2 P2-1 terhadap PostgreSQL sungguhan: constraint migrasi 0103 yang
+// Paket 2 P2-1 terhadap PostgreSQL sungguhan: constraint migrasi 0104 yang
 // menjaga "satu yang berlaku pada satu waktu" dan pasangan field yang harus
 // konsisten. Hanya berjalan pada basis data CI loopback; semua tulisan
 // di-rollback.
@@ -14,7 +14,7 @@ const allowed = (() => {
   return ["127.0.0.1", "localhost"].includes(url.hostname) && url.pathname === "/hcis_pr";
 })();
 
-describe.skipIf(!allowed)("0103 employee profile records migration", () => {
+describe.skipIf(!allowed)("0104 employee profile records migration", () => {
   let pool: Pool;
   let client: PoolClient;
   let employeeId: string;
@@ -277,9 +277,13 @@ describe.skipIf(!allowed)("0103 employee profile records migration", () => {
   });
 
   describe("usulan perubahan data", () => {
+    // Siapa yang memutuskan ikut diisi: tanpa itu setiap baris yang sudah
+    // diputuskan ditolak oleh employee_data_change_decider_check, sehingga
+    // jalur yang seharusnya sah pun tidak pernah teruji.
     const insertRequest = `INSERT INTO employee_data_change_requests
-      (id, employee_id, submitted_by_account_id, target, payload, state, decided_at, decision_note)
-      VALUES ($1, $2, $3, 'ALAMAT', '{"city":"Bandung"}'::jsonb, $4, $5, $6)`;
+      (id, employee_id, submitted_by_account_id, target, payload, state, decided_at, decision_note,
+       decided_by_account_id)
+      VALUES ($1, $2, $3, 'ALAMAT', '{"city":"Bandung"}'::jsonb, $4, $5, $6, $7)`;
 
     it("menuntut alasan saat menolak, dan tanggal keputusan saat sudah diputuskan", async () => {
       const accountId = randomUUID();
@@ -288,10 +292,11 @@ describe.skipIf(!allowed)("0103 employee profile records migration", () => {
          VALUES ($1, $2, 'EMPLOYEE', 'active', $3)`,
         [accountId, `p2-${accountId}@example.invalid`, employeeId],
       );
-      await expectSqlError(insertRequest, [randomUUID(), employeeId, accountId, "DITOLAK", new Date(), null], "23514");
-      await expectSqlError(insertRequest, [randomUUID(), employeeId, accountId, "DITERIMA", null, null], "23514");
-      await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DIAJUKAN", null, null]);
-      await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DITOLAK", new Date(), "Alamat tidak jelas"]);
+      // Menolak tanpa alasan, dan memutuskan tanpa tanggal keputusan.
+      await expectSqlError(insertRequest, [randomUUID(), employeeId, accountId, "DITOLAK", new Date(), null, accountId], "23514");
+      await expectSqlError(insertRequest, [randomUUID(), employeeId, accountId, "DITERIMA", null, null, accountId], "23514");
+      await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DIAJUKAN", null, null, null]);
+      await client.query(insertRequest, [randomUUID(), employeeId, accountId, "DITOLAK", new Date(), "Alamat tidak jelas", accountId]);
     });
 
     it("menuntut nama pemutus pada keputusan HC, tidak pada pembatalan sendiri", async () => {

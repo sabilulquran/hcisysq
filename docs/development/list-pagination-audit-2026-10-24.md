@@ -190,6 +190,12 @@ pratinjau import pegawai berhalaman dengan saringan "hanya yang bermasalah" dan 
 200 baris dihapus); review batch slip gaji (5.299 baris di production) diambil 100 per halaman dengan ringkasan galat
 dari server. Utang tercatat turun ke 51 rute.
 
+**Status 27 Oktober 2026 (lanjutan):** PAG-10 selesai: halaman Akses mencari dan membagi account per halaman di SQL
+(ringkasan dari hitungan SQL, account untuk role dipilih dari kartunya); slip gaji pegawai dibaca per tahun; daftar
+draf dan jurnal designer organisasi berhalaman (jurnal terbaru di atas); konsistensi kepegawaian dan daftar orang
+organisasi membawa objek `pagination` bersama; semua batas `pageSize`/`limit` 200 diturunkan ke 100. Utang tercatat
+turun ke 42 rute, sisanya PAG-1, PAG-3, PAG-5, dan PAG-6 (berkas kehadiran).
+
 Urutan yang disarankan: PAG-0 → PAG-2 (repository lain, bisa paralel) → PAG-1 → PAG-4 → PAG-3, lalu P2 sesuai
 jadwal peluncuran aplikasi masing-masing.
 

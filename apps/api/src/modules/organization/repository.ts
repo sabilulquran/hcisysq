@@ -171,6 +171,34 @@ export class PostgresOrganizationRepository {
     return result.rows.map(mapChangeSet);
   }
 
+  /** One page of change sets, newest effective date first, with the filtered total (ENG-LIST-001). */
+  async pageChangeSets(
+    statuses: readonly OrganizationChangeSet["status"][] | undefined,
+    page: { limit: number; offset: number },
+  ): Promise<{ items: OrganizationChangeSet[]; total: number }> {
+    const filter = statuses && statuses.length > 0 ? [...statuses] : null;
+    const [rows, count] = await Promise.all([
+      this.db.query<ChangeSetRow>(
+        `
+          SELECT id, name, effective_on AS "effectiveOn", status,
+            base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
+            created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
+            validated_at AS "validatedAt", published_at AS "publishedAt", revision
+          FROM organization_change_sets
+          WHERE $1::text[] IS NULL OR status = ANY($1::text[])
+          ORDER BY effective_on DESC, created_at DESC, id DESC
+          LIMIT $2 OFFSET $3
+        `,
+        [filter, page.limit, page.offset],
+      ),
+      this.db.query<{ total: number }>(
+        "SELECT count(*)::int AS total FROM organization_change_sets WHERE $1::text[] IS NULL OR status = ANY($1::text[])",
+        [filter],
+      ),
+    ]);
+    return { items: rows.rows.map(mapChangeSet), total: count.rows[0]?.total ?? 0 };
+  }
+
   /**
    * ORG-008-4b: has this stable key ever appeared in a published change set?
    *
@@ -269,26 +297,40 @@ export class PostgresOrganizationRepository {
   }
 
   /** ORG-008-4a: the "Yang berubah" list for one change set, oldest first. */
-  async listJournal(changeSetId: string): Promise<Array<{
-    id: string;
-    seq: number;
-    commandType: string;
-    summary: Record<string, unknown>;
-    actorAccountId: string;
-    createdAt: string;
-  }>> {
-    const result = await this.db.query<{
-      id: string; seq: number; commandType: string;
-      summary: Record<string, unknown>; actorAccountId: string; createdAt: Date;
-    }>(
-      `SELECT id, seq, command_type AS "commandType", summary,
-        actor_account_id AS "actorAccountId", created_at AS "createdAt"
-       FROM organization_change_set_journal
-       WHERE change_set_id = $1
-       ORDER BY seq`,
-      [changeSetId],
-    );
-    return result.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  /** One page of a change set's journal, newest step first, with the total (ENG-LIST-001). */
+  async pageJournal(changeSetId: string, page: { limit: number; offset: number }): Promise<{
+    items: Array<{
+      id: string;
+      seq: number;
+      commandType: string;
+      summary: Record<string, unknown>;
+      actorAccountId: string;
+      createdAt: string;
+    }>;
+    total: number;
+  }> {
+    const [rows, count] = await Promise.all([
+      this.db.query<{
+        id: string; seq: number; commandType: string;
+        summary: Record<string, unknown>; actorAccountId: string; createdAt: Date;
+      }>(
+        `SELECT id, seq, command_type AS "commandType", summary,
+          actor_account_id AS "actorAccountId", created_at AS "createdAt"
+         FROM organization_change_set_journal
+         WHERE change_set_id = $1
+         ORDER BY seq DESC
+         LIMIT $2 OFFSET $3`,
+        [changeSetId, page.limit, page.offset],
+      ),
+      this.db.query<{ total: number }>(
+        "SELECT count(*)::int AS total FROM organization_change_set_journal WHERE change_set_id = $1",
+        [changeSetId],
+      ),
+    ]);
+    return {
+      items: rows.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+      total: count.rows[0]?.total ?? 0,
+    };
   }
 
   /**

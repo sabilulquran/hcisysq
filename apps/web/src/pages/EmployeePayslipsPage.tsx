@@ -219,6 +219,8 @@ function PayslipPaper({
 
 export function EmployeePayslipsPage() {
   const [items, setItems] = useState<PayslipSummary[] | null>(null);
+  const [year, setYear] = useState<number | null>(null);
+  const [years, setYears] = useState<Array<{ year: number; count: number }>>([]);
   const [selected, setSelected] = useState<PayslipDetail | null>(null);
   const [selectorValue, setSelectorValue] = useState(payslipInitialSelectorValue);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -233,6 +235,8 @@ export function EmployeePayslipsPage() {
       .then((result) => {
         if (!mounted) return;
         setItems(result.items);
+        setYear(result.year);
+        setYears(result.years);
       })
       .catch((cause: unknown) => {
         if (!mounted) return;
@@ -258,6 +262,21 @@ export function EmployeePayslipsPage() {
     () => filterPayslipOptions(items ?? [], selectorValue),
     [items, selectorValue],
   );
+
+  // The selector lists one year at a time; another year is fetched when chosen (ENG-LIST-001).
+  const chooseYear = async (nextYear: number) => {
+    setError(null);
+    setSelectedId(null);
+    setSelectorValue("");
+    try {
+      const result = await getMyPayslips(nextYear);
+      setItems(result.items);
+      setYear(result.year);
+      setYears(result.years);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Payslip tidak dapat dimuat.");
+    }
+  };
 
   const showSelectedPayslip = async () => {
     if (!items?.length) return;
@@ -354,6 +373,20 @@ export function EmployeePayslipsPage() {
           <>
             <section className="print:hidden rounded-2xl border border-border bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                {years.length > 1 ? (
+                  <label className="text-xs font-bold text-brand-heading">
+                    Tahun
+                    <select
+                      value={year ?? ""}
+                      onChange={(event) => void chooseYear(Number(event.target.value))}
+                      className="mt-2 block w-full rounded-xl border border-border bg-surface-raised px-3 py-2.5 text-sm font-normal md:w-32"
+                    >
+                      {years.map((option) => (
+                        <option key={option.year} value={option.year}>{option.year} ({option.count})</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="relative min-w-0 flex-1 text-xs font-bold text-brand-heading">
                   Pilih periode slip
                   <div className="relative mt-2">

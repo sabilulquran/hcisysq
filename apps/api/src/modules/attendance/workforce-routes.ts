@@ -197,7 +197,7 @@ const clarificationAdminQuerySchema = z.object({
   to: dateSchema.optional(),
   q: z.string().trim().max(120).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(10).max(200).default(50),
+  pageSize: z.coerce.number().int().min(10).max(100).default(50),
 });
 const mobileEvidenceQuerySchema = z.object({
   date: dateSchema.optional(),
@@ -2337,7 +2337,7 @@ export async function registerAttendanceWorkforceRoutes(
       ]).optional(),
       changedOnly: z.enum(["true", "false"]).optional(),
       page: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+      pageSize: z.coerce.number().int().min(10).max(100).default(50),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_CALCULATION_ROWS_QUERY", message: "Filter tidak valid." });
     const rangeError = validateCalculationRange(query.data.from, query.data.to);
@@ -2371,7 +2371,7 @@ export async function registerAttendanceWorkforceRoutes(
       to: dateSchema,
       page: z.coerce.number().int().min(1).default(1),
       pinPage: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+      pageSize: z.coerce.number().int().min(10).max(100).default(50),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_UNSCHEDULED_QUERY", message: "Filter tidak valid." });
     const rangeError = validateCalculationRange(query.data.from, query.data.to);
@@ -2594,7 +2594,7 @@ export async function registerAttendanceWorkforceRoutes(
       source: z.enum(["adms", "mobile", "manual", "correction"]).optional(),
       reviewState: z.enum(["needs_review"]).optional(),
       page: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(10).max(200).default(50),
+      pageSize: z.coerce.number().int().min(10).max(100).default(50),
     }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_TRANSACTIONS_QUERY", message: "Filter tidak valid." });
     const rangeError = validateCalculationRange(query.data.from, query.data.to);

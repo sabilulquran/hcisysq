@@ -130,7 +130,7 @@ paths:
         - { name: to, in: query, required: false, schema: { type: string, format: date } }
         - { name: q, in: query, required: false, schema: { type: string, maxLength: 120 } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 100, default: 50 } }
       responses:
         '200': { description: '`{ page, pageSize, total, totalPages, submittedCount, items }`; each item adds `origin` and `decidedByEmail`.' }
         '400': { description: INVALID_CLARIFICATION_FILTER }
@@ -529,7 +529,7 @@ paths:
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: pinPage, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 100, default: 50 } }
       responses:
         '200': { description: '`{ from, to, employees: { page, pageSize, total, totalPages, items }, pins: { … } | null }`' }
         '400': { description: INVALID_UNSCHEDULED_QUERY or INVALID_CALCULATION_RANGE }
@@ -641,7 +641,7 @@ paths:
         - { name: source, in: query, required: false, schema: { type: string, enum: [adms, mobile, manual, correction] } }
         - { name: reviewState, in: query, required: false, schema: { type: string, enum: [needs_review] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 100, default: 50 } }
       responses:
         '200':
           description: >-
@@ -682,7 +682,7 @@ paths:
             enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, unscheduled, not_captured, not_calculated]
         - { name: changedOnly, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 100, default: 50 } }
       responses:
         '200':
           description: >-

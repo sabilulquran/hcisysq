@@ -6,6 +6,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import { resolveAuthorizationContext } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
@@ -675,7 +676,7 @@ export async function registerOrganizationAdminRoutes(
       q: z.string().trim().max(120).optional(),
       asOf: date.optional(),
       draftId: uuid.optional(),
-      limit: z.coerce.number().int().min(1).max(200).default(50),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
     }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_POSITION_QUERY", "Invalid position query.");
     const asOf = query.data.asOf ?? jakartaBusinessDate();
@@ -726,7 +727,7 @@ export async function registerOrganizationAdminRoutes(
       issue: z.string().trim().min(1).max(60).optional(),
       q: z.string().trim().max(120).optional(),
       page: z.coerce.number().int().min(1).default(1),
-      pageSize: z.coerce.number().int().min(1).max(200).default(50),
+      pageSize: z.coerce.number().int().min(1).max(100).default(50),
       withLegacy: z.enum(["true", "false"]).default("false"),
     }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_PEOPLE_QUERY", "Invalid people query.");
@@ -756,6 +757,8 @@ export async function registerOrganizationAdminRoutes(
       page: query.data.page,
       pageSize: query.data.pageSize,
       total: rows.length,
+      // ENG-LIST-001: the shared shape; the flat fields above stay for existing clients.
+      pagination: pagination(query.data, rows.length),
       items: rows.slice(start, start + query.data.pageSize),
     });
   });
@@ -972,12 +975,15 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/designer/drafts", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
-    const query = z.object({
+    const query = pageQuerySchema.extend({
       status: z.enum(["DRAFT", "VALIDATED", "PUBLISHED", "DISCARDED"]).optional(),
     }).safeParse(request.query);
-    if (!query.success) return invalid(reply, "INVALID_DRAFT_FILTER", "Invalid change status filter.");
-    const items = await repository.listChangeSets(query.data.status ? [query.data.status] : undefined);
-    return reply.send({ items });
+    if (!query.success) return invalid(reply, "INVALID_DRAFT_FILTER", "Invalid change status filter or page.");
+    const page = await repository.pageChangeSets(
+      query.data.status ? [query.data.status] : undefined,
+      { limit: query.data.pageSize, offset: pageOffset(query.data) },
+    );
+    return reply.send({ items: page.items, pagination: pagination(query.data, page.total) });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/reopen", async (request, reply) => {
@@ -1652,7 +1658,14 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
-    return reply.send({ items: await repository.listJournal(params.data.draftId) });
+    const query = pageQuerySchema.safeParse(request.query);
+    if (!query.success) return invalid(reply, "INVALID_JOURNAL_PAGE", "Invalid journal page.");
+    // Newest step first: the undo the user reaches for is almost always a recent one (ENG-LIST-001).
+    const page = await repository.pageJournal(params.data.draftId, {
+      limit: query.data.pageSize,
+      offset: pageOffset(query.data),
+    });
+    return reply.send({ items: page.items, pagination: pagination(query.data, page.total) });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/validate", async (request, reply) => {

@@ -87,8 +87,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getMyPayslips() {
-  return request<{ items: PayslipSummary[] }>("/api/payslips");
+/** One year of own published slips plus the years that have any, newest first (ENG-LIST-001). */
+export interface MyPayslipYear {
+  items: PayslipSummary[];
+  year: number | null;
+  years: Array<{ year: number; count: number }>;
+}
+
+export function getMyPayslips(year?: number) {
+  return request<MyPayslipYear>(`/api/payslips${year ? `?year=${year}` : ""}`);
 }
 
 export function getMyPayslip(id: string) {

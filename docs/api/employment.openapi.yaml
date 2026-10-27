@@ -146,7 +146,7 @@ paths:
         - name: pageSize
           in: query
           required: false
-          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
         '200':
           description: Grouped issue counts and paginated rows
@@ -753,6 +753,7 @@ components:
         total: { type: integer }
         page: { type: integer }
         pageSize: { type: integer }
+        pagination: { $ref: './openapi.yaml#/components/schemas/Pagination' }
         rows:
           type: array
           items:

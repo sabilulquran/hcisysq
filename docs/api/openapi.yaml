@@ -1281,7 +1281,7 @@ paths:
         - { name: q, in: query, schema: { type: string } }
         - { name: asOf, in: query, schema: { type: string, format: date } }
         - { name: draftId, in: query, schema: { type: string, format: uuid } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
       responses:
         '200':
           description: Matching positions effective on that date
@@ -1325,7 +1325,7 @@ paths:
           schema: { type: string }
         - { name: q, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
         - name: withLegacy
           in: query
           description: Include the ORG-002 manager and unit approver side by side for comparison
@@ -1344,6 +1344,7 @@ paths:
                   page: { type: integer }
                   pageSize: { type: integer }
                   total: { type: integer }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/OrganizationPerson' }
@@ -2079,12 +2080,15 @@ paths:
     get:
       tags: [Organization]
       operationId: listOrganizationChangeJournal
-      summary: What was changed in this change set, in the operator's order (ORG-008-4a)
-      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      summary: What was changed in this change set, newest step first (ORG-008-4a, ENG-LIST-001)
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
       responses:
         '200':
           description: >
-            Applied commands, oldest first. Besides the command types, a line may be SEED_FROM_LEGACY
+            One page of applied commands, newest first, with the total. Besides the command types, a line may be SEED_FROM_LEGACY
             or MANUAL_EDIT: an edit made through a single-record endpoint, whose summary.action names
             it (node.created, node.updated, node.deleted, position.created, position.updated,
             position.deleted, memberships.replaced, incumbencies.replaced, authority_binding.created,
@@ -2106,6 +2110,8 @@ paths:
                         summary: { type: object }
                         actorAccountId: { type: string, format: uuid }
                         createdAt: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { description: 'INVALID_DRAFT_ID or INVALID_JOURNAL_PAGE' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Change set not found }

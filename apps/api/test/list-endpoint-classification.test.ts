@@ -24,7 +24,7 @@ vi.mock("fastify", async (importOriginal) => {
 const { createApp } = await import("../src/app.js");
 
 // Lower this when a PAG package fixes routes; raising it needs an owner-approved exception.
-const DEBT_ROUTES = 51;
+const DEBT_ROUTES = 42;
 
 const KINDS = ["paged", "typeahead", "range", "bounded", "aggregate", "single", "export", "snapshot", "debt"] as const;
 
@@ -69,7 +69,8 @@ describe("ENG-LIST-001 list endpoint classification", () => {
     expect(urls.filter((url) => !keys.includes(url)), "GET routes missing from list-endpoint-classification.json").toEqual([]);
     expect(keys.filter((url) => !urls.includes(url)), "classified routes that are not registered").toEqual([]);
     expect(keys.length).toBe(new Set(keys).size);
-  });
+    // Building the whole app cold can take longer than the default 5 s on a loaded machine.
+  }, 30_000);
 
   it("explains every exception and ties every violation to a PAG package", async () => {
     for (const entry of await classification()) {

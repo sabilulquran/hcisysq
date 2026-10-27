@@ -1,8 +1,9 @@
 import { getCurrentSession } from "@/lib/auth";
 import { canManageRoleAssignments, hasPermission } from "@/lib/authorization";
 import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AccountActivationApiError,
@@ -66,8 +67,8 @@ export function AdminAccessPage() {
   );
 }
 
-function firstEmployeeAccountId(data: AccessAdminResponse) {
-  return data.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "";
+function accountLabel(account: AccessAdminResponse["accounts"][number]) {
+  return `${account.employeeName ?? account.email} · ${account.unitName ?? "Tanpa unit"}`;
 }
 
 // UI eligibility only: controls follow the backend authorization context; the API stays authoritative.
@@ -78,7 +79,16 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
 }) {
   const canPrepareBoard = hasPermission(session, "access.governance.manage");
   const canManageRoles = canManageRoleAssignments(session);
-  const [selectedAccountId, setSelectedAccountId] = useState(() => firstEmployeeAccountId(data));
+  // The account list is searched and paged on the server (ENG-LIST-001), so the account for a new
+  // role is picked from its card instead of a dropdown of every account.
+  const [selectedAccount, setSelectedAccount] = useState<{ id: string; label: string } | null>(null);
+  const selectedAccountId = selectedAccount?.id ?? "";
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [listLoading, setListLoading] = useState(false);
+  const listRequest = useRef(0);
+  const firstQuery = useRef(true);
   const [roleId, setRoleId] = useState(() => data.roles[0]?.id ?? "");
   const [scopeType, setScopeType] = useState<"own" | "unit" | "organization">("unit");
   const [unitId, setUnitId] = useState(() => data.units[0]?.id ?? "");
@@ -92,7 +102,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     expiresAt: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showInactiveAccounts, setShowInactiveAccounts] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [seatChecks, setSeatChecks] = useState<RoleSeatCheck[] | null>(null);
@@ -112,25 +122,39 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     void reloadSeatChecks();
   }, []);
 
-  const reload = async () => {
-    const result = await getAccessAdmin();
-    onDataChange(result);
-    await reloadSeatChecks();
-    if (!selectedAccountId) setSelectedAccountId(firstEmployeeAccountId(result));
-    if (!roleId) setRoleId(result.roles[0]?.id ?? "");
-    if (!unitId) setUnitId(result.units[0]?.id ?? "");
+  const loadAccounts = async (next: { q: string; includeInactive: boolean; page: number }) => {
+    const request = ++listRequest.current;
+    setListLoading(true);
+    try {
+      const result = await getAccessAdmin(next);
+      if (request !== listRequest.current) return;
+      onDataChange(result);
+      if (!roleId) setRoleId(result.roles[0]?.id ?? "");
+      if (!unitId) setUnitId(result.units[0]?.id ?? "");
+    } catch (cause) {
+      if (request === listRequest.current) {
+        setError(cause instanceof AdminApiError ? cause.message : "Daftar account tidak dapat dimuat.");
+      }
+    } finally {
+      if (request === listRequest.current) setListLoading(false);
+    }
   };
 
-  const employeeAccounts = useMemo(
-    () => data.accounts.filter((account) =>
-      account.principalType === "EMPLOYEE" && (showInactiveAccounts || account.status !== "inactive")
-    ),
-    [data, showInactiveAccounts],
-  );
-  const visibleAccounts = useMemo(
-    () => data.accounts.filter((account) => showInactiveAccounts || account.status !== "inactive"),
-    [data, showInactiveAccounts],
-  );
+  // The parent already loaded the first page; later searches and pages are fetched here.
+  useEffect(() => {
+    if (firstQuery.current) {
+      firstQuery.current = false;
+      return;
+    }
+    void loadAccounts({ q: search, includeInactive, page });
+  }, [search, includeInactive, page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const reload = async () => {
+    await loadAccounts({ q: search, includeInactive, page });
+    await reloadSeatChecks();
+  };
+
+  const visibleAccounts = data.accounts;
 
   const publishActivationLink = async (accountId: string) => {
     setBusy(true);
@@ -360,18 +384,13 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
         <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>
         <p className="mt-1 text-xs text-muted-foreground">Scope unit wajib menunjuk satu unit; scope organization berlaku lintas organisasi sesuai permission role.</p>
         <form onSubmit={submitAssignment} className="mt-4 grid gap-3 lg:grid-cols-3">
-          <select
-            value={selectedAccountId}
-            onChange={(event) => setSelectedAccountId(event.target.value)}
-            className="h-10 rounded-xl border border-border bg-surface px-3 text-sm"
-          >
-            <option value="">Pilih account pegawai</option>
-            {employeeAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.employeeName ?? account.email} · {account.unitName ?? "Tanpa unit"}
-              </option>
-            ))}
-          </select>
+          <div className="flex h-10 items-center rounded-xl border border-border bg-surface px-3 text-sm" aria-live="polite">
+            {selectedAccount ? (
+              <span className="truncate font-semibold text-brand-heading">{selectedAccount.label}</span>
+            ) : (
+              <span className="text-muted-foreground">Pilih account dari daftar di bawah</span>
+            )}
+          </div>
           <select value={roleId} onChange={(event) => setRoleId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
             {data.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
           </select>
@@ -401,16 +420,44 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
       )}
 
       <section className="mt-5 space-y-3">
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)] sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-bold text-brand-heading">Daftar account</p>
             <p className="mt-1 text-xs text-muted-foreground">Account nonaktif disembunyikan secara default, tetapi histori tetap dipertahankan.</p>
           </div>
-          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted-foreground">
-            <input type="checkbox" checked={showInactiveAccounts} onChange={(event) => setShowInactiveAccounts(event.target.checked)} />
-            Tampilkan nonaktif
-          </label>
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSearch(searchInput.trim());
+              setPage(1);
+            }}
+          >
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Cari nama, NIP, atau email"
+              className="h-9 w-56 rounded-xl border border-border bg-surface px-3 text-xs"
+              aria-label="Cari account"
+            />
+            <button type="submit" disabled={listLoading} className="h-9 rounded-xl border border-border bg-surface px-3 text-xs font-bold disabled:opacity-50">Cari</button>
+            <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(event) => {
+                  setIncludeInactive(event.target.checked);
+                  setPage(1);
+                }}
+              />
+              Tampilkan nonaktif
+            </label>
+          </form>
         </div>
+        {visibleAccounts.length === 0 ? (
+          <p className="rounded-2xl border border-border/70 bg-surface-raised p-5 text-sm text-muted-foreground">Tidak ada account yang cocok.</p>
+        ) : null}
         {visibleAccounts.map((account) => (
           <article key={account.id} className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -424,6 +471,16 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
               </div>
               {account.principalType !== "SUPER_ADMIN" ? (
                 <div className="flex flex-wrap gap-2">
+                  {canManageRoles && account.principalType === "EMPLOYEE" && account.status !== "inactive" ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAccount({ id: account.id, label: accountLabel(account) })}
+                      disabled={busy || selectedAccountId === account.id}
+                      className="h-9 rounded-xl border border-brand-primary/30 bg-surface-raised px-3 text-xs font-bold text-brand-primary-deep disabled:opacity-50"
+                    >
+                      {selectedAccountId === account.id ? "Dipilih untuk role" : "Pilih untuk role"}
+                    </button>
+                  ) : null}
                   {account.status === "invited" ? (
                     <button
                       type="button"
@@ -466,6 +523,16 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             )}
           </article>
         ))}
+        {data.pagination ? (
+          <div className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised">
+            <PaginationBar
+              page={data.pagination.page}
+              pageSize={data.pagination.pageSize}
+              total={data.pagination.total}
+              onPageChange={setPage}
+            />
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">

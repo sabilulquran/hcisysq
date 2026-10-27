@@ -318,6 +318,30 @@ describe.skipIf(!allowed)("ATT-011-4b schedule change sets (PostgreSQL)", () => 
     expect(applied.statusCode, applied.body).toBe(201);
     expect(await assignments(second)).toEqual([]);
     expect((await assignments(first)).some((row) => row.template === afternoon)).toBe(true);
+
+    // The excluded employee stays revertible; only the newer change still blocks them.
+    const remaining = await preview({ kind: "revert", changeSetId: changed, note: "Batal" });
+    expect(remaining.statusCode, remaining.body).toBe(200);
+    expect(remaining.json().summary.employees).toBe(1);
+    expect(remaining.json().issues).toEqual([expect.objectContaining({ employeeId: first, code: "changed_later" })]);
+  });
+
+  it("reverts a replacement's roster days, and blocks a day edited by hand since", async () => {
+    const changed = (await apply({ kind: "replacement", employeeIds: [first, second], scheduleTemplateId: afternoon, from: addDays(week, 1), to: addDays(week, 2), note: "Acara" }))
+      .applied.json().id as string;
+    // A hand edit of one of the second employee's days: the latest roster now says Libur there.
+    const latest = await client.query<{ id: string }>("SELECT id FROM attendance_rosters WHERE week_start = $1::date AND status = 'PUBLISHED' ORDER BY version DESC LIMIT 1", [week]);
+    await client.query(
+      "UPDATE attendance_roster_entries SET schedule_template_id = NULL, schedule_version_id = NULL, is_off = true WHERE roster_id = $1 AND employee_id = $2 AND work_date = $3::date",
+      [latest.rows[0]!.id, second, addDays(week, 2)],
+    );
+    const blocked = await preview({ kind: "revert", changeSetId: changed, note: "Batal acara" });
+    expect(blocked.json().issues).toEqual([expect.objectContaining({ employeeId: second, code: "changed_later" })]);
+
+    const { applied } = await apply({ kind: "revert", changeSetId: changed, note: "Batal acara", excludeEmployeeIds: [second] });
+    expect(applied.statusCode, applied.body).toBe(201);
+    const days = (await calendar(week, addDays(week, 2))).employees.find((employee) => employee.id === first)!.days;
+    expect(days.map((day) => [day.source, day.scheduleTemplateId])).toEqual([["pattern", morning], ["pattern", morning], ["pattern", morning]]);
   });
 
   it("copies the schedule in force on the source week, pattern included", async () => {

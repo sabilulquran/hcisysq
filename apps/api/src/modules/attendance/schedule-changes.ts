@@ -155,33 +155,45 @@ function restoredUntil(item: RevertItem): string | null {
  * touched (D-3), and ends where the reverted change's last restored date ends.
  */
 async function loadRevertSource(db: Db, changeSetId: string, today: string): Promise<RevertSource> {
-  const changeSet = await db.query<{ appliedAt: string; revertedBy: string | null }>(
-    `SELECT change_set.applied_at::text AS "appliedAt",
-       (SELECT later.id::text FROM attendance_schedule_change_sets later WHERE later.reverts_change_set_id = change_set.id LIMIT 1) AS "revertedBy"
-     FROM attendance_schedule_change_sets change_set WHERE change_set.id = $1`,
+  const changeSet = await db.query<{ appliedAt: string }>(
+    "SELECT applied_at::text AS \"appliedAt\" FROM attendance_schedule_change_sets WHERE id = $1",
     [changeSetId],
   );
   if (!changeSet.rows[0]) throw new ScheduleChangeError(404, "SCHEDULE_CHANGE_NOT_FOUND", "Perubahan jadwal tidak ditemukan.");
-  if (changeSet.rows[0].revertedBy) {
-    throw new ScheduleChangeError(409, "SCHEDULE_CHANGE_ALREADY_REVERTED", "Perubahan ini sudah dikembalikan.");
-  }
-  const items = await db.query<RevertItem>(
+  const allItems = await db.query<RevertItem>(
     `SELECT employee_id AS "employeeId", action, work_date_from::text AS "from", work_date_to::text AS "to",
        weekday_mask AS mask, schedule_template_id AS template, before_state AS before, after_state AS after
      FROM attendance_schedule_change_items WHERE change_set_id = $1 ORDER BY sequence`,
     [changeSetId],
   );
+  // Reverting is per employee: an earlier revert that excluded someone leaves that employee revertible.
+  const earlier = await db.query<{ excluded: string[] | null }>(
+    `SELECT ARRAY(SELECT jsonb_array_elements_text(coalesce(input -> 'excludeEmployeeIds', '[]'::jsonb))) AS excluded
+     FROM attendance_schedule_change_sets WHERE reverts_change_set_id = $1`,
+    [changeSetId],
+  );
+  const sourceIds = [...new Set(allItems.rows.map((row) => row.employeeId))];
+  const covered = new Set(earlier.rows.flatMap((row) => sourceIds.filter((id) => !(row.excluded ?? []).includes(id))));
+  const items = allItems.rows.filter((row) => !covered.has(row.employeeId));
+  if (earlier.rows.length && items.length === 0) {
+    throw new ScheduleChangeError(409, "SCHEDULE_CHANGE_ALREADY_REVERTED", "Perubahan ini sudah dikembalikan.");
+  }
   const from = addDays(today, 1);
-  const ends = items.rows.map(restoredUntil);
-  const openEnded = ends.some((end) => end === null);
-  const to = openEnded ? addDays(from, MAX_DAYS - 1) : ends.filter((end): end is string => end !== null).sort().at(-1) ?? today;
+  const ends = items.map(restoredUntil);
+  let openEnded = ends.some((end) => end === null);
+  let to = openEnded ? addDays(from, MAX_DAYS - 1) : ends.filter((end): end is string => end !== null).sort().at(-1) ?? today;
+  // A pattern restored up to a far end date is not a too-long change: look at the first 400 days only.
+  if (!openEnded && to >= from && daysBetween(from, to) >= MAX_DAYS) {
+    openEnded = true;
+    to = addDays(from, MAX_DAYS - 1);
+  }
   if (to < from) {
     throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_IN_PAST", "Perubahan ini sudah lewat seluruhnya; tidak ada yang dapat dikembalikan.");
   }
   return {
     appliedAt: changeSet.rows[0].appliedAt,
-    items: items.rows,
-    employeeIds: [...new Set(items.rows.map((row) => row.employeeId))],
+    items,
+    employeeIds: [...new Set(items.map((row) => row.employeeId))],
     range: { from, to, openEnded },
   };
 }
@@ -486,10 +498,19 @@ async function planRevert(
      FROM attendance_schedule_change_items item
      JOIN attendance_schedule_change_sets later ON later.id = item.change_set_id
      WHERE later.applied_at > $1::timestamptz AND item.employee_id = ANY($2::uuid[])
-       AND (item.action = 'assignment_ended' OR coalesce(item.work_date_to, 'infinity'::date) >= $3::date)`,
+       AND (item.action = 'assignment_ended' OR coalesce(item.work_date_to, 'infinity'::date) >= $3::date)
+       -- A revert, or a later change already reverted for this employee, leaves nothing newer behind.
+       AND later.kind <> 'revert'
+       AND NOT EXISTS (
+         SELECT 1 FROM attendance_schedule_change_sets undo
+         WHERE undo.reverts_change_set_id = later.id
+           AND NOT (coalesce(undo.input -> 'excludeEmployeeIds', '[]'::jsonb) ? item.employee_id::text)
+       )`,
     [revert.appliedAt, [...activeIds], start],
   );
-  for (const row of later.rows) block(row.employeeId, "Jadwal pegawai ini sudah diubah lagi oleh perubahan yang lebih baru; kembalikan perubahan itu dulu.");
+  for (const row of later.rows) {
+    block(row.employeeId, "Jadwal pegawai ini sudah diubah lagi oleh perubahan yang lebih baru; atur ulang dengan Atur jadwal atau Ganti jadwal.");
+  }
 
   const assignmentIds = revert.items.flatMap((item) => {
     const id = item.action === "assignment_created" ? item.after?.assignmentId : item.action === "assignment_ended" ? item.before?.assignmentId : undefined;
@@ -502,7 +523,7 @@ async function planRevert(
   );
   const assignmentById = new Map(current.rows.map((row) => [row.id, row]));
   const rosterPairs = revert.items.filter((item) => item.action.startsWith("roster_entry_") && item.from >= start);
-  const rosterNow = await db.query<{ employeeId: string; workDate: string; template: string | null; isOff: boolean }>(
+  const rosterNow = await db.query<{ employeeId: string; workDate: string; template: string | null; versionId: string | null; isOff: boolean }>(
     `WITH pairs AS (
        SELECT * FROM unnest($1::uuid[], $2::date[]) AS pair(employee_id, work_date)
      ), latest AS (
@@ -510,7 +531,8 @@ async function planRevert(
        WHERE status = 'PUBLISHED' AND week_start IN (SELECT date_trunc('week', work_date)::date FROM pairs)
        ORDER BY week_start, version DESC
      )
-     SELECT pairs.employee_id AS "employeeId", pairs.work_date::text AS "workDate", entry.schedule_template_id AS template, entry.is_off AS "isOff"
+     SELECT pairs.employee_id AS "employeeId", pairs.work_date::text AS "workDate", entry.schedule_template_id AS template,
+       entry.schedule_version_id AS "versionId", entry.is_off AS "isOff"
      FROM pairs
      JOIN latest ON latest.week_start = date_trunc('week', pairs.work_date)::date
      JOIN attendance_roster_entries entry
@@ -538,7 +560,7 @@ async function planRevert(
     } else if (item.action === "assignment_ended" || item.action === "assignment_removed") {
       if (item.action === "assignment_ended") {
         const row = assignmentById.get(item.before?.assignmentId as string);
-        if (row && row.to !== item.to) {
+        if (!row || row.to !== item.to) {
           block(item.employeeId, "Pola jadwal lama sudah diubah langsung; kembalikan secara manual.");
           continue;
         }
@@ -553,8 +575,10 @@ async function planRevert(
       ops.push({ action: "assignment_created", employeeId: item.employeeId, scheduleTemplateId: item.template, weekdayMask: item.mask, from, to, reason: "restored" });
     } else if (item.from >= start && item.from <= last) {
       const now = rosterOf.get(`${item.employeeId}:${item.from}`);
-      const after = item.after as { scheduleTemplateId?: string | null; isOff?: boolean } | null;
-      const unchanged = after === null ? !now : Boolean(now) && now!.isOff === Boolean(after.isOff) && (now!.template ?? null) === (after.scheduleTemplateId ?? null);
+      const after = item.after as { scheduleTemplateId?: string | null; scheduleVersionId?: string | null; isOff?: boolean } | null;
+      const unchanged = after === null ? !now : Boolean(now) && now!.isOff === Boolean(after.isOff)
+        && (now!.template ?? null) === (after.scheduleTemplateId ?? null)
+        && (after.scheduleVersionId === undefined || (now!.versionId ?? null) === (after.scheduleVersionId ?? null));
       if (!unchanged) {
         block(item.employeeId, `Jadwal ${item.from} sudah diubah lagi; kembalikan secara manual.`);
         continue;
@@ -568,6 +592,26 @@ async function planRevert(
         const versionId = before.scheduleVersionId ?? await pinned(item.employeeId, before.scheduleTemplateId, item.from);
         if (versionId) ops.push({ action: "roster_entry_set", employeeId: item.employeeId, workDate: item.from, scheduleTemplateId: before.scheduleTemplateId, scheduleVersionId: versionId });
       }
+    }
+  }
+  // A pattern written by hand since would overlap a restored one: apply would refuse, so block it here.
+  const restoring = ops.filter((op): op is Extract<ScheduleChangeOp, { action: "assignment_created" }> => op.action === "assignment_created");
+  if (restoring.length) {
+    const others = await db.query<{ id: string; employeeId: string; from: string; to: string | null; mask: number }>(
+      `SELECT id, employee_id AS "employeeId", effective_from::text AS "from", effective_to::text AS "to", weekday_mask AS mask
+       FROM attendance_schedule_assignments
+       WHERE employee_id = ANY($1::uuid[]) AND (effective_to IS NULL OR effective_to >= $2::date)`,
+      [[...new Set(restoring.map((op) => op.employeeId))], start],
+    );
+    for (const op of restoring) {
+      const clash = others.rows.find((row) => {
+        if (row.employeeId !== op.employeeId || (row.mask & op.weekdayMask) === 0) return false;
+        if (ops.some((other) => other.action === "assignment_removed" && other.assignmentId === row.id)) return false;
+        const ended = ops.find((other): other is Extract<ScheduleChangeOp, { action: "assignment_ended" }> => other.action === "assignment_ended" && other.assignmentId === row.id);
+        const rowTo = ended ? ended.to : row.to;
+        return (rowTo === null || rowTo >= op.from) && (op.to === null || row.from <= op.to);
+      });
+      if (clash) block(op.employeeId, "Ada pola jadwal yang dibuat langsung dan bertabrakan dengan pola yang akan dikembalikan; atur ulang dengan Atur jadwal.");
     }
   }
   // A blocked employee contributes nothing: drop what was planned for them before the block was found.
@@ -612,6 +656,10 @@ export async function applyScheduleChange(
       throw new ScheduleChangeError(422, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key sudah dipakai untuk perubahan lain.");
     }
     if (replay.rows[0]) return { id: replay.rows[0].id, replayed: true, summary: null, employeeIds: [] as string[] };
+  }
+  // Every revert of one change set waits for the previous one, whichever employees it covers.
+  if (input.kind === "revert") {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`attendance-schedule-revert:${input.changeSetId}`]);
   }
   const first = await planScheduleChange(client, input, now);
   const locks = [...first.employees.map((employee) => `attendance-schedule-employee:${employee.id}`), ...first.weeks.map((week) => `attendance-roster-week:${week}`)].sort();

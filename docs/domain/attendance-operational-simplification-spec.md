@@ -690,9 +690,15 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - Kebalikan tiap item: pola yang dibuat perubahan itu dihapus (bila belum mulai) atau diakhiri hari ini; pola
   lama yang diakhiri atau dihapus dibuat ulang dari besok sampai akhir aslinya; entri roster kembali ke
   keadaan sebelum (shift dengan versi yang dikunci saat itu, Libur, atau dihapus).
-- Pegawai yang jadwalnya sudah diubah lagi oleh perubahan yang lebih baru, atau pola/entrinya diubah langsung,
-  diberi masalah `changed_later` yang memblokir; kecualikan pegawai itu atau kembalikan perubahan yang lebih
-  baru dulu. Perubahan hanya dapat dikembalikan sekali (`409 SCHEDULE_CHANGE_ALREADY_REVERTED`).
+- Pegawai yang jadwalnya sudah diubah lagi oleh perubahan yang lebih baru (yang belum dikembalikan), atau
+  pola/entrinya diubah, dihapus, atau ditabrak pola yang dibuat langsung, diberi masalah `changed_later` yang
+  memblokir; kecualikan pegawai itu dan atur ulang dengan Atur/Ganti jadwal. Mengembalikan perubahan yang
+  lebih baru dulu hanya membuka jalan untuk entri jadwal per tanggal; pola yang sudah dibuat ulang tetap perlu
+  diatur ulang.
+- Pengembalian berlaku per pegawai: pegawai yang dikecualikan tetap dapat dikembalikan belakangan; bila semua
+  pegawai sudah dikembalikan → `409 SCHEDULE_CHANGE_ALREADY_REVERTED`. Pengembalian satu change set saling
+  menunggu (advisory lock). Pola dengan tanggal akhir jauh dibatasi 400 hari pertama seperti pola tanpa akhir
+  (sisanya tetap dibuat ulang sampai tanggal akhir aslinya).
 - Change set menyimpan `reverts_change_set_id`; audit `attendance.schedule_change.reverted`. `applied_at`
   memakai jam saat ditulis agar urutan "lebih baru" tepat. Tidak ada migration atau permission baru.
 

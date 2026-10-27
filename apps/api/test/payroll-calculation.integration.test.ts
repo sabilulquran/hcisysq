@@ -139,7 +139,12 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     // production and exactly what has to be stood down to clean a test database.
     await pool.query("ALTER TABLE payslips DISABLE TRIGGER payslips_published_immutable");
     try {
-      await pool.query("UPDATE payslips SET superseded_by_id = NULL WHERE superseded_by_id IS NOT NULL");
+      // Both links point at another payslip with ON DELETE RESTRICT, so they are
+      // broken before the rows go; a single DELETE of the pair would be refused.
+      await pool.query(
+        `UPDATE payslips SET superseded_by_id = NULL, revision_of = NULL
+         WHERE superseded_by_id IS NOT NULL OR revision_of IS NOT NULL`,
+      );
       await pool.query("DELETE FROM payslips WHERE source_period_id IS NOT NULL");
     } finally {
       await pool.query("ALTER TABLE payslips ENABLE TRIGGER payslips_published_immutable");

@@ -456,6 +456,50 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
 
+  /payroll/periods/{periodId}/payslips:
+    post:
+      tags: [Payroll]
+      operationId: draftPayrollPayslips
+      summary: Write the period's results as payslip drafts
+      description: >-
+        Requires payroll.periods.manage, and only once the payment is confirmed:
+        drafting earlier would put a figure in front of an employee that nobody
+        has paid. It drafts, it does not publish; PAY-002 remains the step that
+        makes a slip visible, so whoever holds payslips.publish keeps that
+        decision. A slip that was never published is updated in place; a published
+        one is never edited, and a correction after an approved reopen becomes a
+        revision beside it with the earlier slip still readable. Running it again
+        when nothing moved changes nothing. A standing blocker refuses the whole
+        run.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: How many slips were drafted, revised, or already current
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drafted, revised, alreadyCurrent]
+                properties:
+                  drafted: { type: integer }
+                  revised: { type: integer }
+                  alreadyCurrent: { type: integer }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: >-
+            The payment is not confirmed yet, a blocker stands, or the period has
+            no result to draft from.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
   /payroll/periods/{periodId}/transitions:
     post:
       tags: [Payroll]
@@ -557,6 +601,7 @@ components:
             - PAYROLL_INPUT_NOT_FOUND
             - PAYROLL_POLICY_MISSING
             - PAYROLL_NOT_APPROVED_YET
+            - PAYROLL_NOTHING_TO_PUBLISH
             - UNAUTHENTICATED
         message: { type: string }
         problems:

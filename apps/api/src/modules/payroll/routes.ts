@@ -40,6 +40,7 @@ import {
   transferListToCsv,
 } from "./reports.js";
 import { calculatePeriod } from "./calculation.js";
+import { draftPayslipsFromPeriod } from "./publication.js";
 import {
   deleteInput,
   INPUT_KEYS,
@@ -718,6 +719,47 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     const variances = await buildVariance(pool, period.id, previousId, threshold);
     await recordSensitiveRead(actor.accountId, period.id, "period_variance", variances.length);
     return send(reply, 200, { previousPeriodId: previousId, threshold, variances });
+  });
+
+  app.post("/payroll/periods/:periodId/payslips", async (request, reply) => {
+    const actor = await requirePermission(request, reply, "payroll.periods.manage");
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    // Section 6: slips are drafted once the payment is confirmed. Drafting them
+    // earlier would put a figure in front of an employee that nobody has paid.
+    if (period.state !== "PAYMENT_CONFIRMED" && period.state !== "PUBLISHED") {
+      return send(reply, 409, {
+        code: "PAYROLL_STATE_CONFLICT",
+        message: `Slip baru dapat disiapkan setelah pembayaran dikonfirmasi; periode ini ${period.state}.`,
+      });
+    }
+
+    const outcome = await draftPayslipsFromPeriod(pool, period.id, actor.accountId);
+    if (!outcome.ok) {
+      return send(reply, 409, {
+        code: outcome.code,
+        message:
+          outcome.code === "PAYROLL_BLOCKERS_PRESENT"
+            ? `Periode masih memiliki ${outcome.blockerCount} blocker; slip tidak disiapkan.`
+            : "Periode belum memiliki hasil yang dapat dijadikan slip.",
+      });
+    }
+
+    // Drafting is where payroll stops. PAY-002 publishes, so whoever holds
+    // payslips.publish keeps the decision to show a slip to an employee.
+    return send(reply, 200, {
+      drafted: outcome.drafted,
+      revised: outcome.revised,
+      alreadyCurrent: outcome.alreadyCurrent,
+    });
   });
 
   app.post("/payroll/periods/:periodId/transitions", async (request, reply) => {

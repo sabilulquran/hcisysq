@@ -16,6 +16,15 @@
       "reason": "Satu baris per peran yang mengikuti jabatan (kini hanya Kepala HC); isinya hanya pemegang peran itu dan pemegang satu jabatan."
     },
     {
+      "url": "/admin/announcements",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/announcements/:id",
+      "list": "single",
+      "reason": "Satu pengumuman beserta aturan sasarannya."
+    },
+    {
       "url": "/admin/attendance/action-queue",
       "list": "paged",
       "reason": "Antrean Perlu tindakan; halaman standar dengan jumlah per jenis."
@@ -514,6 +523,11 @@
     {
       "url": "/admin/payslip-imports/:batchId",
       "list": "paged"
+    },
+    {
+      "url": "/announcements/me",
+      "list": "bounded",
+      "reason": "Pengumuman yang ditujukan ke satu pegawai; dibatasi snapshot penerima miliknya."
     },
     {
       "url": "/attendance/clarifications/me",

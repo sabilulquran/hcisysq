@@ -26,6 +26,10 @@ describe("admin module catalog", () => {
     // DOC-001/DOC-002 Package 1 ships a real Human Capital workspace.
     expect(getAdminService("documents")?.stage).toBe("available");
     expect(getAdminService("documents")?.href).toBe("/admin/documents");
+    // NOTIF-002 Package 1 ships announcements; reminders and external adapters stay out.
+    expect(getAdminService("communications")?.stage).toBe("available");
+    expect(getAdminService("communications")?.href).toBe("/admin/announcements");
+    expect(getAdminService("communications")?.featureIds).not.toContain("NOTIF-003");
   });
 
   it("routes every planned module to the authenticated admin coming-soon surface", () => {

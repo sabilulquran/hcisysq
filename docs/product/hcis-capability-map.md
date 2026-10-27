@@ -109,7 +109,7 @@ Employee services continue with:
 
 - Delivery adapters for transactional notifications — NOTIF-001. The in-app adapter is implemented through NOTIF-004; external email/WhatsApp adapters remain separate.
 - Recipient-owned in-app notification center — NOTIF-004.
-- Announcements — NOTIF-002.
+- Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
 - Reminders and scheduled notifications — NOTIF-003.
 
 ### 7. Talent acquisition

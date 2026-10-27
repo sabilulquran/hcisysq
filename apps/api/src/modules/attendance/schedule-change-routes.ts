@@ -16,7 +16,9 @@ import {
 // ATT-011-4b §5.3: Perubahan Jadwal routes. Preview plans without writing; apply re-plans under locks and
 // refuses on any difference from the preview. Everything needs attendance.schedule.manage.
 
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)));
+// A real calendar date: 2026-02-30 would roll over in JavaScript and then fail in PostgreSQL.
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value);
 const mondaySchema = dateSchema.refine((value) => new Date(`${value}T00:00:00Z`).getUTCDay() === 1, "Harus hari Senin.");
 const scope = {
   employeeIds: z.array(z.string().uuid()).max(500).optional(),
@@ -76,7 +78,13 @@ function invalid(reply: FastifyReply, error: z.ZodError) {
 }
 
 async function sendChangeError(reply: FastifyReply, error: unknown) {
+  // A roster version or idempotency key written meanwhile by another request: the same as a stale preview.
+  if ((error as { code?: unknown } | null)?.code === "23505") {
+    error = new ScheduleChangeError(409, "SCHEDULE_CHANGED_SINCE_PREVIEW", "Jadwal sudah diubah orang lain. Lihat dampak lagi.");
+  }
   if (!(error instanceof ScheduleChangeError)) throw error;
+  // §5.5: conflicts change nothing, but are logged (code only, no personal data).
+  if (error.statusCode === 409) reply.log.info({ code: error.code }, "schedule change conflict");
   reply.header("Cache-Control", "no-store");
   return reply.status(error.statusCode).send({
     code: error.code, message: error.message, ...(error.details === undefined ? {} : { issues: error.details }),
@@ -215,7 +223,9 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
     return reply.send({
       ...changeSet.rows[0],
       items: items.rows.map(({ total, ...row }) => { void total; return row; }),
-      page, pageSize, total: items.rows[0]?.total ?? 0,
+      page, pageSize, total: items.rows[0]?.total ?? (page > 1 ? (await pool.query<{ total: number }>(
+        "SELECT count(*)::int AS total FROM attendance_schedule_change_items WHERE change_set_id = $1", [params.data.changeSetId],
+      )).rows[0]?.total ?? 0 : 0),
     });
   });
 
@@ -246,7 +256,7 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
          AND ($2::text IS NULL OR employee.full_name ILIKE '%' || $2 || '%' OR employee.employee_number ILIKE '%' || $2 || '%')
        ORDER BY employee.full_name, employee.id
        LIMIT $3 OFFSET $4`,
-      [unitId ?? null, q || null, pageSize, (page - 1) * pageSize],
+      [unitId ?? null, q ? q.replace(/[\\%_]/g, (character) => `\\${character}`) : null, pageSize, (page - 1) * pageSize],
     );
     const ids = employees.rows.map((row) => row.id);
     const days = await pool.query<{ employeeId: string; date: string; source: string; scheduleTemplateId: string | null; changeSetId: string | null }>(
@@ -269,8 +279,12 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
          END AS source,
          CASE WHEN entry.roster_id IS NOT NULL THEN entry.schedule_template_id
               WHEN holiday.calendar_date IS NULL AND assigned.count = 1 THEN assigned.template_id END AS "scheduleTemplateId",
-         CASE WHEN entry.roster_id IS NOT NULL THEN rosters.change_set_id
-              WHEN holiday.calendar_date IS NULL AND assigned.count = 1 THEN assigned.change_set_id END AS "changeSetId"
+         -- A roster cell carried over from an older version is not this change set's doing.
+         CASE WHEN entry.roster_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM attendance_schedule_change_items item
+                WHERE item.change_set_id = rosters.change_set_id AND item.employee_id = person.id AND item.work_date_from = days.work_date
+              ) THEN rosters.change_set_id
+              WHEN entry.roster_id IS NULL AND holiday.calendar_date IS NULL AND assigned.count = 1 THEN assigned.change_set_id END AS "changeSetId"
        FROM unnest($1::uuid[]) AS person(id)
        CROSS JOIN days
        LEFT JOIN rosters ON rosters.week_start = date_trunc('week', days.work_date)::date
@@ -286,6 +300,13 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
            AND days.work_date >= assignment.effective_from
            AND (assignment.effective_to IS NULL OR days.work_date <= assignment.effective_to)
            AND (assignment.weekday_mask & (1 << (extract(isodow from days.work_date)::int - 1))) <> 0
+           -- Like the engine: a pattern counts only while its shift has a version valid that day.
+           AND EXISTS (
+             SELECT 1 FROM attendance_schedule_versions version
+             WHERE version.schedule_template_id = assignment.schedule_template_id
+               AND version.effective_from <= ((days.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta')
+               AND (version.effective_to IS NULL OR version.effective_to > ((days.work_date + time '12:00') AT TIME ZONE 'Asia/Jakarta'))
+           )
        ) assigned ON true
        ORDER BY person.id, days.work_date`,
       [ids, from, to],
@@ -313,7 +334,12 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
     reply.header("Cache-Control", "no-store");
     return reply.send({
       from, to, page, pageSize,
-      total: employees.rows[0]?.total ?? 0,
+      total: employees.rows[0]?.total ?? (page > 1 ? (await pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM employees employee
+         WHERE employee.status = 'active' AND ($1::uuid IS NULL OR employee.organizational_unit_id = $1)
+           AND ($2::text IS NULL OR employee.full_name ILIKE '%' || $2 || '%' OR employee.employee_number ILIKE '%' || $2 || '%')`,
+        [unitId ?? null, q ? q.replace(/[\\%_]/g, (character) => `\\${character}`) : null],
+      )).rows[0]?.total ?? 0 : 0),
       employees: employees.rows.map(({ total, ...employee }) => {
         void total;
         return { ...employee, days: (byEmployee.get(employee.id) ?? []).map(({ employeeId, ...day }) => { void employeeId; return day; }) };

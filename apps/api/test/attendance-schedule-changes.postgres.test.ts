@@ -230,6 +230,54 @@ describe.skipIf(!allowed)("ATT-011-4b schedule change sets (PostgreSQL)", () => 
     expect((await preview({ kind: "copy", employeeIds: [first], sourceWeekStart: addDays(week, 1), targetWeekStarts: [addDays(week, 7)] })).statusCode).toBe(400);
   });
 
+  it("clears a holiday shift an earlier change wrote, and copies around a holiday in the source week", async () => {
+    const holiday = addDays(week, 2);
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ($1::date, false, 'Synthetic holiday')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+      [holiday],
+    );
+    const onHoliday = await apply({ kind: "replacement", employeeIds: [first], scheduleTemplateId: afternoon, from: holiday, to: holiday, workOnHolidays: true, note: "Tugas libur" });
+    expect(onHoliday.applied.statusCode, onHoliday.applied.body).toBe(201);
+    expect((await calendar(holiday, holiday)).employees.find((employee) => employee.id === first)!.days[0]).toMatchObject({ source: "roster", scheduleTemplateId: afternoon });
+
+    const off = await apply({ kind: "replacement", employeeIds: [first], scheduleTemplateId: null, from: addDays(week, 1), to: addDays(week, 3), note: "Batal" });
+    expect(off.applied.statusCode, off.applied.body).toBe(201);
+    const days = (await calendar(week, addDays(week, 4))).employees.find((employee) => employee.id === first)!.days;
+    expect(days.map((day) => day.source)).toEqual(["pattern", "roster_off", "holiday", "roster_off", "pattern"]);
+    const items = (await call("GET", `/admin/attendance/schedule-changes/${off.applied.json().id}`)).json().items;
+    expect(items.map((entry: { action: string }) => entry.action).sort()).toEqual(["roster_entry_cleared", "roster_entry_off", "roster_entry_off"]);
+
+    const copied = await apply({ kind: "copy", employeeIds: [second], sourceWeekStart: week, targetWeekStarts: [addDays(week, 7)] });
+    expect(copied.applied.statusCode, copied.applied.body).toBe(201);
+    const target = await client.query<{ workDate: string }>(
+      `SELECT entry.work_date::text AS "workDate" FROM attendance_roster_entries entry JOIN attendance_rosters roster ON roster.id = entry.roster_id
+       WHERE roster.change_set_id = $1 AND entry.employee_id = $2 ORDER BY entry.work_date`,
+      [copied.applied.json().id, second],
+    );
+    expect(target.rows.map((row) => row.workDate)).not.toContain(addDays(week, 9));
+    expect(target.rows).toHaveLength(6);
+  });
+
+  it("blocks an unknown shift and refuses an idempotency key reused for another change", async () => {
+    const missingShift = { kind: "pattern", employeeIds: [first], scheduleTemplateId: randomUUID(), from: week, to: null, weekdays: [1], untickedDays: "off" };
+    const unknown = await preview(missingShift);
+    expect(unknown.json().issues).toEqual([expect.objectContaining({ code: "shift_not_valid", blocking: true })]);
+    const refused = await call("POST", "/admin/attendance/schedule-changes", { change: missingShift, previewFingerprint: unknown.json().fingerprint });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().code).toBe("SCHEDULE_CHANGE_BLOCKED");
+    expect(await assignments(first)).toHaveLength(1);
+
+    const key = randomUUID();
+    const change = { kind: "replacement", employeeIds: [first], scheduleTemplateId: afternoon, from: week, to: week, note: "Satu" };
+    expect((await apply(change, key)).applied.statusCode).toBe(201);
+    const other = { ...change, note: "Dua" };
+    const otherPreview = (await preview(other)).json();
+    const reused = await call("POST", "/admin/attendance/schedule-changes", { change: other, previewFingerprint: otherPreview.fingerprint }, key);
+    expect(reused.statusCode).toBe(422);
+    expect(reused.json().code).toBe("IDEMPOTENCY_KEY_REUSED");
+  });
+
   it("copies the schedule in force on the source week, pattern included", async () => {
     const { applied } = await apply({ kind: "copy", employeeIds: [first], sourceWeekStart: week, targetWeekStarts: [addDays(week, 7)] });
     expect(applied.statusCode, applied.body).toBe(201);

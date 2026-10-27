@@ -79,6 +79,7 @@ describe("ATT-011-4b schedule change routes", () => {
       { kind: "replacement", employeeIds: [EMPLOYEE], scheduleTemplateId: SHIFT, from: "2099-01-05", to: "2099-01-05" },
       { kind: "copy", employeeIds: [EMPLOYEE], sourceWeekStart: "2099-01-05", targetWeekStarts: ["2099-01-05"] },
       { kind: "copy", employeeIds: [EMPLOYEE], sourceWeekStart: "2099-01-06", targetWeekStarts: ["2099-01-12"] },
+      { ...pattern, from: "2099-02-30" },
     ];
     for (const change of refused) {
       const response = await call("POST", "/admin/attendance/schedule-changes/preview", change);

@@ -31,7 +31,14 @@ export type ScheduleChangeOp =
   | { action: "assignment_ended"; employeeId: string; assignmentId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string; previousTo: string | null }
   | { action: "assignment_removed"; employeeId: string; assignmentId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string | null }
   | { action: "roster_entry_set"; employeeId: string; workDate: string; scheduleTemplateId: string; scheduleVersionId: string }
-  | { action: "roster_entry_off"; employeeId: string; workDate: string };
+  | { action: "roster_entry_off"; employeeId: string; workDate: string }
+  /** A skipped holiday whose latest published roster still has an entry: removed so the day is Libur. */
+  | { action: "roster_entry_cleared"; employeeId: string; workDate: string };
+
+type RosterOp = Extract<ScheduleChangeOp, { workDate: string }>;
+function isRosterOp(op: ScheduleChangeOp): op is RosterOp {
+  return op.action === "roster_entry_set" || op.action === "roster_entry_off" || op.action === "roster_entry_cleared";
+}
 
 export type ScheduleChangeIssue = {
   employeeId: string | null;
@@ -235,8 +242,14 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
     return versionId;
   };
 
+  // Holiday dates a replacement or copy leaves alone; an entry an earlier change put there is cleared.
+  const skippedHolidays: Array<[string, string]> = [];
+
   if (input.kind === "pattern") {
     const mask = maskOf(input.weekdays);
+    if (input.scheduleTemplateId && !(await versionValidOn(db, input.scheduleTemplateId, input.from))) {
+      issues.push({ employeeId: null, employeeName: null, code: "shift_not_valid", date: input.from, message: `Shift tidak ada, nonaktif, atau belum berlaku pada ${input.from}.`, blocking: true });
+    }
     for (const employee of active) {
       const to = lastDate.get(employee.id) ?? input.to;
       const existing = assignmentRows.rows.filter((row) => row.employeeId === employee.id);
@@ -276,7 +289,10 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
   } else if (input.kind === "replacement") {
     for (const employee of active) {
       for (const date of eachDate(input.from, endFor(employee.id) < input.to ? endFor(employee.id) : input.to)) {
-        if (isHoliday.has(date) && !(input.workOnHolidays && input.scheduleTemplateId)) continue;
+        if (isHoliday.has(date) && !(input.workOnHolidays && input.scheduleTemplateId)) {
+          skippedHolidays.push([employee.id, date]);
+          continue;
+        }
         if (input.scheduleTemplateId) {
           const versionId = await pinned(employee.id, input.scheduleTemplateId, date);
           if (versionId) ops.push({ action: "roster_entry_set", employeeId: employee.id, workDate: date, scheduleTemplateId: input.scheduleTemplateId, scheduleVersionId: versionId });
@@ -290,10 +306,15 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
     for (const employee of active) {
       for (let offset = 0; offset < 7; offset += 1) {
         const source = await resolveSchedule(db as PoolClient, employee.id, addDays(input.sourceWeekStart, offset));
+        // A holiday in the source week is not the employee's schedule: leave that weekday as it is.
+        if (source.state === "off" && source.reason === "calendar_holiday") continue;
         for (const week of input.targetWeekStarts) {
           const date = addDays(week, offset);
           if (date > endFor(employee.id)) continue;
-          if (isHoliday.has(date) && !(input.workOnHolidays && source.state === "scheduled")) continue;
+          if (isHoliday.has(date) && !(input.workOnHolidays && source.state === "scheduled")) {
+            skippedHolidays.push([employee.id, date]);
+            continue;
+          }
           if (source.state === "configuration_error") {
             issues.push({ employeeId: employee.id, employeeName: employee.fullName, code: "source_conflict", date, message: `Jadwal sumber ${addDays(input.sourceWeekStart, offset)} bermasalah; tanggal ${date} tidak disalin.`, blocking: false });
           } else if (source.state === "scheduled" && source.scheduleTemplateId) {
@@ -307,9 +328,28 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
     }
   }
 
+  if (skippedHolidays.length) {
+    const existing = await db.query<{ employeeId: string; workDate: string }>(
+      `WITH pairs AS (
+         SELECT * FROM unnest($1::uuid[], $2::date[]) AS pair(employee_id, work_date)
+       ), latest AS (
+         SELECT DISTINCT ON (week_start) id, week_start FROM attendance_rosters
+         WHERE status = 'PUBLISHED' AND week_start IN (SELECT date_trunc('week', work_date)::date FROM pairs)
+         ORDER BY week_start, version DESC
+       )
+       SELECT entry.employee_id AS "employeeId", entry.work_date::text AS "workDate"
+       FROM pairs
+       JOIN latest ON latest.week_start = date_trunc('week', pairs.work_date)::date
+       JOIN attendance_roster_entries entry
+         ON entry.roster_id = latest.id AND entry.employee_id = pairs.employee_id AND entry.work_date = pairs.work_date
+       ORDER BY entry.employee_id, entry.work_date`,
+      [skippedHolidays.map(([employeeId]) => employeeId), skippedHolidays.map(([, date]) => date)],
+    );
+    for (const row of existing.rows) ops.push({ action: "roster_entry_cleared", employeeId: row.employeeId, workDate: row.workDate });
+  }
+
   // Roster weeks: a draft roster typed by hand would be overtaken silently, so it blocks (§5.3 step 3).
-  const weeks = [...new Set(ops.filter((op) => op.action === "roster_entry_set" || op.action === "roster_entry_off")
-    .map((op) => mondayOf((op as { workDate: string }).workDate)))].sort();
+  const weeks = [...new Set(ops.filter(isRosterOp).map((op) => mondayOf(op.workDate)))].sort();
   const rosterState = await db.query<{ weekStart: string; latestPublished: string | null; draftBy: string | null }>(
     `SELECT week.week_start::text AS "weekStart",
        (SELECT roster.id::text FROM attendance_rosters roster WHERE roster.week_start = week.week_start AND roster.status = 'PUBLISHED'
@@ -351,7 +391,7 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
       to: range.openEnded ? null : range.to,
       newEmployees,
       replacedEmployees,
-      rosterDays: ops.filter((op) => op.action === "roster_entry_set" || op.action === "roster_entry_off").length,
+      rosterDays: ops.filter(isRosterOp).length,
       blockingIssues: issues.filter((issue) => issue.blocking).length,
     },
   };
@@ -384,18 +424,27 @@ export async function applyScheduleChange(
   now = new Date(),
 ) {
   if (idempotencyKey) {
-    const replay = await client.query<{ id: string }>("SELECT id FROM attendance_schedule_change_sets WHERE idempotency_key = $1", [idempotencyKey]);
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`attendance-schedule-change-key:${idempotencyKey}`]);
+    const replay = await client.query<{ id: string; same: boolean }>(
+      "SELECT id, input = $2::jsonb AS same FROM attendance_schedule_change_sets WHERE idempotency_key = $1",
+      [idempotencyKey, JSON.stringify(normalizeInput(input))],
+    );
+    if (replay.rows[0] && !replay.rows[0].same) {
+      throw new ScheduleChangeError(422, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key sudah dipakai untuk perubahan lain.");
+    }
     if (replay.rows[0]) return { id: replay.rows[0].id, replayed: true, summary: null, employeeIds: [] as string[] };
   }
   const first = await planScheduleChange(client, input, now);
-  const locks = [...first.employees.map((employee) => `schedule-employee:${employee.id}`), ...first.weeks.map((week) => `roster-week:${week}`)].sort();
-  for (const key of locks) await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [key]);
+  const locks = [...first.employees.map((employee) => `attendance-schedule-employee:${employee.id}`), ...first.weeks.map((week) => `attendance-roster-week:${week}`)].sort();
+  for (const key of locks) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
   const plan = await planScheduleChange(client, input, now);
   if (plan.fingerprint !== previewFingerprint) {
     throw new ScheduleChangeError(409, "SCHEDULE_CHANGED_SINCE_PREVIEW", "Jadwal sudah diubah orang lain. Lihat dampak lagi.");
   }
   const draft = plan.issues.find((issue) => issue.code === "draft_roster");
   if (draft) throw new ScheduleChangeError(409, "ROSTER_DRAFT_EXISTS", draft.message);
+  const started = plan.issues.find((issue) => issue.code === "started");
+  if (started) throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_STARTED", started.message);
   const blocking = plan.issues.filter((issue) => issue.blocking);
   if (blocking.length) {
     throw new ScheduleChangeError(422, "SCHEDULE_CHANGE_BLOCKED", "Masih ada pegawai bermasalah. Kecualikan atau selesaikan dulu.", blocking);
@@ -409,24 +458,21 @@ export async function applyScheduleChange(
     [changeSetId, input.kind, actorAccountId, input.note ?? null, JSON.stringify(normalizeInput(input)),
       JSON.stringify(plan.summary), plan.fingerprint, idempotencyKey],
   );
-  let sequence = 0;
-  const item = (op: ScheduleChangeOp, fields: { from: string; to: string | null; mask: number | null; template: string | null; before: unknown; after: unknown }) => client.query(
-    `INSERT INTO attendance_schedule_change_items (
-       id, change_set_id, sequence, employee_id, action, work_date_from, work_date_to, weekday_mask, schedule_template_id, before_state, after_state
-     ) VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10::jsonb, $11::jsonb)`,
-    [randomUUID(), changeSetId, ++sequence, op.employeeId, op.action, fields.from, fields.to, fields.mask, fields.template,
-      fields.before === null ? null : JSON.stringify(fields.before), fields.after === null ? null : JSON.stringify(fields.after)],
-  );
+  // Items are written in one statement at the end (a replacement can touch 500 employees x 62 days).
+  const items: Array<{ op: ScheduleChangeOp; from: string; to: string | null; mask: number | null; template: string | null; before: unknown; after: unknown }> = [];
+  const item = (op: ScheduleChangeOp, fields: { from: string; to: string | null; mask: number | null; template: string | null; before: unknown; after: unknown }) => {
+    items.push({ op, ...fields });
+  };
 
   // Ends and removals first, so the new patterns never overlap an old one inside the transaction.
   const order = (op: ScheduleChangeOp) => (op.action === "assignment_ended" || op.action === "assignment_removed" ? 0 : op.action === "assignment_created" ? 1 : 2);
   for (const op of [...plan.ops].sort((left, right) => order(left) - order(right))) {
     if (op.action === "assignment_ended") {
       await client.query("UPDATE attendance_schedule_assignments SET effective_to = $2::date WHERE id = $1", [op.assignmentId, op.to]);
-      await item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: { assignmentId: op.assignmentId, effectiveTo: op.previousTo }, after: { assignmentId: op.assignmentId, effectiveTo: op.to } });
+      item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: { assignmentId: op.assignmentId, effectiveTo: op.previousTo }, after: { assignmentId: op.assignmentId, effectiveTo: op.to } });
     } else if (op.action === "assignment_removed") {
       await client.query("DELETE FROM attendance_schedule_assignments WHERE id = $1", [op.assignmentId]);
-      await item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: { assignmentId: op.assignmentId, effectiveFrom: op.from, effectiveTo: op.to, weekdayMask: op.weekdayMask, scheduleTemplateId: op.scheduleTemplateId }, after: null });
+      item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: { assignmentId: op.assignmentId, effectiveFrom: op.from, effectiveTo: op.to, weekdayMask: op.weekdayMask, scheduleTemplateId: op.scheduleTemplateId }, after: null });
     } else if (op.action === "assignment_created") {
       const id = randomUUID();
       await client.query(
@@ -434,7 +480,7 @@ export async function applyScheduleChange(
          VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8)`,
         [id, op.employeeId, op.scheduleTemplateId, op.weekdayMask, op.from, op.to, actorAccountId, changeSetId],
       );
-      await item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: null, after: { assignmentId: id, reason: op.reason } });
+      item(op, { from: op.from, to: op.to, mask: op.weekdayMask, template: op.scheduleTemplateId, before: null, after: { assignmentId: id, reason: op.reason } });
     }
   }
 
@@ -462,31 +508,92 @@ export async function applyScheduleChange(
         [rosterId, latest.rows[0].id],
       );
     }
-    for (const op of plan.ops) {
-      if ((op.action !== "roster_entry_set" && op.action !== "roster_entry_off") || mondayOf(op.workDate) !== week) continue;
-      const before = await client.query(
-        `SELECT schedule_template_id AS "scheduleTemplateId", is_off AS "isOff" FROM attendance_roster_entries
-         WHERE roster_id = $1 AND employee_id = $2 AND work_date = $3::date`,
-        [rosterId, op.employeeId, op.workDate],
-      );
-      const template = op.action === "roster_entry_set" ? op.scheduleTemplateId : null;
-      const versionId = op.action === "roster_entry_set" ? op.scheduleVersionId : null;
+    const weekOps = plan.ops.filter((op): op is RosterOp => isRosterOp(op) && mondayOf(op.workDate) === week);
+    const before = await client.query<{ employeeId: string; workDate: string; scheduleTemplateId: string | null; scheduleVersionId: string | null; isOff: boolean }>(
+      `SELECT entry.employee_id AS "employeeId", entry.work_date::text AS "workDate", entry.schedule_template_id AS "scheduleTemplateId",
+         entry.schedule_version_id AS "scheduleVersionId", entry.is_off AS "isOff"
+       FROM attendance_roster_entries entry
+       JOIN unnest($2::uuid[], $3::date[]) AS pair(employee_id, work_date)
+         ON pair.employee_id = entry.employee_id AND pair.work_date = entry.work_date
+       WHERE entry.roster_id = $1`,
+      [rosterId, weekOps.map((op) => op.employeeId), weekOps.map((op) => op.workDate)],
+    );
+    const beforeOf = new Map(before.rows.map(({ employeeId, workDate, ...state }) => [`${employeeId}:${workDate}`, state]));
+    const sets = weekOps.filter((op) => op.action !== "roster_entry_cleared");
+    if (sets.length) {
       await client.query(
         `INSERT INTO attendance_roster_entries (roster_id, employee_id, work_date, schedule_template_id, schedule_version_id, is_off, note)
-         VALUES ($1, $2, $3::date, $4, $5, $6, $7)
+         SELECT $1, change.employee_id, change.work_date, change.template_id, change.version_id, change.is_off, $7
+         FROM unnest($2::uuid[], $3::date[], $4::uuid[], $5::uuid[], $6::boolean[]) AS change(employee_id, work_date, template_id, version_id, is_off)
          ON CONFLICT (roster_id, employee_id, work_date) DO UPDATE SET
            schedule_template_id = EXCLUDED.schedule_template_id, schedule_version_id = EXCLUDED.schedule_version_id,
            is_off = EXCLUDED.is_off, note = EXCLUDED.note`,
-        [rosterId, op.employeeId, op.workDate, template, versionId, op.action === "roster_entry_off", input.note ?? null],
+        [
+          rosterId, sets.map((op) => op.employeeId), sets.map((op) => op.workDate),
+          sets.map((op) => (op.action === "roster_entry_set" ? op.scheduleTemplateId : null)),
+          sets.map((op) => (op.action === "roster_entry_set" ? op.scheduleVersionId : null)),
+          sets.map((op) => op.action === "roster_entry_off"), input.note ?? null,
+        ],
       );
-      await item(op, { from: op.workDate, to: op.workDate, mask: null, template, before: before.rows[0] ?? null, after: { rosterId, scheduleTemplateId: template, isOff: op.action === "roster_entry_off" } });
+    }
+    const cleared = weekOps.filter((op) => op.action === "roster_entry_cleared");
+    if (cleared.length) {
+      await client.query(
+        `DELETE FROM attendance_roster_entries entry
+         USING unnest($2::uuid[], $3::date[]) AS pair(employee_id, work_date)
+         WHERE entry.roster_id = $1 AND entry.employee_id = pair.employee_id AND entry.work_date = pair.work_date`,
+        [rosterId, cleared.map((op) => op.employeeId), cleared.map((op) => op.workDate)],
+      );
+    }
+    for (const op of weekOps) {
+      const template = op.action === "roster_entry_set" ? op.scheduleTemplateId : null;
+      item(op, {
+        from: op.workDate, to: op.workDate, mask: null, template,
+        before: beforeOf.get(`${op.employeeId}:${op.workDate}`) ?? null,
+        after: op.action === "roster_entry_cleared" ? null : {
+          rosterId, scheduleTemplateId: template, scheduleVersionId: op.action === "roster_entry_set" ? op.scheduleVersionId : null,
+          isOff: op.action === "roster_entry_off",
+        },
+      });
     }
   }
+
+  // §5.3: no overlapping patterns may remain; a hand-made assignment written meanwhile is caught here.
+  const overlap = await client.query(
+    `SELECT 1 FROM attendance_schedule_assignments one
+     JOIN attendance_schedule_assignments other
+       ON other.employee_id = one.employee_id AND other.id <> one.id
+      AND (other.weekday_mask & one.weekday_mask) <> 0
+      AND other.effective_from <= coalesce(one.effective_to, 'infinity'::date)
+      AND one.effective_from <= coalesce(other.effective_to, 'infinity'::date)
+     WHERE one.change_set_id = $1
+     LIMIT 1`,
+    [changeSetId],
+  );
+  if (overlap.rows[0]) {
+    throw new ScheduleChangeError(409, "SCHEDULE_CHANGED_SINCE_PREVIEW", "Jadwal sudah diubah orang lain. Lihat dampak lagi.");
+  }
+
+  await client.query(
+    `INSERT INTO attendance_schedule_change_items (
+       id, change_set_id, sequence, employee_id, action, work_date_from, work_date_to, weekday_mask, schedule_template_id, before_state, after_state
+     )
+     SELECT gen_random_uuid(), $1, row.sequence, row.employee_id, row.action, row.work_date_from, row.work_date_to,
+       row.weekday_mask, row.schedule_template_id, row.before_state::jsonb, row.after_state::jsonb
+     FROM unnest($2::int[], $3::uuid[], $4::text[], $5::date[], $6::date[], $7::int[], $8::uuid[], $9::text[], $10::text[])
+       AS row(sequence, employee_id, action, work_date_from, work_date_to, weekday_mask, schedule_template_id, before_state, after_state)`,
+    [
+      changeSetId, items.map((_, index) => index + 1), items.map((entry) => entry.op.employeeId), items.map((entry) => entry.op.action),
+      items.map((entry) => entry.from), items.map((entry) => entry.to), items.map((entry) => entry.mask), items.map((entry) => entry.template),
+      items.map((entry) => (entry.before === null ? null : JSON.stringify(entry.before))),
+      items.map((entry) => (entry.after === null ? null : JSON.stringify(entry.after))),
+    ],
+  );
 
   await client.query(
     `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
      VALUES ($1, $2, 'attendance.schedule_change.applied', 'attendance_schedule_change_set', $3, $4::jsonb)`,
-    [randomUUID(), actorAccountId, changeSetId, JSON.stringify({ kind: input.kind, ...plan.summary, items: sequence })],
+    [randomUUID(), actorAccountId, changeSetId, JSON.stringify({ kind: input.kind, ...plan.summary, items: items.length })],
   );
   return { id: changeSetId, replayed: false, summary: plan.summary, employeeIds: plan.employees.map((employee) => employee.id) };
 }

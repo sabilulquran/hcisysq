@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS attendance_schedule_change_items (
   sequence integer NOT NULL CHECK (sequence >= 1),
   employee_id uuid NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
   action text NOT NULL CHECK (action IN (
-    'assignment_created', 'assignment_ended', 'assignment_removed', 'roster_entry_set', 'roster_entry_off'
+    'assignment_created', 'assignment_ended', 'assignment_removed', 'roster_entry_set', 'roster_entry_off',
+    'roster_entry_cleared'
   )),
   work_date_from date NOT NULL,
   work_date_to date NULL,

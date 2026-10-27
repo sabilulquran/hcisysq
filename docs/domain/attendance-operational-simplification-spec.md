@@ -659,8 +659,15 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   nullable `change_set_id` pada assignment dan roster. Aditif; rollback di header. Berbeda dari rancangan §5.3:
   `base_state` tidak disimpan terpisah karena `preview_fingerprint` sudah mencakup input, pegawai, assignment,
   versi roster terakhir per minggu, draft, libur, tukar shift, dan rencana itu sendiri; status hanya
-  `applied` (transaksi gagal tidak meninggalkan baris); aksi `assignment_removed` menggantikan
-  `roster_entry_cleared` untuk pola yang belum mulai.
+  `applied` (transaksi gagal tidak meninggalkan baris); aksi tambahan `assignment_removed` untuk pola yang
+  belum mulai. `roster_entry_cleared` menghapus entri roster pada libur yang dilewati (misalnya shift libur dari
+  perubahan sebelumnya) sehingga hari itu kembali Libur.
+- **Konkurensi:** kunci per pegawai dan per minggu roster memakai kunci yang sama dengan Tukar Shift
+  (`attendance-roster-week:<minggu>`). Halaman roster/pola lama tidak bertransaksi; tabrakannya tertangkap oleh
+  pemeriksaan pola tumpang tindih setelah penulisan dan oleh unique constraint, keduanya menjadi
+  `409 SCHEDULE_CHANGED_SINCE_PREVIEW`. `Idempotency-Key` yang dipakai untuk isi lain → `422
+  IDEMPOTENCY_KEY_REUSED`; shift hari ini sudah mulai → `422 SCHEDULE_CHANGE_STARTED`.
+- **Salin jadwal:** libur pada minggu sumber tidak disalin (hari itu di minggu tujuan dibiarkan).
 - **Atur jadwal:** pola lama yang tumpang tindih diakhiri sehari sebelum mulai (atau dihapus bila belum mulai),
   sisa sesudah periode dibuat ulang, dan "biarkan seperti sekarang" membuat pola lama khusus hari yang tidak
   dicentang. Pola tanpa shift = Libur di semua hari.

@@ -547,6 +547,8 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `EMPLOYMENT_REASON_REQUIRED` | 400 | Termination/demotion/reversal without a valid reason code. | "Pilih alasan tindakan." |
 | `EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED` | 409 | Recording while a preview warning (D-04) is not acknowledged. | "Periksa dan centang peringatan sebelum menyimpan." |
 | `DECISION_DOCUMENT_EMPLOYEE_MISMATCH` | 422 | Perjanjian Kerja of another employee linked. | "Perjanjian Kerja ini milik pegawai lain." |
+| `IDEMPOTENCY_KEY_REQUIRED` | 400 | Recording an action without the header. (Added with S5.) | "Permintaan tindakan membutuhkan header Idempotency-Key." |
+| `IDEMPOTENCY_KEY_CONFLICT` | 409 | The key already recorded an action for another employee. (Added with S5.) | "Kunci idempotensi ini sudah dipakai untuk pegawai lain." |
 | `EMPLOYMENT_EXCLUDED_BUMY` | 422 | Action on an employee excluded as BUMY staff. | "Staf BUMY tidak dikelola di HCIS." |
 | `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` | 422 | Action on a record excluded as Pengurus Yayasan. | "Pengurus Yayasan bukan pegawai; aksesnya diatur sebagai akun Organ Yayasan." |
 | `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` | 409 | Any write to a record marked outside HCIS management. | "Data ini di luar pengelolaan HCIS dan hanya dapat dibaca." |

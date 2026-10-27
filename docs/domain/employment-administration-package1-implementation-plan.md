@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 implemented (not yet released); S2B and S5–S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 implemented (not yet released); S5 API implemented (S5 UI split into its own step S5B); S2B, S5A and S6–S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -115,6 +115,21 @@ Independent review (2026-10-27) closed on this step: the lock, the kind, the Per
 - **Rollback:** revert; table remains empty-or-unused.
 
 ## S5 — Contract actions, projection writer, import guard
+
+**Status:** API IMPLEMENTED on branch `feat/emp-s5-contract-actions` (split: the action dialog is step S5B). Delivered without a migration: pure projection mapping `domain/projection.ts`; store `infrastructure/postgres-action-store.ts` (plan writer, idempotent replay, optimistic version check, projection refresh); routes `action-routes.ts` (`POST /admin/employees/{id}/employment-actions/preview` and `POST /admin/employees/{id}/employment-actions`) for `HIRE`, `CONTRACT_EXTENSION`, `CATEGORY_CHANGE` and `TERMINATION`; EMP-004 import guard plus audit `employment.import.fields_ignored`; projection service and CLI `npm --workspace @hcis/api run employment:refresh-projection` (dry-run default); OpenAPI 0.4.0; AUTH-011 manifest entries. Tests: 16 route, 4 import guard, on top of the S1 planner unit tests.
+
+Decisions taken in this step, DRAFT until the owner says otherwise:
+
+- **Preview needs AUTHORITATIVE too.** Spec §8.1 disables actions in `SHADOW`; a preview is an action, so both endpoints answer `EMPLOYMENT_HISTORY_DISABLED` outside `AUTHORITATIVE`. The rollout endpoint still refuses `AUTHORITATIVE` until S5A, so nothing can be recorded in production yet.
+- **Daily refresh host (spec §8.4 TBD).** Mi8VPS has no cron or systemd, so the refresh runs as the CLI above under `sq-core-worker.sh` supervision rather than an in-process scheduler: a release that is restarted or rolled back then cannot silently stop the job, and the same command serves a manual re-projection. The worker entry is added with the S8 runbook.
+- **`HIRE` locks the employee row**, not an employment (there is none yet), so two concurrent hires cannot both pass the "no active employment" check.
+- **Import preview wording.** The commit-side guard and its audit event are implemented here; showing "Diabaikan — dikelola lewat riwayat kepegawaian" in the EMP-004 preview screen lands with S5B, which owns the employment UI.
+- **Placements stay on the legacy unit/position tables in Package 1.** The nine projected columns point at those tables, so a placement recorded against an ORG-004 stable key would clear an employee's unit for every legacy consumer, and the import guard would stop import from restoring it. The route refuses `unitKey`/`positionKey`; S6 adds them together with the key-to-legacy mapping.
+- **The projection keeps `functional_position`/`structural_position` when the placement carries no label.** Only a baseline placement carries them; an action-recorded placement has nothing to say about those two columns, so the stored values stay.
+- **Idempotency is scoped to the employee.** The same key sent for another employee is refused with `IDEMPOTENCY_KEY_CONFLICT` (409) instead of answering "already recorded" and dropping that action. A key reused for the same employee still replays the original.
+- **Still open, deliberately.** The §11 preview note about ORG-004 authority ("Penempatan ini tidak mengubah kewenangan approval…") belongs to the dialog and lands with S5B. The §12 exclusions `EMPLOYMENT_EXCLUDED_BUMY` and `EMPLOYMENT_EXCLUDED_FOUNDATION_BOARD` need the S2B marker on `employees`; until then a hire for such a record is possible, which is why S2B must land before AUTHORITATIVE (added to the S8 exit criteria).
+
+Independent review (2026-10-27) closed on this step: the replay lookup moved behind authentication and is scoped to the employee; the projection service refuses to write outside AUTHORITATIVE and now commits in batches of 200; closing a term or placement records `closed_by_action_id`; exclusion-constraint violations answer 409 `EMPLOYMENT_OVERLAP` instead of 500; the preview state is computed from the post-action history; an employee removed from the master is refused; a document id that does not exist answers 404; and the guarded import branch no longer creates unit/position rows it throws away. Tests added for HIRE, CATEGORY_CHANGE, the version conflict, the constraint refusal, and both replay cases.
 
 **Spec:** EMP-005-A/B/C/D/F/G/H, §6, §7, §8.4, §8.5, §11, §12.  
 **Prerequisite decisions:** D-03, D-05, D-07, D-10, D-12, D-13, D-19 (accepted); D-04 (accepted: warnings only, never blocking); ops decision for the daily refresh host (spec §8.4 TBD).

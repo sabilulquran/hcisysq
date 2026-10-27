@@ -5,11 +5,13 @@ import {
   EMPLOYEE_IMPORT_SHEET,
   type EmployeeImportCommitResult,
   type EmployeeImportPreview,
+  type EmployeeImportPreviewPage,
   type PlannedEmployeeImportRow,
 } from "../domain/employee-import.js";
 import { parseEmployeeCsv } from "../infrastructure/parse-employee-csv.js";
 import { parseEmployeeWorkbook } from "../infrastructure/parse-employee-workbook.js";
-import type { EmployeeImportStore } from "./employee-import-store.js";
+import type { PageQuery } from "../../../lib/pagination.js";
+import type { EmployeeImportRowFilter, EmployeeImportStore } from "./employee-import-store.js";
 
 export class EmployeeImportService {
   constructor(private readonly store: EmployeeImportStore) {}
@@ -50,6 +52,14 @@ export class EmployeeImportService {
 
   getPreview(importId: string): Promise<EmployeeImportPreview | null> {
     return this.store.getPreview(importId);
+  }
+
+  getPreviewPage(
+    importId: string,
+    page: PageQuery,
+    filter: EmployeeImportRowFilter = "all",
+  ): Promise<EmployeeImportPreviewPage | null> {
+    return this.store.getPreviewPage(importId, page, filter);
   }
 
   commit(importId: string): Promise<EmployeeImportCommitResult> {

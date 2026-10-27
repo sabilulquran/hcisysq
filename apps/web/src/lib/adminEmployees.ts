@@ -68,14 +68,21 @@ export interface EmployeeImportPreview {
   status: ImportStatus;
   createdAt: string;
   committedAt: string | null;
+  /** One page of rows; aggregates below cover the whole import (ENG-LIST-001). */
   rows: Array<{
     rowNumber: number;
     action: ImportAction;
     issues: ImportIssue[];
   }>;
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  skipCount: number;
+  issueSummary: Array<{ code: string; severity: "warning" | "error"; count: number }>;
 }
 
-export interface EmployeeImportCommitResult extends Omit<EmployeeImportPreview, "rows"> {
+export type EmployeeImportRowFilter = "all" | "issues";
+
+export interface EmployeeImportCommitResult
+  extends Omit<EmployeeImportPreview, "rows" | "pagination" | "skipCount" | "issueSummary"> {
   committedCount: number;
 }
 
@@ -159,8 +166,16 @@ export async function previewEmployeeImport(file: File): Promise<EmployeeImportP
   return readJson<EmployeeImportPreview>(response);
 }
 
-export async function getEmployeeImport(importId: string): Promise<EmployeeImportPreview> {
-  const response = await fetch(`/api/admin/employee-imports/${importId}`, {
+export async function getEmployeeImport(
+  importId: string,
+  query: { page?: number; pageSize?: number; filter?: EmployeeImportRowFilter } = {},
+): Promise<EmployeeImportPreview> {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.filter && query.filter !== "all") params.set("filter", query.filter);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/admin/employee-imports/${importId}${suffix}`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   });
@@ -178,12 +193,20 @@ export async function commitEmployeeImport(
   return readJson<EmployeeImportCommitResult>(response);
 }
 
-export async function listEmployeeImports(): Promise<{
+export async function listEmployeeImports(query: { page?: number; pageSize?: number } = {}): Promise<{
   items: EmployeeImportHistoryItem[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
 }> {
-  const response = await fetch("/api/admin/employee-imports", {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  const response = await fetch(`/api/admin/employee-imports${suffix}`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   });
-  return readJson<{ items: EmployeeImportHistoryItem[] }>(response);
+  return readJson<{
+    items: EmployeeImportHistoryItem[];
+    pagination: { page: number; pageSize: number; total: number; pageCount: number };
+  }>(response);
 }

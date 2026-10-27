@@ -28,7 +28,7 @@ export function AdminPage() {
       if (mounted) setSession(current);
       return Promise.all([
       canAccessAdminPath(current, "/admin/employees") ? listEmployees({ pageSize: 1 }) : null,
-      canAccessAdminPath(current, "/admin/employees/imports") ? listEmployeeImports() : null,
+      canAccessAdminPath(current, "/admin/employees/imports") ? listEmployeeImports({ pageSize: 1 }) : null,
       canAccessAdminPath(current, "/admin/organization") ? getOrganizationAdmin() : null,
       canAccessAdminPath(current, "/admin/access") ? getAccessAdmin() : null,
     ]); })
@@ -37,7 +37,7 @@ export function AdminPage() {
         setOverview({
           totalEmployees: employees?.summary?.total ?? 0,
           activeEmployees: employees?.summary?.active ?? 0,
-          imports: imports?.items?.length ?? 0,
+          imports: imports?.pagination?.total ?? 0,
           units: organization?.units?.length ?? 0,
           missingManagers: organization?.reportingLines?.missingManagers ?? 0,
           accounts: access?.summary?.accounts ?? 0,

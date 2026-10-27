@@ -46,12 +46,22 @@ Kolom utama:
 
 Imported salary lines disembunyikan di disclosure `Lihat komponen` agar tabel tetap ringkas.
 
+### Pagination (ENG-LIST-001 PAG-4, 27 Oktober 2026)
+
+- Riwayat batch dibagi per halaman 25 batch, terbaru di atas, dengan total.
+- Baris review diambil dari server per halaman 100 (`GET /admin/payslip-imports/{batchId}?filter=&page=&pageSize=`);
+  saringan `Perlu tindakan` (pending yang masih gagal validasi) dijalankan di server.
+- Ringkasan masalah (`errorSummary`) dan counter batch dihitung server untuk seluruh batch, bukan dari halaman yang terlihat.
+- Setiap halaman yang dibaca tercatat sebagai audit `payslip.import.review_opened` beserta saringan, halaman, dan jumlah
+  baris yang dikembalikan, karena setiap halaman memuat imported lines.
+- Respons `POST /admin/payslip-imports/preview` hanya membawa counter; baris dibaca lewat review.
+
 ### Bulk selection
 
 Operator dapat:
 
 - memilih beberapa pending rows;
-- pilih semua rows pada filter/page saat ini;
+- pilih semua rows pada filter/page saat ini; pilihan dan suntingan tetap tersimpan saat berpindah halaman;
 - menerapkan satu periode `YYYY-MM` ke rows terpilih;
 - menyimpan seluruh perubahan NIP/periode yang sudah diedit dalam satu aksi;
 - exclude rows terpilih secara audited.
@@ -71,6 +81,10 @@ Operator dapat:
 - mengunggah correction CSV;
 - client mengirim correction set ke server;
 - server tetap melakukan revalidation authoritative.
+
+Correction CSV dirangkai dari seluruh halaman `Perlu tindakan`, jadi tetap lengkap walau review berhalaman. Saat
+diunggah, client tidak lagi menyaring baris non-pending sendiri (ia tidak memegang semua baris); server menolak file
+bila ada baris yang sudah draft/dihapus (`409 IMPORT_ROW_NOT_EDITABLE`), dan operator mengunduh CSV koreksi yang baru.
 
 Correction CSV tidak boleh memuat nominal payroll/imported lines.
 

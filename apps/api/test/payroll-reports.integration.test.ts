@@ -23,6 +23,9 @@ const allowed = (() => {
 
 const THRESHOLD = { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 };
 
+/** One run, one timestamp. */
+const DEFAULT_RUN_AT = "2026-09-20T00:00:00.000Z";
+
 describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
   let pool: Pool;
   let legalEntityKey: string;
@@ -114,6 +117,10 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       calculatedAt?: string;
     },
   ) {
+    // Every row of one calculation run shares its timestamp in production, since
+    // they are written in one transaction. The fixture has to do the same, or the
+    // latest-run filter keeps only whichever row was inserted last.
+    const calculatedAt = options.calculatedAt ?? DEFAULT_RUN_AT;
     const resultId = randomUUID();
     const gross = options.lines
       .filter((line) => line.category === "EARNING")
@@ -125,8 +132,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       `INSERT INTO payroll_results(
          id, period_id, employment_id, gross, deductions, net, payable,
          input_snapshot, policy_version_ids, compensation_profile_id, calculated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb, '["v1"]'::jsonb, $8,
-               coalesce($9::timestamptz, now()))`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb, '["v1"]'::jsonb, $8, $9::timestamptz)`,
       [
         resultId,
         periodId,
@@ -136,7 +142,7 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
         gross - deductions,
         options.payable,
         options.profileId === undefined ? null : options.profileId,
-        options.calculatedAt ?? null,
+        calculatedAt,
       ],
     );
     for (const [index, line] of options.lines.entries()) {

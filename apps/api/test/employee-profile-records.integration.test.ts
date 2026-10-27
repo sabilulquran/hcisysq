@@ -57,11 +57,19 @@ describe.skipIf(!allowed)("EMP-007 §4.1, §4.2, §7.5 against PostgreSQL", () =
       "INSERT INTO organizational_units(id, normalized_name, name) VALUES ($1, $2, 'Unit Sintetis P2')",
       [unitId, `unit-p2-${unitId}`],
     );
+    // An EMPLOYEE account must name its employee, so the acting HC officer
+    // gets a record of their own first.
     actorId = randomUUID();
+    const actorEmployeeId = randomUUID();
     await client.query(
-      `INSERT INTO accounts(id, email, principal_type, status)
-       VALUES ($1, $2, 'EMPLOYEE', 'active')`,
-      [actorId, `p2-${actorId}@example.org`],
+      `INSERT INTO employees(id, employee_number, full_name, status)
+       VALUES ($1, $2, 'Petugas HC Sintetis', 'active')`,
+      [actorEmployeeId, `EMP-HC-${actorEmployeeId}`],
+    );
+    await client.query(
+      `INSERT INTO accounts(id, email, principal_type, status, employee_id)
+       VALUES ($1, $2, 'EMPLOYEE', 'active', $3)`,
+      [actorId, `p2-${actorId}@example.org`, actorEmployeeId],
     );
   });
 

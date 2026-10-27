@@ -216,10 +216,11 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The PK/SK register (S4) is not started.
+    planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
+      - docs/api/employment.openapi.yaml
 
   - id: EMP-007
     module: employee

@@ -625,6 +625,29 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   memutuskan belum berubah (HC); persetujuan atasan, perintah lembur, peringatan PP 35/2021, jendela D-9,
   dan aturan Direktur adalah ATT-011-6b.
 
+### 10.5 Catatan implementasi ATT-011-4a (2026-10-27)
+
+- **Ubah shift berlaku mulai tanggal (§4.2):** `PATCH /admin/attendance/schedules/{id}` menerima
+  `effectiveFrom`. Tanggal depan membuat versi baru yang berlaku sejak tanggal itu 00.00 WIB; hari ini atau
+  kosong berarti sejak disimpan. Tanggal lampau ditolak `400 EFFECTIVE_DATE_IN_PAST`. Nilai shift yang tampil
+  sekarang tidak berubah sampai tanggal itu.
+- **Satu versi masa depan:** mengubah lagi dengan tanggal depan menggantikan versi masa depan yang belum dipakai
+  jadwal per tanggal atau hasil kehadiran (bila sudah dipakai, `409 SCHEDULE_FUTURE_VERSION_IN_USE`) dan
+  meneruskan nilainya untuk field yang tidak diubah. Perubahan yang berlaku sekarang selagi ada perubahan
+  terjadwal ditolak `409 SCHEDULE_CHANGE_PENDING` agar perubahan terjadwal tidak hilang diam-diam.
+- **Versi yang berlaku:** perubahan tanpa tanggal, daftar Shift, grid jadwal per tanggal, daftar pola jadwal
+  dan Hari Ini membaca versi yang berlaku (bukan kolom template). Publikasi jadwal per tanggal mengunci versi
+  yang berlaku pada tanggal masing-masing entri.
+- **Nonaktifkan:** ditolak `409 SCHEDULE_IN_USE` bila pola jadwal atau jadwal per tanggal yang dipublikasikan
+  masih memakai shift itu hari ini atau sesudahnya (pegawai aktif, hari kerja); respons memuat jumlah dan sampai 20 pegawai beserta tanggal
+  mulainya. Audit `attendance.schedule.deactivated`.
+- **Daftar Shift:** jam sesuai versi yang berlaku sekarang, catatan "Mulai 1 Nov: 07:30–15:30" untuk perubahan
+  yang terjadwal, dan "Dipakai N pegawai". Form ubah memakai **Berlaku mulai** (bawaan besok, atau tanggal
+  perubahan terjadwal) dan terisi dari perubahan terjadwal bila ada. Hanya field yang berubah dikirim: jam,
+  toleransi dan lokasi memakai Berlaku mulai; ganti nama dan nonaktifkan berlaku sekarang.
+- Audit `attendance.schedule.updated` mencatat `effectiveFrom` dan jumlah pegawai terdampak. Tidak ada
+  migration atau permission baru.
+
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

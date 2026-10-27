@@ -26,7 +26,11 @@ import {
   type EmploymentHistory,
 } from "./domain/index.js";
 import { STATUS_BY_CODE } from "./action-routes.js";
-import { EmploymentVersionConflict, persistAction } from "./infrastructure/postgres-action-store.js";
+import {
+  EmploymentVersionConflict,
+  findActionByIdempotencyKey,
+  persistAction,
+} from "./infrastructure/postgres-action-store.js";
 import {
   getRolloutMode,
   jakartaToday,
@@ -45,6 +49,14 @@ const expiringQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
+
+/** The job title a timeline entry put the employee on, when it names one. */
+function placementLabelOf(snapshot: Record<string, unknown> | null | undefined): string | null {
+  const placement = snapshot?.placement;
+  if (!placement || typeof placement !== "object") return null;
+  const label = (placement as { jobTitleLabel?: unknown }).jobTitleLabel;
+  return typeof label === "string" ? label : null;
+}
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
@@ -118,8 +130,11 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
     const session = await authenticate(request, reply, "employment.correct");
     if (!session) return;
     const params = reversalParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Tindakan tidak valid." });
+    }
     const body = reversalBody.safeParse(request.body);
-    if (!params.success || !body.success) {
+    if (!body.success) {
       return send(reply, 400, { code: "EMPLOYMENT_REASON_REQUIRED", message: "Pembatalan wajib disertai alasan." });
     }
     if (!(await requireMode(reply, "authoritative"))) return;
@@ -130,13 +145,13 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
     );
     const employeeId = target.rows[0]?.employeeId;
     if (!employeeId) {
-      return send(reply, 404, { code: "EMPLOYMENT_ACTION_NOT_REVERSIBLE", message: "Tindakan tidak ditemukan." });
+      return send(reply, 404, { code: "EMPLOYMENT_ACTION_NOT_FOUND", message: "Tindakan tidak ditemukan." });
     }
 
     const today = jakartaToday();
     const history = (await loadHistories(pool, [employeeId])).get(employeeId) as EmploymentHistory | undefined;
     if (!history) {
-      return send(reply, 404, { code: "EMPLOYMENT_ACTION_NOT_REVERSIBLE", message: "Tindakan tidak ditemukan." });
+      return send(reply, 404, { code: "EMPLOYMENT_ACTION_NOT_FOUND", message: "Tindakan tidak ditemukan." });
     }
     const actor = await pool.query<{ employeeId: string }>(
       `SELECT employee_id AS "employeeId" FROM accounts WHERE id = $1 AND employee_id IS NOT NULL`,
@@ -181,6 +196,7 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
       return send(reply, 201, {
         actionId: result.actionId,
         reversedActionId: params.data.actionId,
+        replayed: false,
         accountReactivated: false,
       });
     } catch (error) {
@@ -197,6 +213,17 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
       }
       const sqlState = (error as { code?: string } | null)?.code;
       if (sqlState === "23505") {
+        // A retry after a timeout must learn which reversal was recorded,
+        // exactly as the record endpoint answers a replayed key.
+        const existing = await findActionByIdempotencyKey(pool, `reversal-${params.data.actionId}`);
+        if (existing) {
+          return send(reply, 200, {
+            actionId: existing.id,
+            reversedActionId: params.data.actionId,
+            replayed: true,
+            accountReactivated: false,
+          });
+        }
         return send(reply, 409, {
           code: "EMPLOYMENT_ACTION_NOT_REVERSIBLE",
           message: "Tindakan ini sudah dibatalkan.",
@@ -221,45 +248,68 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
     const today = jakartaToday();
     const { withinDays, page, pageSize } = query.data;
     const filters = query.data.unitId ? "AND e.organizational_unit_id = $4::uuid" : "";
-    const params: unknown[] = [today, withinDays, pageSize * (page - 1) + 0];
+    const params: unknown[] = [today, withinDays, pageSize * (page - 1)];
     if (query.data.unitId) params.push(query.data.unitId);
 
-    // The term the employee is on now, when it is fixed and ends soon — or has
-    // ended with nothing recorded after it (spec §6.2: never auto-terminate).
-    const sql = `
+    /**
+     * The term the employee is on *now* — chosen without looking at whether it
+     * ends, because a permanent term has no end date and filtering those out
+     * first would make the CTE fall back to the closed contract before it and
+     * report a permanent employee as overdue forever. A term whose start is
+     * unknown (baseline) still counts: its end date may well need a decision.
+     */
+    const currentTerm = `
       WITH current_term AS (
         SELECT DISTINCT ON (em.employee_id)
-               em.employee_id, em.id AS employment_id, t.effective_to, t.category, t.sequence
+               em.employee_id, t.effective_to, t.category, t.sequence
         FROM employments em
         JOIN employment_terms t ON t.employment_id = em.id AND t.voided_by_action_id IS NULL
         WHERE em.voided_by_action_id IS NULL
           AND em.ended_on IS NULL
-          AND t.effective_to IS NOT NULL
-          AND t.effective_from <= $1::date
-        ORDER BY em.employee_id, t.effective_from DESC, t.sequence DESC
-      )
-      SELECT ct.employee_id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
-             u.name AS "unitName", ct.category, ct.effective_to::text AS "endsOn", ct.sequence,
-             (ct.effective_to - $1::date)::int AS "daysLeft",
-             count(*) OVER ()::int AS "total"
-      FROM current_term ct
-      JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
-      LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-      WHERE ct.effective_to <= $1::date + $2::int ${filters}
-      ORDER BY ct.effective_to, e.full_name
-      LIMIT ${pageSize} OFFSET $3`;
-    const result = await pool.query<{
-      employeeId: string; employeeNumber: string; fullName: string; unitName: string | null;
-      category: string; endsOn: string; sequence: number; daysLeft: number; total: number;
-    }>(sql, params);
+          AND (t.effective_from IS NULL OR t.effective_from <= $1::date)
+        ORDER BY em.employee_id, t.effective_from DESC NULLS LAST, t.sequence DESC
+      )`;
+    const where = `
+      WHERE ct.effective_to IS NOT NULL
+        AND ct.effective_to <= $1::date + $2::int ${filters}`;
+
+    const [rows, count] = await Promise.all([
+      pool.query<{
+        employeeId: string; employeeNumber: string; fullName: string; unitName: string | null;
+        category: string; endsOn: string; sequence: number; daysLeft: number;
+      }>(
+        `${currentTerm}
+         SELECT ct.employee_id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
+                u.name AS "unitName", ct.category, ct.effective_to::text AS "endsOn", ct.sequence,
+                (ct.effective_to - $1::date)::int AS "daysLeft"
+         FROM current_term ct
+         JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
+         LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
+         ${where}
+         ORDER BY ct.effective_to, e.full_name, ct.employee_id
+         LIMIT ${pageSize} OFFSET $3`,
+        params,
+      ),
+      // Counted separately, so paging past the last page still reports how
+      // many there are instead of zero.
+      pool.query<{ total: number }>(
+        `${currentTerm}
+         SELECT count(*)::int AS total
+         FROM current_term ct
+         JOIN employees e ON e.id = ct.employee_id AND e.removed_at IS NULL
+         ${where}`,
+        query.data.unitId ? [today, withinDays, 0, query.data.unitId] : [today, withinDays, 0],
+      ),
+    ]);
+    const result = rows;
 
     return send(reply, 200, {
       date: today,
       withinDays,
       page,
       pageSize,
-      total: result.rows[0]?.total ?? 0,
-      rows: result.rows.map(({ total: _total, ...row }) => ({
+      total: count.rows[0]?.total ?? 0,
+      rows: result.rows.map((row) => ({
         ...row,
         // A term already past its end is the urgent case (§6.2 flag).
         overdue: row.daysLeft < 0,
@@ -310,6 +360,9 @@ export async function registerEmploymentSelfServiceRoutes(app: FastifyInstance, 
         effectiveOn: item.effectiveOn,
         state: item.state,
         recordedAt: item.recordedAt,
+        // §13.7 asks each entry to say where it put the employee; the reason
+        // codes and notes HC wrote about them stay out.
+        jobTitleLabel: placementLabelOf(item.newSnapshot) ?? placementLabelOf(item.previousSnapshot),
         documents: item.documents.map((document) => ({ kind: document.kind, number: document.number })),
       })),
     });

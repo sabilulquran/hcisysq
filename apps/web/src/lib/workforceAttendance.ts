@@ -214,7 +214,7 @@ export async function listAttendanceSchedules() {
   }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
 }
 
-export interface ShiftBlock { startTime: string; endTime: string }
+export interface ShiftBlock { startTime: string; endTime: string; /** ATT-013 "Hitungan hari". */ workdayWeight?: number }
 
 /** "04:00–08:30 + 14:30–19:30" (ATT-013); a single block keeps "07:00–16:00". */
 export function shiftHoursText(item: { startTime: string; endTime: string; endDayOffset?: number; extraBlocks?: ShiftBlock[] }) {
@@ -235,7 +235,7 @@ export async function backdateAttendanceSchedule(scheduleId: string, input: { ef
 export async function createAttendanceSchedule(input: {
   name: string; startTime: string; endTime: string; endDayOffset?: number; lateGraceMinutes: number;
   earlyLeaveToleranceMinutes: number; workLocationId: string | null; effectiveFrom?: string;
-  extraBlocks?: ShiftBlock[];
+  extraBlocks?: ShiftBlock[]; firstBlockWorkdayWeight?: number;
 }) {
   return readJson<{ id: string }>(await fetch("/api/admin/attendance/schedules", {
     method: "POST", credentials: "include",

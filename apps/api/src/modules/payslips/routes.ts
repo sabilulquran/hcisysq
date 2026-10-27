@@ -1733,11 +1733,15 @@ export async function registerPayslipRoutes(
       `SELECT payslip.id, to_char(payslip.period, 'YYYY-MM') AS period,
               payslip.source_format AS "sourceFormat",
               employee.employment_status AS "employmentStatus",
-              payslip.published_at AS "publishedAt"
+              payslip.published_at AS "publishedAt",
+              (payslip.revision_of IS NOT NULL) AS "isRevision"
          FROM payslips payslip
          JOIN employees employee ON employee.id = payslip.employee_id
         WHERE payslip.employee_id = $1
           AND payslip.published_at IS NOT NULL
+          -- PAY-003: a slip a revision replaced is history, not the slip for the
+          -- month. Listing both would show one period twice with two amounts.
+          AND payslip.superseded_by_id IS NULL
         ORDER BY payslip.period DESC`,
       [self.employeeId],
     );

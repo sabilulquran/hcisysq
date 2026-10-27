@@ -456,6 +456,93 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
 
+  /payroll/periods/{periodId}/payslips:
+    post:
+      tags: [Payroll]
+      operationId: draftPayrollPayslips
+      summary: Write the period's results as payslip drafts
+      description: >-
+        Requires payroll.periods.manage, and only once the payment is confirmed:
+        drafting earlier would put a figure in front of an employee that nobody
+        has paid. It drafts, it does not publish: publishing is a separate call
+        that asks for payslips.publish, so the decision to show a slip to an
+        employee stays where PAY-002 put it. A slip that was never published is
+        updated in place; a published
+        one is never edited, and a correction after an approved reopen becomes a
+        revision beside it with the earlier slip still readable. Running it again
+        when nothing moved changes nothing. A standing blocker refuses the whole
+        run.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: How many slips were drafted, revised, or already current
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [drafted, revised, alreadyCurrent, importConflicts]
+                properties:
+                  drafted: { type: integer }
+                  revised: { type: integer }
+                  alreadyCurrent: { type: integer }
+                  importConflicts:
+                    type: array
+                    description: >-
+                      Employee numbers whose current slip belongs to a PAY-001
+                      import batch. Payroll leaves those slips alone so the batch
+                      can still publish them.
+                    items: { type: string }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: >-
+            The payment is not confirmed yet, a blocker stands, or the period has
+            no result to draft from.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
+  /payroll/periods/{periodId}/payslips/publish:
+    post:
+      tags: [Payroll]
+      operationId: publishPayrollPayslips
+      summary: Publish the period's payslip drafts
+      description: >-
+        Requires payslips.publish, the same permission the PAY-002 batch publish
+        asks for: calculating payroll does not move that decision. The batch path
+        publishes by import batch and cannot see a slip that came from a period,
+        which is why payroll has its own door. Only drafts of this period that are
+        current and unpublished are affected, and each employee is notified once.
+      parameters:
+        - name: periodId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: How many slips were published
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [published]
+                properties:
+                  published: { type: integer }
+        '400': { $ref: '#/components/responses/PayrollBadRequest' }
+        '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
+        '403': { $ref: '#/components/responses/PayrollForbidden' }
+        '409':
+          description: The period is not in a paid state, or has no draft to publish
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
+
   /payroll/periods/{periodId}/transitions:
     post:
       tags: [Payroll]
@@ -557,6 +644,7 @@ components:
             - PAYROLL_INPUT_NOT_FOUND
             - PAYROLL_POLICY_MISSING
             - PAYROLL_NOT_APPROVED_YET
+            - PAYROLL_NOTHING_TO_PUBLISH
             - UNAUTHENTICATED
         message: { type: string }
         problems:

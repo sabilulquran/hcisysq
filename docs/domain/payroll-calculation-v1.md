@@ -287,6 +287,7 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - **Daftar transfer** (`payroll.transfers.read.organization`, hanya Keuangan dan Kepala Keuangan): per penerima — NIP, nama, unit, nominal dibayar, bank, nomor rekening, nama pemilik rekening, status konfirmasi bayar. Ekspor CSV UTF-8 (§10 butir 7). Setiap baca dan setiap ekspor dicatat sebagai akses sensitif.
 - **Laporan payroll final** (`payroll.reports.read.organization`, Keuangan dan Direktur): rekap per unit dan per komponen, jumlah penerima, total bruto/potongan/netto/dibayar, dan biaya yayasan. **Tanpa nomor rekening.** Rincian per orang hanya terlihat oleh Direktur dan Keuangan, tidak diekspor bersama rekening.
 - Pengurus Yayasan tidak memperoleh kedua laporan di v1 (§2).
+- **Perbandingan periode** (`payroll.reports.read.organization`, serta aktor yang menjalankan periode): selisih per pegawai per komponen terhadap periode sebelumnya pada legal entity yang sama, disaring ambang §10 butir 6. Pegawai yang baru masuk atau keluar dilaporkan satu baris, bukan satu baris per komponen. Periode pertama menjawab perbandingan kosong, bukan error.
 - **Slip pegawai:** hasil final dipetakan ke draft PAY-001 (`lines` label/value sesuai urutan katalog) lalu dipublikasikan lewat alur PAY-002.
 - **Laporan PPh21 TER** per masa pajak dari hasil final.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.

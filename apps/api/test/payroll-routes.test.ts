@@ -125,7 +125,7 @@ function periodRow(overrides: PeriodOverrides = {}) {
 function createPool(
   persona: Persona,
   overrides: PeriodOverrides,
-  options: { versionRace?: boolean; policyComplete?: boolean } = {},
+  options: { versionRace?: boolean; policyComplete?: boolean; hasPreviousPeriod?: boolean } = {},
 ) {
   const audits: string[] = [];
   const updates: string[] = [];
@@ -159,8 +159,115 @@ function createPool(
     if (sql.includes("FOR UPDATE")) {
       return { rows: [{ state: current.state ?? "DRAFT", version: current.version ?? 0 }], rowCount: 1 };
     }
+    // The report queries read payroll_results through a subquery, so they have to
+    // be answered before the plain results branch further down.
+    if (sql.includes("JOIN payroll_periods prev")) {
+      return options.hasPreviousPeriod === false
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ id: "40000000-0000-4000-8000-000000000009" }], rowCount: 1 };
+    }
+    if (sql.includes("FULL OUTER JOIN previous_lines")) {
+      return {
+        rows: [{
+          employmentId: EMPLOYMENT_ID,
+          componentCode: "PERF",
+          previousAmount: "100000",
+          currentAmount: "400000",
+          delta: "300000",
+          kind: "COMPONENT",
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("coalesce(sum(latest.gross)")) {
+      return {
+        rows: [{
+          employeeCount: 2,
+          gross: "6000000",
+          deductions: "400000",
+          net: "5600000",
+          payable: "5600000",
+          employerCost: "0",
+          blockerCount: 0,
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes('p.unit_ref AS "unitRef"')) {
+      return { rows: [{ unitRef: "unit-pusat", employeeCount: 2, payable: "5600000" }], rowCount: 1 };
+    }
+    if (sql.includes('l.component_code AS "componentCode"') && sql.includes("payroll_components")) {
+      return {
+        rows: [{ componentCode: "BASIC", category: "EARNING", employeeCount: 2, amount: "6000000" }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes('emp.employee_number AS "employeeNumber"')) {
+      return {
+        rows: [{
+          employeeNumber: "2016001",
+          fullName: "Pegawai Uji",
+          unitRef: "unit-pusat",
+          payable: "3000000",
+          bankAccountNumber: "0000000001",
+          bankAccountName: "Pegawai Uji",
+          paymentConfirmedAt: null,
+        }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("policy_key = 'VARIANCE_THRESHOLD'")) {
+      return { rows: [{ payload: { relative: 0.1, absolute: 50_000 } }], rowCount: 1 };
+    }
     if (sql.includes("FROM payroll_loans")) {
       return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("FROM attendance_overtime_requests")) {
+      return { rows: [{ employmentId: EMPLOYMENT_ID, minutes: "120" }], rowCount: 1 };
+    }
+    if (sql.includes("attendance_result_versions")) {
+      return { rows: [{ employmentId: EMPLOYMENT_ID, days: "18" }], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_period_transitions")) {
+      return { rows: transitions, rowCount: transitions.length };
+    }
+    // The period query reads inputs and results in subqueries, so it has to be
+    // answered first or these branches would swallow it.
+    if (sql.includes("DELETE FROM payroll_period_inputs")) {
+      if (sql.includes("origin = 'ATTENDANCE'")) {
+        deletes.push("attendance_sweep");
+        return { rows: [], rowCount: 2 };
+      }
+      deletes.push(`${String(values?.[1] ?? "")}:${String(values?.[2] ?? "")}`);
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("FROM payroll_period_inputs") && !sql.includes("FROM payroll_periods p")) {
+      if (sql.includes('count(*)::int AS "inputCount"')) {
+        return { rows: [{ inputCount: inputWrites.length, lastInputRecordedAt: null }], rowCount: 1 };
+      }
+      return {
+        rows: inputWrites.map((write) => ({
+          employmentId: write.employmentId,
+          inputKey: write.inputKey,
+          value: String(write.value),
+          origin: "MANUAL",
+          reason: null,
+          decisionReference: null,
+          recordedAt: "2026-09-19T00:00:00.000Z",
+        })),
+        rowCount: inputWrites.length,
+      };
+    }
+    if (sql.includes("INSERT INTO payroll_period_inputs")) {
+      inputWrites.push({
+        employmentId: String(values?.[2] ?? ""),
+        inputKey: String(values?.[3] ?? ""),
+        value: values?.[4],
+      });
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("JOIN accounts a ON a.employee_id = e.employee_id")) {
+      return { rows: [{ id: OWN_EMPLOYMENT_ID }], rowCount: 1 };
     }
     if (sql.includes("FROM attendance_overtime_requests")) {
       return { rows: [{ employmentId: EMPLOYMENT_ID, minutes: "120" }], rowCount: 1 };
@@ -300,11 +407,13 @@ async function call(
     period?: PeriodOverrides;
     versionRace?: boolean;
     policyComplete?: boolean;
+    hasPreviousPeriod?: boolean;
   } = {},
 ) {
   const { pool, audits, updates, transitions, inputWrites, deletes } = createPool(persona, options.period ?? {}, {
     ...(options.versionRace === undefined ? {} : { versionRace: options.versionRace }),
     ...(options.policyComplete === undefined ? {} : { policyComplete: options.policyComplete }),
+    ...(options.hasPreviousPeriod === undefined ? {} : { hasPreviousPeriod: options.hasPreviousPeriod }),
   });
   const app = Fastify({ logger: false });
   await registerPayrollRoutes(app, pool, config);
@@ -896,4 +1005,104 @@ describe("PAY-003 attendance-derived inputs", () => {
       expect(inputWrites).toEqual([]);
     }
   }, 20_000);
+});
+
+
+describe("PAY-003 period report", () => {
+  const url = `/payroll/periods/${PERIOD_ID}/report`;
+
+  it("gives the director totals per unit and per component, with no account anywhere", async () => {
+    const { response, audits } = await call("director", "GET", url, { period: { state: "APPROVED" } });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.report.totals.payable).toBe("5600000");
+    expect(body.report.byUnit).toHaveLength(1);
+    expect(body.report.byComponent).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain("bankAccount");
+    expect(audits).toEqual(["payroll.report.read"]);
+  });
+
+  it("keeps it from report readers until the period is approved", async () => {
+    const { response } = await call("director", "GET", url, { period: { state: "CALCULATED" } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("PAYROLL_NOT_APPROVED_YET");
+  });
+
+  it("still shows it to the people running the period", async () => {
+    const { response } = await call("hc", "GET", url, { period: { state: "CALCULATED" } });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("is closed to the board and to anyone without a payroll permission", async () => {
+    for (const persona of ["board", "employee", "super_admin"] as const) {
+      const { response } = await call(persona, "GET", url, { period: { state: "APPROVED" } });
+      expect(response.statusCode).toBe(403);
+    }
+  }, 20_000);
+});
+
+describe("PAY-003 transfer list", () => {
+  const url = `/payroll/periods/${PERIOD_ID}/transfers`;
+
+  it("gives finance the accounts to pay into, and records the read", async () => {
+    const { response, audits } = await call("finance", "GET", url, { period: { state: "APPROVED" } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().transfers[0].bankAccountNumber).toBe("0000000001");
+    expect(audits).toEqual(["payroll.report.read"]);
+  });
+
+  it("is closed to the director, who may approve but not see accounts", async () => {
+    const { response } = await call("director", "GET", url, { period: { state: "APPROVED" } });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("is closed to human capital", async () => {
+    const { response } = await call("hc", "GET", url, { period: { state: "APPROVED" } });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("refuses before the period is approved", async () => {
+    const { response } = await call("finance", "GET", url, { period: { state: "CALCULATED" } });
+    expect(response.statusCode).toBe(409);
+  });
+
+  it("exports CSV as an attachment, still no-store", async () => {
+    const { response, audits } = await call("finance", "GET", `${url}?format=csv`, {
+      period: { state: "PAYMENT_CONFIRMED" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/csv");
+    expect(response.headers["content-disposition"]).toContain("daftar-transfer-2026-09.csv");
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.body).toContain('"0000000001"');
+    expect(audits).toEqual(["payroll.report.read"]);
+  });
+});
+
+describe("PAY-003 variance", () => {
+  const url = `/payroll/periods/${PERIOD_ID}/variance`;
+
+  it("reports what moved since the previous period", async () => {
+    const { response, audits } = await call("hc", "GET", url, { period: { state: "CALCULATED" } });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.variances).toHaveLength(1);
+    expect(body.variances[0]).toMatchObject({ componentCode: "PERF", delta: "300000" });
+    expect(body.threshold).toEqual({ relative: 0.1, absolute: 50_000 });
+    expect(audits).toEqual(["payroll.report.read"]);
+  });
+
+  it("answers plainly when there is no earlier period to compare against", async () => {
+    const { response } = await call("hc", "GET", url, {
+      period: { state: "CALCULATED" },
+      hasPreviousPeriod: false,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ previousPeriodId: null, threshold: null, variances: [] });
+  });
+
+  it("keeps it from report readers until the period is approved", async () => {
+    const { response } = await call("director", "GET", url, { period: { state: "CALCULATED" } });
+    expect(response.statusCode).toBe(403);
+  });
 });

@@ -32,6 +32,13 @@ import {
   type PeriodWithCalculation,
 } from "./store.js";
 import { applyAttendanceInputs } from "./attendance-inputs.js";
+import {
+  buildPeriodReport,
+  buildTransferList,
+  buildVariance,
+  previousPeriodId,
+  transferListToCsv,
+} from "./reports.js";
 import { calculatePeriod } from "./calculation.js";
 import {
   deleteInput,
@@ -61,6 +68,8 @@ const listQuery = z.object({
 });
 
 const periodParams = z.object({ periodId: z.string().uuid() });
+
+const transfersQuery = z.object({ format: z.enum(["json", "csv"]).default("json") });
 
 const inputParams = z.object({
   periodId: z.string().uuid(),
@@ -232,6 +241,50 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return null;
     }
     return authenticated.actor;
+  }
+
+  /**
+   * Per-person pay is sensitive, so reading it is itself recorded. The payload
+   * carries the scope and a row count, never a figure (specification section 8).
+   */
+  async function recordSensitiveRead(
+    accountId: string,
+    periodId: string,
+    scope: string,
+    rowCount: number,
+  ): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await writeAudit(client, {
+        actorAccountId: accountId,
+        action: "payroll.report.read",
+        periodId,
+        payload: { scope, row_count: rowCount },
+      });
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * The review threshold, read from policy so the process owner can move it. It
+   * is guidance rather than a statutory rule, so its absence falls back to the
+   * specification's default instead of refusing the comparison.
+   */
+  async function varianceThreshold(payDate: string): Promise<{ relative: number; absolute: number }> {
+    const { rows } = await pool.query<{ payload: { relative?: number; absolute?: number } }>(
+      `SELECT payload FROM payroll_policy_versions
+       WHERE policy_key = 'VARIANCE_THRESHOLD'
+         AND effective_from <= $1::date
+         AND (effective_to IS NULL OR effective_to >= $1::date)
+       LIMIT 1`,
+      [payDate],
+    );
+    const payload = rows[0]?.payload;
+    return {
+      relative: typeof payload?.relative === "number" ? payload.relative : 0.1,
+      absolute: typeof payload?.absolute === "number" ? payload.absolute : 50_000,
+    };
   }
 
   function periodView(period: PeriodWithCalculation, actor: TransitionActor) {
@@ -531,6 +584,104 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     }
 
     return send(reply, 200, { results, lines });
+  });
+
+  app.get("/payroll/periods/:periodId/report", async (request, reply) => {
+    const actor = await requireReader(request, reply);
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+      return send(reply, 403, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Laporan periode baru dapat dibaca setelah periode disahkan.",
+      });
+    }
+
+    const report = await buildPeriodReport(pool, period.id);
+    await recordSensitiveRead(actor.accountId, period.id, "period_report", report.totals.employeeCount);
+    return send(reply, 200, { report });
+  });
+
+  app.get("/payroll/periods/:periodId/transfers", async (request, reply) => {
+    // The transfer list carries account numbers, so it has a permission of its
+    // own and the director does not hold it (specification section 7).
+    const actor = await requirePermission(request, reply, "payroll.transfers.read.organization");
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    const query = transfersQuery.safeParse(request.query ?? {});
+    if (!params.success || !query.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Parameter tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    if (!APPROVED_ONWARDS.includes(period.state)) {
+      return send(reply, 409, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Daftar transfer baru tersedia setelah periode disahkan.",
+      });
+    }
+
+    const transfers = await buildTransferList(pool, period.id);
+    await recordSensitiveRead(
+      actor.accountId,
+      period.id,
+      query.data.format === "csv" ? "transfer_list_csv" : "transfer_list",
+      transfers.length,
+    );
+
+    if (query.data.format === "csv") {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="daftar-transfer-${period.periodMonth.slice(0, 7)}.csv"`,
+      );
+      return reply.status(200).send(transferListToCsv(transfers));
+    }
+    return send(reply, 200, { transfers });
+  });
+
+  app.get("/payroll/periods/:periodId/variance", async (request, reply) => {
+    const actor = await requireReader(request, reply);
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Identifier periode tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
+      return send(reply, 403, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Perbandingan periode baru dapat dibaca setelah periode disahkan.",
+      });
+    }
+
+    const previousId = await previousPeriodId(pool, period.id);
+    if (previousId === null) {
+      // The first period has nothing to compare against, which is an answer
+      // rather than an error.
+      return send(reply, 200, { previousPeriodId: null, threshold: null, variances: [] });
+    }
+
+    const threshold = await varianceThreshold(period.payDate);
+    const variances = await buildVariance(pool, period.id, previousId, threshold);
+    await recordSensitiveRead(actor.accountId, period.id, "period_variance", variances.length);
+    return send(reply, 200, { previousPeriodId: previousId, threshold, variances });
   });
 
   app.post("/payroll/periods/:periodId/transitions", async (request, reply) => {

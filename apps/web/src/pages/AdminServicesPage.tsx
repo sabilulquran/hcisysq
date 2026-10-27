@@ -22,6 +22,7 @@ import {
   adminServiceCategories,
   adminServices,
   adminServiceStageLabel,
+  lockedNote,
   type AdminServiceDefinition,
 } from "@/lib/adminServices";
 import { adminCategoryToneOf, categoryTileClass } from "@/lib/serviceCategory";
@@ -73,7 +74,7 @@ export function AdminServiceTile({ service, canOpen }: { service: AdminServiceDe
         </p>
       ) : null}
       {!canOpen && service.stage === "available" ? (
-        <p className="mt-2 text-[10px] font-bold leading-4 text-warning-ink">Tersedia di HCIS · akun ini belum memiliki akses</p>
+        <p className="mt-2 text-[10px] font-bold leading-4 text-warning-ink">{lockedNote(service)}</p>
       ) : null}
     </>
   );

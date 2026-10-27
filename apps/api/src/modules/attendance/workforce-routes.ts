@@ -948,7 +948,7 @@ export async function registerAttendanceWorkforceRoutes(
         const changed = await client.query(
           `UPDATE attendance_clarifications
            SET status = 'cancelled', updated_at = now()
-           WHERE id = $1 AND employee_id = $2 AND status = 'submitted' AND initiated_by <> 'supervisor'
+           WHERE id = $1 AND employee_id = $2 AND status = 'submitted'
            RETURNING id`,
           [params.data.clarificationId, employee.id],
         );
@@ -2000,7 +2000,7 @@ export async function registerAttendanceWorkforceRoutes(
         const changed = await client.query(
           `UPDATE attendance_overtime_requests
            SET status = 'cancelled', updated_at = now()
-           WHERE id = $1 AND employee_id = $2 AND status = 'submitted'
+           WHERE id = $1 AND employee_id = $2 AND status = 'submitted' AND initiated_by <> 'supervisor'
            RETURNING id`,
           [params.data.overtimeId, employee.id],
         );
@@ -2246,14 +2246,14 @@ export async function registerAttendanceWorkforceRoutes(
     if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_ORDER", message: "Perintah lembur tidak valid." });
     try {
       const me = await employeeForAccount(pool, principal.id);
-      const employeeIds = [...new Set(body.data.employeeIds)];
+      const employeeIds = [...new Set(body.data.employeeIds)].sort();
       if (employeeIds.includes(me.id)) throw new WorkforceAttendanceError(403, "OVERTIME_NOT_SUBORDINATE", "Anda tidak dapat memerintahkan lembur untuk diri sendiri.");
       assertOvertimeWindow(body.data.workDate);
       const client = await pool.connect();
       const ids: string[] = [];
       try {
         await client.query("BEGIN");
-        const invalid: Array<{ employeeId: string; employeeName: string | null }> = [];
+        const invalid: Array<{ employeeId: string }> = [];
         const approvers = new Map<string, Awaited<ReturnType<typeof resolveOvertimeApprover>>>();
         for (const employeeId of employeeIds) {
           const active = await client.query<{ name: string }>("SELECT full_name AS name FROM employees WHERE id = $1 AND status = 'active'", [employeeId]);
@@ -2263,7 +2263,7 @@ export async function registerAttendanceWorkforceRoutes(
           } catch (error) {
             if (!(error instanceof OvertimeApproverError)) throw error;
           }
-          if (!approver || approver.supervisorEmployeeId !== me.id) invalid.push({ employeeId, employeeName: active.rows[0]?.name ?? null });
+          if (!approver || approver.supervisorEmployeeId !== me.id) invalid.push({ employeeId });
           else approvers.set(employeeId, approver);
         }
         if (invalid.length) {
@@ -2533,11 +2533,24 @@ export async function registerAttendanceWorkforceRoutes(
       if (body.data.supervisorEmployeeId === item.employeeId) {
         throw new WorkforceAttendanceError(422, "OVERTIME_APPROVER_SELF", "Pegawai tidak dapat menyetujui lemburnya sendiri.");
       }
+      if (body.data.supervisorEmployeeId === item.supervisorEmployeeId) {
+        throw new WorkforceAttendanceError(422, "OVERTIME_APPROVER_UNCHANGED", "Approver pengganti sama dengan approver sekarang.");
+      }
+      // An HC officer never routes a request to themself, nor chooses who approves their own overtime.
+      const actor = await client.query<{ employeeId: string | null }>("SELECT employee_id AS \"employeeId\" FROM accounts WHERE id = $1", [principal.id]);
+      const actorEmployeeId = actor.rows[0]?.employeeId ?? null;
+      if (actorEmployeeId && (actorEmployeeId === body.data.supervisorEmployeeId || actorEmployeeId === item.employeeId)) {
+        throw new WorkforceAttendanceError(403, "OVERTIME_REASSIGN_CONFLICT", "Pengalihan approver yang melibatkan diri sendiri harus dilakukan staf HC lain.");
+      }
       const active = await client.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active'", [body.data.supervisorEmployeeId]);
       if (!active.rows[0]) throw new WorkforceAttendanceError(422, "OVERTIME_APPROVER_INACTIVE", "Approver pengganti harus pegawai aktif.");
       await client.query(
-        "UPDATE attendance_overtime_requests SET supervisor_employee_id = $2, updated_at = now() WHERE id = $1",
-        [params.data.overtimeId, body.data.supervisorEmployeeId],
+        `UPDATE attendance_overtime_requests
+         SET supervisor_employee_id = $2, updated_at = now(),
+             approver_snapshot = coalesce(approver_snapshot, '{}'::jsonb) || jsonb_build_object(
+               'reassignedFrom', $3::text, 'reassignedBy', $4::text, 'reassignedAt', clock_timestamp())
+         WHERE id = $1`,
+        [params.data.overtimeId, body.data.supervisorEmployeeId, item.supervisorEmployeeId, principal.id],
       );
       await insertOvertimeEvent(client, params.data.overtimeId, principal.id, "reassigned", {
         from: item.supervisorEmployeeId, to: body.data.supervisorEmployeeId, reason: body.data.reason,

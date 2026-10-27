@@ -146,7 +146,7 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
   it("lets a supervisor order overtime only for direct reports, which each employee agrees to", async () => {
     const mixed = await as(accounts.boss)("POST", "/attendance/team-overtime/orders", { employeeIds: [ids.staff, ids.loner], workDate: today, requestedMinutes: 90, note: "Persiapan wisuda" });
     expect(mixed.statusCode).toBe(403);
-    expect(mixed.json().employees).toEqual([{ employeeId: ids.loner, employeeName: "Synthetic loner" }]);
+    expect(mixed.json().employees).toEqual([{ employeeId: ids.loner }]);
     expect((await client.query("SELECT count(*)::int AS n FROM attendance_overtime_requests WHERE initiated_by = 'supervisor' AND supervisor_employee_id = $1", [ids.boss])).rows[0].n).toBe(0);
 
     const ordered = await as(accounts.boss)("POST", "/attendance/team-overtime/orders", { employeeIds: [ids.staff, ids.other], workDate: today, requestedMinutes: 90, note: "Persiapan wisuda" });
@@ -162,10 +162,20 @@ describe.skipIf(!allowed)("ATT-011-6b-1 supervisor overtime (PostgreSQL)", () =>
     expect((await as(accounts.boss)("POST", `/attendance/team-overtime/${forStaff}/cancel`)).statusCode).toBe(409);
   });
 
+  it("refuses HC reassigning a request to their own employee record", async () => {
+    await client.query("UPDATE accounts SET employee_id = $2 WHERE id = $1", [people.hc, ids.other]);
+    const id = (await as(accounts.staff)("POST", "/attendance/overtime", { workDate: today, requestedMinutes: 30 })).json().id as string;
+    const refused = await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.other, reason: "Atasan cuti" });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().code).toBe("OVERTIME_REASSIGN_CONFLICT");
+    expect(await request(id)).toMatchObject({ supervisorEmployeeId: ids.boss });
+  });
+
   it("lets HC reassign a waiting request and void an approved one with a reason", async () => {
     const id = (await as(accounts.staff)("POST", "/attendance/overtime", { workDate: today, requestedMinutes: 60 })).json().id as string;
     expect((await as(accounts.boss)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.other, reason: "Cuti" })).statusCode).toBe(403);
     expect((await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.staff, reason: "Cuti" })).json().code).toBe("OVERTIME_APPROVER_SELF");
+    expect((await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.boss, reason: "Cuti" })).json().code).toBe("OVERTIME_APPROVER_UNCHANGED");
     expect((await as(people.hc)("POST", `/admin/attendance/overtime/${id}/reassign`, { supervisorEmployeeId: ids.other, reason: "Atasan cuti" })).statusCode).toBe(200);
     expect((await as(accounts.boss)("POST", `/attendance/team-overtime/${id}/decision`, { decision: "approve" })).statusCode).toBe(403);
     expect((await as(accounts.other)("POST", `/attendance/team-overtime/${id}/decision`, { decision: "approve" })).statusCode).toBe(200);

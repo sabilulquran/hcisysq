@@ -22,7 +22,7 @@ export class OvertimeApproverError extends Error {
 
 export type OvertimeApprover = {
   supervisorEmployeeId: string;
-  snapshot: { mode: string; authoritativeSource: string; source: string; path: string[]; incumbentKind: string };
+  snapshot: { mode: string; authoritativeSource: string; source: string; path: string[]; incumbentKind: string; shadow?: unknown };
 };
 
 const UNRESOLVED = "Atasan Anda belum tercatat. Hubungi HC.";
@@ -62,6 +62,8 @@ export async function resolveOvertimeApprover(db: Db, employeeId: string, workDa
       source: authority.source,
       path: authority.path,
       incumbentKind: authority.incumbentKind,
+      // SHADOW: the legacy answer decides; the structural comparison is kept for review, as leave does.
+      ...(result.shadow ? { shadow: result.shadow } : {}),
     },
   };
 }

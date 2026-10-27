@@ -7,6 +7,8 @@
 --   ALTER TABLE attendance_overtime_events DROP CONSTRAINT attendance_overtime_events_event_type_check;
 --   ALTER TABLE attendance_overtime_events ADD CONSTRAINT attendance_overtime_events_event_type_check
 --     CHECK (event_type IN ('submitted', 'approved', 'rejected', 'cancelled'));
+--   DROP INDEX attendance_overtime_requests_supervisor_idx;
+--   ALTER TABLE attendance_overtime_requests DROP CONSTRAINT attendance_overtime_requests_supervisor_required;
 --   ALTER TABLE attendance_overtime_requests DROP COLUMN approver_snapshot, DROP COLUMN supervisor_employee_id,
 --     DROP COLUMN initiated_by;
 ALTER TABLE attendance_overtime_requests

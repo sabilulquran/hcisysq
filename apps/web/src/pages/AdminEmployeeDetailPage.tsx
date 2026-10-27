@@ -92,7 +92,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [tab, setTab] = useState<EmployeeDetailTab>("ringkasan");
   const [canReadEmployment, setCanReadEmployment] = useState(false);
   const [canManageEmployment, setCanManageEmployment] = useState(false);
-  const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | null>(null);
+  const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | "PLACEMENT_END" | null>(null);
+  const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
   const [timelineView, setTimelineView] = useState<EmploymentView<EmploymentTimelineItem[]>>({ kind: "loading" });
 
@@ -307,9 +308,14 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           employeeId={employeeId}
           employeeName={employee?.fullName ?? "Pegawai"}
           actionType={employmentAction}
-          onClose={() => setEmploymentAction(null)}
+          {...(endingPlacementId ? { placementId: endingPlacementId } : {})}
+          onClose={() => {
+            setEmploymentAction(null);
+            setEndingPlacementId(null);
+          }}
           onRecorded={(message) => {
             setEmploymentAction(null);
+            setEndingPlacementId(null);
             setNotice(message);
             // Reload the derived state: the action moved it.
             setEmploymentView(null);
@@ -321,6 +327,14 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         <PlacementCareerPanel
           view={employmentView ?? { kind: "loading" }}
           timeline={timelineView}
+          onEndAdditional={
+            canManageEmployment && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
+              ? (placementId) => {
+                  setEndingPlacementId(placementId);
+                  setEmploymentAction("PLACEMENT_END");
+                }
+              : undefined
+          }
           actions={
             employmentView?.kind === "ready" ? (
               <EmploymentActionButtons

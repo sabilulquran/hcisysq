@@ -194,8 +194,11 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
     if (!mode) return;
 
     const date = query.data.date ?? jakartaToday();
-    const structure = await loadStructureMismatches(pool, date);
-    const [sources, histories, identities] = await Promise.all([
+    const [structure, sources, histories, identities] = await Promise.all([
+      // Comparing structure and placements only says something once the
+      // history is the authoritative record; in SHADOW every seat would be
+      // reported, which BASELINE_NOT_LOADED already explains.
+      mode === "AUTHORITATIVE" ? loadStructureMismatches(pool, date) : Promise.resolve({ withoutPlacement: [], withoutSeat: [] }),
       loadBaselineSources(pool),
       loadHistories(pool),
       pool.query<{ id: string; employeeNumber: string; fullName: string }>(
@@ -203,12 +206,19 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
       ),
     ]);
     const identityById = new Map(identities.rows.map((row) => [row.id, row]));
+    const seatWithoutPlacement = new Set(structure.withoutPlacement);
+    const placementWithoutSeat = new Set(structure.withoutSeat);
     const findings = sources.map((source) => {
       const finding = checkConsistency(source, histories.get(source.employeeId) ?? null, date, policy);
       // EMP-006 D-18: structure and placement are compared, never reconciled
-      // automatically; HC decides which record to correct.
-      if (structure.withoutPlacement.includes(source.employeeId)) finding.codes.push("STRUCTURE_SEAT_WITHOUT_PLACEMENT");
-      if (structure.withoutSeat.includes(source.employeeId)) finding.codes.push("PLACEMENT_WITHOUT_STRUCTURE_SEAT");
+      // automatically; HC decides which record to correct. An employee without
+      // history yet is already explained by BASELINE_NOT_LOADED, so comparing
+      // their missing placement would only add noise.
+      const hasHistory = (histories.get(source.employeeId)?.employments ?? []).some((employment) => !employment.voided);
+      if (hasHistory) {
+        if (seatWithoutPlacement.has(source.employeeId)) finding.codes.push("STRUCTURE_SEAT_WITHOUT_PLACEMENT");
+        if (placementWithoutSeat.has(source.employeeId)) finding.codes.push("PLACEMENT_WITHOUT_STRUCTURE_SEAT");
+      }
       return finding;
     });
 

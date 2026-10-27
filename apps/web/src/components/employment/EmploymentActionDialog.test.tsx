@@ -124,6 +124,29 @@ describe("EMP-006 career actions", () => {
     expect(dialog("TRANSFER")).toContain("Alasan</span>");
   });
 
+  it("asks a career move for its destination position, so the master keeps it", () => {
+    const html = dialog("TRANSFER");
+    expect(html).toContain("Jabatan</span>");
+    expect(html).toContain("Tanpa jabatan terdaftar");
+  });
+
+  it("ends an additional duty with just a date", () => {
+    const html = render(
+      <EmploymentActionDialog
+        employeeId={EMPLOYEE_ID}
+        employeeName="Pegawai Sintetis"
+        actionType="PLACEMENT_END"
+        placementId="80000000-0000-4000-8000-000000000001"
+        onClose={() => undefined}
+        onRecorded={() => undefined}
+      />,
+    );
+    expect(html).toContain("Akhiri tugas tambahan");
+    expect(html).toContain("Berlaku mulai");
+    expect(html).not.toContain("Unit tujuan");
+    expect(html).not.toContain("Pilih dokumen dasar");
+  });
+
   it("lets a placement be recorded as an additional duty", () => {
     const html = dialog("PLACEMENT");
     expect(html).toContain("Tugas tambahan (penempatan utama tetap)");

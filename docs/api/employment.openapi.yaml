@@ -544,9 +544,11 @@ components:
       required: [unitId, jobTitleLabel]
       description: |
         Package 1 records placements against the legacy unit/position tables,
-        the ones the nine projected employees columns point at. ORG-004 stable
-        keys arrive with S6 together with their mapping, so sending one is
-        rejected rather than silently clearing an employee's unit.
+        the ones the nine projected employees columns point at. An ORG-004 node
+        key is not accepted: until a mapping to the legacy unit is agreed,
+        projecting one would clear an employee's unit for every legacy consumer.
+        positionId is what keeps employees.position_id filled, so a career move
+        that leaves it out clears that column.
       properties:
         unitId: { type: string, format: uuid }
         positionId: { type: [string, 'null'], format: uuid }
@@ -600,12 +602,7 @@ components:
           properties:
             actionType: { type: string, enum: [PLACEMENT] }
             effectiveOn: { type: string, format: date }
-            placement:
-              allOf:
-                - { $ref: '#/components/schemas/EmploymentPlacementInput' }
-                - type: object
-                  properties:
-                    kind: { type: string, enum: [PRIMARY, ADDITIONAL], default: PRIMARY }
+            placement: { $ref: '#/components/schemas/EmploymentPlacementWithKind' }
             reasonNote: { type: [string, 'null'], maxLength: 1000 }
             documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
             acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
@@ -649,6 +646,16 @@ components:
             reasonNote: { type: [string, 'null'], maxLength: 1000 }
             documentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
             acknowledgedWarnings: { type: array, items: { $ref: '#/components/schemas/EmploymentWarning' } }
+    EmploymentPlacementWithKind:
+      type: object
+      additionalProperties: false
+      required: [unitId, jobTitleLabel]
+      description: A placement that may be the primary one or an additional duty beside it.
+      properties:
+        unitId: { type: string, format: uuid }
+        positionId: { type: [string, 'null'], format: uuid }
+        jobTitleLabel: { type: string, minLength: 1, maxLength: 200 }
+        kind: { type: string, enum: [PRIMARY, ADDITIONAL], default: PRIMARY }
     CareerReasonCode:
       type: string
       enum: [RESTRUKTURISASI, KINERJA, DISIPLIN, PERMINTAAN_PEGAWAI, KEBUTUHAN_ORGANISASI, LAINNYA]
@@ -937,7 +944,14 @@ components:
           items:
             type: object
             properties:
-              code: { type: string, description: 'Baseline issue code (BASELINE_*), BASELINE_NOT_LOADED, HISTORY_DIFFERS_FROM_MASTER, ACTIVE_WITHOUT_PLACEMENT, CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP' }
+              code:
+                type: string
+                description: >-
+                  Baseline issue code (BASELINE_*), BASELINE_NOT_LOADED,
+                  HISTORY_DIFFERS_FROM_MASTER, ACTIVE_WITHOUT_PLACEMENT,
+                  CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP, and in AUTHORITATIVE the
+                  two EMP-006 structure comparisons STRUCTURE_SEAT_WITHOUT_PLACEMENT
+                  and PLACEMENT_WITHOUT_STRUCTURE_SEAT.
               count: { type: integer }
         total: { type: integer }
         page: { type: integer }

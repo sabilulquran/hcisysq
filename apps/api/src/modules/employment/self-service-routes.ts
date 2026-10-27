@@ -20,7 +20,6 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   DEFAULT_EMPLOYMENT_POLICY as policy,
   EmploymentDomainError,
-  isIsoDate,
   planEmploymentAction,
   resolveEmployment,
   type EmploymentHistory,

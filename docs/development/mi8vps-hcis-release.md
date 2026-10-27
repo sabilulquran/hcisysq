@@ -133,6 +133,17 @@ as `sqhcis` with `final.env`, then re-lists `schema_migrations`. Each migration 
 transaction (`apps/api/src/db/migrate.ts`); a failure stops the flow with the earlier files
 committed. With nothing pending the phase is a no-op.
 
+**Permission migrations open a window.** `migrate` runs before `cutover`, so between the two the
+*old* build is still serving while the database already carries the new rows. A migration that adds
+a permission key to an existing role is visible to that old build as a role holding a permission its
+`HCIS_PERMISSIONS` allowlist does not contain, and `canDelegateRole` then refuses to grant or revoke
+that role until cutover finishes. Observed on the `hcis-fcec4e6a-20261027` release for
+`human_capital_admin` (DOC-001/DOC-002 §3 D-17); it lasted only as long as the gate plus cutover.
+
+Nothing is lost and no authorization widens, but a permission migration should either be released on
+its own, or split so that the build which knows the key ships one release before the grant. Adding a
+*new* permission key without attaching it to a role does not open this window.
+
 ### 4.6 candidate gate
 
 Starts the new release next to production, as `sqhcis`:
@@ -254,3 +265,7 @@ health results. Never record `final.env` values, tokens, cookies or employee dat
   They fail at SSH rather than reporting success, but need their own Mi8 replacement or retirement.
 - `publish-staging-images.yml` still publishes amd64 GHCR images on every `main` push. Nothing
   consumes them on Mi8.
+- `migrate` runs before `cutover`, so a migration that grants a new permission key to an existing
+  role briefly blocks role assignment for that role in the old build (§4.5). A durable fix would
+  derive the role-assignment allowlist from the `permissions` table instead of a compiled constant;
+  that is an AUTH-011 change of its own.

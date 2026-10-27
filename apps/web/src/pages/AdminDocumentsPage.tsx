@@ -7,6 +7,9 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import { getCurrentSession } from "@/lib/auth";
+import { hasPermission } from "@/lib/authorization";
+import type { AuthSession } from "@/types/hcis";
 import {
   approveDocumentRequest,
   documentStatusLabel,
@@ -29,6 +32,13 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "Asia/Jakarta" }).format(new Date(value));
 }
 
+/** `YYYY-MM-DD` in Asia/Jakarta, so a form opened before 07:00 WIB does not default to yesterday. */
+function todayInJakarta() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
 export function AdminDocumentsPage() {
   const [requests, setRequests] = useState<DocumentRequestSummary[]>([]);
   const [register, setRegister] = useState<RegisterRow[]>([]);
@@ -41,8 +51,12 @@ export function AdminDocumentsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState({
     employeeId: "", level: "SP1" as DisciplinaryLetterSummary["level"],
-    subject: "", narrative: "", effectiveDate: new Date().toISOString().slice(0, 10),
+    subject: "", narrative: "", effectiveDate: todayInJakarta(),
   });
+  const [session, setSession] = useState<AuthSession | null>(null);
+  // DOC-001/DOC-002: revoking needs documents.correct, which is a separate role grant. Without
+  // it the button would only produce a raw 403, so it is not offered.
+  const canRevoke = hasPermission(session, "documents.correct");
 
   const load = async () => {
     setLoading(true);
@@ -72,7 +86,17 @@ export function AdminDocumentsPage() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    void getCurrentSession()
+      .then(setSession)
+      .catch(() => {
+        // Without the session the page cannot tell which actions to offer, so say so rather
+        // than silently hiding Batalkan from someone who does hold documents.correct.
+        setSession(null);
+        setError("Izin akun tidak dapat dibaca, sehingga sebagian tindakan disembunyikan. Muat ulang halaman.");
+      });
+  }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -178,7 +202,7 @@ export function AdminDocumentsPage() {
                         {document.status === "REVOKED" ? " · dibatalkan" : ""}
                       </p>
                     </div>
-                    {document.status === "ISSUED" ? (
+                    {document.status === "ISSUED" && canRevoke ? (
                       <button type="button" disabled={busy} onClick={() => revoke(document.id)}
                         className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
                         Batalkan

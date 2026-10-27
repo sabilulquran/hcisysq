@@ -13,6 +13,7 @@ import {
   buildVariance,
   previousPeriodId,
 } from "../src/modules/payroll/reports.js";
+import { listEmploymentIdentities } from "../src/modules/payroll/store.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -242,6 +243,49 @@ describe.skipIf(!allowed)("PAY-003 reporting against PostgreSQL", () => {
       const report = await buildPeriodReport(pool, periodId);
       expect(report.totals.employeeCount).toBe(1);
       expect(report.totals.payable).toBe("2000000");
+    });
+  });
+
+  describe("who a result belongs to", () => {
+    it("names the employee behind every employment in the period", async () => {
+      const periodId = await newPeriod("2026-09-01", "CALCULATED");
+      const employee = await newEmployee(unitPusat);
+      await writeResult(periodId, employee.employmentId, {
+        profileId: employee.profileId,
+        payable: 1_500_000,
+        lines: [{ code: "BASIC", category: "EARNING", amount: 1_500_000 }],
+      });
+
+      const identities = await listEmploymentIdentities(pool, periodId);
+      expect(identities).toHaveLength(1);
+      expect(identities[0]).toMatchObject({
+        employmentId: employee.employmentId,
+        fullName: "Pegawai Laporan",
+      });
+      expect(identities[0]!.employeeNumber).toMatch(/^EMP-RPT-/);
+    });
+
+    it("names only the employments of the last run, like the figures beside it", async () => {
+      // A recalculation writes a whole new run. Whoever was left out of it is
+      // not in the period any more, and must not be named as if they were.
+      const periodId = await newPeriod("2026-09-01", "CALCULATED");
+      const dropped = await newEmployee(unitPusat);
+      await writeResult(periodId, dropped.employmentId, {
+        profileId: dropped.profileId,
+        payable: 1_000_000,
+        calculatedAt: "2026-09-20T00:00:00.000Z",
+        lines: [{ code: "BASIC", category: "EARNING", amount: 1_000_000 }],
+      });
+      const kept = await newEmployee(unitPusat);
+      await writeResult(periodId, kept.employmentId, {
+        profileId: kept.profileId,
+        payable: 2_000_000,
+        calculatedAt: "2026-09-21T00:00:00.000Z",
+        lines: [{ code: "BASIC", category: "EARNING", amount: 2_000_000 }],
+      });
+
+      const identities = await listEmploymentIdentities(pool, periodId);
+      expect(identities.map((entry) => entry.employmentId)).toEqual([kept.employmentId]);
     });
   });
 

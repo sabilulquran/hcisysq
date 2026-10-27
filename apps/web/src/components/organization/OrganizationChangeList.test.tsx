@@ -191,3 +191,12 @@ describe("ORG-008 review: edits a rebuild cannot reproduce", () => {
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*Lanjutkan/);
   });
 });
+
+describe("ORG-008-11 the primary seat of someone holding two", () => {
+  it("reads the change-list line as a sentence naming the seat", () => {
+    expect(organizationJournalSentence({
+      commandType: "SET_PRIMARY_STRUCTURAL_POSITION",
+      summary: { positionTitle: "Wakil Kepala", seats: 2 },
+    })).toBe("Wakil Kepala dijadikan jabatan utama pejabatnya.");
+  });
+});

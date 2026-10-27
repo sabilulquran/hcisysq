@@ -1467,6 +1467,22 @@
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
+    "url": "/admin/attendance/overtime/:overtimeId/void",
+    "permissions": [
+      "attendance.overtime.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/overtime/:overtimeId/reassign",
+    "permissions": [
+      "attendance.overtime.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
     "url": "/admin/attendance/manual-corrections",
     "permissions": [
       "attendance.records.manage"
@@ -1878,6 +1894,66 @@
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/attendance/overtime",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/overtime/:overtimeId/respond",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/team-overtime",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/team-overtime/subordinates",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/team-overtime/:overtimeId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/team-overtime/orders",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "POST",
+    "url": "/attendance/team-overtime/:overtimeId/cancel",
     "access": "self-service",
     "principals": [
       "EMPLOYEE"

@@ -78,11 +78,25 @@ export function AdminExpiringCertificatesPage() {
         <p className="text-sm text-muted-foreground">Akun ini tidak berhak melihat data sertifikat pegawai.</p>
       ) : null}
       {view.kind === "error" ? <p role="alert" className="text-sm text-danger-ink">{view.message}</p> : null}
+      {/* An empty page past the end is not an empty list: the total says so,
+          and the pager has to stay or the operator is stranded there. */}
+      {view.kind === "ready" && view.data.rows.length === 0 && view.data.total > 0 ? (
+        <div className="rounded-2xl border border-border/70 p-4">
+          <p className="text-sm text-muted-foreground">
+            Halaman {view.data.page} kosong. Ada {view.data.total} sertifikat pada rentang ini.
+          </p>
+          <a className="mt-2 inline-block text-sm font-bold text-brand-primary-deep" href={hrefFor(withinDays)}>
+            Kembali ke halaman pertama
+          </a>
+        </div>
+      ) : null}
       {view.kind === "ready" ? (
         view.data.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Tidak ada sertifikat yang berakhir dalam {view.data.withinDays} hari ke depan.
-          </p>
+          view.data.total > 0 ? null : (
+            <p className="text-sm text-muted-foreground">
+              Tidak ada sertifikat yang berakhir dalam {view.data.withinDays} hari ke depan.
+            </p>
+          )
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border/70">
             <table className="w-full text-left text-sm">

@@ -19,6 +19,7 @@ import {
   SkillRecords,
   educationPayload,
   skillPayload,
+  yearOrNull,
   viewFromProfileError,
   type RecordActions,
 } from "@/components/employment/EducationSkillsPanel";
@@ -198,6 +199,15 @@ describe("EMP-007 forms", () => {
     expect(plain).not.toContain("(wajib)");
   });
 
+  it("asks for every field the spec lists, so nothing can only be edited", () => {
+    const html = render(
+      <EducationForm draft={EMPTY_EDUCATION} editing={false} busy={false} onChange={() => undefined} onSubmit={() => undefined} onCancel={() => undefined} />,
+    );
+    for (const label of ["Jenjang", "Nama lembaga", "Jurusan", "Tahun mulai", "Tahun selesai", "Gelar", "Nomor ijazah", "Letak arsip ijazah", "Catatan"]) {
+      expect(html).toContain(label);
+    }
+  });
+
   it("names itself an amendment when it edits an existing record", () => {
     const html = render(
       <EducationForm draft={EMPTY_EDUCATION} editing busy={false} onChange={() => undefined} onSubmit={() => undefined} onCancel={() => undefined} />,
@@ -212,6 +222,16 @@ describe("EMP-007 forms", () => {
       .toMatchObject({ proficiency: null, expiresOn: null });
     expect(skillPayload({ ...EMPTY_SKILL, kind: "KEAHLIAN", name: "Excel", proficiency: "MAHIR" }))
       .toMatchObject({ proficiency: "MAHIR" });
+  });
+});
+
+describe("EMP-007 year field", () => {
+  it("clears a year only when the field is emptied, never on a typo", () => {
+    expect(yearOrNull("", 2018)).toBeNull();
+    expect(yearOrNull("2019", 2018)).toBe(2019);
+    // NaN would serialise as null and wipe a year the operator only mistyped.
+    expect(yearOrNull("19x9", 2018)).toBe(2018);
+    expect(yearOrNull("19x9", null)).toBeNull();
   });
 });
 

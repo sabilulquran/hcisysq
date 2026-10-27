@@ -145,6 +145,21 @@ describe.skipIf(!allowed)("EMP-007 §4.1, §4.2, §7.5 against PostgreSQL", () =
     expect(await lockProfileRecord(client, "employee_education", randomUUID())).toBeNull();
   });
 
+  it("tells the lock that the record's employee has left the master", async () => {
+    const employeeId = await addEmployee("Pegawai Dihapus Kunci");
+    const recordId = await insertEducation(client, employeeId, EDUCATION, actorId);
+    expect(await lockProfileRecord(client, "employee_education", recordId))
+      .toMatchObject({ employeeId, employeeRemoved: false });
+    await client.query(
+      "UPDATE employees SET removed_at = now(), removal_reason = 'Uji sintetis' WHERE id = $1",
+      [employeeId],
+    );
+    // The join must still find the row, and say the employee is gone — not
+    // return null, which would read as "no such record".
+    expect(await lockProfileRecord(client, "employee_education", recordId))
+      .toMatchObject({ employeeId, employeeRemoved: true });
+  });
+
   it("reads dates back as the day they were written, whatever the server's zone", async () => {
     const employeeId = await addEmployee("Pegawai Tanggal");
     const recordId = await insertSkill(client, employeeId, certificate({ issuedOn: "2024-01-10", expiresOn: "2029-01-10" }), actorId);

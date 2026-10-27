@@ -281,17 +281,24 @@ export function EducationForm({ draft, editing, busy, onChange, onSubmit, onCanc
         <input className={field} value={draft.major ?? ""} onChange={(event) => onChange({ ...draft, major: event.target.value })} />
       </Labelled>
       <Labelled label="Tahun mulai">
-        <input className={field} inputMode="numeric" value={draft.startedYear ?? ""} onChange={(event) => onChange({ ...draft, startedYear: yearOrNull(event.target.value) })} />
+        <input className={field} inputMode="numeric" value={draft.startedYear ?? ""} onChange={(event) => onChange({ ...draft, startedYear: yearOrNull(event.target.value, draft.startedYear ?? null) })} />
       </Labelled>
       <Labelled label="Tahun selesai">
-        <input className={field} inputMode="numeric" value={draft.completedYear ?? ""} onChange={(event) => onChange({ ...draft, completedYear: yearOrNull(event.target.value) })} />
+        <input className={field} inputMode="numeric" value={draft.completedYear ?? ""} onChange={(event) => onChange({ ...draft, completedYear: yearOrNull(event.target.value, draft.completedYear ?? null) })} />
       </Labelled>
       <Labelled label="Gelar">
         <input className={field} value={draft.degreeTitle ?? ""} onChange={(event) => onChange({ ...draft, degreeTitle: event.target.value })} />
       </Labelled>
+      <Labelled label="Nomor ijazah">
+        <input className={field} value={draft.certificateNumber ?? ""} onChange={(event) => onChange({ ...draft, certificateNumber: event.target.value })} />
+      </Labelled>
       <Labelled label="Letak arsip ijazah">
         <input className={field} value={draft.archiveReference ?? ""} onChange={(event) => onChange({ ...draft, archiveReference: event.target.value })} />
       </Labelled>
+      <label className="sm:col-span-2 block text-sm">
+        <span className="mb-1 block font-bold text-brand-heading">Catatan</span>
+        <textarea className={field} rows={2} value={draft.notes ?? ""} onChange={(event) => onChange({ ...draft, notes: event.target.value })} />
+      </label>
       <div className="sm:col-span-2 flex gap-2">
         <button type="submit" className={primaryButton} disabled={busy}>Simpan</button>
         <button type="button" className={quietButton} onClick={onCancel}>Batal</button>
@@ -360,9 +367,16 @@ export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel }
       <Labelled label="Berlaku sampai">
         <input className={field} type="date" value={draft.expiresOn ?? ""} onChange={(event) => onChange({ ...draft, expiresOn: event.target.value })} />
       </Labelled>
+      <Labelled label="Nomor sertifikat">
+        <input className={field} value={draft.certificateNumber ?? ""} onChange={(event) => onChange({ ...draft, certificateNumber: event.target.value })} />
+      </Labelled>
       <Labelled label="Letak arsip sertifikat">
         <input className={field} value={draft.archiveReference ?? ""} onChange={(event) => onChange({ ...draft, archiveReference: event.target.value })} />
       </Labelled>
+      <label className="sm:col-span-2 block text-sm">
+        <span className="mb-1 block font-bold text-brand-heading">Catatan</span>
+        <textarea className={field} rows={2} value={draft.notes ?? ""} onChange={(event) => onChange({ ...draft, notes: event.target.value })} />
+      </label>
       <div className="sm:col-span-2 flex gap-2">
         <button type="submit" className={primaryButton} disabled={busy}>Simpan</button>
         <button type="button" className={quietButton} onClick={onCancel}>Batal</button>
@@ -376,9 +390,15 @@ export function blankToNull(value: string | null | undefined): string | null {
   return trimmed.length ? trimmed : null;
 }
 
-function yearOrNull(value: string): number | null {
+/**
+ * A blank field means "not recorded"; anything that is not a year is left for
+ * the previous value to stand, because NaN would serialise as null and quietly
+ * clear a year the operator only mistyped.
+ */
+export function yearOrNull(value: string, previous: number | null): number | null {
   const trimmed = value.trim();
-  return trimmed.length ? Number(trimmed) : null;
+  if (!trimmed.length) return null;
+  return /^\d{1,4}$/.test(trimmed) ? Number(trimmed) : previous;
 }
 
 /** What the API is sent: blanks become null, and a certificate carries no proficiency. */

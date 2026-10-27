@@ -244,14 +244,27 @@ export async function voidRecord(
   );
 }
 
-/** Mengunci baris untuk baca-ubah-tulis; null bila catatannya tidak ada. */
+/**
+ * Mengunci baris untuk baca-ubah-tulis; null bila catatannya tidak ada.
+ *
+ * Status pegawainya ikut dibaca di sini. Rute yang dipanggil dengan id catatan
+ * tidak pernah menyebut pegawainya, jadi tanpa ini catatan milik pegawai yang
+ * sudah dikeluarkan dari master masih bisa diubah padahal membacanya saja
+ * sudah ditolak (EMP-001: riwayat itu hanya dapat dibaca). `FOR UPDATE OF`
+ * mengunci baris catatannya saja, bukan baris pegawai.
+ */
 export async function lockProfileRecord(
   client: PoolClient,
   table: ProfileTable,
   recordId: string,
-): Promise<{ employeeId: string; voidedAt: Date | null } | null> {
-  const result = await client.query<{ employeeId: string; voidedAt: Date | null }>(
-    `SELECT employee_id AS "employeeId", voided_at AS "voidedAt" FROM ${table} WHERE id = $1 FOR UPDATE`,
+): Promise<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean } | null> {
+  const result = await client.query<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean }>(
+    `SELECT r.employee_id AS "employeeId", r.voided_at AS "voidedAt",
+            (e.removed_at IS NOT NULL) AS "employeeRemoved"
+     FROM ${table} r
+     JOIN employees e ON e.id = r.employee_id
+     WHERE r.id = $1
+     FOR UPDATE OF r`,
     [recordId],
   );
   return result.rows[0] ?? null;

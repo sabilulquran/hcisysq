@@ -106,6 +106,8 @@ interface PoolOptions {
   employeeMissing?: boolean;
   recordMissing?: boolean;
   recordVoided?: boolean;
+  /** The record's employee has been removed from the master. */
+  ownerRemoved?: boolean;
   /** The education rows a list returns, for the derived highest level. */
   educationRows?: Array<Record<string, unknown>>;
   payload?: object;
@@ -145,7 +147,11 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("FOR UPDATE")) {
       if (options.recordMissing) return { rows: [], rowCount: 0 };
       return {
-        rows: [{ employeeId: EMPLOYEE_ID, voidedAt: options.recordVoided ? new Date("2026-10-02T00:00:00Z") : null }],
+        rows: [{
+          employeeId: EMPLOYEE_ID,
+          voidedAt: options.recordVoided ? new Date("2026-10-02T00:00:00Z") : null,
+          employeeRemoved: options.ownerRemoved === true,
+        }],
         rowCount: 1,
       };
     }
@@ -373,6 +379,39 @@ describe("EMP-007 verification and voiding", () => {
     expect(voided.response.statusCode).toBe(409);
     expect(voided.response.json()).toMatchObject({ code: "EMPLOYEE_RECORD_VOIDED" });
     expect(voided.writes).toEqual([]);
+  });
+
+  it("refuses to touch a record of an employee removed from the master", async () => {
+    // Its list already answers 404; a route reached by record id must not be
+    // the way back into history the master calls read-only (EMP-001).
+    const amend = await call("hc", "PATCH", `/admin/education-records/${EDUCATION_ID}`, {
+      payload: EDUCATION_BODY, ownerRemoved: true,
+    });
+    expect(amend.response.statusCode).toBe(404);
+    expect(amend.response.json()).toMatchObject({ code: "EMPLOYEE_NOT_FOUND" });
+    expect(amend.writes).toEqual([]);
+
+    const verify = await call("hc", "POST", `/admin/skill-records/${SKILL_ID}/verification`, {
+      payload: { verified: true }, ownerRemoved: true,
+    });
+    expect(verify.response.statusCode).toBe(404);
+    expect(verify.writes).toEqual([]);
+
+    const voided = await call("hc", "POST", `/admin/skill-records/${SKILL_ID}/void`, {
+      payload: { reason: "Catatan ganda" }, ownerRemoved: true,
+    });
+    expect(voided.response.statusCode).toBe(404);
+    expect(voided.writes).toEqual([]);
+  });
+
+  it("picks the table from the route, not from the query string", async () => {
+    // ".../void?x=/education-records/" must still void a skill record.
+    const { query } = await call("hc", "POST", `/admin/skill-records/${SKILL_ID}/void?x=/education-records/`, {
+      payload: { reason: "Catatan ganda" },
+    });
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    expect(statements.some((sql) => /UPDATE employee_skills SET voided_at/.test(sql))).toBe(true);
+    expect(statements.some((sql) => /employee_education/.test(sql))).toBe(false);
   });
 
   it("locks the row before deciding, so two editors cannot race", async () => {

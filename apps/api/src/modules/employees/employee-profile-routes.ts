@@ -312,10 +312,6 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
 
   // ------------------------------------------- verifikasi dan pembatalan
 
-  function tableOf(url: string): ProfileTable {
-    return url.includes("/education-records/") ? "employee_education" : "employee_skills";
-  }
-
   async function rollback(client: { query: (sql: string) => Promise<unknown> }) {
     try {
       await client.query("ROLLBACK");
@@ -333,11 +329,19 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
   async function refuseMissingOrVoided(
     client: { query: (sql: string) => Promise<unknown> },
     reply: FastifyReply,
-    locked: { employeeId: string; voidedAt: Date | null } | null,
+    locked: { employeeId: string; voidedAt: Date | null; employeeRemoved: boolean } | null,
   ): Promise<boolean> {
     if (!locked) {
       await rollback(client);
       await send(reply, 404, { code: "EMPLOYEE_RECORD_NOT_FOUND", message: "Catatan tidak ditemukan." });
+      return true;
+    }
+    // A record identified by its own id still belongs to an employee, and a
+    // record of an employee removed from the master is read-only history
+    // (EMP-001) — the same answer its list already gives.
+    if (locked.employeeRemoved) {
+      await rollback(client);
+      await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       return true;
     }
     if (locked.voidedAt !== null) {
@@ -348,7 +352,15 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     return false;
   }
 
-  for (const prefix of ["/admin/education-records", "/admin/skill-records"]) {
+  // The table follows the registered prefix. Reading it out of request.url
+  // would read the query string too, so ".../void?x=/education-records/" could
+  // pick the wrong table.
+  const RECORD_ROUTES: Array<{ prefix: string; table: ProfileTable }> = [
+    { prefix: "/admin/education-records", table: "employee_education" },
+    { prefix: "/admin/skill-records", table: "employee_skills" },
+  ];
+
+  for (const { prefix, table } of RECORD_ROUTES) {
     app.post(`${prefix}/:recordId/verification`, async (request, reply) => {
       const principal = await authenticate(request, reply, "employees.manage");
       if (!principal) return;
@@ -359,7 +371,6 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
       if (!body.data.verified && reason.length < 5) {
         return invalid(reply, "Pencabutan verifikasi wajib disertai alasan.");
       }
-      const table = tableOf(request.url);
 
       const client = await pool.connect();
       try {
@@ -398,7 +409,6 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
       if (!params.success || !body.success) {
         return invalid(reply, "Pembatalan catatan wajib disertai alasan.");
       }
-      const table = tableOf(request.url);
 
       const client = await pool.connect();
       try {

@@ -639,8 +639,8 @@
     },
     {
       "url": "/employees/me/employment",
-      "list": "single",
-      "reason": "Ringkasan kepegawaian milik pegawai yang masuk sendiri, dengan riwayat tindakannya sendiri."
+      "list": "bounded",
+      "reason": "Ringkasan kepegawaian pegawai yang masuk sendiri beserta linimasa tindakannya; dibatasi riwayat satu pegawai."
     },
     {
       "url": "/governance/summary",

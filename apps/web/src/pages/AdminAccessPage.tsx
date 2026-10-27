@@ -4,6 +4,7 @@ import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react"
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
+import { TemporaryReactivationPanel } from "@/components/employment/TemporaryReactivationPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AccountActivationApiError,
@@ -79,6 +80,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
 }) {
   const canPrepareBoard = hasPermission(session, "access.governance.manage");
   const canManageRoles = canManageRoleAssignments(session);
+  const canGrantReactivation = hasPermission(session, "access.accounts.temporary_reactivate");
   // The account list is searched and paged on the server (ENG-LIST-001), so the account for a new
   // role is picked from its card instead of a dropdown of every account.
   const [selectedAccount, setSelectedAccount] = useState<{ id: string; label: string } | null>(null);
@@ -527,6 +529,11 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             ) : (
               <p className="mt-4 text-xs text-muted-foreground">Tidak ada role tambahan.</p>
             )}
+
+            {/* EMP-005 D-15: only a former employee account can be opened again for a while. */}
+            {canGrantReactivation && account.principalType === "EMPLOYEE" && account.status !== "suspended" ? (
+              <TemporaryReactivationPanel accountId={account.id} />
+            ) : null}
           </article>
         ))}
         {data.pagination ? (

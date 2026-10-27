@@ -1,7 +1,13 @@
 import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
-import { EmploymentContractPanel, PlacementCareerPanel } from "@/components/employment/EmploymentPanels";
+import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
+import {
+  EmploymentActionButtons,
+  EmploymentContractPanel,
+  PlacementCareerPanel,
+} from "@/components/employment/EmploymentPanels";
+import type { EmploymentActionType } from "@/lib/employment-actions";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AccountActivationApiError,
@@ -85,13 +91,17 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<EmployeeDetailTab>("ringkasan");
   const [canReadEmployment, setCanReadEmployment] = useState(false);
+  const [canManageEmployment, setCanManageEmployment] = useState(false);
+  const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
   const [timelineView, setTimelineView] = useState<EmploymentView<EmploymentTimelineItem[]>>({ kind: "loading" });
 
   useEffect(() => {
     let mounted = true;
     void getCurrentSession().then((session) => {
-      if (mounted) setCanReadEmployment(hasPermission(session, "employment.read"));
+      if (!mounted) return;
+      setCanReadEmployment(hasPermission(session, "employment.read"));
+      setCanManageEmployment(hasPermission(session, "employment.manage"));
     });
     return () => {
       mounted = false;
@@ -277,7 +287,36 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
       <EmployeeDetailTabs active={tab} canReadEmployment={canReadEmployment} onSelect={setTab} />
 
-      {tab === "kepegawaian" ? <EmploymentContractPanel view={employmentView ?? { kind: "loading" }} /> : null}
+      {tab === "kepegawaian" ? (
+        <EmploymentContractPanel
+          view={employmentView ?? { kind: "loading" }}
+          actions={
+            employmentView?.kind === "ready" ? (
+              <EmploymentActionButtons
+                mode={employmentView.data.mode}
+                state={employmentView.data.state}
+                canManage={canManageEmployment}
+                onStart={setEmploymentAction}
+              />
+            ) : null
+          }
+        />
+      ) : null}
+      {employmentAction ? (
+        <EmploymentActionDialog
+          employeeId={employeeId}
+          employeeName={employee?.fullName ?? "Pegawai"}
+          actionType={employmentAction}
+          onClose={() => setEmploymentAction(null)}
+          onRecorded={(message) => {
+            setEmploymentAction(null);
+            setNotice(message);
+            // Reload the derived state: the action moved it.
+            setEmploymentView(null);
+            setTimelineView({ kind: "loading" });
+          }}
+        />
+      ) : null}
       {tab === "penempatan" ? <PlacementCareerPanel view={employmentView ?? { kind: "loading" }} timeline={timelineView} /> : null}
 
       {tab === "ringkasan" ? (<>

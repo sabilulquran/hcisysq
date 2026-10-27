@@ -84,9 +84,13 @@ Arah:
 - satu grade dapat dipakai beberapa position;
 - perubahan grade yang mempunyai efek historis harus effective-dated;
 - hubungan grade ke payroll hanya boleh aktif setelah specification khusus diterima;
-- specification ID final masih TBD.
+- specification ID: **ORG-011** (ditetapkan 2026-10-27).
 
 Area ini menjadi dependency discovery EMP-006/PAY-003, bukan alasan membuat tabel grade ad-hoc.
+
+ORG-011 menetapkan katalog klasifikasi dan golongan yang effective-dated dan hidup di luar change set ORG-004, tanpa nilai uang dan tanpa authority. Skala gaji pokok tetap milik PAY-003 (pendidikan terakhir x MKG); klasifikasi hanya menjadi kunci stabil tabel tunjangan, menggantikan pencocokan label teks.
+
+Detail ada di `docs/domain/job-classification-grade.md` (DRAFT) dan ADR-0004 (PROPOSED).
 
 ### D. Payroll discovery and staged delivery
 
@@ -172,7 +176,9 @@ YSQ menjadi legal entity pertama/default untuk kompatibilitas.
 
 Satu person/account tidak diduplikasi hanya karena mempunyai employment pada entity berbeda. Cross-company movement tidak boleh sekadar overwrite `company_id`; employment history dan entity-scoped payroll/leave/attendance harus tetap utuh.
 
-Detail proposal ada di `docs/domain/multi-company-organization.md`.
+Detail proposal ada di `docs/domain/multi-company-organization.md`. Penilaian kesiapan terhadap skema yang ada sekarang, dampak per domain, rencana bertahap E1..E6, dan default DRAFT untuk keputusan terbuka ORG-007 ada di `docs/domain/multi-entity-readiness.md` dan ADR-0005 (PROPOSED).
+
+Arah yang ditetapkan ADR-0005: entity diturunkan dari employment (bukan dari account/employee), scope `organization` berarti satu legal entity, akses lintas entity hanya lewat scope `group` yang eksplisit, konteks entity yang tidak terselesaikan berarti akses ditolak, dan aktivasi multi-entity ditunda sampai entity kedua benar-benar dibutuhkan.
 
 ### F. Recruitment linked to organization and employment
 

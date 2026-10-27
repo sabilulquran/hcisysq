@@ -347,6 +347,23 @@
       "reason": "Data master lokasi kerja (2 hari ini)."
     },
     {
+      "url": "/admin/documents/disciplinary",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/documents/register",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/documents/requests",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/documents/types",
+      "list": "bounded",
+      "reason": "Katalog jenis surat; beberapa baris tetap."
+    },
+    {
       "url": "/admin/employee-imports",
       "list": "debt",
       "reason": "Riwayat import LIMIT 50 tanpa halaman.",
@@ -562,6 +579,26 @@
     {
       "url": "/board/dashboard",
       "list": "aggregate"
+    },
+    {
+      "url": "/documents/me/disciplinary",
+      "list": "bounded",
+      "reason": "Surat peringatan milik satu pegawai; jumlahnya sangat kecil."
+    },
+    {
+      "url": "/documents/me/issued",
+      "list": "bounded",
+      "reason": "Surat terbit milik satu pegawai; beberapa lembar per tahun."
+    },
+    {
+      "url": "/documents/me/requests",
+      "list": "bounded",
+      "reason": "Permintaan surat milik satu pegawai; dibatasi pemiliknya dan maksimal tiga permintaan terbuka."
+    },
+    {
+      "url": "/documents/me/types",
+      "list": "bounded",
+      "reason": "Katalog jenis surat yang dapat diminta pegawai; beberapa baris tetap."
     },
     {
       "url": "/governance/summary",

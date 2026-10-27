@@ -95,9 +95,24 @@ export async function acknowledgeDisciplinaryLetter(letterId: string) {
   return post<{ id: string; acknowledgedAt: string }>(`/documents/me/disciplinary/${letterId}/acknowledge`);
 }
 
-export async function getDocumentRequests(status?: DocumentRequestSummary["status"]) {
-  const query = status ? `?status=${status}` : "";
-  return (await get<{ items: DocumentRequestSummary[] }>(`/admin/documents/requests${query}`)).items;
+export interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  pageCount: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+// ENG-LIST-001: the organization-wide lists page; the screens ask for one full page.
+const ADMIN_PAGE_SIZE = 100;
+
+export async function getDocumentRequests(page = 1, status?: DocumentRequestSummary["status"]) {
+  const query = `?page=${page}&pageSize=${ADMIN_PAGE_SIZE}${status ? `&status=${status}` : ""}`;
+  return get<Page<DocumentRequestSummary>>(`/admin/documents/requests${query}`);
 }
 
 export async function approveDocumentRequest(requestId: string, note?: string) {
@@ -112,18 +127,18 @@ export async function issueDocumentRequest(requestId: string) {
   return post<{ id: string; documentNumber: string }>(`/admin/documents/requests/${requestId}/issue`);
 }
 
-export async function getDocumentRegister() {
-  return (await get<{ items: Array<IssuedDocumentSummary & { employeeName: string; employeeNumber: string }> }>(
-    "/admin/documents/register",
-  )).items;
+export async function getDocumentRegister(page = 1) {
+  return get<Page<IssuedDocumentSummary & { employeeName: string; employeeNumber: string }>>(
+    `/admin/documents/register?page=${page}&pageSize=${ADMIN_PAGE_SIZE}`,
+  );
 }
 
 export async function revokeIssuedDocument(documentId: string, reason: string) {
   return post<{ id: string; status: string }>(`/admin/documents/issued/${documentId}/revoke`, { reason });
 }
 
-export async function getDisciplinaryLetters() {
-  return (await get<{ items: DisciplinaryLetterSummary[] }>("/admin/documents/disciplinary")).items;
+export async function getDisciplinaryLetters(page = 1) {
+  return get<Page<DisciplinaryLetterSummary>>(`/admin/documents/disciplinary?page=${page}&pageSize=${ADMIN_PAGE_SIZE}`);
 }
 
 export async function issueDisciplinaryLetter(input: {

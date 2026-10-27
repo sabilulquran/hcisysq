@@ -34,6 +34,7 @@ export function AdminDocumentsPage() {
   const [register, setRegister] = useState<RegisterRow[]>([]);
   const [letters, setLetters] = useState<DisciplinaryLetterSummary[]>([]);
   const [disciplineReadable, setDisciplineReadable] = useState(false);
+  const [totals, setTotals] = useState({ requests: 0, register: 0, letters: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,10 +53,17 @@ export function AdminDocumentsPage() {
         getDisciplinaryLetters(),
       ]);
       if (requestList.status === "rejected") throw requestList.reason;
-      setRequests(requestList.value);
-      if (registerList.status === "fulfilled") setRegister(registerList.value);
+      setRequests(requestList.value.items);
+      setTotals((current) => ({ ...current, requests: requestList.value.pagination.total }));
+      if (registerList.status === "fulfilled") {
+        setRegister(registerList.value.items);
+        setTotals((current) => ({ ...current, register: registerList.value.pagination.total }));
+      }
       setDisciplineReadable(letterList.status === "fulfilled");
-      if (letterList.status === "fulfilled") setLetters(letterList.value);
+      if (letterList.status === "fulfilled") {
+        setLetters(letterList.value.items);
+        setTotals((current) => ({ ...current, letters: letterList.value.pagination.total }));
+      }
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Dokumen tidak dapat dimuat.");
@@ -152,6 +160,9 @@ export function AdminDocumentsPage() {
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">Belum ada permintaan surat.</p>
             )}
+            {totals.requests > requests.length ? (
+              <p className="mt-3 text-xs text-muted-foreground">Menampilkan {requests.length} terbaru dari {totals.requests}.</p>
+            ) : null}
           </section>
 
           <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
@@ -181,6 +192,7 @@ export function AdminDocumentsPage() {
             )}
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               Nomor surat tidak pernah dipakai ulang. Surat yang dibatalkan tetap memegang nomornya.
+              {totals.register > register.length ? ` Menampilkan ${register.length} terbaru dari ${totals.register}.` : ""}
             </p>
           </section>
 
@@ -243,6 +255,9 @@ export function AdminDocumentsPage() {
               ) : (
                 <p className="mt-5 text-sm text-muted-foreground">Belum ada surat peringatan.</p>
               )}
+              {totals.letters > letters.length ? (
+                <p className="mt-3 text-xs text-muted-foreground">Menampilkan {letters.length} terbaru dari {totals.letters}.</p>
+              ) : null}
             </section>
           ) : null}
         </div>

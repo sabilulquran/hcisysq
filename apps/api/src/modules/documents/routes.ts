@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import type { DocumentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
@@ -52,9 +53,9 @@ const disciplinaryBody = z.object({
   expiresOn: isoDate.optional(),
 });
 const idParams = z.object({ id: z.string().uuid() });
-const registerQuery = z.object({
+// ENG-LIST-001: organization-wide lists page; a self list is bounded by its own owner.
+const requestQuery = pageQuerySchema.extend({
   status: z.enum(["SUBMITTED", "APPROVED", "REJECTED", "CANCELLED", "ISSUED"]).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 const OPEN_REQUEST_STATES = ["SUBMITTED", "APPROVED"] as const;
@@ -338,32 +339,36 @@ export async function registerDocumentRoutes(
 
   app.get("/admin/documents/requests", async (request, reply) => {
     if (!(await requirePermission(request, reply, "documents.read"))) return;
-    const query = registerQuery.safeParse(request.query);
+    const query = requestQuery.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_DOCUMENT_FILTER", message: "Filter tidak valid." });
-    const values: unknown[] = [];
-    let statusClause = "";
-    if (query.data.status) {
-      values.push(query.data.status);
-      statusClause = `WHERE request.status = $${values.length}`;
-    }
-    values.push(query.data.limit);
-    const result = await pool.query(
-      `SELECT request.id, request.document_code AS "documentCode", type.label AS "documentLabel",
-              request.purpose, request.status, request.created_at AS "createdAt",
-              request.decided_at AS "decidedAt", request.decision_note AS "decisionNote",
-              employee.id AS "employeeId", employee.full_name AS "employeeName",
-              employee.employee_number AS "employeeNumber",
-              issued.document_number AS "documentNumber"
-         FROM hr_document_requests request
-         JOIN hr_document_types type ON type.code = request.document_code
-         JOIN employees employee ON employee.id = request.employee_id
-         LEFT JOIN hr_issued_documents issued ON issued.id = request.issued_document_id
-         ${statusClause}
-        ORDER BY request.created_at DESC
-        LIMIT $${values.length}`,
-      values,
-    );
-    return send(reply, 200, { items: result.rows });
+    const status = query.data.status ?? null;
+    const where = "WHERE ($1::text IS NULL OR request.status = $1)";
+    const [items, count] = await Promise.all([
+      pool.query(
+        `SELECT request.id, request.document_code AS "documentCode", type.label AS "documentLabel",
+                request.purpose, request.status, request.created_at AS "createdAt",
+                request.decided_at AS "decidedAt", request.decision_note AS "decisionNote",
+                employee.id AS "employeeId", employee.full_name AS "employeeName",
+                employee.employee_number AS "employeeNumber",
+                issued.document_number AS "documentNumber"
+           FROM hr_document_requests request
+           JOIN hr_document_types type ON type.code = request.document_code
+           JOIN employees employee ON employee.id = request.employee_id
+           LEFT JOIN hr_issued_documents issued ON issued.id = request.issued_document_id
+           ${where}
+          ORDER BY request.created_at DESC, request.id DESC
+          LIMIT $2 OFFSET $3`,
+        [status, query.data.pageSize, pageOffset(query.data)],
+      ),
+      pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM hr_document_requests request ${where}`,
+        [status],
+      ),
+    ]);
+    return send(reply, 200, {
+      items: items.rows,
+      pagination: pagination(query.data, count.rows[0]?.total ?? 0),
+    });
   });
 
   async function decideRequest(
@@ -536,18 +541,29 @@ export async function registerDocumentRoutes(
 
   app.get("/admin/documents/register", async (request, reply) => {
     if (!(await requirePermission(request, reply, "documents.read"))) return;
-    const result = await pool.query(
-      `SELECT issued.id, issued.document_kind AS "documentKind", issued.document_code AS "documentCode",
-              issued.document_number AS "documentNumber", issued.status,
-              issued.issued_at AS "issuedAt", issued.signer,
-              employee.full_name AS "employeeName", employee.employee_number AS "employeeNumber"
-         FROM hr_issued_documents issued
-         JOIN employees employee ON employee.id = issued.employee_id
-        WHERE issued.document_kind = 'CERTIFICATE'
-        ORDER BY issued.issued_at DESC
-        LIMIT 200`,
-    );
-    return send(reply, 200, { items: result.rows });
+    const query = pageQuerySchema.safeParse(request.query);
+    if (!query.success) return send(reply, 400, { code: "INVALID_DOCUMENT_FILTER", message: "Filter tidak valid." });
+    const [items, count] = await Promise.all([
+      pool.query(
+        `SELECT issued.id, issued.document_kind AS "documentKind", issued.document_code AS "documentCode",
+                issued.document_number AS "documentNumber", issued.status,
+                issued.issued_at AS "issuedAt", issued.signer,
+                employee.full_name AS "employeeName", employee.employee_number AS "employeeNumber"
+           FROM hr_issued_documents issued
+           JOIN employees employee ON employee.id = issued.employee_id
+          WHERE issued.document_kind = 'CERTIFICATE'
+          ORDER BY issued.issued_at DESC, issued.id DESC
+          LIMIT $1 OFFSET $2`,
+        [query.data.pageSize, pageOffset(query.data)],
+      ),
+      pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM hr_issued_documents WHERE document_kind = 'CERTIFICATE'`,
+      ),
+    ]);
+    return send(reply, 200, {
+      items: items.rows,
+      pagination: pagination(query.data, count.rows[0]?.total ?? 0),
+    });
   });
 
   app.post("/admin/documents/issued/:id/revoke", async (request, reply) => {
@@ -593,23 +609,30 @@ export async function registerDocumentRoutes(
 
   app.get("/admin/documents/disciplinary", async (request, reply) => {
     if (!(await requirePermission(request, reply, "documents.discipline.manage"))) return;
-    const result = await pool.query<{ expiresOn: string }>(
-      `SELECT letter.id, letter.level, letter.subject,
-              to_char(letter.effective_date, 'YYYY-MM-DD') AS "effectiveDate",
-              to_char(letter.expires_on, 'YYYY-MM-DD') AS "expiresOn",
-              letter.acknowledged_at AS "acknowledgedAt",
-              issued.document_number AS "documentNumber", issued.status,
-              employee.id AS "employeeId", employee.full_name AS "employeeName",
-              employee.employee_number AS "employeeNumber"
-         FROM hr_disciplinary_letters letter
-         JOIN hr_issued_documents issued ON issued.id = letter.issued_document_id
-         JOIN employees employee ON employee.id = letter.employee_id
-        ORDER BY letter.effective_date DESC
-        LIMIT 200`,
-    );
+    const query = pageQuerySchema.safeParse(request.query);
+    if (!query.success) return send(reply, 400, { code: "INVALID_DOCUMENT_FILTER", message: "Filter tidak valid." });
+    const [items, count] = await Promise.all([
+      pool.query<{ expiresOn: string }>(
+        `SELECT letter.id, letter.level, letter.subject,
+                to_char(letter.effective_date, 'YYYY-MM-DD') AS "effectiveDate",
+                to_char(letter.expires_on, 'YYYY-MM-DD') AS "expiresOn",
+                letter.acknowledged_at AS "acknowledgedAt",
+                issued.document_number AS "documentNumber", issued.status,
+                employee.id AS "employeeId", employee.full_name AS "employeeName",
+                employee.employee_number AS "employeeNumber"
+           FROM hr_disciplinary_letters letter
+           JOIN hr_issued_documents issued ON issued.id = letter.issued_document_id
+           JOIN employees employee ON employee.id = letter.employee_id
+          ORDER BY letter.effective_date DESC, letter.id DESC
+          LIMIT $1 OFFSET $2`,
+        [query.data.pageSize, pageOffset(query.data)],
+      ),
+      pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM hr_disciplinary_letters`),
+    ]);
     const now = today();
     return send(reply, 200, {
-      items: result.rows.map((row) => ({ ...row, active: isDisciplinaryActive(row.expiresOn, now) })),
+      items: items.rows.map((row) => ({ ...row, active: isDisciplinaryActive(row.expiresOn, now) })),
+      pagination: pagination(query.data, count.rows[0]?.total ?? 0),
     });
   });
 

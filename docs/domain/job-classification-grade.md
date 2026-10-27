@@ -11,14 +11,19 @@ Spesifikasi ini menutup gap roadmap C: HCIS belum punya cara stabil untuk menyeb
 
 ## 1. Masalah
 
-Hari ini ada dua representasi jabatan dan keduanya tidak cocok dipakai sebagai kunci kompensasi:
+Ada tiga representasi jabatan hari ini dan tidak satu pun cocok sebagai kunci kompensasi yang tahan lama:
 
 | Representasi | Lokasi | Kenapa tidak cukup |
 |---|---|---|
 | `organization_positions` (ORG-004) | per change set, `stable_key` + `title` | kursi struktural dan authority; satu kursi per unit, bukan kelas pekerjaan yang dipakai banyak kursi |
-| `employment_placements.functional_label` / `.structural_label` (EMP-006) | teks bebas | tidak stabil, tidak effective-dated sebagai referensi, tidak dapat divalidasi, rawan typo |
+| `employment_placements.functional_label` / `.structural_label` (EMP-006) | teks bebas | tidak stabil, tidak dapat divalidasi, rawan typo |
+| `payroll_compensation_profiles.functional_position_ref` / `.structural_position_ref` (PAY-003) | `uuid NULL`, tanpa foreign key | sudah berupa referensi, tetapi menunjuk **kursi** ORG-004, bukan kelas pekerjaan |
 
-PAY-003 §3.3 sudah menyatakan jabatan fungsional dan struktural harus dipetakan ke tabel tunjangan "lewat referensi stabil, bukan label teks". Referensi stabil itu belum ada. ORG-011 menyediakannya.
+Jadi PAY-003 §3.3 sudah dipenuhi sebagian: payroll memang tidak mencocokkan teks, melainkan menyimpan uuid position. Masalahnya ada di sisi lain. Komentar migration `0069_payroll_foundation.sql:129-136` menyatakan sendiri bahwa referensi itu sengaja tanpa foreign key karena "ORG-008 is still moving the node and position tables, and a payroll profile must survive a structure revision rather than block it", dan periode gagal dengan `POSITION_NOT_MAPPED` bila referensi tidak lagi teresolusi.
+
+Artinya kebijakan tunjangan hari ini terikat pada **kursi di satu revisi struktur**. Reorganisasi yang mengganti stable key kursi akan memutus kebijakan gaji, padahal pekerjaan yang dibayar tidak berubah. ORG-011 memberi lapisan yang stabil melintasi revisi struktur: kelas pekerjaan.
+
+Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` dan `POSITIONAL_ALLOWANCE` sudah memakai `byPosition: Record<string, rupiah>` dengan kunci string bebas, sehingga kunci itu dapat diisi `classificationCode` tanpa mengubah bentuk kebijakan.
 
 ## 2. Keputusan desain
 
@@ -27,6 +32,7 @@ PAY-003 §3.3 sudah menyatakan jabatan fungsional dan struktural harus dipetakan
 3. **ORG-011 tidak memperkenalkan model gaji kedua.** Tidak ada kolom nominal di katalog ORG-011. Skala gaji pokok tetap milik PAY-003 (pendidikan terakhir x MKG), tabel tunjangan tetap milik kebijakan payroll berversi. ORG-011 hanya menyediakan *kunci* tabel itu.
 4. **Semua effective-dated.** Perubahan klasifikasi atau golongan tidak menimpa histori; payroll periode lampau membaca klasifikasi yang berlaku pada tanggal periode.
 5. **Golongan opsional.** YSQ hari ini memakai klasifikasi (guru, kepala unit, staf) tanpa golongan numerik. Model menyediakan `job_grades`, tetapi kebijakan boleh membiarkannya kosong sampai ada keputusan owner.
+6. **Kode stabil seumur hidup klasifikasi.** Kebijakan payroll berversi menyimpan `classificationCode` apa adanya dan periode lampau membacanya kembali. Mengganti kode berarti kebijakan lama tidak lagi cocok, jadi kode tidak pernah diganti: klasifikasi yang salah dinonaktifkan dan diganti klasifikasi baru.
 
 ## 3. Model data (usulan)
 
@@ -69,30 +75,41 @@ Satu klasifikasi dapat dipakai banyak position dan banyak pegawai. Satu position
 - `organization_positions.job_classification_code` (nullable, di dalam change set): klasifikasi default kursi. Ikut versioning struktur, karena yang berubah adalah kursi, bukan katalog.
 - `employment_placements.job_classification_code` (nullable): klasifikasi efektif pegawai pada penempatan itu. Diisi melalui employment action (EMP-006), bukan edit field.
 
-Resolusi: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
+Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
+
+Satu employment dapat memegang beberapa placement yang berlaku bersamaan (`PRIMARY` dan `ADDITIONAL`). Resolver karena itu mengembalikan **dua slot**, fungsional dan struktural, hasil agregasi seluruh placement yang berlaku pada tanggal itu — bukan satu klasifikasi tunggal. Ini cocok dengan `payroll_compensation_profiles` yang memang menyimpan dua referensi.
+
+Bila dua placement yang berlaku mengisi slot yang sama (dua klasifikasi `STRUCTURAL` sekaligus), resolver **gagal eksplisit**, tidak memilih salah satu diam-diam.
 
 `functional_label` dan `structural_label` tetap ada sebagai teks tampilan/legacy dan **tidak boleh** dipakai sebagai kunci perhitungan setelah ORG-011 aktif.
 
 ### 3.4 Multi-entitas
 
-Bila ORG-007 diaktifkan (lihat ADR-0005 dan `docs/domain/multi-entity-readiness.md`), `job_grades` dan `job_classifications` mendapat `legal_entity_id`. Katalog tidak otomatis dibagi antar entity.
+Bila ORG-007 diaktifkan (lihat ADR-0005 dan `docs/domain/multi-entity-readiness.md`), `job_grades` dan `job_classifications` mendapat `legal_entity_key`. Katalog tidak otomatis dibagi antar entity.
 
 ## 4. Kontrak untuk payroll (PAY-003)
 
 Satu fungsi resolusi, dipanggil payroll dengan tanggal periode:
 
 ```text
-resolveJobClassification(employmentId, onDate)
-  -> { classificationCode, gradeCode | null, family, source: PLACEMENT | POSITION } | null
+resolveJobClassifications(employmentId, onDate)
+  -> {
+       functional: { code, gradeCode | null, source } | null,
+       structural: { code, gradeCode | null, source } | null
+     }
 ```
+
+`source` bernilai `PLACEMENT` atau `POSITION`. Kedua slot dapat terisi sekaligus (guru yang merangkap kepala unit), salah satu saja, atau tidak sama sekali.
 
 Aturan konsumsi:
 
-- Tabel tunjangan fungsional dan tunjangan jabatan PAY-003 di-key ke `classificationCode`.
-- Rangkap jabatan (PAY-003: fungsional 70% bila merangkap struktural) dideteksi dari adanya placement `ADDITIONAL` dengan klasifikasi `family = STRUCTURAL`, bukan dari teks jabatan.
-- Pengali per unit dan pola kerja (Taman Tahfizh 50%, Half Day 60%/65%) **tetap atribut unit atau pola kerja milik payroll**, bukan atribut klasifikasi.
+- `functional_position_ref` dan `structural_position_ref` pada `payroll_compensation_profiles` digantikan kolom kode klasifikasi. Sesi PAY-003 menambahkan kolom itu lewat migration payroll sendiri; ORG-011 tidak menyentuh berkas payroll.
+- Tabel tunjangan fungsional dan tunjangan jabatan di-key ke `code` klasifikasi, memakai bentuk `byPosition` yang sudah ada.
+- Rangkap jabatan (PAY-003: fungsional 70% bila punya jabatan struktural) ditentukan dari **terisinya slot `structural`**, dari placement mana pun termasuk `PRIMARY`. Ini sama persis dengan perilaku sekarang (`engine.ts` memakai keberadaan `structuralPositionRef`), sehingga peralihan tidak mengubah nominal siapa pun.
+- Pengali per unit dan pola kerja (Taman Tahfizh 50%; Half Day 60%; Half Day II 65%) **tetap milik payroll** di kebijakan `BASIC_MULTIPLIER` dan `POSITIONAL_ALLOWANCE.unitMultipliers`, bukan atribut klasifikasi.
 - Skala gaji pokok tidak membaca ORG-011 sama sekali pada v1.
-- Payroll yang sudah disahkan menyimpan `classificationCode` hasil resolusi pada snapshot input, sehingga perubahan katalog berikutnya tidak mengubah hasil periode lampau.
+- Hasil payroll sudah menyimpan `compensation_profile_id` dan `policy_version_ids` per baris. Resolusi klasifikasi harus ikut tersimpan dengan cara yang sama, sehingga bulan yang sudah dibayar tetap dapat dijelaskan setelah katalog berubah.
+- Unit atau klasifikasi yang tidak terpetakan ke kebijakan **memblokir periode** (`UNIT_NOT_MAPPED` / `POSITION_NOT_MAPPED`), tidak dibayar penuh diam-diam. ORG-011 tidak melonggarkan ini.
 
 ## 5. Permission (usulan)
 
@@ -119,8 +136,9 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 2. HC mengisi klasifikasi dari daftar tunjangan fungsional dan jabatan yang dipakai PAY-003 hari ini.
 3. Tetapkan klasifikasi pada position lewat change set ORG-004 biasa.
 4. Backfill placement hanya untuk kasus yang berbeda dari position-nya.
-5. Payroll beralih ke `resolveJobClassification` setelah parallel run menunjukkan hasil identik dengan pencocokan label lama.
-6. Label teks dibekukan menjadi read-only setelah langkah 5 lolos.
+5. Petakan setiap `functional_position_ref` / `structural_position_ref` yang dipakai `payroll_compensation_profiles` ke klasifikasi, lalu salin kunci kebijakan `byPosition` dari uuid kursi ke `classificationCode`. Dilakukan sesi PAY-003 di berkasnya sendiri.
+6. Payroll beralih ke `resolveJobClassifications` setelah parallel run menunjukkan nominal identik dengan resolusi berbasis kursi.
+7. Referensi kursi dan label teks dibekukan menjadi read-only setelah langkah 6 lolos.
 
 ## 8. Keputusan terbuka
 
@@ -131,3 +149,5 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 | Siapa yang mengelola katalog | Kepala HCM dan staf HC | ya |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
+| Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | resolver gagal eksplisit, periode diblokir | ya |
+| Apakah `*_position_ref` payroll dihapus atau dipertahankan sebagai cadangan | dipertahankan read-only setelah parallel run | ya (bersama sesi PAY-003) |

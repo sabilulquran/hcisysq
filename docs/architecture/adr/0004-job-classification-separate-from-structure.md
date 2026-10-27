@@ -13,7 +13,9 @@ Keadaan sekarang:
 
 - `organization_positions` adalah kursi di dalam change set ORG-004, lengkap dengan authority binding dan vacancy policy. Satu kursi per unit, jadi tidak dapat dipakai sebagai kelas pekerjaan yang dibagi banyak orang.
 - `employment_placements` menyimpan `functional_label` dan `structural_label` sebagai teks bebas.
-- PAY-003 §3.3 sudah mensyaratkan pemetaan tunjangan fungsional dan jabatan "lewat referensi stabil, bukan label teks", tetapi referensi itu belum ada, sehingga payroll berisiko lahir dengan pencocokan teks.
+- PAY-003 sudah memenuhi §3.3 sejauh yang bisa: `payroll_compensation_profiles.functional_position_ref` dan `.structural_position_ref` adalah uuid, bukan teks. Tetapi uuid itu menunjuk **kursi** ORG-004, tanpa foreign key, karena ORG-008 masih memindahkan tabel node dan position; periode gagal dengan `POSITION_NOT_MAPPED` bila referensinya tidak lagi teresolusi.
+
+Jadi masalahnya bukan pencocokan teks, melainkan bahwa kebijakan gaji terikat pada kursi di satu revisi struktur. Reorganisasi yang mengganti stable key kursi memutus kebijakan gaji, padahal pekerjaan yang dibayar tidak berubah. Yang hilang adalah lapisan kelas pekerjaan yang stabil melintasi revisi struktur.
 
 Pada saat yang sama, PAY-003 sudah menetapkan bahwa skala gaji pokok YSQ ditentukan pendidikan terakhir x MKG, bukan golongan. Memaksa model grade -> nominal akan membuat dua sumber kebenaran untuk gaji.
 
@@ -24,8 +26,9 @@ Pada saat yang sama, PAY-003 sudah menetapkan bahwa skala gaji pokok YSQ ditentu
 3. Skala gaji pokok tidak berubah: tetap pendidikan terakhir x MKG. Golongan tidak menjadi dasar gaji pokok pada v1.
 4. Klasifikasi dan golongan **tidak pernah** memberi approval authority. Authority tetap hanya dari `organization_authority_bindings`.
 5. Pengikatan dua lapis: klasifikasi default pada `organization_positions` (ikut change set), override pada `employment_placements` (ikut employment action). Placement menang.
-6. Payroll mengonsumsi satu fungsi resolusi `resolveJobClassification(employmentId, onDate)` dan menyimpan hasilnya pada snapshot input periode, sehingga periode yang sudah disahkan kebal terhadap perubahan katalog.
-7. Label teks lama tetap ada untuk tampilan, tetapi dilarang menjadi kunci perhitungan setelah ORG-011 aktif.
+6. Payroll mengonsumsi `resolveJobClassifications(employmentId, onDate)` yang mengembalikan **dua slot** (fungsional dan struktural) hasil agregasi seluruh placement yang berlaku, dan menyimpan hasilnya bersama `policy_version_ids` pada hasil periode, sehingga periode yang sudah disahkan kebal terhadap perubahan katalog. Dua slot ini memetakan satu-ke-satu ke `functional_position_ref` dan `structural_position_ref` yang sudah ada, sehingga aturan rangkap jabatan 70% tidak berubah perilakunya.
+7. **Kode klasifikasi tidak pernah diganti.** Kebijakan payroll berversi menyimpannya apa adanya dan periode lampau membacanya kembali; klasifikasi yang salah dinonaktifkan, bukan di-rename.
+8. Label teks lama tetap ada untuk tampilan, tetapi dilarang menjadi kunci perhitungan setelah ORG-011 aktif.
 
 ## Consequences
 
@@ -49,7 +52,7 @@ Negatif atau biaya:
 | Pakai `organization_positions` langsung sebagai kelas pekerjaan | kursi bersifat per unit dan membawa authority; tunjangan akan ikut tercampur dengan approval |
 | Simpan grade sebagai kolom pada employment | tidak effective-dated sebagai katalog, tidak dapat divalidasi, dan mengulang masalah label teks |
 | Grade membawa nominal gaji pokok | bertabrakan dengan skala pendidikan x MKG PAY-003; menciptakan dua sumber kebenaran gaji |
-| Tunda sampai payroll selesai | payroll akan terlanjur memakai pencocokan label teks yang dilarang PAY-003 §3.3 |
+| Biarkan payroll memakai referensi kursi ORG-004 | kebijakan gaji putus setiap kali reorganisasi mengganti stable key kursi, padahal pekerjaan yang dibayar sama |
 
 ## Compliance
 
@@ -57,4 +60,6 @@ Negatif atau biaya:
 - Tidak boleh ada pembacaan klasifikasi atau golongan di jalur authorization maupun approval.
 - Setiap permission baru ORG-011 wajib automated test.
 - Perubahan katalog wajib menghasilkan audit event.
+- Kode klasifikasi bersifat permanen; perubahan dilakukan dengan menonaktifkan dan membuat baru.
+- Peralihan payroll dari referensi kursi ke kode klasifikasi hanya setelah parallel run menunjukkan nominal identik.
 - ADR ini harus `ACCEPTED` sebelum migration ORG-011 dibuat.

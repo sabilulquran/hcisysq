@@ -72,6 +72,20 @@ const PERIOD_COLUMNS = `
  * calculation stored. Comparing timestamps alone would miss a deleted input
  * (specification section 5.4, the period-level stale-input blocker).
  */
+/**
+ * The latest revision of every employee in the LAST run of one period, as $1.
+ * Every reader of a period's results uses this one definition: an employee who
+ * left the population on a recalculation keeps their earlier revision as history
+ * without appearing in the period's figures.
+ */
+export const LATEST_RESULTS_OF_PERIOD = `
+  SELECT DISTINCT ON (r.employment_id) r.*
+  FROM payroll_results r
+  WHERE r.period_id = $1
+    AND r.calculated_at = (SELECT max(x.calculated_at) FROM payroll_results x WHERE x.period_id = $1)
+  ORDER BY r.employment_id, r.revision DESC
+`;
+
 const LATEST_RESULTS = `
   SELECT DISTINCT ON (r.employment_id) r.*
   FROM payroll_results r

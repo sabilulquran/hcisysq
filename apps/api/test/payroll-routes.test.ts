@@ -166,7 +166,10 @@ function createPool(
         ? { rows: [], rowCount: 0 }
         : { rows: [{ id: "40000000-0000-4000-8000-000000000009" }], rowCount: 1 };
     }
-    if (sql.includes("FULL OUTER JOIN previous_lines")) {
+    if (sql.includes("origin = 'MANUAL'")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("WITH current_latest AS")) {
       return {
         rows: [{
           employmentId: EMPLOYMENT_ID,
@@ -193,7 +196,7 @@ function createPool(
         rowCount: 1,
       };
     }
-    if (sql.includes('p.unit_ref AS "unitRef"')) {
+    if (sql.includes('profile.unit_ref AS "unitRef"') && !sql.includes("employee_number")) {
       return { rows: [{ unitRef: "unit-pusat", employeeCount: 2, payable: "5600000" }], rowCount: 1 };
     }
     if (sql.includes('l.component_code AS "componentCode"') && sql.includes("payroll_components")) {
@@ -209,6 +212,7 @@ function createPool(
           fullName: "Pegawai Uji",
           unitRef: "unit-pusat",
           payable: "3000000",
+          bankName: "BSI",
           bankAccountNumber: "0000000001",
           bankAccountName: "Pegawai Uji",
           paymentConfirmedAt: null,
@@ -217,7 +221,7 @@ function createPool(
       };
     }
     if (sql.includes("policy_key = 'VARIANCE_THRESHOLD'")) {
-      return { rows: [{ payload: { relative: 0.1, absolute: 50_000 } }], rowCount: 1 };
+      return { rows: [{ payload: { relative: 0.1, absolute: 50_000, manualInput: 1_000_000 } }], rowCount: 1 };
     }
     if (sql.includes("FROM payroll_loans")) {
       return { rows: [], rowCount: 0 };
@@ -280,14 +284,6 @@ function createPool(
     }
     // The period query reads inputs and results in subqueries, so it has to be
     // answered first or these branches would swallow it.
-    if (sql.includes("DELETE FROM payroll_period_inputs")) {
-      if (sql.includes("origin = 'ATTENDANCE'")) {
-        deletes.push("attendance_sweep");
-        return { rows: [], rowCount: 2 };
-      }
-      deletes.push(`${String(values?.[1] ?? "")}:${String(values?.[2] ?? "")}`);
-      return { rows: [], rowCount: 1 };
-    }
     if (sql.includes("FROM payroll_period_inputs") && !sql.includes("FROM payroll_periods p")) {
       if (sql.includes('count(*)::int AS "inputCount"')) {
         return { rows: [{ inputCount: inputWrites.length, lastInputRecordedAt: null }], rowCount: 1 };
@@ -312,9 +308,6 @@ function createPool(
         value: values?.[4],
       });
       return { rows: [], rowCount: 1 };
-    }
-    if (sql.includes("JOIN accounts a ON a.employee_id = e.employee_id")) {
-      return { rows: [{ id: OWN_EMPLOYMENT_ID }], rowCount: 1 };
     }
     if (sql.includes("FROM payroll_policy_versions")) {
       return options.policyComplete === false ? { rows: [], rowCount: 0 } : { rows: POLICY_ROWS, rowCount: POLICY_ROWS.length };
@@ -913,7 +906,7 @@ describe("PAY-003 results", () => {
       const { response } = await call("director", "GET", `/payroll/periods/${PERIOD_ID}/results`, {
         period: { state },
       });
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(409);
       expect(response.json().code).toBe("PAYROLL_NOT_APPROVED_YET");
     }
   }, 20_000);
@@ -1024,7 +1017,7 @@ describe("PAY-003 period report", () => {
 
   it("keeps it from report readers until the period is approved", async () => {
     const { response } = await call("director", "GET", url, { period: { state: "CALCULATED" } });
-    expect(response.statusCode).toBe(403);
+    expect(response.statusCode).toBe(409);
     expect(response.json().code).toBe("PAYROLL_NOT_APPROVED_YET");
   });
 
@@ -1074,7 +1067,7 @@ describe("PAY-003 transfer list", () => {
     expect(response.headers["content-type"]).toContain("text/csv");
     expect(response.headers["content-disposition"]).toContain("daftar-transfer-2026-09.csv");
     expect(response.headers["cache-control"]).toBe("no-store");
-    expect(response.body).toContain('"0000000001"');
+    expect(response.body).toContain(`"'0000000001"`);
     expect(audits).toEqual(["payroll.report.read"]);
   });
 });
@@ -1088,7 +1081,7 @@ describe("PAY-003 variance", () => {
     const body = response.json();
     expect(body.variances).toHaveLength(1);
     expect(body.variances[0]).toMatchObject({ componentCode: "PERF", delta: "300000" });
-    expect(body.threshold).toEqual({ relative: 0.1, absolute: 50_000 });
+    expect(body.threshold).toEqual({ relative: 0.1, absolute: 50_000, manualInput: 1_000_000 });
     expect(audits).toEqual(["payroll.report.read"]);
   });
 
@@ -1103,6 +1096,6 @@ describe("PAY-003 variance", () => {
 
   it("keeps it from report readers until the period is approved", async () => {
     const { response } = await call("director", "GET", url, { period: { state: "CALCULATED" } });
-    expect(response.statusCode).toBe(403);
+    expect(response.statusCode).toBe(409);
   });
 });

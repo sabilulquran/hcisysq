@@ -339,8 +339,9 @@ paths:
       description: >-
         The payroll report. It carries no bank account anywhere: the accounts live
         in the transfer list, which has its own permission (specification section
-        7). Report readers see it once the period is approved; the people running
-        the period see it throughout. Every read is recorded.
+        7). Requires payroll.reports.read.organization, or one of the permissions
+        that run a period. Report readers see it once the period is approved; the
+        people running the period see it throughout. Every read is recorded.
       parameters:
         - name: periodId
           in: path
@@ -360,6 +361,11 @@ paths:
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
         '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period is not approved yet, and the reader does not run it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
 
   /payroll/periods/{periodId}/transfers:
     get:
@@ -436,6 +442,7 @@ paths:
                     properties:
                       relative: { type: number }
                       absolute: { type: number }
+                      manualInput: { type: number }
                   variances:
                     type: array
                     items: { $ref: '#/components/schemas/PayrollVarianceRow' }
@@ -443,6 +450,11 @@ paths:
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
         '404': { $ref: '#/components/responses/PayrollNotFound' }
+        '409':
+          description: The period is not approved yet, and the reader does not run it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollError' }
 
   /payroll/periods/{periodId}/transitions:
     post:
@@ -654,6 +666,7 @@ components:
         fullName: { type: string }
         unitRef: { type: [string, 'null'], format: uuid }
         payable: { type: string }
+        bankName: { type: [string, 'null'] }
         bankAccountNumber: { type: [string, 'null'] }
         bankAccountName: { type: [string, 'null'] }
         paymentConfirmedAt: { type: [string, 'null'], format: date-time }
@@ -669,7 +682,7 @@ components:
         previousAmount: { type: string }
         currentAmount: { type: string }
         delta: { type: string }
-        kind: { type: string, enum: [COMPONENT, NEW_EMPLOYEE, LEAVING_EMPLOYEE] }
+        kind: { type: string, enum: [COMPONENT, NEW_EMPLOYEE, LEAVING_EMPLOYEE, LARGE_MANUAL_INPUT] }
 
     PayrollPeriodTransition:
       type: object

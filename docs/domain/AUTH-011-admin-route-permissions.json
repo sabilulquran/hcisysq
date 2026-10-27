@@ -2483,11 +2483,10 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/report",
     "permissions": [
+      "payroll.reports.read.organization",
       "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   },
   {
@@ -2503,11 +2502,10 @@
     "method": "GET",
     "url": "/payroll/periods/:periodId/variance",
     "permissions": [
+      "payroll.reports.read.organization",
       "payroll.periods.manage",
-      "payroll.approve",
-      "payroll.reopen.approve",
-      "payroll.payments.confirm",
-      "payroll.reports.read.organization"
+      "payroll.calculate",
+      "payroll.inputs.manage"
     ]
   }
 ]

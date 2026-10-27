@@ -225,6 +225,24 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     return authenticated.actor;
   }
 
+  /** Any one of these permissions is enough. The check runs before the lookup. */
+  async function requireAnyPermission(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    permissions: readonly string[],
+  ): Promise<TransitionActor | null> {
+    const authenticated = await authenticate(request, reply);
+    if (!authenticated) return null;
+    if (!permissions.some((permission) => authenticated.actor.organizationPermissions.includes(permission))) {
+      await send(reply, 403, {
+        code: "PAYROLL_FORBIDDEN",
+        message: "Anda tidak memiliki akses untuk tindakan ini.",
+      });
+      return null;
+    }
+    return authenticated.actor;
+  }
+
   /**
    * Reading a period is open to everyone who has a decision to make about it, not
    * only to whoever runs it. The check comes before the period is looked up, so a
@@ -271,8 +289,12 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
    * is guidance rather than a statutory rule, so its absence falls back to the
    * specification's default instead of refusing the comparison.
    */
-  async function varianceThreshold(payDate: string): Promise<{ relative: number; absolute: number }> {
-    const { rows } = await pool.query<{ payload: { relative?: number; absolute?: number } }>(
+  async function varianceThreshold(
+    payDate: string,
+  ): Promise<{ relative: number; absolute: number; manualInput: number }> {
+    const { rows } = await pool.query<{
+      payload: { relative?: number; absolute?: number; manualInput?: number };
+    }>(
       `SELECT payload FROM payroll_policy_versions
        WHERE policy_key = 'VARIANCE_THRESHOLD'
          AND effective_from <= $1::date
@@ -281,9 +303,14 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       [payDate],
     );
     const payload = rows[0]?.payload;
+    // A threshold has to be a non-negative number to mean anything; anything else
+    // falls back to the specified default rather than filtering nothing at all.
+    const positive = (value: unknown, fallback: number) =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
     return {
-      relative: typeof payload?.relative === "number" ? payload.relative : 0.1,
-      absolute: typeof payload?.absolute === "number" ? payload.absolute : 50_000,
+      relative: positive(payload?.relative, 0.1),
+      absolute: positive(payload?.absolute, 50_000),
+      manualInput: positive(payload?.manualInput, 1_000_000),
     };
   }
 
@@ -562,7 +589,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
     // the period is approved. Before that, only the people running the period
     // see the figures they are still working on.
     if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
-      return send(reply, 403, {
+      return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Hasil periode baru dapat dibaca setelah periode disahkan.",
       });
@@ -587,7 +614,13 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/report", async (request, reply) => {
-    const actor = await requireReader(request, reply);
+    // Section 7 names payroll.reports.read.organization for this report. Holding
+    // payroll.approve or payroll.payments.confirm is a decision, not a licence to
+    // read the figures; the people running the period see it throughout.
+    const actor = await requireAnyPermission(request, reply, [
+      "payroll.reports.read.organization",
+      ...RUNNER_PERMISSIONS,
+    ]);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -599,7 +632,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
     if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
-      return send(reply, 403, {
+      return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Laporan periode baru dapat dibaca setelah periode disahkan.",
       });
@@ -653,7 +686,10 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/variance", async (request, reply) => {
-    const actor = await requireReader(request, reply);
+    const actor = await requireAnyPermission(request, reply, [
+      "payroll.reports.read.organization",
+      ...RUNNER_PERMISSIONS,
+    ]);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);
@@ -665,7 +701,7 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
     }
     if (!APPROVED_ONWARDS.includes(period.state) && !runsPeriods(actor)) {
-      return send(reply, 403, {
+      return send(reply, 409, {
         code: "PAYROLL_NOT_APPROVED_YET",
         message: "Perbandingan periode baru dapat dibaca setelah periode disahkan.",
       });

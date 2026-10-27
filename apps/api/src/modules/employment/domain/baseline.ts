@@ -285,7 +285,10 @@ export type ConsistencyIssueCode =
   | "BASELINE_NOT_LOADED"
   | "HISTORY_DIFFERS_FROM_MASTER"
   | "ACTIVE_WITHOUT_PLACEMENT"
-  | "CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP";
+  | "CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP"
+  // EMP-006 S6: the two records of the same working life disagree.
+  | "STRUCTURE_SEAT_WITHOUT_PLACEMENT"
+  | "PLACEMENT_WITHOUT_STRUCTURE_SEAT";
 
 export interface ConsistencyFinding {
   employeeId: string;

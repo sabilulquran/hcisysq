@@ -166,6 +166,20 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     };
   }
 
+  /** Employee numbers whose employment columns the history owns right now. */
+  private async employmentManagedNumbers(rows: ImportDetailRow[]): Promise<Set<string>> {
+    const numbers = rows.map((row) => row.payload?.employeeNumber).filter((value): value is string => Boolean(value));
+    if (numbers.length === 0) return new Set();
+    const managed = await loadEmploymentManagedEmployeeIds(this.pool);
+    if (managed.size === 0) return new Set();
+    const found = await this.pool.query<{ employeeNumber: string }>(
+      `SELECT employee_number AS "employeeNumber" FROM employees
+       WHERE employee_number = ANY($1::text[]) AND id = ANY($2::uuid[])`,
+      [numbers, [...managed]],
+    );
+    return new Set(found.rows.map((row) => row.employeeNumber));
+  }
+
   async getPreviewPage(
     importId: string,
     page: PageQuery,
@@ -212,12 +226,24 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     ]);
     const total = count.rows[0]?.total ?? 0;
 
+    // EMP-005 §8.1: in AUTHORITATIVE the nine employment columns of an employee
+    // that has an employment are left to the history, so the preview says so
+    // instead of promising a change the commit will not make.
+    const managed = await this.employmentManagedNumbers(rows.rows);
+
     return {
       ...toSummary(jobRow),
       rows: rows.rows.map((row) => ({
         rowNumber: row.row_number,
         action: row.action,
-        issues: row.messages,
+        issues: managed.has(row.payload?.employeeNumber ?? "")
+          ? [...row.messages, {
+              severity: "warning" as const,
+              code: "EMPLOYMENT_FIELDS_IGNORED",
+              field: null,
+              message: "Diabaikan — status, unit, jabatan, dan tanggal dikelola lewat riwayat kepegawaian.",
+            }]
+          : row.messages,
       })),
       pagination: pagination(page, total),
       skipCount: count.rows[0]?.skip ?? 0,

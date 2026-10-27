@@ -345,6 +345,27 @@ export async function employeesNeedingProjection(db: Db, date: string): Promise<
 }
 
 /**
+ * Does this legacy unit, and this legacy position, exist? The planner refuses
+ * an unknown reference with EMPLOYMENT_REFERENCE_INVALID (spec §12) instead of
+ * letting the insert fail on a foreign key and answer 500.
+ */
+export async function loadReferenceExistence(
+  db: Db,
+  unitId: string | null,
+  positionId: string | null,
+): Promise<{ unit: boolean; position: boolean }> {
+  const [unit, position] = await Promise.all([
+    unitId
+      ? db.query("SELECT 1 FROM organizational_units WHERE id = $1", [unitId])
+      : Promise.resolve({ rowCount: 0 }),
+    positionId
+      ? db.query("SELECT 1 FROM positions WHERE id = $1", [positionId])
+      : Promise.resolve({ rowCount: 0 }),
+  ]);
+  return { unit: (unit.rowCount ?? 0) > 0, position: (position.rowCount ?? 0) > 0 };
+}
+
+/**
  * Employees whose employment columns history owns in AUTHORITATIVE (spec §8.1).
  * EMP-004 import must leave those nine columns alone for them; everything else
  * in the master (name, contact, education) stays import's to write.
@@ -356,6 +377,60 @@ export async function loadEmploymentManagedEmployeeIds(db: Db): Promise<Set<stri
     `SELECT DISTINCT employee_id AS "employeeId" FROM employments WHERE voided_by_action_id IS NULL`,
   );
   return new Set(result.rows.map((row) => row.employeeId));
+}
+
+/**
+ * EMP-006 D-18: the employment history and ORG-004 are separate records of the
+ * same working life, and an action never writes the structure. Where one says
+ * someone holds a seat and the other does not, HC decides which is right — so
+ * the consistency report names both directions instead of guessing.
+ *
+ * Units are not compared: a placement points at the legacy unit table and an
+ * ORG-004 seat at a node stable key, and no accepted mapping exists yet.
+ */
+export async function loadStructureMismatches(
+  db: Db,
+  date: string,
+): Promise<{ withoutPlacement: string[]; withoutSeat: string[] }> {
+  const result = await db.query<{ employeeId: string; hasSeat: boolean; hasPlacement: boolean }>(
+    `WITH published AS (
+       SELECT id FROM organization_change_sets
+       WHERE status = 'PUBLISHED' AND effective_on <= $1::date
+       ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+       LIMIT 1
+     ),
+     seats AS (
+       -- A seat may be held by an account rather than an employee (0020);
+       -- those rows have nothing to compare against an employment placement.
+       SELECT DISTINCT i.employee_id
+       FROM organization_incumbencies i
+       JOIN published p ON p.id = i.change_set_id
+       WHERE i.kind = 'PRIMARY'
+         AND i.employee_id IS NOT NULL
+         AND i.effective_from <= $1::date
+         AND (i.effective_to IS NULL OR i.effective_to >= $1::date)
+     ),
+     placements AS (
+       SELECT DISTINCT e.employee_id
+       FROM employment_placements pl
+       JOIN employments e ON e.id = pl.employment_id
+       WHERE pl.kind = 'PRIMARY'
+         AND pl.voided_by_action_id IS NULL
+         AND e.voided_by_action_id IS NULL
+         AND pl.effective_from <= $1::date
+         AND (pl.effective_to IS NULL OR pl.effective_to >= $1::date)
+     )
+     SELECT COALESCE(seats.employee_id, placements.employee_id) AS "employeeId",
+            seats.employee_id IS NOT NULL AS "hasSeat",
+            placements.employee_id IS NOT NULL AS "hasPlacement"
+     FROM seats FULL OUTER JOIN placements ON placements.employee_id = seats.employee_id
+     WHERE seats.employee_id IS NULL OR placements.employee_id IS NULL`,
+    [date],
+  );
+  return {
+    withoutPlacement: result.rows.filter((row) => row.hasSeat && !row.hasPlacement).map((row) => row.employeeId),
+    withoutSeat: result.rows.filter((row) => row.hasPlacement && !row.hasSeat).map((row) => row.employeeId),
+  };
 }
 
 /** Employees whose stored columns no longer equal the projection (consistency report). */

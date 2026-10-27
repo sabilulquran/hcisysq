@@ -4,7 +4,24 @@
 
 import { EmploymentApiError, type EmploymentCategory } from "@/lib/employment";
 
-export type EmploymentActionType = "HIRE" | "CONTRACT_EXTENSION" | "CATEGORY_CHANGE" | "TERMINATION";
+export type EmploymentActionType =
+  | "HIRE"
+  | "CONTRACT_EXTENSION"
+  | "CATEGORY_CHANGE"
+  | "TERMINATION"
+  | "PLACEMENT"
+  | "TRANSFER"
+  | "PROMOTION"
+  | "DEMOTION";
+
+/** EMP-006: why a career move happened; a demotion must name one. */
+export type CareerReasonCode =
+  | "RESTRUKTURISASI"
+  | "KINERJA"
+  | "DISIPLIN"
+  | "PERMINTAAN_PEGAWAI"
+  | "KEBUTUHAN_ORGANISASI"
+  | "LAINNYA";
 
 export type EmploymentWarningCode =
   | "BACKDATED"
@@ -28,13 +45,21 @@ export interface PlacementInput {
   jobTitleLabel: string;
 }
 
+/** Ending an additional duty is its own request (EMP-006). */
+export interface PlacementEndRequest {
+  actionType: "PLACEMENT_END";
+  effectiveOn: string;
+  placementId: string;
+  reasonNote?: string | null;
+}
+
 interface CommonFields {
   reasonNote?: string | null;
   documentIds?: string[];
   acknowledgedWarnings?: EmploymentWarningCode[];
 }
 
-export type EmploymentActionRequest = CommonFields &
+export type EmploymentActionRequest = (CommonFields & PlacementEndRequest) | (CommonFields &
   (
     | {
         actionType: "HIRE";
@@ -54,7 +79,14 @@ export type EmploymentActionRequest = CommonFields &
         contractReference?: string | null;
       }
     | { actionType: "TERMINATION"; lastDayOn: string; reasonCode: TerminationReason }
-  );
+    | { actionType: "PLACEMENT"; effectiveOn: string; placement: PlacementInput & { kind?: "PRIMARY" | "ADDITIONAL" } }
+    | {
+        actionType: "TRANSFER" | "PROMOTION" | "DEMOTION";
+        effectiveOn: string;
+        placement: PlacementInput;
+        reasonCode?: CareerReasonCode | null;
+      }
+  ));
 
 export interface EmploymentActionPreview {
   actionType: EmploymentActionType;
@@ -66,6 +98,8 @@ export interface EmploymentActionPreview {
   documentIds: string[];
   expectedVersion: number | null;
   state: "AKTIF" | "AKAN_MULAI" | "BERAKHIR" | "TANPA_DATA";
+  /** EMP-006 D-18: what a career move does not change. */
+  structureNote: string | null;
   accountDeactivation: { willDeactivate: boolean; onDate: string | null };
 }
 
@@ -121,6 +155,19 @@ export const ACTION_TITLE: Record<EmploymentActionType, string> = {
   CONTRACT_EXTENSION: "Perpanjang kontrak",
   CATEGORY_CHANGE: "Ubah status kepegawaian",
   TERMINATION: "Akhiri hubungan kerja",
+  PLACEMENT: "Penempatan",
+  TRANSFER: "Mutasi",
+  PROMOTION: "Promosi",
+  DEMOTION: "Demosi",
+};
+
+export const CAREER_REASON_LABEL: Record<CareerReasonCode, string> = {
+  RESTRUKTURISASI: "Restrukturisasi organisasi",
+  KINERJA: "Kinerja",
+  DISIPLIN: "Kedisiplinan",
+  PERMINTAAN_PEGAWAI: "Permintaan pegawai",
+  KEBUTUHAN_ORGANISASI: "Kebutuhan organisasi",
+  LAINNYA: "Lainnya",
 };
 
 export const ACTION_DONE_MESSAGE: Record<EmploymentActionType, string> = {
@@ -128,6 +175,10 @@ export const ACTION_DONE_MESSAGE: Record<EmploymentActionType, string> = {
   CONTRACT_EXTENSION: "Perpanjangan kontrak dicatat",
   CATEGORY_CHANGE: "Perubahan status kepegawaian dicatat",
   TERMINATION: "Pengakhiran hubungan kerja dicatat",
+  PLACEMENT: "Penempatan dicatat",
+  TRANSFER: "Mutasi dicatat",
+  PROMOTION: "Promosi dicatat",
+  DEMOTION: "Demosi dicatat",
 };
 
 export const TERMINATION_REASON_LABEL: Record<TerminationReason, string> = {
@@ -151,18 +202,30 @@ export function requiredDocumentKind(
   actionType: EmploymentActionType,
   category: ActionCategory | null,
   reasonCode: TerminationReason | null,
-): { kind: "PERJANJIAN_KERJA" | "SURAT_KEPUTUSAN"; hint: string } | null {
+): { kind: "PERJANJIAN_KERJA" | "SURAT_KEPUTUSAN"; skType?: string; hint: string } | null {
   switch (actionType) {
     case "HIRE":
     case "CATEGORY_CHANGE":
       return category === "TETAP"
-        ? { kind: "SURAT_KEPUTUSAN", hint: "Pengangkatan pegawai tetap memerlukan SK Pengangkatan." }
+        ? { kind: "SURAT_KEPUTUSAN", skType: "SK_PENGANGKATAN", hint: "Pengangkatan pegawai tetap memerlukan SK Pengangkatan." }
         : { kind: "PERJANJIAN_KERJA", hint: "Tindakan kontrak memerlukan Perjanjian Kerja." };
     case "CONTRACT_EXTENSION":
       return { kind: "PERJANJIAN_KERJA", hint: "Perpanjangan memerlukan Perjanjian Kerja perpanjangan." };
     case "TERMINATION":
       return reasonCode === "RESIGN" || reasonCode === "MENINGGAL_DUNIA"
         ? null
-        : { kind: "SURAT_KEPUTUSAN", hint: "Pemberhentian memerlukan SK Pemberhentian." };
+        : { kind: "SURAT_KEPUTUSAN", skType: "SK_PEMBERHENTIAN", hint: "Pemberhentian memerlukan SK Pemberhentian." };
+    case "TRANSFER":
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_MUTASI", hint: "Mutasi memerlukan SK Mutasi." };
+    case "PROMOTION":
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_PROMOSI", hint: "Promosi memerlukan SK Promosi." };
+    case "DEMOTION":
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_DEMOSI", hint: "Demosi memerlukan SK Demosi." };
+    case "PLACEMENT":
+      // A placement needs no basis document; an SK may still be attached.
+      return null;
   }
 }
+
+/** The career moves an operator starts from the placement tab. */
+export const CAREER_ACTIONS: readonly EmploymentActionType[] = ["PLACEMENT", "TRANSFER", "PROMOTION", "DEMOTION"];

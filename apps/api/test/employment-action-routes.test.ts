@@ -37,6 +37,12 @@ const PK_ID = "30000000-0000-4000-8000-000000000001";
 const SK_ID = "30000000-0000-4000-8000-000000000002";
 const PK_BARU_ID = "30000000-0000-4000-8000-000000000003";
 const SK_PENGANGKATAN_ID = "30000000-0000-4000-8000-000000000004";
+const SK_MUTASI_ID = "30000000-0000-4000-8000-000000000005";
+const SK_PROMOSI_ID = "30000000-0000-4000-8000-000000000006";
+const SK_DEMOSI_ID = "30000000-0000-4000-8000-000000000007";
+const UNIT_TUJUAN_ID = "20000000-0000-4000-8000-000000000002";
+const POSITION_ID = "20000000-0000-4000-8000-00000000000a";
+const ADDITIONAL_PLACEMENT_ID = "80000000-0000-4000-8000-000000000001";
 
 /** The extension and its Perjanjian Kerja state the same period and category. */
 const EXTENSION = {
@@ -67,6 +73,18 @@ const DOCUMENTS = [
     contractFrom: null, contractTo: null, category: null,
   },
   {
+    id: SK_MUTASI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_MUTASI", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
+    id: SK_PROMOSI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PROMOSI", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
+    id: SK_DEMOSI_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_DEMOSI", employeeId: null,
+    contractFrom: null, contractTo: null, category: null,
+  },
+  {
     id: SK_ID, kind: "SURAT_KEPUTUSAN", pkType: null, skType: "SK_PEMBERHENTIAN", employeeId: null,
     contractFrom: null, contractTo: null, category: null,
   },
@@ -85,6 +103,10 @@ interface PoolOptions {
   /** SQLSTATE the action insert raises, to exercise the refusal mapping. */
   insertSqlState?: string;
   employeeRemoved?: boolean;
+  /** An additional duty running beside the primary placement. */
+  withAdditionalPlacement?: boolean;
+  /** The destination unit or position does not exist. */
+  unknownReference?: "unit" | "position";
 }
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
@@ -125,6 +147,14 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           }
         : { rows: [], rowCount: 0 };
     }
+    if (sql.includes("FROM organizational_units WHERE id = $1")) {
+      const known = options.unknownReference !== "unit";
+      return { rows: known ? [{ "?column?": 1 }] : [], rowCount: known ? 1 : 0 };
+    }
+    if (sql.includes("FROM positions WHERE id = $1")) {
+      const known = options.unknownReference !== "position";
+      return { rows: known ? [{ "?column?": 1 }] : [], rowCount: known ? 1 : 0 };
+    }
     if (sql.includes("SELECT id FROM employees WHERE id = $1")) {
       return options.employeeRemoved ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
     }
@@ -159,14 +189,20 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     }
     if (sql.includes("FROM employment_placements p")) {
       if (options.noHistory) return { rows: [], rowCount: 0 };
-      return {
-        rows: [{
-          id: "p1", employmentId: EMPLOYMENT_ID, employeeId: EMPLOYEE_ID, kind: "PRIMARY", orgNodeKey: null,
-          legacyUnitId: UNIT_ID, orgPositionKey: null, legacyPositionId: null, jobTitleLabel: "Guru Kelas",
-          effectiveFrom: "2026-10-01", effectiveTo: null, effectiveFromBasis: "BASELINE_ASSUMED", voided: false,
-        }],
-        rowCount: 1,
-      };
+      const rows = [{
+        id: "p1", employmentId: EMPLOYMENT_ID, employeeId: EMPLOYEE_ID, kind: "PRIMARY", orgNodeKey: null,
+        legacyUnitId: UNIT_ID, orgPositionKey: null, legacyPositionId: null, jobTitleLabel: "Guru Kelas",
+        effectiveFrom: "2026-10-01", effectiveTo: null, effectiveFromBasis: "BASELINE_ASSUMED", voided: false,
+      }];
+      if (options.withAdditionalPlacement) {
+        rows.push({
+          id: ADDITIONAL_PLACEMENT_ID, employmentId: EMPLOYMENT_ID, employeeId: EMPLOYEE_ID, kind: "ADDITIONAL",
+          orgNodeKey: null, legacyUnitId: UNIT_ID, orgPositionKey: null, legacyPositionId: POSITION_ID,
+          jobTitleLabel: "Koordinator Tahfidz", effectiveFrom: "2026-11-01", effectiveTo: null,
+          effectiveFromBasis: "RECORDED", voided: false,
+        });
+      }
+      return { rows, rowCount: rows.length };
     }
     if (sql.includes("FROM employment_actions WHERE")) {
       if (options.noHistory) return { rows: [], rowCount: 0 };
@@ -488,6 +524,142 @@ describe("EMP-005 termination", () => {
   });
 });
 
+describe("EMP-006 career actions", () => {
+  const TRANSFER = {
+    actionType: "TRANSFER",
+    effectiveOn: "2027-10-01",
+    placement: { unitId: UNIT_TUJUAN_ID, jobTitleLabel: "Guru Kelas" },
+    documentIds: [SK_MUTASI_ID],
+  };
+
+  it("moves the primary placement and says the structure does not follow", async () => {
+    const preview = await call("hc", PREVIEW_URL, { payload: TRANSFER });
+    expect(preview.response.statusCode).toBe(200);
+    expect(preview.response.json()).toMatchObject({
+      actionType: "TRANSFER",
+      structureNote: "Penempatan ini tidak mengubah Struktur Organisasi maupun kewenangan approval.",
+      next: { placement: { jobTitleLabel: "Guru Kelas" } },
+    });
+
+    const { response, writes } = await call("hc", RECORD_URL, { payload: TRANSFER });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+    expect(writes).toContain("CLOSE row");
+    expect(writes).toContain("PROJECT employee");
+  });
+
+  it("refuses a move to the unit and position the employee already holds", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, placement: { unitId: UNIT_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_REFERENCE_INVALID" });
+    expect(writes).toEqual([]);
+  });
+
+  it("asks each career move for its own SK", async () => {
+    const wrongKind = await call("hc", RECORD_URL, { payload: { ...TRANSFER, documentIds: [SK_PROMOSI_ID] } });
+    expect(wrongKind.response.json()).toMatchObject({ code: "DECISION_DOCUMENT_KIND_INVALID" });
+    const missing = await call("hc", RECORD_URL, { payload: { ...TRANSFER, documentIds: [] } });
+    expect(missing.response.json()).toMatchObject({ code: "DECISION_DOCUMENT_REQUIRED" });
+    expect(wrongKind.writes).toEqual([]);
+    expect(missing.writes).toEqual([]);
+  });
+
+  it("records a promotion with its SK Promosi", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "PROMOTION", documentIds: [SK_PROMOSI_ID] },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+  });
+
+  it("refuses a demotion without a reason", async () => {
+    const withoutReason = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "DEMOTION", documentIds: [SK_DEMOSI_ID] },
+    });
+    expect(withoutReason.response.statusCode).toBe(400);
+    expect(withoutReason.response.json()).toMatchObject({ code: "EMPLOYMENT_REASON_REQUIRED" });
+    expect(withoutReason.writes).toEqual([]);
+
+    const withReason = await call("hc", RECORD_URL, {
+      payload: { ...TRANSFER, actionType: "DEMOTION", documentIds: [SK_DEMOSI_ID], reasonCode: "KINERJA" },
+    });
+    expect(withReason.response.statusCode).toBe(201);
+  });
+
+  it("adds an additional duty without touching the primary placement", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      payload: {
+        actionType: "PLACEMENT",
+        effectiveOn: "2027-10-01",
+        placement: { unitId: UNIT_ID, jobTitleLabel: "Koordinator Tahfidz", kind: "ADDITIONAL" },
+      },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("INSERT placement");
+    expect(writes).not.toContain("CLOSE row");
+  });
+
+  it("refuses a second primary placement and points at the career actions", async () => {
+    const { response } = await call("hc", RECORD_URL, {
+      payload: { actionType: "PLACEMENT", effectiveOn: "2027-10-01", placement: { unitId: UNIT_TUJUAN_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYMENT_OVERLAP" });
+  });
+
+  it("ends an additional duty without opening anything", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      withAdditionalPlacement: true,
+      payload: { actionType: "PLACEMENT_END", effectiveOn: "2027-10-01", placementId: ADDITIONAL_PLACEMENT_ID },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(writes).toContain("CLOSE row");
+    expect(writes).not.toContain("INSERT placement");
+  });
+
+  it("refuses to end a duty that is not an additional one, or is not running", async () => {
+    const primary = await call("hc", RECORD_URL, {
+      withAdditionalPlacement: true,
+      payload: { actionType: "PLACEMENT_END", effectiveOn: "2027-10-01", placementId: "10000000-0000-4000-8000-0000000000ff" },
+    });
+    expect(primary.response.statusCode).toBe(422);
+    expect(primary.response.json()).toMatchObject({ code: "EMPLOYMENT_REFERENCE_INVALID" });
+    expect(primary.writes).toEqual([]);
+
+    const malformed = await call("hc", RECORD_URL, {
+      payload: { actionType: "PLACEMENT_END", effectiveOn: "2027-10-01", placementId: "p9" },
+    });
+    expect(malformed.response.statusCode).toBe(400);
+  });
+
+  it("refuses a destination unit or position that does not exist", async () => {
+    const unknownUnit = await call("hc", RECORD_URL, { unknownReference: "unit", payload: TRANSFER });
+    expect(unknownUnit.response.statusCode).toBe(422);
+    expect(unknownUnit.response.json()).toMatchObject({ code: "EMPLOYMENT_REFERENCE_INVALID" });
+    expect(unknownUnit.writes).toEqual([]);
+
+    const unknownPosition = await call("hc", RECORD_URL, {
+      unknownReference: "position",
+      payload: { ...TRANSFER, placement: { unitId: UNIT_TUJUAN_ID, positionId: POSITION_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(unknownPosition.response.statusCode).toBe(422);
+    expect(unknownPosition.writes).toEqual([]);
+  });
+
+  it("keeps the destination position on the new placement", async () => {
+    const { response } = await call("hc", PREVIEW_URL, {
+      payload: { ...TRANSFER, placement: { unitId: UNIT_TUJUAN_ID, positionId: POSITION_ID, jobTitleLabel: "Wakasek Kurikulum" } },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().next.placement).toMatchObject({
+      positionRef: { kind: "LEGACY_POSITION", id: POSITION_ID },
+      jobTitleLabel: "Wakasek Kurikulum",
+    });
+  });
+});
+
 describe("EMP-005 request validation", () => {
   it("authorizes before validating the body", async () => {
     expect((await call("employee", RECORD_URL, { payload: { actionType: "SALAH" } })).response.statusCode).toBe(403);
@@ -496,7 +668,7 @@ describe("EMP-005 request validation", () => {
     expect(invalid.writes).toEqual([]);
   });
 
-  it("rejects a career action: those arrive with S6", async () => {
+  it("rejects a career move without a destination unit", async () => {
     const { response } = await call("hc", RECORD_URL, {
       payload: { actionType: "TRANSFER", effectiveOn: "2027-10-01", placement: { jobTitleLabel: "Guru" } },
     });

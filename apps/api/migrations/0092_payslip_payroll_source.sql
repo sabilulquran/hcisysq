@@ -19,6 +19,7 @@
 --   ALTER TABLE payslips ADD CONSTRAINT payslips_employee_id_period_key UNIQUE (employee_id, period);
 --     (only possible while no superseded slip exists)
 --   ALTER TABLE payslips DROP CONSTRAINT payslips_exactly_one_source,
+--     DROP CONSTRAINT payslips_superseded_by_fk,
 --     DROP COLUMN superseded_by_id, DROP COLUMN revision_of, DROP COLUMN source_period_id,
 --     ALTER COLUMN source_batch_id SET NOT NULL;
 
@@ -28,8 +29,22 @@ ALTER TABLE payslips
     REFERENCES payroll_periods(id) ON DELETE RESTRICT,
   ADD COLUMN IF NOT EXISTS revision_of uuid NULL
     REFERENCES payslips(id) ON DELETE RESTRICT,
-  ADD COLUMN IF NOT EXISTS superseded_by_id uuid NULL
-    REFERENCES payslips(id) ON DELETE RESTRICT;
+  ADD COLUMN IF NOT EXISTS superseded_by_id uuid NULL;
+
+-- The slip being superseded has to step aside before its replacement can be
+-- inserted, or both would be current at once and the partial unique index below
+-- would refuse the pair. So the reference points at a row written later in the
+-- same transaction and is checked at commit, as 0056 does for employments.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payslips_superseded_by_fk') THEN
+    ALTER TABLE payslips
+      ADD CONSTRAINT payslips_superseded_by_fk
+      FOREIGN KEY (superseded_by_id) REFERENCES payslips(id)
+      DEFERRABLE INITIALLY DEFERRED;
+  END IF;
+END;
+$$;
 
 DO $$
 BEGIN

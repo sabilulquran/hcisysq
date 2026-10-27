@@ -188,14 +188,16 @@ export async function draftPayslipsFromPeriod(
       }
 
       // A published slip is a fact. The correction becomes a revision beside it.
+      // The old slip steps aside first: only one slip per employee and month may
+      // be current, and the reference to the replacement is checked at commit.
       const revisionId = randomUUID();
+      await client.query("UPDATE payslips SET superseded_by_id = $2 WHERE id = $1", [current.id, revisionId]);
       await client.query(
         `INSERT INTO payslips(
            id, employee_id, period, lines, source_format, source_batch_id, source_period_id, revision_of)
          VALUES ($1, $2, $3::date, $4::jsonb, 'generic', NULL, $5, $6)`,
         [revisionId, result.employeeId, periodRow.periodMonth, serialized, periodId, current.id],
       );
-      await client.query("UPDATE payslips SET superseded_by_id = $2 WHERE id = $1", [current.id, revisionId]);
       revised += 1;
     }
 

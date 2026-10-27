@@ -477,3 +477,100 @@ export function changedFields(
   const after = next as Record<string, unknown>;
   return Object.keys(after).filter((field) => before[field] !== after[field]);
 }
+
+// ------------------------------------------- usulan perubahan data (EMP-003)
+
+export const DATA_CHANGE_STATES = ["DIAJUKAN", "DITERIMA", "DITOLAK", "DIBATALKAN"] as const;
+export type DataChangeState = (typeof DATA_CHANGE_STATES)[number];
+
+export interface ContactInput {
+  email?: string | null | undefined;
+  phone?: string | null | undefined;
+}
+
+export interface ContactValues {
+  email: string | null;
+  phone: string | null;
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE = /^[0-9+][0-9 ()+-]{5,24}$/;
+
+/**
+ * Kontak tetap tinggal di master pegawai (spec §4.4), jadi usulan kontak
+ * hanya memuat email dan telepon. Keduanya boleh kosong — itu artinya
+ * dihapus — tetapi tidak boleh dua-duanya hilang dari usulan, karena usulan
+ * yang tidak mengubah apa pun tidak perlu diputuskan siapa pun.
+ */
+export function validateContact(input: ContactInput): ProfileValidation<ContactValues> {
+  const email = text(input.email)?.toLowerCase() ?? null;
+  const phone = text(input.phone);
+  if (input.email === undefined && input.phone === undefined) {
+    return fail("email", "Usulan kontak harus menyebut email atau nomor telepon.");
+  }
+  if (email !== null && !EMAIL.test(email)) return fail("email", "Alamat email tidak valid.");
+  if (phone !== null && !PHONE.test(phone)) return fail("phone", "Nomor telepon tidak valid.");
+  return { ok: true, value: { email, phone } };
+}
+
+export type DataChangeValues =
+  | { target: "ALAMAT"; values: AddressValues }
+  | { target: "KONTAK"; values: ContactValues }
+  | { target: "KELUARGA"; values: FamilyMemberValues }
+  | { target: "PENDIDIKAN"; values: EducationValues }
+  | { target: "KEAHLIAN"; values: SkillValues };
+
+/**
+ * Satu pintu validasi untuk usulan, dipakai dua kali: saat pegawai mengajukan
+ * dan lagi saat HC menerima (spec §4.5). Aturan dapat berubah di antara kedua
+ * saat itu, dan usulan lama tidak boleh menyelinap lewat hanya karena dulu
+ * sah; `currentYear` pun berbeda bila usulannya menginap lintas tahun.
+ *
+ * `source` pada alamat dipaksa `USULAN_PEGAWAI`: dari mana sebuah alamat
+ * datang adalah fakta, bukan sesuatu yang boleh ditulis pengusul.
+ */
+export function validateDataChange(
+  target: DataChangeTarget,
+  payload: unknown,
+  currentYear: number,
+): ProfileValidation<DataChangeValues> {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return fail("payload", "Isi usulan tidak valid.");
+  }
+  const body = payload as Record<string, unknown>;
+  switch (target) {
+    case "ALAMAT": {
+      const result = validateAddress({ ...(body as unknown as AddressInput), source: "USULAN_PEGAWAI" });
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KONTAK": {
+      const result = validateContact(body as ContactInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KELUARGA": {
+      const result = validateFamilyMember(body as unknown as FamilyMemberInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "PENDIDIKAN": {
+      const result = validateEducation(body as unknown as EducationInput, currentYear);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    case "KEAHLIAN": {
+      const result = validateSkill(body as unknown as SkillInput);
+      return result.ok ? { ok: true, value: { target, values: result.value } } : result;
+    }
+    default:
+      return fail("target", "Bagian data yang diusulkan tidak dikenal.");
+  }
+}
+
+/**
+ * Nama field yang diusulkan, untuk audit dan untuk ringkasan "dari → menjadi"
+ * di layar HC. Isinya tidak pernah ikut (§6).
+ */
+export function proposedFields(values: DataChangeValues): string[] {
+  return Object.entries(values.values as unknown as Record<string, unknown>)
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([field]) => field)
+    .sort();
+}

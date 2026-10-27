@@ -9,6 +9,9 @@ import type { Pool, PoolClient } from "pg";
 
 import type {
   AddressValues,
+  ContactValues,
+  DataChangeState,
+  DataChangeTarget,
   EducationValues,
   FamilyMemberValues,
   SkillValues,
@@ -535,5 +538,171 @@ export async function updateAddress(client: PoolClient, recordId: string, values
      WHERE id = $1`,
     [recordId, values.kind, values.addressLine, values.village, values.district, values.city, values.province,
       values.postalCode, values.validFrom, values.validTo, values.source, values.notes],
+  );
+}
+
+// ------------------------------------- EMP-003 usulan perubahan data (P2-4)
+
+export interface DataChangeRequestRow {
+  id: string;
+  employeeId: string;
+  employeeNumber: string;
+  fullName: string;
+  unitName: string | null;
+  submittedByAccountId: string;
+  target: DataChangeTarget;
+  payload: Record<string, unknown>;
+  state: DataChangeState;
+  decidedByAccountId: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const REQUEST_COLUMNS = `
+  r.id, r.employee_id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
+  u.name AS "unitName", r.submitted_by_account_id AS "submittedByAccountId", r.target, r.payload, r.state,
+  r.decided_by_account_id AS "decidedByAccountId", r.decided_at AS "decidedAt", r.decision_note AS "decisionNote",
+  r.created_at AS "createdAt", r.updated_at AS "updatedAt"`;
+
+const REQUEST_FROM = `
+  FROM employee_data_change_requests r
+  JOIN employees e ON e.id = r.employee_id
+  LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id`;
+
+type RequestDates<T> = Omit<T, "decidedAt" | "createdAt" | "updatedAt"> & {
+  decidedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function requestToIso(row: RequestDates<DataChangeRequestRow>): DataChangeRequestRow {
+  return {
+    ...row,
+    decidedAt: row.decidedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export async function insertDataChangeRequest(
+  client: PoolClient,
+  input: {
+    employeeId: string;
+    submittedByAccountId: string;
+    target: DataChangeTarget;
+    payload: Record<string, unknown>;
+  },
+): Promise<string> {
+  const id = randomUUID();
+  await client.query(
+    `INSERT INTO employee_data_change_requests (id, employee_id, submitted_by_account_id, target, payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+    [id, input.employeeId, input.submittedByAccountId, input.target, JSON.stringify(input.payload)],
+  );
+  return id;
+}
+
+export async function getDataChangeRequest(db: Db, requestId: string): Promise<DataChangeRequestRow | null> {
+  const result = await db.query<RequestDates<DataChangeRequestRow>>(
+    `SELECT ${REQUEST_COLUMNS} ${REQUEST_FROM} WHERE r.id = $1`,
+    [requestId],
+  );
+  const row = result.rows[0];
+  return row ? requestToIso(row) : null;
+}
+
+/** Locks the request for the decision; null when there is no such request. */
+export async function lockDataChangeRequest(
+  client: PoolClient,
+  requestId: string,
+): Promise<{ employeeId: string; submittedByAccountId: string; target: DataChangeTarget; payload: Record<string, unknown>; state: DataChangeState; employeeRemoved: boolean } | null> {
+  const result = await client.query<{
+    employeeId: string; submittedByAccountId: string; target: DataChangeTarget;
+    payload: Record<string, unknown>; state: DataChangeState; employeeRemoved: boolean;
+  }>(
+    `SELECT r.employee_id AS "employeeId", r.submitted_by_account_id AS "submittedByAccountId",
+            r.target, r.payload, r.state, (e.removed_at IS NOT NULL) AS "employeeRemoved"
+     FROM employee_data_change_requests r
+     JOIN employees e ON e.id = r.employee_id
+     WHERE r.id = $1
+     FOR UPDATE OF r`,
+    [requestId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function decideDataChangeRequest(
+  client: PoolClient,
+  requestId: string,
+  input: { state: DataChangeState; decidedByAccountId: string | null; decisionNote: string | null },
+): Promise<void> {
+  await client.query(
+    `UPDATE employee_data_change_requests
+     SET state = $2, decided_by_account_id = $3, decided_at = now(), decision_note = $4, updated_at = now()
+     WHERE id = $1`,
+    [requestId, input.state, input.decidedByAccountId, input.decisionNote],
+  );
+}
+
+/** The employee's own proposals, newest first; their own screen is unpaged by design. */
+export async function listOwnDataChangeRequests(db: Db, employeeId: string): Promise<DataChangeRequestRow[]> {
+  const result = await db.query<RequestDates<DataChangeRequestRow>>(
+    `SELECT ${REQUEST_COLUMNS} ${REQUEST_FROM} WHERE r.employee_id = $1 ORDER BY r.created_at DESC, r.id LIMIT 200`,
+    [employeeId],
+  );
+  return result.rows.map(requestToIso);
+}
+
+/**
+ * HC's worklist. Waiting longest first, because that is the order the spec
+ * asks HC to work in (§7.4). Counted separately so a page past the end still
+ * reports the real total.
+ */
+export async function listDataChangeRequests(
+  db: Db,
+  input: { state: DataChangeState | null; unitId: string | null; page: number; pageSize: number },
+): Promise<{ total: number; rows: DataChangeRequestRow[] }> {
+  // Each query builds its own clauses and its own parameter list. The count
+  // has no OFFSET, so sharing one list would leave it an unreferenced
+  // placeholder and PostgreSQL would refuse the statement outright.
+  function clauses(firstIndex: number): { where: string; params: unknown[] } {
+    const parts: string[] = [];
+    const params: unknown[] = [];
+    if (input.state) {
+      params.push(input.state);
+      parts.push(`r.state = $${firstIndex + params.length - 1}`);
+    }
+    if (input.unitId) {
+      params.push(input.unitId);
+      parts.push(`e.organizational_unit_id = $${firstIndex + params.length - 1}::uuid`);
+    }
+    return { where: parts.length ? `WHERE ${parts.join(" AND ")}` : "", params };
+  }
+  const forRows = clauses(2);
+  const forCount = clauses(1);
+
+  const [rows, count] = await Promise.all([
+    db.query<RequestDates<DataChangeRequestRow>>(
+      `SELECT ${REQUEST_COLUMNS} ${REQUEST_FROM} ${forRows.where}
+       ORDER BY r.created_at, r.id
+       LIMIT ${input.pageSize} OFFSET $1`,
+      [input.pageSize * (input.page - 1), ...forRows.params],
+    ),
+    db.query<{ total: number }>(`SELECT count(*)::int AS total ${REQUEST_FROM} ${forCount.where}`, forCount.params),
+  ]);
+  return { total: count.rows[0]?.total ?? 0, rows: rows.rows.map(requestToIso) };
+}
+
+/** Accepting a KONTAK proposal writes the master's own columns. */
+export async function updateEmployeeContact(
+  client: PoolClient,
+  employeeId: string,
+  values: ContactValues,
+): Promise<void> {
+  await client.query(
+    "UPDATE employees SET email = $2, phone = $3, updated_at = now() WHERE id = $1",
+    [employeeId, values.email, values.phone],
   );
 }

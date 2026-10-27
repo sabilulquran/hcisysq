@@ -45,13 +45,21 @@ export interface PlacementInput {
   jobTitleLabel: string;
 }
 
+/** Ending an additional duty is its own request (EMP-006). */
+export interface PlacementEndRequest {
+  actionType: "PLACEMENT_END";
+  effectiveOn: string;
+  placementId: string;
+  reasonNote?: string | null;
+}
+
 interface CommonFields {
   reasonNote?: string | null;
   documentIds?: string[];
   acknowledgedWarnings?: EmploymentWarningCode[];
 }
 
-export type EmploymentActionRequest = CommonFields &
+export type EmploymentActionRequest = (CommonFields & PlacementEndRequest) | (CommonFields &
   (
     | {
         actionType: "HIRE";
@@ -78,7 +86,7 @@ export type EmploymentActionRequest = CommonFields &
         placement: PlacementInput;
         reasonCode?: CareerReasonCode | null;
       }
-  );
+  ));
 
 export interface EmploymentActionPreview {
   actionType: EmploymentActionType;
@@ -194,25 +202,25 @@ export function requiredDocumentKind(
   actionType: EmploymentActionType,
   category: ActionCategory | null,
   reasonCode: TerminationReason | null,
-): { kind: "PERJANJIAN_KERJA" | "SURAT_KEPUTUSAN"; hint: string } | null {
+): { kind: "PERJANJIAN_KERJA" | "SURAT_KEPUTUSAN"; skType?: string; hint: string } | null {
   switch (actionType) {
     case "HIRE":
     case "CATEGORY_CHANGE":
       return category === "TETAP"
-        ? { kind: "SURAT_KEPUTUSAN", hint: "Pengangkatan pegawai tetap memerlukan SK Pengangkatan." }
+        ? { kind: "SURAT_KEPUTUSAN", skType: "SK_PENGANGKATAN", hint: "Pengangkatan pegawai tetap memerlukan SK Pengangkatan." }
         : { kind: "PERJANJIAN_KERJA", hint: "Tindakan kontrak memerlukan Perjanjian Kerja." };
     case "CONTRACT_EXTENSION":
       return { kind: "PERJANJIAN_KERJA", hint: "Perpanjangan memerlukan Perjanjian Kerja perpanjangan." };
     case "TERMINATION":
       return reasonCode === "RESIGN" || reasonCode === "MENINGGAL_DUNIA"
         ? null
-        : { kind: "SURAT_KEPUTUSAN", hint: "Pemberhentian memerlukan SK Pemberhentian." };
+        : { kind: "SURAT_KEPUTUSAN", skType: "SK_PEMBERHENTIAN", hint: "Pemberhentian memerlukan SK Pemberhentian." };
     case "TRANSFER":
-      return { kind: "SURAT_KEPUTUSAN", hint: "Mutasi memerlukan SK Mutasi." };
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_MUTASI", hint: "Mutasi memerlukan SK Mutasi." };
     case "PROMOTION":
-      return { kind: "SURAT_KEPUTUSAN", hint: "Promosi memerlukan SK Promosi." };
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_PROMOSI", hint: "Promosi memerlukan SK Promosi." };
     case "DEMOTION":
-      return { kind: "SURAT_KEPUTUSAN", hint: "Demosi memerlukan SK Demosi." };
+      return { kind: "SURAT_KEPUTUSAN", skType: "SK_DEMOSI", hint: "Demosi memerlukan SK Demosi." };
     case "PLACEMENT":
       // A placement needs no basis document; an SK may still be attached.
       return null;

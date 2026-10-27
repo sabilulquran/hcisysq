@@ -36,6 +36,7 @@ import {
   EmploymentVersionConflict,
   findActionByIdempotencyKey,
   loadDecisionDocumentRefs,
+  loadReferenceExistence,
   persistAction,
 } from "./infrastructure/postgres-action-store.js";
 import { getRolloutMode, jakartaToday, loadHistories } from "./infrastructure/postgres-employment-store.js";
@@ -70,8 +71,8 @@ const category = z.enum(["TETAP", "KONTRAK", "KONTRAK_HONORER", "MAGANG", "PERCO
 /**
  * Package 1 records placements against the legacy unit/position tables, the
  * same ones the nine projected `employees` columns point at. ORG-004 stable
- * keys arrive with S6, together with the mapping that keeps those columns
- * filled; accepting them here would quietly null a employee's unit for every
+ * keys are not accepted: until a mapping from node key to legacy unit is
+ * agreed, projecting one would quietly clear an employee's unit for every
  * legacy consumer, and the import guard would stop import from restoring it.
  */
 const placementBody = z.object({
@@ -364,6 +365,13 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       return null;
     }
 
+    // The planner asks whether a unit and position exist; without an answer a
+    // wrong id would only fail on the foreign key, as a 500.
+    const placementInput = "placement" in body.data ? body.data.placement : null;
+    const references = placementInput
+      ? await loadReferenceExistence(pool, placementInput.unitId, placementInput.positionId ?? null)
+      : { unit: false, position: false };
+
     const requestedDocumentIds = body.data.documentIds ?? [];
     const documents = await loadDecisionDocumentRefs(pool, requestedDocumentIds);
     if (documents.length !== requestedDocumentIds.length) {
@@ -377,6 +385,9 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
         canCorrect: session.canCorrect,
         mode,
         newId: randomUUID,
+        isReferenceValid: (unitRef, positionRef) =>
+          (unitRef.kind !== "LEGACY_UNIT" || references.unit)
+          && (positionRef === null || positionRef.kind !== "LEGACY_POSITION" || references.position),
       });
       return { plan, history, body: body.data, principal: session.principal, today };
     } catch (error) {

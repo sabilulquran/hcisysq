@@ -289,11 +289,14 @@ export function PlacementCareerPanel({
   view,
   timeline,
   actions,
+  onEndAdditional,
 }: {
   view: EmploymentView<EmploymentSummary>;
   timeline: EmploymentView<EmploymentTimelineItem[]>;
   /** S6 career buttons; omitted on screens that only read. */
   actions?: ReactNode;
+  /** S6: end one additional duty; omitted where the operator may not record. */
+  onEndAdditional?: (placementId: string) => void;
 }) {
   if (view.kind !== "ready") return <EmploymentStateNotice view={view} subject="data penempatan" />;
   const data = view.data;
@@ -325,7 +328,18 @@ export function PlacementCareerPanel({
             <p className="text-xs font-semibold text-muted-foreground">Tugas tambahan</p>
             <ul className="mt-2 space-y-1 text-sm">
               {data.current.additionalPlacements.map((placement) => (
-                <li key={placement.id}>{placementLine(placement)} · {sinceLabel(placement)}</li>
+                <li key={placement.id} className="flex flex-wrap items-center gap-2">
+                  <span>{placementLine(placement)} · {sinceLabel(placement)}</span>
+                  {onEndAdditional ? (
+                    <button
+                      type="button"
+                      onClick={() => onEndAdditional(placement.id)}
+                      className="text-xs font-bold text-brand-primary"
+                    >
+                      Akhiri tugas tambahan
+                    </button>
+                  ) : null}
+                </li>
               ))}
             </ul>
           </div>

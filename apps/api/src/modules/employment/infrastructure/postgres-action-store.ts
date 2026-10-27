@@ -345,6 +345,27 @@ export async function employeesNeedingProjection(db: Db, date: string): Promise<
 }
 
 /**
+ * Does this legacy unit, and this legacy position, exist? The planner refuses
+ * an unknown reference with EMPLOYMENT_REFERENCE_INVALID (spec §12) instead of
+ * letting the insert fail on a foreign key and answer 500.
+ */
+export async function loadReferenceExistence(
+  db: Db,
+  unitId: string | null,
+  positionId: string | null,
+): Promise<{ unit: boolean; position: boolean }> {
+  const [unit, position] = await Promise.all([
+    unitId
+      ? db.query("SELECT 1 FROM organizational_units WHERE id = $1", [unitId])
+      : Promise.resolve({ rowCount: 0 }),
+    positionId
+      ? db.query("SELECT 1 FROM positions WHERE id = $1", [positionId])
+      : Promise.resolve({ rowCount: 0 }),
+  ]);
+  return { unit: (unit.rowCount ?? 0) > 0, position: (position.rowCount ?? 0) > 0 };
+}
+
+/**
  * Employees whose employment columns history owns in AUTHORITATIVE (spec §8.1).
  * EMP-004 import must leave those nine columns alone for them; everything else
  * in the master (name, contact, education) stays import's to write.
@@ -379,10 +400,13 @@ export async function loadStructureMismatches(
        LIMIT 1
      ),
      seats AS (
+       -- A seat may be held by an account rather than an employee (0020);
+       -- those rows have nothing to compare against an employment placement.
        SELECT DISTINCT i.employee_id
        FROM organization_incumbencies i
        JOIN published p ON p.id = i.change_set_id
        WHERE i.kind = 'PRIMARY'
+         AND i.employee_id IS NOT NULL
          AND i.effective_from <= $1::date
          AND (i.effective_to IS NULL OR i.effective_to >= $1::date)
      ),

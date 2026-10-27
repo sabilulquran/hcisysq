@@ -74,10 +74,10 @@ features:
     module: employee
     name: Employee data change request
     legacy_evidence: data change request and notification exist
-    target_status: planned
+    target_status: implemented
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Partly implemented. Step P2-3 shipped the addresses-as-dated-records half (docs/domain/employment-administration-package2.md, 2026-10-27) - HC records a move, which closes the previous address rather than overwriting it. The employee's own change proposal, and HC's decision on it, is step P2-4 and is not built yet. One HC officer decides; no approval chain in this package.
+    planning_note: Implemented across Package 2 steps P2-3 and P2-4 (docs/domain/employment-administration-package2.md, 2026-10-27). Addresses are dated records - recording a move closes the previous address rather than overwriting it - and an employee proposes a change to their own address, contact, family, education or skills from Data saya. One HC officer accepts or refuses with a reason from Pegawai -> Usulan Perubahan Data; accepting writes the change in the same transaction as the decision, and the payload is validated again at that moment. No approval chain in this package.
 
   - id: EMP-004
     module: employee

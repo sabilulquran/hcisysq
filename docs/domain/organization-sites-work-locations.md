@@ -68,7 +68,7 @@ Di luar v1 (TBD): beberapa lokasi untuk satu unit, penugasan sementara ke lokasi
 
 **Catatan ORG-005-2 (dibangun):**
 - `PATCH /admin/attendance/adms/devices/:deviceId/wdms-profile` menerima `workLocationId`. Lokasinya harus ada dan aktif; kalau tidak, ditolak 400 `INVALID_WORK_LOCATION` dan di-*rollback*. Perubahan ini masuk ke audit `wdms_device_profile_updated`. Profil mesin mengembalikan `workLocationId` dan `workLocationName`.
-- `PATCH /admin/attendance/work-locations/:id` dengan `active: false` ditolak 409 `WORK_LOCATION_IN_USE` (beserta `details.uses`) bila lokasi itu masih dipakai unit di struktur yang berlaku hari ini atau oleh mesin aktif.
+- `PATCH /admin/attendance/work-locations/:id` dengan `active: false` ditolak 409 `WORK_LOCATION_IN_USE` (beserta `details.uses`) bila lokasi itu masih dipakai unit di struktur yang berlaku hari ini, unit di struktur terbit yang berlaku nanti, atau mesin yang belum dipensiunkan. Pemeriksaan dan penonaktifan berjalan dalam satu transaksi dengan baris lokasi dikunci; menautkan mesin mengambil *share lock* pada baris yang sama.
 - Migration `0090_adms_device_work_location.sql` diberi nomor 0090 supaya jauh dari rentang yang dipakai paket lain.
 - Di layar mesin: "Lokasi kerja" kini dipilih dari daftar organisasi, sedangkan `worksite_label` lama tetap tersimpan sebagai "Catatan lokasi (lama)". Pemilihnya hanya tampil bagi pemegang `attendance.schedule.manage` dan `attendance.devices.configure`.
 

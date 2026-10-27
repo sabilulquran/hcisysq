@@ -25,6 +25,7 @@ export function AdminAdmsDeviceSettingsPage() {
   // ORG-005-2: the organisation's list of places; the free-text label stays as an old note.
   const [workLocationId, setWorkLocationId] = useState("");
   const [workLocations, setWorkLocations] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
+  const [workLocationsFailed, setWorkLocationsFailed] = useState(false);
   const canPickWorkLocation = canConfigure && hasPermission(session, "attendance.schedule.manage");
   const [areaContext, setAreaContext] = useState("");
   const [duplicateSeconds, setDuplicateSeconds] = useState("");
@@ -44,7 +45,9 @@ export function AdminAdmsDeviceSettingsPage() {
     setUnits(employees.filters.units);
     if (canPickWorkLocation) {
       // A failed list only hides the picker; the rest of the page still works.
-      await listAttendanceWorkLocations().then((result) => setWorkLocations(result.items)).catch(() => setWorkLocations([]));
+      await listAttendanceWorkLocations()
+        .then((result) => { setWorkLocations(result.items); setWorkLocationsFailed(false); })
+        .catch(() => { setWorkLocations([]); setWorkLocationsFailed(true); });
     }
   }, [deviceId, canPickWorkLocation]);
 
@@ -161,9 +164,10 @@ export function AdminAdmsDeviceSettingsPage() {
           <label className="text-xs font-semibold text-muted-foreground">Nama mesin<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Serial<input value={device?.serialNumber ?? ""} disabled className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" /></label>
           <label className="text-xs font-semibold text-muted-foreground">Unit<select value={organizationalUnitId} onChange={(e) => setOrganizationalUnitId(e.target.value)} disabled={!canConfigure} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm disabled:bg-surface"><option value="">Belum ditentukan</option>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
-          <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja{canPickWorkLocation ? (
+          <label className="text-xs font-semibold text-muted-foreground">Lokasi kerja{canPickWorkLocation ? (<>
             <select value={workLocationId} onChange={(e) => setWorkLocationId(e.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm"><option value="">Belum ditentukan</option>{workLocations.filter((item) => item.active || item.id === workLocationId).map((item) => <option key={item.id} value={item.id}>{item.name}{item.active ? "" : " (nonaktif)"}</option>)}</select>
-          ) : (
+            {workLocationsFailed ? <span className="mt-1 block text-[11px] font-normal text-danger-ink">Daftar lokasi kerja tidak dapat dimuat; lokasi yang sudah tersimpan tidak berubah.</span> : null}
+          </>) : (
             <input value={profile?.workLocationName ?? ""} disabled placeholder="Belum ditentukan" className="mt-1 h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-muted-foreground" />
           )}</label>
           <label className="text-xs font-semibold text-muted-foreground">Catatan lokasi (lama)<input value={worksiteLabel} onChange={(e) => setWorksiteLabel(e.target.value)} disabled={!canConfigure} placeholder="Contoh: Gedung Utama Lt. 1" className="mt-1 h-10 w-full rounded-xl border border-border px-3 text-sm disabled:bg-surface" /></label>

@@ -287,7 +287,8 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
               organizational_unit_id AS "organizationalUnitId",
               area_context AS "areaContext", worksite_label AS "worksiteLabel",
               work_location_id AS "workLocationId",
-              (SELECT name FROM attendance_work_locations WHERE id = work_location_id) AS "workLocationName",
+              (SELECT location.name FROM attendance_work_locations location
+               WHERE location.id = attendance_adms_devices.work_location_id) AS "workLocationName",
               device_role AS "deviceRole", transfer_mode AS "transferMode",
               heartbeat_interval_seconds AS "heartbeatIntervalSeconds",
               desired_push_protocol_version AS "desiredPushProtocolVersion"
@@ -314,7 +315,8 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
         }
         if (body.data.workLocationId) {
           const location = await client.query<{ active: boolean }>(
-            "SELECT active FROM attendance_work_locations WHERE id = $1", [body.data.workLocationId],
+            // Share lock: a concurrent switch-off waits, then sees this machine as a use.
+            "SELECT active FROM attendance_work_locations WHERE id = $1 FOR SHARE", [body.data.workLocationId],
           );
           if (location.rows[0]?.active !== true) {
             throw new RegistryParityError(400, "INVALID_WORK_LOCATION", "Lokasi kerja tidak ada atau sudah dinonaktifkan.");
@@ -356,7 +358,8 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
                   organizational_unit_id AS "organizationalUnitId",
                   area_context AS "areaContext", worksite_label AS "worksiteLabel",
                   work_location_id AS "workLocationId",
-                  (SELECT name FROM attendance_work_locations WHERE id = work_location_id) AS "workLocationName",
+                  (SELECT location.name FROM attendance_work_locations location
+               WHERE location.id = attendance_adms_devices.work_location_id) AS "workLocationName",
                   device_role AS "deviceRole", transfer_mode AS "transferMode",
                   heartbeat_interval_seconds AS "heartbeatIntervalSeconds",
                   desired_push_protocol_version AS "desiredPushProtocolVersion"

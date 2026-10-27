@@ -9,6 +9,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import {
   AUTH_COOKIE_NAME,
   AuthService,
@@ -20,6 +21,10 @@ export type PayslipPermission = "payslips.import" | "payslips.publish";
 
 const idSchema = z.object({ id: z.string().uuid() });
 const batchIdSchema = z.object({ batchId: z.string().uuid() });
+// "errors" is the review queue: pending rows that still fail validation (ENG-LIST-001 paging).
+const batchRowsQuerySchema = pageQuerySchema.extend({
+  filter: z.enum(["all", "errors"]).default("all"),
+});
 const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
 const importRowParamsSchema = z.object({
   batchId: z.string().uuid(),
@@ -597,7 +602,14 @@ export async function registerPayslipRoutes(
   app.get("/admin/payslip-imports", async (request, reply) => {
     const principal = await requireCapability(request, reply, "payslips.import");
     if (!principal) return;
-    const result = await pool.query(
+    const page = pageQuerySchema.safeParse(request.query);
+    if (!page.success) {
+      return reply.status(400).send({
+        code: "INVALID_QUERY",
+        message: "Halaman riwayat batch tidak valid.",
+      });
+    }
+    const [result, count] = await Promise.all([pool.query(
       `SELECT batch.id, batch.source_filename AS "sourceFilename",
               batch.source_format AS "sourceFormat", batch.status,
               batch.row_count AS "rowCount", batch.valid_count AS "validCount",
@@ -622,11 +634,12 @@ export async function registerPayslipRoutes(
              FROM payslip_import_rows
             WHERE batch_id = batch.id
          ) stats ON true
-        ORDER BY batch.created_at DESC
-        LIMIT 50`,
-    );
+        ORDER BY batch.created_at DESC, batch.id DESC
+        LIMIT $1 OFFSET $2`,
+      [page.data.pageSize, pageOffset(page.data)],
+    ), pool.query<{ total: number }>("SELECT count(*)::int AS total FROM payslip_import_batches")]);
     reply.header("Cache-Control", "private, no-store");
-    return reply.send({ items: result.rows });
+    return reply.send({ items: result.rows, pagination: pagination(page.data, count.rows[0]?.total ?? 0) });
   });
 
   app.post(
@@ -770,7 +783,6 @@ export async function registerPayslipRoutes(
         rowCount: rows.length,
         validCount,
         errorCount,
-        rows,
       });
     },
   );
@@ -783,6 +795,13 @@ export async function registerPayslipRoutes(
       return reply.status(400).send({
         code: "INVALID_BATCH_ID",
         message: "Batch ID tidak valid.",
+      });
+    }
+    const query = batchRowsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({
+        code: "INVALID_QUERY",
+        message: "Halaman atau saringan baris batch tidak valid.",
       });
     }
 
@@ -821,24 +840,56 @@ export async function registerPayslipRoutes(
       });
     }
 
-    const rows = await pool.query(
-      `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
-              to_char(period, 'YYYY-MM') AS period, lines,
-              validation_errors AS errors,
-              resolution_status AS "resolutionStatus",
-              draft_payslip_id AS "draftPayslipId",
-              excluded_at AS "excludedAt"
-         FROM payslip_import_rows
-        WHERE batch_id = $1
-        ORDER BY row_number`,
-      [parsed.data.batchId],
-    );
+    const onlyErrors = query.data.filter === "errors";
+    const matches = `($2::boolean IS FALSE
+            OR (resolution_status = 'pending' AND jsonb_array_length(validation_errors) > 0))`;
+    const [rows, count, errorSummary] = await Promise.all([
+      pool.query(
+        `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
+                to_char(period, 'YYYY-MM') AS period, lines,
+                validation_errors AS errors,
+                resolution_status AS "resolutionStatus",
+                draft_payslip_id AS "draftPayslipId",
+                excluded_at AS "excludedAt"
+           FROM payslip_import_rows
+          WHERE batch_id = $1 AND ${matches}
+          ORDER BY row_number
+          LIMIT $3 OFFSET $4`,
+        [parsed.data.batchId, onlyErrors, query.data.pageSize, pageOffset(query.data)],
+      ),
+      pool.query<{ total: number }>(
+        `SELECT count(*)::int AS total FROM payslip_import_rows WHERE batch_id = $1 AND ${matches}`,
+        [parsed.data.batchId, onlyErrors],
+      ),
+      // How often each validation message occurs among unresolved rows, across the whole batch.
+      pool.query<{ message: string; count: number }>(
+        `SELECT message, count(*)::int AS count
+           FROM payslip_import_rows, jsonb_array_elements_text(validation_errors) AS message
+          WHERE batch_id = $1 AND resolution_status = 'pending'
+          GROUP BY message
+          ORDER BY count(*) DESC, message`,
+        [parsed.data.batchId],
+      ),
+    ]);
+    const total = count.rows[0]?.total ?? 0;
+    // Every page read is logged: each one exposes payroll lines (AGENTS.md §8).
     await writeAudit(pool, principal.id, "payslip.import.review_opened", {
       batchId: parsed.data.batchId,
-      payload: { rowCount: rows.rowCount ?? rows.rows.length },
+      payload: {
+        rowCount: total,
+        filter: query.data.filter,
+        page: query.data.page,
+        pageSize: query.data.pageSize,
+        returnedRows: rows.rows.length,
+      },
     });
     reply.header("Cache-Control", "private, no-store");
-    return reply.send({ ...batch.rows[0], rows: rows.rows });
+    return reply.send({
+      ...batch.rows[0],
+      rows: rows.rows,
+      pagination: pagination(query.data, total),
+      errorSummary: errorSummary.rows,
+    });
   });
 
   app.patch("/admin/payslip-imports/:batchId/rows", async (request, reply) => {

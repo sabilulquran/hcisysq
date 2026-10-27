@@ -1,14 +1,18 @@
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
   commitEmployeeImport,
+  getEmployeeImport,
   previewEmployeeImport,
   type EmployeeImportCommitResult,
   type EmployeeImportPreview,
+  type EmployeeImportRowFilter,
 } from "@/lib/adminEmployees";
+
 
 const CSV_TEMPLATE = [
   "NIP,NAMA,STATUS AKTIF,STATUS KEPEGAWAIAN,UNIT,JABATAN,JENIS KEPEGAWAIAN,JABATAN FUNGSIONAL,JABATAN STRUKTURAL,EMAIL,NO HP,PENDIDIKAN TERAKHIR,TMT,TAHUN KELUAR (TTTT-BB)",
@@ -40,24 +44,32 @@ export function AdminEmployeeImportPage() {
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const validationSummary = useMemo(() => {
-    if (!preview) return [] as Array<{ code: string; count: number; severity: "warning" | "error" }>;
-    const counts = new Map<string, { count: number; severity: "warning" | "error" }>();
-    for (const row of preview.rows) {
-      for (const issue of row.issues) {
-        const current = counts.get(issue.code);
-        counts.set(issue.code, {
-          count: (current?.count ?? 0) + 1,
-          severity: current?.severity === "error" || issue.severity === "error" ? "error" : "warning",
-        });
-      }
-    }
-    return [...counts.entries()]
-      .map(([code, value]) => ({ code, ...value }))
-      .sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "error" ? -1 : 1));
-  }, [preview]);
+  const [rowFilter, setRowFilter] = useState<EmployeeImportRowFilter>("all");
+  const [rowsLoading, setRowsLoading] = useState(false);
+  // Only the newest page request may land, so quick clicks cannot show an older page last.
+  const rowsRequest = useRef(0);
 
-  const skipCount = preview?.rows.filter((row) => row.action === "skip").length ?? 0;
+  // Counts come from the server for the whole import; only the row table is paged (ENG-LIST-001).
+  const validationSummary = preview?.issueSummary ?? [];
+  const skipCount = preview?.skipCount ?? 0;
+
+  const loadRows = async (page: number, filter: EmployeeImportRowFilter, pageSize = preview?.pagination.pageSize) => {
+    if (!preview) return;
+    const request = ++rowsRequest.current;
+    setRowsLoading(true);
+    setError(null);
+    try {
+      const next = await getEmployeeImport(preview.importId, { page, pageSize, filter });
+      if (request !== rowsRequest.current) return;
+      // Keep the commit outcome this screen already knows about.
+      setPreview((current) => (current ? { ...next, status: current.status, committedAt: current.committedAt } : next));
+      setRowFilter(filter);
+    } catch (cause) {
+      setError(cause instanceof AdminApiError ? cause.message : "Baris preview tidak dapat dimuat.");
+    } finally {
+      setRowsLoading(false);
+    }
+  };
 
   const handlePreview = async (event: FormEvent) => {
     event.preventDefault();
@@ -67,6 +79,7 @@ export function AdminEmployeeImportPage() {
     setError(null);
     setPreview(null);
     setCommitted(null);
+    setRowFilter("all");
     try {
       setPreview(await previewEmployeeImport(file));
     } catch (cause) {
@@ -240,8 +253,25 @@ export function AdminEmployeeImportPage() {
 
           <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
             <div className="border-b border-border/70 px-5 py-4">
-              <h2 className="text-sm font-bold text-brand-heading">Hasil validasi per baris</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Menampilkan maksimal 200 baris pertama dari preview.</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-brand-heading">Hasil validasi per baris</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Semua baris file dapat ditelusuri per halaman.</p>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Tampilkan</span>
+                  <select
+                    value={rowFilter}
+                    disabled={rowsLoading}
+                    onChange={(event) => void loadRows(1, event.target.value as EmployeeImportRowFilter)}
+                    className="h-8 rounded-lg border border-border bg-surface-raised px-2 text-xs text-brand-heading"
+                    aria-label="Saring baris preview"
+                  >
+                    <option value="all">Semua baris</option>
+                    <option value="issues">Hanya yang ada warning/error</option>
+                  </select>
+                </label>
+              </div>
             </div>
             <div className="max-h-[34rem] overflow-auto">
               <table className="w-full min-w-[720px] text-left text-sm">
@@ -253,7 +283,7 @@ export function AdminEmployeeImportPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/70">
-                  {preview.rows.slice(0, 200).map((row) => (
+                  {preview.rows.map((row) => (
                     <tr key={row.rowNumber}>
                       <td className="px-4 py-3 font-semibold">{row.rowNumber}</td>
                       <td className="px-4 py-3">
@@ -276,7 +306,17 @@ export function AdminEmployeeImportPage() {
                   ))}
                 </tbody>
               </table>
+              {preview.rows.length === 0 ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">Tidak ada baris pada saringan ini.</p>
+              ) : null}
             </div>
+            <PaginationBar
+              page={preview.pagination.page}
+              pageSize={preview.pagination.pageSize}
+              total={preview.pagination.total}
+              onPageChange={(page) => void loadRows(page, rowFilter)}
+              onPageSizeChange={(size) => void loadRows(1, rowFilter, size)}
+            />
           </section>
         </>
       ) : null}

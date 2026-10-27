@@ -2,19 +2,25 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { pageOffset, pagination, type PageQuery } from "../../../lib/pagination.js";
 import type {
   EmployeeImportCandidate,
   EmployeeImportCommitResult,
   EmployeeImportPreview,
+  EmployeeImportPreviewPage,
   EmployeeImportSummary,
   ImportAction,
   ImportIssue,
 } from "../domain/employee-import.js";
 import { EMPLOYEE_SOURCE_CLASSIFICATION_HEADERS, normalizeReferenceName } from "../domain/employee-import.js";
 import type {
+  EmployeeImportRowFilter,
   EmployeeImportStore,
   SaveEmployeeImportPreviewInput,
 } from "../application/employee-import-store.js";
+import { PROJECTED_IMPORT_FIELDS } from "../../employment/domain/index.js";
+import { loadEmploymentManagedEmployeeIds } from "../../employment/infrastructure/postgres-action-store.js";
+import { audit } from "../../employment/infrastructure/postgres-employment-store.js";
 
 interface ImportJobRow {
   id: string;
@@ -160,6 +166,65 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     };
   }
 
+  async getPreviewPage(
+    importId: string,
+    page: PageQuery,
+    filter: EmployeeImportRowFilter,
+  ): Promise<EmployeeImportPreviewPage | null> {
+    const job = await this.pool.query<ImportJobRow>(
+      "SELECT * FROM employee_import_jobs WHERE id = $1",
+      [importId],
+    );
+    const jobRow = job.rows[0];
+    if (!jobRow) return null;
+
+    // "issues" keeps only rows with at least one warning or error, so HC can work through
+    // the problems of a long file page by page (ENG-LIST-001).
+    const onlyIssues = filter === "issues";
+    const matches = "($2::boolean IS FALSE OR jsonb_array_length(messages) > 0)";
+    const [rows, count, issues] = await Promise.all([
+      this.pool.query<ImportDetailRow>(
+        `SELECT row_number, action, payload, messages
+         FROM employee_import_rows
+         WHERE import_job_id = $1 AND ${matches}
+         ORDER BY row_number
+         LIMIT $3 OFFSET $4`,
+        [importId, onlyIssues, page.pageSize, pageOffset(page)],
+      ),
+      this.pool.query<{ total: number; skip: number }>(
+        `SELECT count(*) FILTER (WHERE ${matches})::int AS total,
+                count(*) FILTER (WHERE action = 'skip')::int AS skip
+         FROM employee_import_rows
+         WHERE import_job_id = $1`,
+        [importId, onlyIssues],
+      ),
+      // One count per issue code across the whole import, worst severity first.
+      this.pool.query<{ code: string; severity: "warning" | "error"; count: number }>(
+        `SELECT issue ->> 'code' AS code,
+                CASE WHEN bool_or(issue ->> 'severity' = 'error') THEN 'error' ELSE 'warning' END AS severity,
+                count(*)::int AS count
+         FROM employee_import_rows, jsonb_array_elements(messages) AS issue
+         WHERE import_job_id = $1
+         GROUP BY issue ->> 'code'
+         ORDER BY bool_or(issue ->> 'severity' = 'error') DESC, count(*) DESC, issue ->> 'code'`,
+        [importId],
+      ),
+    ]);
+    const total = count.rows[0]?.total ?? 0;
+
+    return {
+      ...toSummary(jobRow),
+      rows: rows.rows.map((row) => ({
+        rowNumber: row.row_number,
+        action: row.action,
+        issues: row.messages,
+      })),
+      pagination: pagination(page, total),
+      skipCount: count.rows[0]?.skip ?? 0,
+      issueSummary: issues.rows,
+    };
+  }
+
   async commit(importId: string): Promise<EmployeeImportCommitResult> {
     const client = await this.pool.connect();
 
@@ -189,10 +254,14 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
 
       let insertCount = 0;
       let updateCount = 0;
+      let employmentFieldsIgnoredCount = 0;
+      const employmentManaged = await loadEmploymentManagedEmployeeIds(client);
 
       for (const row of rows.rows) {
         if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
-        const { action: actualAction, employeeId } = await this.upsertEmployee(client, row.payload, importId);
+        const { action: actualAction, employeeId, employmentFieldsIgnored } =
+          await this.upsertEmployee(client, row.payload, importId, employmentManaged);
+        if (employmentFieldsIgnored) employmentFieldsIgnoredCount += 1;
         await this.writeSourceSnapshot(client, job, row.row_number, employeeId, row.payload);
         if (actualAction === "insert") insertCount += 1;
         if (actualAction === "update") updateCount += 1;
@@ -203,6 +272,17 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
            WHERE import_job_id = $1 AND row_number = $2`,
           [importId, row.row_number, actualAction],
         );
+      }
+
+      if (employmentFieldsIgnoredCount > 0) {
+        await audit(client, {
+          actorAccountId: null,
+          action: "employment.import.fields_ignored",
+          entityType: "employee_import_job",
+          entityId: importId,
+          employeeId: null,
+          payload: { employeeCount: employmentFieldsIgnoredCount, fields: [...PROJECTED_IMPORT_FIELDS] },
+        });
       }
 
       const committed = await client.query<ImportJobRow>(
@@ -228,11 +308,37 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     client: PoolClient,
     candidate: EmployeeImportCandidate,
     importId: string,
-  ): Promise<{ action: "insert" | "update"; employeeId: string }> {
+    employmentManaged: ReadonlySet<string> = new Set(),
+  ): Promise<{ action: "insert" | "update"; employeeId: string; employmentFieldsIgnored: boolean }> {
     const existing = await client.query<{ id: string }>(
       "SELECT id FROM employees WHERE employee_number = $1 FOR UPDATE",
       [candidate.employeeNumber],
     );
+
+    // EMP-005 §8.1: in AUTHORITATIVE the nine employment columns belong to the
+    // employment history, so the import updates only the rest of the master —
+    // and creates no unit or position row it would then throw away.
+    if (existing.rows[0] && employmentManaged.has(existing.rows[0].id)) {
+      await client.query(
+        `UPDATE employees SET
+          full_name = $2,
+          email = $3,
+          phone = $4,
+          education = $5,
+          source_last_import_job_id = $6,
+          updated_at = now()
+        WHERE employee_number = $1`,
+        [
+          candidate.employeeNumber,
+          candidate.fullName,
+          candidate.email,
+          candidate.phone,
+          candidate.education,
+          importId,
+        ],
+      );
+      return { action: "update", employeeId: existing.rows[0].id, employmentFieldsIgnored: true };
+    }
 
     const unitId = candidate.unitName
       ? await this.upsertReference(client, "organizational_units", candidate.unitName)
@@ -278,7 +384,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
           importId,
         ],
       );
-      return { action: "update", employeeId: existing.rows[0].id };
+      return { action: "update", employeeId: existing.rows[0].id, employmentFieldsIgnored: false };
     }
 
     const employeeId = randomUUID();
@@ -308,7 +414,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         importId,
       ],
     );
-    return { action: "insert", employeeId };
+    return { action: "insert", employeeId, employmentFieldsIgnored: false };
   }
 
   /**

@@ -50,6 +50,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     return ["attendance.clarification.manage", "attendance.records.manage", "attendance.reports.read", "attendance.schedule.manage"]
       .some((permission) => hasPermission(session, permission));
   }
+  // ATT-011-5 Jadwal calendar: HC Admin changes it; attendance.reports.read sees it read-only (D-1).
+  if (path === "/admin/attendance/schedules/calendar") {
+    return hasPermission(session, "attendance.schedule.manage") || hasPermission(session, "attendance.reports.read");
+  }
   // ATT-011-3R Perbaikan Absen: deciding requests or entering corrections each open it.
   if (path === "/admin/attendance/corrections") {
     return hasPermission(session, "attendance.clarification.manage") || hasPermission(session, "attendance.records.manage");

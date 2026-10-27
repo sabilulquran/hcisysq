@@ -237,7 +237,11 @@ paths:
       description: >-
         `kind` pattern (Atur jadwal: shift or null for Libur, `from`, `to` or null for no end, `weekdays` 1-7,
         `untickedDays` off|keep), replacement (Ganti jadwal: shift or null for Libur, `from`-`to` up to 62 days,
-        `note` required) or copy (Salin jadwal: `sourceWeekStart` and `targetWeekStarts`, Mondays). Who:
+        `note` required), copy (Salin jadwal: `sourceWeekStart` and `targetWeekStarts`, Mondays) or revert
+        (ATT-011-4c Kembalikan seperti sebelumnya: `changeSetId`, `note` required; restores what that change set
+        replaced from tomorrow on, for its employees minus `excludeEmployeeIds`; blocked per employee by
+        `changed_later` when a later change set or a direct edit touched them; 404 SCHEDULE_CHANGE_NOT_FOUND,
+        409 SCHEDULE_CHANGE_ALREADY_REVERTED). Who:
         `employeeIds` and/or `unitId` (active employees), minus `excludeEmployeeIds`. `workOnHolidays` writes
         the shift on calendar holidays too (D-2). Returns `fingerprint`, `summary`, `issues` (blocking ones stop
         Terapkan: shift_swap, draft_roster, started, shift_not_valid), `holidays`, and up to 200 `employees`
@@ -1091,7 +1095,8 @@ components:
       required: [kind]
       description: ATT-011-4b Perubahan Jadwal. Either `employeeIds` or `unitId` is required.
       properties:
-        kind: { type: string, enum: [pattern, replacement, copy] }
+        kind: { type: string, enum: [pattern, replacement, copy, revert] }
+        changeSetId: { type: string, format: uuid, description: 'revert: the change set to undo' }
         employeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }
         unitId: { type: string, format: uuid, nullable: true }
         excludeEmployeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }

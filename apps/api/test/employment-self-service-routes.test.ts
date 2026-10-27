@@ -35,6 +35,8 @@ const PERMISSIONS: Record<Persona, string[]> = {
 
 interface PoolOptions {
   mode?: "OFF" | "SHADOW" | "AUTHORITATIVE";
+  /** The acting account is not linked to an employee. */
+  accountWithoutEmployee?: boolean;
   /** The action the caller tries to reverse; defaults to the latest one. */
   targetActionId?: string;
   noHistory?: boolean;
@@ -66,7 +68,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: [{ mode: options.mode ?? "AUTHORITATIVE", changedAt: new Date("2026-11-01T00:00:00Z") }], rowCount: 1 };
     }
     if (sql.includes("FROM accounts") && sql.includes("principal_type = 'EMPLOYEE'")) {
-      return { rows: [{ employeeId: EMPLOYEE_ID }], rowCount: 1 };
+      return options.accountWithoutEmployee || persona === "super_admin"
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ employeeId: EMPLOYEE_ID }], rowCount: 1 };
     }
     if (sql.includes("FROM accounts WHERE id = $1 AND employee_id IS NOT NULL")) {
       return options.actorIsEmployee ? { rows: [{ employeeId: EMPLOYEE_ID }], rowCount: 1 } : { rows: [], rowCount: 0 };
@@ -74,16 +78,19 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("FROM employment_actions WHERE id = $1")) {
       return options.noHistory ? { rows: [], rowCount: 0 } : { rows: [{ employeeId: EMPLOYEE_ID }], rowCount: 1 };
     }
+    if (sql.includes("WITH current_term AS") && sql.includes("count(*)::int AS total")) {
+      return { rows: [{ total: 2 }], rowCount: 1 };
+    }
     if (sql.includes("WITH current_term AS")) {
       return {
         rows: [
           {
             employeeId: EMPLOYEE_ID, employeeNumber: "YSQ-0001", fullName: "Pegawai Sintetis", unitName: "SDIT Sintetis",
-            category: "KONTRAK", endsOn: "2027-09-30", sequence: 2, daysLeft: 20, total: 2,
+            category: "KONTRAK", endsOn: "2027-09-30", sequence: 2, daysLeft: 20,
           },
           {
             employeeId: "10000000-0000-4000-8000-00000000000f", employeeNumber: "YSQ-0002", fullName: "Pegawai Lewat",
-            unitName: null, category: "KONTRAK_HONORER", endsOn: "2027-08-31", sequence: 1, daysLeft: -10, total: 2,
+            unitName: null, category: "KONTRAK_HONORER", endsOn: "2027-08-31", sequence: 1, daysLeft: -10,
           },
         ],
         rowCount: 2,
@@ -138,6 +145,25 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           },
         ],
         rowCount: 2,
+      };
+    }
+    if (sql.includes("json_agg(json_build_object")) {
+      // loadTimeline: the real projection runs over these rows.
+      return {
+        rows: [{
+          id: EXTENSION_ACTION_ID,
+          actionType: "CONTRACT_EXTENSION",
+          effectiveOn: "2026-10-01",
+          state: "RECORDED",
+          reversesActionId: null,
+          reversedByActionId: null,
+          reasonCode: "KOREKSI_HC",
+          previousSnapshot: { placement: { jobTitleLabel: "Guru Kelas" }, category: "KONTRAK" },
+          newSnapshot: { placement: { jobTitleLabel: "Guru Kelas" }, termTo: "2027-09-30" },
+          recordedAt: new Date("2026-10-02T00:00:00Z"),
+          documents: [{ id: "d1", kind: "PERJANJIAN_KERJA", number: "001/PK/YSQ/2026", type: "PK_PERPANJANGAN" }],
+        }],
+        rowCount: 1,
       };
     }
     if (sql.includes("FROM employment_action_documents")) return { rows: [], rowCount: 0 };
@@ -224,14 +250,21 @@ describe("EMP-005 §6.1 reversal", () => {
     expect(writes).toContain("PROJECT employee");
   });
 
-  it("refuses an older action, the baseline, and an unknown one", async () => {
+  it("refuses an older action and the baseline with 409, an unknown one with 404", async () => {
     const older = await call("hc_corrector", "POST", `/admin/employment-actions/${BASELINE_ACTION_ID}/reversal`, { payload: REASON });
     expect(older.response.statusCode).toBe(409);
     expect(older.response.json()).toMatchObject({ code: "EMPLOYMENT_ACTION_NOT_REVERSIBLE" });
     const unknown = await call("hc_corrector", "POST", REVERSAL_URL, { noHistory: true, payload: REASON });
     expect(unknown.response.statusCode).toBe(404);
+    expect(unknown.response.json()).toMatchObject({ code: "EMPLOYMENT_ACTION_NOT_FOUND" });
     expect(older.writes).toEqual([]);
     expect(unknown.writes).toEqual([]);
+  });
+
+  it("tells a malformed action id apart from a missing reason", async () => {
+    const malformed = await call("hc_corrector", "POST", "/admin/employment-actions/bukan-uuid/reversal", { payload: REASON });
+    expect(malformed.response.statusCode).toBe(400);
+    expect(malformed.response.json()).toMatchObject({ code: "INVALID_EMPLOYMENT_REQUEST" });
   });
 
   it("requires a reason", async () => {
@@ -273,6 +306,11 @@ describe("EMP-005 §13.4 contracts about to end", () => {
     expect(off.response.json()).toMatchObject({ code: "EMPLOYMENT_HISTORY_DISABLED" });
   });
 
+  it("reports the real total even on a page past the end", async () => {
+    const { response } = await call("hc", "GET", "/admin/employment/contracts/expiring?page=9&pageSize=25");
+    expect(response.json()).toMatchObject({ total: 2, page: 9 });
+  });
+
   it("rejects a window outside the allowed range", async () => {
     expect((await call("hc", "GET", "/admin/employment/contracts/expiring?withinDays=0")).response.statusCode).toBe(400);
     expect((await call("hc", "GET", "/admin/employment/contracts/expiring?withinDays=999")).response.statusCode).toBe(400);
@@ -289,11 +327,26 @@ describe("EMP-005 D-17 my own employment", () => {
     });
   });
 
-  it("carries no reason note from the actions HC recorded", async () => {
+  it("carries the history with its job titles, and none of HC's notes about them", async () => {
     const { response } = await call("employee", "GET", "/employees/me/employment");
-    const body = JSON.stringify(response.json());
-    expect(body).not.toContain("reasonNote");
-    expect(body).not.toContain("reasonCode");
+    const body = response.json();
+    // The projection really ran: an entry is there, with where it placed them.
+    expect(body.timeline).toHaveLength(1);
+    expect(body.timeline[0]).toMatchObject({
+      actionType: "CONTRACT_EXTENSION",
+      jobTitleLabel: "Guru Kelas",
+      documents: [{ kind: "PERJANJIAN_KERJA", number: "001/PK/YSQ/2026" }],
+    });
+    const serialised = JSON.stringify(body);
+    expect(serialised).not.toContain("reasonNote");
+    expect(serialised).not.toContain("reasonCode");
+    expect(serialised).not.toContain("KOREKSI_HC");
+  });
+
+  it("is refused to an account that is not an employee's", async () => {
+    const { response } = await call("super_admin", "GET", "/employees/me/employment");
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "EMPLOYEE_ACCOUNT_REQUIRED" });
   });
 
   it("needs a session, and says so plainly while the history is OFF", async () => {

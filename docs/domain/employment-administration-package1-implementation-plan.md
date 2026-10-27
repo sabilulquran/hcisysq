@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 implemented (not yet released); S5 API implemented (S5 UI split into its own step S5B); S2B, S5A and S6–S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 API implemented (#208; the dialog is its own step S5B); S5A implemented; S2B and S6–S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -147,6 +147,19 @@ Independent review (2026-10-27) closed on this step: the replay lookup moved beh
 - **Rollback:** set mode `OFF` (import writes again); history kept; see spec §8.6.
 
 ## S5A — Automatic account deactivation and time-boxed reactivation (D-15, AUTH change)
+
+**Status:** IMPLEMENTED on branch `feat/emp-s5a-account-deactivation`. Delivered: migration `0101_account_temporary_reactivation.sql` (table plus the permission `access.accounts.temporary_reactivate`, granted to `human_capital_admin` only); `apps/api/src/modules/auth/employment-access.ts` (state query, allowlist, deactivation and expiry helpers); `temporary-reactivation-routes.ts` (grant, revoke, list, and the central `onRequest` guard); the termination effect inside the S5 action transaction and in the daily refresh; login and OIDC session creation refuse an account whose employment has ended without a valid grant. `AUTHORITATIVE` is now an available rollout mode. Tests: 11 cases covering permissions, the maximum window, self-grant, revoke, the fail-closed guard and the allowlist.
+
+Decisions taken here, DRAFT until the owner says otherwise:
+
+- **The guard is one central `onRequest` hook**, not a check inside `getSession`: every route would otherwise pay for an extra query on every call, and a self-service route could forget it. The hook runs before every request, so the allowlist cannot be bypassed by a new route.
+- **One live grant per account** (a partial unique index). Extending means revoking and granting again, so the audit trail always names who extended the access and why, within the 30-day maximum.
+- **Revoking a grant closes the account immediately** and revokes its sessions, rather than letting the expiry job do it later.
+- `/auth/logout`, `/auth/me` and `/auth/launcher` stay open to a reactivated account, because the app cannot show any of the three pages without them; everything else answers `EMPLOYMENT_ENDED_READ_ONLY`.
+- **Chaining is allowed, each link audited.** A grant lasts at most 30 days; extending means revoking and granting again with a new reason, so there is no hard ceiling on the total. Capping the total would need an owner decision, so the audit trail carries the accountability for now (DRAFT).
+- **A rehire wins over every closing step.** The expiry sweep, the revoke path and the termination effect all read the latest employment first: someone who works here again keeps their account, whatever an old grant or an old termination says.
+
+Independent security review (2026-10-27) closed on this step: the expiry sweep now marks the grant it processed and checks the employment first, so a rehired employee is no longer locked out every night; the allowlist names `/auth/me` (the route the app actually bootstraps on) instead of a path that does not exist, and a test ties every allowlisted path to a registered route; the grant path judges "ended" by the latest employment and runs the same `assertAccountManagementTarget` delegation check as the manual status change; a termination leaves the account open while another employment still runs; the guard is registered before every route and reads the session without the extra session write; `ORDER BY ... NULLS LAST` keeps a row without a start date from masking a real one. A PostgreSQL integration test now covers the constraints of migration 0101, the deactivation, the expiry and the rehire case.
 
 **Spec:** EMP-005-I/J, §8.5, §13.8.
 **Review:** auth/permission/migration — extra review required (AGENTS.md §8); security review sign-off before merge.

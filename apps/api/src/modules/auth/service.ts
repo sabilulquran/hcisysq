@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
+import { loadEmploymentAccessState } from "./employment-access.js";
 import { resolveAuthorizationContext } from "./permissions.js";
 
 import {
@@ -122,6 +123,9 @@ export class AuthService {
       ? await verifyPassword(input.password, account.passwordHash)
       : await this.consumeDummyPasswordWork(input.password);
 
+    // EMP-005 §8.5: an ended employment closes the account even if the
+    // deactivation job has not run yet. Checked after the password so a wrong
+    // password still answers the same way to everyone.
     if (!account || account.status !== "active" || !account.passwordHash || !passwordOk) {
       this.recordFailure(rateKey);
       await this.audit("auth.login.failed", context, account?.id ?? null, email);
@@ -144,6 +148,12 @@ export class AuthService {
       throw new AuthError(403, "MFA_NOT_CONFIGURED", "MFA Super Admin belum dikonfigurasi.");
     }
 
+    const access = await loadEmploymentAccessState(this.pool, account.id);
+    if (access.employmentEnded && !access.reactivationExpiresAt) {
+      await this.audit("auth.login.employment_ended", context, account.id, email);
+      throw new AuthError(403, "EMPLOYMENT_ENDED", "Hubungan kerja sudah berakhir, sehingga akun HCIS tidak aktif.");
+    }
+
     this.attempts.delete(rateKey);
     return this.createSession(account, context, "auth.login.succeeded");
   }
@@ -156,6 +166,12 @@ export class AuthService {
     const account = await this.findAccountById(accountId);
     if (!account || account.status !== "active") {
       throw new AuthError(403, "ACCOUNT_INACTIVE", "Akun HCIS tidak aktif.");
+    }
+    // The OIDC path lands here, so it is guarded exactly like a password login.
+    const access = await loadEmploymentAccessState(this.pool, account.id);
+    if (access.employmentEnded && !access.reactivationExpiresAt) {
+      await this.audit("auth.login.employment_ended", context, account.id, account.email);
+      throw new AuthError(403, "EMPLOYMENT_ENDED", "Hubungan kerja sudah berakhir, sehingga akun HCIS tidak aktif.");
     }
     return this.createSession(account, context, auditEvent);
   }

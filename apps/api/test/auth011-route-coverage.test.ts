@@ -5,6 +5,7 @@ import type { ApiConfig } from "../src/config/env.js";
 import {
   ADMIN_PERMISSIONS,
   BOARD_READ_PERMISSION,
+  ACCESS_REACTIVATION_PERMISSION,
   DOCUMENT_PERMISSIONS,
   EMPLOYMENT_PERMISSIONS,
   HC_ADMIN_PERMISSIONS,
@@ -129,6 +130,7 @@ describe("AUTH-011 route manifest coverage", () => {
     const known = new Set<string>([
       ...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve",
       ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
+      ACCESS_REACTIVATION_PERMISSION,
     ]);
     for (const entry of await manifest()) {
       const label = `${entry.method} ${entry.url}`;

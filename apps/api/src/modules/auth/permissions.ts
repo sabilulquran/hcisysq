@@ -16,6 +16,10 @@ export const HC_ADMIN_PERMISSIONS = [
   "attendance.devices.operate", "attendance.devices.export", "attendance.calculation.run",
   "employment.read", "employment.manage",
   "documents.read", "documents.manage",
+  // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
+  // bundle here says the same. Legacy Super Admin compatibility reads
+  // ADMIN_PERMISSIONS, which deliberately leaves it out.
+  "access.accounts.temporary_reactivate",
 ] as const;
 
 /** DOC-001/DOC-002: HC-only; never granted through legacy Super Admin compatibility.
@@ -76,6 +80,13 @@ export const HC_LEAD_PERMISSIONS = [
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */
 export const EMPLOYMENT_PERMISSIONS = ["employment.read", "employment.manage", "employment.correct"] as const;
+
+/**
+ * EMP-005 D-15: granting a former employee a time-boxed reactivation. Carried
+ * by human_capital_admin only (migration 0101) and deliberately outside
+ * ADMIN_PERMISSIONS, so legacy Super Admin compatibility never grants it.
+ */
+export const ACCESS_REACTIVATION_PERMISSION = "access.accounts.temporary_reactivate";
 export type EmploymentPermission = (typeof EMPLOYMENT_PERMISSIONS)[number];
 
 /** ORG-010: read the Panel Organ Yayasan (aggregate only). Carried only by foundation_board_viewer;

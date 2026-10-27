@@ -43,8 +43,13 @@ const rolloutBody = z.object({
   reason: z.string().trim().min(10).max(500),
 });
 
-/** Modes this release can actually serve; AUTHORITATIVE arrives with S5/S5A. */
-const AVAILABLE_MODES: readonly EmploymentRolloutMode[] = ["OFF", "SHADOW"];
+/**
+ * Modes this release can serve. AUTHORITATIVE became available with S5 (the
+ * contract actions and the projection writer) and S5A (the automatic account
+ * deactivation D-15 requires). Being available is not being switched on:
+ * production activation still follows the S8 runbook and its exit criteria.
+ */
+const AVAILABLE_MODES: readonly EmploymentRolloutMode[] = ["OFF", "SHADOW", "AUTHORITATIVE"];
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");
@@ -110,7 +115,7 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
     if (!AVAILABLE_MODES.includes(body.data.mode)) {
       return send(reply, 409, {
         code: "EMPLOYMENT_MODE_NOT_AVAILABLE",
-        message: "Mode AUTHORITATIVE belum tersedia pada rilis ini.",
+        message: "Mode tersebut belum tersedia pada rilis ini.",
       });
     }
     const client = await pool.connect();

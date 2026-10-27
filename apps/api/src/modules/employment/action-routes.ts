@@ -19,6 +19,7 @@ import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from ".
 import {
   DEFAULT_EMPLOYMENT_POLICY as policy,
   EmploymentDomainError,
+  addDays,
   applyPlan,
   isIsoDate,
   planEmploymentAction,
@@ -242,6 +243,11 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
       expectedVersion: plan.expectedVersion,
       /** The derived state once the action is recorded, not the current one. */
       state: resolveEmployment(applyPlan(history, plan, new Date().toISOString()), today, policy).state,
+      /** EMP-005 D-15: when the employee's login account closes, if at all. */
+      accountDeactivation:
+        plan.actionType === "TERMINATION" && plan.effectiveOn
+          ? { willDeactivate: true, onDate: addDays(plan.effectiveOn, 1) }
+          : { willDeactivate: false, onDate: null },
     };
   }
 
@@ -369,7 +375,12 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
         today: prepared.today,
       });
       await client.query("COMMIT");
-      return send(reply, 201, { actionId: result.actionId, replayed: false, projection: result.projection });
+      return send(reply, 201, {
+        actionId: result.actionId,
+        replayed: false,
+        projection: result.projection,
+        deactivatedAccounts: result.deactivatedAccountIds.length,
+      });
     } catch (error) {
       try {
         await client.query("ROLLBACK");

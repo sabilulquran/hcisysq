@@ -31,6 +31,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
     "attendance.calculation.run",
+    // ORG-011: the catalog permissions are HC-only and belong to no other bundle, so without
+    // them here the shell bounced an account that holds only the catalog straight back to the
+    // home page and the menu entry below could never be reached. Same defect PAY-003 hit.
+    "job_classifications.read", "job_classifications.manage",
     // PAY-003: payroll roles hold none of the permissions above, so without
     // these the admin shell bounced a Director or a finance account straight
     // back to the home page, whatever the payroll rules below said.

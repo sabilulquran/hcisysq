@@ -63,6 +63,15 @@ describe("ORG-011 catalog client", () => {
       .rejects.toMatchObject({ status: 409, code: "GRADE_STILL_REFERENCED" });
   });
 
+  it("keeps the HTTP status when the body is not JSON", async () => {
+    // A proxy error answers with HTML. Parsing it blindly would throw a SyntaxError and the
+    // operator would lose the one piece of information worth showing: the status.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>502</html>", {
+      status: 502, headers: { "Content-Type": "text/html" },
+    })));
+    await expect(listJobGrades()).rejects.toMatchObject({ status: 502, code: "UNEXPECTED_RESPONSE" });
+  });
+
   it("names the three families in Indonesian", () => {
     expect(jobFamilyLabels.FUNCTIONAL).toBe("Fungsional");
     expect(jobFamilyLabels.STRUCTURAL).toBe("Struktural");
@@ -77,5 +86,14 @@ describe("ORG-011 menu access", () => {
     expect(canAccessAdminPath(session(["job_classifications.read"]), "/admin/job-classifications")).toBe(true);
     expect(canAccessAdminPath(session(["organization.manage"]), "/admin/job-classifications")).toBe(false);
     expect(canAccessAdminPath(session([]), "/admin/job-classifications")).toBe(false);
+  });
+
+  it("lets an account holding only the catalog into the admin shell at all", () => {
+    // The shell sends anyone who cannot open "/admin" back to the home page, so a permission
+    // that belongs to no other bundle has to be listed there too or the menu entry above can
+    // never be reached. PAY-003 hit exactly this.
+    expect(canAccessAdminPath(session(["job_classifications.read"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session(["job_classifications.manage"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session([]), "/admin")).toBe(false);
   });
 });

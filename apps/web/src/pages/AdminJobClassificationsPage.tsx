@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import {
   amendJobClassification,
+  amendJobGrade,
   createJobClassification,
   createJobGrade,
   deactivateJobClassification,
+  deactivateJobGrade,
   jobFamilies,
   jobFamilyLabels,
   listJobClassifications,
@@ -26,7 +29,61 @@ function today(): string {
   }).format(new Date());
 }
 
-type Tab = "classifications" | "grades";
+export type JobCatalogTab = "classifications" | "grades";
+type Tab = JobCatalogTab;
+
+/**
+ * 0 is a valid display order, so `Number(value) || 0` would store a typo as a real ordering.
+ * Returns null when the text is not a whole number the API would accept.
+ */
+export function parseRankOrder(value: string): number | null {
+  const parsed = Number(value.trim());
+  if (value.trim() === "" || !Number.isInteger(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+/** What the create form sends: the code is stored upper-case, and a blank grade is absent. */
+export function classificationPayload(form: {
+  code: string; name: string; family: JobFamily; gradeCode: string; effectiveFrom: string;
+}) {
+  return {
+    code: form.code.trim().toUpperCase(),
+    name: form.name.trim(),
+    family: form.family,
+    gradeCode: form.gradeCode.trim() ? form.gradeCode.trim().toUpperCase() : null,
+    effectiveFrom: form.effectiveFrom,
+  };
+}
+
+export function emptyCatalogMessage(tab: Tab, includeHistory: boolean): string {
+  const noun = tab === "classifications" ? "klasifikasi" : "golongan";
+  // In history mode the API ignores the date entirely, so naming one would be untrue.
+  return includeHistory
+    ? `Belum ada ${noun} yang pernah dibuat.`
+    : `Belum ada ${noun} yang berlaku pada tanggal ini.`;
+}
+
+/** Row actions. Both tabs get the same two, because the API supports both for either. */
+export function JobCatalogRowActions({ code, name, canManage, busy, onRename, onClose }: {
+  code: string;
+  name: string;
+  canManage: boolean;
+  busy: boolean;
+  onRename: (code: string, name: string) => void;
+  onClose: (code: string) => void;
+}) {
+  if (!canManage) return null;
+  return (
+    <td className="py-2">
+      <button type="button" disabled={busy} className="mr-3 text-xs font-bold text-brand-heading disabled:opacity-40" onClick={() => onRename(code, name)}>
+        Ubah nama
+      </button>
+      <button type="button" disabled={busy} className="text-xs font-bold text-danger-ink disabled:opacity-40" onClick={() => onClose(code)}>
+        Tutup
+      </button>
+    </td>
+  );
+}
 
 interface FormState {
   code: string;
@@ -51,11 +108,16 @@ export function AdminJobClassificationsPage() {
   const [grades, setGrades] = useState<JobGrade[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  // Switching tab or date starts a new request without cancelling the old one; without this
+  // an older response can land last and leave the count describing a list nobody is looking at.
+  const requestId = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const canManage = hasPermission(session, "job_classifications.manage");
 
@@ -66,24 +128,30 @@ export function AdminJobClassificationsPage() {
   }, []);
 
   const reload = useCallback(async () => {
+    const ticket = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
       if (tab === "classifications") {
-        const result = await listJobClassifications({ page, pageSize: 25, onDate, includeHistory });
+        const result = await listJobClassifications({ page, pageSize, onDate, includeHistory });
+        if (ticket !== requestId.current) return;
         setClassifications(result.classifications);
         setTotal(result.pagination.total);
+        setPageSize(result.pagination.pageSize);
       } else {
-        const result = await listJobGrades({ page, pageSize: 25, onDate, includeHistory });
+        const result = await listJobGrades({ page, pageSize, onDate, includeHistory });
+        if (ticket !== requestId.current) return;
         setGrades(result.grades);
         setTotal(result.pagination.total);
+        setPageSize(result.pagination.pageSize);
       }
     } catch (cause) {
+      if (ticket !== requestId.current) return;
       setError(cause instanceof AdminApiError ? cause.message : "Daftar gagal dimuat.");
     } finally {
-      setLoading(false);
+      if (ticket === requestId.current) setLoading(false);
     }
-  }, [tab, page, onDate, includeHistory]);
+  }, [tab, page, pageSize, onDate, includeHistory]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -94,18 +162,17 @@ export function AdminJobClassificationsPage() {
     setNotice(null);
     try {
       if (tab === "classifications") {
-        await createJobClassification({
-          code: form.code.trim().toUpperCase(),
-          name: form.name.trim(),
-          family: form.family,
-          gradeCode: form.gradeCode.trim() ? form.gradeCode.trim().toUpperCase() : null,
-          effectiveFrom: form.effectiveFrom,
-        });
+        await createJobClassification(classificationPayload(form));
       } else {
+        const rankOrder = parseRankOrder(form.rankOrder);
+        if (rankOrder === null) {
+          setError("Urutan tampilan harus bilangan bulat 0 atau lebih.");
+          return;
+        }
         await createJobGrade({
           code: form.code.trim().toUpperCase(),
           name: form.name.trim(),
-          rankOrder: Number(form.rankOrder) || 0,
+          rankOrder,
           effectiveFrom: form.effectiveFrom,
         });
       }
@@ -119,35 +186,67 @@ export function AdminJobClassificationsPage() {
     }
   }
 
+  const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
   async function rename(code: string, current: string) {
+    if (busy) return;
     const name = window.prompt(`Nama baru untuk ${code}:`, current);
     if (!name || name.trim() === current) return;
     const effectiveFrom = window.prompt("Berlaku mulai (YYYY-MM-DD):", today());
     if (!effectiveFrom) return;
+    // Checked here so the operator is told which field is wrong; the server answers with one
+    // generic message for the whole body.
+    if (!isDate(effectiveFrom)) {
+      setError("Tanggal berlaku harus berformat YYYY-MM-DD.");
+      return;
+    }
+    setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await amendJobClassification(code, { effectiveFrom, name: name.trim() });
+      if (tab === "classifications") {
+        await amendJobClassification(code, { effectiveFrom, name: name.trim() });
+      } else {
+        await amendJobGrade(code, { effectiveFrom, name: name.trim() });
+      }
       setNotice(`${code} diperbarui mulai ${effectiveFrom}. Versi lama tetap tersimpan.`);
       await reload();
     } catch (cause) {
       setError(cause instanceof AdminApiError ? cause.message : "Perubahan gagal.");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function close(code: string) {
+    if (busy) return;
     const endOn = window.prompt(`Tutup ${code} pada tanggal (YYYY-MM-DD):`, today());
     if (!endOn) return;
+    if (!isDate(endOn)) {
+      setError("Tanggal penutupan harus berformat YYYY-MM-DD.");
+      return;
+    }
     const reason = window.prompt("Alasan penutupan (minimal 5 huruf):", "");
     if (!reason) return;
+    if (reason.trim().length < 5) {
+      setError("Alasan penutupan minimal 5 huruf.");
+      return;
+    }
+    setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await deactivateJobClassification(code, { endOn, reason });
+      if (tab === "classifications") {
+        await deactivateJobClassification(code, { endOn, reason: reason.trim() });
+      } else {
+        await deactivateJobGrade(code, { endOn, reason: reason.trim() });
+      }
       setNotice(`${code} ditutup pada ${endOn}. Riwayatnya tetap bisa dibaca.`);
       await reload();
     } catch (cause) {
       setError(cause instanceof AdminApiError ? cause.message : "Penutupan gagal.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -165,7 +264,7 @@ export function AdminJobClassificationsPage() {
             <button
               key={value}
               type="button"
-              onClick={() => { setTab(value); setPage(1); setForm(emptyForm()); }}
+              onClick={() => { setTab(value); setPage(1); setForm(emptyForm()); setNotice(null); }}
               className={`rounded-full px-4 py-2 text-xs font-bold ${
                 tab === value ? "bg-brand-soft text-brand-heading" : "bg-muted text-muted-foreground"
               }`}
@@ -181,7 +280,7 @@ export function AdminJobClassificationsPage() {
             <input
               type="date"
               value={onDate}
-              onChange={(event) => { setOnDate(event.target.value); setPage(1); }}
+              onChange={(event) => { setOnDate(event.target.value); setPage(1); setNotice(null); }}
               disabled={includeHistory}
               className="mt-1 block rounded-md border px-3 py-2 text-sm"
             />
@@ -190,7 +289,7 @@ export function AdminJobClassificationsPage() {
             <input
               type="checkbox"
               checked={includeHistory}
-              onChange={(event) => { setIncludeHistory(event.target.checked); setPage(1); }}
+              onChange={(event) => { setIncludeHistory(event.target.checked); setPage(1); setNotice(null); }}
             />
             Tampilkan seluruh versi
           </label>
@@ -202,7 +301,7 @@ export function AdminJobClassificationsPage() {
         {loading ? <p className="text-sm text-muted-foreground">Memuat…</p> : null}
         {!loading && rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Belum ada {tab === "classifications" ? "klasifikasi" : "golongan"} yang berlaku pada tanggal ini.
+            {emptyCatalogMessage(tab, includeHistory)}
           </p>
         ) : null}
 
@@ -227,16 +326,9 @@ export function AdminJobClassificationsPage() {
                     <td className="py-2 text-xs text-muted-foreground">
                       {row.effectiveFrom} – {row.effectiveTo ?? "seterusnya"}
                     </td>
-                    {canManage ? (
-                      <td className="py-2">
-                        <button type="button" className="mr-3 text-xs font-bold text-brand-heading" onClick={() => void rename(row.code, row.name)}>
-                          Ubah nama
-                        </button>
-                        <button type="button" className="text-xs font-bold text-danger-ink" onClick={() => void close(row.code)}>
-                          Tutup
-                        </button>
-                      </td>
-                    ) : null}
+                    <JobCatalogRowActions code={row.code} name={row.name} canManage={canManage}
+                      busy={busy} onRename={(code, name) => void rename(code, name)}
+                      onClose={(code) => void close(code)} />
                   </tr>
                 ))
                 : grades.map((row) => (
@@ -247,24 +339,22 @@ export function AdminJobClassificationsPage() {
                     <td className="py-2 text-xs text-muted-foreground">
                       {row.effectiveFrom} – {row.effectiveTo ?? "seterusnya"}
                     </td>
-                    {canManage ? <td className="py-2 text-xs text-muted-foreground">—</td> : null}
+                    <JobCatalogRowActions code={row.code} name={row.name} canManage={canManage}
+                      busy={busy} onRename={(code, name) => void rename(code, name)}
+                      onClose={(code) => void close(code)} />
                   </tr>
                 ))}
             </tbody>
           </table>
         ) : null}
 
-        {total > 25 ? (
-          <div className="flex items-center gap-3 text-xs">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="font-bold disabled:opacity-40">
-              Sebelumnya
-            </button>
-            <span className="text-muted-foreground">Halaman {page} dari {Math.max(1, Math.ceil(total / 25))}</span>
-            <button type="button" disabled={page >= Math.ceil(total / 25)} onClick={() => setPage((value) => value + 1)} className="font-bold disabled:opacity-40">
-              Berikutnya
-            </button>
-          </div>
-        ) : null}
+        <PaginationBar
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={(next) => { setPage(next); setNotice(null); }}
+          onPageSizeChange={(next) => { setPageSize(next); setPage(1); setNotice(null); }}
+        />
 
         {canManage ? (
           <form onSubmit={(event) => void submit(event)} className="space-y-3 rounded-lg border p-4">

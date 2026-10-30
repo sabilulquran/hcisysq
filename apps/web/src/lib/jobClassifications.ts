@@ -59,7 +59,17 @@ export interface JobClassificationList {
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const body = text ? (JSON.parse(text) as unknown) : null;
+  // A proxy error or a gateway timeout answers with HTML, not JSON. Parsing it blindly would
+  // throw a SyntaxError and lose the status the operator actually needs to see.
+  let body: unknown = null;
+  try {
+    body = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    if (!response.ok) {
+      throw new AdminApiError(response.status, "UNEXPECTED_RESPONSE", "Permintaan gagal diproses.");
+    }
+    throw new AdminApiError(response.status, "UNEXPECTED_RESPONSE", "Jawaban server tidak dikenali.");
+  }
   if (!response.ok) {
     const problem = (body ?? {}) as { code?: string; message?: string };
     throw new AdminApiError(

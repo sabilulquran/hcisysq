@@ -468,6 +468,14 @@ Owner, 2026-10-16: BUMY staff and Pengurus Yayasan records already in `employees
 - **Reversible:** HC Admin can unmark with a reason (audited), e.g. if a record was marked by mistake.
 - **Audit:** `employee.management_scope.changed` (employee id, from, to, reason code).
 
+Implementation notes (S2B-a, 2026-10-27):
+
+- The audit event carries the note's **length**, never its text, like every other free text in this package. The note itself therefore stays on the record — including the note given when unmarking — because otherwise an unmark's justification would exist nowhere.
+- A wrong reason is corrected **in place**. Requiring unmark-then-remark would discard when the record was first marked and by whom; only a request that changes neither the scope, the reason nor the note is refused (`MANAGEMENT_SCOPE_UNCHANGED`).
+- Unmarking carries no reason **code** — `BUMY` and `PENGURUS_YAYASAN` say why a record left HCIS management, not why it came back — and sending one is refused rather than dropped silently.
+- The read-only refusal reaches every write to the employee master, which is wider than the four paths listed above: it also covers the Package 2 records (education, skills, family, addresses), the acceptance of an EMP-003 data-change proposal, and the leave entitlement group. A marked employee cannot file a proposal either, since accepting it could only ever be refused.
+- The check reads the employee row without locking it. A mark committed in the same instant as a write can let that one write through; the cost of locking the employee row on every write path — one mark blocking all of HCIS for that person — is larger than the millisecond it would buy, and the audit shows what happened.
+
 ## 9. Permissions and visibility
 
 New permission keys (additive migration, assigned explicitly — never inferred from job title or ORG-004 position):

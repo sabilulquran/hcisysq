@@ -19,6 +19,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage",
   // NOTIF-002: migration 0105 grants both to human_capital_admin.
   "announcements.read", "announcements.manage",
+  // ORG-011: migration 0110 grants both to human_capital_admin.
+  "job_classifications.read", "job_classifications.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
   // bundle here says the same. Legacy Super Admin compatibility reads
   // ADMIN_PERMISSIONS, which deliberately leaves it out.
@@ -35,6 +37,13 @@ export const DOCUMENT_CORRECTOR_ROLE_KEY = "document_corrector";
 /** NOTIF-002: HC-only; never granted through legacy Super Admin compatibility. */
 export const ANNOUNCEMENT_PERMISSIONS = ["announcements.read", "announcements.manage"] as const;
 export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
+
+/** ORG-011: HC-only; never granted through legacy Super Admin compatibility. The catalog is
+ * compensation reference data, so reading it is not part of the ordinary structure read. */
+export const JOB_CLASSIFICATION_PERMISSIONS = [
+  "job_classifications.read", "job_classifications.manage",
+] as const;
+export type JobClassificationPermission = (typeof JOB_CLASSIFICATION_PERMISSIONS)[number];
 export const DOCUMENT_PERMISSIONS = [
   "documents.read", "documents.manage", "documents.discipline.manage", "documents.correct",
 ] as const;
@@ -105,7 +114,7 @@ export const BOARD_READ_PERMISSION = "board.read";
 export const BOARD_VIEWER_ROLE_KEY = "foundation_board_viewer";
 
 /**
- * AUTH-014 §4 (migration 0110): the Module Administrator. Module configuration only — shifts and
+ * AUTH-014 §4 (migration 0111): the Module Administrator. Module configuration only — shifts and
  * schedules, attendance policy, non-destructive device work, leave types, payroll policy and
  * periods. It never grants a role and never touches an account, which is the whole line between
  * this layer and the Platform Administrator in SQ Hub.

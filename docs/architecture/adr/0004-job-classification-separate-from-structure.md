@@ -1,7 +1,8 @@
 # ADR-0004: Klasifikasi Jabatan Terpisah dari Struktur dan dari Skala Gaji (ORG-011)
 
-- **Status:** PROPOSED
+- **Status:** ACCEPTED
 - **Date:** 2026-10-27
+- **Accepted:** 2026-10-30 (owner instruction to build ORG-011; contract confirmed by PAY-003 in PR #218)
 - **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011; ADR-0001, ADR-0003
 - **Evidence:** `docs/domain/job-classification-grade.md`, `docs/domain/payroll-calculation-v1.md`, `apps/api/migrations/0019_dynamic_organization.sql`, `apps/api/migrations/0056_employment_history_foundation.sql`
 
@@ -62,4 +63,5 @@ Negatif atau biaya:
 - Perubahan katalog wajib menghasilkan audit event.
 - Kode klasifikasi bersifat permanen; perubahan dilakukan dengan menonaktifkan dan membuat baru.
 - Peralihan payroll dari referensi kursi ke kode klasifikasi hanya setelah parallel run menunjukkan nominal identik.
-- ADR ini harus `ACCEPTED` sebelum migration ORG-011 dibuat.
+- Migration ORG-011 dibuat setelah ADR ini `ACCEPTED` (migration 0110, 2026-10-30).
+- Peralihan payroll ke kode klasifikasi tetap menunggu parallel run; Package 1 tidak mengubah perhitungan apa pun.

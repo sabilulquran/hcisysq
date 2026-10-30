@@ -3205,5 +3205,77 @@
     "permissions": [
       "employees.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-grades",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-grades",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-grades/:code/amendments",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-grades/:code/deactivation",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classifications",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "GET",
+    "url": "/admin/job-classifications/:code",
+    "permissions": [
+      "job_classifications.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classifications",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classifications/:code/amendments",
+    "permissions": [
+      "job_classifications.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/organization/job-classification-routes.ts",
+    "method": "POST",
+    "url": "/admin/job-classifications/:code/deactivation",
+    "permissions": [
+      "job_classifications.manage"
+    ]
   }
 ]

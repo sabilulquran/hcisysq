@@ -1,9 +1,10 @@
 # Job Classification and Grade
 
-**Status:** DRAFT / DISCOVERY  
+**Status:** ACCEPTED (Package 1 terimplementasi); keputusan terbuka §8 tetap DRAFT  
 **Specification:** ORG-011  
+**Package 1:** migration 0110, `apps/api/src/modules/organization/job-classification-*.ts`, 2026-10-30  
 **Proposed:** 2026-10-27  
-**ADR:** ADR-0004 (PROPOSED)  
+**ADR:** ADR-0004 (ACCEPTED 2026-10-30)  
 **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011  
 **Evidence:** `apps/api/migrations/0019_dynamic_organization.sql`, `apps/api/migrations/0056_employment_history_foundation.sql`, `docs/domain/payroll-calculation-v1.md`, `docs/product/roadmap.md` bagian C
 **Kontrak payroll:** dikonfirmasi sesi PAY-003 pada 2026-10-27 (bentuk kebijakan `byPosition`, resolver dua slot, aturan rangkap 70%, kode blocker, nasib `*_position_ref`)
@@ -25,6 +26,19 @@ Jadi PAY-003 §3.3 sudah dipenuhi sebagian: payroll memang tidak mencocokkan tek
 Artinya kebijakan tunjangan hari ini terikat pada **kursi di satu revisi struktur**. Reorganisasi yang mengganti stable key kursi akan memutus kebijakan gaji, padahal pekerjaan yang dibayar tidak berubah. ORG-011 memberi lapisan yang stabil melintasi revisi struktur: kelas pekerjaan.
 
 Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` dan `POSITIONAL_ALLOWANCE` sudah memakai `byPosition: Record<string, rupiah>` dengan kunci string bebas, sehingga kunci itu dapat diisi `classificationCode` tanpa mengubah bentuk kebijakan.
+
+## 1.1 Status implementasi
+
+| Bagian spesifikasi | Status |
+|---|---|
+| Katalog `job_grades` dan `job_classifications`, effective-dated (§3.1, §3.2) | **Package 1**, migration 0110 |
+| Permission `job_classifications.read` / `.manage` dan audit event (§5) | **Package 1** |
+| Pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | Package 2, belum dibuat |
+| `resolveJobClassifications` dan konsumsi payroll (§4) | Package 2, belum dibuat |
+| Layar pengelolaan katalog | Package 3, belum dibuat |
+| Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
+
+Sampai Package 2 mendarat, katalog berdiri sendiri: tidak ada satu pun perhitungan payroll atau penempatan yang membacanya, sehingga mengisinya tidak mengubah nominal siapa pun.
 
 ## 2. Keputusan desain
 
@@ -75,6 +89,12 @@ Satu klasifikasi dapat dipakai banyak position dan banyak pegawai. Satu position
 
 - `organization_positions.job_classification_code` (nullable, di dalam change set): klasifikasi default kursi. Ikut versioning struktur, karena yang berubah adalah kursi, bukan katalog.
 - `employment_placements.job_classification_code` (nullable): klasifikasi efektif pegawai pada penempatan itu. Diisi melalui employment action (EMP-006), bukan edit field.
+
+Aturan versi, supaya satu kode tidak pernah berarti dua hal:
+
+- kode **tidak pernah dibuat ulang**. Membuat kode yang pernah ada ditolak, termasuk setelah dinonaktifkan, karena kebijakan payroll berversi masih menyimpan kode itu apa adanya;
+- menulis **di belakang versi yang sudah berlaku lebih awal** ditolak (`CLASSIFICATION_HAS_LATER_VERSION` / `GRADE_HAS_LATER_VERSION`). Tanpa ini, amend akan menimpa rentang versi berikutnya, dan deaktivasi akan menutup versi berjalan sementara versi berikutnya menghidupkan kembali kode itu setelah jeda;
+- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama.
 
 Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
 
@@ -149,7 +169,7 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 |---|---|---|
 | Apakah YSQ memakai golongan numerik | tidak; `job_grades` tersedia tetapi kosong | ya |
 | Apakah satu pegawai boleh punya dua klasifikasi `FUNCTIONAL` bersamaan | tidak; satu per placement, rangkap lewat placement `ADDITIONAL` | ya |
-| Siapa yang mengelola katalog | Kepala HCM dan staf HC | ya |
+| Siapa yang mengelola katalog | hanya Staf Human Capital (`human_capital_admin`); Kepala HC tidak diberi akses baca maupun kelola pada Package 1 | ya |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
 | Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |

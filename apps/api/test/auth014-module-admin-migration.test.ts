@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 const databaseUrl = process.env.DATABASE_URL;
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, "../migrations");
-const MIGRATION = "0110_auth014_module_admin_and_channel_audit.sql";
+const MIGRATION = "0111_auth014_module_admin_and_channel_audit.sql";
 
 async function applyMigration(client: Client, file: string) {
   const sql = await readFile(join(migrationsDir, file), "utf8");
@@ -19,7 +19,7 @@ async function applyMigration(client: Client, file: string) {
 // AUTH-014 F2: additive only. The role exists and carries exactly the module-configuration
 // permissions; the audit columns accept the channel's provenance and refuse a replayed requestId;
 // nothing an existing role carries today is taken away.
-describe.skipIf(!databaseUrl)("0110 AUTH-014 module administrator and channel audit", () => {
+describe.skipIf(!databaseUrl)("0111 AUTH-014 module administrator and channel audit", () => {
   it("adds the role and the audit columns without changing anything that exists", async () => {
     const client = new Client({ connectionString: databaseUrl! });
     const schemaName = `auth014_${randomUUID().replaceAll("-", "")}`;

@@ -166,6 +166,33 @@ function positionRefOf(placement: z.infer<typeof placementBody>): PositionRef | 
   return placement.positionId ? { kind: "LEGACY_POSITION", id: placement.positionId } : null;
 }
 
+/**
+ * ORG-011: the code of another placement that already fills the same slot on that date.
+ *
+ * Only placements that are still open and not voided count, and only ones carrying a code of
+ * the same family. The same code twice is not a clash: the resolver treats it as one
+ * classification stated twice.
+ */
+async function firstSlotClash(
+  pool: Pool,
+  history: { placements: Array<{ jobClassificationCode: string | null; effectiveFrom: string; effectiveTo: string | null; voided: boolean }> },
+  code: string,
+  family: string,
+  onDate: string,
+): Promise<string | null> {
+  const active = history.placements.filter((placement) =>
+    !placement.voided
+    && placement.jobClassificationCode
+    && placement.jobClassificationCode !== code
+    && placement.effectiveFrom <= onDate
+    && (placement.effectiveTo === null || placement.effectiveTo >= onDate));
+  for (const placement of active) {
+    const other = await classificationOn(pool, placement.jobClassificationCode!, onDate);
+    if (other?.family === family) return other.code;
+  }
+  return null;
+}
+
 export async function registerEmploymentActionRoutes(app: FastifyInstance, pool: Pool, config: ApiConfig) {
   if (!config.AUTH_ENCRYPTION_KEY) throw new Error("AUTH_ENCRYPTION_KEY is required for employment action routes");
   const auth = new AuthService(
@@ -394,12 +421,27 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
     const classificationCode = placementInput?.jobClassificationCode ?? null;
     if (classificationCode) {
       const effectiveOn = "effectiveOn" in body.data ? String(body.data.effectiveOn) : today;
-      if (!(await classificationOn(pool, classificationCode, effectiveOn))) {
+      const chosen = await classificationOn(pool, classificationCode, effectiveOn);
+      if (!chosen) {
         await send(reply, 400, {
           code: "EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE",
           message: `Klasifikasi ${classificationCode} tidak berlaku pada ${effectiveOn}.`,
         });
         return null;
+      }
+      // The resolver gives one functional and one structural slot, and raises
+      // CLASSIFICATION_AMBIGUOUS when two placements fill the same one. That failure would
+      // surface during a payroll run, far from whoever typed it, so the collision is refused
+      // here instead. SUPPORT fills no slot, so it can never collide.
+      if (chosen.family !== "SUPPORT") {
+        const clash = await firstSlotClash(pool, history, classificationCode, chosen.family, effectiveOn);
+        if (clash) {
+          await send(reply, 400, {
+            code: "EMPLOYMENT_CLASSIFICATION_AMBIGUOUS",
+            message: `Penempatan lain yang berlaku pada ${effectiveOn} sudah memakai klasifikasi ${chosen.family === "FUNCTIONAL" ? "fungsional" : "struktural"} ${clash}.`,
+          });
+          return null;
+        }
       }
     }
 

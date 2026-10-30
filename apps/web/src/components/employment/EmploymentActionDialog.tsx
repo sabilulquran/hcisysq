@@ -6,6 +6,7 @@
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
+import { AdminApiError } from "@/lib/adminEmployees";
 import { jobFamilyLabels, listJobClassifications, type JobClassification } from "@/lib/jobClassifications";
 
 import {
@@ -211,6 +212,8 @@ export function EmploymentActionDialog({
   // employment.manage does not carry job_classifications.read. The field is then not offered
   // and the placement simply inherits the seat's own classification.
   const [classifications, setClassifications] = useState<JobClassification[]>([]);
+  const [classificationsTruncated, setClassificationsTruncated] = useState(false);
+  const [classificationsFailed, setClassificationsFailed] = useState(false);
   const [draft, setDraft] = useState<DraftState>(emptyDraft);
   const [documents, setDocuments] = useState<DecisionDocument[]>([]);
   const [preview, setPreview] = useState<EmploymentActionPreview | null>(null);
@@ -226,8 +229,27 @@ export function EmploymentActionDialog({
     if (!draft.effectiveOn) return;
     let mounted = true;
     void listJobClassifications({ onDate: draft.effectiveOn, pageSize: 100 })
-      .then((result) => { if (mounted) setClassifications(result.classifications); })
-      .catch(() => { if (mounted) setClassifications([]); });
+      .then((result) => {
+        if (!mounted) return;
+        setClassifications(result.classifications);
+        setClassificationsTruncated(result.pagination.total > result.classifications.length);
+        setClassificationsFailed(false);
+        // A code chosen for an earlier date may not be in force on the new one. Clearing it is
+        // the honest move: the select would show "ikut kursi" while the draft still carried
+        // the old code, and the save would fail with a 400 nobody could explain.
+        setDraft((current) => (current.jobClassificationCode
+          && !result.classifications.some((item) => item.code === current.jobClassificationCode)
+          ? { ...current, jobClassificationCode: "" }
+          : current));
+      })
+      .catch((cause: unknown) => {
+        if (!mounted) return;
+        setClassifications([]);
+        setClassificationsTruncated(false);
+        // 403 is ordinary: employment.manage does not carry job_classifications.read, so the
+        // field is simply not offered. Anything else is a real failure worth naming.
+        setClassificationsFailed(!(cause instanceof AdminApiError && cause.status === 403));
+      });
     return () => { mounted = false; };
   }, [actionType, draft.effectiveOn]);
 
@@ -422,7 +444,13 @@ export function EmploymentActionDialog({
                       <option key={item.code} value={item.code}>{item.name} ({jobFamilyLabels[item.family]})</option>
                     ))}
                   </select>
+                  {classificationsTruncated ? (
+                    <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p>
+                  ) : null}
                 </Labelled>
+              ) : null}
+              {classificationsFailed ? (
+                <p className="text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Tindakan tetap bisa direkam; penempatan akan mengikuti klasifikasi kursi jabatan.</p>
               ) : null}
             </>
           ) : null}

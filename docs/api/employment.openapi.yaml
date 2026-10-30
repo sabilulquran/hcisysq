@@ -1285,7 +1285,11 @@ components:
         EMPLOYMENT_REFERENCE_INVALID, EMPLOYMENT_CROSS_ENTITY_UNSUPPORTED,
         EMPLOYMENT_TERM_END_REQUIRED, EMPLOYMENT_TERM_INVALID, EMPLOYMENT_REASON_REQUIRED,
         EMPLOYMENT_WARNINGS_NOT_ACKNOWLEDGED, EMPLOYMENT_BASELINE_MISSING,
-        DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH, IDEMPOTENCY_KEY_CONFLICT
+        DECISION_DOCUMENT_REQUIRED, PK_TERM_MISMATCH,
+        EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE (400, ORG-011: kode tidak berlaku pada
+        tanggal tindakan), EMPLOYMENT_CLASSIFICATION_AMBIGUOUS (400, penempatan lain yang
+        aktif sudah mengisi slot fungsional/struktural yang sama),
+        IDEMPOTENCY_KEY_CONFLICT
         (409, the key already recorded an action for another employee),
         EMPLOYEE_NOT_FOUND, INVALID_EMPLOYMENT_REQUEST, UNAUTHENTICATED, and the
         S5A codes EMPLOYMENT_ENDED (401, the employment ended and no grant is
@@ -1585,6 +1589,14 @@ components:
         unitId: { type: string, format: uuid }
         positionId: { type: [string, 'null'], format: uuid }
         jobTitleLabel: { type: string, minLength: 1, maxLength: 200 }
+        jobClassificationCode:
+          type: [string, 'null']
+          pattern: '^[A-Z][A-Z0-9_]{0,47}$'
+          description: |
+            ORG-011 klasifikasi jabatan penempatan ini. Absen atau null berarti klasifikasi
+            kursi jabatan yang berlaku. Harus berlaku pada tanggal efektif tindakan, dan
+            tidak boleh mengisi slot fungsional/struktural yang sudah dipakai penempatan
+            lain yang aktif pada tanggal itu.
     EmploymentActionRequest:
       oneOf:
         - type: object
@@ -1687,6 +1699,14 @@ components:
         unitId: { type: string, format: uuid }
         positionId: { type: [string, 'null'], format: uuid }
         jobTitleLabel: { type: string, minLength: 1, maxLength: 200 }
+        jobClassificationCode:
+          type: [string, 'null']
+          pattern: '^[A-Z][A-Z0-9_]{0,47}$'
+          description: |
+            ORG-011 klasifikasi jabatan penempatan ini. Absen atau null berarti klasifikasi
+            kursi jabatan yang berlaku. Harus berlaku pada tanggal efektif tindakan, dan
+            tidak boleh mengisi slot fungsional/struktural yang sudah dipakai penempatan
+            lain yang aktif pada tanggal itu.
         kind: { type: string, enum: [PRIMARY, ADDITIONAL], default: PRIMARY }
     CareerReasonCode:
       type: string
@@ -1888,6 +1908,9 @@ components:
         unitName: { type: [string, 'null'] }
         positionName: { type: [string, 'null'] }
         jobTitleLabel: { type: string }
+        jobClassificationCode:
+          type: [string, 'null']
+          description: ORG-011; null berarti klasifikasi kursi jabatan yang berlaku.
         effectiveFrom: { type: string, format: date }
         effectiveTo: { type: [string, 'null'], format: date }
         effectiveFromBasis:

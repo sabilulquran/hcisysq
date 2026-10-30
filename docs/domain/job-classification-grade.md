@@ -29,16 +29,22 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 
 ## 1.1 Status implementasi
 
+**Batasan yang diketahui, penting untuk payroll.** Lapis "kursi" pada resolver praktis belum aktif untuk penempatan yang dibuat lewat tindakan kepegawaian. Resolver mencocokkan kursi melalui `employment_placements.org_position_key`, sedangkan jalur employment action selalu menulis `legacy_position_id` (`action-routes.ts`, `positionRefOf`), dan tidak ada satu pun penulis `org_position_key` non-NULL di repositori. Akibatnya `source: "POSITION"` belum pernah terjadi untuk data nyata, dan hanya klasifikasi pada placement yang resolve. Klasifikasi pada kursi tetap ditulis dan terbawa di change set, jadi datanya siap; yang belum ada adalah jembatan EMP-006 ke kursi ORG-004. Menutup ini membutuhkan keputusan tersendiri karena menyentuh cara penempatan menunjuk jabatan, bukan ORG-011.
+
+
 | Bagian spesifikasi | Status |
 |---|---|
 | Katalog `job_grades` dan `job_classifications`, effective-dated (§3.1, §3.2) | **Package 1**, migration 0110 |
 | Permission `job_classifications.read` / `.manage` dan audit event (§5) | **Package 1** |
 | Kolom pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | **Package 2**, migration 0112; dibawa pada setiap penulisan change set sehingga terbit ulang tidak menghapusnya |
 | `resolveJobClassifications` (§4) | **Package 2** |
-| Jalur tulis pengikatan di designer ORG-008 (`organization_positions`) | **Package 3**, API: POST/PATCH kursi, validasi katalog pada tanggal change set, dan pemeriksaan ulang saat validate. Field tersedia di form jabatan designer bagi akun yang boleh membaca katalog. Pengecualian ENG-LIST-001: dropdown ini mengambil 100 klasifikasi pertama pada tanggal change set dan memberi tahu operator bila terpotong; typeahead belum diperlukan karena YSQ diperkirakan memakai puluhan klasifikasi, bukan ratusan. |
-| Jalur tulis pengikatan di employment action EMP-006 (`employment_placements`) | **Package 3**, diterima pada HIRE, PLACEMENT, TRANSFER, PROMOTION, dan DEMOTION; divalidasi terhadap katalog pada tanggal berlaku tindakan |
+| Jalur tulis pengikatan di designer ORG-008 (`organization_positions`) | **Package 3**, API: POST/PATCH kursi, validasi katalog pada tanggal change set, dan pemeriksaan ulang saat validate. Field tersedia di form jabatan designer bagi akun yang boleh membaca katalog. Pengecualian ENG-LIST-001: dropdown klasifikasi di designer maupun di dialog tindakan kepegawaian mengambil 100 klasifikasi pertama pada tanggal yang berlaku dan memberi tahu operator bila terpotong; typeahead belum diperlukan karena YSQ diperkirakan memakai puluhan klasifikasi, bukan ratusan. |
+| Jalur tulis pengikatan di employment action EMP-006 (`employment_placements`) | **Package 3**, diterima pada HIRE, PLACEMENT, TRANSFER, PROMOTION, dan DEMOTION; divalidasi terhadap katalog dan terhadap tabrakan slot pada tanggal berlaku tindakan |
 | Fingerprint kompensasi terpisah supaya revisi yang mengubah klasifikasi tidak dilaporkan "Hanya tampilan" | **Package 3**, dilaporkan sebagai `compensationImpact` |
 | Konsumsi payroll atas resolver (§4) | milik sesi PAY-003, setelah parallel run |
+| Lapis kursi aktif untuk penempatan nyata (`org_position_key` terisi) | **belum**, lihat batasan di atas |
+| Mengubah klasifikasi pada penempatan yang sedang berjalan | **belum**; hanya lewat pembatalan lalu rekam ulang, karena mutasi menolak tujuan yang sama persis |
+| Menampilkan klasifikasi penempatan di layar riwayat | **belum**; API sudah mengirimnya |
 | Layar pengelolaan katalog | **Package 3**, `/admin/job-classifications`: daftar per tanggal, seluruh versi, tambah, ubah nama, dan tutup; berlaku untuk klasifikasi maupun golongan |
 | Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
 

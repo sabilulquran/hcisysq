@@ -74,6 +74,60 @@ Separately grantable, excluded permissions are:
   assignment. Destructive biometric actions require both biometric and destructive
   permission. Firmware is independently required for package and deployment APIs.
 
+### Scope per peran (owner decision 2026-10-30)
+
+Permission guards read organization-scoped assignments only, so a role granted
+with any other scope is stored, shown on the Akses screen, and grants nothing.
+Two readers do look at other scopes: ATT-011 lists unit-scoped holders as a unit's
+staff, and authority eligibility (`capabilityValid` in
+`organization/repository.ts`) accepts a capability from any scope. Both stay
+satisfied: `human_capital` and `unit_manager` keep unit scope, and every other
+role keeps organization scope. Before this decision only Kepala HC, Human Capital Administrator and
+Panel Organ Yayasan refused such a grant; every other role accepted it silently.
+
+Each role now works with exactly these scopes, and the API refuses any other with
+`400 ROLE_SCOPE_NOT_ALLOWED` before storing anything:
+
+| Role key | Allowed scope | Why |
+|---|---|---|
+| `human_capital` | organization or unit | Organization grants the HC operational bundle; unit names the HC officer of one unit, which ATT-011 reads. |
+| `unit_manager` | unit | It names who leads one unit; organization-wide it means nothing. |
+| every other role | organization | Its permissions are organization-wide or are read only from organization scope. |
+
+`own` is allowed for no role: employee self-service needs no assignment. The three
+roles that already had a guard keep their own error codes
+(`ADMIN_ORGANIZATION_MANDATE_REQUIRED`, `ROLE_SCOPE_INVALID`); the new check covers
+the rest. `GET /admin/access` returns `allowedScopes` per role, so the screen fills
+in the scope when there is one choice and offers only the allowed ones otherwise.
+The policy lives in the API (`allowedScopes` in `role-assignment.ts`); the screen
+never decides it.
+
+No production assignment was invalid when this shipped: the only three were
+`human_capital` (unit), `human_capital_admin` and `human_capital_lead`
+(organization). The owner's unit-scoped `human_capital` remains valid and, as
+before, grants no permissions by itself.
+
+### Nama peran (owner decision 2026-10-30)
+
+Display names say what a role does. Only `roles.name` and `roles.description`
+changed (migration 0109); `role_key`, permissions and assignments are untouched.
+
+| Role key | Before | After |
+|---|---|---|
+| `human_capital` | Human Capital | Staf Human Capital |
+| `finance` | Finance | Pembaca Laporan |
+| `finance_officer` | Keuangan | Staf Keuangan (Kasbon) |
+| `management` | Management | Pimpinan (Laporan) |
+| `unit_manager` | Unit Manager | Kepala Unit |
+| `special_approver` | Special Approver | Penyetuju Cuti di Luar Jalur |
+
+`finance` ("Pembaca Laporan") and `management` ("Pimpinan (Laporan)") carry
+`reports.read.organization` / `reports.export.organization`, which **no screen
+checks yet**, so today both grant nothing; their descriptions say so. They also
+overlap. Wiring them to real reports, or merging them, is a separate decision
+(`TBD`). "Penyetuju Cuti Khusus" was avoided because *cuti khusus* is a leave type
+this role does not approve.
+
 Actual leave decisions still require the snapshotted assigned employee and
 workflow policy, or explicitly mandated `leave.hc.approve` for an HC approval
 task. Validation permission is not actual approval. The new role receives neither

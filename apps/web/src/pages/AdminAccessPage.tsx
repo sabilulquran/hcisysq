@@ -20,6 +20,7 @@ import {
   setRoleSeatLink,
   updateAccountStatus,
   type AccessAdminResponse,
+  type AccessRole,
   type RoleSeatCheck,
 } from "@/lib/adminOrgAccess";
 import { RoleSeatPanel } from "@/components/access/RoleSeatPanel";
@@ -68,6 +69,20 @@ export function AdminAccessPage() {
   );
 }
 
+type Scope = "own" | "unit" | "organization";
+
+const SCOPE_LABELS: Record<Scope, string> = {
+  organization: "Seluruh organisasi",
+  unit: "Satu unit",
+  own: "Diri sendiri",
+};
+
+// AUTH-011 §Scope per peran: the API says which scopes make a role work. Before it did, every role
+// offered organization or unit, so that stays the fallback; "own" works for no role.
+function roleScopes(role: AccessRole | undefined): Scope[] {
+  return role?.allowedScopes?.length ? role.allowedScopes : ["organization", "unit"];
+}
+
 function accountLabel(account: AccessAdminResponse["accounts"][number]) {
   return `${account.employeeName ?? account.email} · ${account.unitName ?? "Tanpa unit"}`;
 }
@@ -92,7 +107,12 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
   const listRequest = useRef(0);
   const firstQuery = useRef(true);
   const [roleId, setRoleId] = useState(() => data.roles[0]?.id ?? "");
-  const [scopeType, setScopeType] = useState<"own" | "unit" | "organization">("unit");
+  const [scopeType, setScopeType] = useState<Scope>(() => roleScopes(data.roles[0])[0]!);
+  const selectedRole = data.roles.find((role) => role.id === roleId);
+  const scopes = roleScopes(selectedRole);
+  // A role that works only one way gets that scope. Derived, not stored, so switching roles or
+  // reloading the role list never renders or submits a scope the role refuses.
+  const effectiveScope: Scope = scopes.includes(scopeType) ? scopeType : scopes[0]!;
   const [unitId, setUnitId] = useState(() => data.units[0]?.id ?? "");
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
@@ -233,8 +253,8 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     try {
       await createRoleAssignment(selectedAccountId, {
         roleId,
-        scopeType,
-        organizationalUnitId: scopeType === "unit" ? unitId : null,
+        scopeType: effectiveScope,
+        organizationalUnitId: effectiveScope === "unit" ? unitId : null,
         startsOn: startsOn || null,
         endsOn: endsOn || null,
         reason: reason.trim() || null,
@@ -390,7 +410,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
       {canManageRoles ? (
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Scope unit wajib menunjuk satu unit; scope organization berlaku lintas organisasi sesuai permission role.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Pilih akun dan perannya. Cakupan peran diisi otomatis bila hanya ada satu yang berfungsi.</p>
         <form onSubmit={submitAssignment} className="mt-4 grid gap-3 lg:grid-cols-3">
           <div className="flex h-10 items-center rounded-xl border border-border bg-surface px-3 text-sm" aria-live="polite">
             {selectedAccount ? (
@@ -402,17 +422,24 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
           <select value={roleId} onChange={(event) => setRoleId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
             {data.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
           </select>
-          <select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
-            <option value="unit">Scope unit</option>
-            <option value="organization">Scope organisasi</option>
-            <option value="own">Scope own</option>
-          </select>
-          {scopeType === "unit" ? (
+          {scopes.length > 1 ? (
+            <select value={effectiveScope} onChange={(event) => setScopeType(event.target.value as Scope)} aria-label="Cakupan peran" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
+              {scopes.map((scope) => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}
+            </select>
+          ) : (
+            <div className="flex h-10 items-center rounded-xl border border-border bg-muted px-3 text-sm text-muted-foreground" aria-live="polite">
+              Berlaku untuk {SCOPE_LABELS[effectiveScope].toLowerCase()}
+            </div>
+          )}
+          {effectiveScope === "unit" ? (
             <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
               <option value="">Pilih unit</option>
               {data.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
             </select>
           ) : <div />}
+          {selectedRole?.description ? (
+            <p className="text-xs leading-5 text-muted-foreground lg:col-span-3">{selectedRole.description}</p>
+          ) : null}
           <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal mulai assignment" />
           <input type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal selesai assignment" />
           <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan / mandat (opsional)" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm lg:col-span-2" />
@@ -519,7 +546,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
                 {account.assignments.map((assignment) => (
                   <div key={assignment.id} className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2 text-xs">
                     <span className="font-bold">{assignment.roleName}</span>
-                    <span className="text-muted-foreground">· {assignment.scopeType === "unit" ? assignment.organizationalUnitName : assignment.scopeType}</span>
+                    <span className="text-muted-foreground">· {assignment.scopeType === "unit" ? assignment.organizationalUnitName : SCOPE_LABELS[assignment.scopeType as Scope] ?? assignment.scopeType}</span>
                     {canManageRoles ? (
                       <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-danger-ink disabled:opacity-50">Cabut</button>
                     ) : null}

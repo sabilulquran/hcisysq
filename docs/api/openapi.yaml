@@ -2472,7 +2472,17 @@ paths:
                         createdAt: { type: string, format: date-time }
                         assignments: { type: array, items: { type: object } }
                   pagination: { $ref: '#/components/schemas/Pagination' }
-                  roles: { type: array, items: { type: object } }
+                  roles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        allowedScopes:
+                          description: >
+                            AUTH-011 Scope per peran. The scopes that make this role work; the API refuses
+                            any other with 400 ROLE_SCOPE_NOT_ALLOWED. Never contains own.
+                          type: array
+                          items: { type: string, enum: [organization, unit] }
                   units: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, name: { type: string } } } }
                   summary:
                     type: object

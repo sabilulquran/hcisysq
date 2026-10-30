@@ -82,6 +82,8 @@ export interface AccessRole {
   name: string;
   description: string | null;
   permissions: string[];
+  /** AUTH-011 §Scope per peran: the scopes that make this role work, decided by the API. */
+  allowedScopes?: Array<"own" | "unit" | "organization">;
 }
 
 export interface AccessAccount {

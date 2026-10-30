@@ -1,5 +1,5 @@
 import {
-  assertAccountManagementTarget, assertRoleGrantor, canDelegateRole, createRoleAssignment, removeRoleAssignment,
+  allowedScopes, assertAccountManagementTarget, assertRoleGrantor, canDelegateRole, createRoleAssignment, removeRoleAssignment,
 } from "../auth/role-assignment.js";
 import { hasEffectiveOrganizationPermission } from "../auth/permissions.js";
 import type { AdminPermission } from "../auth/permissions.js";
@@ -607,7 +607,10 @@ export async function registerOrgAccessAdminRoutes(
           })),
       })),
       pagination: pagination(query.data, accountCount.rows[0]?.total ?? 0),
-      roles: roles.rows.filter((role) => canDelegateRole(role, canDelegate)),
+      // AUTH-011 §Scope per peran: the screen offers only the scopes that make the role work.
+      roles: roles.rows
+        .filter((role) => canDelegateRole(role, canDelegate))
+        .map((role) => ({ ...role, allowedScopes: allowedScopes(role.roleKey) })),
       units: units.rows,
       summary: {
         accounts: counts.accounts,

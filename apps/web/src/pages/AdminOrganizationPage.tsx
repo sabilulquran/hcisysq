@@ -119,6 +119,7 @@ import {
 } from "@/lib/organizationLanguage";
 import { cn } from "@/lib/utils";
 import { selectableOrganizationParents } from "@/lib/organizationTree";
+import { jobFamilyLabels, listJobClassifications, type JobClassification } from "@/lib/jobClassifications";
 import type { AuthSession } from "@/types/hcis";
 
 type EditorAction =
@@ -375,6 +376,60 @@ function EmployeePicker({
   );
 }
 
+export interface ClassificationOption {
+  code: string;
+  label: string;
+  /** The seat's current code, kept in the list although the catalog no longer offers it. */
+  lapsed: boolean;
+}
+
+/**
+ * ORG-011: the options the seat form offers.
+ *
+ * A seat can carry a code the catalog no longer offers on this date — a change set cloned
+ * from a published base moves to a new effective date, and a classification can be closed
+ * after the seat was written. Dropping it from the list would leave the select with nothing
+ * matching, so the browser would show the first option and a plain title edit would clear the
+ * seat. The lapsed code therefore stays in the list, named as lapsed.
+ */
+export function classificationOptions(
+  catalog: JobClassification[],
+  current: string | null | undefined,
+  familyLabel: (item: JobClassification) => string,
+): ClassificationOption[] {
+  const options = catalog.map((item) => ({
+    code: item.code,
+    label: item.effectiveTo
+      ? `${item.name} (${familyLabel(item)}, berakhir ${item.effectiveTo})`
+      : `${item.name} (${familyLabel(item)})`,
+    lapsed: false,
+  }));
+  if (current && !options.some((option) => option.code === current)) {
+    options.unshift({ code: current, label: `${current} (tidak berlaku pada tanggal ini)`, lapsed: true });
+  }
+  return options;
+}
+
+/**
+ * What the seat form sends for the classification.
+ *
+ * The key is sent only when the operator actually changed it. The API treats an absent key as
+ * "leave it alone" and a null as "clear it", so sending an unchanged value is at best noise
+ * and at worst — for a lapsed code the catalog would refuse — a save the operator cannot
+ * complete. Omitting it also keeps a seat intact for an account that cannot read the catalog
+ * at all and therefore sees no field.
+ */
+export function positionClassificationPatch(
+  value: FormDataEntryValue | null,
+  classifications: JobClassification[] | null,
+  current: string | null | undefined,
+): { jobClassificationCode?: string | null } {
+  if (classifications === null) return {};
+  const chosen = String(value ?? "") || null;
+  if (chosen === (current ?? null)) return {};
+  return { jobClassificationCode: chosen };
+}
+
 export function OrganizationDesignerWorkspace({
   session,
   view,
@@ -382,6 +437,9 @@ export function OrganizationDesignerWorkspace({
   rolloutFailed,
   employees,
   employeesFailed,
+  classifications,
+  classificationsTruncated,
+  classificationsFailed,
   loading,
   effectiveDate,
   onEffectiveDateChange,
@@ -395,6 +453,13 @@ export function OrganizationDesignerWorkspace({
   rolloutFailed: boolean;
   employees: OrganizationEmployeeOption[];
   employeesFailed: boolean;
+  /** ORG-011 catalog for the draft's effective date, or null when this account may not read
+   *  it. Null means the field is not offered and the seat keeps whatever it already has. */
+  classifications: JobClassification[] | null;
+  /** True when the catalog has more entries than the form asked for (ENG-LIST-001). */
+  classificationsTruncated: boolean;
+  /** The catalog could not be read for a reason other than a refusal, so say so. */
+  classificationsFailed: boolean;
   loading: boolean;
   effectiveDate: string;
   onEffectiveDateChange: (value: string) => void;
@@ -767,7 +832,7 @@ export function OrganizationDesignerWorkspace({
     event.preventDefault();
     if (!data?.draft) return;
     const form = new FormData(event.currentTarget);
-    const input = {
+    const input: Parameters<typeof createOrganizationPosition>[1] = {
       nodeKey: String(form.get("nodeKey")),
       title: String(form.get("title")),
       parentPositionKey: String(form.get("parentPositionKey")) || null,
@@ -775,6 +840,10 @@ export function OrganizationDesignerWorkspace({
       singleIncumbent: true,
       visualRankOffset: Number(form.get("visualRankOffset")),
     };
+    Object.assign(input, positionClassificationPatch(
+      form.get("jobClassificationCode"), classifications,
+      editor.mode === "edit" ? editor.position?.jobClassificationCode : null,
+    ));
     void mutate(
       () => editor.mode === "edit" && editor.position ? updateOrganizationPosition(data.draft!.id, editor.position.id, input) : createOrganizationPosition(data.draft!.id, input),
       editor.mode === "edit" ? "Jabatan diperbarui." : "Jabatan ditambahkan.",
@@ -1415,7 +1484,7 @@ export function OrganizationDesignerWorkspace({
 
       {action?.type === "node" ? <Modal title={action.mode === "edit" ? "Ganti nama atau pindahkan unit" : action.mode === "sibling" ? "Tambah unit sejajar" : action.mode === "child" ? "Tambah unit di bawah" : "Tambah unit pertama"} description="Unit adalah wadah organisasi. Jabatan ditambahkan terpisah." onClose={() => setAction(null)}><form onSubmit={(event) => handleNode(event, action)} className="space-y-4"><Field label="Nama unit"><input name="name" required defaultValue={action.mode === "edit" ? action.node?.name : ""} placeholder="Contoh: Bidang Pendidikan" className={inputClass} /></Field><Field label="Jenis unit"><select name="nodeType" defaultValue={action.node?.nodeType ?? "UNIT"} className={inputClass}>{["FOUNDATION", "DIRECTORATE", "UNIT", "DIVISION", "DEPARTMENT", "TEAM"].map((value) => <option key={value} value={value}>{organizationNodeTypeLabel(value)}</option>)}</select></Field><Field label="Berada di bawah unit"><select name="parentNodeKey" defaultValue={action.mode === "child" ? action.node?.stableKey ?? "" : action.mode === "sibling" ? action.node?.parentNodeKey ?? "" : action.node?.parentNodeKey ?? ""} className={inputClass}><option value="">Tidak ada — paling atas</option>{selectableOrganizationParents(data?.nodes ?? [], action.mode, action.node?.stableKey).map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Tampilan" hint="tidak memengaruhi persetujuan"><select name="visualRankOffset" defaultValue={action.node?.visualRankOffset ?? 0} className={inputClass}><option value="0">Sejajar dengan tingkat sebenarnya</option><option value="1">Turunkan 1 tingkat</option><option value="2">Turunkan 2 tingkat</option></select></Field><Field label="Kode integrasi" hint="opsional"><input name="integrationCode" defaultValue={action.node?.integrationCode ?? ""} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah unit"} /></form></Modal> : null}
 
-      {action?.type === "position" ? <Modal title={action.mode === "edit" ? "Ubah atau pindahkan jabatan" : "Tambah jabatan"} description="Judul jabatan hanya tampilan; kewenangan selalu dari pilihan yang Anda tetapkan." onClose={() => setAction(null)}><form onSubmit={(event) => handlePosition(event, action)} className="space-y-4"><Field label="Nama jabatan"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Kepala Bidang Pendidikan" className={inputClass} /></Field><Field label="Berada di unit"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Melapor ke"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? action.parentPositionKey ?? ""} className={inputClass}><option value="">Mengikuti pemimpin unit</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan ini kosong"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field><input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} /><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah jabatan"} /></form></Modal> : null}
+      {action?.type === "position" ? <Modal title={action.mode === "edit" ? "Ubah atau pindahkan jabatan" : "Tambah jabatan"} description="Judul jabatan hanya tampilan; kewenangan selalu dari pilihan yang Anda tetapkan." onClose={() => setAction(null)}><form onSubmit={(event) => handlePosition(event, action)} className="space-y-4"><Field label="Nama jabatan"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Kepala Bidang Pendidikan" className={inputClass} /></Field><Field label="Berada di unit"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Melapor ke"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? action.parentPositionKey ?? ""} className={inputClass}><option value="">Mengikuti pemimpin unit</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Bila jabatan ini kosong"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atasan berikutnya</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib ada Plt, kalau tidak pengajuan ditahan</option><option value="BLOCK">Pengajuan ditahan</option></select></Field>{classificationsFailed ? <p className="rounded-xl bg-warning-soft px-3 py-2 text-[11px] font-bold text-warning-ink">Daftar klasifikasi jabatan tidak dapat dimuat. Simpan tetap bisa dilakukan; klasifikasi kursi ini tidak berubah.</p> : null}{classifications ? <Field label="Klasifikasi jabatan" hint="menentukan tunjangan, bukan kewenangan"><select name="jobClassificationCode" defaultValue={action.position?.jobClassificationCode ?? ""} className={inputClass}><option value="">Tidak ditetapkan — ikut penempatan pegawai</option>{classificationOptions(classifications, action.position?.jobClassificationCode, (item) => jobFamilyLabels[item.family]).map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select>{classificationsTruncated ? <p className="mt-1 text-[11px] text-warning-ink">Daftar dipotong pada 100 klasifikasi pertama. Buka Klasifikasi Jabatan bila kode yang dicari tidak ada.</p> : null}</Field> : null}<input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} /><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah jabatan"} /></form></Modal> : null}
 
       {action?.type === "incumbency" ? <Modal title={action.acting ? "Tunjuk Plt" : "Tetapkan pejabat"} description={action.acting ? "Plt selalu ditunjuk eksplisit dan berbatas tanggal; sistem tidak menyimpulkannya dari absensi." : "Menetapkan pejabat tidak memberikan role atau izin aplikasi apa pun."} onClose={() => setAction(null)}><form onSubmit={(event) => handleIncumbency(event, action)} className="space-y-4"><div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">{action.position.title}</div><Field label="Pegawai"><EmployeePicker name="employeeId" required employees={employees} defaultValue={action.acting ? action.position.actingIncumbent?.employeeId ?? "" : action.position.primaryIncumbent?.employeeId ?? ""} /></Field>{action.acting ? <><Field label="Mulai"><input type="date" name="actingFrom" required defaultValue={action.position.actingIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field><Field label="Sampai"><input type="date" name="actingTo" required defaultValue={action.position.actingIncumbent?.effectiveTo ?? ""} className={inputClass} /></Field></> : <Field label="Mulai menjabat"><input type="date" name="effectiveFrom" required defaultValue={action.position.primaryIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field>}<SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan" /></form></Modal> : null}
 
@@ -1607,6 +1676,12 @@ export function AdminOrganizationPage() {
   const [data, setData] = useState<OrganizationDesignerView | null>(null);
   const [employees, setEmployees] = useState<OrganizationEmployeeOption[]>([]);
   const [employeesFailed, setEmployeesFailed] = useState(false);
+  // ORG-011: null until read, and left null when the account cannot read the catalog, which
+  // is an ordinary case because organization.manage does not carry job_classifications.read.
+  const [classifications, setClassifications] = useState<JobClassification[] | null>(null);
+  const [classificationsTruncated, setClassificationsTruncated] = useState(false);
+  const [classificationsFailed, setClassificationsFailed] = useState(false);
+  const classificationRequest = useRef(0);
   const [rollout, setRollout] = useState<OrganizationRolloutConfiguration | null>(null);
   const [rolloutFailed, setRolloutFailed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1653,6 +1728,36 @@ export function AdminOrganizationPage() {
       .catch(() => { setEmployees([]); setEmployeesFailed(true); });
   };
 
+  // ORG-011: read as of the date being designed, because the catalog is effective-dated and
+  // the API refuses a code that is not in force then. A refusal here is ordinary, not an
+  // error to show: it just means this account does not hold job_classifications.read.
+  const loadClassifications = (asOf: string) => {
+    const ticket = ++classificationRequest.current;
+    void listJobClassifications({ onDate: asOf, pageSize: 100 })
+      .then((result) => {
+        // An older response must not replace a newer one, or the form would offer the catalog
+        // for a date nobody is designing and the API would refuse the code chosen from it.
+        if (ticket !== classificationRequest.current) return;
+        setClassifications(result.classifications);
+        setClassificationsTruncated(result.pagination.total > result.classifications.length);
+        setClassificationsFailed(false);
+      })
+      .catch((cause: unknown) => {
+        if (ticket !== classificationRequest.current) return;
+        // 403 is ordinary: organization.manage does not carry job_classifications.read, so the
+        // field is simply not offered. Anything else is a real failure worth naming, and must
+        // not quietly replace a catalog that was already read.
+        const refused = cause instanceof AdminApiError && cause.status === 403;
+        if (refused) {
+          setClassifications(null);
+          setClassificationsTruncated(false);
+          setClassificationsFailed(false);
+          return;
+        }
+        setClassificationsFailed(true);
+      });
+  };
+
   const loadReadiness = () => {
     setReadinessLoading(true);
     setReadinessError(null);
@@ -1695,6 +1800,11 @@ export function AdminOrganizationPage() {
     loadEmployees();
     return () => { mounted = false; };
   }, []);
+
+  // The catalog is read per effective date, so it follows the date being designed.
+  useEffect(() => {
+    loadClassifications(data?.draft?.effectiveOn ?? effectiveDate);
+  }, [data?.draft?.effectiveOn, effectiveDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each read-only tab asks for exactly what it shows, when it is shown.
   useEffect(() => {
@@ -1778,6 +1888,9 @@ export function AdminOrganizationPage() {
           rolloutFailed={rolloutFailed}
           employees={employees}
           employeesFailed={employeesFailed}
+          classifications={classifications}
+          classificationsTruncated={classificationsTruncated}
+          classificationsFailed={classificationsFailed}
           loading={loading}
           effectiveDate={effectiveDate}
           onEffectiveDateChange={setEffectiveDate}

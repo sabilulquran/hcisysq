@@ -70,6 +70,9 @@ export interface OrganizationPosition {
   effectiveTo: string | null;
   visualRankOffset: number;
   holderSource?: "EMPLOYEE" | "ACCOUNT";
+  /** ORG-011: the seat's default classification. Null means the seat says nothing and the
+   * placement decides on its own. It carries no authority and no money. */
+  jobClassificationCode?: string | null;
   primaryIncumbent: OrganizationIncumbent | null;
   actingIncumbent: OrganizationIncumbent | null;
 }
@@ -320,6 +323,7 @@ export function createOrganizationPosition(
     vacancyPolicy: OrganizationVacancyPolicy;
     singleIncumbent?: boolean;
     visualRankOffset?: number;
+    jobClassificationCode?: string | null;
   },
 ): Promise<OrganizationPosition> {
   return request<OrganizationPosition>(`/drafts/${draftId}/positions`, {
@@ -341,6 +345,7 @@ export function updateOrganizationPosition(
       | "singleIncumbent"
       | "active"
       | "visualRankOffset"
+      | "jobClassificationCode"
     >
   >,
 ): Promise<OrganizationPosition> {

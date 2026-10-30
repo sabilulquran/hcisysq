@@ -34,7 +34,7 @@ type ManifestEntry = {
   file: string;
   method: string;
   url: string;
-  access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
+  access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer" | "machine-actor";
   principals?: string[];
   permissions: string[];
   executePermissions?: string[];
@@ -42,8 +42,19 @@ type ManifestEntry = {
 
 // Explicitly unauthenticated or separately authenticated surfaces (device ingress,
 // service-to-service tokens, login/activation flows and probes).
+// AUTH-014 §2.11 gap 2: `/internal/v1/` is no longer a blanket exemption.
+//
+// It used to be, and the role-administration channel inherited it — which meant the repo's own
+// route guard stopped watching three mutating routes entirely. Naming that one prefix as the
+// exception would have left the same hole one character away: `/internal/v1/role-administration`
+// with no trailing slash, or `/internal/v1/role-admin/...`, would have fallen straight back into
+// the blanket rule. So every internal route must now be pinned below by its exact URL, or carry a
+// manifest entry. Adding one is then a visible, reviewed choice rather than a default.
+const MACHINE_ACTOR_PREFIX = "/internal/v1/role-administration";
 const PUBLIC_ROUTE = (url: string) =>
-  url === "/health" || url === "/ready" || ["/auth/", "/iclock/", "/internal/v1/"].some((prefix) => url.startsWith(prefix));
+  url === "/health" || url === "/ready"
+  || ["/auth/", "/iclock/"].some((prefix) => url.startsWith(prefix))
+  || (url.startsWith("/internal/v1/") && EXPECTED_PUBLIC_URLS.includes(url));
 
 // Pinned so a new public route is a deliberate, reviewed change.
 const EXPECTED_PUBLIC_URLS = [
@@ -61,12 +72,6 @@ const EXPECTED_PUBLIC_URLS = [
   "/iclock/*",
   "/iclock/file",
   "/internal/v1/organization-directory/snapshot",
-  // AUTH-014 F4: the SQ Hub role-administration channel. Not session-authenticated by design — it
-  // carries a machine token AND a Keycloak-signed actor assertion, and returns 503 until
-  // HCIS_ROLE_ADMIN_ENABLED=1.
-  "/internal/v1/role-administration/accounts/:accountId/role-assignments",
-  "/internal/v1/role-administration/catalog",
-  "/internal/v1/role-administration/role-assignments/:assignmentId",
   "/internal/v1/staff-identity/verify-employee",
   "/ready",
 ];
@@ -123,6 +128,46 @@ describe("AUTH-011 route manifest coverage", () => {
     expect(board).toEqual(["board GET /board/dashboard", "governance-bearer GET /governance/summary"]);
   });
 
+  it("lists every role-administration route in the manifest, never the allowlist", async () => {
+    const channel = (await registeredRoutes())
+      .filter((route) => route.url.startsWith(MACHINE_ACTOR_PREFIX));
+    expect(channel.length, "the channel registers at least its three routes").toBeGreaterThanOrEqual(3);
+
+    const listed = new Set((await manifest())
+      .filter((entry) => entry.access === "machine-actor")
+      .map((entry) => `${entry.method} ${entry.url}`));
+    expect(channel.map((route) => `${route.method} ${route.url}`).filter((key) => !listed.has(key)))
+      .toEqual([]);
+  });
+
+  it("refuses EVERY registered role-administration route presented with no credentials", async () => {
+    // The route that does not exist yet is the point. Every registered route under the prefix is
+    // discovered and injected, so a handler added later that forgets authenticate() answers here
+    // and fails this test. 401 exactly: the channel demands credentials before it consults its own
+    // feature switch, so "switched off" is not an excuse a new handler can hide behind either.
+    const routes = (await registeredRoutes())
+      .filter((route) => route.url.startsWith(MACHINE_ACTOR_PREFIX));
+    expect(routes.length).toBeGreaterThanOrEqual(3);
+
+    // Route registration does not query the database; an inert pool keeps this test DB-free.
+    const app = await createApp(config, {} as Pool);
+    await app.ready();
+    try {
+      for (const route of routes) {
+        const url = route.url.replace(/:[^/]+/g, "00000000-0000-4000-8000-000000000001");
+        const response = await app.inject({
+          method: route.method as "GET",
+          url,
+          payload: route.method === "GET" ? undefined : {},
+        });
+        expect(response.statusCode, `${route.method} ${url}`).toBe(401);
+        expect(response.headers["cache-control"], `${route.method} ${url}`).toBe("no-store");
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it("keeps the public allowlist exact", async () => {
     const urls = [...new Set((await registeredRoutes()).map((route) => route.url).filter(PUBLIC_ROUTE))].sort();
     expect(urls).toEqual(EXPECTED_PUBLIC_URLS);
@@ -146,6 +191,15 @@ describe("AUTH-011 route manifest coverage", () => {
         expect(entry.permissions, label).toEqual([BOARD_READ_PERMISSION]);
         expect(known.has(BOARD_READ_PERMISSION), label).toBe(false);
         expect(entry.url.startsWith("/admin/"), label).toBe(false);
+        continue;
+      }
+      // AUTH-014: the SQ Hub channel. No session, no HCIS permission — a machine token plus a
+      // Keycloak-signed actor assertion, checked inside the handler. Listed here so the manifest
+      // covers it; the behavioural guard is the no-credentials test above.
+      if (entry.access === "machine-actor") {
+        expect(entry.permissions, label).toEqual([]);
+        expect(entry.principals, label).toBeUndefined();
+        expect(entry.url.startsWith(MACHINE_ACTOR_PREFIX), label).toBe(true);
         continue;
       }
       if (entry.access === "self-service") {

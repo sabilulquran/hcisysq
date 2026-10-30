@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { exportJWK, generateKeyPair, SignJWT, type JWK, type KeyLike } from "jose";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -48,7 +50,7 @@ async function sign(claims: Record<string, unknown>, options: {
   issuer?: string; audience?: string; issuedAt?: number;
 } = {}) {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT(claims)
+  return new SignJWT({ jti: randomUUID(), ...claims })
     .setProtectedHeader({ alg: "RS256", kid: "test-key" })
     .setIssuer(options.issuer ?? ISSUER)
     .setAudience(options.audience ?? AUDIENCE)
@@ -60,7 +62,7 @@ async function sign(claims: Record<string, unknown>, options: {
 describe("AUTH-014 actor assertion verification", () => {
   it("accepts an assertion for a person", async () => {
     const assertion = await sign({ sub: "person-sub", azp: "sq-hub", preferred_username: "owner" });
-    await expect(verifier()(assertion)).resolves.toEqual({ issuer: ISSUER, subject: "person-sub" });
+    await expect(verifier()(assertion)).resolves.toMatchObject({ issuer: ISSUER, subject: "person-sub" });
   });
 
   it("refuses a wrong issuer and a wrong audience", async () => {

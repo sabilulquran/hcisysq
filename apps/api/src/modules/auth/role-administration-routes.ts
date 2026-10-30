@@ -14,12 +14,14 @@ import {
   ActorAssertionError,
   createActorAssertionVerifier,
   resolveAssertedActor,
+  spendActorAssertion,
+  type ActorAssertionClaims,
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
 import {
   allowedScopes, canDelegateRole, createRoleAssignment, removeRoleAssignment,
 } from "./role-assignment.js";
-import { AuthError } from "./service.js";
+import { AuthError, type AuthPrincipal } from "./service.js";
 
 /**
  * AUTH-014 §2 — the channel through which the Platform Administrator in SQ Hub grants HCIS roles.
@@ -113,16 +115,24 @@ export function registerRoleAdministrationRoutes(
    */
   async function authenticate(request: FastifyRequest, reply: FastifyReply) {
     reply.header("Cache-Control", "no-store");
+
+    // Credentials are demanded before the feature switch is consulted. An anonymous caller gets
+    // 401 whatever the switch says, which is what every other guarded route in this API does and
+    // what the persona test asserts; it also means configuration state is not readable by someone
+    // who has presented nothing.
+    const token = readBearerToken(request.headers.authorization);
+    const assertionHeader = request.headers["x-sq-actor-assertion"];
+    const assertion = typeof assertionHeader === "string" ? assertionHeader.trim() : "";
+    if (!token || !assertion) {
+      await reply.status(401).send({ code: "UNAUTHENTICATED" });
+      return null;
+    }
+
     if (!verifyMachineToken || !verifyActorAssertion) {
       await reply.status(503).send({ code: "ROLE_ADMIN_CHANNEL_DISABLED" });
       return null;
     }
 
-    const token = readBearerToken(request.headers.authorization);
-    if (!token) {
-      await reply.status(401).send({ code: "UNAUTHENTICATED" });
-      return null;
-    }
     try {
       await verifyMachineToken(token);
     } catch (error) {
@@ -133,13 +143,6 @@ export function registerRoleAdministrationRoutes(
         return null;
       }
       throw error;
-    }
-
-    const header = request.headers["x-sq-actor-assertion"];
-    const assertion = typeof header === "string" ? header.trim() : "";
-    if (!assertion) {
-      await reply.status(401).send({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
-      return null;
     }
 
     try {
@@ -157,19 +160,47 @@ export function registerRoleAdministrationRoutes(
         await reply.status(403).send({ code: "HCIS_ACCESS_DENIED" });
         return null;
       }
-      return actor;
+      return { actor, claims };
     } catch (error) {
       if (error instanceof ActorAssertionError) {
-        // Distinct codes and statuses: a bad assertion is the caller's problem (401), while an
-        // unresolved actor means HCIS has no account for a person SQ Hub considers real (403) —
-        // usually the Keycloak subject not matching what HCIS stored, which is an operator fix.
-        const unresolved = error.code === "ACTOR_UNRESOLVED";
-        await reply.status(unresolved ? 403 : 401)
-          .send({ code: unresolved ? "ROLE_ADMIN_ACTOR_UNRESOLVED" : "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+        // Three outcomes, kept apart because they mean different things to whoever is debugging:
+        // a bad assertion is the caller's problem (401); an already-spent one is a replay or a
+        // retry (409); an unresolved actor means HCIS has no account for a person SQ Hub considers
+        // real (403) — usually the Keycloak subject not matching what HCIS stored.
+        const status = error.code === "ACTOR_UNRESOLVED" ? 403
+          : error.code === "ACTOR_ASSERTION_SPENT" ? 409 : 401;
+        const code = error.code === "ACTOR_UNRESOLVED" ? "ROLE_ADMIN_ACTOR_UNRESOLVED"
+          : error.code === "ACTOR_ASSERTION_SPENT" ? "ROLE_ADMIN_ACTOR_ASSERTION_SPENT"
+            : "ROLE_ADMIN_ACTOR_ASSERTION_INVALID";
+        await reply.status(status).send({ code });
         return null;
       }
       throw error;
     }
+  }
+
+  /**
+   * §2.11 gap 1. The binding records the real target, not the route template: `request.url` carries
+   * the account or assignment id, so a grant nobody recognises can be traced to one presentation
+   * without first joining the audit table.
+   */
+  async function spend(
+    request: FastifyRequest,
+    session: { actor: AuthPrincipal; claims: ActorAssertionClaims },
+    hubRequestId: string,
+  ): Promise<void> {
+    await spendActorAssertion(pool, session.claims, {
+      method: request.method,
+      path: request.url,
+      hubRequestId,
+      actorAccountId: session.actor.id,
+    });
+  }
+
+  async function sendAssertionError(reply: FastifyReply, error: unknown): Promise<boolean> {
+    if (!(error instanceof ActorAssertionError)) return false;
+    await reply.status(409).send({ code: "ROLE_ADMIN_ACTOR_ASSERTION_SPENT" });
+    return true;
   }
 
   /**
@@ -190,8 +221,8 @@ export function registerRoleAdministrationRoutes(
   }
 
   app.post("/internal/v1/role-administration/accounts/:accountId/role-assignments", async (request, reply) => {
-    const actor = await authenticate(request, reply);
-    if (!actor) return;
+    const session = await authenticate(request, reply);
+    if (!session) return;
 
     const params = accountIdSchema.safeParse(request.params);
     const body = assignmentBodySchema.safeParse(request.body);
@@ -201,18 +232,24 @@ export function registerRoleAdministrationRoutes(
 
     const { requestId, ...input } = body.data;
     try {
-      const id = await createRoleAssignment(pool, actor, params.data.accountId, input,
+      // §2.11 gap 1: spend the assertion here — once the request is known to be well formed and
+      // the Hub has answered, so a malformed body or a Hub outage does not cost a token exchange
+      // from a service that may be the one that is down. After this point it is spent whatever
+      // happens: one assertion is one attempt at this grant.
+      await spend(request, session, requestId);
+      const id = await createRoleAssignment(pool, session.actor, params.data.accountId, input,
         { channel: "sq_hub", hubRequestId: requestId });
       return reply.status(201).send({ assignmentId: id, requestId });
     } catch (error) {
+      if (await sendAssertionError(reply, error)) return;
       if (await sendDomainError(reply, error)) return;
       throw error;
     }
   });
 
   app.delete("/internal/v1/role-administration/role-assignments/:assignmentId", async (request, reply) => {
-    const actor = await authenticate(request, reply);
-    if (!actor) return;
+    const session = await authenticate(request, reply);
+    if (!session) return;
 
     const params = assignmentIdSchema.safeParse(request.params);
     const body = removalBodySchema.safeParse(request.body);
@@ -221,10 +258,12 @@ export function registerRoleAdministrationRoutes(
     }
 
     try {
-      await removeRoleAssignment(pool, actor, params.data.assignmentId,
+      await spend(request, session, body.data.requestId);
+      await removeRoleAssignment(pool, session.actor, params.data.assignmentId,
         { channel: "sq_hub", hubRequestId: body.data.requestId });
       return reply.status(204).send();
     } catch (error) {
+      if (await sendAssertionError(reply, error)) return;
       if (await sendDomainError(reply, error)) return;
       throw error;
     }
@@ -235,8 +274,11 @@ export function registerRoleAdministrationRoutes(
    * alternative — copying role keys into the Hub's code — guarantees the two drift apart.
    */
   app.get("/internal/v1/role-administration/catalog", async (request, reply) => {
-    const actor = await authenticate(request, reply);
-    if (!actor) return;
+    // Deliberately does NOT spend the assertion. SQ Hub's grant screen reads this catalog and then
+    // posts the grant; burning the token on the read would answer the grant itself with 409, and
+    // would also let an attacker pre-burn a captured assertion with a harmless-looking read.
+    const session = await authenticate(request, reply);
+    if (!session) return;
 
     const roles = await pool.query<{ roleId: string; roleKey: string; name: string; description: string | null; permissions: string[] }>(
       `SELECT role.id AS "roleId", role.role_key AS "roleKey", role.name, role.description,

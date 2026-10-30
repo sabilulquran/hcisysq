@@ -22,7 +22,7 @@ const JWKS_TRANSPORT_TIMEOUT_MS = 2_500;
 
 export class ActorAssertionError extends Error {
   constructor(
-    readonly code: "ACTOR_ASSERTION_INVALID" | "ACTOR_UNRESOLVED",
+    readonly code: "ACTOR_ASSERTION_INVALID" | "ACTOR_UNRESOLVED" | "ACTOR_ASSERTION_SPENT",
     message: string,
   ) {
     super(message);
@@ -33,6 +33,10 @@ export class ActorAssertionError extends Error {
 export interface ActorAssertionClaims {
   issuer: string;
   subject: string;
+  /** §2.11: the token id this assertion is spent under. Required; an assertion without one
+   * could not be made single use, and would stay replayable for its whole lifetime. */
+  jti: string;
+  expiresAt: Date;
 }
 
 export type VerifyActorAssertion = (assertion: string) => Promise<ActorAssertionClaims>;
@@ -72,6 +76,13 @@ export function createActorAssertionVerifier(input: {
     if (!subject) {
       throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion carries no subject");
     }
+    const jti = typeof payload.jti === "string" ? payload.jti.trim() : "";
+    if (!jti) {
+      throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion carries no jti");
+    }
+    if (typeof payload.exp !== "number") {
+      throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion carries no expiry");
+    }
     // A client-credentials token has no human behind it. Accepting one would let the machine
     // account grant roles in nobody's name, which is what the assertion exists to prevent.
     //
@@ -83,8 +94,60 @@ export function createActorAssertionVerifier(input: {
     if ((azp && input.machineClients.has(azp)) || username.startsWith("service-account-")) {
       throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion is a machine token");
     }
-    return { issuer, subject };
+    return { issuer, subject, jti, expiresAt: new Date(payload.exp * 1000) };
   };
+}
+
+export interface AssertionBinding {
+  method: string;
+  path: string;
+  hubRequestId?: string | null | undefined;
+  actorAccountId?: string | null | undefined;
+}
+
+/**
+ * §2.11 gap 1: spend the assertion, once.
+ *
+ * The insert is the check. A second presentation of the same jti collides on the primary key and is
+ * refused, so a captured assertion is worthless the moment the legitimate request lands. What it
+ * does not stop is a race — an attacker who captures the assertion and gets in first — and that is
+ * why the row records what the assertion was spent on: an unrecognised grant can then be traced to
+ * a specific presentation instead of being invisible.
+ *
+ * Spending happens before the grant is attempted, so a refused grant still burns the assertion.
+ * That is deliberate: one assertion is one attempt, and retrying needs a fresh one from SQ Hub.
+ *
+ * Expired rows are swept here rather than by a scheduled job. They are only useful until their own
+ * expiry, assertions over 60 seconds old are refused anyway, and the table therefore stays at about
+ * the number of grants made in a minute.
+ */
+export async function spendActorAssertion(
+  db: Pick<Pool, "query"> | PoolClient,
+  claims: ActorAssertionClaims,
+  binding: AssertionBinding,
+): Promise<void> {
+  // The margin is for clock skew, not for tidiness: jose judges `exp` by the app server's clock
+  // and this DELETE by the database's. Sweeping exactly at expiry would, on a database running
+  // ahead, drop a row while jose would still accept the token — restoring replay for that window.
+  await db.query("DELETE FROM auth_actor_assertions WHERE expires_at < now() - interval '15 minutes'");
+  try {
+    await db.query(
+      `INSERT INTO auth_actor_assertions
+         (issuer, jti, expires_at, request_method, request_path, hub_request_id, actor_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [claims.issuer, claims.jti, claims.expiresAt, binding.method, binding.path,
+        binding.hubRequestId ?? null, binding.actorAccountId ?? null],
+    );
+  } catch (error) {
+    // Named, not just the SQLSTATE: today this table has one unique constraint, but a second one
+    // added later would otherwise be reported as a replay that never happened.
+    if (typeof error === "object" && error !== null
+      && (error as { code?: string }).code === "23505"
+      && String((error as { constraint?: string }).constraint ?? "").includes("auth_actor_assertions_pkey")) {
+      throw new ActorAssertionError("ACTOR_ASSERTION_SPENT", "actor assertion has already been used");
+    }
+    throw error;
+  }
 }
 
 /**

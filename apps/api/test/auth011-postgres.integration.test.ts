@@ -196,6 +196,9 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(59);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
+    // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still
+    // gets 401, because the channel demands both credentials before anything else.
+    expect(manifest.filter((route) => route.access === "machine-actor")).toHaveLength(3);
     const personas = ["employee", "hc", "unit_hc", "unit_admin", "board", "admin", "legacy"];
     const granted = new Map<string, string[]>();
     for (const name of personas) {
@@ -219,6 +222,18 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       if (route.access === "governance-bearer") {
         for (const name of [null, ...personas]) {
           expect.soft((await request(name, route.method, route.url)).statusCode, `${name} ${route.url}`).toBe(404);
+        }
+        continue;
+      }
+      // AUTH-014: the SQ Hub channel is not session-authenticated at all. A browser cookie is not
+      // a credential here whoever it belongs to, so every persona — signed in or not, privileged
+      // or not — gets 401. Asserting that for all of them is the point: it pins down that no
+      // session can ever be mistaken for the machine token and actor assertion this channel wants.
+      if (route.access === "machine-actor") {
+        const url = route.url.replace(/:[A-Za-z]+/g, "invalid-resource-id");
+        for (const name of [null, ...personas]) {
+          const response = await request(name, route.method, url, route.method === "GET" ? undefined : {});
+          expect.soft(response.statusCode, `${name} ${route.method} ${url}`).toBe(401);
         }
         continue;
       }

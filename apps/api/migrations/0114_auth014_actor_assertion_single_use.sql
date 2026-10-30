@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS auth_actor_assertions (
   -- What this assertion was spent on. Recorded so that an unrecognised grant can be traced back to
   -- a specific presentation, and so a race can be told apart from ordinary use.
   request_method text NOT NULL,
+  -- The request line as served, including the target id — not the route template. Without the id
+  -- this row would say only "some grant", and the trace it exists to provide would need the audit
+  -- table to mean anything.
   request_path text NOT NULL,
   hub_request_id uuid NULL,
   actor_account_id uuid NULL REFERENCES accounts(id) ON DELETE SET NULL,

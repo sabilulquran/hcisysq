@@ -34,7 +34,7 @@ type ManifestEntry = {
   file: string;
   method: string;
   url: string;
-  access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
+  access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer" | "machine-actor";
   principals?: string[];
   permissions: string[];
   executePermissions?: string[];
@@ -42,14 +42,19 @@ type ManifestEntry = {
 
 // Explicitly unauthenticated or separately authenticated surfaces (device ingress,
 // service-to-service tokens, login/activation flows and probes).
-// AUTH-014 §2.11 gap 2: the role-administration channel is NOT exempt. It was, and that meant the
-// repo's own route guard stopped watching three mutating routes entirely — correct on the day it
-// was written, and invisible to whoever adds the next handler under that prefix.
-const MACHINE_ACTOR_PREFIX = "/internal/v1/role-administration/";
+// AUTH-014 §2.11 gap 2: `/internal/v1/` is no longer a blanket exemption.
+//
+// It used to be, and the role-administration channel inherited it — which meant the repo's own
+// route guard stopped watching three mutating routes entirely. Naming that one prefix as the
+// exception would have left the same hole one character away: `/internal/v1/role-administration`
+// with no trailing slash, or `/internal/v1/role-admin/...`, would have fallen straight back into
+// the blanket rule. So every internal route must now be pinned below by its exact URL, or carry a
+// manifest entry. Adding one is then a visible, reviewed choice rather than a default.
+const MACHINE_ACTOR_PREFIX = "/internal/v1/role-administration";
 const PUBLIC_ROUTE = (url: string) =>
-  !url.startsWith(MACHINE_ACTOR_PREFIX)
-  && (url === "/health" || url === "/ready"
-    || ["/auth/", "/iclock/", "/internal/v1/"].some((prefix) => url.startsWith(prefix)));
+  url === "/health" || url === "/ready"
+  || ["/auth/", "/iclock/"].some((prefix) => url.startsWith(prefix))
+  || (url.startsWith("/internal/v1/") && EXPECTED_PUBLIC_URLS.includes(url));
 
 // Pinned so a new public route is a deliberate, reviewed change.
 const EXPECTED_PUBLIC_URLS = [
@@ -126,8 +131,7 @@ describe("AUTH-011 route manifest coverage", () => {
   it("lists every role-administration route in the manifest, never the allowlist", async () => {
     const channel = (await registeredRoutes())
       .filter((route) => route.url.startsWith(MACHINE_ACTOR_PREFIX));
-    expect(channel.length, "the channel registers three routes").toBe(3);
-    expect(channel.map((route) => route.url).filter(PUBLIC_ROUTE)).toEqual([]);
+    expect(channel.length, "the channel registers at least its three routes").toBeGreaterThanOrEqual(3);
 
     const listed = new Set((await manifest())
       .filter((entry) => entry.access === "machine-actor")
@@ -136,22 +140,28 @@ describe("AUTH-011 route manifest coverage", () => {
       .toEqual([]);
   });
 
-  it("refuses every role-administration route presented with no credentials", async () => {
-    // The point of this one is the route that does not exist yet. A handler added under this
-    // prefix without going through authenticate() would answer here, and this test would catch it.
-    // Route registration does not query the database; an inert pool keeps this test DB-free, and
-    // the channel answers 503 before it would ever touch one.
+  it("refuses EVERY registered role-administration route presented with no credentials", async () => {
+    // The route that does not exist yet is the point. Every registered route under the prefix is
+    // discovered and injected, so a handler added later that forgets authenticate() answers here
+    // and fails this test. 401 exactly: the channel demands credentials before it consults its own
+    // feature switch, so "switched off" is not an excuse a new handler can hide behind either.
+    const routes = (await registeredRoutes())
+      .filter((route) => route.url.startsWith(MACHINE_ACTOR_PREFIX));
+    expect(routes.length).toBeGreaterThanOrEqual(3);
+
+    // Route registration does not query the database; an inert pool keeps this test DB-free.
     const app = await createApp(config, {} as Pool);
     await app.ready();
     try {
-      for (const [method, url] of [
-        ["POST", "/internal/v1/role-administration/accounts/00000000-0000-4000-8000-000000000001/role-assignments"],
-        ["DELETE", "/internal/v1/role-administration/role-assignments/00000000-0000-4000-8000-000000000001"],
-        ["GET", "/internal/v1/role-administration/catalog"],
-      ] as const) {
-        const response = await app.inject({ method, url, payload: method === "GET" ? undefined : {} });
-        expect([401, 403, 409, 503], `${method} ${url}`).toContain(response.statusCode);
-        expect(response.headers["cache-control"], `${method} ${url}`).toBe("no-store");
+      for (const route of routes) {
+        const url = route.url.replace(/:[^/]+/g, "00000000-0000-4000-8000-000000000001");
+        const response = await app.inject({
+          method: route.method as "GET",
+          url,
+          payload: route.method === "GET" ? undefined : {},
+        });
+        expect(response.statusCode, `${route.method} ${url}`).toBe(401);
+        expect(response.headers["cache-control"], `${route.method} ${url}`).toBe("no-store");
       }
     } finally {
       await app.close();

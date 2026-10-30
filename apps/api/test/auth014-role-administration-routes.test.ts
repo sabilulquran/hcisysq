@@ -127,8 +127,10 @@ describe("AUTH-014 role administration channel", () => {
       method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
       headers: { authorization: "Bearer synthetic" }, payload: grantBody,
     });
+    // Both credentials are demanded together, before the feature switch and before either is
+    // verified, so a caller presenting one of the two learns nothing about the other.
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+    expect(response.json()).toEqual({ code: "UNAUTHENTICATED" });
     await instance.close();
   });
 
@@ -270,7 +272,9 @@ describe("AUTH-014 role administration channel", () => {
     const pool = {
       query: async (sql: string) => {
         if (sql.includes("INSERT INTO auth_actor_assertions")) {
-          throw Object.assign(new Error("duplicate key"), { code: "23505" });
+          throw Object.assign(new Error("duplicate key"), {
+            code: "23505", constraint: "auth_actor_assertions_pkey",
+          });
         }
         return { rowCount: 1, rows: [{
           id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",

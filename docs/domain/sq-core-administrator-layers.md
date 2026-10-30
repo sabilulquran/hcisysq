@@ -148,7 +148,14 @@ Masalahnya: assertion tidak terikat pada `requestId`, `accountId`, maupun method
 
 **Penutupnya: assertion hanya bisa dibelanjakan sekali.** Tabel `auth_actor_assertions` (migration 0114) memegang `jti` per issuer sebagai primary key. Assertion dibelanjakan setelah tanda tangan dan aktornya terbukti, **sebelum** pekerjaan apa pun dicoba; presentasi kedua dengan `jti` yang sama ditolak `409 ROLE_ADMIN_ACTOR_ASSERTION_SPENT`. Assertion tanpa `jti` atau tanpa `exp` ditolak, karena tanpa keduanya ia tidak bisa dibuat sekali-pakai.
 
-Pengikatan ke permintaan mengikuti dari situ: baris yang tersimpan mencatat method, path, `requestId`, dan akun aktor, sehingga satu assertion melekat pada satu permintaan yang benar-benar dilayani. Satu assertion adalah satu percobaan — pemberian yang ditolak pun tetap membakarnya, dan mencoba lagi menuntut assertion baru dari SQ Hub.
+Pengikatan ke permintaan mengikuti dari situ: baris yang tersimpan mencatat method, **URL lengkap beserta id sasarannya**, `requestId`, dan akun aktor, sehingga satu assertion melekat pada satu permintaan yang benar-benar dilayani.
+
+Dua hal yang sengaja dipilih soal *kapan* ia dibelanjakan:
+
+- **`GET /catalog` tidak membelanjakannya.** Layar SQ Hub membaca katalog lalu mengirim pemberian peran; membakar token pada pembacaan akan membuat pemberiannya sendiri dijawab 409, dan memberi penyerang cara murah membakar assertion curian lewat pembacaan yang tampak tidak berbahaya.
+- **Pembelanjaan terjadi setelah body tervalidasi dan setelah SQ Hub menjawab**, bukan sebelumnya. Kalau tidak, body yang salah ketik atau Hub yang sedang mati akan menghanguskan assertion — dan untuk kasus Hub mati itu berarti percobaan ulang menuntut token exchange dari layanan yang justru sedang tidak bisa dihubungi.
+
+Setelah titik itu ia terbakar apa pun yang terjadi: satu assertion adalah satu percobaan atas pemberian itu, dan mencoba lagi menuntut assertion baru dari SQ Hub.
 
 Baris kedaluwarsa disapu pada setiap penyisipan, bukan oleh tugas terjadwal; assertion di atas 60 detik ditolak jauh sebelum menyentuh tabel ini, jadi isinya kira-kira sebanyak pemberian peran dalam satu menit.
 
@@ -158,7 +165,11 @@ Baris kedaluwarsa disapu pada setiap penyisipan, bukan oleh tugas terjadwal; ass
 
 Masalahnya: ketiga rute `/internal/v1/role-administration/*` terdaftar di `EXPECTED_PUBLIC_URLS`, sehingga penjaga rute milik repo berhenti mengawasinya sama sekali. Benar pada hari ditulis, tetapi entri allowlist hidup lebih lama daripada ingatan siapa pun: handler baru di prefix itu tidak akan ditandai apa pun.
 
-**Penutupnya, dua lapis.** Prefix ini dikeluarkan dari daftar pengecualian dan ketiga rutenya masuk manifest izin dengan jenis akses sendiri, `machine-actor` — bukan sesi, bukan permission HCIS, melainkan token mesin plus assertion aktor. Di atas itu ada test perilaku: setiap rute di prefix tersebut dipanggil **tanpa kredensial apa pun** dan wajib menjawab 401, 403, 409, atau 503, dengan `Cache-Control: no-store`. Yang kedua inilah yang menangkap rute yang belum ada — handler baru yang lupa melewati `authenticate()` akan menjawab di situ dan membuat test gagal.
+**Penutupnya, dua lapis.** Pertama, `/internal/v1/` berhenti menjadi pengecualian borongan: setiap rute internal kini harus disebut satu per satu di daftar yang dipatok, atau punya entri manifest. Menyebut satu prefix saja sebagai pengecualian akan meninggalkan lubang yang sama hanya satu karakter jauhnya — `/internal/v1/role-administration` tanpa garis miring, atau `/internal/v1/role-admin/...`, akan jatuh kembali ke aturan borongan. Ketiga rute kanal masuk manifest dengan jenis akses sendiri, `machine-actor`: bukan sesi, bukan permission HCIS, melainkan token mesin plus assertion aktor.
+
+Kedua, test perilaku yang **menemukan sendiri** setiap rute terdaftar di bawah prefix itu, memanggilnya **tanpa kredensial apa pun**, dan menuntut jawabannya tepat **401** dengan `Cache-Control: no-store`. Inilah yang menangkap rute yang belum ada: handler baru yang lupa melewati `authenticate()` akan menjawab di situ dan membuat test gagal.
+
+Supaya "kanal sedang mati" tidak bisa dijadikan tempat sembunyi, kanal menuntut kedua kredensial **sebelum** menengok saklarnya sendiri. Pemanggil anonim mendapat 401 apa pun keadaan saklarnya, tidak belajar apa pun tentang konfigurasi, dan jawaban itu sama dengan yang dituntut test persona bagi setiap rute manifest.
 
 ### 2.9 Kanal administrasi akun, bukan hanya peran
 

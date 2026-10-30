@@ -26,7 +26,7 @@ function claims(jti = randomUUID(), secondsAhead = 60): ActorAssertionClaims {
 
 const binding = {
   method: "POST",
-  path: "/internal/v1/role-administration/accounts/:accountId/role-assignments",
+  path: "/internal/v1/role-administration/accounts/00000000-0000-4000-8000-00000000000a/role-assignments",
 };
 
 // AUTH-014 §2.11 gap 1, against the real table. Synthetic rows only, rolled back.
@@ -43,6 +43,25 @@ describe.skipIf(!allowed)("AUTH-014 actor assertion is spendable once (PostgreSQ
     await client.query("DELETE FROM auth_actor_assertions");
   });
 
+  /**
+   * A refused spend raises 23505, which aborts the surrounding transaction — and this whole file
+   * runs in one, so the next statement would fail with 25P02 instead of the error being tested.
+   * The savepoint keeps each expected failure local. Production never needs this: there
+   * `spendActorAssertion` runs on the autocommit pool, so every statement stands alone.
+   */
+  async function expectRefused(run: () => Promise<unknown>) {
+    await client.query("SAVEPOINT spend_attempt");
+    try {
+      await run();
+      throw new Error("expected the assertion to be refused");
+    } catch (error) {
+      await client.query("ROLLBACK TO SAVEPOINT spend_attempt");
+      return error;
+    } finally {
+      await client.query("RELEASE SAVEPOINT spend_attempt");
+    }
+  }
+
   afterEach(async () => {
     await client.query("ROLLBACK");
     client.release();
@@ -52,10 +71,13 @@ describe.skipIf(!allowed)("AUTH-014 actor assertion is spendable once (PostgreSQ
     const first = claims();
     await spendActorAssertion(client, first, { ...binding, hubRequestId: randomUUID() });
 
-    await expect(spendActorAssertion(client, first, binding))
-      .rejects.toMatchObject({ code: "ACTOR_ASSERTION_SPENT" });
-    await expect(spendActorAssertion(client, first, binding))
-      .rejects.toBeInstanceOf(ActorAssertionError);
+    const second = await expectRefused(() => spendActorAssertion(client, first, binding));
+    expect(second).toBeInstanceOf(ActorAssertionError);
+    expect(second).toMatchObject({ code: "ACTOR_ASSERTION_SPENT" });
+
+    // Still refused on a third try: the row is the state, not a one-shot flag in memory.
+    const third = await expectRefused(() => spendActorAssertion(client, first, binding));
+    expect(third).toMatchObject({ code: "ACTOR_ASSERTION_SPENT" });
   });
 
   it("refuses a replay aimed at a different request, which is the whole point", async () => {
@@ -64,11 +86,12 @@ describe.skipIf(!allowed)("AUTH-014 actor assertion is spendable once (PostgreSQ
     const captured = claims();
     await spendActorAssertion(client, captured, { ...binding, hubRequestId: randomUUID() });
 
-    await expect(spendActorAssertion(client, captured, {
+    const refused = await expectRefused(() => spendActorAssertion(client, captured, {
       method: "DELETE",
-      path: "/internal/v1/role-administration/role-assignments/:assignmentId",
+      path: "/internal/v1/role-administration/role-assignments/00000000-0000-4000-8000-00000000000b",
       hubRequestId: randomUUID(),
-    })).rejects.toMatchObject({ code: "ACTOR_ASSERTION_SPENT" });
+    }));
+    expect(refused).toMatchObject({ code: "ACTOR_ASSERTION_SPENT" });
   });
 
   it("records what the assertion was spent on, so a race leaves a trace", async () => {
@@ -103,7 +126,8 @@ describe.skipIf(!allowed)("AUTH-014 actor assertion is spendable once (PostgreSQ
   });
 
   it("sweeps expired rows instead of growing without bound", async () => {
-    const stale = claims(randomUUID(), -120);
+    // Well past the sweep's clock-skew margin, not merely past its own expiry.
+    const stale = claims(randomUUID(), -3600);
     await client.query(
       `INSERT INTO auth_actor_assertions (issuer, jti, expires_at, request_method, request_path)
        VALUES ($1, $2, $3, 'POST', $4)`,

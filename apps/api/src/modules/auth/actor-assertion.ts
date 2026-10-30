@@ -126,7 +126,10 @@ export async function spendActorAssertion(
   claims: ActorAssertionClaims,
   binding: AssertionBinding,
 ): Promise<void> {
-  await db.query("DELETE FROM auth_actor_assertions WHERE expires_at < now()");
+  // The margin is for clock skew, not for tidiness: jose judges `exp` by the app server's clock
+  // and this DELETE by the database's. Sweeping exactly at expiry would, on a database running
+  // ahead, drop a row while jose would still accept the token — restoring replay for that window.
+  await db.query("DELETE FROM auth_actor_assertions WHERE expires_at < now() - interval '15 minutes'");
   try {
     await db.query(
       `INSERT INTO auth_actor_assertions
@@ -136,7 +139,11 @@ export async function spendActorAssertion(
         binding.hubRequestId ?? null, binding.actorAccountId ?? null],
     );
   } catch (error) {
-    if (typeof error === "object" && error !== null && (error as { code?: string }).code === "23505") {
+    // Named, not just the SQLSTATE: today this table has one unique constraint, but a second one
+    // added later would otherwise be reported as a replay that never happened.
+    if (typeof error === "object" && error !== null
+      && (error as { code?: string }).code === "23505"
+      && String((error as { constraint?: string }).constraint ?? "").includes("auth_actor_assertions_pkey")) {
       throw new ActorAssertionError("ACTOR_ASSERTION_SPENT", "actor assertion has already been used");
     }
     throw error;

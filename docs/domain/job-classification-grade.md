@@ -3,7 +3,7 @@
 **Status:** ACCEPTED (Package 1 terimplementasi); keputusan terbuka §8 tetap DRAFT  
 **Specification:** ORG-011  
 **Package 1:** migration 0110, `apps/api/src/modules/organization/job-classification-*.ts`, 2026-10-30  
-**Rilis:** `hcis-cdf13906-20261030`, 31 Okt 2026; migration 0110, 0112, 0113 terpasang di production  
+**Rilis:** `hcis-cdf13906-20261030`, 31 Okt 2026. Diverifikasi read-only dari Mi8VPS: `cwd` proses yang berjalan menunjuk release itu, dan bundelnya memuat migration 0110-0114. Hasil gate dan verify dilaporkan sesi yang menjalankan rilis  
 **Proposed:** 2026-10-27  
 **ADR:** ADR-0004 (ACCEPTED 2026-10-30)  
 **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011  
@@ -157,7 +157,9 @@ Aturan konsumsi:
 
 Kedua permission katalog dipegang **Human Capital Administrator** (`human_capital_admin`, migration 0110) dan **Kepala Human Capital** (`human_capital_lead`, migration 0113, keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
 
-Peran **Staf Human Capital** (`human_capital`) sengaja **tidak** memegangnya. Peran itu boleh diberikan dengan scope unit (`ROLE_SCOPES` di `role-assignment.ts`), sedangkan katalog berlaku untuk seluruh organisasi dan menjadi acuan tunjangan; petugas HC satu unit tidak seharusnya mengubah kelas pekerjaan yang dipakai unit lain. Ini berbeda dari laporan awal sesi pelaksana, yang keliru menyebut `human_capital_admin` sebagai "Staf Human Capital" — nama itu milik `human_capital` sejak migration 0109.
+Peran **Staf Human Capital** (`human_capital`) sengaja **tidak** memegangnya. Peran itu boleh diberikan dengan scope unit (`ROLE_SCOPES` di `role-assignment.ts`), dan guard permission AUTH-011 hanya membaca assignment ber-scope organisasi — jadi memberikannya ke peran itu akan menghasilkan penugasan unit yang tampak memberi akses padahal tidak. Katalog juga berlaku untuk seluruh organisasi dan menjadi acuan tunjangan, sehingga tempatnya memang di peran yang selalu ber-scope organisasi.
+
+Ini berbeda dari laporan awal sesi pelaksana, yang keliru menyebut `human_capital_admin` sebagai "Staf Human Capital" — nama itu milik `human_capital` sejak migration 0109.
 
 Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog menghasilkan audit event (`job_classification.created`, `.updated`, `.deactivated`).
 

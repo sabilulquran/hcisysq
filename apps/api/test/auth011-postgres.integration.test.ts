@@ -225,6 +225,18 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         }
         continue;
       }
+      // AUTH-014: the SQ Hub channel is not session-authenticated at all. A browser cookie is not
+      // a credential here whoever it belongs to, so every persona — signed in or not, privileged
+      // or not — gets 401. Asserting that for all of them is the point: it pins down that no
+      // session can ever be mistaken for the machine token and actor assertion this channel wants.
+      if (route.access === "machine-actor") {
+        const url = route.url.replace(/:[A-Za-z]+/g, "invalid-resource-id");
+        for (const name of [null, ...personas]) {
+          const response = await request(name, route.method, url, route.method === "GET" ? undefined : {});
+          expect.soft(response.statusCode, `${name} ${route.method} ${url}`).toBe(401);
+        }
+        continue;
+      }
       const hc = route.access === "hc-operational";
       // Elsewhere an invalid object ID tests that authorization precedes business validation.
       const url = route.url.replace(/:[A-Za-z]+/g, hc ? randomUUID() : "invalid-resource-id");

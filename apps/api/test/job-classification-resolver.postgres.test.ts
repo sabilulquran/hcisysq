@@ -61,19 +61,25 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
    * BASELINE is the only action type the schema lets stand without an effective date, and
    * TERMINATION, DEMOTION and REVERSAL additionally require a reason code.
    */
-  async function addAction(type: string): Promise<string> {
+  async function addAction(type: string, reversesActionId?: string): Promise<string> {
     const actionId = randomUUID();
     const baseline = type === "BASELINE";
     await client.query(
       `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on,
-         reason_code, recorded_at)
-       VALUES ($1, $2, $3, $4, $5::date, $6, now())`,
+         reason_code, reverses_action_id, state, recorded_at)
+       VALUES ($1, $2, $3, $4, $5::date, $6, $7, 'RECORDED', now())`,
       [
         actionId, employeeId, employmentId, type,
         baseline ? null : "2026-02-01", baseline ? null : "KOREKSI_SINTETIS",
+        reversesActionId ?? null,
       ],
     );
     return actionId;
+  }
+
+  /** A REVERSAL must name the action it reverses, so give it a recorded action to point at. */
+  async function addReversal(): Promise<string> {
+    return addAction("REVERSAL", await addAction("PLACEMENT"));
   }
 
   async function addPlacement(
@@ -221,7 +227,7 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
   it("ORG-011-R9: a voided placement stops resolving", async () => {
     await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
     await addPlacement("PRIMARY", await addPosition(null), code("FUNC_TEACH"));
-    const voidAction = await addAction("REVERSAL");
+    const voidAction = await addReversal();
     await client.query(
       `UPDATE employment_placements SET voided_by_action_id = $2 WHERE employment_id = $1`,
       [employmentId, voidAction],
@@ -286,7 +292,7 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
   it("ORG-011-R13: a voided employment stops resolving", async () => {
     await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
     await addPlacement("PRIMARY", await addPosition(null), code("FUNC_TEACH"));
-    const reversal = await addAction("REVERSAL");
+    const reversal = await addReversal();
     await client.query(
       `UPDATE employments SET voided_by_action_id = $2 WHERE id = $1`,
       [employmentId, reversal],

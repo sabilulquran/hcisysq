@@ -116,6 +116,11 @@ export async function registerJobClassificationRoutes(
     return session.principal;
   }
 
+  /** Zod throws on .parse; the house pattern is an explicit 400 so a bad body is never a 500. */
+  function invalid(reply: FastifyReply, message: string) {
+    return send(reply, 400, { code: "INVALID_JOB_CLASSIFICATION_INPUT", message });
+  }
+
   function handleError(reply: FastifyReply, error: unknown) {
     if (error instanceof JobClassificationError) {
       return send(reply, error.statusCode, { code: error.code, message: error.message });
@@ -136,7 +141,9 @@ export async function registerJobClassificationRoutes(
   app.get("/admin/job-grades", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.read");
     if (!principal) return reply;
-    const query = listQuery.parse(request.query ?? {});
+    const parsed = listQuery.safeParse(request.query ?? {});
+    if (!parsed.success) return invalid(reply, "Parameter daftar golongan tidak valid.");
+    const query = parsed.data;
     const onDate = query.onDate ?? jakartaDate(new Date());
     const { rows, total } = await listGrades(pool, {
       onDate,
@@ -152,9 +159,10 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-grades", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const body = createGradeBody.parse(request.body ?? {});
+    const body = createGradeBody.safeParse(request.body ?? {});
+    if (!body.success) return invalid(reply, "Data golongan tidak valid.");
     try {
-      return send(reply, 201, { grade: await createGrade(pool, body, principal.id) });
+      return send(reply, 201, { grade: await createGrade(pool, body.data, principal.id) });
     } catch (error) {
       return handleError(reply, error);
     }
@@ -163,10 +171,12 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-grades/:code/amendments", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const { code } = codeParams.parse(request.params);
-    const body = amendGradeBody.parse(request.body ?? {});
+    const params = codeParams.safeParse(request.params);
+    const body = amendGradeBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "Perubahan golongan tidak valid.");
     try {
-      return send(reply, 200, { grade: await amendGrade(pool, code, body, principal.id) });
+      const grade = await amendGrade(pool, params.data.code, body.data, principal.id);
+      return send(reply, 200, { grade });
     } catch (error) {
       return handleError(reply, error);
     }
@@ -175,10 +185,13 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-grades/:code/deactivation", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const { code } = codeParams.parse(request.params);
-    const body = deactivateBody.parse(request.body ?? {});
+    const params = codeParams.safeParse(request.params);
+    const body = deactivateBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "Penonaktifan golongan tidak valid.");
     try {
-      const grade = await deactivateGrade(pool, code, body.endOn, body.reason, principal.id);
+      const grade = await deactivateGrade(
+        pool, params.data.code, body.data.endOn, body.data.reason, principal.id,
+      );
       return send(reply, 200, { grade });
     } catch (error) {
       return handleError(reply, error);
@@ -188,7 +201,9 @@ export async function registerJobClassificationRoutes(
   app.get("/admin/job-classifications", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.read");
     if (!principal) return reply;
-    const query = classificationListQuery.parse(request.query ?? {});
+    const parsed = classificationListQuery.safeParse(request.query ?? {});
+    if (!parsed.success) return invalid(reply, "Parameter daftar klasifikasi tidak valid.");
+    const query = parsed.data;
     const onDate = query.onDate ?? jakartaDate(new Date());
     const { rows, total } = await listClassifications(pool, {
       onDate,
@@ -207,9 +222,11 @@ export async function registerJobClassificationRoutes(
   app.get("/admin/job-classifications/:code", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.read");
     if (!principal) return reply;
-    const { code } = codeParams.parse(request.params);
-    const query = z.object({ onDate: isoDate.optional() }).parse(request.query ?? {});
-    const onDate = query.onDate ?? jakartaDate(new Date());
+    const params = codeParams.safeParse(request.params);
+    const query = z.object({ onDate: isoDate.optional() }).safeParse(request.query ?? {});
+    if (!params.success || !query.success) return invalid(reply, "Permintaan klasifikasi tidak valid.");
+    const code = params.data.code;
+    const onDate = query.data.onDate ?? jakartaDate(new Date());
     const classification = await classificationOn(pool, code, onDate);
     if (!classification) {
       return send(reply, 404, {
@@ -226,9 +243,10 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-classifications", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const body = createClassificationBody.parse(request.body ?? {});
+    const body = createClassificationBody.safeParse(request.body ?? {});
+    if (!body.success) return invalid(reply, "Data klasifikasi tidak valid.");
     try {
-      const classification = await createClassification(pool, body, principal.id);
+      const classification = await createClassification(pool, body.data, principal.id);
       return send(reply, 201, { classification });
     } catch (error) {
       return handleError(reply, error);
@@ -238,10 +256,13 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-classifications/:code/amendments", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const { code } = codeParams.parse(request.params);
-    const body = amendClassificationBody.parse(request.body ?? {});
+    const params = codeParams.safeParse(request.params);
+    const body = amendClassificationBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "Perubahan klasifikasi tidak valid.");
     try {
-      const classification = await amendClassification(pool, code, body, principal.id);
+      const classification = await amendClassification(
+        pool, params.data.code, body.data, principal.id,
+      );
       return send(reply, 200, { classification });
     } catch (error) {
       return handleError(reply, error);
@@ -251,11 +272,12 @@ export async function registerJobClassificationRoutes(
   app.post("/admin/job-classifications/:code/deactivation", async (request, reply) => {
     const principal = await requirePermission(request, reply, "job_classifications.manage");
     if (!principal) return reply;
-    const { code } = codeParams.parse(request.params);
-    const body = deactivateBody.parse(request.body ?? {});
+    const params = codeParams.safeParse(request.params);
+    const body = deactivateBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) return invalid(reply, "Penonaktifan klasifikasi tidak valid.");
     try {
       const classification = await deactivateClassification(
-        pool, code, body.endOn, body.reason, principal.id,
+        pool, params.data.code, body.data.endOn, body.data.reason, principal.id,
       );
       return send(reply, 200, { classification });
     } catch (error) {

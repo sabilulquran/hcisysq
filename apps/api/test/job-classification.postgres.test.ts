@@ -371,6 +371,33 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
       .filter((row) => row.code === codes.functional())).toHaveLength(2);
   });
 
+  it("ORG-011-Q: a malformed request is a 400, never a 500", async () => {
+    // The AUTH-011 persona matrix posts {} to every route and requires no 500, so a bad body
+    // must be answered here rather than falling through to the global error handler.
+    for (const url of [
+      "/admin/job-grades",
+      `/admin/job-grades/${codes.grade()}/amendments`,
+      `/admin/job-grades/${codes.grade()}/deactivation`,
+      "/admin/job-classifications",
+      `/admin/job-classifications/${codes.functional()}/amendments`,
+      `/admin/job-classifications/${codes.functional()}/deactivation`,
+    ]) {
+      const response = await post(url, {});
+      expect(response.statusCode, `${url}: ${response.body}`).toBe(400);
+    }
+
+    // A lower-case code would not survive the schema check either.
+    const badCode = await post("/admin/job-classifications", {
+      code: "func guru", name: "Guru", family: "FUNCTIONAL", effectiveFrom: "2026-01-01",
+    });
+    expect(badCode.statusCode, badCode.body).toBe(400);
+
+    const badDate = await app.inject({
+      method: "GET", url: "/admin/job-classifications?onDate=01-01-2026",
+    });
+    expect(badDate.statusCode, badDate.body).toBe(400);
+  });
+
   it("ORG-011-P: migration 0110 grants the catalog to Human Capital only", async () => {
     const granted = await client.query<{ roleKey: string; permissionKey: string }>(
       `SELECT role.role_key AS "roleKey", grant_row.permission_key AS "permissionKey"

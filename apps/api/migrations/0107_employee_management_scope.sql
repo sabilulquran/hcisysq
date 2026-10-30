@@ -34,45 +34,48 @@ ALTER TABLE employees
   ADD COLUMN IF NOT EXISTS management_scope_marked_by_account_id uuid NULL
     REFERENCES accounts(id) ON DELETE SET NULL;
 
--- Constraint-nya dijatuhkan dulu lalu dipasang lagi, bukan dilewati bila
--- namanya sudah ada. Migrasi ini belum pernah masuk production, jadi
--- definisinya masih bisa berubah; dengan pola "IF NOT EXISTS" sebuah basis
--- data yang sudah menjalankan versi sebelumnya akan diam-diam menyimpan
--- aturan yang lama — dan itulah yang membuat CI gagal sekali.
-ALTER TABLE employees
-  DROP CONSTRAINT IF EXISTS employees_management_scope_check,
-  DROP CONSTRAINT IF EXISTS employees_management_scope_reason_check,
-  DROP CONSTRAINT IF EXISTS employees_management_scope_marked_check;
+-- Constraint dipasang lewat pola "IF NOT EXISTS" seperti migrasi lain di
+-- repo ini. Perlu diingat ketika mengubah berkas ini kelak: sebuah migrasi
+-- yang sudah tercatat di `schema_migrations` tidak pernah dijalankan ulang,
+-- jadi aturan yang diperketat setelah berkas ini pernah dipakai harus datang
+-- lewat migrasi baru — seperti 0108.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'employees_management_scope_check'
+  ) THEN
+    ALTER TABLE employees
+      ADD CONSTRAINT employees_management_scope_check
+      CHECK (management_scope IN ('MANAGED', 'OUTSIDE_HCIS'));
+  END IF;
 
-ALTER TABLE employees
-  ADD CONSTRAINT employees_management_scope_check
-    CHECK (management_scope IN ('MANAGED', 'OUTSIDE_HCIS')),
   -- Alasan hanya ada pada baris yang ditandai, dan selalu ada di sana: tanpa
   -- ini sebuah baris dapat berakhir di luar pengelolaan tanpa seorang pun
   -- tahu kenapa.
-  ADD CONSTRAINT employees_management_scope_reason_check
-    CHECK (
-      (management_scope = 'MANAGED' AND management_scope_reason IS NULL)
-      OR (management_scope = 'OUTSIDE_HCIS'
-          AND management_scope_reason IN ('BUMY', 'PENGURUS_YAYASAN'))
-    ),
-  -- Siapa menandai dan kapan, pada baris yang ditandai — dan tidak ada sisa
-  -- penanda pada baris yang kembali dikelola. Separuh aturan saja membuat
-  -- sebuah baris `MANAGED` dapat menyimpan tanggal penandaan lama yang tidak
-  -- berarti apa-apa lagi.
-  --
-  -- `management_scope_note` sengaja di luar aturan ini: catatan terakhir —
-  -- termasuk alasan membuka tanda — adalah satu-satunya tempat alasan itu
-  -- tersimpan, karena audit hanya memuat panjangnya (spec §8.7).
-  ADD CONSTRAINT employees_management_scope_marked_check
-    CHECK (
-      (management_scope = 'OUTSIDE_HCIS'
-        AND management_scope_marked_at IS NOT NULL
-        AND management_scope_note IS NOT NULL)
-      OR (management_scope = 'MANAGED'
-        AND management_scope_marked_at IS NULL
-        AND management_scope_marked_by_account_id IS NULL)
-    );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'employees_management_scope_reason_check'
+  ) THEN
+    ALTER TABLE employees
+      ADD CONSTRAINT employees_management_scope_reason_check
+      CHECK (
+        (management_scope = 'MANAGED' AND management_scope_reason IS NULL)
+        OR (management_scope = 'OUTSIDE_HCIS'
+            AND management_scope_reason IN ('BUMY', 'PENGURUS_YAYASAN'))
+      );
+  END IF;
+
+  -- Siapa menandai dan kapan ikut tercatat pada baris yang ditandai. Aturan
+  -- penuhnya — catatan wajib, dan tidak ada sisa penanda pada baris yang
+  -- kembali dikelola — dipasang oleh 0108.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'employees_management_scope_marked_check'
+  ) THEN
+    ALTER TABLE employees
+      ADD CONSTRAINT employees_management_scope_marked_check
+      CHECK (management_scope = 'MANAGED' OR management_scope_marked_at IS NOT NULL);
+  END IF;
+END
+$$;
 
 -- Indeks parsial pada baris yang ditandai saja: jumlahnya sedikit, dan daftar
 -- "di luar pengelolaan HCIS" membacanya langsung. Kolomnya mengikuti urutan

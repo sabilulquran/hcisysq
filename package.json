@@ -20,6 +20,7 @@
     "migrations:check": "node apps/api/scripts/check-migration-source-of-truth.mjs",
     "migrations:rehearse-recovery": "node apps/api/scripts/rehearse-organization-migration-recovery.mjs",
     "auth:map-oidc-identity": "npm --workspace @hcis/api run auth:map-oidc-identity --",
+    "auth:break-glass": "npm --workspace @hcis/api run auth:break-glass --",
     "employees:import": "npm --workspace @hcis/api run employees:import --",
     "db:up": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up -d postgres",
     "db:down": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml down",

@@ -29,6 +29,7 @@ import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerBoardDashboardRoutes } from "./modules/board/dashboard-routes.js";
 import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-employee-contact-routes.js";
 import { registerStaffIdentityRoutes } from "./modules/employees/staff-identity-routes.js";
+import { registerRoleAdministrationRoutes } from "./modules/auth/role-administration-routes.js";
 import { registerGovernanceSummaryRoutes } from "./modules/governance/routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
 import { registerTemporaryReactivationRoutes } from "./modules/auth/temporary-reactivation-routes.js";
@@ -163,6 +164,8 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerOrganizationAdminRoutes(app, pool, config);
   await registerOrganizationDirectoryRoutes(app, pool, config);
   registerStaffIdentityRoutes(app, pool, config);
+  // AUTH-014 F4: registered always, inert unless HCIS_ROLE_ADMIN_ENABLED=1.
+  registerRoleAdministrationRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerEmploymentAdminRoutes(app, pool, config);
   await registerDecisionDocumentRoutes(app, pool, config);

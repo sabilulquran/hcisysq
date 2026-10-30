@@ -49,6 +49,17 @@ const envSchema = z
       z.string().trim().min(1).optional(),
     ),
     ORG_DIRECTORY_REQUIRED_SCOPE: z.string().trim().min(1).default("organization-directory.read"),
+    // AUTH-014 F4 (§2.2): the SQ Hub role-administration channel. Ships switched off; F5 turns it
+    // on only after SQ Hub and Keycloak are ready. The machine client is deliberately NOT the one
+    // that holds manage-users, so one leaked secret does not open both.
+    HCIS_ROLE_ADMIN_ENABLED: z.enum(["0", "1"]).default("0"),
+    HCIS_ROLE_ADMIN_TOKEN_ISSUER: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+    HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    // §2.2: one click in the Hub. Short, because the assertion is a bearer: anyone who captures
+    // one can act in that person name until it ages out (see the gap recorded in §2.11).
+    HCIS_ROLE_ADMIN_ACTOR_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(300).default(60),
     STAFF_IDENTITY_VERIFY_ENABLED: z.enum(["0", "1"]).default("0"),
     STAFF_IDENTITY_TOKEN_ISSUER: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
     STAFF_IDENTITY_TOKEN_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
@@ -118,6 +129,49 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           path: [key],
           message: `${key} is required when ORG_DIRECTORY_EXPORT_ENABLED=1`,
+        });
+      }
+    }
+
+    if (value.HCIS_ROLE_ADMIN_ENABLED === "1") {
+      for (const key of [
+        "HCIS_ROLE_ADMIN_TOKEN_ISSUER", "HCIS_ROLE_ADMIN_TOKEN_AUDIENCE",
+        "HCIS_ROLE_ADMIN_ALLOWED_CLIENTS", "HCIS_ROLE_ADMIN_ACTOR_AUDIENCE",
+      ] as const) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when HCIS_ROLE_ADMIN_ENABLED=1` });
+      }
+      // ADR-0006 R-1 point 1: role granting and Keycloak user management live on different machine
+      // accounts on purpose. Naming the same client for both would undo that separation silently.
+      const clients = (value.HCIS_ROLE_ADMIN_ALLOWED_CLIENTS ?? "").split(",").map((item) => item.trim());
+      if (clients.includes("sq-hub-identity-management")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["HCIS_ROLE_ADMIN_ALLOWED_CLIENTS"],
+          message: "sq-hub-identity-management holds manage-users and must not also grant roles (AUTH-014 §2.2)",
+        });
+      }
+      // §2.4 step 4b re-checks SQ Hub Application Access, which needs the OIDC machine client.
+      // Without it the channel would crash on first use instead of refusing to start.
+      if (value.AUTH_MODE !== "oidc") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["HCIS_ROLE_ADMIN_ENABLED"],
+          message: "HCIS_ROLE_ADMIN_ENABLED=1 requires AUTH_MODE=oidc (the channel re-checks SQ Hub Application Access)",
+        });
+      }
+      for (const key of ["SQ_HUB_APPLICATION_ACCESS_URL", "SQ_HUB_MACHINE_CLIENT_ID", "SQ_HUB_MACHINE_CLIENT_SECRET"] as const) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when HCIS_ROLE_ADMIN_ENABLED=1` });
+      }
+      // The actor assertion must be a different audience from the machine token, or a machine token
+      // would verify as an actor assertion.
+      if (value.HCIS_ROLE_ADMIN_ACTOR_AUDIENCE
+        && value.HCIS_ROLE_ADMIN_ACTOR_AUDIENCE === value.HCIS_ROLE_ADMIN_TOKEN_AUDIENCE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["HCIS_ROLE_ADMIN_ACTOR_AUDIENCE"],
+          message: "HCIS_ROLE_ADMIN_ACTOR_AUDIENCE must differ from HCIS_ROLE_ADMIN_TOKEN_AUDIENCE",
         });
       }
     }

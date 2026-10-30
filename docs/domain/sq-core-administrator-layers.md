@@ -1,6 +1,6 @@
 # AUTH-014 — Tiga lapis administrator: sisi HCIS
 
-**Status:** ACCEPTED product decision (owner, 2026-10-27); implementasi belum dimulai. Revisi 3 setelah putaran review independen kedua 2026-10-27.
+**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1–F4 selesai; F5 menunggu SQ Hub dan Keycloak. Revisi 8.
 **Related:** ADR-0006 (keputusan), AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`.
 **Supersedes:** aturan "hanya Super Admin yang memberi peran" di AUTH-011 (keputusan owner 2026-10-16), sejauh menyangkut *siapa* yang boleh memberi. Larangan self-grant, allowlist role/permission, kewajiban mandat, dan atomisitas audit **tidak** diubah.
 
@@ -97,6 +97,7 @@ Berurutan; kegagalan di mana pun berarti tidak ada assignment dan tidak ada audi
 4. **Resolusi aktor.** `iss` + `sub` dari assertion dicocokkan ke `accounts.identity_issuer` + `accounts.identity_subject`. Tepat satu baris (dijamin unique partial index `accounts_identity_issuer_subject_unique`, migration 0020), akun `active`, dan bila `principal_type = 'EMPLOYEE'` maka employee-nya juga `active`. Gagal: `403 ROLE_ADMIN_ACTOR_UNRESOLVED`. **Tidak ada pencocokan lewat email atau nama.**
 5. **`requestId` belum pernah dipakai** — jika sudah, `409 ROLE_ADMIN_REQUEST_REPLAYED`.
 6. **Larangan self-grant.** `resolvedActor.id === accountId` ditolak `403 ROLE_DELEGATION_FORBIDDEN`, pada pemberian maupun pencabutan, dievaluasi terhadap manusia hasil langkah 4.
+4b. **Akses aplikasi HCIS di SQ Hub diperiksa ulang** untuk aktor itu, dengan client dan aturan yang sama seperti login OIDC (pola yang sudah dipakai route ringkasan governance). Ditolak berarti `403 HCIS_ACCESS_DENIED`; SQ Hub yang tidak dapat menjawab berarti `503 APPLICATION_ACCESS_UNAVAILABLE`, bukan diteruskan. Tanpa langkah ini, pegawai yang aksesnya sudah dicabut di Hub tetap menjadi pemberi peran yang sah selama baris akun HCIS-nya masih aktif.
 7. **Invarian domain yang sudah ada:** target wajib `principal_type = 'EMPLOYEE'`; role wajib ada di `HCIS_ROLES`; seluruh permission role wajib ada di `HCIS_PERMISSIONS`; `assertAssignmentScope` dan `assertAssignmentDates`; mandat dan scope organisasi wajib untuk `human_capital_admin`, `human_capital_lead`, `foundation_board_viewer`, dan `hcis_module_admin`; pencabutan token aktivasi untuk role di luar bundle operasional HC.
 8. **Larangan permission identitas.** Lihat §2.6.
 
@@ -136,6 +137,18 @@ Role yang membawa salah satunya ditolak `403 ROLE_IDENTITY_PERMISSION_FORBIDDEN`
 ### 2.8 Satu urutan yang berbeda dari AUTH-011, disengaja
 
 AUTH-011 menegaskan pemeriksaan grantor berjalan **sebelum** validasi input. Kanal ini tidak bisa begitu untuk `requestId` dan body, karena body harus diurai dulu. Yang tetap dipertahankan: identitas aktor diverifikasi dari header (langkah 2–4) **sebelum** body dibaca, dan tidak ada apa pun yang ditulis sebelum seluruh langkah §2.4 lulus. Perbedaannya hanya pada urutan pesan galat, bukan pada apa yang tersimpan.
+
+### 2.11 Dua celah yang belum tertutup, dan gate-nya di F5
+
+Ditemukan review independen putaran ketiga (2026-10-30). Keduanya tidak memblokir F4 karena kanal masih mati, tetapi keduanya **syarat sebelum saklar dinyalakan**.
+
+**Assertion aktor adalah bearer yang tidak terikat permintaan.** Ia tidak terikat pada `requestId`, `accountId`, maupun method. Siapa pun yang menangkap satu header `X-SQ-Actor-Assertion` bersama token mesin — dari log proxy, jejak APM, atau log di sisi Hub — dapat menerbitkan pemberian peran **baru** atas nama orang itu selama assertion belum lewat umur maksimumnya. Unique index hanya menolak `requestId` yang sama persis, dan `requestId` dipilih pemanggil, jadi UUID baru berarti pemberian baru.
+
+Yang sudah dilakukan: umur maksimum diturunkan menjadi 60 detik (batas atas 300), dan audience assertion wajib berbeda dari audience token mesin. Yang **harus** ada sebelum F5: penolakan `jti` yang sudah pernah dipakai, atau pengikatan assertion ke permintaannya.
+
+Satu kenyataan yang tidak boleh ditutupi: karena client SQ Hub memegang hak token exchange, SQ Hub yang dikuasai penyerang tetap dapat menerbitkan assertion atas nama subject mana pun di realm. §2.2 mempersempit ancamannya — body tidak lagi bisa menyebut aktor — bukan menutupnya.
+
+**Rute kanal berada di allowlist rute publik.** Ketiga rute `/internal/v1/role-administration/*` terdaftar di `EXPECTED_PUBLIC_URLS`, sehingga penjaga sesi milik repo tidak lagi mengawasinya sama sekali; perlindungannya sepenuhnya `authenticate()` di modul itu. Benar hari ini, tetapi entri allowlist akan hidup lebih lama daripada ingatan siapa pun: handler baru yang kelak ditambahkan di prefix itu tidak akan ditandai apa pun. Sebelum F5, tambahkan test yang menuntut setiap rute di prefix itu melewati `authenticate()`.
 
 ### 2.9 Kanal administrasi akun, bukan hanya peran
 
@@ -199,16 +212,22 @@ Aturannya:
 4. Akun dikembalikan ke `inactive` segera setelah selesai.
 5. Kredensial break-glass dirotasi setelah setiap pemakaian.
 
-Langkah 2 dan 5 **belum punya alat**. `bootstrap-super-admin.ts` menolak bekerja bila SUPER_ADMIN sudah ada, `assertAccountManagementTarget` melarang SUPER_ADMIN menjadi target pengelolaan akun lewat API, dan tidak ada perintah pengubah status maupun pemutar kredensial. Tanpa keduanya, satu-satunya jalan adalah SQL manual di Mi8VPS, dan F1 tidak dapat dijalankan sebagaimana tertulis.
+Langkah 2 dan 5 tadinya **tidak punya alat sama sekali**: `bootstrap-super-admin.ts` menolak bekerja bila SUPER_ADMIN sudah ada, `assertAccountManagementTarget` melarang SUPER_ADMIN menjadi target pengelolaan akun lewat API, dan tidak ada perintah pengubah status maupun pemutar kredensial. Satu-satunya jalan adalah SQL manual di Mi8VPS — dan itulah yang membuat akun ini pernah tidak terpakai sama sekali.
 
-Dua perintah CLI baru karena itu menjadi **prasyarat F1**, bukan pekerjaan belakangan:
+**Selesai di F1 (2026-10-30):** satu perintah `auth:break-glass` dengan dua mode, keduanya pratinjau-dulu dan hanya bekerja pada `principal_type = 'SUPER_ADMIN'`:
 
-- `break-glass:set-status <active|inactive>` — satu-satunya pengubah status akun SUPER_ADMIN, menulis audit `actor_source = "hcis_break_glass"`;
-- `break-glass:rotate-credential` — memutar kredensial dan menulis audit yang sama.
+- `--set-status <active|inactive>` — satu-satunya pengubah status akun break-glass; mencabut sesi hidup saat menonaktifkan;
+- `--rotate-credential` — memutar kata sandi, TOTP, dan recovery code **bersama-sama**, lalu mencabut sesi hidup.
 
-Keduanya tetap di belakang variabel lingkungan sekali-pakai seperti `HCIS_ALLOW_SUPER_ADMIN_BOOTSTRAP` yang sudah ada.
+Keduanya menuntut `HCIS_ALLOW_BREAK_GLASS=1`, menolak menebak bila ada lebih dari satu akun `SUPER_ADMIN`, mewajibkan `--reason`, dan menulis audit (`auth.break_glass.status_changed`, `auth.break_glass.credential_rotated`). Prosedurnya di `docs/operations/auth-014-break-glass.md`.
 
-Akun break-glass wajib sudah tertaut ke Akun SQ dan **sudah pernah diuji login** sebelum F4. Ini pelajaran langsung dari kejadian yang memicu AUTH-014: lapis cadangan yang belum pernah diuji bukan lapis cadangan.
+Auditnya ditulis ke `auth_audit_events`, bukan `access_audit_events`, karena kolom `actor_source` baru lahir di F2 dan F1 tidak boleh bergantung pada fase sesudahnya. Pemberian peran lewat break-glass tetap mendapat `actor_source = "hcis_break_glass"` begitu F2 dan F3 terpasang.
+
+#### Koreksi urutan: akun break-glass tetap aktif sampai F5a
+
+Rancangan menulis F1 diakhiri dengan mengembalikan akun ke `inactive`. Kenyataannya akun itu **sedang dipakai setiap hari** untuk memberi peran, karena SQ Hub belum bisa. Menonaktifkannya sekarang berarti tidak ada seorang pun yang dapat memberi peran di HCIS — persis kegagalan yang seluruh rencana ini susun untuk dihindari.
+
+Jadi: akun break-glass **tetap aktif** sampai F5a lulus. `inactive` sebagai keadaan normal tetap F7, seperti tertulis di §6. Yang F1 wajibkan adalah akun itu **tertaut ke Akun SQ dan terbukti bisa login** — dan itu sudah terpenuhi lewat pemulihan manual 2026-10-30 (user Keycloak `sysadmin`, ditautkan dengan `auth:map-oidc-identity`).
 
 Satu hal yang sudah benar dan tidak perlu diubah: `getSession` menyaring `accounts.status = 'active'`, jadi mengembalikan akun ke `inactive` benar-benar memutus sesi yang sedang berjalan, bukan hanya login berikutnya.
 
@@ -310,10 +329,10 @@ Prinsipnya: **aditif lebih dulu, pencabutan paling akhir; setiap fase punya jala
 | Fase | Isi | Risiko akses | Jalan mundur |
 |---|---|---|---|
 | **F0** | ADR-0006 + AUTH-014 (dokumentasi; PR ini) | nihil | revert commit |
-| **F1** | CLI break-glass (§5 baris 9). Akun break-glass ditautkan ke Akun SQ dan **diuji login**, lalu dikembalikan ke `inactive`. Prosedur masuk runbook Mi8VPS | nihil (menambah jalan masuk) | CLI tidak dipakai; akun tetap seperti sekarang |
-| **F2** | Migration aditif: role `hcis_module_admin`, dua kolom audit, unique index. Belum ada pemegang role | nihil | `DROP COLUMN`; `DROP ROLE` **hanya setelah** memverifikasi `account_role_assignments` tidak punya baris untuk role itu (FK), jika ada maka role dibiarkan tanpa pemegang |
-| **F3** | Kode: `assertRoleGrantor(actor, channel)`; break-glass lepas dari shim (§3.1); `IDENTITY_PERMISSIONS` ditolak di `canDelegateRole` untuk **kedua** jalur; jalur `sq_hub` ada tetapi route belum terdaftar | rendah — perilaku break-glass setara, sumber kewenangannya berubah | revert kode; database tidak berubah |
-| **F4** | Prasyarat: token exchange tersedia di realm (§2.2) dan F1 lulus. Route internal didaftarkan dengan `HCIS_ROLE_ADMIN_ENABLED` **mati** | nihil (`503`) | saklar tetap mati |
+| **F1** ✅ 2026-10-30 | CLI break-glass (§5 baris 9) dan runbook-nya. Akun break-glass tertaut ke Akun SQ dan **terbukti bisa login**. Akun **tetap aktif** sampai F5a (§3.2) | nihil (menambah alat, tidak mengubah perilaku) | CLI tidak dipakai; akun tetap seperti sekarang |
+| **F2** ✅ 2026-10-30 | Migration aditif `0111`: role `hcis_module_admin` dengan 12 permission konfigurasi, kolom `actor_source` dan `hub_request_id`, unique index anti-replay. Belum ada pemegang role; `human_capital_admin` belum kehilangan apa pun | nihil | `DROP COLUMN`; `DROP ROLE` **hanya setelah** memverifikasi `account_role_assignments` tidak punya baris untuk role itu (FK), jika ada maka role dibiarkan tanpa pemegang |
+| **F3** ✅ 2026-10-30 | Kode: `assertRoleGrantor(actor, channel)`; kewenangan break-glass lepas dari shim; `IDENTITY_PERMISSIONS` ditolak di `canDelegateRole` dan dikeluarkan dari `HCIS_PERMISSIONS`, berlaku **kedua** jalur; `hcis_module_admin` masuk `HCIS_ROLES` dengan mandat wajib; audit menulis `actor_source` dan `hub_request_id`; jalur `sq_hub` ada tetapi route belum terdaftar | rendah — perilaku break-glass setara, sumber kewenangannya berubah | revert kode; database tidak berubah |
+| **F4** ✅ 2026-10-30 | Route internal §2.1 terdaftar dengan `HCIS_ROLE_ADMIN_ENABLED` **mati** (503 pada ketiganya). Verifikasi token mesin + assertion aktor, resolusi aktor gagal-tertutup, **pemeriksaan ulang SQ Hub Application Access** (§2.4 langkah 4b, tidak terjawab berarti ditolak), penolakan replay, `Cache-Control: no-store`. Konfigurasi menolak client pemegang `manage-users`, audience aktor yang sama dengan audience mesin, dan kanal hidup tanpa `AUTH_MODE=oidc` | nihil (`503`) | saklar tetap mati |
 | **F5** | Saklar dihidupkan. SQ Hub memberi satu peran uji ke satu akun uji, lalu mencabutnya. Diverifikasi: assignment benar; audit `actor_source = "sq_hub"` ada; self-grant ditolak; assertion palsu/kedaluwarsa ditolak; replay `requestId` ditolak; permission identitas ditolak | rendah; jalur lama utuh | matikan saklar; jalur break-glass tidak tersentuh |
 | **F5a** | SQ Hub bisa memberi/mencabut peran HCIS **dan** mengelola akun (buat, nonaktifkan, reset kata sandi); diverifikasi owner dari ujung ke ujung | nihil (menambah kemampuan) | matikan saklar kanal |
 | **F5b** | Baru setelah F5a tercatat lulus: hapus form pemberian peran dan pengelolaan akun dari HCIS beserta penunjuknya; menu menjadi "Peran & Akses" baca saja (§8) | rendah — API break-glass tetap hidup, hanya pintunya di UI yang hilang | revert perubahan frontend; tidak ada perubahan database |

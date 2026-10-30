@@ -782,7 +782,7 @@ export async function registerOrgAccessAdminRoutes(
       : await authenticateAdmin(request, reply, "access.roles.assign");
     if (!principal) return null;
     try {
-      assertRoleGrantor(principal);
+      assertRoleGrantor(principal, "break_glass");
       return principal;
     } catch (error) {
       if (!(error instanceof AuthError)) throw error;

@@ -113,6 +113,39 @@ export type EmploymentPermission = (typeof EMPLOYMENT_PERMISSIONS)[number];
 export const BOARD_READ_PERMISSION = "board.read";
 export const BOARD_VIEWER_ROLE_KEY = "foundation_board_viewer";
 
+/**
+ * AUTH-014 §4 (migration 0111): the Module Administrator. Module configuration only — shifts and
+ * schedules, attendance policy, non-destructive device work, leave types, payroll policy and
+ * periods. It never grants a role and never touches an account, which is the whole line between
+ * this layer and the Platform Administrator in SQ Hub.
+ */
+export const MODULE_ADMIN_ROLE_KEY = "hcis_module_admin";
+export const MODULE_ADMIN_PERMISSIONS = [
+  "attendance.schedule.manage", "attendance.policy.manage", "attendance.shift_swap.manage",
+  "attendance.calculation.run",
+  "attendance.devices.read", "attendance.devices.configure", "attendance.devices.operate",
+  "attendance.devices.export", "attendance.devices.technical",
+  "leave.configuration.manage",
+  "payroll.policies.manage", "payroll.periods.manage",
+] as const;
+
+/**
+ * AUTH-014 §2.6 / ADR-0006 D-5: the permissions that decide who may grant roles and manage
+ * governance accounts. No HCIS role may carry any of them, on any channel.
+ *
+ * Without this, the self-grant prohibition is decorative: a Platform Administrator cannot grant to
+ * themselves, but could grant `access.roles.assign` to a second account they control, sign in as
+ * it, and grant themselves anything. The ban lives here and in `canDelegateRole` rather than on the
+ * channel route, so it binds break-glass too — a route-level ban would leave break-glass able to
+ * mint and grant such a role, reopening the loop permanently.
+ *
+ * They stay in `ADMIN_PERMISSIONS` because legacy Super Admin compatibility still reads that list.
+ * What changes is that no *role* may carry them.
+ */
+export const IDENTITY_PERMISSIONS = [
+  "access.roles.assign", "access.roles.delegate", "access.governance.manage",
+] as const;
+
 // Only capabilities of the existing administrative APIs are eligible for legacy access.
 // access.roles.assign stays here: legacy Super Admin compatibility is the only remaining role grantor.
 export const ADMIN_PERMISSIONS = [

@@ -90,6 +90,18 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     expect(await outsideHcisEmployeeNumbers(client, [employeeNumber])).toEqual(new Set([employeeNumber]));
   });
 
+  it("carries the tightened marked-row rule from migration 0108", async () => {
+    // Pinned on the definition itself: a rule tightened in a later migration
+    // only reaches a database that actually ran it, and the shape of the
+    // rule is what the cases below depend on.
+    const definition = (await client.query<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conname = 'employees_management_scope_marked_check'`,
+    )).rows[0]?.def ?? "";
+    expect(definition).toContain("management_scope_note");
+    expect(definition).toContain("management_scope_marked_by_account_id");
+  });
+
   it("refuses a mark with no reason, an unknown reason, no marked-at, and no note", async () => {
     await expectViolation(() => mark(null), "23514");
     await expectViolation(() => mark("LAINNYA"), "23514");

@@ -1,9 +1,10 @@
 # Job Classification and Grade
 
-**Status:** DRAFT / DISCOVERY  
+**Status:** ACCEPTED (Package 1 terimplementasi); keputusan terbuka §8 tetap DRAFT  
 **Specification:** ORG-011  
+**Package 1:** migration 0110, `apps/api/src/modules/organization/job-classification-*.ts`, 2026-10-30  
 **Proposed:** 2026-10-27  
-**ADR:** ADR-0004 (PROPOSED)  
+**ADR:** ADR-0004 (ACCEPTED 2026-10-30)  
 **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011  
 **Evidence:** `apps/api/migrations/0019_dynamic_organization.sql`, `apps/api/migrations/0056_employment_history_foundation.sql`, `docs/domain/payroll-calculation-v1.md`, `docs/product/roadmap.md` bagian C
 **Kontrak payroll:** dikonfirmasi sesi PAY-003 pada 2026-10-27 (bentuk kebijakan `byPosition`, resolver dua slot, aturan rangkap 70%, kode blocker, nasib `*_position_ref`)
@@ -25,6 +26,19 @@ Jadi PAY-003 §3.3 sudah dipenuhi sebagian: payroll memang tidak mencocokkan tek
 Artinya kebijakan tunjangan hari ini terikat pada **kursi di satu revisi struktur**. Reorganisasi yang mengganti stable key kursi akan memutus kebijakan gaji, padahal pekerjaan yang dibayar tidak berubah. ORG-011 memberi lapisan yang stabil melintasi revisi struktur: kelas pekerjaan.
 
 Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` dan `POSITIONAL_ALLOWANCE` sudah memakai `byPosition: Record<string, rupiah>` dengan kunci string bebas, sehingga kunci itu dapat diisi `classificationCode` tanpa mengubah bentuk kebijakan.
+
+## 1.1 Status implementasi
+
+| Bagian spesifikasi | Status |
+|---|---|
+| Katalog `job_grades` dan `job_classifications`, effective-dated (§3.1, §3.2) | **Package 1**, migration 0110 |
+| Permission `job_classifications.read` / `.manage` dan audit event (§5) | **Package 1** |
+| Pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | Package 2, belum dibuat |
+| `resolveJobClassifications` dan konsumsi payroll (§4) | Package 2, belum dibuat |
+| Layar pengelolaan katalog | Package 3, belum dibuat |
+| Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
+
+Sampai Package 2 mendarat, katalog berdiri sendiri: tidak ada satu pun perhitungan payroll atau penempatan yang membacanya, sehingga mengisinya tidak mengubah nominal siapa pun.
 
 ## 2. Keputusan desain
 

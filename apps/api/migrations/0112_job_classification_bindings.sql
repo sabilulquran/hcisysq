@@ -26,35 +26,41 @@ ALTER TABLE organization_positions
 ALTER TABLE employment_placements
   ADD COLUMN IF NOT EXISTS job_classification_code text NULL;
 
--- NOT VALID first: a plain ADD CONSTRAINT CHECK scans the whole table under ACCESS
--- EXCLUSIVE. Both tables already hold production rows, and every existing row has NULL here
--- anyway, so the scan is pure cost. VALIDATE takes a weaker lock.
+-- NOT VALID first, then VALIDATE: a plain ADD CONSTRAINT CHECK scans the whole table under
+-- ACCESS EXCLUSIVE. Both tables already hold production rows, and every existing row has NULL
+-- here anyway, so that scan is pure cost.
+--
+-- The existence check is scoped by conrelid, not by conname alone. Constraint names are unique
+-- per table, not per database, and the recovery rehearsal applies this file to more than one
+-- schema in the same database: a bare `conname = ...` test sees the first schema's constraint,
+-- skips the ADD in the second, and the VALIDATE below then fails on a constraint that is not
+-- there. Scoping by relation keeps each schema independent, and `to_regclass` returns NULL
+-- rather than raising when a table is absent.
 DO $$
+DECLARE
+  target record;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'organization_positions_job_classification_code_check'
-  ) THEN
-    ALTER TABLE organization_positions
-      ADD CONSTRAINT organization_positions_job_classification_code_check
-      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$')
-      NOT VALID;
-  END IF;
+  FOR target IN
+    SELECT unnest(ARRAY['organization_positions', 'employment_placements']) AS table_name
+  LOOP
+    CONTINUE WHEN to_regclass(target.table_name) IS NULL;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'employment_placements_job_classification_code_check'
-  ) THEN
-    ALTER TABLE employment_placements
-      ADD CONSTRAINT employment_placements_job_classification_code_check
-      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$')
-      NOT VALID;
-  END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+       WHERE conrelid = to_regclass(target.table_name)
+         AND conname = target.table_name || '_job_classification_code_check'
+    ) THEN
+      EXECUTE format(
+        'ALTER TABLE %I ADD CONSTRAINT %I CHECK (job_classification_code IS NULL'
+        || ' OR job_classification_code ~ ''^[A-Z][A-Z0-9_]{0,47}$'') NOT VALID',
+        target.table_name, target.table_name || '_job_classification_code_check');
+    END IF;
+
+    EXECUTE format('ALTER TABLE %I VALIDATE CONSTRAINT %I',
+      target.table_name, target.table_name || '_job_classification_code_check');
+  END LOOP;
 END
 $$;
-
-ALTER TABLE organization_positions
-  VALIDATE CONSTRAINT organization_positions_job_classification_code_check;
-ALTER TABLE employment_placements
-  VALIDATE CONSTRAINT employment_placements_job_classification_code_check;
 
 -- No index on job_classification_code. The resolver reaches positions through
 -- (change_set_id, stable_key) and placements through employment_id, both already indexed;

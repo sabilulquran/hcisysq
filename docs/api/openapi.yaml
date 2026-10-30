@@ -2949,6 +2949,7 @@ components:
         singleIncumbent: { type: boolean, default: true }
         vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
         visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        jobClassificationCode: { type: [string, 'null'], pattern: '^[A-Z][A-Z0-9_]{0,47}$', description: 'ORG-011 klasifikasi jabatan kursi. Harus berlaku pada tanggal efektif change set.' }
 
     OrganizationPositionPatch:
       type: object
@@ -2958,6 +2959,7 @@ components:
         title: { type: string, minLength: 1, maxLength: 160 }
         parentPositionKey: { type: [string, 'null'], format: uuid }
         singleIncumbent: { type: boolean }
+        jobClassificationCode: { type: [string, 'null'], pattern: '^[A-Z][A-Z0-9_]{0,47}$', description: 'ORG-011 klasifikasi jabatan kursi. Harus berlaku pada tanggal efektif change set.' }
         vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
         visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
         active: { type: boolean }
@@ -2992,7 +2994,7 @@ components:
 
     OrganizationImpactPreview:
       type: object
-      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact, compensationImpact, routingImpact]
       properties:
         directManagerChanges: { type: array, items: { type: object } }
         unitApproverChanges: { type: array, items: { type: object } }
@@ -3000,7 +3002,9 @@ components:
         vacantAuthorities: { type: array, items: { type: object } }
         unresolvedEmployees: { type: array, items: { type: object } }
         visualOnlyChanges: { type: array, items: { type: object } }
-        noApprovalRoutingImpact: { type: boolean }
+        noApprovalRoutingImpact: { type: boolean, description: 'Benar ketika jalur persetujuan tidak berubah. Tidak terikat ke visualOnlyChanges.' }
+        compensationImpact: { type: boolean, description: 'ORG-011: klasifikasi kursi berubah. Memengaruhi kompensasi, tidak pernah jalur persetujuan.' }
+        routingImpact: { type: boolean }
 
     OrganizationPerson:
       type: object

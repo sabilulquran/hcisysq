@@ -25,6 +25,7 @@ export class OrganizationDraftService {
     this.validateOverlaps(snapshot, issues);
     await this.validateIncumbents(snapshot, issues);
     await this.validateWorkLocations(snapshot, issues);
+    await this.validateJobClassifications(snapshot, issues);
     const report: OrganizationValidationReport = {
       valid: issues.length === 0,
       issues,
@@ -205,6 +206,37 @@ export class OrganizationDraftService {
    * ORG-005-1: a location switched off after a unit named it must not be published as where that
    * unit works. Only looked up when some active unit names a location.
    */
+  /**
+   * ORG-011: a seat may only name a classification in force on the day the change set takes
+   * effect. The write path checks this too, but two things get past it: a change set cloned
+   * from a published base carries its seats to a new effective date, and the catalog can be
+   * closed after the seat was written. Without this check the structure publishes a code that
+   * does not resolve, and the first sign of it is a blocked payroll period weeks later.
+   */
+  private async validateJobClassifications(
+    snapshot: OrganizationSnapshot, issues: OrganizationValidationIssue[],
+  ): Promise<void> {
+    const bound = snapshot.positions.filter((position) => position.active && position.jobClassificationCode);
+    if (bound.length === 0) return;
+    const codes = [...new Set(bound.map((position) => position.jobClassificationCode!))];
+    const effective = await this.repository.db.query<{ code: string }>(
+      `SELECT code FROM job_classifications
+        WHERE code = ANY($1::text[]) AND effective_from <= $2::date
+          AND (effective_to IS NULL OR effective_to >= $2::date)`,
+      [codes, snapshot.changeSet.effectiveOn],
+    );
+    const usable = new Set(effective.rows.map((row) => row.code));
+    for (const position of bound) {
+      if (!usable.has(position.jobClassificationCode!)) {
+        issues.push(issue(
+          "JOB_CLASSIFICATION_NOT_EFFECTIVE",
+          "Position names a job classification that is not in force on the effective date.",
+          "position", position.stableKey,
+        ));
+      }
+    }
+  }
+
   private async validateWorkLocations(snapshot: OrganizationSnapshot, issues: OrganizationValidationIssue[]): Promise<void> {
     const linked = snapshot.nodes.filter((node) => node.active && node.workLocationId);
     if (linked.length === 0) return;
@@ -411,9 +443,18 @@ function findOverlaps<T extends { id: string; effectiveFrom: string; effectiveTo
  * look like it changed approval routing.
  */
 function compensationFingerprint(snapshot: OrganizationSnapshot): string {
+  // The resolver only reads a seat that is active and in force (job-classification-resolver.ts),
+  // so switching a seat off or moving its period detaches the binding just as surely as
+  // clearing the code. All four belong in the fingerprint.
   return JSON.stringify(
     snapshot.positions
-      .map((item) => [item.stableKey, item.jobClassificationCode ?? null] as const)
+      .map((item) => [
+        item.stableKey,
+        item.jobClassificationCode ?? null,
+        item.active,
+        item.effectiveFrom,
+        item.effectiveTo,
+      ] as const)
       .sort((left, right) => left[0].localeCompare(right[0])),
   );
 }

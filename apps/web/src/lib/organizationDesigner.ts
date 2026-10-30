@@ -161,6 +161,9 @@ export interface OrganizationImpactPreview {
   unresolvedEmployees: Array<Record<string, unknown>>;
   visualOnlyChanges: Array<Record<string, unknown>>;
   noApprovalRoutingImpact: boolean;
+  /** ORG-011: a seat classification moved. Affects pay, never approval routing. */
+  compensationImpact?: boolean;
+  routingImpact?: boolean;
 }
 
 export interface OrganizationResolutionPreview {

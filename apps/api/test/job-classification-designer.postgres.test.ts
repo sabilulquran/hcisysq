@@ -294,4 +294,54 @@ describe.skipIf(!allowed)("ORG-011 designer classification binding", () => {
     expect(both.json().compensationImpact).toBe(true);
     expect(both.json().visualOnlyChanges).toHaveLength(0);
   });
+  it("ORG-011-D8: a patch that says nothing about the classification keeps it", async () => {
+    // The guard is `"jobClassificationCode" in body.data`, which holds only because zod's
+    // .partial() leaves a defaulted key absent. If that ever changes, every title edit would
+    // silently clear the seat's classification, so lock it here.
+    const created = await createPosition({ jobClassificationCode: code });
+    const positionId = created.json().id as string;
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/admin/organization/designer/drafts/${draftId}/positions/${positionId}`,
+      payload: { title: "Judul baru" },
+      headers: cookie,
+    });
+    expect(patched.statusCode, patched.body).toBe(200);
+    expect(patched.json().jobClassificationCode).toBe(code);
+
+    const stored = await client.query<{ code: string | null; title: string }>(
+      `SELECT job_classification_code AS code, title FROM organization_positions WHERE id = $1`,
+      [positionId],
+    );
+    expect(stored.rows[0]).toEqual({ code, title: "Judul baru" });
+  });
+
+  it("ORG-011-D9: a malformed classification code is a validation error, not a catalog lookup", async () => {
+    const created = await createPosition({ jobClassificationCode: "func guru" });
+    expect(created.statusCode, created.body).toBe(400);
+    expect(created.json().code).toBe("INVALID_ORGANIZATION_POSITION");
+  });
+
+  it("ORG-011-D10: validation refuses to pass a seat whose classification has lapsed", async () => {
+    // A change set cloned from a published base carries its seats to a new effective date,
+    // and the catalog can close after the seat was written. Neither goes through the write
+    // path again, so validation is the last place to catch it before publish.
+    const created = await createPosition({ jobClassificationCode: code });
+    expect(created.statusCode, created.body).toBe(201);
+
+    const before = await post(`/admin/organization/designer/drafts/${draftId}/validate`, {});
+    expect(before.statusCode, before.body).toBe(200);
+    expect(before.json().issues.some((row: { code: string }) => row.code === "JOB_CLASSIFICATION_NOT_EFFECTIVE"))
+      .toBe(false);
+
+    await client.query(
+      `UPDATE job_classifications SET effective_to = '2026-02-28'::date, active = false WHERE code = $1`,
+      [code],
+    );
+    const after = await post(`/admin/organization/designer/drafts/${draftId}/validate`, {});
+    expect(after.statusCode, after.body).toBe(200);
+    expect(after.json().valid).toBe(false);
+    expect(after.json().issues.some((row: { code: string }) => row.code === "JOB_CLASSIFICATION_NOT_EFFECTIVE"))
+      .toBe(true);
+  });
 });

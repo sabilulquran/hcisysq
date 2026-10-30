@@ -40,6 +40,7 @@ import {
   type OrganizationPersonRow,
 } from "./read-model.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
+import { classificationOn } from "./job-classification-service.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, isEffective as isEffectiveOn, jakartaBusinessDate } from "./jakarta-date.js";
 
@@ -1180,14 +1181,10 @@ export async function registerOrganizationAdminRoutes(
     onDate: string,
   ): Promise<boolean> {
     if (code === null || code === undefined) return true;
-    const found = await transaction.repository.db.query(
-      `SELECT 1 FROM job_classifications
-        WHERE code = $1 AND effective_from <= $2::date
-          AND (effective_to IS NULL OR effective_to >= $2::date)
-        LIMIT 1`,
-      [code, onDate],
-    );
-    return (found.rowCount ?? 0) > 0;
+    // Same lookup the catalog itself uses, so the two cannot drift apart.
+    return (await classificationOn(
+      transaction.repository.db as unknown as Pool, code, onDate,
+    )) !== null;
   }
 
   app.post("/admin/organization/designer/drafts/:draftId/positions", async (request, reply) => {
@@ -1748,7 +1745,10 @@ export async function registerOrganizationAdminRoutes(
       // approval routing, but it must not be folded into "Hanya tampilan" either, so an
       // operator can see that something with a pay consequence moved.
       compensationImpact: impact.compensationImpact,
-      noApprovalRoutingImpact: pureVisual });
+      routingImpact: impact.routingImpact,
+      // Says exactly what it claims. Tying it to visualOnly made a classification-only
+      // revision report that approval routing needed review, which is simply untrue.
+      noApprovalRoutingImpact: !impact.routingImpact });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/resolution-preview", async (request, reply) => {

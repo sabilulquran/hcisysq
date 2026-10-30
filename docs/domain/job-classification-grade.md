@@ -3,6 +3,7 @@
 **Status:** ACCEPTED (Package 1 terimplementasi); keputusan terbuka §8 tetap DRAFT  
 **Specification:** ORG-011  
 **Package 1:** migration 0110, `apps/api/src/modules/organization/job-classification-*.ts`, 2026-10-30  
+**Rilis:** `hcis-cdf13906-20261030`, 31 Okt 2026; migration 0110, 0112, 0113 terpasang di production  
 **Proposed:** 2026-10-27  
 **ADR:** ADR-0004 (ACCEPTED 2026-10-30)  
 **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011  
@@ -154,7 +155,9 @@ Aturan konsumsi:
 | Menetapkan klasifikasi pada position | permission change set ORG-004 yang sudah ada | organization |
 | Menetapkan klasifikasi pada placement | permission employment action EMP-006 yang sudah ada | organization |
 
-Kedua permission katalog dipegang Staf Human Capital (`human_capital_admin`, migration 0110) dan Kepala HC (`human_capital_lead`, migration 0113, keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
+Kedua permission katalog dipegang **Human Capital Administrator** (`human_capital_admin`, migration 0110) dan **Kepala Human Capital** (`human_capital_lead`, migration 0113, keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
+
+Peran **Staf Human Capital** (`human_capital`) sengaja **tidak** memegangnya. Peran itu boleh diberikan dengan scope unit (`ROLE_SCOPES` di `role-assignment.ts`), sedangkan katalog berlaku untuk seluruh organisasi dan menjadi acuan tunjangan; petugas HC satu unit tidak seharusnya mengubah kelas pekerjaan yang dipakai unit lain. Ini berbeda dari laporan awal sesi pelaksana, yang keliru menyebut `human_capital_admin` sebagai "Staf Human Capital" — nama itu milik `human_capital` sejak migration 0109.
 
 Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog menghasilkan audit event (`job_classification.created`, `.updated`, `.deactivated`).
 
@@ -182,7 +185,7 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 |---|---|---|
 | Apakah YSQ memakai golongan numerik | tidak; `job_grades` tersedia tetapi kosong | ya |
 | Apakah satu pegawai boleh punya dua klasifikasi `FUNCTIONAL` bersamaan | tidak; satu per placement, rangkap lewat placement `ADDITIONAL` | ya |
-| Siapa yang mengelola katalog | **ditutup 2026-10-30** oleh owner: Staf Human Capital (`human_capital_admin`, migration 0110) dan Kepala HC (`human_capital_lead`, migration 0113) | tidak |
+| Siapa yang mengelola katalog | **ditutup 2026-10-30** oleh owner: Human Capital Administrator (`human_capital_admin`, migration 0110) dan Kepala Human Capital (`human_capital_lead`, migration 0113). Staf Human Capital (`human_capital`) tidak, karena boleh ber-scope unit | tidak |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
 | Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |

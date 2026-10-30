@@ -57,13 +57,21 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
     return positionKey;
   }
 
-  /** BASELINE is the only action type the schema lets stand without an effective date. */
+  /**
+   * BASELINE is the only action type the schema lets stand without an effective date, and
+   * TERMINATION, DEMOTION and REVERSAL additionally require a reason code.
+   */
   async function addAction(type: string): Promise<string> {
     const actionId = randomUUID();
+    const baseline = type === "BASELINE";
     await client.query(
-      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on, recorded_at)
-       VALUES ($1, $2, $3, $4, $5::date, now())`,
-      [actionId, employeeId, employmentId, type, type === "BASELINE" ? null : "2026-02-01"],
+      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on,
+         reason_code, recorded_at)
+       VALUES ($1, $2, $3, $4, $5::date, $6, now())`,
+      [
+        actionId, employeeId, employmentId, type,
+        baseline ? null : "2026-02-01", baseline ? null : "KOREKSI_SINTETIS",
+      ],
     );
     return actionId;
   }

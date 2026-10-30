@@ -33,12 +33,14 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 |---|---|
 | Katalog `job_grades` dan `job_classifications`, effective-dated (§3.1, §3.2) | **Package 1**, migration 0110 |
 | Permission `job_classifications.read` / `.manage` dan audit event (§5) | **Package 1** |
-| Pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | Package 2, belum dibuat |
-| `resolveJobClassifications` dan konsumsi payroll (§4) | Package 2, belum dibuat |
+| Kolom pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | **Package 2**, migration 0112; dibawa pada setiap penulisan change set sehingga terbit ulang tidak menghapusnya |
+| `resolveJobClassifications` (§4) | **Package 2** |
+| Jalur tulis pengikatan: field di designer ORG-008 dan di employment action EMP-006 | Package 3, belum dibuat |
+| Konsumsi payroll atas resolver (§4) | milik sesi PAY-003, setelah parallel run |
 | Layar pengelolaan katalog | Package 3, belum dibuat |
 | Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
 
-Sampai Package 2 mendarat, katalog berdiri sendiri: tidak ada satu pun perhitungan payroll atau penempatan yang membacanya, sehingga mengisinya tidak mengubah nominal siapa pun.
+Setelah Package 2, kolom pengikatan dan resolver sudah ada, tetapi **belum ada jalur tulis**: designer ORG-008 dan employment action EMP-006 belum punya field untuk mengisinya, sehingga seluruh kolom masih kosong. Payroll juga belum memanggil resolver. Artinya sampai Package 3, ORG-011 belum mengubah nominal siapa pun, dan resolver tersedia bagi sesi PAY-003 untuk diintegrasikan serta diuji lebih dulu.
 
 ## 2. Keputusan desain
 

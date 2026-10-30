@@ -69,6 +69,9 @@ export interface OrganizationPosition extends EffectivePeriod {
   visualRankOffset: number;
   /** Defaults to EMPLOYEE for snapshots created before migration 0020. */
   holderSource?: "EMPLOYEE" | "ACCOUNT";
+  /** ORG-011: the seat default classification. Null until Human Capital assigns one; it
+   * carries no authority and no money, and a placement of its own overrides it. */
+  jobClassificationCode?: string | null;
 }
 
 export interface OrganizationMembership extends EffectivePeriod {

@@ -415,7 +415,7 @@ export function AdminJobClassificationsPage() {
           </form>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Anda dapat membaca katalog ini. Perubahan dilakukan Staf Human Capital atau Kepala HC.
+            Anda dapat membaca katalog ini. Perubahan dilakukan Human Capital Administrator atau Kepala Human Capital.
           </p>
         )}
       </div>

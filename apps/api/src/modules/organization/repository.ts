@@ -515,11 +515,14 @@ export class PostgresOrganizationRepository {
         `INSERT INTO organization_positions
           (id, change_set_id, stable_key, node_key, title, parent_position_key,
            single_incumbent, vacancy_policy, active, effective_from, effective_to, visual_rank_offset,
-           holder_source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+           holder_source, job_classification_code)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.nodeKey, item.title,
           item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy, item.active,
-          item.effectiveFrom, item.effectiveTo, item.visualRankOffset, item.holderSource ?? "EMPLOYEE"],
+          item.effectiveFrom, item.effectiveTo, item.visualRankOffset, item.holderSource ?? "EMPLOYEE",
+          // ORG-011: carried on every write, so republishing a change set never silently
+          // drops the seat classifications an earlier revision already carried.
+          item.jobClassificationCode ?? null],
       );
     }
     for (const item of snapshot.memberships) {
@@ -694,7 +697,8 @@ export class PostgresOrganizationRepository {
             parent_position_key AS "parentPositionKey", single_incumbent AS "singleIncumbent",
             vacancy_policy AS "vacancyPolicy", active, effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
-            holder_source AS "holderSource"
+            holder_source AS "holderSource",
+            job_classification_code AS "jobClassificationCode"
            FROM organization_positions WHERE change_set_id = $1`, [id]),
         this.db.query<MembershipRow>(
           `SELECT id, employee_id AS "employeeId", node_key AS "nodeKey",

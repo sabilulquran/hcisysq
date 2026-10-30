@@ -102,13 +102,21 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     expect(definition).toContain("management_scope_marked_by_account_id");
   });
 
-  it("refuses a mark with no reason, an unknown reason, no marked-at, and no note", async () => {
+  // One rule per case, so a failure names the rule rather than the group.
+  it("refuses a mark with no reason", async () => {
     await expectViolation(() => mark(null), "23514");
+  });
+
+  it("refuses a mark with a reason we do not know", async () => {
     await expectViolation(() => mark("LAINNYA"), "23514");
+  });
+
+  it("refuses a mark that does not say when it was made", async () => {
     await expectViolation(() => mark("BUMY", null), "23514");
-    // Without a note nobody can say later why this record left HCIS. Written
-    // out in full rather than through the helper: the rule is about one
-    // column being NULL, so the statement says NULL literally.
+  });
+
+  it("refuses a mark with no note", async () => {
+    // Without a note nobody can say later why this record left HCIS.
     await expectViolation(
       () => client.query(
         `UPDATE employees

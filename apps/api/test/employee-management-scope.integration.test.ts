@@ -106,8 +106,22 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     await expectViolation(() => mark(null), "23514");
     await expectViolation(() => mark("LAINNYA"), "23514");
     await expectViolation(() => mark("BUMY", null), "23514");
-    // Without a note nobody can say later why this record left HCIS.
-    await expectViolation(() => mark("BUMY", "now()", null), "23514");
+    // Without a note nobody can say later why this record left HCIS. Written
+    // out in full rather than through the helper: the rule is about one
+    // column being NULL, so the statement says NULL literally.
+    await expectViolation(
+      () => client.query(
+        `UPDATE employees
+         SET management_scope = 'OUTSIDE_HCIS',
+             management_scope_reason = 'BUMY',
+             management_scope_note = NULL,
+             management_scope_marked_at = now(),
+             management_scope_marked_by_account_id = $2
+         WHERE id = $1`,
+        [employeeId, accountId],
+      ),
+      "23514",
+    );
   });
 
   it("refuses a managed row that still carries a marker", async () => {

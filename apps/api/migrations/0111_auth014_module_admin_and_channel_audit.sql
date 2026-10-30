@@ -50,10 +50,16 @@ ALTER TABLE access_audit_events
   ADD COLUMN IF NOT EXISTS actor_source text NULL,
   ADD COLUMN IF NOT EXISTS hub_request_id uuid NULL;
 
+-- The existence check names the TABLE as well as the constraint. Matching on conname alone looks
+-- across every schema, so re-running the migrations into a fresh schema (which the migration test
+-- does, and which recovery rehearsals do) would find the name in public and silently skip — leaving
+-- a table with no CHECK at all. conrelid resolves through search_path to the table being altered.
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'access_audit_events_actor_source_check'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'access_audit_events_actor_source_check'
+       AND conrelid = 'access_audit_events'::regclass
   ) THEN
     ALTER TABLE access_audit_events
       ADD CONSTRAINT access_audit_events_actor_source_check

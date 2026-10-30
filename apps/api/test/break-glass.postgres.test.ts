@@ -116,20 +116,14 @@ describe.skipIf(!allowed)("AUTH-014 break-glass account operations (PostgreSQL)"
   });
 
   it("refuses an account that is not SUPER_ADMIN", async () => {
-    // Built here rather than borrowed from the database: an empty fixture would otherwise turn
+    // A real account of another kind, built here rather than borrowed: an empty fixture would turn
     // this into "an unknown id is not found", which proves nothing about principal filtering.
-    const employee = await client.query<{ id: string }>(
-      `SELECT id FROM employees WHERE status = 'active' AND removed_at IS NULL LIMIT 1`,
-    );
-    const employeeId = employee.rows[0]?.id;
-    if (!employeeId) {
-      throw new Error("fixture database has no active employee to attach a non-privileged account to");
-    }
+    // FOUNDATION_BOARD needs no employee row, so it cannot collide with accounts_employee_unique.
     const targetId = randomUUID();
     await client.query(
-      `INSERT INTO accounts (id, employee_id, email, principal_type, status)
-       VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
-      [targetId, employeeId, `not-break-glass-${targetId}@example.test`],
+      `INSERT INTO accounts (id, email, principal_type, status)
+       VALUES ($1, $2, 'FOUNDATION_BOARD', 'active')`,
+      [targetId, `not-break-glass-${targetId}@example.test`],
     );
 
     await expect(setBreakGlassStatus(client, {
@@ -179,7 +173,7 @@ describe.skipIf(!allowed)("AUTH-014 break-glass account operations (PostgreSQL)"
   it("rotates password, TOTP and recovery codes together and revokes sessions", async () => {
     await client.query(
       `INSERT INTO auth_recovery_codes (id, account_id, code_hash) VALUES ($1, $2, $3)`,
-      [randomUUID(), superAdminId, "stale-code-hash"],
+      [randomUUID(), superAdminId, "c".repeat(64)],
     );
     await client.query(
       `INSERT INTO auth_sessions (id, account_id, token_hash, expires_at)
@@ -208,7 +202,7 @@ describe.skipIf(!allowed)("AUTH-014 break-glass account operations (PostgreSQL)"
     const codes = await client.query<{ hash: string }>(
       `SELECT code_hash AS hash FROM auth_recovery_codes WHERE account_id = $1`, [superAdminId],
     );
-    expect(codes.rows.map((row) => row.hash)).not.toContain("stale-code-hash");
+    expect(codes.rows.map((row) => row.hash)).not.toContain("c".repeat(64));
     expect(codes.rowCount).toBe(result.secrets!.recoveryCodes.length);
 
     expect(await auditCount(superAdminId, "auth.break_glass.credential_rotated")).toBe(1);

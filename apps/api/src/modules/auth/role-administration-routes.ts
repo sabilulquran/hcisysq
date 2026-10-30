@@ -1,0 +1,231 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { Pool } from "pg";
+import { z } from "zod";
+
+import type { ApiConfig } from "../../config/env.js";
+import {
+  createOrganizationDirectoryMachineTokenVerifier,
+  OrganizationDirectoryMachineAuthError,
+  readBearerToken,
+} from "../organization-directory/machine-auth.js";
+import type { VerifyOrganizationDirectoryMachineToken } from "../organization-directory/machine-auth.js";
+import {
+  ActorAssertionError,
+  createActorAssertionVerifier,
+  resolveAssertedActor,
+  type VerifyActorAssertion,
+} from "./actor-assertion.js";
+import {
+  allowedScopes, canDelegateRole, createRoleAssignment, removeRoleAssignment,
+} from "./role-assignment.js";
+import { AuthError } from "./service.js";
+
+/**
+ * AUTH-014 §2 — the channel through which the Platform Administrator in SQ Hub grants HCIS roles.
+ *
+ * Registered but inert until `HCIS_ROLE_ADMIN_ENABLED=1` (phase F4 ships it switched off, F5 turns
+ * it on). Two separate proofs are required on every mutating call, and neither substitutes for the
+ * other: a machine token saying the request came from SQ Hub, and an actor assertion saying which
+ * human is acting. See §2.2 for why the actor cannot simply be stated in the body.
+ *
+ * What HCIS does NOT check here, stated plainly because the first draft claimed otherwise (§2.5):
+ * whether that human is authorised to grant. SQ Hub checks that. HCIS checks that the human is
+ * real and currently active, is not granting to themselves, is not replaying an old request, and is
+ * asking for a role inside the limits HCIS sets for itself.
+ */
+
+const SCOPE = "role-administration.manage";
+
+const assignmentBodySchema = z.object({
+  requestId: z.string().uuid(),
+  roleId: z.string().uuid(),
+  scopeType: z.enum(["own", "unit", "organization"]),
+  organizationalUnitId: z.string().uuid().nullish(),
+  startsOn: z.string().date().nullish(),
+  endsOn: z.string().date().nullish(),
+  reason: z.string().trim().max(1000).nullish(),
+  // §2.2: identity never travels in the body. A caller still sending it is working from the
+  // superseded design, and silently ignoring the field would hide that.
+  actor: z.undefined({ message: "actor must come from the signed assertion, not the body" }),
+}).strict();
+
+const removalBodySchema = z.object({ requestId: z.string().uuid() }).strict();
+const assignmentIdSchema = z.object({ assignmentId: z.string().uuid() });
+const accountIdSchema = z.object({ accountId: z.string().uuid() });
+
+export function registerRoleAdministrationRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  config: ApiConfig,
+  overrides?: {
+    verifyMachineToken?: VerifyOrganizationDirectoryMachineToken;
+    verifyActorAssertion?: VerifyActorAssertion;
+  },
+) {
+  const enabled = config.HCIS_ROLE_ADMIN_ENABLED === "1";
+
+  const verifyMachineToken = enabled
+    ? overrides?.verifyMachineToken ?? createOrganizationDirectoryMachineTokenVerifier({
+      issuer: config.HCIS_ROLE_ADMIN_TOKEN_ISSUER!,
+      audience: config.HCIS_ROLE_ADMIN_TOKEN_AUDIENCE!,
+      allowedClients: new Set(
+        config.HCIS_ROLE_ADMIN_ALLOWED_CLIENTS!.split(",").map((value) => value.trim()).filter(Boolean),
+      ),
+      requiredScope: SCOPE,
+    })
+    : null;
+
+  const verifyActorAssertion = enabled
+    ? overrides?.verifyActorAssertion ?? createActorAssertionVerifier({
+      issuer: config.HCIS_ROLE_ADMIN_TOKEN_ISSUER!,
+      audience: config.HCIS_ROLE_ADMIN_ACTOR_AUDIENCE!,
+      maxAgeSeconds: Number(config.HCIS_ROLE_ADMIN_ACTOR_MAX_AGE_SECONDS),
+    })
+    : null;
+
+  /**
+   * §2.4 steps 1–4, in order, before the body is read. The assertion lives in a header precisely so
+   * that identity is settled before any input is parsed.
+   */
+  async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+    reply.header("Cache-Control", "no-store");
+    if (!verifyMachineToken || !verifyActorAssertion) {
+      await reply.status(503).send({ code: "ROLE_ADMIN_CHANNEL_DISABLED" });
+      return null;
+    }
+
+    const token = readBearerToken(request.headers.authorization);
+    if (!token) {
+      await reply.status(401).send({ code: "UNAUTHENTICATED" });
+      return null;
+    }
+    try {
+      await verifyMachineToken(token);
+    } catch (error) {
+      if (error instanceof OrganizationDirectoryMachineAuthError) {
+        const forbidden = error.code === "FORBIDDEN_CLIENT" || error.code === "INSUFFICIENT_SCOPE";
+        await reply.status(forbidden ? 403 : 401)
+          .send({ code: forbidden ? "FORBIDDEN_CLIENT" : "UNAUTHENTICATED" });
+        return null;
+      }
+      throw error;
+    }
+
+    const header = request.headers["x-sq-actor-assertion"];
+    const assertion = typeof header === "string" ? header.trim() : "";
+    if (!assertion) {
+      await reply.status(401).send({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+      return null;
+    }
+
+    try {
+      const claims = await verifyActorAssertion(assertion);
+      return await resolveAssertedActor(pool, claims);
+    } catch (error) {
+      if (error instanceof ActorAssertionError) {
+        // Distinct codes and statuses: a bad assertion is the caller's problem (401), while an
+        // unresolved actor means HCIS has no account for a person SQ Hub considers real (403) —
+        // usually the Keycloak subject not matching what HCIS stored, which is an operator fix.
+        const unresolved = error.code === "ACTOR_UNRESOLVED";
+        await reply.status(unresolved ? 403 : 401)
+          .send({ code: unresolved ? "ROLE_ADMIN_ACTOR_UNRESOLVED" : "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The unique index on (hub_request_id, action) is the real guard; this turns the resulting
+   * constraint violation into an answer the caller can act on instead of a 500.
+   */
+  async function sendDomainError(reply: FastifyReply, error: unknown): Promise<boolean> {
+    if (error instanceof AuthError) {
+      await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      return true;
+    }
+    if (typeof error === "object" && error !== null && (error as { code?: string }).code === "23505"
+      && String((error as { constraint?: string }).constraint ?? "").includes("hub_request")) {
+      await reply.status(409).send({ code: "ROLE_ADMIN_REQUEST_REPLAYED" });
+      return true;
+    }
+    return false;
+  }
+
+  app.post("/internal/v1/role-administration/accounts/:accountId/role-assignments", async (request, reply) => {
+    const actor = await authenticate(request, reply);
+    if (!actor) return;
+
+    const params = accountIdSchema.safeParse(request.params);
+    const body = assignmentBodySchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_REQUEST" });
+    }
+
+    const { requestId, ...input } = body.data;
+    try {
+      const id = await createRoleAssignment(pool, actor, params.data.accountId, input,
+        { channel: "sq_hub", hubRequestId: requestId });
+      return reply.status(201).send({ assignmentId: id, requestId });
+    } catch (error) {
+      if (await sendDomainError(reply, error)) return;
+      throw error;
+    }
+  });
+
+  app.delete("/internal/v1/role-administration/role-assignments/:assignmentId", async (request, reply) => {
+    const actor = await authenticate(request, reply);
+    if (!actor) return;
+
+    const params = assignmentIdSchema.safeParse(request.params);
+    const body = removalBodySchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({ code: "INVALID_REQUEST" });
+    }
+
+    try {
+      await removeRoleAssignment(pool, actor, params.data.assignmentId,
+        { channel: "sq_hub", hubRequestId: body.data.requestId });
+      return reply.status(204).send();
+    } catch (error) {
+      if (await sendDomainError(reply, error)) return;
+      throw error;
+    }
+  });
+
+  /**
+   * §2.1: SQ Hub builds its screen from this, so the list of HCIS roles stays owned by HCIS. The
+   * alternative — copying role keys into the Hub's code — guarantees the two drift apart.
+   */
+  app.get("/internal/v1/role-administration/catalog", async (request, reply) => {
+    const actor = await authenticate(request, reply);
+    if (!actor) return;
+
+    const roles = await pool.query<{ roleId: string; roleKey: string; name: string; description: string | null; permissions: string[] }>(
+      `SELECT role.id AS "roleId", role.role_key AS "roleKey", role.name, role.description,
+              coalesce(array_agg(permission.permission_key)
+                FILTER (WHERE permission.permission_key IS NOT NULL), ARRAY[]::text[]) AS permissions
+         FROM roles role LEFT JOIN role_permissions permission ON permission.role_id = role.id
+        GROUP BY role.id ORDER BY role.name`,
+    );
+
+    return reply.send({
+      roles: roles.rows
+        .filter((role) => canDelegateRole(role, false, "sq_hub"))
+        .map((role) => ({
+          roleId: role.roleId,
+          roleKey: role.roleKey,
+          name: role.name,
+          description: role.description,
+          permissions: role.permissions,
+          allowedScopes: allowedScopes(role.roleKey),
+          mandateRequired: MANDATE_REQUIRED.has(role.roleKey),
+        })),
+    });
+  });
+}
+
+/** Roles whose grant needs organization scope and a stated mandate (§2.4 step 7). */
+const MANDATE_REQUIRED = new Set([
+  "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin",
+]);

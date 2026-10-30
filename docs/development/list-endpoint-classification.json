@@ -413,6 +413,11 @@
       "package": "PAG-1"
     },
     {
+      "url": "/admin/employees/:employeeId/addresses",
+      "list": "bounded",
+      "reason": "Riwayat alamat satu pegawai; dua jenis dengan beberapa periode."
+    },
+    {
       "url": "/admin/employees/:employeeId/education",
       "list": "bounded",
       "reason": "Riwayat pendidikan satu pegawai; beberapa baris per orang."
@@ -428,6 +433,11 @@
       "reason": "Linimasa kepegawaian satu pegawai."
     },
     {
+      "url": "/admin/employees/:employeeId/family",
+      "list": "bounded",
+      "reason": "Anggota keluarga satu pegawai; beberapa baris per orang."
+    },
+    {
       "url": "/admin/employees/:employeeId/skills",
       "list": "bounded",
       "reason": "Keahlian dan sertifikat satu pegawai."
@@ -436,6 +446,11 @@
       "url": "/admin/employees/certificates/expiring",
       "list": "paged",
       "reason": "Sertifikat akan berakhir lintas pegawai dengan page/pageSize (maks 100) dan total."
+    },
+    {
+      "url": "/admin/employees/data-changes",
+      "list": "paged",
+      "reason": "Usulan perubahan data lintas pegawai dengan page/pageSize (maks 100) dan total."
     },
     {
       "url": "/admin/employment/consistency",
@@ -653,6 +668,11 @@
       "reason": "Katalog jenis surat yang dapat diminta pegawai; beberapa baris tetap."
     },
     {
+      "url": "/employees/me/data-changes",
+      "list": "bounded",
+      "reason": "Usulan perubahan data milik pegawai sendiri; sedikit baris per orang."
+    },
+    {
       "url": "/employees/me/employment",
       "list": "bounded",
       "reason": "Ringkasan kepegawaian pegawai yang masuk sendiri beserta linimasa tindakannya; dibatasi riwayat satu pegawai."
@@ -678,6 +698,11 @@
       "url": "/internal/v1/organization-directory/snapshot",
       "list": "snapshot",
       "reason": "Kontrak machine-to-machine untuk SQ Hub; snapshot penuh per asOf."
+    },
+    {
+      "url": "/internal/v1/role-administration/catalog",
+      "list": "bounded",
+      "reason": "AUTH-014 §2.1: katalog peran HCIS yang dapat diberikan, satu baris per peran sistem. Jumlahnya tetap dan kecil (belasan), ditentukan migration, bukan data yang bertumbuh."
     },
     {
       "url": "/leave/approvals",
@@ -756,14 +781,14 @@
       "package": "PAG-5"
     },
     {
-      "url": "/payroll/employments/:employmentId/compensation-profiles",
-      "list": "bounded",
-      "reason": "Riwayat profil satu employment."
-    },
-    {
       "url": "/payroll/employments",
       "list": "typeahead",
       "reason": "Pemilih pegawai untuk profil kompensasi dan kasbon; dicari per nama/NIP, berhalaman."
+    },
+    {
+      "url": "/payroll/employments/:employmentId/compensation-profiles",
+      "list": "bounded",
+      "reason": "Riwayat profil satu employment."
     },
     {
       "url": "/payroll/loans",
@@ -821,26 +846,6 @@
     {
       "url": "/ready",
       "list": "single"
-    },
-    {
-      "url": "/admin/employees/:employeeId/family",
-      "list": "bounded",
-      "reason": "Anggota keluarga satu pegawai; beberapa baris per orang."
-    },
-    {
-      "url": "/admin/employees/:employeeId/addresses",
-      "list": "bounded",
-      "reason": "Riwayat alamat satu pegawai; dua jenis dengan beberapa periode."
-    },
-    {
-      "url": "/employees/me/data-changes",
-      "list": "bounded",
-      "reason": "Usulan perubahan data milik pegawai sendiri; sedikit baris per orang."
-    },
-    {
-      "url": "/admin/employees/data-changes",
-      "list": "paged",
-      "reason": "Usulan perubahan data lintas pegawai dengan page/pageSize (maks 100) dan total."
     }
   ]
 }

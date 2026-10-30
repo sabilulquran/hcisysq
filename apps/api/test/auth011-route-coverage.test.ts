@@ -61,6 +61,12 @@ const EXPECTED_PUBLIC_URLS = [
   "/iclock/*",
   "/iclock/file",
   "/internal/v1/organization-directory/snapshot",
+  // AUTH-014 F4: the SQ Hub role-administration channel. Not session-authenticated by design — it
+  // carries a machine token AND a Keycloak-signed actor assertion, and returns 503 until
+  // HCIS_ROLE_ADMIN_ENABLED=1.
+  "/internal/v1/role-administration/accounts/:accountId/role-assignments",
+  "/internal/v1/role-administration/catalog",
+  "/internal/v1/role-administration/role-assignments/:assignmentId",
   "/internal/v1/staff-identity/verify-employee",
   "/ready",
 ];

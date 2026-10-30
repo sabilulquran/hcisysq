@@ -1,0 +1,230 @@
+import Fastify from "fastify";
+import type { Pool } from "pg";
+import { describe, expect, it, vi } from "vitest";
+
+import { loadConfig } from "../src/config/env.js";
+import { ActorAssertionError } from "../src/modules/auth/actor-assertion.js";
+import { registerRoleAdministrationRoutes } from "../src/modules/auth/role-administration-routes.js";
+import { OrganizationDirectoryMachineAuthError } from "../src/modules/organization-directory/machine-auth.js";
+
+const BASE = { DATABASE_URL: "postgresql://example.invalid/test" };
+
+const config = (enabled: boolean) => loadConfig({
+  ...BASE,
+  HCIS_ROLE_ADMIN_ENABLED: enabled ? "1" : "0",
+  HCIS_ROLE_ADMIN_TOKEN_ISSUER: "https://identity.example.test/realms/sq-staff",
+  HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: "hcis-role-administration",
+  HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: "sq-hub-role-administration",
+  HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: "hcis-role-administration-actor",
+});
+
+const ACCOUNT = "00000000-0000-4000-8000-00000000000a";
+const ROLE = "00000000-0000-4000-8000-00000000000b";
+const REQUEST = "00000000-0000-4000-8000-00000000000c";
+
+const grantBody = {
+  requestId: REQUEST, roleId: ROLE, scopeType: "organization" as const,
+  organizationalUnitId: null, reason: "mandat uji", startsOn: null, endsOn: null,
+};
+
+function app(options: { enabled?: boolean; pool?: Partial<Pool> } = {}) {
+  const instance = Fastify();
+  registerRoleAdministrationRoutes(
+    instance,
+    (options.pool ?? {}) as Pool,
+    config(options.enabled ?? true),
+    {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => ({
+        issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub",
+      }),
+    },
+  );
+  return instance;
+}
+
+const headers = { authorization: "Bearer synthetic", "x-sq-actor-assertion": "synthetic-assertion" };
+
+// AUTH-014 F4 (§2.2, §2.4): the channel ships registered but switched off, and never accepts one
+// proof in place of the other.
+describe("AUTH-014 role administration channel", () => {
+  it("requires its configuration before it can be switched on", () => {
+    expect(() => loadConfig({ ...BASE, HCIS_ROLE_ADMIN_ENABLED: "1" })).toThrow();
+    expect(loadConfig({ ...BASE }).HCIS_ROLE_ADMIN_ENABLED).toBe("0");
+  });
+
+  it("refuses the machine account that holds manage-users", () => {
+    // ADR-0006 R-1 point 1: one leaked secret must not open both user management and role granting.
+    expect(() => loadConfig({
+      ...BASE,
+      HCIS_ROLE_ADMIN_ENABLED: "1",
+      HCIS_ROLE_ADMIN_TOKEN_ISSUER: "https://identity.example.test/realms/sq-staff",
+      HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: "hcis-role-administration",
+      HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: "sq-hub-identity-management",
+      HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: "hcis-role-administration-actor",
+    })).toThrow();
+  });
+
+  it("refuses an actor audience equal to the machine audience", () => {
+    // Otherwise a machine token would verify as an actor assertion.
+    expect(() => loadConfig({
+      ...BASE,
+      HCIS_ROLE_ADMIN_ENABLED: "1",
+      HCIS_ROLE_ADMIN_TOKEN_ISSUER: "https://identity.example.test/realms/sq-staff",
+      HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: "hcis-role-administration",
+      HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: "sq-hub-role-administration",
+      HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: "hcis-role-administration",
+    })).toThrow();
+  });
+
+  it("fails closed while the switch is off, on every route", async () => {
+    const instance = app({ enabled: false });
+    for (const [method, url, payload] of [
+      ["POST", `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`, grantBody],
+      ["DELETE", `/internal/v1/role-administration/role-assignments/${ACCOUNT}`, { requestId: REQUEST }],
+      ["GET", "/internal/v1/role-administration/catalog", undefined],
+    ] as const) {
+      const response = await instance.inject({ method, url, headers, payload });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ code: "ROLE_ADMIN_CHANNEL_DISABLED" });
+      expect(response.headers["cache-control"]).toBe("no-store");
+    }
+    await instance.close();
+  });
+
+  it("refuses a machine token without the actor assertion", async () => {
+    const instance = app();
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers: { authorization: "Bearer synthetic" }, payload: grantBody,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+    await instance.close();
+  });
+
+  it("refuses an actor assertion without the machine token", async () => {
+    const instance = app();
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers: { "x-sq-actor-assertion": "synthetic-assertion" }, payload: grantBody,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ code: "UNAUTHENTICATED" });
+    await instance.close();
+  });
+
+  it("refuses a client outside the allowlist and a token without the scope", async () => {
+    for (const [code, status] of [["FORBIDDEN_CLIENT", 403], ["INSUFFICIENT_SCOPE", 403], ["INVALID_TOKEN", 401]] as const) {
+      const instance = Fastify();
+      registerRoleAdministrationRoutes(instance, {} as Pool, config(true), {
+        verifyMachineToken: async () => {
+          throw new OrganizationDirectoryMachineAuthError(code, "synthetic");
+        },
+        verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+      });
+      const response = await instance.inject({
+        method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+        headers, payload: grantBody,
+      });
+      expect(response.statusCode).toBe(status);
+      await instance.close();
+    }
+  });
+
+  it("separates an invalid assertion from an actor HCIS does not know", async () => {
+    for (const [code, status, body] of [
+      ["ACTOR_ASSERTION_INVALID", 401, "ROLE_ADMIN_ACTOR_ASSERTION_INVALID"],
+      ["ACTOR_UNRESOLVED", 403, "ROLE_ADMIN_ACTOR_UNRESOLVED"],
+    ] as const) {
+      const instance = Fastify();
+      registerRoleAdministrationRoutes(instance, {} as Pool, config(true), {
+        verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+        verifyActorAssertion: async () => { throw new ActorAssertionError(code, "synthetic"); },
+      });
+      const response = await instance.inject({
+        method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+        headers, payload: grantBody,
+      });
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({ code: body });
+      await instance.close();
+    }
+  });
+
+  it("refuses a body that still states the actor, instead of ignoring the field", async () => {
+    // §2.2: a caller sending it is working from the superseded design; swallowing the field would
+    // hide that and leave the sender believing it was honoured.
+    const query = vi.fn(async () => ({ rowCount: 1, rows: [{
+      id: ACCOUNT, email: "actor@example.test", principalType: "EMPLOYEE",
+      accountStatus: "active", employeeStatus: "active",
+    }] }));
+    const instance = app({ pool: { query } as unknown as Partial<Pool> });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers,
+      payload: { ...grantBody, actor: { issuer: "https://identity.example.test", subject: "someone-else" } },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ code: "INVALID_REQUEST" });
+    await instance.close();
+  });
+
+  it("refuses an unknown field and a missing requestId", async () => {
+    const query = vi.fn(async () => ({ rowCount: 1, rows: [{
+      id: ACCOUNT, email: "actor@example.test", principalType: "EMPLOYEE",
+      accountStatus: "active", employeeStatus: "active",
+    }] }));
+    const instance = app({ pool: { query } as unknown as Partial<Pool> });
+
+    const withoutRequestId = { ...grantBody, requestId: undefined };
+    for (const payload of [withoutRequestId, { ...grantBody, surprise: true }]) {
+      const response = await instance.inject({
+        method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+        headers, payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    await instance.close();
+  });
+
+  it("refuses to grant to the actor's own account", async () => {
+    // §2.4 step 6, evaluated against the human the assertion named — not against the machine.
+    const query = vi.fn(async () => ({ rowCount: 1, rows: [{
+      id: ACCOUNT, email: "actor@example.test", principalType: "EMPLOYEE",
+      accountStatus: "active", employeeStatus: "active",
+    }] }));
+    const instance = app({ pool: { query } as unknown as Partial<Pool> });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers, payload: grantBody,
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "ROLE_DELEGATION_FORBIDDEN" });
+    await instance.close();
+  });
+
+  it("answers a replayed requestId with 409 rather than a 500", async () => {
+    const replay = Object.assign(new Error("duplicate key"), {
+      code: "23505", constraint: "access_audit_events_hub_request_idx",
+    });
+    const instance = Fastify();
+    registerRoleAdministrationRoutes(instance, {
+      query: async () => ({ rowCount: 1, rows: [{
+        id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+        principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+      }] }),
+      connect: async () => { throw replay; },
+    } as unknown as Pool, config(true), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+    });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers, payload: grantBody,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ code: "ROLE_ADMIN_REQUEST_REPLAYED" });
+    await instance.close();
+  });
+});

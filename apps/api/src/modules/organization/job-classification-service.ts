@@ -143,9 +143,52 @@ async function assertGradeResolvable(
   }
 }
 
+/**
+ * The latest version of a code that starts strictly after `onDate`, if any.
+ *
+ * Every write refuses when one exists. Without this an amend inserts an open-ended row that
+ * overlaps the future one (the exclusion constraint then raises a bare 23P01), and a
+ * deactivation would close only the version in force while the later one quietly revives the
+ * code after a gap.
+ */
+async function laterVersion(
+  target: QueryTarget, table: "job_grades" | "job_classifications", code: string, onDate: string,
+): Promise<{ effectiveFrom: string } | null> {
+  const result = await target.query<{ effectiveFrom: string }>(
+    `SELECT to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom" FROM ${table}
+      WHERE code = $1 AND effective_from > $2::date
+      ORDER BY effective_from LIMIT 1`,
+    [code, onDate],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function assertNoLaterVersion(
+  target: QueryTarget, table: "job_grades" | "job_classifications", code: string, onDate: string,
+): Promise<void> {
+  const later = await laterVersion(target, table, code, onDate);
+  if (!later) return;
+  const label = table === "job_grades" ? "Golongan" : "Klasifikasi";
+  const errorCode = table === "job_grades" ? "GRADE_HAS_LATER_VERSION" : "CLASSIFICATION_HAS_LATER_VERSION";
+  throw new JobClassificationError(
+    409, errorCode,
+    `${label} ${code} sudah punya versi yang berlaku mulai ${later.effectiveFrom}. Batalkan versi itu lebih dahulu.`,
+  );
+}
+
+/** True when the code has ever existed, in force or retired. */
+async function codeExists(
+  target: QueryTarget, table: "job_grades" | "job_classifications", code: string,
+): Promise<boolean> {
+  const result = await target.query(`SELECT 1 FROM ${table} WHERE code = $1 LIMIT 1`, [code]);
+  return (result.rowCount ?? 0) > 0;
+}
+
 export interface CatalogListQuery {
-  onDate?: string | undefined;
-  includeSuperseded?: boolean | undefined;
+  /** The date the list is read on. Ignored when `includeHistory` is set. */
+  onDate: string;
+  /** All versions of every code, including superseded and retired ones. */
+  includeHistory: boolean;
   family?: JobFamily | undefined;
   limit: number;
   offset: number;
@@ -154,14 +197,16 @@ export interface CatalogListQuery {
 export async function listGrades(
   target: QueryTarget, query: CatalogListQuery,
 ): Promise<{ rows: JobGrade[]; total: number }> {
+  // The default list is the catalog as it stands on one date, so a code appears once.
+  // A superseded version is still `active`, so filtering on `active` would not hide it;
+  // only the date range tells the versions of one code apart.
   const filters: string[] = [];
   const values: unknown[] = [];
-  if (query.onDate) {
+  if (!query.includeHistory) {
     values.push(query.onDate);
     filters.push(`effective_from <= $${values.length}::date
       AND (effective_to IS NULL OR effective_to >= $${values.length}::date)`);
   }
-  if (!query.includeSuperseded) filters.push("active = true");
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
   // ENG-LIST-001: filters run before LIMIT and the caller receives the true total.
@@ -182,7 +227,7 @@ export async function listClassifications(
 ): Promise<{ rows: JobClassification[]; total: number }> {
   const filters: string[] = [];
   const values: unknown[] = [];
-  if (query.onDate) {
+  if (!query.includeHistory) {
     values.push(query.onDate);
     filters.push(`effective_from <= $${values.length}::date
       AND (effective_to IS NULL OR effective_to >= $${values.length}::date)`);
@@ -191,7 +236,6 @@ export async function listClassifications(
     values.push(query.family);
     filters.push(`family = $${values.length}`);
   }
-  if (!query.includeSuperseded) filters.push("active = true");
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
   const totals = await target.query<{ total: string }>(
@@ -231,11 +275,12 @@ export async function createGrade(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await gradeOn(client, input.code, input.effectiveFrom);
-    if (existing) {
+    // Codes are permanent (spec §2.6), so one is created once and never resurrected: a code
+    // that appears again with a different meaning would silently re-point old payroll policy.
+    if (await codeExists(client, "job_grades", input.code)) {
       throw new JobClassificationError(
         409, "GRADE_CODE_IN_USE",
-        `Golongan ${input.code} sudah berlaku pada ${input.effectiveFrom}. Gunakan perubahan, bukan penambahan.`,
+        `Golongan ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
       );
     }
     const id = randomUUID();
@@ -265,11 +310,10 @@ export async function createClassification(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await classificationOn(client, input.code, input.effectiveFrom);
-    if (existing) {
+    if (await codeExists(client, "job_classifications", input.code)) {
       throw new JobClassificationError(
         409, "CLASSIFICATION_CODE_IN_USE",
-        `Klasifikasi ${input.code} sudah berlaku pada ${input.effectiveFrom}. Gunakan perubahan, bukan penambahan.`,
+        `Klasifikasi ${input.code} sudah pernah dibuat. Gunakan perubahan, atau pakai kode baru.`,
       );
     }
     await assertGradeResolvable(client, input.gradeCode, input.effectiveFrom);
@@ -333,6 +377,7 @@ export async function amendClassification(
         "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
       );
     }
+    await assertNoLaterVersion(client, "job_classifications", code, input.effectiveFrom);
     const next = {
       name: input.name ?? current.name,
       family: input.family ?? current.family,
@@ -383,6 +428,7 @@ export async function amendGrade(
         "Perubahan harus berlaku setelah tanggal mulai versi yang berjalan.",
       );
     }
+    await assertNoLaterVersion(client, "job_grades", code, input.effectiveFrom);
     const next = {
       name: input.name ?? current.name,
       rankOrder: input.rankOrder ?? current.rankOrder,
@@ -428,6 +474,7 @@ export async function deactivateClassification(
         404, "CLASSIFICATION_NOT_EFFECTIVE", `Klasifikasi ${code} tidak berlaku pada ${endOn}.`,
       );
     }
+    await assertNoLaterVersion(client, "job_classifications", code, endOn);
     const updated = await client.query<JobClassification>(
       `UPDATE job_classifications
           SET effective_to = $2::date, active = false, updated_at = now()
@@ -474,6 +521,7 @@ export async function deactivateGrade(
         `Golongan ${code} masih dipakai klasifikasi ${dependants.rows.map((row) => row.code).join(", ")}.`,
       );
     }
+    await assertNoLaterVersion(client, "job_grades", code, endOn);
     const updated = await client.query<JobGrade>(
       `UPDATE job_grades SET effective_to = $2::date, active = false, updated_at = now()
         WHERE id = $1 RETURNING ${GRADE_COLUMNS}`,

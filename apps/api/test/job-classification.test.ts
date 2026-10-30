@@ -2,6 +2,9 @@
 
 import { describe, expect, it } from "vitest";
 
+import {
+  ADMIN_PERMISSIONS, HC_ADMIN_PERMISSIONS, JOB_CLASSIFICATION_PERMISSIONS,
+} from "../src/modules/auth/permissions.js";
 import { coversDate, jakartaDate, previousDay } from "../src/modules/organization/job-classification-service.js";
 
 describe("ORG-011 effective dating", () => {
@@ -31,5 +34,16 @@ describe("ORG-011 effective dating", () => {
     // resolve yesterday's version for an operator working in the evening.
     expect(jakartaDate(new Date("2026-10-30T23:00:00Z"))).toBe("2026-10-31");
     expect(jakartaDate(new Date("2026-10-30T16:00:00Z"))).toBe("2026-10-30");
+  });
+});
+
+describe("ORG-011 permission placement", () => {
+  it("keeps the catalog out of legacy Super Admin compatibility", () => {
+    // ADMIN_PERMISSIONS is what a legacy Super Admin receives without an explicit assignment.
+    // ORG-011 is HC-only, so neither key may ever appear there (ADR-0004 §Compliance).
+    for (const key of JOB_CLASSIFICATION_PERMISSIONS) {
+      expect(ADMIN_PERMISSIONS as readonly string[]).not.toContain(key);
+      expect(HC_ADMIN_PERMISSIONS as readonly string[]).toContain(key);
+    }
   });
 });

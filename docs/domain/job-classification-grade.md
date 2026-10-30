@@ -90,6 +90,12 @@ Satu klasifikasi dapat dipakai banyak position dan banyak pegawai. Satu position
 - `organization_positions.job_classification_code` (nullable, di dalam change set): klasifikasi default kursi. Ikut versioning struktur, karena yang berubah adalah kursi, bukan katalog.
 - `employment_placements.job_classification_code` (nullable): klasifikasi efektif pegawai pada penempatan itu. Diisi melalui employment action (EMP-006), bukan edit field.
 
+Aturan versi, supaya satu kode tidak pernah berarti dua hal:
+
+- kode **tidak pernah dibuat ulang**. Membuat kode yang pernah ada ditolak, termasuk setelah dinonaktifkan, karena kebijakan payroll berversi masih menyimpan kode itu apa adanya;
+- menulis **di belakang versi yang sudah berlaku lebih awal** ditolak (`CLASSIFICATION_HAS_LATER_VERSION` / `GRADE_HAS_LATER_VERSION`). Tanpa ini, amend akan menimpa rentang versi berikutnya, dan deaktivasi akan menutup versi berjalan sementara versi berikutnya menghidupkan kembali kode itu setelah jeda;
+- perubahan harus berlaku setelah tanggal mulai versi yang berjalan, bukan pada hari yang sama.
+
 Resolusi per placement: **placement menang bila terisi; bila kosong, pakai klasifikasi position yang ditempati; bila keduanya kosong, hasilnya `null` dan konsumen harus menanganinya secara eksplisit.**
 
 Satu employment dapat memegang beberapa placement yang berlaku bersamaan (`PRIMARY` dan `ADDITIONAL`). Resolver karena itu mengembalikan **dua slot**, fungsional dan struktural, hasil agregasi seluruh placement yang berlaku pada tanggal itu — bukan satu klasifikasi tunggal. Ini cocok dengan `payroll_compensation_profiles` yang memang menyimpan dua referensi.
@@ -163,7 +169,7 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 |---|---|---|
 | Apakah YSQ memakai golongan numerik | tidak; `job_grades` tersedia tetapi kosong | ya |
 | Apakah satu pegawai boleh punya dua klasifikasi `FUNCTIONAL` bersamaan | tidak; satu per placement, rangkap lewat placement `ADDITIONAL` | ya |
-| Siapa yang mengelola katalog | Kepala HCM dan staf HC | ya |
+| Siapa yang mengelola katalog | hanya Staf Human Capital (`human_capital_admin`); Kepala HC tidak diberi akses baca maupun kelola pada Package 1 | ya |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
 | Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |

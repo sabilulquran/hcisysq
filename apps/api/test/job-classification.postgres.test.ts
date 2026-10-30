@@ -219,14 +219,16 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
     await post(`/admin/job-classifications/${codes.functional()}/deactivation`, {
       endOn: "2026-12-31", reason: "Jabatan dihapus dari struktur",
     });
+    // occurred_at defaults to now(), which is the transaction timestamp, so three writes in
+    // one test share it. The claim is that each change is recorded, not what order they sort in.
     const events = await client.query<{ action: string; actor: string | null }>(
       `SELECT action, actor_account_id AS actor FROM job_classification_audit_events
-        WHERE entity_code = $1 ORDER BY occurred_at, action`,
+        WHERE entity_code = $1`,
       [codes.functional()],
     );
-    expect(events.rows.map((row) => row.action)).toEqual([
-      "job_classification.created",
+    expect(events.rows.map((row) => row.action).sort()).toEqual([
       "job_classification.amended",
+      "job_classification.created",
       "job_classification.deactivated",
     ]);
     expect(events.rows.every((row) => row.actor === principal.id)).toBe(true);
@@ -245,13 +247,142 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
   });
 
   it("ORG-011-I: no catalog permission means no read either", async () => {
-    // A Super Admin principal without the permission still gets nothing: ORG-011 is HC-only
-    // and legacy Super Admin compatibility must not reach it.
+    // The guard refuses an empty permission set even for a SUPER_ADMIN principal. That legacy
+    // Super Admin compatibility never puts these keys into the context in the first place is a
+    // property of ADMIN_PERMISSIONS, asserted in job-classification.test.ts.
     permissions = [];
     const list = await app.inject({ method: "GET", url: "/admin/job-classifications" });
     expect(list.statusCode, list.body).toBe(403);
     const grades = await app.inject({ method: "GET", url: "/admin/job-grades" });
     expect(grades.statusCode, grades.body).toBe(403);
+  });
+
+  it("ORG-011-K: a code is never resurrected after deactivation", async () => {
+    await post("/admin/job-classifications", {
+      code: codes.functional(), name: "Guru", family: "FUNCTIONAL", effectiveFrom: "2026-01-01",
+    });
+    await post(`/admin/job-classifications/${codes.functional()}/deactivation`, {
+      endOn: "2026-06-30", reason: "Jabatan dihapus dari struktur",
+    });
+    // Reusing the code with a different meaning would silently re-point versioned payroll
+    // policy that still stores the old code verbatim.
+    const revived = await post("/admin/job-classifications", {
+      code: codes.functional(), name: "Staf Tata Usaha", family: "SUPPORT", effectiveFrom: "2026-07-01",
+    });
+    expect(revived.statusCode, revived.body).toBe(409);
+    expect(revived.json().code).toBe("CLASSIFICATION_CODE_IN_USE");
+  });
+
+  it("ORG-011-L: refuses to write behind a version that already starts later", async () => {
+    await post("/admin/job-classifications", {
+      code: codes.functional(), name: "Guru", family: "FUNCTIONAL", effectiveFrom: "2026-01-01",
+    });
+    await post(`/admin/job-classifications/${codes.functional()}/amendments`, {
+      effectiveFrom: "2026-07-01", name: "Guru Kelas",
+    });
+
+    // Amending in May would open a second range that runs past July and overlap it.
+    const behind = await post(`/admin/job-classifications/${codes.functional()}/amendments`, {
+      effectiveFrom: "2026-05-01", name: "Guru Madya",
+    });
+    expect(behind.statusCode, behind.body).toBe(409);
+    expect(behind.json().code).toBe("CLASSIFICATION_HAS_LATER_VERSION");
+
+    // Closing in May would leave the July version to revive the code after a gap.
+    const closed = await post(`/admin/job-classifications/${codes.functional()}/deactivation`, {
+      endOn: "2026-05-31", reason: "Jabatan dihapus dari struktur",
+    });
+    expect(closed.statusCode, closed.body).toBe(409);
+    expect(closed.json().code).toBe("CLASSIFICATION_HAS_LATER_VERSION");
+
+    // The catalog is untouched by both refusals.
+    const rows = await client.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM job_classifications WHERE code = $1`,
+      [codes.functional()],
+    );
+    expect(rows.rows[0]!.total).toBe(2);
+  });
+
+  it("ORG-011-M: an amendment must start after the running version, not on its first day", async () => {
+    await post("/admin/job-grades", {
+      code: codes.grade(), name: "Golongan III", rankOrder: 3, effectiveFrom: "2026-01-01",
+    });
+    const sameDay = await post(`/admin/job-grades/${codes.grade()}/amendments`, {
+      effectiveFrom: "2026-01-01", name: "Golongan IIIA",
+    });
+    expect(sameDay.statusCode, sameDay.body).toBe(409);
+    expect(sameDay.json().code).toBe("GRADE_SAME_DAY_AMEND");
+  });
+
+  it("ORG-011-N: a grade amends and closes once nothing names it", async () => {
+    await post("/admin/job-grades", {
+      code: codes.grade(), name: "Golongan III", rankOrder: 3, effectiveFrom: "2026-01-01",
+    });
+    const amended = await post(`/admin/job-grades/${codes.grade()}/amendments`, {
+      effectiveFrom: "2026-07-01", name: "Golongan IIIA", rankOrder: 4,
+    });
+    expect(amended.statusCode, amended.body).toBe(200);
+    expect(amended.json().grade.rankOrder).toBe(4);
+
+    const closed = await post(`/admin/job-grades/${codes.grade()}/deactivation`, {
+      endOn: "2026-12-31", reason: "Golongan tidak dipakai lagi",
+    });
+    expect(closed.statusCode, closed.body).toBe(200);
+    expect(closed.json().grade.active).toBe(false);
+
+    const events = await client.query<{ action: string }>(
+      `SELECT action FROM job_classification_audit_events WHERE entity_code = $1`,
+      [codes.grade()],
+    );
+    expect(events.rows.map((row) => row.action).sort()).toEqual([
+      "job_grade.amended", "job_grade.created", "job_grade.deactivated",
+    ]);
+  });
+
+  it("ORG-011-O: the default list shows one version per code; includeHistory shows all", async () => {
+    await post("/admin/job-classifications", {
+      code: codes.functional(), name: "Guru", family: "FUNCTIONAL", effectiveFrom: "2026-01-01",
+    });
+    await post(`/admin/job-classifications/${codes.functional()}/amendments`, {
+      effectiveFrom: "2026-07-01", name: "Guru Kelas",
+    });
+
+    const onDate = await app.inject({
+      method: "GET", url: "/admin/job-classifications?onDate=2026-03-01&family=FUNCTIONAL&pageSize=100",
+    });
+    const current = (onDate.json().classifications as Array<{ code: string; name: string }>)
+      .filter((row) => row.code === codes.functional());
+    expect(current).toHaveLength(1);
+    expect(current[0]!.name).toBe("Guru");
+
+    // "false" must stay false: a query string carries words, not booleans.
+    const explicitFalse = await app.inject({
+      method: "GET",
+      url: "/admin/job-classifications?onDate=2026-03-01&family=FUNCTIONAL&pageSize=100&includeHistory=false",
+    });
+    expect((explicitFalse.json().classifications as Array<{ code: string }>)
+      .filter((row) => row.code === codes.functional())).toHaveLength(1);
+    expect(explicitFalse.json().includeHistory).toBe(false);
+
+    const history = await app.inject({
+      method: "GET", url: "/admin/job-classifications?family=FUNCTIONAL&pageSize=100&includeHistory=true",
+    });
+    expect((history.json().classifications as Array<{ code: string }>)
+      .filter((row) => row.code === codes.functional())).toHaveLength(2);
+  });
+
+  it("ORG-011-P: migration 0110 grants the catalog to Human Capital only", async () => {
+    const granted = await client.query<{ roleKey: string; permissionKey: string }>(
+      `SELECT role.role_key AS "roleKey", grant_row.permission_key AS "permissionKey"
+         FROM role_permissions grant_row
+         JOIN roles role ON role.id = grant_row.role_id
+        WHERE grant_row.permission_key LIKE 'job_classifications.%'
+        ORDER BY role.role_key, grant_row.permission_key`,
+    );
+    expect(granted.rows).toEqual([
+      { roleKey: "human_capital_admin", permissionKey: "job_classifications.manage" },
+      { roleKey: "human_capital_admin", permissionKey: "job_classifications.read" },
+    ]);
   });
 
   it("ORG-011-J: the list is paginated with a true total (ENG-LIST-001)", async () => {
@@ -265,6 +396,9 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
     const page = await app.inject({
       method: "GET", url: "/admin/job-classifications?page=1&pageSize=2&onDate=2026-02-01&family=SUPPORT",
     });
+    const grades = await app.inject({ method: "GET", url: "/admin/job-grades?page=1&pageSize=2" });
+    expect(grades.statusCode, grades.body).toBe(200);
+    expect(grades.json().pagination.pageSize).toBe(2);
     expect(page.statusCode, page.body).toBe(200);
     const body = page.json();
     expect(body.classifications).toHaveLength(2);

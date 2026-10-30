@@ -35,9 +35,13 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat
 const gradeCode = z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,31}$/, "Kode golongan harus huruf besar, angka, atau garis bawah.");
 const classificationCode = z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/, "Kode klasifikasi harus huruf besar, angka, atau garis bawah.");
 
+// z.coerce.boolean() is Boolean(string), so "false" would come through as true. The flag is
+// read from a query string, so it is parsed from the two words a caller can actually send.
+const queryFlag = z.enum(["true", "false"]).default("false").transform((value) => value === "true");
+
 const listQuery = pageQuerySchema.extend({
   onDate: isoDate.optional(),
-  includeSuperseded: z.coerce.boolean().default(false),
+  includeHistory: queryFlag,
 });
 const classificationListQuery = listQuery.extend({
   family: z.enum(JOB_FAMILIES).optional(),
@@ -116,6 +120,16 @@ export async function registerJobClassificationRoutes(
     if (error instanceof JobClassificationError) {
       return send(reply, error.statusCode, { code: error.code, message: error.message });
     }
+    // 23P01 is the exclusion constraint on (code, effective range). The service checks first,
+    // but two concurrent writes for one code both pass that check under READ COMMITTED and
+    // the second one lands here. The database kept the catalog correct; answer the caller
+    // with the same conflict the sequential path gives instead of a 500 carrying SQL text.
+    if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23P01") {
+      return send(reply, 409, {
+        code: "CATALOG_VERSION_CONFLICT",
+        message: "Kode ini sedang diubah bersamaan. Muat ulang dan coba lagi.",
+      });
+    }
     throw error;
   }
 
@@ -123,13 +137,16 @@ export async function registerJobClassificationRoutes(
     const principal = await requirePermission(request, reply, "job_classifications.read");
     if (!principal) return reply;
     const query = listQuery.parse(request.query ?? {});
+    const onDate = query.onDate ?? jakartaDate(new Date());
     const { rows, total } = await listGrades(pool, {
-      onDate: query.onDate,
-      includeSuperseded: query.includeSuperseded,
+      onDate,
+      includeHistory: query.includeHistory,
       limit: query.pageSize,
       offset: pageOffset(query),
     });
-    return send(reply, 200, { grades: rows, pagination: pagination(query, total) });
+    return send(reply, 200, {
+      grades: rows, onDate, includeHistory: query.includeHistory, pagination: pagination(query, total),
+    });
   });
 
   app.post("/admin/job-grades", async (request, reply) => {
@@ -172,14 +189,18 @@ export async function registerJobClassificationRoutes(
     const principal = await requirePermission(request, reply, "job_classifications.read");
     if (!principal) return reply;
     const query = classificationListQuery.parse(request.query ?? {});
+    const onDate = query.onDate ?? jakartaDate(new Date());
     const { rows, total } = await listClassifications(pool, {
-      onDate: query.onDate,
-      includeSuperseded: query.includeSuperseded,
+      onDate,
+      includeHistory: query.includeHistory,
       family: query.family,
       limit: query.pageSize,
       offset: pageOffset(query),
     });
-    return send(reply, 200, { classifications: rows, pagination: pagination(query, total) });
+    return send(reply, 200, {
+      classifications: rows, onDate, includeHistory: query.includeHistory,
+      pagination: pagination(query, total),
+    });
   });
 
   /** One code as it stood on a date, so an operator can check a past period's meaning. */

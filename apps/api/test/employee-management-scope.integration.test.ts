@@ -100,6 +100,15 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     )).rows[0]?.def ?? "";
     expect(definition).toContain("management_scope_note");
     expect(definition).toContain("management_scope_marked_by_account_id");
+
+    // The reason rule has to say IS NOT NULL. Written as IN (...) alone it
+    // evaluates to NULL on a NULL column, and a CHECK only rejects FALSE —
+    // so a record could be marked with no reason at all.
+    const reasonRule = (await client.query<{ def: string }>(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conname = 'employees_management_scope_reason_check'`,
+    )).rows[0]?.def ?? "";
+    expect(reasonRule).toContain("IS NOT NULL");
   });
 
   // One rule per case, so a failure names the rule rather than the group.

@@ -40,6 +40,7 @@ import {
   loadReferenceExistence,
   persistAction,
 } from "./infrastructure/postgres-action-store.js";
+import { classificationOn } from "../organization/job-classification-service.js";
 import { getRolloutMode, jakartaToday, loadHistories } from "./infrastructure/postgres-employment-store.js";
 
 /** HTTP status per typed domain failure (spec §12). */
@@ -80,6 +81,9 @@ const placementBody = z.object({
   unitId: z.string().uuid(),
   positionId: z.string().uuid().nullish(),
   jobTitleLabel: z.string().trim().min(1).max(200),
+  // ORG-011: optional. Absent or null means the seat's own classification applies; a code
+  // here overrides it for this person. It is a payroll key and carries no authority.
+  jobClassificationCode: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/).nullish(),
 }).strict();
 
 const common = {
@@ -232,6 +236,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
         };
       case "CONTRACT_EXTENSION":
@@ -261,6 +266,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
         };
       case "PLACEMENT_END":
@@ -281,6 +287,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
           reasonCode: body.reasonCode ?? null,
         };
@@ -379,6 +386,22 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
     const references = placementInput
       ? await loadReferenceExistence(pool, placementInput.unitId, placementInput.positionId ?? null)
       : { unit: false, position: false };
+
+    // ORG-011: the catalog is effective-dated and lives outside employment, so a code is
+    // checked against the day this action takes effect. Without this the code would be stored
+    // unchecked and the resolver would raise CLASSIFICATION_NOT_EFFECTIVE later, during a
+    // payroll run, far from the operator who typed it.
+    const classificationCode = placementInput?.jobClassificationCode ?? null;
+    if (classificationCode) {
+      const effectiveOn = "effectiveOn" in body.data ? String(body.data.effectiveOn) : today;
+      if (!(await classificationOn(pool, classificationCode, effectiveOn))) {
+        await send(reply, 400, {
+          code: "EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE",
+          message: `Klasifikasi ${classificationCode} tidak berlaku pada ${effectiveOn}.`,
+        });
+        return null;
+      }
+    }
 
     const requestedDocumentIds = body.data.documentIds ?? [];
     const documents = await loadDecisionDocumentRefs(pool, requestedDocumentIds);

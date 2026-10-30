@@ -6,6 +6,8 @@
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
+import { jobFamilyLabels, listJobClassifications, type JobClassification } from "@/lib/jobClassifications";
+
 import {
   ACTION_DONE_MESSAGE,
   ACTION_TITLE,
@@ -45,7 +47,7 @@ export interface EmploymentActionDialogProps {
   onRecorded: (message: string) => void;
 }
 
-interface DraftState {
+export interface DraftState {
   effectiveOn: string;
   lastDayOn: string;
   category: ActionCategory;
@@ -58,11 +60,13 @@ interface DraftState {
   unitId: string;
   positionId: string;
   jobTitleLabel: string;
+  /** ORG-011: empty means the seat's own classification applies. */
+  jobClassificationCode: string;
   additionalDuty: boolean;
   documentId: string;
 }
 
-function emptyDraft(): DraftState {
+export function emptyDraft(): DraftState {
   return {
     effectiveOn: "",
     lastDayOn: "",
@@ -76,12 +80,13 @@ function emptyDraft(): DraftState {
     unitId: "",
     positionId: "",
     jobTitleLabel: "",
+    jobClassificationCode: "",
     additionalDuty: false,
     documentId: "",
   };
 }
 
-function buildRequest(
+export function buildRequest(
   actionType: EmploymentActionType | "PLACEMENT_END",
   draft: DraftState,
   acknowledged: boolean,
@@ -112,7 +117,11 @@ function buildRequest(
         termEndOn: draft.termEndOn || null,
         staffType: draft.staffType || null,
         contractReference: draft.contractReference.trim() || null,
-        placement: { unitId: draft.unitId, jobTitleLabel: draft.jobTitleLabel.trim() },
+        placement: {
+          unitId: draft.unitId,
+          jobTitleLabel: draft.jobTitleLabel.trim(),
+          ...(draft.jobClassificationCode ? { jobClassificationCode: draft.jobClassificationCode } : {}),
+        },
       };
     case "CONTRACT_EXTENSION":
       return {
@@ -141,6 +150,7 @@ function buildRequest(
         placement: {
           unitId: draft.unitId,
           jobTitleLabel: draft.jobTitleLabel.trim(),
+          ...(draft.jobClassificationCode ? { jobClassificationCode: draft.jobClassificationCode } : {}),
           kind: draft.additionalDuty ? "ADDITIONAL" : "PRIMARY",
         },
       };
@@ -155,6 +165,7 @@ function buildRequest(
           unitId: draft.unitId,
           positionId: draft.positionId || null,
           jobTitleLabel: draft.jobTitleLabel.trim(),
+          ...(draft.jobClassificationCode ? { jobClassificationCode: draft.jobClassificationCode } : {}),
         },
         reasonCode: draft.careerReasonCode || null,
       };
@@ -196,6 +207,10 @@ export function EmploymentActionDialog({
 }: EmploymentActionDialogProps) {
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
   const [positions, setPositions] = useState<Array<{ id: string; name: string }>>([]);
+  // ORG-011: empty when this account cannot read the catalog, which is ordinary —
+  // employment.manage does not carry job_classifications.read. The field is then not offered
+  // and the placement simply inherits the seat's own classification.
+  const [classifications, setClassifications] = useState<JobClassification[]>([]);
   const [draft, setDraft] = useState<DraftState>(emptyDraft);
   const [documents, setDocuments] = useState<DecisionDocument[]>([]);
   const [preview, setPreview] = useState<EmploymentActionPreview | null>(null);
@@ -203,6 +218,18 @@ export function EmploymentActionDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [idempotencyKey] = useState(newIdempotencyKey);
+
+  // ORG-011: read as of the day this action takes effect, because that is the date the API
+  // validates the code against.
+  useEffect(() => {
+    if (actionType === "PLACEMENT_END" || !PLACEMENT_ACTIONS.includes(actionType)) return;
+    if (!draft.effectiveOn) return;
+    let mounted = true;
+    void listJobClassifications({ onDate: draft.effectiveOn, pageSize: 100 })
+      .then((result) => { if (mounted) setClassifications(result.classifications); })
+      .catch(() => { if (mounted) setClassifications([]); });
+    return () => { mounted = false; };
+  }, [actionType, draft.effectiveOn]);
 
   // Every action that opens a placement needs a unit to point at.
   useEffect(() => {
@@ -387,6 +414,16 @@ export function EmploymentActionDialog({
               <Labelled label="Label jabatan">
                 <input value={draft.jobTitleLabel} onChange={(event) => set({ jobTitleLabel: event.target.value })} className={field} />
               </Labelled>
+              {classifications.length > 0 ? (
+                <Labelled label="Klasifikasi jabatan">
+                  <select value={draft.jobClassificationCode} onChange={(event) => set({ jobClassificationCode: event.target.value })} className={field}>
+                    <option value="">Ikut klasifikasi kursi jabatan</option>
+                    {classifications.map((item) => (
+                      <option key={item.code} value={item.code}>{item.name} ({jobFamilyLabels[item.family]})</option>
+                    ))}
+                  </select>
+                </Labelled>
+              ) : null}
             </>
           ) : null}
 

@@ -36,7 +36,7 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 | Kolom pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | **Package 2**, migration 0112; dibawa pada setiap penulisan change set sehingga terbit ulang tidak menghapusnya |
 | `resolveJobClassifications` (§4) | **Package 2** |
 | Jalur tulis pengikatan di designer ORG-008 (`organization_positions`) | **Package 3**, API: POST/PATCH kursi, validasi katalog pada tanggal change set, dan pemeriksaan ulang saat validate. Field tersedia di form jabatan designer bagi akun yang boleh membaca katalog. Pengecualian ENG-LIST-001: dropdown ini mengambil 100 klasifikasi pertama pada tanggal change set dan memberi tahu operator bila terpotong; typeahead belum diperlukan karena YSQ diperkirakan memakai puluhan klasifikasi, bukan ratusan. |
-| Jalur tulis pengikatan di employment action EMP-006 (`employment_placements`) | Package 3, belum dibuat |
+| Jalur tulis pengikatan di employment action EMP-006 (`employment_placements`) | **Package 3**, diterima pada HIRE, PLACEMENT, TRANSFER, PROMOTION, dan DEMOTION; divalidasi terhadap katalog pada tanggal berlaku tindakan |
 | Fingerprint kompensasi terpisah supaya revisi yang mengubah klasifikasi tidak dilaporkan "Hanya tampilan" | **Package 3**, dilaporkan sebagai `compensationImpact` |
 | Konsumsi payroll atas resolver (§4) | milik sesi PAY-003, setelah parallel run |
 | Layar pengelolaan katalog | **Package 3**, `/admin/job-classifications`: daftar per tanggal, seluruh versi, tambah, ubah nama, dan tutup; berlaku untuk klasifikasi maupun golongan |

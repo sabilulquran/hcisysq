@@ -163,13 +163,16 @@ export async function loadHistories(db: Db, employeeIds?: string[]): Promise<Map
     db.query<{
       id: string; employmentId: string; employeeId: string; kind: "PRIMARY" | "ADDITIONAL";
       orgNodeKey: string | null; legacyUnitId: string | null; orgPositionKey: string | null; legacyPositionId: string | null;
-      jobTitleLabel: string; effectiveFrom: string; effectiveTo: string | null;
+      jobTitleLabel: string; jobClassificationCode: string | null;
+      effectiveFrom: string; effectiveTo: string | null;
       effectiveFromBasis: "RECORDED" | "BASELINE_ASSUMED"; voided: boolean;
     }>(
       `SELECT p.id, p.employment_id AS "employmentId", e.employee_id AS "employeeId", p.kind,
               p.org_node_key AS "orgNodeKey", p.legacy_unit_id AS "legacyUnitId",
               p.org_position_key AS "orgPositionKey", p.legacy_position_id AS "legacyPositionId",
-              p.job_title_label AS "jobTitleLabel", p.effective_from::text AS "effectiveFrom",
+              p.job_title_label AS "jobTitleLabel",
+              p.job_classification_code AS "jobClassificationCode",
+              p.effective_from::text AS "effectiveFrom",
               p.effective_to::text AS "effectiveTo", p.effective_from_basis AS "effectiveFromBasis",
               (p.voided_by_action_id IS NOT NULL) AS voided
        FROM employment_placements p JOIN employments e ON e.id = p.employment_id
@@ -202,6 +205,7 @@ export async function loadHistories(db: Db, employeeIds?: string[]): Promise<Map
       employmentId: row.employmentId,
       kind: row.kind,
       unitRef: row.orgNodeKey ? { kind: "ORG_NODE", key: row.orgNodeKey } : { kind: "LEGACY_UNIT", id: row.legacyUnitId! },
+      jobClassificationCode: row.jobClassificationCode ?? null,
       positionRef: row.orgPositionKey
         ? { kind: "ORG_POSITION", key: row.orgPositionKey }
         : row.legacyPositionId

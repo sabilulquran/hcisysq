@@ -92,6 +92,11 @@ export interface PlacementRecord {
   unitRef: UnitRef;
   positionRef: PositionRef | null;
   jobTitleLabel: string;
+  /**
+   * ORG-011: the class of work this placement carries, overriding the seat's own default.
+   * Null means the seat decides. It is a payroll key, never authority (ADR-0004).
+   */
+  jobClassificationCode: string | null;
   effectiveFrom: IsoDate;
   effectiveTo: IsoDate | null;
   effectiveFromBasis: "RECORDED" | "BASELINE_ASSUMED";

@@ -244,6 +244,9 @@ export function planBaseline(
         employmentId: employment.id,
         kind: "PRIMARY",
         unitRef: { kind: "LEGACY_UNIT", id: source.legacyUnitId },
+        // ORG-011: a baseline states only what the employee master recorded, and the master
+        // never held a classification. Human Capital assigns one later, deliberately.
+        jobClassificationCode: null,
         positionRef: source.legacyPositionId ? { kind: "LEGACY_POSITION", id: source.legacyPositionId } : null,
         jobTitleLabel: label ?? "Jabatan belum diisi",
         effectiveFrom: startedOn && startedOn > cutoff ? startedOn : cutoff,

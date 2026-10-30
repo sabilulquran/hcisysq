@@ -51,6 +51,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // EMP-010: the PK/SK register is read with employment.read; writes are authorized by the API.
   if (path === "/admin/decision-documents") return hasPermission(session, "employment.read");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
+  // ORG-011: the catalog is HC-only and read is its own permission, so an account that may
+  // publish structure does not automatically see it.
+  if (path === "/admin/job-classifications") return hasPermission(session, "job_classifications.read");
   // PAY-003: exactly the permissions the API lets read a period
   // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
   // anyone else would show them a menu entry leading to a 403.

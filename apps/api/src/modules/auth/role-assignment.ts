@@ -7,7 +7,7 @@ import {
   DOCUMENT_CORRECTOR_ROLE_KEY, DOCUMENT_PERMISSIONS, EMPLOYMENT_PERMISSIONS,
   HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
-  HC_LEAD_ROLE_KEY, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS,
+  HC_LEAD_ROLE_KEY, JOB_CLASSIFICATION_PERMISSIONS, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS,
 } from "./permissions.js";
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
@@ -17,6 +17,7 @@ const HCIS_ROLES = [
 ];
 const HCIS_PERMISSIONS: readonly string[] = [
   ...ADMIN_PERMISSIONS, ...HC_OPERATIONAL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS, ...ANNOUNCEMENT_PERMISSIONS,
+  ...JOB_CLASSIFICATION_PERMISSIONS,
   ACCESS_REACTIVATION_PERMISSION,
   "employees.read.unit", "attendance.read.unit",
   "leave.approve", "leave.hc.approve", "reports.read.organization", "reports.export.organization", BOARD_READ_PERMISSION,

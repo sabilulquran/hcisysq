@@ -67,10 +67,13 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
     // Codes are globally unique over a date range, so each test uses its own.
     suffix = randomUUID().slice(0, 8).toUpperCase().replace(/[^A-Z0-9]/g, "X");
 
+    // A Super Admin row carries MFA enrolment; the schema refuses one without it.
     const accountId = randomUUID();
     await client.query(
-      `INSERT INTO accounts(id, email, principal_type, status)
-       VALUES ($1,$2,'SUPER_ADMIN','active')`,
+      `INSERT INTO accounts (
+         id, employee_id, email, principal_type, status,
+         mfa_secret_ciphertext, mfa_secret_iv, mfa_secret_tag, mfa_enabled_at
+       ) VALUES ($1, NULL, $2, 'SUPER_ADMIN', 'active', 'synthetic', 'synthetic', 'synthetic', now())`,
       [accountId, `org011-${accountId}@example.invalid`],
     );
     principal = { id: accountId, email: "org011@example.invalid", principalType: "SUPER_ADMIN" };

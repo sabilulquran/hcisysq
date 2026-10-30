@@ -56,15 +56,27 @@ async function bindingsOn(
        COALESCE(placement.job_classification_code, position_row.job_classification_code) AS code,
        CASE WHEN placement.job_classification_code IS NOT NULL THEN 'PLACEMENT' ELSE 'POSITION' END AS source
      FROM employment_placements placement
+     JOIN employments employment ON employment.id = placement.employment_id
      LEFT JOIN effective_change_set ON true
      LEFT JOIN organization_positions position_row
        ON position_row.change_set_id = effective_change_set.id
       AND position_row.stable_key = placement.org_position_key
+      -- The seat must itself be in force. A deactivated or not-yet-effective seat still has a
+      -- row in the change set, and reading its classification would pay an allowance for a
+      -- job nobody holds. Same filter the rest of ORG-004 applies to positions.
+      AND position_row.active
+      AND position_row.effective_from <= $2::date
+      AND (position_row.effective_to IS NULL OR position_row.effective_to >= $2::date)
      WHERE placement.employment_id = $1
        AND placement.voided_by_action_id IS NULL
+       -- A voided employment stops paying, exactly as a voided placement does.
+       AND employment.voided_by_action_id IS NULL
        AND placement.effective_from <= $2::date
        AND (placement.effective_to IS NULL OR placement.effective_to >= $2::date)
-       AND COALESCE(placement.job_classification_code, position_row.job_classification_code) IS NOT NULL`,
+       AND COALESCE(placement.job_classification_code, position_row.job_classification_code) IS NOT NULL
+     -- Deterministic order so that a slot filled twice with the same code always reports the
+     -- same source; PLACEMENT sorts first because it is the more specific statement.
+     ORDER BY source, code, placement.effective_from, placement.id`,
     [employmentId, onDate],
   );
   return result.rows;

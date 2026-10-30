@@ -26,6 +26,9 @@ ALTER TABLE organization_positions
 ALTER TABLE employment_placements
   ADD COLUMN IF NOT EXISTS job_classification_code text NULL;
 
+-- NOT VALID first: a plain ADD CONSTRAINT CHECK scans the whole table under ACCESS
+-- EXCLUSIVE. Both tables already hold production rows, and every existing row has NULL here
+-- anyway, so the scan is pure cost. VALIDATE takes a weaker lock.
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -33,7 +36,8 @@ BEGIN
   ) THEN
     ALTER TABLE organization_positions
       ADD CONSTRAINT organization_positions_job_classification_code_check
-      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$');
+      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$')
+      NOT VALID;
   END IF;
 
   IF NOT EXISTS (
@@ -41,15 +45,18 @@ BEGIN
   ) THEN
     ALTER TABLE employment_placements
       ADD CONSTRAINT employment_placements_job_classification_code_check
-      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$');
+      CHECK (job_classification_code IS NULL OR job_classification_code ~ '^[A-Z][A-Z0-9_]{0,47}$')
+      NOT VALID;
   END IF;
 END
 $$;
 
-CREATE INDEX IF NOT EXISTS organization_positions_job_classification_idx
-  ON organization_positions (change_set_id, job_classification_code)
-  WHERE job_classification_code IS NOT NULL;
+ALTER TABLE organization_positions
+  VALIDATE CONSTRAINT organization_positions_job_classification_code_check;
+ALTER TABLE employment_placements
+  VALIDATE CONSTRAINT employment_placements_job_classification_code_check;
 
-CREATE INDEX IF NOT EXISTS employment_placements_job_classification_idx
-  ON employment_placements (job_classification_code)
-  WHERE job_classification_code IS NOT NULL;
+-- No index on job_classification_code. The resolver reaches positions through
+-- (change_set_id, stable_key) and placements through employment_id, both already indexed;
+-- an index nothing queries is only write cost. Package 3 adds one if a catalog screen needs
+-- "who holds this classification".

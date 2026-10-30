@@ -36,6 +36,7 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 | Kolom pengikatan pada `organization_positions` dan `employment_placements` (§3.3) | **Package 2**, migration 0112; dibawa pada setiap penulisan change set sehingga terbit ulang tidak menghapusnya |
 | `resolveJobClassifications` (§4) | **Package 2** |
 | Jalur tulis pengikatan: field di designer ORG-008 dan di employment action EMP-006 | Package 3, belum dibuat |
+| Fingerprint kompensasi terpisah supaya revisi yang mengubah klasifikasi tidak dilaporkan "Hanya tampilan" | Package 3, wajib bersama jalur tulis designer |
 | Konsumsi payroll atas resolver (§4) | milik sesi PAY-003, setelah parallel run |
 | Layar pengelolaan katalog | Package 3, belum dibuat |
 | Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
@@ -134,6 +135,7 @@ Aturan konsumsi:
 - Hasil payroll sudah menyimpan `compensation_profile_id` dan `policy_version_ids` per baris. Resolusi klasifikasi harus ikut tersimpan dengan cara yang sama, sehingga bulan yang sudah dibayar tetap dapat dijelaskan setelah katalog berubah.
 - Unit atau klasifikasi yang tidak terpetakan ke kebijakan **memblokir periode** (`UNIT_NOT_MAPPED` / `POSITION_NOT_MAPPED`), tidak dibayar penuh diam-diam. ORG-011 tidak melonggarkan ini.
 - **Urutan pemeriksaan tunjangan fungsional tidak berubah**, dan klasifikasi masuk di tempat yang sama dengan referensi kursi hari ini (`engine.ts:425-446`): slot `functional` kosong → 0; unit ada di `functionalAllowance.excludedUnits` (legacy: Pesantren Tahfizh) → 0, diperiksa **sebelum** tabel tunjangan; lalu pencarian di `byPosition`; lalu `positionsWithoutAllowance` → 0; baru blocker. Pegawai di unit yang dikecualikan tetap bernilai 0 berapa pun klasifikasinya, dan itu memang perilaku yang diharapkan pada parallel run.
+- **Kode blocker baru `CLASSIFICATION_NOT_EFFECTIVE`** bila sebuah kode terikat pada placement atau kursi tetapi tidak berlaku pada tanggal periode. Resolver gagal, tidak mengembalikan slot kosong, karena slot kosong akan menghilangkan tunjangan tanpa ada yang menyadarinya.
 - **Kode blocker baru `CLASSIFICATION_AMBIGUOUS`** untuk slot yang diisi dua klasifikasi sekaligus. Tidak dipetakan ke `POSITION_NOT_MAPPED`: sebabnya berbeda (ambigu, bukan tak terpetakan) dan penyelesaiannya ada di penempatan ORG, bukan di kebijakan payroll. Mengikuti pola `UNIT_NOT_MAPPED` / `WORK_PATTERN_NOT_MAPPED`; ditambahkan sesi PAY-003 di engine saat menyambungkan resolver.
 
 ## 5. Permission (usulan)

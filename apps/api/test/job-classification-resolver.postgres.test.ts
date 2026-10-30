@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { JobClassificationError } from "../src/modules/organization/job-classification-service.js";
 import { resolveJobClassifications } from "../src/modules/organization/job-classification-resolver.js";
+import { PostgresOrganizationRepository } from "../src/modules/organization/repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -38,13 +39,20 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
   }
 
   /** A seat in the published structure, optionally carrying a default classification. */
-  async function addPosition(classificationCode: string | null): Promise<string> {
+  async function addPosition(
+    classificationCode: string | null,
+    options: { active?: boolean; from?: string; to?: string | null } = {},
+  ): Promise<string> {
     const positionKey = randomUUID();
     await client.query(
       `INSERT INTO organization_positions
-         (id, change_set_id, stable_key, node_key, title, effective_from, job_classification_code)
-       VALUES ($1,$2,$3,$4,$5,'2026-01-01'::date,$6)`,
-      [randomUUID(), changeSetId, positionKey, nodeKey, "Kursi sintetis", classificationCode],
+         (id, change_set_id, stable_key, node_key, title, active, effective_from, effective_to,
+          job_classification_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::date,$8::date,$9)`,
+      [
+        randomUUID(), changeSetId, positionKey, nodeKey, "Kursi sintetis",
+        options.active ?? true, options.from ?? "2026-01-01", options.to ?? null, classificationCode,
+      ],
     );
     return positionKey;
   }
@@ -245,5 +253,119 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
       .toBe(code("FUNC_OLD_SEAT"));
     expect((await resolveJobClassifications(client, employmentId, "2026-08-01")).functional?.code)
       .toBe(code("FUNC_NEW_SEAT"));
+  });
+  it("ORG-011-R11: a seat that is not in force contributes nothing", async () => {
+    await addClassification(code("FUNC_SEAT"), "FUNCTIONAL");
+
+    // Deactivated seat.
+    await addPlacement("PRIMARY", await addPosition(code("FUNC_SEAT"), { active: false }), null);
+    expect(await resolveJobClassifications(client, employmentId, "2026-06-01"))
+      .toEqual({ functional: null, structural: null });
+  });
+
+  it("ORG-011-R12: a seat whose own period has ended contributes nothing", async () => {
+    await addClassification(code("FUNC_SEAT"), "FUNCTIONAL");
+    await addPlacement(
+      "PRIMARY", await addPosition(code("FUNC_SEAT"), { to: "2026-03-31" }), null,
+    );
+    expect((await resolveJobClassifications(client, employmentId, "2026-03-01")).functional?.code)
+      .toBe(code("FUNC_SEAT"));
+    expect(await resolveJobClassifications(client, employmentId, "2026-06-01"))
+      .toEqual({ functional: null, structural: null });
+  });
+
+  it("ORG-011-R13: a voided employment stops resolving", async () => {
+    await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
+    await addPlacement("PRIMARY", await addPosition(null), code("FUNC_TEACH"));
+    const reversal = await addAction("REVERSAL");
+    await client.query(
+      `UPDATE employments SET voided_by_action_id = $2 WHERE id = $1`,
+      [employmentId, reversal],
+    );
+    expect(await resolveJobClassifications(client, employmentId, "2026-06-01"))
+      .toEqual({ functional: null, structural: null });
+  });
+
+  it("ORG-011-R14: the same code from two placements is one slot, reported as PLACEMENT", async () => {
+    await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
+    await addPlacement("PRIMARY", await addPosition(code("FUNC_TEACH")), null);
+    await addPlacement("ADDITIONAL", await addPosition(null), code("FUNC_TEACH"));
+
+    // Not ambiguous: it is one classification stated twice. The more specific statement wins
+    // the source, and it must not depend on the order Postgres happens to return rows in.
+    const resolved = await resolveJobClassifications(client, employmentId, "2026-06-01");
+    expect(resolved.functional).toMatchObject({ code: code("FUNC_TEACH"), source: "PLACEMENT" });
+  });
+
+  it("ORG-011-R15: a placement on its last effective day still resolves", async () => {
+    await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
+    await addPlacement("PRIMARY", await addPosition(null), code("FUNC_TEACH"));
+    await client.query(
+      `UPDATE employment_placements SET effective_to = '2026-06-30'::date WHERE employment_id = $1`,
+      [employmentId],
+    );
+    expect((await resolveJobClassifications(client, employmentId, "2026-06-30")).functional?.code)
+      .toBe(code("FUNC_TEACH"));
+    expect(await resolveJobClassifications(client, employmentId, "2026-07-01"))
+      .toEqual({ functional: null, structural: null });
+  });
+
+  it("ORG-011-R16: a legacy placement without an ORG-004 seat resolves from its own code", async () => {
+    await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
+    await addPlacement("PRIMARY", null, code("FUNC_TEACH"));
+    expect((await resolveJobClassifications(client, employmentId, "2026-06-01")).functional)
+      .toMatchObject({ code: code("FUNC_TEACH"), source: "PLACEMENT" });
+  });
+
+  it("ORG-011-R17: no published structure at all resolves placements, not an error", async () => {
+    await client.query("DELETE FROM organization_positions WHERE change_set_id = $1", [changeSetId]);
+    await client.query("DELETE FROM organization_nodes WHERE change_set_id = $1", [changeSetId]);
+    await client.query(
+      "UPDATE organization_change_sets SET status = 'DRAFT', published_at = NULL WHERE id = $1",
+      [changeSetId],
+    );
+    await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
+    await addPlacement("PRIMARY", null, code("FUNC_TEACH"));
+    expect((await resolveJobClassifications(client, employmentId, "2026-06-01")).functional?.code)
+      .toBe(code("FUNC_TEACH"));
+  });
+  it("ORG-011-R18: cloning a change set carries the seat classification", async () => {
+    // The costly regression this package can cause: a write path that forgets the new column
+    // drops every seat classification the moment a revision is drafted and saved. Exercise the
+    // real clone and the real write, not SQL typed by hand.
+    await addClassification(code("FUNC_SEAT"), "FUNCTIONAL");
+    const positionKey = await addPosition(code("FUNC_SEAT"));
+    await addPlacement("PRIMARY", positionKey, null);
+
+    const repository = new PostgresOrganizationRepository({
+      query: (text: string, values?: unknown[]) => client.query(text, values),
+    } as never);
+    const draft = await repository.createDraft({
+      name: "Revisi sintetis ORG-011",
+      effectiveOn: "2026-09-01",
+      actorAccountId: accountId,
+      baseChangeSetId: changeSetId,
+    });
+    expect(draft.positions.find((item) => item.stableKey === positionKey)?.jobClassificationCode)
+      .toBe(code("FUNC_SEAT"));
+
+    // Saving the draft again must not lose it either; this is the path the designer uses.
+    await repository.replaceDraftSnapshot(draft);
+    const stored = await client.query<{ code: string | null }>(
+      `SELECT job_classification_code AS code FROM organization_positions
+        WHERE change_set_id = $1 AND stable_key = $2`,
+      [draft.changeSet.id, positionKey],
+    );
+    expect(stored.rows[0]?.code).toBe(code("FUNC_SEAT"));
+
+    // And once that revision is published, the seat still resolves for dates it covers.
+    await client.query(
+      `UPDATE organization_change_sets
+          SET status = 'PUBLISHED', validated_at = now(), published_at = now()
+        WHERE id = $1`,
+      [draft.changeSet.id],
+    );
+    expect((await resolveJobClassifications(client, employmentId, "2026-10-01")).functional)
+      .toMatchObject({ code: code("FUNC_SEAT"), source: "POSITION" });
   });
 });

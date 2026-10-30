@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S2B, S7 and S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S7 merged (#226); S2B-a implemented, S2B-b and S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -66,6 +66,32 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 - **Rollback:** mode stays `OFF`; `--purge-baseline`; revert permissions migration only if no account holds them.
 
 ## S2B — Records outside HCIS management (BUMY, Pengurus Yayasan)
+
+**Status:** the marker and every write refusal are IMPLEMENTED (2026-10-27);
+the consumer exclusions are split into **S2B-b** and are not done yet. The
+step was split because the two halves touch different code and different
+sessions: the marker is confined to the employee master and its write paths,
+while the exclusions reach into leave, attendance, Board aggregates and
+ORG-006, where other work is in flight. `AUTHORITATIVE` still waits for
+S2B-b, because until then a marked record is merely unwritable, not
+genuinely out of the population.
+
+Delivered in S2B-a: migration `0107_employee_management_scope.sql`
+(`management_scope`, its reason, note, who marked it and when, with CHECKs
+tying them together); `PUT /admin/employees/{employeeId}/management-scope`
+for `employees.manage`, reason and note required, audited as
+`employee.management_scope.changed`; read-only refusal
+(`EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`) on contact edit, manager assignment (as
+subject or as proposed manager), every employment action, every Package 2
+record write, and the acceptance of an employee data-change proposal; the
+employee import skips a marked row whole and says so in the preview; the
+admin list hides marked records, offers `scope=OUTSIDE_HCIS` to find them,
+and counts them apart from the active-employee figures.
+
+Left for S2B-b: exclusion from leave and attendance eligibility, approval
+routing, Board aggregates and the ORG-006 directory producer; the
+consistency-report line for EMPLOYEE accounts still linked to a marked
+record; the admin screen's own filter control.
 
 **Spec:** EMP-005-L, §8.7, §13.9.
 **Review:** touches EMP-001 employee master and every consumer of the active-employee population — extra review.

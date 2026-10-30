@@ -29,10 +29,24 @@ const CANDIDATE = {
   sourceClassification: null,
 };
 
-function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmployment: boolean }) {
+function createStore(options: {
+  mode: "OFF" | "SHADOW" | "AUTHORITATIVE";
+  hasEmployment: boolean;
+  /** The candidate is marked outside HCIS management (S2B §8.7). */
+  outsideHcis?: boolean;
+}) {
   const statements: string[] = [];
+  // The warning is written to the rows, not injected when they are read, so
+  // the fake applies that write before answering any later read — otherwise
+  // the test would prove nothing about whether it was persisted.
+  let skipWarningWritten = false;
   const query = vi.fn(async (sql: string) => {
     statements.push(sql);
+    if (sql.includes("messages = messages || $3::jsonb")) {
+      skipWarningWritten = true;
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("UPDATE employee_import_jobs job")) return { rows: [], rowCount: 1 };
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employee_import_jobs WHERE id = $1")) {
       return {
@@ -47,7 +61,30 @@ function createStore(options: { mode: "OFF" | "SHADOW" | "AUTHORITATIVE"; hasEmp
     if (sql.includes("count(*) FILTER")) return { rows: [{ total: 1, skip: 0 }], rowCount: 1 };
     if (sql.includes("jsonb_array_elements(messages)")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employee_import_rows")) {
-      return { rows: [{ row_number: 1, action: "update", payload: CANDIDATE, messages: [] }], rowCount: 1 };
+      const messages = skipWarningWritten
+        ? [{
+            severity: "warning",
+            code: "EMPLOYEE_OUTSIDE_HCIS_SKIPPED",
+            field: null,
+            message: "Di luar pengelolaan HCIS — dilewati.",
+          }]
+        : [];
+      return {
+        rows: [{
+          row_number: 1,
+          action: skipWarningWritten ? "skip" : "update",
+          payload: CANDIDATE,
+          messages,
+        }],
+        rowCount: 1,
+      };
+    }
+    // S2B §8.7 asks the same shape of question; answer it separately, or the
+    // employment-managed set and the outside-HCIS set become the same thing.
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS'") && sql.includes("employee_number = ANY")) {
+      return options.outsideHcis
+        ? { rows: [{ employeeNumber: CANDIDATE.employeeNumber }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
     }
     if (sql.includes("WHERE employee_number = ANY")) {
       return { rows: [{ employeeNumber: CANDIDATE.employeeNumber }], rowCount: 1 };
@@ -100,6 +137,22 @@ describe("EMP-005 §8.1 import preview", () => {
 });
 
 describe("EMP-005 §8.1 import guard", () => {
+  it("says a marked row will be skipped, and skips it whole at commit", async () => {
+    // S2B §8.7: the import never writes a record outside HCIS management, and
+    // never marks one either — it only reports what the mark will cost.
+    const { store, statements } = createStore({ mode: "SHADOW", hasEmployment: false, outsideHcis: true });
+    const page = await store.getPreviewPage(IMPORT_ID, { page: 1, pageSize: 25, filter: "all" });
+    expect(page?.rows[0]?.issues.map((issue) => issue.code)).toContain("EMPLOYEE_OUTSIDE_HCIS_SKIPPED");
+    // The row no longer promises the update the commit will not make.
+    expect(page?.rows[0]?.action).toBe("skip");
+
+    await store.commit(IMPORT_ID);
+    expect(statements.some((sql) => /UPDATE employees SET\s+full_name/.test(sql))).toBe(false);
+    expect(statements.some((sql) => sql.includes("employee_source_snapshots"))).toBe(false);
+    // Nothing in the import writes the marker itself.
+    expect(statements.some((sql) => /SET[^;]*management_scope/.test(sql))).toBe(false);
+  });
+
   it("keeps writing every column while the mode is not AUTHORITATIVE", async () => {
     for (const mode of ["OFF", "SHADOW"] as const) {
       const { store, statements } = createStore({ mode, hasEmployment: true });

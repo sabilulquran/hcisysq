@@ -104,6 +104,8 @@ interface PoolOptions {
   recordMissing?: boolean;
   recordVoided?: boolean;
   ownerRemoved?: boolean;
+  /** The employee is marked outside HCIS management (S2B §8.7). */
+  ownerOutsideHcis?: boolean;
   /** The open address of the same kind, if any, that a move must close. */
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
   /** The address rows a list returns, for the derived "in force" answer. */
@@ -144,6 +146,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return { rows: keys.map((permissionKey) => ({ permissionKey })), rowCount: keys.length };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
+      return { rows: [{ outside: options.ownerOutsideHcis === true }], rowCount: 1 };
+    }
     if (/SELECT id FROM employees WHERE id = \$1/.test(sql)) {
       // employeeMissing stands for "removed from the master": the read, which
       // does not filter on removed_at, still finds the row.
@@ -161,6 +166,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           employeeId: EMPLOYEE_ID,
           voidedAt: options.recordVoided ? new Date("2026-10-02T00:00:00Z") : null,
           employeeRemoved: options.ownerRemoved === true,
+          employeeOutsideHcis: options.ownerOutsideHcis === true,
         }],
         rowCount: 1,
       };
@@ -474,6 +480,36 @@ describe("EMP-009 / EMP-003 refusals", () => {
     expect(family.response.statusCode).toBe(200);
     const addresses = await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/addresses`, { employeeMissing: true });
     expect(addresses.response.statusCode).toBe(200);
+  });
+
+  it("refuses every write for a record outside HCIS management", async () => {
+    const family = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
+      payload: FAMILY_BODY, ownerOutsideHcis: true,
+    });
+    expect(family.response.statusCode).toBe(409);
+    expect(family.response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(family.writes).toEqual([]);
+
+    const address = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/addresses`, {
+      payload: ADDRESS_BODY, ownerOutsideHcis: true,
+    });
+    expect(address.response.statusCode).toBe(409);
+    expect(address.writes).toEqual([]);
+
+    const amend = await call("hc", "PATCH", `/admin/family-records/${FAMILY_ID}`, {
+      payload: FAMILY_BODY, ownerOutsideHcis: true,
+    });
+    expect(amend.response.statusCode).toBe(409);
+    expect(amend.writes).toEqual([]);
+
+    const voided = await call("hc", "POST", `/admin/address-records/${ADDRESS_ID}/void`, {
+      payload: { reason: "Catatan ganda" }, ownerOutsideHcis: true,
+    });
+    expect(voided.response.statusCode).toBe(409);
+    expect(voided.writes).toEqual([]);
+
+    expect((await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/family`, { ownerOutsideHcis: true }))
+      .response.statusCode).toBe(200);
   });
 
   it("refuses an unknown employee before touching anything", async () => {

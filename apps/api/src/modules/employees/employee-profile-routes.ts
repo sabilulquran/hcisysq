@@ -12,6 +12,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
   COMPLETION_STATUSES,
@@ -39,6 +40,7 @@ import {
   updateEducation,
   updateSkill,
   voidRecord,
+  type LockedProfileRecord,
   type ProfileTable,
 } from "./infrastructure/postgres-employee-profile-store.js";
 
@@ -148,6 +150,20 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     return send(reply, 400, { code: "EMPLOYEE_RECORD_INVALID", message });
   }
 
+  /**
+   * True when the request has been answered because the record belongs to an
+   * employee outside HCIS management, which is read-only (S2B §8.7).
+   *
+   * The employees row is read, not locked — see management-scope.ts for why.
+   * The routes reached by record id read the scope alongside the record they
+   * do lock, which is one query rather than two, not a stronger guarantee.
+   */
+  async function refuseOutsideHcis(reply: FastifyReply, employeeId: string): Promise<boolean> {
+    if (!(await isOutsideHcis(pool, employeeId))) return false;
+    await send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
+    return true;
+  }
+
   // ------------------------------------------------------------ pendidikan
 
   app.get("/admin/employees/:employeeId/education", async (request, reply) => {
@@ -177,6 +193,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     const body = educationBody.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply);
     if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (await refuseOutsideHcis(reply, params.data.employeeId)) return;
 
     const validation = validateEducation(body.data, Number(jakartaToday().slice(0, 4)));
     if (!validation.ok) return send(reply, 400, { ...validation.failure });
@@ -261,6 +278,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     const body = skillBody.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply);
     if (!(await requireEmployee(reply, params.data.employeeId))) return;
+    if (await refuseOutsideHcis(reply, params.data.employeeId)) return;
 
     const validation = validateSkill(body.data);
     if (!validation.ok) return send(reply, 400, { ...validation.failure });
@@ -341,7 +359,7 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
   async function refuseMissingOrVoided(
     client: { query: (sql: string) => Promise<unknown> },
     reply: FastifyReply,
-    locked: { employeeId: string; voidedAt: Date | null; employeeRemoved: boolean } | null,
+    locked: LockedProfileRecord | null,
   ): Promise<boolean> {
     if (!locked) {
       await rollback(client);
@@ -354,6 +372,14 @@ export async function registerEmployeeProfileRoutes(app: FastifyInstance, pool: 
     if (locked.employeeRemoved) {
       await rollback(client);
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+      return true;
+    }
+    // S2B §8.7: a record of an employee outside HCIS management is read-only.
+    // Read with the locked record in one query; the employees row itself is
+    // not locked (see management-scope.ts).
+    if (locked.employeeOutsideHcis) {
+      await rollback(client);
+      await send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
       return true;
     }
     if (locked.voidedAt !== null) {

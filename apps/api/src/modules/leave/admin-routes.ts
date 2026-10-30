@@ -6,6 +6,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
   AuthError,
@@ -265,8 +266,8 @@ export async function registerLeaveAdminRoutes(
         });
       }
 
-      const employee = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1",
+      const employee = await pool.query<{ id: string; outside: boolean }>(
+        `SELECT id, management_scope = 'OUTSIDE_HCIS' AS outside FROM employees WHERE id = $1`,
         [params.data.employeeId],
       );
       if (!employee.rows[0]) {
@@ -274,6 +275,12 @@ export async function registerLeaveAdminRoutes(
           code: "EMPLOYEE_NOT_FOUND",
           message: "Pegawai tidak ditemukan.",
         });
+      }
+      // EMP-005 S2B §8.7: this writes the employee master, so a record outside
+      // HCIS management is read-only here as much as on the HC routes.
+      if (employee.rows[0].outside) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
       }
 
       await pool.query(

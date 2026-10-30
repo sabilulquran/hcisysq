@@ -10,6 +10,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import {
@@ -112,6 +113,9 @@ interface EmployeeDetailRow {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  managementScope: "MANAGED" | "OUTSIDE_HCIS";
+  managementScopeReason: string | null;
+  managementScopeNote: string | null;
   managerEmployeeId: string | null;
   managerEmployeeNumber: string | null;
   managerFullName: string | null;
@@ -308,6 +312,11 @@ export async function registerOrgAccessAdminRoutes(
             e.education,
             e.started_on AS "startedOn",
             e.ended_on AS "endedOn",
+            -- S2B §8.7: the screen has to know, or its edit forms invite a
+            -- write the API will refuse with a bare 409.
+            e.management_scope AS "managementScope",
+            e.management_scope_reason AS "managementScopeReason",
+            e.management_scope_note AS "managementScopeNote",
             manager.id AS "managerEmployeeId",
             manager.employee_number AS "managerEmployeeNumber",
             manager.full_name AS "managerFullName",
@@ -444,6 +453,17 @@ export async function registerOrgAccessAdminRoutes(
           code: "REPORTING_LINE_CYCLE",
           message: "Assignment ini akan membentuk siklus pada reporting line.",
         });
+      }
+    }
+
+    // EMP-005 S2B: a record outside HCIS management is read-only (§8.7), and
+    // one may not be named as a manager either. Existing subordinates of a
+    // record marked later keep pointing at it until approval routing learns
+    // the marker, which is S2B-b.
+    for (const target of [employeeId, managerId]) {
+      if (target && await isOutsideHcis(pool, target)) {
+        reply.header("Cache-Control", "no-store");
+        return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
       }
     }
 

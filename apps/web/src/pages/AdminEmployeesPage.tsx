@@ -6,6 +6,7 @@ import {
   AdminApiError,
   listEmployees,
   type AdminEmployeeListResponse,
+  type EmployeeManagementScopeFilter,
   type EmployeeStatus,
 } from "@/lib/adminEmployees";
 
@@ -28,6 +29,8 @@ export function AdminEmployeesPage() {
   const [status, setStatus] = useState<EmployeeStatus | "">("");
   const [unitId, setUnitId] = useState("");
   const [positionId, setPositionId] = useState("");
+  // EMP-005 S2B §8.7: marked records are hidden unless HC asks for them.
+  const [scope, setScope] = useState<EmployeeManagementScopeFilter>("MANAGED");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function AdminEmployeesPage() {
     let mounted = true;
     setLoading(true);
     setError(null);
-    void listEmployees({ page, pageSize: 25, q: query, status, unitId, positionId })
+    void listEmployees({ page, pageSize: 25, q: query, status, unitId, positionId, scope })
       .then((result) => {
         if (mounted) setData(result);
       })
@@ -62,7 +65,7 @@ export function AdminEmployeesPage() {
     setQuery(draftQuery.trim());
   };
 
-  const summary = data?.summary ?? { total: 0, active: 0, inactive: 0, resigned: 0 };
+  const summary = data?.summary ?? { total: 0, active: 0, inactive: 0, resigned: 0, outsideHcis: 0 };
 
   return (
     <AdminShell
@@ -70,12 +73,15 @@ export function AdminEmployeesPage() {
       title="Data Pegawai"
       description="Employee master read-only. Gunakan pencarian dan filter untuk review data hasil import; detail pegawai dipakai untuk reporting line dan kesiapan account."
     >
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[
-          ["Total", summary.total],
+          // "Total" counts the population HCIS manages; the marked records
+          // have their own tile so the difference is never a silent one.
+          ["Dikelola HCIS", summary.total],
           ["Aktif", summary.active],
           ["Tidak aktif", summary.inactive],
           ["Keluar", summary.resigned],
+          ["Di luar pengelolaan HCIS", summary.outsideHcis],
         ].map(([label, value]) => (
           <article key={String(label)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
             <p className="text-xs font-semibold text-muted-foreground">{label}</p>
@@ -85,7 +91,7 @@ export function AdminEmployeesPage() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
-        <form onSubmit={submitSearch} className="grid gap-3 lg:grid-cols-[minmax(14rem,1.3fr)_repeat(3,minmax(10rem,0.7fr))_auto]">
+        <form onSubmit={submitSearch} className="grid gap-3 lg:grid-cols-[minmax(14rem,1.3fr)_repeat(4,minmax(9rem,0.7fr))_auto]">
           <label className="relative block">
             <span className="sr-only">Cari pegawai</span>
             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -109,6 +115,19 @@ export function AdminEmployeesPage() {
             <option value="active">Aktif</option>
             <option value="inactive">Tidak aktif</option>
             <option value="resigned">Keluar</option>
+          </select>
+
+          <select
+            value={scope}
+            onChange={(event) => {
+              setScope(event.target.value as EmployeeManagementScopeFilter);
+              setPage(1);
+            }}
+            className="h-10 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+          >
+            <option value="MANAGED">Dikelola HCIS</option>
+            <option value="OUTSIDE_HCIS">Di luar pengelolaan HCIS</option>
+            <option value="ALL">Semua data</option>
           </select>
 
           <select

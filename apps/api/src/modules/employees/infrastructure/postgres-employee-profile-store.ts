@@ -217,6 +217,15 @@ export type ProfileTable = "employee_education" | "employee_skills";
  */
 export type VoidableTable = ProfileTable | "employee_family_members" | "employee_addresses";
 
+export interface LockedProfileRecord {
+  employeeId: string;
+  voidedAt: Date | null;
+  /** EMP-001: removed from the master, so the record is read-only history. */
+  employeeRemoved: boolean;
+  /** S2B §8.7: outside HCIS management, so the record is read-only too. */
+  employeeOutsideHcis: boolean;
+}
+
 /**
  * Memverifikasi atau mencabut verifikasi. Pencabutan tidak menghapus siapa dan
  * kapan memverifikasi (spec §5.2): yang bertambah hanyalah alasan pencabutan.
@@ -272,10 +281,11 @@ export async function lockProfileRecord(
   client: PoolClient,
   table: VoidableTable,
   recordId: string,
-): Promise<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean } | null> {
-  const result = await client.query<{ employeeId: string; voidedAt: Date | null; employeeRemoved: boolean }>(
+): Promise<LockedProfileRecord | null> {
+  const result = await client.query<LockedProfileRecord>(
     `SELECT r.employee_id AS "employeeId", r.voided_at AS "voidedAt",
-            (e.removed_at IS NOT NULL) AS "employeeRemoved"
+            (e.removed_at IS NOT NULL) AS "employeeRemoved",
+            (e.management_scope = 'OUTSIDE_HCIS') AS "employeeOutsideHcis"
      FROM ${table} r
      JOIN employees e ON e.id = r.employee_id
      WHERE r.id = $1
@@ -613,17 +623,27 @@ export async function getDataChangeRequest(db: Db, requestId: string): Promise<D
   return row ? requestToIso(row) : null;
 }
 
+export interface LockedDataChangeRequest {
+  employeeId: string;
+  submittedByAccountId: string;
+  target: DataChangeTarget;
+  payload: Record<string, unknown>;
+  state: DataChangeState;
+  /** EMP-001: removed from the master, so nothing may be written for them. */
+  employeeRemoved: boolean;
+  /** S2B §8.7: outside HCIS management, so the record is read-only. */
+  employeeOutsideHcis: boolean;
+}
+
 /** Locks the request for the decision; null when there is no such request. */
 export async function lockDataChangeRequest(
   client: PoolClient,
   requestId: string,
-): Promise<{ employeeId: string; submittedByAccountId: string; target: DataChangeTarget; payload: Record<string, unknown>; state: DataChangeState; employeeRemoved: boolean } | null> {
-  const result = await client.query<{
-    employeeId: string; submittedByAccountId: string; target: DataChangeTarget;
-    payload: Record<string, unknown>; state: DataChangeState; employeeRemoved: boolean;
-  }>(
+): Promise<LockedDataChangeRequest | null> {
+  const result = await client.query<LockedDataChangeRequest>(
     `SELECT r.employee_id AS "employeeId", r.submitted_by_account_id AS "submittedByAccountId",
-            r.target, r.payload, r.state, (e.removed_at IS NOT NULL) AS "employeeRemoved"
+            r.target, r.payload, r.state, (e.removed_at IS NOT NULL) AS "employeeRemoved",
+            (e.management_scope = 'OUTSIDE_HCIS') AS "employeeOutsideHcis"
      FROM employee_data_change_requests r
      JOIN employees e ON e.id = r.employee_id
      WHERE r.id = $1

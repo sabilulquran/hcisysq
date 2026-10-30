@@ -103,6 +103,8 @@ interface PoolOptions {
   /** SQLSTATE the action insert raises, to exercise the refusal mapping. */
   insertSqlState?: string;
   employeeRemoved?: boolean;
+  /** The record is marked outside HCIS management (S2B §8.7). */
+  employeeOutsideHcis?: boolean;
   /** An additional duty running beside the primary placement. */
   withAdditionalPlacement?: boolean;
   /** The destination unit or position does not exist. */
@@ -154,6 +156,10 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     if (sql.includes("FROM positions WHERE id = $1")) {
       const known = options.unknownReference !== "position";
       return { rows: known ? [{ "?column?": 1 }] : [], rowCount: known ? 1 : 0 };
+    }
+    if (/SELECT id, management_scope .* FROM employees WHERE id = \$1/s.test(sql)) {
+      if (options.employeeRemoved) return { rows: [], rowCount: 0 };
+      return { rows: [{ id: EMPLOYEE_ID, outside: options.employeeOutsideHcis === true }], rowCount: 1 };
     }
     if (sql.includes("SELECT id FROM employees WHERE id = $1")) {
       return options.employeeRemoved ? { rows: [], rowCount: 0 } : { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
@@ -440,6 +446,19 @@ describe("EMP-005 hire", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(writes).toEqual([]);
+  });
+
+  it("refuses an action, and even a preview, on a record outside HCIS management", async () => {
+    // S2B §8.7: BUMY and Pengurus Yayasan records are read-only. The preview
+    // is refused too — it is the screen that invites the action.
+    const record = await call("hc", RECORD_URL, { noHistory: true, payload: HIRE, employeeOutsideHcis: true });
+    expect(record.response.statusCode).toBe(409);
+    expect(record.response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(record.writes).toEqual([]);
+
+    const preview = await call("hc", PREVIEW_URL, { noHistory: true, payload: HIRE, employeeOutsideHcis: true });
+    expect(preview.response.statusCode).toBe(409);
+    expect(preview.writes).toEqual([]);
   });
 
   it("refuses an action on a record removed from the master", async () => {

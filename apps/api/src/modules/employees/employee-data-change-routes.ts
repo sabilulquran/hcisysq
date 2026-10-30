@@ -24,6 +24,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import {
   DATA_CHANGE_TARGETS,
@@ -235,6 +236,11 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
     }
     const validation = validateDataChange(body.data.target, body.data.payload, Number(jakartaToday().slice(0, 4)));
     if (!validation.ok) return send(reply, 400, { ...validation.failure });
+    // S2B §8.7: the decision on such a proposal can only ever be a refusal,
+    // so the queue does not collect proposals HC would have to reject by hand.
+    if (await isOutsideHcis(pool, me.employeeId)) {
+      return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
+    }
 
     const client = await pool.connect();
     try {
@@ -367,6 +373,12 @@ export async function registerEmployeeDataChangeRoutes(app: FastifyInstance, poo
         if (locked.employeeRemoved) {
           await rollback(client);
           return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+        }
+        // S2B §8.7: accepting would write to a record the direct HC routes
+        // refuse, so this path refuses it too.
+        if (locked.employeeOutsideHcis) {
+          await rollback(client);
+          return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
         }
 
         let applied: { entityType: string; entityId: string | null } | null = null;

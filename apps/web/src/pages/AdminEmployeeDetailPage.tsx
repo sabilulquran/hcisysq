@@ -263,6 +263,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   };
 
   const employee = data?.employee;
+  // S2B §8.7: a marked record is read-only, so no tab offers a write control.
+  const outsideHcis = employee?.managementScope === "OUTSIDE_HCIS";
 
   return (
     <AdminShell
@@ -304,6 +306,23 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         </section>
       ) : null}
 
+      {/* EMP-005 S2B §8.7: say it plainly. Without this the edit forms below
+          invite a write the API answers with a bare 409. */}
+      {employee?.managementScope === "OUTSIDE_HCIS" ? (
+        <section role="status" className="mb-5 rounded-2xl border border-warning-line bg-warning-soft p-4 text-sm text-warning-ink">
+          <p className="font-bold">Di luar pengelolaan HCIS</p>
+          <p className="mt-1">
+            Data ini hanya dapat dibaca
+            {employee.managementScopeReason === "BUMY" ? " (BUMY)" : ""}
+            {employee.managementScopeReason === "PENGURUS_YAYASAN" ? " (Pengurus Yayasan)" : ""}
+            . Riwayatnya tetap tersimpan dan tetap terbaca; perubahan apa pun ditolak.
+          </p>
+          {employee.managementScopeNote ? (
+            <p className="mt-1">Catatan HC: {employee.managementScopeNote}</p>
+          ) : null}
+        </section>
+      ) : null}
+
       <EmployeeDetailTabs
         active={tab}
         canReadEmployment={canReadEmployment}
@@ -312,11 +331,11 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       />
 
       {tab === "pendidikan" ? (
-        <EducationSkillsPanel employeeId={employeeId} canManage={canManageProfile} />
+        <EducationSkillsPanel employeeId={employeeId} canManage={canManageProfile && !outsideHcis} />
       ) : null}
 
       {tab === "keluarga" ? (
-        <FamilyAddressPanel employeeId={employeeId} canManage={canManageProfile} />
+        <FamilyAddressPanel employeeId={employeeId} canManage={canManageProfile && !outsideHcis} />
       ) : null}
 
       {tab === "kepegawaian" ? (
@@ -327,7 +346,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
               <EmploymentActionButtons
                 mode={employmentView.data.mode}
                 state={employmentView.data.state}
-                canManage={canManageEmployment}
+                canManage={canManageEmployment && !outsideHcis}
                 onStart={setEmploymentAction}
               />
             ) : null
@@ -371,7 +390,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
               <EmploymentActionButtons
                 mode={employmentView.data.mode}
                 state={employmentView.data.state}
-                canManage={canManageEmployment}
+                canManage={canManageEmployment && !outsideHcis}
                 group="career"
                 hasPrimaryPlacement={employmentView.data.current.primaryPlacement !== null}
                 onStart={setEmploymentAction}

@@ -33,7 +33,9 @@
 --      Only when that count is 0:
 --      DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE role_key = 'hcis_module_admin');
 --      DELETE FROM roles WHERE role_key = 'hcis_module_admin';
---   3. DROP INDEX IF EXISTS access_audit_events_hub_request_idx;
+--   3. The attendance.devices.technical catalog row is left in place: it describes a permission the
+--      application really guards, and removing it would break nothing but would restore the gap.
+--   4. DROP INDEX IF EXISTS access_audit_events_hub_request_idx;
 --      ALTER TABLE access_audit_events DROP COLUMN IF EXISTS hub_request_id;
 --      ALTER TABLE access_audit_events DROP COLUMN IF EXISTS actor_source;
 --   Audit rows are never deleted.
@@ -71,7 +73,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS access_audit_events_hub_request_idx
   ON access_audit_events (hub_request_id, action)
   WHERE hub_request_id IS NOT NULL;
 
--- 2. The Module Administrator role (§4.1, §4.2).
+-- 2. One permission key that the catalog never had.
+--
+-- attendance.devices.technical is declared in ADMIN_PERMISSIONS and really guards routes
+-- (physical-parity-extended-routes, physical-mode-permissions), but no migration ever inserted it
+-- into `permissions`. So it could not be granted to anyone: role_permissions has a foreign key to
+-- that table, and only legacy Super Admin compatibility — which reads the TypeScript list, not the
+-- table — ever satisfied those guards. Granting it below without this insert fails with 23503.
+--
+-- Adding it grants nothing new to the Module Administrator beyond what it already holds. The routes
+-- that read it require ALL of the listed permissions (requirePermissionsFromCookie uses `every`),
+-- and they pair it with attendance.devices.firmware, which stays outside this role (§4.3). Where
+-- physicalModePermissions adds it, it is the canary/dry-run path, which costs *more* permissions
+-- than mode: "execute" — and execute needs only attendance.devices.operate, which the role has.
+INSERT INTO permissions (permission_key, description)
+VALUES (
+  'attendance.devices.technical',
+  'AUTH-011/ADMS: operasi teknis perangkat absensi, termasuk jalur canary; selalu dipakai bersama izin perangkat lain'
+)
+ON CONFLICT (permission_key) DO UPDATE SET description = EXCLUDED.description;
+
+-- 3. The Module Administrator role (§4.1, §4.2).
 --
 -- Every permission below already exists in the catalog and is already carried by
 -- human_capital_admin. The point of the role is not new capability; it is the line between

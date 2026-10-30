@@ -84,6 +84,24 @@ describe.skipIf(!databaseUrl)("0111 AUTH-014 module administrator and channel au
         expect(moduleAdmin.rows.map((row) => row.permissionKey)).not.toContain(forbidden);
       }
 
+      // The catalog row this migration had to add: attendance.devices.technical is declared in
+      // ADMIN_PERMISSIONS and guards real routes, but no migration ever inserted it, so granting it
+      // failed the role_permissions foreign key. CI caught exactly this.
+      const catalog = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM permissions WHERE permission_key = 'attendance.devices.technical'`,
+      );
+      expect(catalog.rows[0]!.count).toBe("1");
+
+      // Every permission the role carries must exist in the catalog, or the grant could not have
+      // been inserted at all. Asserted explicitly so the next bundle change cannot regress quietly.
+      const orphans = await client.query<{ permissionKey: string }>(
+        `SELECT permission.permission_key AS "permissionKey"
+           FROM roles role JOIN role_permissions permission ON permission.role_id = role.id
+           LEFT JOIN permissions catalog ON catalog.permission_key = permission.permission_key
+          WHERE role.role_key = 'hcis_module_admin' AND catalog.permission_key IS NULL`,
+      );
+      expect(orphans.rows).toEqual([]);
+
       // Nobody holds the new role: granting is a separate, reviewed action.
       const holders = await client.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM account_role_assignments assignment

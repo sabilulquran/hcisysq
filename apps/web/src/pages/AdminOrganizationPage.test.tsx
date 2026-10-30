@@ -6,7 +6,7 @@ import type {
   OrganizationEmployeeOption,
   OrganizationRolloutConfiguration,
 } from "@/lib/organizationDesigner";
-import { OrganizationDesignerWorkspace, positionClassificationPatch } from "@/pages/AdminOrganizationPage";
+import { OrganizationDesignerWorkspace, classificationOptions, positionClassificationPatch } from "@/pages/AdminOrganizationPage";
 import type { JobClassification } from "@/lib/jobClassifications";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
@@ -71,6 +71,8 @@ function render(input: {
   employeesFailed?: boolean;
   /** ORG-011: null is the ordinary case for an account without job_classifications.read. */
   classifications?: JobClassification[] | null;
+  classificationsTruncated?: boolean;
+  classificationsFailed?: boolean;
 }) {
   return renderToStaticMarkup(
     <OrganizationDesignerWorkspace
@@ -80,6 +82,8 @@ function render(input: {
       rolloutFailed={input.rolloutFailed ?? false}
       employees={employees}
       classifications={input.classifications ?? null}
+      classificationsTruncated={input.classificationsTruncated ?? false}
+      classificationsFailed={input.classificationsFailed ?? false}
       employeesFailed={input.employeesFailed ?? false}
       loading={false}
       effectiveDate="2026-10-23"
@@ -241,21 +245,47 @@ describe("ORG-008-1 perubahan tidak hilang dan kegagalan tidak disamarkan", () =
 });
 
 describe("ORG-011 seat classification in the designer", () => {
-  const catalog = [{
-    id: "c1", code: "FUNC_GURU", name: "Guru", family: "FUNCTIONAL" as const,
+  const guru: JobClassification = {
+    id: "c1", code: "FUNC_GURU", name: "Guru", family: "FUNCTIONAL",
     gradeCode: null, active: true, effectiveFrom: "2026-01-01", effectiveTo: null,
-  }];
+  };
+  const closing: JobClassification = { ...guru, id: "c2", code: "FUNC_LAMA", name: "Guru Lama", effectiveTo: "2026-12-31" };
+  const family = () => "Fungsional";
 
   it("sends nothing about the classification when the catalog could not be read", () => {
     // organization.manage does not carry job_classifications.read, so this is an ordinary
     // account, not a broken one. Sending null here would clear a seat on every title edit.
-    expect(positionClassificationPatch("FUNC_GURU", null)).toEqual({});
-    expect(positionClassificationPatch(null, null)).toEqual({});
+    expect(positionClassificationPatch("FUNC_GURU", null, "FUNC_GURU")).toEqual({});
+    expect(positionClassificationPatch(null, null, "FUNC_GURU")).toEqual({});
   });
 
-  it("sends the chosen code, and null when the operator chose nothing", () => {
-    expect(positionClassificationPatch("FUNC_GURU", catalog)).toEqual({ jobClassificationCode: "FUNC_GURU" });
-    expect(positionClassificationPatch("", catalog)).toEqual({ jobClassificationCode: null });
-    expect(positionClassificationPatch(null, catalog)).toEqual({ jobClassificationCode: null });
+  it("sends the key only when the operator actually changed it", () => {
+    expect(positionClassificationPatch("FUNC_GURU", [guru], null)).toEqual({ jobClassificationCode: "FUNC_GURU" });
+    expect(positionClassificationPatch("", [guru], "FUNC_GURU")).toEqual({ jobClassificationCode: null });
+    // Unchanged: an absent key is what keeps a lapsed code from being refused on a title edit.
+    expect(positionClassificationPatch("FUNC_GURU", [guru], "FUNC_GURU")).toEqual({});
+    expect(positionClassificationPatch("", [guru], null)).toEqual({});
+  });
+
+  it("keeps a lapsed code in the list so a plain edit cannot wipe it", () => {
+    // A cloned change set moves to a new date and a classification can be closed afterwards.
+    // Without this option the select would match nothing, fall back to the empty choice, and
+    // a title edit would silently clear the seat.
+    const options = classificationOptions([guru], "FUNC_DIHAPUS", family);
+    expect(options[0]).toEqual({
+      code: "FUNC_DIHAPUS", label: "FUNC_DIHAPUS (tidak berlaku pada tanggal ini)", lapsed: true,
+    });
+    expect(options.map((option) => option.code)).toContain("FUNC_GURU");
+  });
+
+  it("does not duplicate a code that is still in the catalog", () => {
+    const options = classificationOptions([guru], "FUNC_GURU", family);
+    expect(options.filter((option) => option.code === "FUNC_GURU")).toHaveLength(1);
+    expect(options[0]?.lapsed).toBe(false);
+  });
+
+  it("names the day a classification stops applying", () => {
+    expect(classificationOptions([closing], null, family)[0]?.label)
+      .toBe("Guru Lama (Fungsional, berakhir 2026-12-31)");
   });
 });

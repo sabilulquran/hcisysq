@@ -100,19 +100,28 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
 
   it("refuses a managed row that still carries a marker", async () => {
     await mark("BUMY");
-    for (const column of ["management_scope_marked_at", "management_scope_marked_by_account_id"]) {
-      await expectViolation(
-        () => client.query(
-          `UPDATE employees
-           SET management_scope = 'MANAGED', management_scope_reason = NULL,
-               management_scope_marked_at = NULL, management_scope_marked_by_account_id = NULL,
-               ${column} = ${column === "management_scope_marked_at" ? "now()" : "$2"}
-           WHERE id = $1`,
-          column === "management_scope_marked_at" ? [employeeId] : [employeeId, accountId],
-        ),
-        "23514",
-      );
-    }
+    // Clearing the scope but leaving when it was marked, or by whom, would
+    // make MANAGED rows carry a marker that means nothing any more.
+    await expectViolation(
+      () => client.query(
+        `UPDATE employees
+         SET management_scope = 'MANAGED', management_scope_reason = NULL,
+             management_scope_marked_by_account_id = NULL
+         WHERE id = $1`,
+        [employeeId],
+      ),
+      "23514",
+    );
+    await expectViolation(
+      () => client.query(
+        `UPDATE employees
+         SET management_scope = 'MANAGED', management_scope_reason = NULL,
+             management_scope_marked_at = NULL
+         WHERE id = $1`,
+        [employeeId],
+      ),
+      "23514",
+    );
   });
 
   it("keeps the last note when the record is managed again", async () => {

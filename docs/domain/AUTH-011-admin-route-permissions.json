@@ -3277,5 +3277,26 @@
     "permissions": [
       "job_classifications.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/auth/role-administration-routes.ts",
+    "method": "POST",
+    "url": "/internal/v1/role-administration/accounts/:accountId/role-assignments",
+    "access": "machine-actor",
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/auth/role-administration-routes.ts",
+    "method": "DELETE",
+    "url": "/internal/v1/role-administration/role-assignments/:assignmentId",
+    "access": "machine-actor",
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/auth/role-administration-routes.ts",
+    "method": "GET",
+    "url": "/internal/v1/role-administration/catalog",
+    "access": "machine-actor",
+    "permissions": []
   }
 ]

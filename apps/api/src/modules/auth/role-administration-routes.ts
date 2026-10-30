@@ -14,6 +14,7 @@ import {
   ActorAssertionError,
   createActorAssertionVerifier,
   resolveAssertedActor,
+  spendActorAssertion,
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
 import {
@@ -145,6 +146,15 @@ export function registerRoleAdministrationRoutes(
     try {
       const claims = await verifyActorAssertion(assertion);
       const actor = await resolveAssertedActor(pool, claims);
+      // §2.11 gap 1: spend it here — after the signature and the actor are established, before any
+      // work is attempted. One assertion is one attempt; a refused grant still burns it.
+      const body = request.body as { requestId?: unknown } | undefined;
+      await spendActorAssertion(pool, claims, {
+        method: request.method,
+        path: request.routeOptions?.url ?? request.url,
+        hubRequestId: typeof body?.requestId === "string" ? body.requestId : null,
+        actorAccountId: actor.id,
+      });
       let allowed: boolean;
       try {
         allowed = await applicationAccess!.isAllowed({ issuer: claims.issuer, subject: claims.subject });
@@ -160,12 +170,16 @@ export function registerRoleAdministrationRoutes(
       return actor;
     } catch (error) {
       if (error instanceof ActorAssertionError) {
-        // Distinct codes and statuses: a bad assertion is the caller's problem (401), while an
-        // unresolved actor means HCIS has no account for a person SQ Hub considers real (403) —
-        // usually the Keycloak subject not matching what HCIS stored, which is an operator fix.
-        const unresolved = error.code === "ACTOR_UNRESOLVED";
-        await reply.status(unresolved ? 403 : 401)
-          .send({ code: unresolved ? "ROLE_ADMIN_ACTOR_UNRESOLVED" : "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+        // Three outcomes, kept apart because they mean different things to whoever is debugging:
+        // a bad assertion is the caller's problem (401); an already-spent one is a replay or a
+        // retry (409); an unresolved actor means HCIS has no account for a person SQ Hub considers
+        // real (403) — usually the Keycloak subject not matching what HCIS stored.
+        const status = error.code === "ACTOR_UNRESOLVED" ? 403
+          : error.code === "ACTOR_ASSERTION_SPENT" ? 409 : 401;
+        const code = error.code === "ACTOR_UNRESOLVED" ? "ROLE_ADMIN_ACTOR_UNRESOLVED"
+          : error.code === "ACTOR_ASSERTION_SPENT" ? "ROLE_ADMIN_ACTOR_ASSERTION_SPENT"
+            : "ROLE_ADMIN_ACTOR_ASSERTION_INVALID";
+        await reply.status(status).send({ code });
         return null;
       }
       throw error;

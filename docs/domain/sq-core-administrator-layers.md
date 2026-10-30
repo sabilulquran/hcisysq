@@ -1,6 +1,6 @@
 # AUTH-014 — Tiga lapis administrator: sisi HCIS
 
-**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1–F4 selesai; F5 menunggu SQ Hub dan Keycloak. Revisi 8.
+**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1–F4 selesai, dua celah §2.11 ditutup; berikutnya Keycloak lalu SQ Hub, dan saklar F5 keputusan owner. Revisi 9.
 **Related:** ADR-0006 (keputusan), AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`.
 **Supersedes:** aturan "hanya Super Admin yang memberi peran" di AUTH-011 (keputusan owner 2026-10-16), sejauh menyangkut *siapa* yang boleh memberi. Larangan self-grant, allowlist role/permission, kewajiban mandat, dan atomisitas audit **tidak** diubah.
 
@@ -138,17 +138,27 @@ Role yang membawa salah satunya ditolak `403 ROLE_IDENTITY_PERMISSION_FORBIDDEN`
 
 AUTH-011 menegaskan pemeriksaan grantor berjalan **sebelum** validasi input. Kanal ini tidak bisa begitu untuk `requestId` dan body, karena body harus diurai dulu. Yang tetap dipertahankan: identitas aktor diverifikasi dari header (langkah 2–4) **sebelum** body dibaca, dan tidak ada apa pun yang ditulis sebelum seluruh langkah §2.4 lulus. Perbedaannya hanya pada urutan pesan galat, bukan pada apa yang tersimpan.
 
-### 2.11 Dua celah yang belum tertutup, dan gate-nya di F5
+### 2.11 Dua celah yang ditemukan review, dan cara keduanya ditutup
 
-Ditemukan review independen putaran ketiga (2026-10-30). Keduanya tidak memblokir F4 karena kanal masih mati, tetapi keduanya **syarat sebelum saklar dinyalakan**.
+Ditemukan review independen putaran ketiga (2026-10-30), **ditutup 2026-10-30** atas keputusan owner sebelum melanjutkan ke Keycloak dan SQ Hub.
 
-**Assertion aktor adalah bearer yang tidak terikat permintaan.** Ia tidak terikat pada `requestId`, `accountId`, maupun method. Siapa pun yang menangkap satu header `X-SQ-Actor-Assertion` bersama token mesin — dari log proxy, jejak APM, atau log di sisi Hub — dapat menerbitkan pemberian peran **baru** atas nama orang itu selama assertion belum lewat umur maksimumnya. Unique index hanya menolak `requestId` yang sama persis, dan `requestId` dipilih pemanggil, jadi UUID baru berarti pemberian baru.
+#### Celah 1 — assertion aktor adalah bearer yang tidak terikat permintaan ✅ ditutup
 
-Yang sudah dilakukan: umur maksimum diturunkan menjadi 60 detik (batas atas 300), dan audience assertion wajib berbeda dari audience token mesin. Yang **harus** ada sebelum F5: penolakan `jti` yang sudah pernah dipakai, atau pengikatan assertion ke permintaannya.
+Masalahnya: assertion tidak terikat pada `requestId`, `accountId`, maupun method. Siapa pun yang menangkap satu header `X-SQ-Actor-Assertion` bersama token mesin — dari log proxy, jejak APM, atau log di sisi Hub — dapat menerbitkan pemberian peran **baru** atas nama orang itu selama assertion belum lewat umur maksimumnya. Unique index `(hub_request_id, action)` tidak menolong sama sekali, karena `requestId` dipilih pemanggil: UUID baru berarti pemberian baru.
 
-Satu kenyataan yang tidak boleh ditutupi: karena client SQ Hub memegang hak token exchange, SQ Hub yang dikuasai penyerang tetap dapat menerbitkan assertion atas nama subject mana pun di realm. §2.2 mempersempit ancamannya — body tidak lagi bisa menyebut aktor — bukan menutupnya.
+**Penutupnya: assertion hanya bisa dibelanjakan sekali.** Tabel `auth_actor_assertions` (migration 0114) memegang `jti` per issuer sebagai primary key. Assertion dibelanjakan setelah tanda tangan dan aktornya terbukti, **sebelum** pekerjaan apa pun dicoba; presentasi kedua dengan `jti` yang sama ditolak `409 ROLE_ADMIN_ACTOR_ASSERTION_SPENT`. Assertion tanpa `jti` atau tanpa `exp` ditolak, karena tanpa keduanya ia tidak bisa dibuat sekali-pakai.
 
-**Rute kanal berada di allowlist rute publik.** Ketiga rute `/internal/v1/role-administration/*` terdaftar di `EXPECTED_PUBLIC_URLS`, sehingga penjaga sesi milik repo tidak lagi mengawasinya sama sekali; perlindungannya sepenuhnya `authenticate()` di modul itu. Benar hari ini, tetapi entri allowlist akan hidup lebih lama daripada ingatan siapa pun: handler baru yang kelak ditambahkan di prefix itu tidak akan ditandai apa pun. Sebelum F5, tambahkan test yang menuntut setiap rute di prefix itu melewati `authenticate()`.
+Pengikatan ke permintaan mengikuti dari situ: baris yang tersimpan mencatat method, path, `requestId`, dan akun aktor, sehingga satu assertion melekat pada satu permintaan yang benar-benar dilayani. Satu assertion adalah satu percobaan — pemberian yang ditolak pun tetap membakarnya, dan mencoba lagi menuntut assertion baru dari SQ Hub.
+
+Baris kedaluwarsa disapu pada setiap penyisipan, bukan oleh tugas terjadwal; assertion di atas 60 detik ditolak jauh sebelum menyentuh tabel ini, jadi isinya kira-kira sebanyak pemberian peran dalam satu menit.
+
+**Sisa risiko, dinyatakan terbuka:** yang tersisa adalah perlombaan — penyerang yang menangkap assertion dan masuk **sebelum** permintaan aslinya mendarat. Itu sebabnya barisnya mencatat untuk apa assertion dibelanjakan: pemberian yang tidak dikenali siapa pun menjadi terlihat, bukan tak berjejak. Dan satu kenyataan yang tidak boleh ditutupi: karena client SQ Hub memegang hak token exchange, SQ Hub yang dikuasai penyerang tetap dapat menerbitkan assertion atas nama subject mana pun di realm. §2.2 mempersempit ancamannya, bukan menutupnya.
+
+#### Celah 2 — rute kanal berada di allowlist rute publik ✅ ditutup
+
+Masalahnya: ketiga rute `/internal/v1/role-administration/*` terdaftar di `EXPECTED_PUBLIC_URLS`, sehingga penjaga rute milik repo berhenti mengawasinya sama sekali. Benar pada hari ditulis, tetapi entri allowlist hidup lebih lama daripada ingatan siapa pun: handler baru di prefix itu tidak akan ditandai apa pun.
+
+**Penutupnya, dua lapis.** Prefix ini dikeluarkan dari daftar pengecualian dan ketiga rutenya masuk manifest izin dengan jenis akses sendiri, `machine-actor` — bukan sesi, bukan permission HCIS, melainkan token mesin plus assertion aktor. Di atas itu ada test perilaku: setiap rute di prefix tersebut dipanggil **tanpa kredensial apa pun** dan wajib menjawab 401, 403, 409, atau 503, dengan `Cache-Control: no-store`. Yang kedua inilah yang menangkap rute yang belum ada — handler baru yang lupa melewati `authenticate()` akan menjawab di situ dan membuat test gagal.
 
 ### 2.9 Kanal administrasi akun, bukan hanya peran
 

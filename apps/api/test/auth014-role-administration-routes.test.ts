@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import Fastify from "fastify";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
@@ -36,6 +38,16 @@ const config = (enabled: boolean) => loadConfig({
   HCIS_ROLE_ADMIN_ENABLED: enabled ? "1" : "0",
 });
 
+// §2.11: the assertion now carries a jti and an expiry, and is spent once per request.
+function assertionClaims() {
+  return {
+    issuer: "https://identity.example.test/realms/sq-staff",
+    subject: "actor-sub",
+    jti: randomUUID(),
+    expiresAt: new Date(Date.now() + 60_000),
+  };
+}
+
 const ACCOUNT = "00000000-0000-4000-8000-00000000000a";
 const ROLE = "00000000-0000-4000-8000-00000000000b";
 const REQUEST = "00000000-0000-4000-8000-00000000000c";
@@ -53,9 +65,7 @@ function app(options: { enabled?: boolean; pool?: Partial<Pool> } = {}) {
     config(options.enabled ?? true),
     {
       verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
-      verifyActorAssertion: async () => ({
-        issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub",
-      }),
+      verifyActorAssertion: async () => assertionClaims(),
       applicationAccess: { isAllowed: async () => true },
     },
   );
@@ -140,7 +150,7 @@ describe("AUTH-014 role administration channel", () => {
         verifyMachineToken: async () => {
           throw new OrganizationDirectoryMachineAuthError(code, "synthetic");
         },
-        verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+        verifyActorAssertion: async () => assertionClaims(),
         applicationAccess: { isAllowed: async () => true },
       });
       const response = await instance.inject({
@@ -240,7 +250,7 @@ describe("AUTH-014 role administration channel", () => {
       const instance = Fastify();
       registerRoleAdministrationRoutes(instance, pool, config(true), {
         verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
-        verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+        verifyActorAssertion: async () => assertionClaims(),
         applicationAccess: access,
       });
       const response = await instance.inject({
@@ -251,6 +261,39 @@ describe("AUTH-014 role administration channel", () => {
       expect(response.json()).toEqual({ code });
       await instance.close();
     }
+  });
+
+  it("answers a spent actor assertion with 409, and never reaches the grant", async () => {
+    // §2.11 gap 1 at the route level: once the legitimate request has spent the assertion, a
+    // captured copy buys nothing, whatever requestId or target the attacker picks.
+    let connected = false;
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("INSERT INTO auth_actor_assertions")) {
+          throw Object.assign(new Error("duplicate key"), { code: "23505" });
+        }
+        return { rowCount: 1, rows: [{
+          id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+          principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+        }] };
+      },
+      connect: async () => { connected = true; throw new Error("must not reach the grant"); },
+    } as unknown as Pool;
+
+    const instance = Fastify();
+    registerRoleAdministrationRoutes(instance, pool, config(true), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => assertionClaims(),
+      applicationAccess: { isAllowed: async () => true },
+    });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers, payload: { ...grantBody, requestId: randomUUID() },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ code: "ROLE_ADMIN_ACTOR_ASSERTION_SPENT" });
+    expect(connected, "a spent assertion must not reach the grant").toBe(false);
+    await instance.close();
   });
 
   it("answers a replayed requestId with 409 rather than a 500", async () => {
@@ -266,7 +309,7 @@ describe("AUTH-014 role administration channel", () => {
       connect: async () => { throw replay; },
     } as unknown as Pool, config(true), {
       verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
-      verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+      verifyActorAssertion: async () => assertionClaims(),
       applicationAccess: { isAllowed: async () => true },
     });
     const response = await instance.inject({

@@ -452,6 +452,19 @@
       "list": "single"
     },
     {
+      "url": "/admin/job-classifications",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/job-classifications/:code",
+      "list": "single",
+      "reason": "Satu klasifikasi sebagaimana berlaku pada satu tanggal."
+    },
+    {
+      "url": "/admin/job-grades",
+      "list": "paged"
+    },
+    {
       "url": "/admin/leave/calendar",
       "list": "range",
       "reason": "Pengecualian kalender satu tahun."

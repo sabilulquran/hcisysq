@@ -6,7 +6,8 @@ import type {
   OrganizationEmployeeOption,
   OrganizationRolloutConfiguration,
 } from "@/lib/organizationDesigner";
-import { OrganizationDesignerWorkspace } from "@/pages/AdminOrganizationPage";
+import { OrganizationDesignerWorkspace, positionClassificationPatch } from "@/pages/AdminOrganizationPage";
+import type { JobClassification } from "@/lib/jobClassifications";
 import type { AuthSession, PrincipalType } from "@/types/hcis";
 
 function session(principalType: PrincipalType, permissions: string[]): AuthSession {
@@ -68,6 +69,8 @@ function render(input: {
   rollout?: OrganizationRolloutConfiguration | null;
   rolloutFailed?: boolean;
   employeesFailed?: boolean;
+  /** ORG-011: null is the ordinary case for an account without job_classifications.read. */
+  classifications?: JobClassification[] | null;
 }) {
   return renderToStaticMarkup(
     <OrganizationDesignerWorkspace
@@ -76,6 +79,7 @@ function render(input: {
       rollout={input.rollout === undefined ? legacyRollout : input.rollout}
       rolloutFailed={input.rolloutFailed ?? false}
       employees={employees}
+      classifications={input.classifications ?? null}
       employeesFailed={input.employeesFailed ?? false}
       loading={false}
       effectiveDate="2026-10-23"
@@ -233,5 +237,25 @@ describe("ORG-008-1 perubahan tidak hilang dan kegagalan tidak disamarkan", () =
     const html = render({ actor: hcAdmin, data: view({ nodes: [], positions: [], draft: null, mode: "CURRENT" }) });
     expect(html).toContain("Belum ada struktur");
     expect(html).not.toContain("Start organization structure");
+  });
+});
+
+describe("ORG-011 seat classification in the designer", () => {
+  const catalog = [{
+    id: "c1", code: "FUNC_GURU", name: "Guru", family: "FUNCTIONAL" as const,
+    gradeCode: null, active: true, effectiveFrom: "2026-01-01", effectiveTo: null,
+  }];
+
+  it("sends nothing about the classification when the catalog could not be read", () => {
+    // organization.manage does not carry job_classifications.read, so this is an ordinary
+    // account, not a broken one. Sending null here would clear a seat on every title edit.
+    expect(positionClassificationPatch("FUNC_GURU", null)).toEqual({});
+    expect(positionClassificationPatch(null, null)).toEqual({});
+  });
+
+  it("sends the chosen code, and null when the operator chose nothing", () => {
+    expect(positionClassificationPatch("FUNC_GURU", catalog)).toEqual({ jobClassificationCode: "FUNC_GURU" });
+    expect(positionClassificationPatch("", catalog)).toEqual({ jobClassificationCode: null });
+    expect(positionClassificationPatch(null, catalog)).toEqual({ jobClassificationCode: null });
   });
 });

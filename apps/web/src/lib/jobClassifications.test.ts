@@ -13,11 +13,12 @@ import {
 import type { AuthSession } from "@/types/hcis";
 
 function stubFetch(body: unknown, status = 200) {
-  const spy = vi.fn(async (_input: unknown, _init?: unknown) => new Response(JSON.stringify(body), {
+  const spy = vi.fn(async () => new Response(JSON.stringify(body), {
     status, headers: { "Content-Type": "application/json" },
   }));
   vi.stubGlobal("fetch", spy);
-  return spy;
+  // The call arguments are what these tests assert on, so keep them typed as a plain list.
+  return spy as unknown as { mock: { calls: unknown[][] } };
 }
 
 afterEach(() => { vi.unstubAllGlobals(); });

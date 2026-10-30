@@ -1,6 +1,6 @@
 # AUTH-014 — Tiga lapis administrator: sisi HCIS
 
-**Status:** ACCEPTED product decision (owner, 2026-10-27); implementasi belum dimulai. Revisi 3 setelah putaran review independen kedua 2026-10-27.
+**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1 selesai. Revisi 4.
 **Related:** ADR-0006 (keputusan), AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`.
 **Supersedes:** aturan "hanya Super Admin yang memberi peran" di AUTH-011 (keputusan owner 2026-10-16), sejauh menyangkut *siapa* yang boleh memberi. Larangan self-grant, allowlist role/permission, kewajiban mandat, dan atomisitas audit **tidak** diubah.
 
@@ -199,16 +199,22 @@ Aturannya:
 4. Akun dikembalikan ke `inactive` segera setelah selesai.
 5. Kredensial break-glass dirotasi setelah setiap pemakaian.
 
-Langkah 2 dan 5 **belum punya alat**. `bootstrap-super-admin.ts` menolak bekerja bila SUPER_ADMIN sudah ada, `assertAccountManagementTarget` melarang SUPER_ADMIN menjadi target pengelolaan akun lewat API, dan tidak ada perintah pengubah status maupun pemutar kredensial. Tanpa keduanya, satu-satunya jalan adalah SQL manual di Mi8VPS, dan F1 tidak dapat dijalankan sebagaimana tertulis.
+Langkah 2 dan 5 tadinya **tidak punya alat sama sekali**: `bootstrap-super-admin.ts` menolak bekerja bila SUPER_ADMIN sudah ada, `assertAccountManagementTarget` melarang SUPER_ADMIN menjadi target pengelolaan akun lewat API, dan tidak ada perintah pengubah status maupun pemutar kredensial. Satu-satunya jalan adalah SQL manual di Mi8VPS — dan itulah yang membuat akun ini pernah tidak terpakai sama sekali.
 
-Dua perintah CLI baru karena itu menjadi **prasyarat F1**, bukan pekerjaan belakangan:
+**Selesai di F1 (2026-10-30):** satu perintah `auth:break-glass` dengan dua mode, keduanya pratinjau-dulu dan hanya bekerja pada `principal_type = 'SUPER_ADMIN'`:
 
-- `break-glass:set-status <active|inactive>` — satu-satunya pengubah status akun SUPER_ADMIN, menulis audit `actor_source = "hcis_break_glass"`;
-- `break-glass:rotate-credential` — memutar kredensial dan menulis audit yang sama.
+- `--set-status <active|inactive>` — satu-satunya pengubah status akun break-glass; mencabut sesi hidup saat menonaktifkan;
+- `--rotate-credential` — memutar kata sandi, TOTP, dan recovery code **bersama-sama**, lalu mencabut sesi hidup.
 
-Keduanya tetap di belakang variabel lingkungan sekali-pakai seperti `HCIS_ALLOW_SUPER_ADMIN_BOOTSTRAP` yang sudah ada.
+Keduanya menuntut `HCIS_ALLOW_BREAK_GLASS=1`, menolak menebak bila ada lebih dari satu akun `SUPER_ADMIN`, mewajibkan `--reason`, dan menulis audit (`auth.break_glass.status_changed`, `auth.break_glass.credential_rotated`). Prosedurnya di `docs/operations/auth-014-break-glass.md`.
 
-Akun break-glass wajib sudah tertaut ke Akun SQ dan **sudah pernah diuji login** sebelum F4. Ini pelajaran langsung dari kejadian yang memicu AUTH-014: lapis cadangan yang belum pernah diuji bukan lapis cadangan.
+Auditnya ditulis ke `auth_audit_events`, bukan `access_audit_events`, karena kolom `actor_source` baru lahir di F2 dan F1 tidak boleh bergantung pada fase sesudahnya. Pemberian peran lewat break-glass tetap mendapat `actor_source = "hcis_break_glass"` begitu F2 dan F3 terpasang.
+
+#### Koreksi urutan: akun break-glass tetap aktif sampai F5a
+
+Rancangan menulis F1 diakhiri dengan mengembalikan akun ke `inactive`. Kenyataannya akun itu **sedang dipakai setiap hari** untuk memberi peran, karena SQ Hub belum bisa. Menonaktifkannya sekarang berarti tidak ada seorang pun yang dapat memberi peran di HCIS — persis kegagalan yang seluruh rencana ini susun untuk dihindari.
+
+Jadi: akun break-glass **tetap aktif** sampai F5a lulus. `inactive` sebagai keadaan normal tetap F7, seperti tertulis di §6. Yang F1 wajibkan adalah akun itu **tertaut ke Akun SQ dan terbukti bisa login** — dan itu sudah terpenuhi lewat pemulihan manual 2026-10-30 (user Keycloak `sysadmin`, ditautkan dengan `auth:map-oidc-identity`).
 
 Satu hal yang sudah benar dan tidak perlu diubah: `getSession` menyaring `accounts.status = 'active'`, jadi mengembalikan akun ke `inactive` benar-benar memutus sesi yang sedang berjalan, bukan hanya login berikutnya.
 
@@ -310,7 +316,7 @@ Prinsipnya: **aditif lebih dulu, pencabutan paling akhir; setiap fase punya jala
 | Fase | Isi | Risiko akses | Jalan mundur |
 |---|---|---|---|
 | **F0** | ADR-0006 + AUTH-014 (dokumentasi; PR ini) | nihil | revert commit |
-| **F1** | CLI break-glass (§5 baris 9). Akun break-glass ditautkan ke Akun SQ dan **diuji login**, lalu dikembalikan ke `inactive`. Prosedur masuk runbook Mi8VPS | nihil (menambah jalan masuk) | CLI tidak dipakai; akun tetap seperti sekarang |
+| **F1** ✅ 2026-10-30 | CLI break-glass (§5 baris 9) dan runbook-nya. Akun break-glass tertaut ke Akun SQ dan **terbukti bisa login**. Akun **tetap aktif** sampai F5a (§3.2) | nihil (menambah alat, tidak mengubah perilaku) | CLI tidak dipakai; akun tetap seperti sekarang |
 | **F2** | Migration aditif: role `hcis_module_admin`, dua kolom audit, unique index. Belum ada pemegang role | nihil | `DROP COLUMN`; `DROP ROLE` **hanya setelah** memverifikasi `account_role_assignments` tidak punya baris untuk role itu (FK), jika ada maka role dibiarkan tanpa pemegang |
 | **F3** | Kode: `assertRoleGrantor(actor, channel)`; break-glass lepas dari shim (§3.1); `IDENTITY_PERMISSIONS` ditolak di `canDelegateRole` untuk **kedua** jalur; jalur `sq_hub` ada tetapi route belum terdaftar | rendah — perilaku break-glass setara, sumber kewenangannya berubah | revert kode; database tidak berubah |
 | **F4** | Prasyarat: token exchange tersedia di realm (§2.2) dan F1 lulus. Route internal didaftarkan dengan `HCIS_ROLE_ADMIN_ENABLED` **mati** | nihil (`503`) | saklar tetap mati |

@@ -1,6 +1,6 @@
 # AUTH-014 — Tiga lapis administrator: sisi HCIS
 
-**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1 selesai. Revisi 4.
+**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1 dan F2 selesai. Revisi 5.
 **Related:** ADR-0006 (keputusan), AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`.
 **Supersedes:** aturan "hanya Super Admin yang memberi peran" di AUTH-011 (keputusan owner 2026-10-16), sejauh menyangkut *siapa* yang boleh memberi. Larangan self-grant, allowlist role/permission, kewajiban mandat, dan atomisitas audit **tidak** diubah.
 
@@ -317,7 +317,7 @@ Prinsipnya: **aditif lebih dulu, pencabutan paling akhir; setiap fase punya jala
 |---|---|---|---|
 | **F0** | ADR-0006 + AUTH-014 (dokumentasi; PR ini) | nihil | revert commit |
 | **F1** ✅ 2026-10-30 | CLI break-glass (§5 baris 9) dan runbook-nya. Akun break-glass tertaut ke Akun SQ dan **terbukti bisa login**. Akun **tetap aktif** sampai F5a (§3.2) | nihil (menambah alat, tidak mengubah perilaku) | CLI tidak dipakai; akun tetap seperti sekarang |
-| **F2** | Migration aditif: role `hcis_module_admin`, dua kolom audit, unique index. Belum ada pemegang role | nihil | `DROP COLUMN`; `DROP ROLE` **hanya setelah** memverifikasi `account_role_assignments` tidak punya baris untuk role itu (FK), jika ada maka role dibiarkan tanpa pemegang |
+| **F2** ✅ 2026-10-30 | Migration aditif `0110`: role `hcis_module_admin` dengan 12 permission konfigurasi, kolom `actor_source` dan `hub_request_id`, unique index anti-replay. Belum ada pemegang role; `human_capital_admin` belum kehilangan apa pun | nihil | `DROP COLUMN`; `DROP ROLE` **hanya setelah** memverifikasi `account_role_assignments` tidak punya baris untuk role itu (FK), jika ada maka role dibiarkan tanpa pemegang |
 | **F3** | Kode: `assertRoleGrantor(actor, channel)`; break-glass lepas dari shim (§3.1); `IDENTITY_PERMISSIONS` ditolak di `canDelegateRole` untuk **kedua** jalur; jalur `sq_hub` ada tetapi route belum terdaftar | rendah — perilaku break-glass setara, sumber kewenangannya berubah | revert kode; database tidak berubah |
 | **F4** | Prasyarat: token exchange tersedia di realm (§2.2) dan F1 lulus. Route internal didaftarkan dengan `HCIS_ROLE_ADMIN_ENABLED` **mati** | nihil (`503`) | saklar tetap mati |
 | **F5** | Saklar dihidupkan. SQ Hub memberi satu peran uji ke satu akun uji, lalu mencabutnya. Diverifikasi: assignment benar; audit `actor_source = "sq_hub"` ada; self-grant ditolak; assertion palsu/kedaluwarsa ditolak; replay `requestId` ditolak; permission identitas ditolak | rendah; jalur lama utuh | matikan saklar; jalur break-glass tidak tersentuh |

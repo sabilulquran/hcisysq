@@ -167,9 +167,14 @@ describe("ORG-008-8 only the second pair of eyes makes anything take effect", ()
 });
 
 describe("ORG-008-8 the Kepala HC role", () => {
-  it("holds the two ORG-008-8 permissions plus payroll up to submission", () => {
+  it("holds the two ORG-008-8 permissions, payroll up to submission, and the ORG-011 catalog", () => {
+    // Widened twice by owner decision, each time with something that decides nothing
+    // operational on its own: PAY-003 up to submission, and ORG-011 on 2026-10-30, whose
+    // catalog carries no money and no authority.
     expect([...HC_LEAD_PERMISSIONS].sort()).toEqual([
       "approvals.policy.manage",
+      "job_classifications.manage",
+      "job_classifications.read",
       "organization.manage",
       "payroll.calculate",
       "payroll.inputs.manage",

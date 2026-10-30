@@ -144,10 +144,10 @@ Aturan konsumsi:
 |---|---|---|
 | Baca katalog | `job_classifications.read` | organization |
 | Kelola katalog dan golongan | `job_classifications.manage` | organization |
-
-Kedua permission dipegang Staf Human Capital dan Kepala HC (keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
 | Menetapkan klasifikasi pada position | permission change set ORG-004 yang sudah ada | organization |
 | Menetapkan klasifikasi pada placement | permission employment action EMP-006 yang sudah ada | organization |
+
+Kedua permission katalog dipegang Staf Human Capital (`human_capital_admin`, migration 0110) dan Kepala HC (`human_capital_lead`, migration 0113, keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
 
 Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog menghasilkan audit event (`job_classification.created`, `.updated`, `.deactivated`).
 

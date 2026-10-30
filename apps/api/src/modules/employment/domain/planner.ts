@@ -31,6 +31,8 @@ export interface PlacementInput {
   unitRef: UnitRef;
   positionRef: PositionRef | null;
   jobTitleLabel: string;
+  /** ORG-011: optional; absent means the seat's own classification applies. */
+  jobClassificationCode?: string | null;
 }
 
 interface CommonInput {
@@ -90,6 +92,7 @@ export interface PlacementSummary {
   unitRef: UnitRef;
   positionRef: PositionRef | null;
   jobTitleLabel: string;
+  jobClassificationCode?: string | null;
 }
 
 export interface ActionSnapshot {
@@ -150,7 +153,12 @@ function covers(employment: EmploymentRecord, date: IsoDate): boolean {
 
 function placementSummary(placement: PlacementRecord | null | undefined): PlacementSummary | null {
   if (!placement) return null;
-  return { unitRef: placement.unitRef, positionRef: placement.positionRef, jobTitleLabel: placement.jobTitleLabel };
+  return {
+    unitRef: placement.unitRef,
+    positionRef: placement.positionRef,
+    jobTitleLabel: placement.jobTitleLabel,
+    jobClassificationCode: placement.jobClassificationCode,
+  };
 }
 
 function sameRef(a: UnitRef | PositionRef | null, b: UnitRef | PositionRef | null): boolean {
@@ -583,6 +591,7 @@ function newPlacement(context: PlanningContext, employmentId: string, input: Pla
     unitRef: input.unitRef,
     positionRef: input.positionRef,
     jobTitleLabel: input.jobTitleLabel.trim(),
+    jobClassificationCode: input.jobClassificationCode ?? null,
     effectiveFrom: from,
     effectiveTo: null,
     effectiveFromBasis: "RECORDED",

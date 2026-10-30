@@ -585,3 +585,44 @@ describe("Document requirement table (D-08)", () => {
     expect(requiredDocument(policy, "PLACEMENT", {})).toBeNull();
   });
 });
+
+describe("ORG-011 classification on a placement", () => {
+  it("carries the code onto the placement it opens", () => {
+    const history = record(emptyHistory(), {
+      ...hireContract(),
+      placement: {
+        kind: "PRIMARY", unitRef: UNIT_A, positionRef: GURU,
+        jobTitleLabel: "Guru Kelas", jobClassificationCode: "FUNC_GURU",
+      },
+    });
+    expect(history.placements[0]?.jobClassificationCode).toBe("FUNC_GURU");
+  });
+
+  it("leaves it null when the action says nothing, so the seat decides", () => {
+    // Null is not "no allowance": it means this placement states nothing and the seat's own
+    // classification applies. The resolver reads the seat in that case.
+    const history = record(emptyHistory(), hireContract());
+    expect(history.placements[0]?.jobClassificationCode).toBeNull();
+  });
+
+  it("keeps each placement's own code when a career move opens a new one", () => {
+    const history = record(record(emptyHistory(), {
+      ...hireContract(),
+      placement: {
+        kind: "PRIMARY", unitRef: UNIT_A, positionRef: GURU,
+        jobTitleLabel: "Guru Kelas", jobClassificationCode: "FUNC_GURU",
+      },
+    }), {
+      actionType: "PROMOTION",
+      effectiveOn: "2027-09-01",
+      placement: {
+        unitRef: UNIT_B, positionRef: GURU,
+        jobTitleLabel: "Kepala Unit", jobClassificationCode: "STRUCT_KEPALA",
+      },
+      documents: [sk("SK_PROMOSI")],
+    });
+    const codes = history.placements.map((placement) => placement.jobClassificationCode);
+    expect(codes).toContain("FUNC_GURU");
+    expect(codes).toContain("STRUCT_KEPALA");
+  });
+});

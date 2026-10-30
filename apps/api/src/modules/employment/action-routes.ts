@@ -40,6 +40,7 @@ import {
   loadReferenceExistence,
   persistAction,
 } from "./infrastructure/postgres-action-store.js";
+import { classificationOn } from "../organization/job-classification-service.js";
 import { getRolloutMode, jakartaToday, loadHistories } from "./infrastructure/postgres-employment-store.js";
 
 /** HTTP status per typed domain failure (spec §12). */
@@ -80,6 +81,9 @@ const placementBody = z.object({
   unitId: z.string().uuid(),
   positionId: z.string().uuid().nullish(),
   jobTitleLabel: z.string().trim().min(1).max(200),
+  // ORG-011: optional. Absent or null means the seat's own classification applies; a code
+  // here overrides it for this person. It is a payroll key and carries no authority.
+  jobClassificationCode: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/).nullish(),
 }).strict();
 
 const common = {
@@ -162,6 +166,33 @@ function positionRefOf(placement: z.infer<typeof placementBody>): PositionRef | 
   return placement.positionId ? { kind: "LEGACY_POSITION", id: placement.positionId } : null;
 }
 
+/**
+ * ORG-011: the code of another placement that already fills the same slot on that date.
+ *
+ * Only placements that are still open and not voided count, and only ones carrying a code of
+ * the same family. The same code twice is not a clash: the resolver treats it as one
+ * classification stated twice.
+ */
+async function firstSlotClash(
+  pool: Pool,
+  history: { placements: Array<{ jobClassificationCode: string | null; effectiveFrom: string; effectiveTo: string | null; voided: boolean }> },
+  code: string,
+  family: string,
+  onDate: string,
+): Promise<string | null> {
+  const active = history.placements.filter((placement) =>
+    !placement.voided
+    && placement.jobClassificationCode
+    && placement.jobClassificationCode !== code
+    && placement.effectiveFrom <= onDate
+    && (placement.effectiveTo === null || placement.effectiveTo >= onDate));
+  for (const placement of active) {
+    const other = await classificationOn(pool, placement.jobClassificationCode!, onDate);
+    if (other?.family === family) return other.code;
+  }
+  return null;
+}
+
 export async function registerEmploymentActionRoutes(app: FastifyInstance, pool: Pool, config: ApiConfig) {
   if (!config.AUTH_ENCRYPTION_KEY) throw new Error("AUTH_ENCRYPTION_KEY is required for employment action routes");
   const auth = new AuthService(
@@ -232,6 +263,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
         };
       case "CONTRACT_EXTENSION":
@@ -261,6 +293,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
         };
       case "PLACEMENT_END":
@@ -281,6 +314,7 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
             unitRef: unitRefOf(body.placement),
             positionRef: positionRefOf(body.placement),
             jobTitleLabel: body.placement.jobTitleLabel,
+            jobClassificationCode: body.placement.jobClassificationCode ?? null,
           },
           reasonCode: body.reasonCode ?? null,
         };
@@ -379,6 +413,37 @@ export async function registerEmploymentActionRoutes(app: FastifyInstance, pool:
     const references = placementInput
       ? await loadReferenceExistence(pool, placementInput.unitId, placementInput.positionId ?? null)
       : { unit: false, position: false };
+
+    // ORG-011: the catalog is effective-dated and lives outside employment, so a code is
+    // checked against the day this action takes effect. Without this the code would be stored
+    // unchecked and the resolver would raise CLASSIFICATION_NOT_EFFECTIVE later, during a
+    // payroll run, far from the operator who typed it.
+    const classificationCode = placementInput?.jobClassificationCode ?? null;
+    if (classificationCode) {
+      const effectiveOn = "effectiveOn" in body.data ? String(body.data.effectiveOn) : today;
+      const chosen = await classificationOn(pool, classificationCode, effectiveOn);
+      if (!chosen) {
+        await send(reply, 400, {
+          code: "EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE",
+          message: `Klasifikasi ${classificationCode} tidak berlaku pada ${effectiveOn}.`,
+        });
+        return null;
+      }
+      // The resolver gives one functional and one structural slot, and raises
+      // CLASSIFICATION_AMBIGUOUS when two placements fill the same one. That failure would
+      // surface during a payroll run, far from whoever typed it, so the collision is refused
+      // here instead. SUPPORT fills no slot, so it can never collide.
+      if (chosen.family !== "SUPPORT") {
+        const clash = await firstSlotClash(pool, history, classificationCode, chosen.family, effectiveOn);
+        if (clash) {
+          await send(reply, 400, {
+            code: "EMPLOYMENT_CLASSIFICATION_AMBIGUOUS",
+            message: `Penempatan lain yang berlaku pada ${effectiveOn} sudah memakai klasifikasi ${chosen.family === "FUNCTIONAL" ? "fungsional" : "struktural"} ${clash}.`,
+          });
+          return null;
+        }
+      }
+    }
 
     const requestedDocumentIds = body.data.documentIds ?? [];
     const documents = await loadDecisionDocumentRefs(pool, requestedDocumentIds);

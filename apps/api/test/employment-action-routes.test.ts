@@ -109,10 +109,13 @@ interface PoolOptions {
   withAdditionalPlacement?: boolean;
   /** The destination unit or position does not exist. */
   unknownReference?: "unit" | "position";
+  /** ORG-011: the catalog rows the job_classifications lookup should answer with. */
+  classifications?: Array<{ code: string; family: string }>;
 }
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
   const writes: string[] = [];
+  const placementParams: unknown[][] = [];
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes("FROM auth_sessions s")) {
       if (persona === "anonymous") return { rows: [], rowCount: 0 };
@@ -238,7 +241,15 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     }
     if (sql.includes("INSERT INTO employment_placements")) {
       writes.push("INSERT placement");
+      placementParams.push(params ?? []);
       return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("FROM job_classifications")) {
+      const code = String((params ?? [])[0] ?? "");
+      const found = (options.classifications ?? []).find((item) => item.code === code);
+      return found
+        ? { rows: [{ ...found, id: "c", name: code, gradeCode: null, effectiveFrom: "2020-01-01", effectiveTo: null }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
     }
     if (sql.includes("SELECT id FROM employees WHERE id = $1 FOR UPDATE")) {
       return { rows: [{ id: EMPLOYEE_ID }], rowCount: 1 };
@@ -280,7 +291,7 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     throw new Error(`Unexpected SQL in employment action routes test: ${sql}`);
   });
   const pool = { query, connect: async () => ({ query, release: () => undefined }) } as unknown as Pool;
-  return { pool, writes };
+  return { pool, writes, placementParams };
 }
 
 async function call(
@@ -288,7 +299,7 @@ async function call(
   url: string,
   options: PoolOptions & { payload?: object; idempotencyKey?: string | null } = {},
 ) {
-  const { pool, writes } = createPool(persona, options);
+  const { pool, writes, placementParams } = createPool(persona, options);
   const app = Fastify({ logger: false });
   await registerEmploymentActionRoutes(app, pool, config);
   const headers: Record<string, string> = {};
@@ -301,7 +312,7 @@ async function call(
     ...(options.payload ? { payload: options.payload } : {}),
   });
   await app.close();
-  return { response, writes };
+  return { response, writes, placementParams };
 }
 
 const PREVIEW_URL = `/admin/employees/${EMPLOYEE_ID}/employment-actions/preview`;
@@ -692,5 +703,57 @@ describe("EMP-005 request validation", () => {
       payload: { actionType: "TRANSFER", effectiveOn: "2027-10-01", placement: { jobTitleLabel: "Guru" } },
     });
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe("ORG-011 classification on a placement", () => {
+  const HIRE_WITH_CODE = {
+    actionType: "HIRE",
+    effectiveOn: "2027-10-01",
+    category: "KONTRAK",
+    termEndOn: "2028-09-30",
+    staffType: "PENDIDIK",
+    placement: { unitId: UNIT_ID, jobTitleLabel: "Guru Kelas", jobClassificationCode: "FUNC_GURU" },
+    documentIds: [PK_BARU_ID],
+  };
+
+  it("writes the code as the last placement parameter", async () => {
+    // The INSERT grew a column; without checking the parameter itself a misaligned $12 would
+    // store the action id in the classification column and no test would notice.
+    const { response, placementParams } = await call("hc", RECORD_URL, {
+      noHistory: true, payload: HIRE_WITH_CODE,
+      classifications: [{ code: "FUNC_GURU", family: "FUNCTIONAL" }],
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(placementParams).toHaveLength(1);
+    expect(placementParams[0]?.at(-1)).toBe("FUNC_GURU");
+  });
+
+  it("writes null when the action says nothing about it", async () => {
+    const { response, placementParams } = await call("hc", RECORD_URL, {
+      noHistory: true,
+      payload: { ...HIRE_WITH_CODE, placement: { unitId: UNIT_ID, jobTitleLabel: "Guru Kelas" } },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(placementParams[0]?.at(-1)).toBeNull();
+  });
+
+  it("refuses a code that is not in force on the action date, writing nothing", async () => {
+    const { response, writes } = await call("hc", RECORD_URL, {
+      noHistory: true, payload: HIRE_WITH_CODE, classifications: [],
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE");
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses the code on preview too, not only on record", async () => {
+    // Preview and record share one prepare step; if only record validated, an operator would
+    // be told the action is fine and then refused on save.
+    const { response } = await call("hc", PREVIEW_URL, {
+      noHistory: true, payload: HIRE_WITH_CODE, classifications: [],
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("EMPLOYMENT_CLASSIFICATION_NOT_EFFECTIVE");
   });
 });

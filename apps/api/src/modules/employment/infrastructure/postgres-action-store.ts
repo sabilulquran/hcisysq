@@ -160,8 +160,9 @@ async function insertNewRows(client: PoolClient, plan: ActionPlan): Promise<void
   for (const placement of plan.newPlacements) {
     await client.query(
       `INSERT INTO employment_placements (id, employment_id, kind, org_node_key, legacy_unit_id, org_position_key,
-         legacy_position_id, job_title_label, effective_from, effective_to, effective_from_basis, opened_by_action_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'RECORDED', $11)`,
+         legacy_position_id, job_title_label, effective_from, effective_to, effective_from_basis, opened_by_action_id,
+         job_classification_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'RECORDED', $11, $12)`,
       [
         placement.id, placement.employmentId, placement.kind,
         placement.unitRef.kind === "ORG_NODE" ? placement.unitRef.key : null,
@@ -169,6 +170,7 @@ async function insertNewRows(client: PoolClient, plan: ActionPlan): Promise<void
         placement.positionRef?.kind === "ORG_POSITION" ? placement.positionRef.key : null,
         placement.positionRef?.kind === "LEGACY_POSITION" ? placement.positionRef.id : null,
         placement.jobTitleLabel, placement.effectiveFrom, placement.effectiveTo, plan.actionId,
+        placement.jobClassificationCode,
       ],
     );
   }

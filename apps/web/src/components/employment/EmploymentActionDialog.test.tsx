@@ -4,7 +4,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
+import { buildRequest, emptyDraft, EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
 import { EmploymentActionButtons } from "@/components/employment/EmploymentPanels";
 import { TemporaryReactivationPanel } from "@/components/employment/TemporaryReactivationPanel";
 import { requiredDocumentKind } from "@/lib/employment-actions";
@@ -175,5 +175,29 @@ describe("EMP-005 D-15 temporary reactivation panel", () => {
     expect(html).toContain("Akses sementara pegawai yang sudah berakhir");
     expect(html).toContain("Aktifkan sementara");
     expect(html).toContain("Maksimal 30 hari");
+  });
+});
+
+describe("ORG-011 classification on a placement", () => {
+  const base = () => ({ ...emptyDraft(), effectiveOn: "2026-11-01", unitId: "u1", jobTitleLabel: "Guru Kelas" });
+
+  function placementOf(request: unknown): Record<string, unknown> {
+    return (request as { placement: Record<string, unknown> }).placement;
+  }
+
+  it("says nothing about the classification when none was chosen", () => {
+    // An action that is silent about it leaves the seat's own classification in charge; the
+    // API treats an absent key that way. Sending null would clear it instead.
+    for (const action of ["HIRE", "PLACEMENT", "TRANSFER"] as const) {
+      const placement = placementOf(buildRequest(action, base(), false, []));
+      expect(placement).not.toHaveProperty("jobClassificationCode");
+    }
+  });
+
+  it("carries the chosen code on every action that opens a placement", () => {
+    const draft = { ...base(), jobClassificationCode: "FUNC_GURU" };
+    for (const action of ["HIRE", "PLACEMENT", "TRANSFER", "PROMOTION", "DEMOTION"] as const) {
+      expect(placementOf(buildRequest(action, draft, false, [])).jobClassificationCode).toBe("FUNC_GURU");
+    }
   });
 });

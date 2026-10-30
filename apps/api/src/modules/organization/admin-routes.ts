@@ -73,6 +73,9 @@ const positionInput = z.object({
   singleIncumbent: z.boolean().default(true),
   vacancyPolicy: vacancyPolicy.default("CLIMB_TO_PARENT"),
   visualRankOffset: z.number().int().min(0).max(10).default(0),
+  // ORG-011: the seat's default classification. Null means the seat says nothing and a
+  // placement decides on its own. It carries no authority (ADR-0004).
+  jobClassificationCode: z.string().trim().regex(/^[A-Z][A-Z0-9_]{0,47}$/).nullable().default(null),
 });
 const positionPatch = positionInput.partial().extend({ active: z.boolean().optional() });
 const membershipInput = z.object({
@@ -1166,6 +1169,27 @@ export async function registerOrganizationAdminRoutes(
       leaderPositionKey: snapshot.authorityBindings.find((binding) => binding.subjectKind === "NODE" && binding.subjectKey === item.stableKey && binding.bindingType === "LEADER")?.targetPositionKey ?? null });
   });
 
+  /**
+   * ORG-011: a seat may only name a classification that is in force on the day the change set
+   * takes effect. Checked here rather than by a foreign key, because both sides are
+   * effective-dated and the catalog lives outside the change set.
+   */
+  async function classificationUsable(
+    transaction: { repository: PostgresOrganizationRepository },
+    code: string | null | undefined,
+    onDate: string,
+  ): Promise<boolean> {
+    if (code === null || code === undefined) return true;
+    const found = await transaction.repository.db.query(
+      `SELECT 1 FROM job_classifications
+        WHERE code = $1 AND effective_from <= $2::date
+          AND (effective_to IS NULL OR effective_to >= $2::date)
+        LIMIT 1`,
+      [code, onDate],
+    );
+    return (found.rowCount ?? 0) > 0;
+  }
+
   app.post("/admin/organization/designer/drafts/:draftId/positions", async (request, reply) => {
     const principal = await authenticate(request, reply, "organization.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = positionInput.safeParse(request.body);
@@ -1173,6 +1197,13 @@ export async function registerOrganizationAdminRoutes(
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
       if (!(await claimDraftRevision(request, reply, snapshot, transaction.repository))) return null;
+      if (!(await classificationUsable(transaction, body.data.jobClassificationCode, snapshot.changeSet.effectiveOn))) {
+        await reply.status(400).send({
+          code: "ORGANIZATION_CLASSIFICATION_NOT_EFFECTIVE",
+          message: `Klasifikasi ${body.data.jobClassificationCode} tidak berlaku pada ${snapshot.changeSet.effectiveOn}.`,
+        });
+        return null;
+      }
       const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, active: true,
         effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
       snapshot.positions.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
@@ -1198,6 +1229,14 @@ export async function registerOrganizationAdminRoutes(
       if (body.data.active === false && updated.active) {
         const uses = findPositionUses(snapshot, updated.stableKey, snapshot.changeSet.effectiveOn);
         if (uses.length > 0) { await replyItemInUse(reply, "jabatan", uses); return null; }
+      }
+      if ("jobClassificationCode" in body.data
+        && !(await classificationUsable(transaction, body.data.jobClassificationCode, snapshot.changeSet.effectiveOn))) {
+        await reply.status(400).send({
+          code: "ORGANIZATION_CLASSIFICATION_NOT_EFFECTIVE",
+          message: `Klasifikasi ${body.data.jobClassificationCode} tidak berlaku pada ${snapshot.changeSet.effectiveOn}.`,
+        });
+        return null;
       }
       Object.assign(updated, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.position.updated", "organization_position", updated.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
@@ -1705,6 +1744,10 @@ export async function registerOrganizationAdminRoutes(
       vacantAuthorities: impact.vacantPositionKeys.map((positionKey) => ({ positionKey })),
       unresolvedEmployees: impact.unresolvedEmployeeIds.map((employeeId) => ({ employeeId })),
       visualOnlyChanges: pureVisual ? [{ change: "VISUAL_RANK_ONLY", approvalRoutingImpact: "NONE" }] : [],
+      // ORG-011: a seat classification change is reported on its own. It never affects
+      // approval routing, but it must not be folded into "Hanya tampilan" either, so an
+      // operator can see that something with a pay consequence moved.
+      compensationImpact: impact.compensationImpact,
       noApprovalRoutingImpact: pureVisual });
   });
 

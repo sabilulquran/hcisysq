@@ -88,6 +88,13 @@ export class OrganizationDraftService {
     const routingBefore = before ? routingFingerprint(before) : "";
     const routingAfter = routingFingerprint(draft);
     const routingImpact = routingBefore !== routingAfter;
+    // ORG-011: a seat's classification decides compensation, never routing, so it stays out of
+    // the routing fingerprint (ADR-0004 §2). It must still stop a revision being reported as
+    // "Hanya tampilan", or an operator who also nudged the layout would be told the change is
+    // cosmetic while an allowance moved underneath it.
+    const compensationImpact = before
+      ? compensationFingerprint(before) !== compensationFingerprint(draft)
+      : false;
     const visualChanged = before ? visualFingerprint(before) !== visualFingerprint(draft) : false;
     return {
       directManagerChanges,
@@ -101,8 +108,9 @@ export class OrganizationDraftService {
         ))
         .map((position) => position.stableKey),
       unresolvedEmployeeIds: [...new Set(unresolvedEmployeeIds)],
-      visualOnly: visualChanged && !routingImpact,
+      visualOnly: visualChanged && !routingImpact && !compensationImpact,
       routingImpact,
+      compensationImpact,
     };
   }
 
@@ -395,6 +403,19 @@ function findOverlaps<T extends { id: string; effectiveFrom: string; effectiveTo
       }
     }
   }
+}
+
+/**
+ * ORG-011: which seat carries which classification. Deliberately separate from the routing
+ * fingerprint, because a classification grants no authority and must never make a revision
+ * look like it changed approval routing.
+ */
+function compensationFingerprint(snapshot: OrganizationSnapshot): string {
+  return JSON.stringify(
+    snapshot.positions
+      .map((item) => [item.stableKey, item.jobClassificationCode ?? null] as const)
+      .sort((left, right) => left[0].localeCompare(right[0])),
+  );
 }
 
 function routingFingerprint(snapshot: OrganizationSnapshot): string {

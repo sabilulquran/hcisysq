@@ -37,6 +37,8 @@ interface PoolOptions {
   employeeMissing?: boolean;
   /** What the record's scope is before the request. */
   current?: "MANAGED" | "OUTSIDE_HCIS";
+  currentReason?: string;
+  currentNote?: string;
   payload?: object;
 }
 
@@ -71,8 +73,8 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
           employeeNumber: "YSQ-0001",
           fullName: "Pegawai Sintetis",
           managementScope: options.current ?? "MANAGED",
-          managementScopeReason: options.current === "OUTSIDE_HCIS" ? "BUMY" : null,
-          managementScopeNote: null,
+          managementScopeReason: options.current === "OUTSIDE_HCIS" ? (options.currentReason ?? "BUMY") : null,
+          managementScopeNote: options.current === "OUTSIDE_HCIS" ? (options.currentNote ?? null) : null,
           managementScopeMarkedAt: null,
         }],
         rowCount: 1,
@@ -152,8 +154,29 @@ describe("EMP-005 S2B marking", () => {
     expect(audits[0]).toMatchObject({ from: "OUTSIDE_HCIS", to: "MANAGED", reason: null });
   });
 
+  it("corrects a wrong reason without unmarking first", async () => {
+    // Unmark-then-remark would throw away when the record was first marked
+    // and by whom, so a correction has to be allowed in place.
+    const { response, writes } = await call("hc", {
+      current: "OUTSIDE_HCIS", currentReason: "BUMY", currentNote: MARK.note,
+      payload: { ...MARK, reason: "PENGURUS_YAYASAN" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(writes).toEqual(["SCOPE OUTSIDE_HCIS", "INSERT audit"]);
+  });
+
+  it("refuses a reason on an unmark instead of dropping it silently", async () => {
+    const { response, writes } = await call("hc", {
+      current: "OUTSIDE_HCIS", payload: { ...UNMARK, reason: "BUMY" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(writes).toEqual([]);
+  });
+
   it("refuses a change that changes nothing, and an unknown employee", async () => {
-    const same = await call("hc", { current: "OUTSIDE_HCIS", payload: MARK });
+    const same = await call("hc", {
+      current: "OUTSIDE_HCIS", currentReason: "BUMY", currentNote: MARK.note, payload: MARK,
+    });
     expect(same.response.statusCode).toBe(409);
     expect(same.response.json()).toMatchObject({ code: "MANAGEMENT_SCOPE_UNCHANGED" });
     expect(same.writes).toEqual([]);

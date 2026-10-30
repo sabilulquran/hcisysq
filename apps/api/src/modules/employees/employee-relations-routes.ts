@@ -188,9 +188,9 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
 
   /**
    * True when the request has been answered because the record belongs to an
-   * employee outside HCIS management, which is read-only (S2B §8.7). The
-   * routes reached by record id decide this on the locked row instead, so the
-   * mark cannot slip in between.
+   * employee outside HCIS management, which is read-only (S2B §8.7).
+   *
+   * The employees row is read, not locked — see management-scope.ts for why.
    */
   async function refuseOutsideHcis(reply: FastifyReply, employeeId: string): Promise<boolean> {
     if (!(await isOutsideHcis(pool, employeeId))) return false;
@@ -229,8 +229,9 @@ export async function registerEmployeeRelationsRoutes(app: FastifyInstance, pool
       await send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       return true;
     }
-    // S2B §8.7: a record of an employee outside HCIS management is read-only,
-    // decided here on the locked row so a mark applied a moment ago holds.
+    // S2B §8.7: a record of an employee outside HCIS management is read-only.
+    // Read with the locked record in one query; the employees row itself is
+    // not locked (see management-scope.ts).
     if (locked.employeeOutsideHcis) {
       await rollback(client);
       await send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });

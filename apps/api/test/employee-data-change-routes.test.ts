@@ -78,6 +78,8 @@ interface PoolOptions {
     employeeOutsideHcis?: boolean;
   } | null;
   openAddress?: { id: string; validFrom: string; validTo: string | null } | null;
+  /** The acting employee is marked outside HCIS management (S2B §8.7). */
+  employeeOutsideHcis?: boolean;
   /** The write raises this exclusion violation, constraint name and all. */
   periodConflict?: string;
   /** The write raises a CHECK violation the domain rules did not catch. */
@@ -116,6 +118,9 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
       return persona === "account_without_employee"
         ? { rows: [], rowCount: 0 }
         : { rows: [{ employeeId: EMPLOYEE_ID }], rowCount: 1 };
+    }
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
+      return { rows: [{ outside: options.employeeOutsideHcis === true }], rowCount: 1 };
     }
     if (/^\s*(BEGIN|COMMIT|ROLLBACK)/.test(sql)) return { rows: [], rowCount: 0 };
     if (sql.includes("FOR UPDATE OF r")) {
@@ -246,6 +251,16 @@ describe("EMP-003 the employee's own proposals", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ field: "city" });
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses a proposal from an employee outside HCIS management", async () => {
+    // Accepting it could only ever be refused, so the queue never collects it.
+    const { response, writes } = await call("employee", "POST", "/employees/me/data-changes", {
+      payload: { target: "ALAMAT", payload: ADDRESS_PAYLOAD }, employeeOutsideHcis: true,
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
     expect(writes).toEqual([]);
   });
 

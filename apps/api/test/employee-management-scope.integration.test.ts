@@ -62,15 +62,16 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     expect(thrown?.code).toBe(code);
   }
 
-  function mark(reason: string | null, markedAt: string | null = "now()") {
+  function mark(reason: string | null, markedAt: string | null = "now()", note: string | null = "Dikonfirmasi HC") {
     return client.query(
       `UPDATE employees
        SET management_scope = 'OUTSIDE_HCIS',
            management_scope_reason = $2,
+           management_scope_note = $4,
            management_scope_marked_at = ${markedAt ?? "NULL"},
            management_scope_marked_by_account_id = $3
        WHERE id = $1`,
-      [employeeId, reason, accountId],
+      [employeeId, reason, accountId, note],
     );
   }
 
@@ -89,10 +90,48 @@ describe.skipIf(!allowed)("EMP-005 §8.7 management scope, against PostgreSQL", 
     expect(await outsideHcisEmployeeNumbers(client, [employeeNumber])).toEqual(new Set([employeeNumber]));
   });
 
-  it("refuses a mark with no reason, an unknown reason, and no marked-at", async () => {
+  it("refuses a mark with no reason, an unknown reason, no marked-at, and no note", async () => {
     await expectViolation(() => mark(null), "23514");
     await expectViolation(() => mark("LAINNYA"), "23514");
     await expectViolation(() => mark("BUMY", null), "23514");
+    // Without a note nobody can say later why this record left HCIS.
+    await expectViolation(() => mark("BUMY", "now()", null), "23514");
+  });
+
+  it("refuses a managed row that still carries a marker", async () => {
+    await mark("BUMY");
+    for (const column of ["management_scope_marked_at", "management_scope_marked_by_account_id"]) {
+      await expectViolation(
+        () => client.query(
+          `UPDATE employees
+           SET management_scope = 'MANAGED', management_scope_reason = NULL,
+               management_scope_marked_at = NULL, management_scope_marked_by_account_id = NULL,
+               ${column} = ${column === "management_scope_marked_at" ? "now()" : "$2"}
+           WHERE id = $1`,
+          column === "management_scope_marked_at" ? [employeeId] : [employeeId, accountId],
+        ),
+        "23514",
+      );
+    }
+  });
+
+  it("keeps the last note when the record is managed again", async () => {
+    // The audit carries only the note's length, so the row is the one place
+    // an unmark's justification can live (§8.7).
+    await mark("BUMY");
+    await client.query(
+      `UPDATE employees
+       SET management_scope = 'MANAGED', management_scope_reason = NULL,
+           management_scope_note = 'Salah tanda, pegawai yayasan',
+           management_scope_marked_at = NULL, management_scope_marked_by_account_id = NULL
+       WHERE id = $1`,
+      [employeeId],
+    );
+    const row = (await client.query<{ note: string | null }>(
+      'SELECT management_scope_note AS note FROM employees WHERE id = $1',
+      [employeeId],
+    )).rows[0];
+    expect(row?.note).toBe("Salah tanda, pegawai yayasan");
   });
 
   it("refuses a reason left behind on a record that is managed again", async () => {

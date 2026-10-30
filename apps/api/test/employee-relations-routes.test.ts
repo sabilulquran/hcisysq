@@ -482,6 +482,36 @@ describe("EMP-009 / EMP-003 refusals", () => {
     expect(addresses.response.statusCode).toBe(200);
   });
 
+  it("refuses every write for a record outside HCIS management", async () => {
+    const family = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
+      payload: FAMILY_BODY, ownerOutsideHcis: true,
+    });
+    expect(family.response.statusCode).toBe(409);
+    expect(family.response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(family.writes).toEqual([]);
+
+    const address = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/addresses`, {
+      payload: ADDRESS_BODY, ownerOutsideHcis: true,
+    });
+    expect(address.response.statusCode).toBe(409);
+    expect(address.writes).toEqual([]);
+
+    const amend = await call("hc", "PATCH", `/admin/family-records/${FAMILY_ID}`, {
+      payload: FAMILY_BODY, ownerOutsideHcis: true,
+    });
+    expect(amend.response.statusCode).toBe(409);
+    expect(amend.writes).toEqual([]);
+
+    const voided = await call("hc", "POST", `/admin/address-records/${ADDRESS_ID}/void`, {
+      payload: { reason: "Catatan ganda" }, ownerOutsideHcis: true,
+    });
+    expect(voided.response.statusCode).toBe(409);
+    expect(voided.writes).toEqual([]);
+
+    expect((await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/family`, { ownerOutsideHcis: true }))
+      .response.statusCode).toBe(200);
+  });
+
   it("refuses an unknown employee before touching anything", async () => {
     const { response, writes } = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/family`, {
       payload: FAMILY_BODY, employeeMissing: true,

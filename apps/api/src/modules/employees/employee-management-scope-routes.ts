@@ -82,11 +82,19 @@ export async function registerEmployeeManagementScopeRoutes(app: FastifyInstance
       });
     }
     // The reason is what the mark means; without it nobody can later say why
-    // the record left HCIS management. Unmarking carries none by definition.
+    // the record left HCIS management. Unmarking has no reason code by
+    // definition, and sending one is refused rather than quietly dropped —
+    // a caller that sends it believes something that is not true.
     if (body.data.managementScope === "OUTSIDE_HCIS" && !body.data.reason) {
       return send(reply, 400, {
         code: "INVALID_MANAGEMENT_SCOPE",
         message: "Penandaan di luar pengelolaan HCIS wajib menyebut alasan BUMY atau PENGURUS_YAYASAN.",
+      });
+    }
+    if (body.data.managementScope === "MANAGED" && body.data.reason) {
+      return send(reply, 400, {
+        code: "INVALID_MANAGEMENT_SCOPE",
+        message: "Membuka tanda tidak menyebut alasan BUMY atau PENGURUS_YAYASAN; tulis alasannya di catatan.",
       });
     }
 
@@ -102,7 +110,14 @@ export async function registerEmployeeManagementScopeRoutes(app: FastifyInstance
         await client.query("ROLLBACK");
         return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
       }
-      if (before.managementScope === body.data.managementScope) {
+      // Only a request that changes nothing at all is refused. Correcting a
+      // wrong reason, or adding to the note, must not force an unmark and a
+      // re-mark — that would throw away when the record was first marked and
+      // by whom.
+      const unchanged = before.managementScope === body.data.managementScope
+        && before.managementScopeReason === (body.data.reason ?? null)
+        && before.managementScopeNote === body.data.note;
+      if (unchanged) {
         await client.query("ROLLBACK");
         return send(reply, 409, {
           code: "MANAGEMENT_SCOPE_UNCHANGED",
@@ -111,21 +126,35 @@ export async function registerEmployeeManagementScopeRoutes(app: FastifyInstance
       }
 
       const marking = body.data.managementScope === "OUTSIDE_HCIS";
+      const stillMarked = marking && before.managementScope === "OUTSIDE_HCIS";
       await client.query(
         `UPDATE employees
          SET management_scope = $2,
              management_scope_reason = $3,
+             -- The note is the last thing said about this record's scope,
+             -- whichever way it moved. It survives an unmark because the
+             -- audit carries only its length, so the row is the one place
+             -- the justification can live (§8.7).
              management_scope_note = $4,
-             management_scope_marked_at = CASE WHEN $2 = 'OUTSIDE_HCIS' THEN now() ELSE NULL END,
-             management_scope_marked_by_account_id = CASE WHEN $2 = 'OUTSIDE_HCIS' THEN $5::uuid ELSE NULL END,
+             -- When it was first marked is kept across a correction; only a
+             -- fresh mark sets it.
+             management_scope_marked_at = CASE
+               WHEN $2 <> 'OUTSIDE_HCIS' THEN NULL
+               WHEN $6::boolean THEN management_scope_marked_at
+               ELSE now() END,
+             management_scope_marked_by_account_id = CASE
+               WHEN $2 <> 'OUTSIDE_HCIS' THEN NULL
+               WHEN $6::boolean THEN management_scope_marked_by_account_id
+               ELSE $5::uuid END,
              updated_at = now()
          WHERE id = $1`,
         [
           params.data.employeeId,
           body.data.managementScope,
           marking ? body.data.reason : null,
-          marking ? body.data.note : null,
+          body.data.note,
           principal.id,
+          stillMarked,
         ],
       );
       // The note says why in the officer's own words, so it belongs to the
@@ -141,6 +170,7 @@ export async function registerEmployeeManagementScopeRoutes(app: FastifyInstance
           JSON.stringify({
             from: before.managementScope,
             to: body.data.managementScope,
+            fromReason: before.managementScopeReason,
             reason: marking ? body.data.reason : null,
             noteLength: body.data.note.length,
           }),

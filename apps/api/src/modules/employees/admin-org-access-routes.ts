@@ -113,6 +113,9 @@ interface EmployeeDetailRow {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  managementScope: "MANAGED" | "OUTSIDE_HCIS";
+  managementScopeReason: string | null;
+  managementScopeNote: string | null;
   managerEmployeeId: string | null;
   managerEmployeeNumber: string | null;
   managerFullName: string | null;
@@ -309,6 +312,11 @@ export async function registerOrgAccessAdminRoutes(
             e.education,
             e.started_on AS "startedOn",
             e.ended_on AS "endedOn",
+            -- S2B §8.7: the screen has to know, or its edit forms invite a
+            -- write the API will refuse with a bare 409.
+            e.management_scope AS "managementScope",
+            e.management_scope_reason AS "managementScopeReason",
+            e.management_scope_note AS "managementScopeNote",
             manager.id AS "managerEmployeeId",
             manager.employee_number AS "managerEmployeeNumber",
             manager.full_name AS "managerFullName",
@@ -449,8 +457,9 @@ export async function registerOrgAccessAdminRoutes(
     }
 
     // EMP-005 S2B: a record outside HCIS management is read-only (§8.7), and
-    // so is one proposed as the manager — a marked record must not appear in
-    // anyone's reporting line.
+    // one may not be named as a manager either. Existing subordinates of a
+    // record marked later keep pointing at it until approval routing learns
+    // the marker, which is S2B-b.
     for (const target of [employeeId, managerId]) {
       if (target && await isOutsideHcis(pool, target)) {
         reply.header("Cache-Control", "no-store");

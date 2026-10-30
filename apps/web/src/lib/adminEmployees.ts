@@ -28,6 +28,9 @@ export interface AdminEmployeeListItem {
   updatedAt: string;
 }
 
+/** EMP-005 S2B §8.7: the list hides marked records unless asked. */
+export type EmployeeManagementScopeFilter = "MANAGED" | "OUTSIDE_HCIS" | "ALL";
+
 export interface AdminEmployeeListResponse {
   items: AdminEmployeeListItem[];
   pagination: {
@@ -37,11 +40,14 @@ export interface AdminEmployeeListResponse {
     pageCount: number;
   };
   summary: {
+    /** The population HCIS manages; marked records are counted apart. */
     total: number;
     active: number;
     inactive: number;
     resigned: number;
+    outsideHcis: number;
   };
+  scope: EmployeeManagementScopeFilter;
   filters: {
     units: ReferenceOption[];
     positions: ReferenceOption[];
@@ -133,6 +139,7 @@ export async function listEmployees(input: {
   status?: EmployeeStatus | "";
   unitId?: string;
   positionId?: string;
+  scope?: EmployeeManagementScopeFilter;
 } = {}): Promise<AdminEmployeeListResponse> {
   const params = new URLSearchParams();
   params.set("page", String(input.page ?? 1));
@@ -141,6 +148,7 @@ export async function listEmployees(input: {
   if (input.status) params.set("status", input.status);
   if (input.unitId) params.set("unitId", input.unitId);
   if (input.positionId) params.set("positionId", input.positionId);
+  if (input.scope) params.set("scope", input.scope);
 
   const response = await fetch(`/api/admin/employees?${params.toString()}`, {
     credentials: "include",

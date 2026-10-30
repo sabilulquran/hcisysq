@@ -7,8 +7,15 @@
 // sedikit pun — tetapi tidak dapat ditulis lagi.
 //
 // Satu berkas kecil ini dipakai setiap jalur tulis supaya jawabannya sama di
-// mana pun: kode, pesan, dan status yang sama, diputuskan dari baris yang
-// sudah dikunci, bukan dari pembacaan yang mendahuluinya.
+// mana pun: kode, pesan, dan status yang sama.
+//
+// Pemeriksaannya membaca baris pegawai tanpa mengunci. Penandaan yang
+// di-commit sesudah pembacaan itu belum terlihat, jadi satu penulisan masih
+// bisa lolos beberapa milidetik setelah sebuah baris ditandai. Yang hilang
+// hanyalah penulisan terakhir itu — bukan keutuhan data — dan jejaknya ada di
+// audit. Mengunci baris pegawai pada setiap jalur tulis akan membuat satu
+// penandaan memblokir seluruh HCIS untuk pegawai itu, yang harganya jauh
+// lebih besar daripada yang dibelinya.
 
 import type { Pool, PoolClient } from "pg";
 

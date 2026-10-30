@@ -167,6 +167,52 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     };
   }
 
+  /**
+   * Writes the "skipped" warning onto the rows an outside-HCIS mark covers and
+   * brings the job's own figures back in line, because they were counted
+   * before anyone knew the mark was there.
+   *
+   * Idempotent: reopening a preview must not stack the same warning twice, and
+   * the recount is derived from the rows rather than adjusted by hand.
+   */
+  private async persistOutsideHcisWarnings(importId: string, numbers: ReadonlySet<string>): Promise<void> {
+    const warning = {
+      severity: "warning",
+      code: "EMPLOYEE_OUTSIDE_HCIS_SKIPPED",
+      field: null,
+      message: IMPORT_SKIPPED_MESSAGE,
+    };
+    const touched = await this.pool.query(
+      `UPDATE employee_import_rows
+       SET messages = messages || $3::jsonb, action = 'skip'
+       WHERE import_job_id = $1
+         AND payload->>'employeeNumber' = ANY($2::text[])
+         AND NOT (messages @> $4::jsonb)`,
+      [importId, [...numbers], JSON.stringify([warning]), JSON.stringify([{ code: warning.code }])],
+    );
+    if (touched.rowCount === 0) return;
+    await this.pool.query(
+      `UPDATE employee_import_jobs job
+       SET warning_count = counted.warnings,
+           insert_count = counted.inserts,
+           update_count = counted.updates
+       FROM (
+         SELECT
+           count(*) FILTER (
+             WHERE EXISTS (
+               SELECT 1 FROM jsonb_array_elements(messages) AS message
+               WHERE message->>'severity' = 'warning'
+             )
+           )::int AS warnings,
+           count(*) FILTER (WHERE action = 'insert')::int AS inserts,
+           count(*) FILTER (WHERE action = 'update')::int AS updates
+         FROM employee_import_rows WHERE import_job_id = $1
+       ) AS counted
+       WHERE job.id = $1`,
+      [importId],
+    );
+  }
+
   /** Employee numbers whose employment columns the history owns right now. */
   private async employmentManagedNumbers(rows: ImportDetailRow[]): Promise<Set<string>> {
     const numbers = rows.map((row) => row.payload?.employeeNumber).filter((value): value is string => Boolean(value));
@@ -238,21 +284,33 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       this.pool,
       rows.rows.map((row) => row.payload?.employeeNumber).filter((value): value is string => Boolean(value)),
     );
+    // The skip has to reach the operator's own view of the file, not only the
+    // row they happen to scroll past: the warning count, the per-code summary
+    // and the "issues only" filter all read the stored messages, and the
+    // headline insert/update figures are counted from the stored actions.
+    if (outside.size > 0) await this.persistOutsideHcisWarnings(importId, outside);
 
     return {
       ...toSummary(jobRow),
       rows: rows.rows.map((row) => {
         const number = row.payload?.employeeNumber ?? "";
-        if (outside.has(number)) {
+        const skipped = outside.has(number);
+        if (skipped) {
+          // These rows were read before the warning was written, so it is
+          // added to this response as well — the stored row now says the same
+          // thing, which is what the counts and the filter read.
+          const already = row.messages.some((message) => message.code === "EMPLOYEE_OUTSIDE_HCIS_SKIPPED");
           return {
             rowNumber: row.row_number,
-            action: row.action,
-            issues: [...row.messages, {
-              severity: "warning" as const,
-              code: "EMPLOYEE_OUTSIDE_HCIS_SKIPPED",
-              field: null,
-              message: IMPORT_SKIPPED_MESSAGE,
-            }],
+            action: "skip" as const,
+            issues: already
+              ? row.messages
+              : [...row.messages, {
+                  severity: "warning" as const,
+                  code: "EMPLOYEE_OUTSIDE_HCIS_SKIPPED",
+                  field: null,
+                  message: IMPORT_SKIPPED_MESSAGE,
+                }],
           };
         }
         return {

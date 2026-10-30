@@ -55,6 +55,10 @@ export interface EmployeeDetailResponse {
     education: string | null;
     startedOn: string | null;
     endedOn: string | null;
+    /** EMP-005 S2B §8.7: OUTSIDE_HCIS means the record is read-only. */
+    managementScope: "MANAGED" | "OUTSIDE_HCIS";
+    managementScopeReason: string | null;
+    managementScopeNote: string | null;
     managerEmployeeId: string | null;
     managerEmployeeNumber: string | null;
     managerFullName: string | null;

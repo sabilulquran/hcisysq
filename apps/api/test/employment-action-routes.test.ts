@@ -448,6 +448,19 @@ describe("EMP-005 hire", () => {
     expect(writes).toEqual([]);
   });
 
+  it("refuses an action, and even a preview, on a record outside HCIS management", async () => {
+    // S2B §8.7: BUMY and Pengurus Yayasan records are read-only. The preview
+    // is refused too — it is the screen that invites the action.
+    const record = await call("hc", RECORD_URL, { noHistory: true, payload: HIRE, employeeOutsideHcis: true });
+    expect(record.response.statusCode).toBe(409);
+    expect(record.response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(record.writes).toEqual([]);
+
+    const preview = await call("hc", PREVIEW_URL, { noHistory: true, payload: HIRE, employeeOutsideHcis: true });
+    expect(preview.response.statusCode).toBe(409);
+    expect(preview.writes).toEqual([]);
+  });
+
   it("refuses an action on a record removed from the master", async () => {
     const { response, writes } = await call("hc", RECORD_URL, { employeeRemoved: true, noHistory: true, payload: HIRE });
     expect(response.statusCode).toBe(404);

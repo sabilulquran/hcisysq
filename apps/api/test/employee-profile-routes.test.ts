@@ -302,6 +302,45 @@ describe("EMP-007 education", () => {
       .response.statusCode).toBe(200);
   });
 
+  it("refuses every write for a record outside HCIS management", async () => {
+    // S2B §8.7: reading stays open, writing does not — by employee id and by
+    // record id alike.
+    const recordEducation = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/education`, {
+      payload: EDUCATION_BODY, ownerOutsideHcis: true,
+    });
+    expect(recordEducation.response.statusCode).toBe(409);
+    expect(recordEducation.response.json()).toMatchObject({ code: "EMPLOYEE_OUTSIDE_HCIS_READ_ONLY" });
+    expect(recordEducation.writes).toEqual([]);
+
+    const recordSkill = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/skills`, {
+      payload: SKILL_BODY, ownerOutsideHcis: true,
+    });
+    expect(recordSkill.response.statusCode).toBe(409);
+    expect(recordSkill.writes).toEqual([]);
+
+    const amend = await call("hc", "PATCH", `/admin/education-records/${EDUCATION_ID}`, {
+      payload: EDUCATION_BODY, ownerOutsideHcis: true,
+    });
+    expect(amend.response.statusCode).toBe(409);
+    expect(amend.writes).toEqual([]);
+
+    const verify = await call("hc", "POST", `/admin/skill-records/${SKILL_ID}/verification`, {
+      payload: { verified: true }, ownerOutsideHcis: true,
+    });
+    expect(verify.response.statusCode).toBe(409);
+    expect(verify.writes).toEqual([]);
+
+    const voided = await call("hc", "POST", `/admin/skill-records/${SKILL_ID}/void`, {
+      payload: { reason: "Catatan ganda" }, ownerOutsideHcis: true,
+    });
+    expect(voided.response.statusCode).toBe(409);
+    expect(voided.writes).toEqual([]);
+
+    // Reading is untouched: the history stays readable (§8.7).
+    expect((await call("reader", "GET", `/admin/employees/${EMPLOYEE_ID}/education`, { ownerOutsideHcis: true }))
+      .response.statusCode).toBe(200);
+  });
+
   it("refuses an unknown employee before touching anything", async () => {
     const { response, writes } = await call("hc", "POST", `/admin/employees/${EMPLOYEE_ID}/education`, {
       payload: EDUCATION_BODY, employeeMissing: true,

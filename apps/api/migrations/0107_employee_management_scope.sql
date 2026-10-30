@@ -24,7 +24,7 @@
 --     DROP COLUMN IF EXISTS management_scope_marked_at,
 --     DROP COLUMN IF EXISTS management_scope_marked_by_account_id,
 --     DROP COLUMN IF EXISTS management_scope_note;
---   DELETE FROM schema_migrations WHERE name = '0107_employee_management_scope';
+--   DELETE FROM schema_migrations WHERE name = '0107_employee_management_scope.sql';
 
 ALTER TABLE employees
   ADD COLUMN IF NOT EXISTS management_scope text NOT NULL DEFAULT 'MANAGED',
@@ -59,26 +59,42 @@ BEGIN
       );
   END IF;
 
-  -- Siapa menandai dan kapan ikut tercatat pada baris yang ditandai.
+  -- Siapa menandai dan kapan, pada baris yang ditandai — dan tidak ada sisa
+  -- penanda pada baris yang kembali dikelola. Separuh aturan saja membuat
+  -- sebuah baris `MANAGED` dapat menyimpan tanggal penandaan lama yang tidak
+  -- berarti apa-apa lagi.
+  --
+  -- `management_scope_note` sengaja di luar aturan ini: catatan terakhir —
+  -- termasuk alasan membuka tanda — adalah satu-satunya tempat alasan itu
+  -- tersimpan, karena audit hanya memuat panjangnya (spec §8.7).
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'employees_management_scope_marked_check'
   ) THEN
     ALTER TABLE employees
       ADD CONSTRAINT employees_management_scope_marked_check
-      CHECK (management_scope = 'MANAGED' OR management_scope_marked_at IS NOT NULL);
+      CHECK (
+        (management_scope = 'OUTSIDE_HCIS'
+          AND management_scope_marked_at IS NOT NULL
+          AND management_scope_note IS NOT NULL)
+        OR (management_scope = 'MANAGED'
+          AND management_scope_marked_at IS NULL
+          AND management_scope_marked_by_account_id IS NULL)
+      );
   END IF;
 END
 $$;
 
 -- Indeks parsial pada baris yang ditandai saja: jumlahnya sedikit, dan daftar
--- "di luar pengelolaan HCIS" membacanya langsung.
+-- "di luar pengelolaan HCIS" membacanya langsung. Kolomnya mengikuti urutan
+-- daftar itu (`ORDER BY full_name, employee_number`), bukan alasannya, yang
+-- tidak pernah dipakai sebagai filter.
 --
 -- Predikatnya sengaja tidak menyebut removed_at. Kolom itu datang dari migrasi
 -- 0022, yang termasuk himpunan "recovered" pada rehearsal pemulihan riwayat
 -- migrasi (scripts/rehearse-organization-migration-recovery.mjs): pada
 -- skenario kanonikal migrasi itu belum dijalankan, sehingga berkas ini akan
--- gagal. Baris yang ditandai pun hanya segelintir, jadi menyaring removed_at
--- di indeks tidak memberi apa-apa.
+-- gagal. Daftar admin pun tidak menyaring removed_at, jadi predikat itu justru
+-- membuat indeksnya tidak terpakai.
 CREATE INDEX IF NOT EXISTS employees_management_scope_idx
-  ON employees (management_scope_reason, full_name)
+  ON employees (full_name, employee_number)
   WHERE management_scope = 'OUTSIDE_HCIS';

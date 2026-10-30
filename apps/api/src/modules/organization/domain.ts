@@ -229,6 +229,9 @@ export interface OrganizationImpactPreview {
   unresolvedEmployeeIds: string[];
   visualOnly: boolean;
   routingImpact: boolean;
+  /** ORG-011: a seat classification changed. Decides compensation, never routing, so it is
+   * reported apart from routingImpact and still prevents visualOnly. */
+  compensationImpact: boolean;
 }
 
 export type OrganizationResolutionErrorCode =

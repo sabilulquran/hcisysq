@@ -164,7 +164,11 @@ describe("PostgresOrganizationRepository calendar dates", () => {
 
     const positionInsert = writeCalls.find((call) => call.sql.includes("INSERT INTO organization_positions"));
     expect(positionInsert?.sql).toContain("holder_source");
-    expect(positionInsert?.values?.at(-1)).toBe("ACCOUNT");
+    // ORG-011 added job_classification_code after holder_source, so assert the value by the
+    // column it belongs to rather than by being last; another column may follow it again.
+    expect(positionInsert?.values).toContain("ACCOUNT");
+    expect(positionInsert?.sql).toContain("job_classification_code");
+    expect(positionInsert?.values?.at(-1)).toBeNull();
 
     const incumbencyInsert = writeCalls.find((call) => call.sql.includes("INSERT INTO organization_incumbencies"));
     expect(incumbencyInsert?.sql).toContain("account_id");

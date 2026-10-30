@@ -49,15 +49,20 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
     return positionKey;
   }
 
+  async function addAction(type: string): Promise<string> {
+    const actionId = randomUUID();
+    await client.query(
+      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, recorded_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [actionId, employeeId, employmentId, type],
+    );
+    return actionId;
+  }
+
   async function addPlacement(
     kind: "PRIMARY" | "ADDITIONAL", positionKey: string | null, classificationCode: string | null,
   ) {
-    const actionId = randomUUID();
-    await client.query(
-      `INSERT INTO employment_actions (id, employment_id, action_type, effective_from, recorded_by_account_id)
-       VALUES ($1,$2,'PLACEMENT','2026-01-01'::date,$3)`,
-      [actionId, employmentId, accountId],
-    );
+    const actionId = await addAction("BASELINE");
     await client.query(
       `INSERT INTO employment_placements
          (id, employment_id, kind, org_node_key, org_position_key, job_title_label,
@@ -89,10 +94,18 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
       [employeeId, `ORG011R-${employeeId.slice(0, 8)}`],
     );
     employmentId = randomUUID();
+    const openingAction = randomUUID();
     await client.query(
-      `INSERT INTO employments (id, employee_id, status, started_on, started_on_basis)
-       VALUES ($1,$2,'ACTIVE','2026-01-01'::date,'RECORDED')`,
-      [employmentId, employeeId],
+      `INSERT INTO employments(id, employee_id, staff_type, started_on, start_basis, service_start_on,
+         source, opened_by_action_id)
+       VALUES ($1, $2, 'PENDIDIK', '2026-01-01'::date, 'RECORDED', '2026-01-01'::date,
+         'BASELINE_FROM_MASTER', $3)`,
+      [employmentId, employeeId, openingAction],
+    );
+    await client.query(
+      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, recorded_at)
+       VALUES ($1, $2, $3, 'BASELINE', now())`,
+      [openingAction, employeeId, employmentId],
     );
 
     changeSetId = randomUUID();
@@ -191,12 +204,7 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
   it("ORG-011-R9: a voided placement stops resolving", async () => {
     await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");
     await addPlacement("PRIMARY", await addPosition(null), code("FUNC_TEACH"));
-    const voidAction = randomUUID();
-    await client.query(
-      `INSERT INTO employment_actions (id, employment_id, action_type, effective_from, recorded_by_account_id)
-       VALUES ($1,$2,'CORRECTION','2026-02-01'::date,$3)`,
-      [voidAction, employmentId, accountId],
-    );
+    const voidAction = await addAction("REVERSAL");
     await client.query(
       `UPDATE employment_placements SET voided_by_action_id = $2 WHERE employment_id = $1`,
       [employmentId, voidAction],

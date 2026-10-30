@@ -41,6 +41,7 @@ export type AdminNavKey =
   | "data-changes"
   | "decision-documents"
   | "organization"
+  | "job-classifications"
   | "attendance"
   | "attendance-shifts"
   | "attendance-schedules"
@@ -91,7 +92,10 @@ const navGroups: AdminNavGroup[] = [
   },
   {
     label: "Organisasi",
-    items: [{ key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 }],
+    items: [
+      { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
+      { key: "job-classifications", label: "Klasifikasi Jabatan", href: "/admin/job-classifications", icon: BadgeCheck },
+    ],
   },
   {
     label: "Waktu & Kehadiran",

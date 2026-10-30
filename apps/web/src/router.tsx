@@ -57,6 +57,7 @@ import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
 import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
+import { AdminJobClassificationsPage } from "@/pages/AdminJobClassificationsPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { AdminAnnouncementsPage } from "@/pages/AdminAnnouncementsPage";
 import { AdminDocumentsPage } from "@/pages/AdminDocumentsPage";
@@ -353,6 +354,14 @@ const adminOrganizationRoute = createRoute({
   path: "/admin/organization",
   beforeLoad: ({ location }) => requireAdminPath(location, "/admin/organization"),
   component: AdminOrganizationPage,
+});
+
+// ORG-011: katalog klasifikasi jabatan dan golongan.
+const adminJobClassificationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/job-classifications",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/job-classifications"),
+  component: AdminJobClassificationsPage,
 });
 
 // ATT-011-1: "Waktu & Kehadiran" sections (docs/domain/attendance-operational-simplification-spec.md §3).
@@ -695,6 +704,7 @@ const routeTree = rootRoute.addChildren([
   adminEmploymentConsistencyRoute,
   adminDecisionDocumentsRoute,
   adminOrganizationRoute,
+  adminJobClassificationsRoute,
   adminAttendanceRoute,
   adminAttendanceShiftsRoute,
   adminAttendanceSchedulePatternsRoute,

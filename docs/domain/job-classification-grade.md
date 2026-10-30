@@ -39,7 +39,7 @@ Sesi PAY-003 mengonfirmasi (2026-10-27) bahwa kebijakan `FUNCTIONAL_ALLOWANCE` d
 | Jalur tulis pengikatan di employment action EMP-006 (`employment_placements`) | Package 3, belum dibuat |
 | Fingerprint kompensasi terpisah supaya revisi yang mengubah klasifikasi tidak dilaporkan "Hanya tampilan" | **Package 3**, dilaporkan sebagai `compensationImpact` |
 | Konsumsi payroll atas resolver (§4) | milik sesi PAY-003, setelah parallel run |
-| Layar pengelolaan katalog | Package 3, belum dibuat |
+| Layar pengelolaan katalog | **Package 3**, `/admin/job-classifications`: daftar per tanggal, seluruh versi, tambah, ubah nama, dan tutup; berlaku untuk klasifikasi maupun golongan |
 | Kolom `legal_entity_key` pada katalog (§3.4) | menunggu ADR-0005 `ACCEPTED` |
 
 Setelah Package 2, kolom pengikatan dan resolver sudah ada, tetapi **belum ada jalur tulis**: designer ORG-008 dan employment action EMP-006 belum punya field untuk mengisinya, sehingga seluruh kolom masih kosong. Payroll juga belum memanggil resolver. Artinya sampai Package 3, ORG-011 belum mengubah nominal siapa pun, dan resolver tersedia bagi sesi PAY-003 untuk diintegrasikan serta diuji lebih dulu.

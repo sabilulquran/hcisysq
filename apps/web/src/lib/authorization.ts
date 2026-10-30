@@ -31,6 +31,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
     "attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage",
     "attendance.calculation.run",
+    // ORG-011: the catalog permissions are HC-only and belong to no other bundle, so without
+    // them here the shell bounced an account that holds only the catalog straight back to the
+    // home page and the menu entry below could never be reached. Same defect PAY-003 hit.
+    "job_classifications.read", "job_classifications.manage",
     // PAY-003: payroll roles hold none of the permissions above, so without
     // these the admin shell bounced a Director or a finance account straight
     // back to the home page, whatever the payroll rules below said.
@@ -51,6 +55,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   // EMP-010: the PK/SK register is read with employment.read; writes are authorized by the API.
   if (path === "/admin/decision-documents") return hasPermission(session, "employment.read");
   if (path === "/admin/organization") return hasPermission(session, "organization.manage");
+  // ORG-011: the catalog is HC-only and read is its own permission, so an account that may
+  // publish structure does not automatically see it.
+  if (path === "/admin/job-classifications") return hasPermission(session, "job_classifications.read");
   // PAY-003: exactly the permissions the API lets read a period
   // (PERIOD_READ_PERMISSIONS in the payroll lifecycle). Opening the screen to
   // anyone else would show them a menu entry leading to a 403.

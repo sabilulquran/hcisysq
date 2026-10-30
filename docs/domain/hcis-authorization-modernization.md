@@ -59,9 +59,19 @@ Separately grantable, excluded permissions are:
   authority bindings and reporting overrides are draft editing and need only
   `organization.manage`; the permission now guards exactly what takes effect —
   publishing, rollout, live direct managers and live unit leave approvers. It is held
-  by the **Kepala HC** role `human_capital_lead` (owner decision 2026-10-24), which
-  carries `organization.manage` and this permission and nothing else, is granted only
-  by Super Admin with organization scope and a mandate, and is outside every HC bundle.
+  by the **Kepala HC** role `human_capital_lead` (owner decision 2026-10-24), granted only
+  by Super Admin with organization scope and a mandate, and outside every HC bundle.
+  The role carried `organization.manage` and this permission alone when it was created;
+  it has since been widened twice, each time by an owner decision and each time with
+  something that decides nothing operational on its own:
+  PAY-003 added the payroll permissions Kepala HC needs up to submission (the approval,
+  the payment confirmation and the reopen approval stay with other roles), and
+  **ORG-011 (owner decision 2026-10-30)** added `job_classifications.read` and
+  `job_classifications.manage` so Kepala HC manages the job classification and grade
+  catalogs alongside Human Capital staff. The catalog holds no monetary value and grants
+  no authority (ADR-0004), so this does not widen what Kepala HC can approve or publish.
+  `HC_LEAD_PERMISSIONS` in `permissions.ts` is the current list of record; migration 0113
+  carries the ORG-011 grant.
   **ORG-008-9 (owner decision 2026-10-27):** the role does not follow the Kepala HC seat
   automatically, because a position never grants administrative permission. Super Admin
   names the seat once, and the Akses screen warns when today's role holders and today's

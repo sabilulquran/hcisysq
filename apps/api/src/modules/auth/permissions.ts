@@ -95,6 +95,10 @@ export const HC_LEAD_PERMISSIONS = [
   "organization.manage",
   "approvals.policy.manage",
   ...PAYROLL_HC_LEAD_PERMISSIONS,
+  // ORG-011, owner decision 2026-10-30: Kepala HC manages the classification and grade
+  // catalogs too. Migration 0113 grants both. The catalog carries no money and no authority
+  // (ADR-0004), so this widens nothing Kepala HC can approve or publish.
+  ...JOB_CLASSIFICATION_PERMISSIONS,
 ] as const;
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */

@@ -35,10 +35,11 @@ export interface RoleAssignmentInput {
 
 export type AssignmentScope = RoleAssignmentInput["scopeType"];
 
-// AUTH-011 §Scope per peran (2026-10-30): permissions resolve only from organization-scoped
-// assignments, and a unit-scoped one only names who serves a unit (ATT-011 reads it). So each role
-// works with exactly the scopes listed here, and the screen offers no other; anything not listed is
-// organization-only. "own" works for no role: employee self-service needs no assignment at all.
+// AUTH-011 §Scope per peran (2026-10-30): permission guards read organization-scoped assignments
+// only. A unit-scoped one names who serves a unit (ATT-011 reads it), and authority eligibility
+// (organization/repository.ts capabilityValid) accepts any scope, which is why Kepala Unit stays
+// unit-scoped. Each role works with exactly the scopes listed here and the screen offers no other;
+// anything not listed is organization-only. "own" works for no role: self-service needs none.
 const ROLE_SCOPES: Readonly<Record<string, readonly AssignmentScope[]>> = {
   human_capital: ["organization", "unit"],
   unit_manager: ["unit"],

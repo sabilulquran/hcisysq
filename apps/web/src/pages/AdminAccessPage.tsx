@@ -110,10 +110,9 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
   const [scopeType, setScopeType] = useState<Scope>(() => roleScopes(data.roles[0])[0]!);
   const selectedRole = data.roles.find((role) => role.id === roleId);
   const scopes = roleScopes(selectedRole);
-  // A role that works only one way gets that scope; switching roles never leaves a scope it refuses.
-  useEffect(() => {
-    if (!scopes.includes(scopeType)) setScopeType(scopes[0]!);
-  }, [roleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A role that works only one way gets that scope. Derived, not stored, so switching roles or
+  // reloading the role list never renders or submits a scope the role refuses.
+  const effectiveScope: Scope = scopes.includes(scopeType) ? scopeType : scopes[0]!;
   const [unitId, setUnitId] = useState(() => data.units[0]?.id ?? "");
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
@@ -254,8 +253,8 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     try {
       await createRoleAssignment(selectedAccountId, {
         roleId,
-        scopeType,
-        organizationalUnitId: scopeType === "unit" ? unitId : null,
+        scopeType: effectiveScope,
+        organizationalUnitId: effectiveScope === "unit" ? unitId : null,
         startsOn: startsOn || null,
         endsOn: endsOn || null,
         reason: reason.trim() || null,
@@ -424,15 +423,15 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             {data.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
           </select>
           {scopes.length > 1 ? (
-            <select value={scopeType} onChange={(event) => setScopeType(event.target.value as Scope)} aria-label="Cakupan peran" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
+            <select value={effectiveScope} onChange={(event) => setScopeType(event.target.value as Scope)} aria-label="Cakupan peran" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
               {scopes.map((scope) => <option key={scope} value={scope}>{SCOPE_LABELS[scope]}</option>)}
             </select>
           ) : (
             <div className="flex h-10 items-center rounded-xl border border-border bg-muted px-3 text-sm text-muted-foreground" aria-live="polite">
-              Berlaku untuk {SCOPE_LABELS[scopeType].toLowerCase()}
+              Berlaku untuk {SCOPE_LABELS[effectiveScope].toLowerCase()}
             </div>
           )}
-          {scopeType === "unit" ? (
+          {effectiveScope === "unit" ? (
             <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
               <option value="">Pilih unit</option>
               {data.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}

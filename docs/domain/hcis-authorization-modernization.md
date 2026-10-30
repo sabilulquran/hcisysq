@@ -76,9 +76,13 @@ Separately grantable, excluded permissions are:
 
 ### Scope per peran (owner decision 2026-10-30)
 
-Because permissions resolve only from organization-scoped assignments, a role
-granted with any other scope is stored, shown on the Akses screen, and grants
-nothing. Before this decision only Kepala HC, Human Capital Administrator and
+Permission guards read organization-scoped assignments only, so a role granted
+with any other scope is stored, shown on the Akses screen, and grants nothing.
+Two readers do look at other scopes: ATT-011 lists unit-scoped holders as a unit's
+staff, and authority eligibility (`capabilityValid` in
+`organization/repository.ts`) accepts a capability from any scope. Both stay
+satisfied: `human_capital` and `unit_manager` keep unit scope, and every other
+role keeps organization scope. Before this decision only Kepala HC, Human Capital Administrator and
 Panel Organ Yayasan refused such a grant; every other role accepted it silently.
 
 Each role now works with exactly these scopes, and the API refuses any other with
@@ -115,11 +119,14 @@ changed (migration 0109); `role_key`, permissions and assignments are untouched.
 | `finance_officer` | Keuangan | Staf Keuangan (Kasbon) |
 | `management` | Management | Pimpinan (Laporan) |
 | `unit_manager` | Unit Manager | Kepala Unit |
-| `special_approver` | Special Approver | Penyetuju Cuti Khusus |
+| `special_approver` | Special Approver | Penyetuju Cuti di Luar Jalur |
 
-`finance` ("Pembaca Laporan") and `management` ("Pimpinan (Laporan)") overlap:
-both read organization reports, and only the second exports them. Merging them
-changes permissions and is left for a separate decision (`TBD`).
+`finance` ("Pembaca Laporan") and `management` ("Pimpinan (Laporan)") carry
+`reports.read.organization` / `reports.export.organization`, which **no screen
+checks yet**, so today both grant nothing; their descriptions say so. They also
+overlap. Wiring them to real reports, or merging them, is a separate decision
+(`TBD`). "Penyetuju Cuti Khusus" was avoided because *cuti khusus* is a leave type
+this role does not approve.
 
 Actual leave decisions still require the snapshotted assigned employee and
 workflow policy, or explicitly mandated `leave.hc.approve` for an HC approval

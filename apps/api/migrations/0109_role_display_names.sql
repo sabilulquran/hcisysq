@@ -32,8 +32,10 @@ UPDATE roles SET name = 'Staf Human Capital',
   description = 'Mengerjakan administrasi kepegawaian sehari-hari. Untuk seluruh organisasi, atau untuk satu unit sebagai petugas HC unit tersebut.'
   WHERE role_key = 'human_capital';
 
+-- finance and management carry reports.read/export.organization, which no screen checks yet. Their
+-- descriptions say so, so nobody grants them expecting access they do not give.
 UPDATE roles SET name = 'Pembaca Laporan',
-  description = 'Hanya melihat laporan organisasi. Tidak dapat mengubah data dan tidak dapat mengunduh.'
+  description = 'Disiapkan untuk melihat laporan organisasi. Belum berfungsi: laporan yang ada belum memakai peran ini.'
   WHERE role_key = 'finance';
 
 UPDATE roles SET name = 'Staf Keuangan (Kasbon)',
@@ -41,13 +43,14 @@ UPDATE roles SET name = 'Staf Keuangan (Kasbon)',
   WHERE role_key = 'finance_officer';
 
 UPDATE roles SET name = 'Pimpinan (Laporan)',
-  description = 'Melihat dan mengunduh laporan organisasi untuk keperluan pimpinan.'
+  description = 'Disiapkan untuk melihat dan mengunduh laporan organisasi. Belum berfungsi: laporan yang ada belum memakai peran ini.'
   WHERE role_key = 'management';
 
 UPDATE roles SET name = 'Kepala Unit',
   description = 'Menandai siapa yang memimpin satu unit. Selalu untuk satu unit.'
   WHERE role_key = 'unit_manager';
 
-UPDATE roles SET name = 'Penyetuju Cuti Khusus',
-  description = 'Menyetujui cuti di luar rantai atasan yang biasa.'
+-- Not "Penyetuju Cuti Khusus": cuti khusus is a leave type, and this role does not approve it.
+UPDATE roles SET name = 'Penyetuju Cuti di Luar Jalur',
+  description = 'Dapat ditunjuk sebagai penyetuju cuti di luar rantai atasan yang biasa.'
   WHERE role_key = 'special_approver';

@@ -33,6 +33,34 @@ export interface RoleAssignmentInput {
   reason?: string | null | undefined;
 }
 
+export type AssignmentScope = RoleAssignmentInput["scopeType"];
+
+// AUTH-011 §Scope per peran (2026-10-30): permissions resolve only from organization-scoped
+// assignments, and a unit-scoped one only names who serves a unit (ATT-011 reads it). So each role
+// works with exactly the scopes listed here, and the screen offers no other; anything not listed is
+// organization-only. "own" works for no role: employee self-service needs no assignment at all.
+const ROLE_SCOPES: Readonly<Record<string, readonly AssignmentScope[]>> = {
+  human_capital: ["organization", "unit"],
+  unit_manager: ["unit"],
+};
+
+export function allowedScopes(roleKey: string): readonly AssignmentScope[] {
+  return ROLE_SCOPES[roleKey] ?? ["organization"];
+}
+
+const SCOPE_WORDS: Record<AssignmentScope, string> = {
+  organization: "seluruh organisasi",
+  unit: "satu unit",
+  own: "diri sendiri",
+};
+
+function assertRoleScope(roleKey: string, scope: AssignmentScope): void {
+  const scopes = allowedScopes(roleKey);
+  if (scopes.includes(scope)) return;
+  throw new AuthError(400, "ROLE_SCOPE_NOT_ALLOWED",
+    `Peran ini hanya berlaku untuk ${scopes.map((item) => SCOPE_WORDS[item]).join(" atau ")}.`);
+}
+
 export function canDelegateRole(role: AssignableRole, delegated: boolean): boolean {
   if (!HCIS_ROLES.includes(role.roleKey) || !role.permissions.length) return false;
   if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key))) return false;
@@ -124,6 +152,9 @@ export async function createRoleAssignment(
         throw new AuthError(400, "ROLE_REASON_REQUIRED", "Alasan penugasan wajib diisi, misalnya nomor SK kepengurusan.");
       }
     }
+    // Every other role: an assignment with a scope the role cannot use would be stored, shown and
+    // silently grant nothing. The three guards above keep their own codes; this covers the rest.
+    assertRoleScope(role.roleKey, input.scopeType);
     if (input.organizationalUnitId) {
       const unit = await db.query("SELECT id FROM organizational_units WHERE id = $1", [input.organizationalUnitId]);
       if (!unit.rowCount) throw new AuthError(404, "UNIT_NOT_FOUND", "Unit organisasi tidak ditemukan.");

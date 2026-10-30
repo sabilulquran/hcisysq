@@ -560,6 +560,53 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       .rejects.toMatchObject({ code: "ROLE_GRANT_SUPER_ADMIN_ONLY" });
   }, 60000);
 
+  it("§Scope per peran: refuses every assignment whose scope the role cannot use, and offers only the working scopes", async () => {
+    const roleIds = new Map((await pool.query<{ id: string; roleKey: string }>(
+      `SELECT id, role_key AS "roleKey" FROM roles`,
+    )).rows.map((row) => [row.roleKey, row.id] as const));
+    const employeeId = randomUUID();
+    const accountId = randomUUID();
+    await pool.query("INSERT INTO employees(id,employee_number,full_name,status) VALUES ($1,$2,'Synthetic Scope','active')",
+      [employeeId, `AUTH011-SCOPE-${accountId}`]);
+    await pool.query(`INSERT INTO accounts(id,employee_id,email,principal_type,status)
+      VALUES($1,$2,$3,'EMPLOYEE','active')`, [accountId, employeeId, `scope-${accountId}@example.invalid`]);
+    const legacy = actors.get("legacy")!.principal;
+    const before = (await pool.query("SELECT count(*)::int AS count FROM account_role_assignments WHERE account_id=$1", [accountId])).rows;
+
+    // Organization-only roles: a unit grant would be stored, shown and grant nothing, so it is refused.
+    for (const roleKey of ["director", "finance_lead", "finance_officer", "finance", "management", "document_corrector"]) {
+      await expect(createRoleAssignment(pool, legacy, accountId,
+        { roleId: roleIds.get(roleKey)!, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic" }), roleKey)
+        .rejects.toMatchObject({ statusCode: 400, code: "ROLE_SCOPE_NOT_ALLOWED" });
+    }
+    // Kepala Unit only names who leads a unit; organization-wide it means nothing.
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: roleIds.get("unit_manager")!, scopeType: "organization", reason: "Synthetic" }))
+      .rejects.toMatchObject({ code: "ROLE_SCOPE_NOT_ALLOWED", message: "Peran ini hanya berlaku untuk satu unit." });
+    // "own" works for no role.
+    await expect(createRoleAssignment(pool, legacy, accountId,
+      { roleId: roleIds.get("human_capital")!, scopeType: "own" }))
+      .rejects.toMatchObject({ code: "ROLE_SCOPE_NOT_ALLOWED" });
+    expect((await pool.query("SELECT count(*)::int AS count FROM account_role_assignments WHERE account_id=$1", [accountId])).rows)
+      .toEqual(before);
+
+    // The working scopes still succeed.
+    await createRoleAssignment(pool, legacy, accountId,
+      { roleId: roleIds.get("director")!, scopeType: "organization", reason: "Synthetic SK Direktur" });
+    await createRoleAssignment(pool, legacy, accountId,
+      { roleId: roleIds.get("unit_manager")!, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic" });
+
+    // The access screen is told the same policy, so it never offers a scope the API refuses.
+    const access = await request("legacy", "GET", "/admin/access");
+    expect(access.statusCode, access.body).toBe(200);
+    const offered = new Map((access.json().roles as Array<{ roleKey: string; allowedScopes: string[] }>)
+      .map((role) => [role.roleKey, role.allowedScopes] as const));
+    expect(offered.get("human_capital")).toEqual(["organization", "unit"]);
+    expect(offered.get("unit_manager")).toEqual(["unit"]);
+    expect(offered.get("director")).toEqual(["organization"]);
+    for (const scopes of offered.values()) expect(scopes).not.toContain("own");
+  }, 60000);
+
   it("ORG-008-9: compares Kepala HC role holders with the Kepala HC seat, and only Super Admin sets the seat", async () => {
     // Before a seat is chosen there is nothing to compare, and the check says so.
     const before = await request("admin", "GET", "/admin/access/role-seat-checks");

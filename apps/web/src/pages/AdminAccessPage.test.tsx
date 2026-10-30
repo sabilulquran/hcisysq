@@ -63,3 +63,31 @@ describe("AUTH-011 role-assignment controls follow backend authorization context
     }
   });
 });
+
+describe("AUTH-011 §Scope per peran: the role form offers only the scopes that make the role work", () => {
+  const superAdmin = session("SUPER_ADMIN", ["access.manage", "access.roles.assign"]);
+  const withRole = (role: AccessAdminResponse["roles"][number]) =>
+    renderToStaticMarkup(<AdminAccessWorkspace session={superAdmin} data={{ ...data, roles: [role] }} onDataChange={() => undefined} />);
+
+  it("fills in the scope and asks nothing when a role works only one way", () => {
+    const html = withRole({ id: "director", roleKey: "director", name: "Direktur",
+      description: "Menyetujui payroll.", permissions: ["payroll.approve"], allowedScopes: ["organization"] });
+    expect(html).not.toContain('aria-label="Cakupan peran"');
+    expect(html).toContain("Berlaku untuk seluruh organisasi");
+    expect(html).toContain("Menyetujui payroll.");
+  });
+
+  it("asks only between the scopes the role allows, never 'own'", () => {
+    const html = withRole({ id: "hc", roleKey: "human_capital", name: "Staf Human Capital",
+      description: null, permissions: ["leave.validate"], allowedScopes: ["organization", "unit"] });
+    expect(html).toContain('aria-label="Cakupan peran"');
+    expect(html).toContain(">Seluruh organisasi</option>");
+    expect(html).toContain(">Satu unit</option>");
+    expect(html).not.toContain("Diri sendiri");
+  });
+
+  it("names an organization-wide assignment in words, not as a code", () => {
+    expect(render(superAdmin)).toContain("· Seluruh organisasi");
+    expect(render(superAdmin)).not.toContain("· organization");
+  });
+});

@@ -46,13 +46,22 @@ function savepointPool(client: PoolClient, accountId: string): Pool {
     if (String(text).includes('SELECT DISTINCT role_permission.permission_key AS "permissionKey"')) {
       return { rows: [{ permissionKey: "organization.manage" }], rowCount: 1 } as never;
     }
-    if (statement.startsWith("BEGIN")) return client.query(`SAVEPOINT test_sp_${++depth}`);
+    // The designer nests transactions: a route opens one and the repository opens another
+    // when it sees a pool it can connect to. Track the savepoints as a stack and ignore a
+    // stray COMMIT or ROLLBACK, or the depth counter goes negative and Postgres is asked to
+    // release a savepoint that was never taken.
+    if (statement.startsWith("BEGIN")) {
+      depth += 1;
+      return client.query(`SAVEPOINT test_sp_${depth}`);
+    }
     if (statement.startsWith("COMMIT")) {
+      if (depth === 0) return { rows: [], rowCount: 0 } as never;
       const name = `test_sp_${depth}`;
       depth -= 1;
       return client.query(`RELEASE SAVEPOINT ${name}`);
     }
     if (statement.startsWith("ROLLBACK")) {
+      if (depth === 0) return { rows: [], rowCount: 0 } as never;
       const name = `test_sp_${depth}`;
       depth -= 1;
       await client.query(`ROLLBACK TO SAVEPOINT ${name}`);

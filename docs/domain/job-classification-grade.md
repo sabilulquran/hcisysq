@@ -144,6 +144,8 @@ Aturan konsumsi:
 |---|---|---|
 | Baca katalog | `job_classifications.read` | organization |
 | Kelola katalog dan golongan | `job_classifications.manage` | organization |
+
+Kedua permission dipegang Staf Human Capital dan Kepala HC (keputusan owner 2026-10-30). Keduanya organization-scoped dan tidak pernah terbawa lewat kompatibilitas legacy Super Admin.
 | Menetapkan klasifikasi pada position | permission change set ORG-004 yang sudah ada | organization |
 | Menetapkan klasifikasi pada placement | permission employment action EMP-006 yang sudah ada | organization |
 
@@ -173,7 +175,7 @@ Setiap permission baru wajib automated test (AGENTS.md §7). Perubahan katalog m
 |---|---|---|
 | Apakah YSQ memakai golongan numerik | tidak; `job_grades` tersedia tetapi kosong | ya |
 | Apakah satu pegawai boleh punya dua klasifikasi `FUNCTIONAL` bersamaan | tidak; satu per placement, rangkap lewat placement `ADDITIONAL` | ya |
-| Siapa yang mengelola katalog | hanya Staf Human Capital (`human_capital_admin`); Kepala HC tidak diberi akses baca maupun kelola pada Package 1 | ya |
+| Siapa yang mengelola katalog | **ditutup 2026-10-30** oleh owner: Staf Human Capital (`human_capital_admin`, migration 0110) dan Kepala HC (`human_capital_lead`, migration 0113) | tidak |
 | Apakah klasifikasi tampil di direktori ORG-006 | tidak pada v1 | ya |
 | Apakah golongan tampil di slip gaji | tidak | ya (proses owner payroll) |
 | Apa yang terjadi bila dua placement mengisi slot struktural bersamaan | **ditutup 2026-10-27** bersama sesi PAY-003: resolver gagal dengan `CLASSIFICATION_AMBIGUOUS`, periode diblokir | tidak |

@@ -68,7 +68,7 @@ Separately grantable, excluded permissions are:
   the payment confirmation and the reopen approval stay with other roles), and
   **ORG-011 (owner decision 2026-10-30)** added `job_classifications.read` and
   `job_classifications.manage` so Kepala HC manages the job classification and grade
-  catalogs alongside Human Capital staff. The catalog holds no monetary value and grants
+  catalogs alongside the Human Capital Administrator (`human_capital_admin`). The role named Staf Human Capital (`human_capital`) holds neither key. The catalog holds no monetary value and grants
   no authority (ADR-0004), so this does not widen what Kepala HC can approve or publish.
   `HC_LEAD_PERMISSIONS` in `permissions.ts` is the current list of record; migration 0113
   carries the ORG-011 grant.

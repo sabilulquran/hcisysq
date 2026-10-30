@@ -398,7 +398,7 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
     expect(badDate.statusCode, badDate.body).toBe(400);
   });
 
-  it("ORG-011-P: the catalog is granted to Human Capital staff and to Kepala HC only", async () => {
+  it("ORG-011-P: the catalog is granted to the HC Administrator and Kepala HC only", async () => {
     const granted = await client.query<{ roleKey: string; permissionKey: string }>(
       `SELECT role.role_key AS "roleKey", grant_row.permission_key AS "permissionKey"
          FROM role_permissions grant_row
@@ -406,7 +406,9 @@ describe.skipIf(!allowed)("ORG-011 job classification catalog", () => {
         WHERE grant_row.permission_key LIKE 'job_classifications.%'
         ORDER BY role.role_key, grant_row.permission_key`,
     );
-    // 0110 grants Staf Human Capital; 0113 adds Kepala HC (owner decision 2026-10-30).
+    // 0110 grants human_capital_admin (Human Capital Administrator); 0113 adds
+    // human_capital_lead (Kepala Human Capital), owner decision 2026-10-30. The role named
+    // "Staf Human Capital" is human_capital, and it deliberately holds neither key.
     // No other role may hold these keys, and legacy Super Admin compatibility never does.
     expect(granted.rows).toEqual([
       { roleKey: "human_capital_admin", permissionKey: "job_classifications.manage" },

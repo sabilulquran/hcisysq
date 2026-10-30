@@ -57,7 +57,9 @@ const envSchema = z
     HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
-    HCIS_ROLE_ADMIN_ACTOR_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(600).default(120),
+    // §2.2: one click in the Hub. Short, because the assertion is a bearer: anyone who captures
+    // one can act in that person name until it ages out (see the gap recorded in §2.11).
+    HCIS_ROLE_ADMIN_ACTOR_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(300).default(60),
     STAFF_IDENTITY_VERIFY_ENABLED: z.enum(["0", "1"]).default("0"),
     STAFF_IDENTITY_TOKEN_ISSUER: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
     STAFF_IDENTITY_TOKEN_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
@@ -148,6 +150,19 @@ const envSchema = z
           path: ["HCIS_ROLE_ADMIN_ALLOWED_CLIENTS"],
           message: "sq-hub-identity-management holds manage-users and must not also grant roles (AUTH-014 §2.2)",
         });
+      }
+      // §2.4 step 4b re-checks SQ Hub Application Access, which needs the OIDC machine client.
+      // Without it the channel would crash on first use instead of refusing to start.
+      if (value.AUTH_MODE !== "oidc") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["HCIS_ROLE_ADMIN_ENABLED"],
+          message: "HCIS_ROLE_ADMIN_ENABLED=1 requires AUTH_MODE=oidc (the channel re-checks SQ Hub Application Access)",
+        });
+      }
+      for (const key of ["SQ_HUB_APPLICATION_ACCESS_URL", "SQ_HUB_MACHINE_CLIENT_ID", "SQ_HUB_MACHINE_CLIENT_SECRET"] as const) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when HCIS_ROLE_ADMIN_ENABLED=1` });
       }
       // The actor assertion must be a different audience from the machine token, or a machine token
       // would verify as an actor assertion.

@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import {
   createOrganizationDirectoryMachineTokenVerifier,
   OrganizationDirectoryMachineAuthError,
@@ -60,6 +61,7 @@ export function registerRoleAdministrationRoutes(
   overrides?: {
     verifyMachineToken?: VerifyOrganizationDirectoryMachineToken;
     verifyActorAssertion?: VerifyActorAssertion;
+    applicationAccess?: Pick<SqHubApplicationAccessClient, "isAllowed">;
   },
 ) {
   const enabled = config.HCIS_ROLE_ADMIN_ENABLED === "1";
@@ -80,7 +82,29 @@ export function registerRoleAdministrationRoutes(
       issuer: config.HCIS_ROLE_ADMIN_TOKEN_ISSUER!,
       audience: config.HCIS_ROLE_ADMIN_ACTOR_AUDIENCE!,
       maxAgeSeconds: Number(config.HCIS_ROLE_ADMIN_ACTOR_MAX_AGE_SECONDS),
+      // Every machine client this deployment knows about, not just the one that calls this
+      // channel: a token issued to any of them is a service talking, never a person.
+      machineClients: new Set([
+        ...(config.HCIS_ROLE_ADMIN_ALLOWED_CLIENTS ?? "").split(","),
+        ...(config.STAFF_IDENTITY_ALLOWED_CLIENTS ?? "").split(","),
+        ...(config.ORG_DIRECTORY_ALLOWED_CLIENTS ?? "").split(","),
+      ].map((value) => value.trim()).filter(Boolean)),
     })
+    : null;
+
+  /**
+   * §2.4 step 4b: the same SQ Hub Application Access check HCIS performs at OIDC login, re-run for
+   * the asserted actor. The governance summary route does this on the same kind of identity, and
+   * skipping it here would mean an employee whose HCIS access was revoked in the Hub stays a valid
+   * grantor as long as their HCIS account row is still active. Unavailable means denied.
+   */
+  const applicationAccess = enabled
+    ? overrides?.applicationAccess ?? (() => {
+      const oidc = getOidcRuntimeConfig(config);
+      return new SqHubApplicationAccessClient(
+        oidc.issuer, oidc.machineClientId, oidc.machineClientSecret, oidc.applicationAccessUrl,
+      );
+    })()
     : null;
 
   /**
@@ -120,7 +144,20 @@ export function registerRoleAdministrationRoutes(
 
     try {
       const claims = await verifyActorAssertion(assertion);
-      return await resolveAssertedActor(pool, claims);
+      const actor = await resolveAssertedActor(pool, claims);
+      let allowed: boolean;
+      try {
+        allowed = await applicationAccess!.isAllowed({ issuer: claims.issuer, subject: claims.subject });
+      } catch (error) {
+        if (!(error instanceof ApplicationAccessError)) throw error;
+        await reply.status(503).send({ code: "APPLICATION_ACCESS_UNAVAILABLE" });
+        return null;
+      }
+      if (!allowed) {
+        await reply.status(403).send({ code: "HCIS_ACCESS_DENIED" });
+        return null;
+      }
+      return actor;
     } catch (error) {
       if (error instanceof ActorAssertionError) {
         // Distinct codes and statuses: a bad assertion is the caller's problem (401), while an

@@ -28,11 +28,16 @@ describe.skipIf(!allowed)("AUTH-014 break-glass account operations (PostgreSQL)"
   beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
   afterAll(async () => { await pool?.end(); });
 
+  // accounts carries a table CHECK (migration 0002) that a SUPER_ADMIN row must have MFA fully
+  // configured. A fixture without it fails before any test body runs.
   async function insertSuperAdmin(status = "active"): Promise<string> {
     const id = randomUUID();
     await client.query(
-      `INSERT INTO accounts (id, email, principal_type, status, password_hash, password_changed_at)
-       VALUES ($1, $2, 'SUPER_ADMIN', $3, 'synthetic-hash', now())`,
+      `INSERT INTO accounts (
+         id, email, principal_type, status, password_hash, password_changed_at,
+         mfa_secret_ciphertext, mfa_secret_iv, mfa_secret_tag, mfa_enabled_at
+       ) VALUES ($1, $2, 'SUPER_ADMIN', $3, 'synthetic-hash', now(),
+                 'synthetic-ciphertext', 'synthetic-iv', 'synthetic-tag', now())`,
       [id, `break-glass-${id}@example.test`, status],
     );
     return id;
@@ -111,13 +116,34 @@ describe.skipIf(!allowed)("AUTH-014 break-glass account operations (PostgreSQL)"
   });
 
   it("refuses an account that is not SUPER_ADMIN", async () => {
-    const employeeAccount = await client.query<{ id: string }>(
-      "SELECT id FROM accounts WHERE principal_type = 'EMPLOYEE' LIMIT 1",
+    // Built here rather than borrowed from the database: an empty fixture would otherwise turn
+    // this into "an unknown id is not found", which proves nothing about principal filtering.
+    const employee = await client.query<{ id: string }>(
+      `SELECT id FROM employees WHERE status = 'active' AND removed_at IS NULL LIMIT 1`,
     );
-    const targetId = employeeAccount.rows[0]?.id ?? randomUUID();
+    const employeeId = employee.rows[0]?.id;
+    if (!employeeId) {
+      throw new Error("fixture database has no active employee to attach a non-privileged account to");
+    }
+    const targetId = randomUUID();
+    await client.query(
+      `INSERT INTO accounts (id, employee_id, email, principal_type, status)
+       VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
+      [targetId, employeeId, `not-break-glass-${targetId}@example.test`],
+    );
 
     await expect(setBreakGlassStatus(client, {
       accountId: targetId, status: "inactive", reason: "percobaan salah sasaran", apply: true,
+    })).rejects.toMatchObject({ code: "BREAK_GLASS_ACCOUNT_NOT_FOUND" });
+
+    const untouched = await statusOf(targetId);
+    expect(untouched).toBe("active");
+  });
+
+  it("refuses to rotate the credential of an account that is not SUPER_ADMIN", async () => {
+    await expect(rotateBreakGlassCredential(client, {
+      accountId: randomUUID(), password: "kata-sandi-uji-yang-panjang",
+      encryptionKey: ENCRYPTION_KEY, reason: "sasaran salah", apply: true,
     })).rejects.toMatchObject({ code: "BREAK_GLASS_ACCOUNT_NOT_FOUND" });
   });
 

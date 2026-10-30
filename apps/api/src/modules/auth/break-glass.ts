@@ -147,6 +147,12 @@ export interface RotateCredentialResult {
   status: "would_rotate" | "rotated";
   accountId: string;
   email: string;
+  /**
+   * The account's status, unchanged by this operation. The runbook rotates after every use, by
+   * which time the account is usually back to `inactive`; the caller is told so it can say that the
+   * new credential will not log anyone in until `--set-status active` runs.
+   */
+  accountStatus: AccountStatus;
   sessionsRevoked: number;
   /** Present only when applied. Shown once by the CLI and never stored anywhere else. */
   secrets?: { totpSecret: string; totpUri: string; recoveryCodes: string[] };
@@ -164,7 +170,7 @@ export async function rotateBreakGlassCredential(
   input: RotateCredentialInput,
 ): Promise<RotateCredentialResult> {
   const account = await resolveBreakGlassAccount(db, input.accountId, input.apply);
-  const base = { accountId: account.id, email: account.email };
+  const base = { accountId: account.id, email: account.email, accountStatus: account.status };
 
   if (!input.apply) {
     return { ...base, status: "would_rotate", sessionsRevoked: 0 };

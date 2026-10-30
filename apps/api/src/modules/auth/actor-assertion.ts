@@ -42,6 +42,11 @@ export function createActorAssertionVerifier(input: {
   audience: string;
   /** §2.2: an assertion older than this is refused even if it has not expired. */
   maxAgeSeconds: number;
+  /**
+   * The machine clients of this realm. A token whose `azp` is one of them was issued *to a
+   * service*, not to a person, and is refused however well-formed it is.
+   */
+  machineClients: ReadonlySet<string>;
 }): VerifyActorAssertion {
   const issuer = input.issuer.replace(/\/$/, "");
   const jwksUrl = new URL(`${issuer}/protocol/openid-connect/certs`);
@@ -67,9 +72,15 @@ export function createActorAssertionVerifier(input: {
     if (!subject) {
       throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion carries no subject");
     }
-    // A client-credentials token has no human behind it. Accepting one here would let the machine
-    // account grant roles in nobody's name, which is exactly what the assertion exists to prevent.
-    if (typeof payload.azp === "string" && payload.azp === subject) {
+    // A client-credentials token has no human behind it. Accepting one would let the machine
+    // account grant roles in nobody's name, which is what the assertion exists to prevent.
+    //
+    // Comparing `azp` with `sub` does NOT detect this: Keycloak gives a service-account token
+    // `azp = <clientId>` and `sub = <service-account user uuid>`, so they are never equal. The two
+    // checks that do work are the issuing client and the service-account username convention.
+    const azp = typeof payload.azp === "string" ? payload.azp : null;
+    const username = typeof payload.preferred_username === "string" ? payload.preferred_username : "";
+    if ((azp && input.machineClients.has(azp)) || username.startsWith("service-account-")) {
       throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion is a machine token");
     }
     return { issuer, subject };

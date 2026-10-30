@@ -6,16 +6,34 @@ import { loadConfig } from "../src/config/env.js";
 import { ActorAssertionError } from "../src/modules/auth/actor-assertion.js";
 import { registerRoleAdministrationRoutes } from "../src/modules/auth/role-administration-routes.js";
 import { OrganizationDirectoryMachineAuthError } from "../src/modules/organization-directory/machine-auth.js";
+import { ApplicationAccessError } from "../src/modules/auth/application-access.js";
 
 const BASE = { DATABASE_URL: "postgresql://example.invalid/test" };
 
-const config = (enabled: boolean) => loadConfig({
-  ...BASE,
-  HCIS_ROLE_ADMIN_ENABLED: enabled ? "1" : "0",
+// §2.4 step 4b re-checks SQ Hub Application Access, so the channel refuses to start without the
+// OIDC machine client — the same one HCIS already uses at login.
+const OIDC = {
+  AUTH_MODE: "oidc",
+  OIDC_ISSUER: "https://identity.example.test/realms/sq-staff",
+  OIDC_CLIENT_ID: "hcis",
+  OIDC_CLIENT_SECRET: "synthetic-secret",
+  OIDC_REDIRECT_URI: "https://hcis.example.test/auth/callback",
+  OIDC_POST_LOGOUT_REDIRECT_URI: "https://hcis.example.test/",
+  SQ_HUB_APPLICATION_ACCESS_URL: "https://hub.example.test/internal/v1/application-access/check",
+  SQ_HUB_MACHINE_CLIENT_ID: "hcis-api",
+  SQ_HUB_MACHINE_CLIENT_SECRET: "synthetic-machine-secret",
+};
+
+const CHANNEL = {
   HCIS_ROLE_ADMIN_TOKEN_ISSUER: "https://identity.example.test/realms/sq-staff",
   HCIS_ROLE_ADMIN_TOKEN_AUDIENCE: "hcis-role-administration",
   HCIS_ROLE_ADMIN_ALLOWED_CLIENTS: "sq-hub-role-administration",
   HCIS_ROLE_ADMIN_ACTOR_AUDIENCE: "hcis-role-administration-actor",
+};
+
+const config = (enabled: boolean) => loadConfig({
+  ...BASE, ...OIDC, ...CHANNEL,
+  HCIS_ROLE_ADMIN_ENABLED: enabled ? "1" : "0",
 });
 
 const ACCOUNT = "00000000-0000-4000-8000-00000000000a";
@@ -38,6 +56,7 @@ function app(options: { enabled?: boolean; pool?: Partial<Pool> } = {}) {
       verifyActorAssertion: async () => ({
         issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub",
       }),
+      applicationAccess: { isAllowed: async () => true },
     },
   );
   return instance;
@@ -122,6 +141,7 @@ describe("AUTH-014 role administration channel", () => {
           throw new OrganizationDirectoryMachineAuthError(code, "synthetic");
         },
         verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+        applicationAccess: { isAllowed: async () => true },
       });
       const response = await instance.inject({
         method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
@@ -141,6 +161,7 @@ describe("AUTH-014 role administration channel", () => {
       registerRoleAdministrationRoutes(instance, {} as Pool, config(true), {
         verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
         verifyActorAssertion: async () => { throw new ActorAssertionError(code, "synthetic"); },
+        applicationAccess: { isAllowed: async () => true },
       });
       const response = await instance.inject({
         method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
@@ -204,6 +225,34 @@ describe("AUTH-014 role administration channel", () => {
     await instance.close();
   });
 
+  it("refuses an actor whose HCIS access SQ Hub has revoked, and fails closed when it cannot ask", async () => {
+    // §2.4 step 4b. An employee whose Hub access was withdrawn but whose HCIS account row is still
+    // active would otherwise remain a valid grantor; and an unanswerable Hub must deny, not admit.
+    const pool = { query: async () => ({ rowCount: 1, rows: [{
+      id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+      principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+    }] }) } as unknown as Pool;
+
+    for (const [access, status, code] of [
+      [{ isAllowed: async () => false }, 403, "HCIS_ACCESS_DENIED"],
+      [{ isAllowed: async () => { throw new ApplicationAccessError("hub unreachable"); } }, 503, "APPLICATION_ACCESS_UNAVAILABLE"],
+    ] as const) {
+      const instance = Fastify();
+      registerRoleAdministrationRoutes(instance, pool, config(true), {
+        verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+        verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+        applicationAccess: access,
+      });
+      const response = await instance.inject({
+        method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+        headers, payload: grantBody,
+      });
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({ code });
+      await instance.close();
+    }
+  });
+
   it("answers a replayed requestId with 409 rather than a 500", async () => {
     const replay = Object.assign(new Error("duplicate key"), {
       code: "23505", constraint: "access_audit_events_hub_request_idx",
@@ -218,6 +267,7 @@ describe("AUTH-014 role administration channel", () => {
     } as unknown as Pool, config(true), {
       verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
       verifyActorAssertion: async () => ({ issuer: "https://identity.example.test/realms/sq-staff", subject: "actor-sub" }),
+      applicationAccess: { isAllowed: async () => true },
     });
     const response = await instance.inject({
       method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,

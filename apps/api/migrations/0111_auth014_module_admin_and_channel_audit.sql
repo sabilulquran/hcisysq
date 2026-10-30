@@ -18,6 +18,10 @@
 --     routes that are guarded differently today; creating them before their guards change would
 --     add permission keys that nothing checks. They land with those guard changes.
 --
+-- The role UUID continues the series: ...015 is the last one taken (0102). ON CONFLICT names
+-- role_key, which does NOT cover a duplicate primary key, so a reused id aborts the whole
+-- migration with 23505 on roles_pkey rather than doing nothing. ...012 is finance_officer (0069).
+--
 -- Idempotent: rerunning changes nothing further.
 --
 -- Rollback/recovery:
@@ -55,9 +59,14 @@ BEGIN
   END IF;
 END $$;
 
--- §2.3: one SQ Hub request produces exactly one HCIS event. Without this, a captured request
+-- §2.3: one SQ Hub request produces at most one HCIS event *per action*, so a grant and a later
+-- revocation may share a requestId while neither can be replayed. Without this, a captured request
 -- replayed while the machine token is still valid would re-create a just-revoked assignment, and
 -- two-sided reconciliation by requestId would read the duplicate as a match.
+--
+-- Not CONCURRENTLY: the migration runner wraps each file in a transaction, and CREATE INDEX
+-- CONCURRENTLY cannot run inside one. The build takes a lock that blocks audit writes for its
+-- duration; on today's table that is milliseconds, but it is a real consideration as it grows.
 CREATE UNIQUE INDEX IF NOT EXISTS access_audit_events_hub_request_idx
   ON access_audit_events (hub_request_id, action)
   WHERE hub_request_id IS NOT NULL;
@@ -70,7 +79,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS access_audit_events_hub_request_idx
 -- employees.*, employment.*, documents.*, leave decisions, payroll runs and every access.* key
 -- stay outside it on purpose (§4.3).
 INSERT INTO roles (id, role_key, name, description, is_system) VALUES
-  ('10000000-0000-4000-8000-000000000012', 'hcis_module_admin', 'Admin Modul HCIS',
+  ('10000000-0000-4000-8000-000000000016', 'hcis_module_admin', 'Admin Modul HCIS',
    'AUTH-014: mengatur isi dan jalannya modul HCIS — shift dan jadwal, kebijakan kehadiran, perangkat absensi, jenis cuti, komponen gaji dan periode payroll. Tidak memberi peran dan tidak menyentuh akun orang. Diberikan oleh Admin Platform dengan scope organisasi dan alasan penugasan.', true)
 ON CONFLICT (role_key) DO NOTHING;
 

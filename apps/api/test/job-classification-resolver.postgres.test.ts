@@ -57,12 +57,13 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
     return positionKey;
   }
 
+  /** BASELINE is the only action type the schema lets stand without an effective date. */
   async function addAction(type: string): Promise<string> {
     const actionId = randomUUID();
     await client.query(
-      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, recorded_at)
-       VALUES ($1, $2, $3, $4, now())`,
-      [actionId, employeeId, employmentId, type],
+      `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on, recorded_at)
+       VALUES ($1, $2, $3, $4, $5::date, now())`,
+      [actionId, employeeId, employmentId, type, type === "BASELINE" ? null : "2026-02-01"],
     );
     return actionId;
   }
@@ -321,7 +322,8 @@ describe.skipIf(!allowed)("ORG-011 classification resolver", () => {
     await client.query("DELETE FROM organization_positions WHERE change_set_id = $1", [changeSetId]);
     await client.query("DELETE FROM organization_nodes WHERE change_set_id = $1", [changeSetId]);
     await client.query(
-      "UPDATE organization_change_sets SET status = 'DRAFT', published_at = NULL WHERE id = $1",
+      `UPDATE organization_change_sets
+          SET status = 'DRAFT', published_at = NULL, validated_at = NULL WHERE id = $1`,
       [changeSetId],
     );
     await addClassification(code("FUNC_TEACH"), "FUNCTIONAL");

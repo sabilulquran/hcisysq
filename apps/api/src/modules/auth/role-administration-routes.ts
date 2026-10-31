@@ -133,8 +133,9 @@ export function registerRoleAdministrationRoutes(
       return null;
     }
 
+    let machineClientId: string;
     try {
-      await verifyMachineToken(token);
+      ({ clientId: machineClientId } = await verifyMachineToken(token));
     } catch (error) {
       if (error instanceof OrganizationDirectoryMachineAuthError) {
         const forbidden = error.code === "FORBIDDEN_CLIENT" || error.code === "INSUFFICIENT_SCOPE";
@@ -147,6 +148,17 @@ export function registerRoleAdministrationRoutes(
 
     try {
       const claims = await verifyActorAssertion(assertion);
+      // The machine may not vouch for itself. A Keycloak probe on 2026-10-31 showed the machine
+      // client could mint a token carrying the actor audience from its own client-credentials
+      // token, with no human anywhere — the optional-scope split does not prevent it, because a
+      // client may request its own optional scope. The verifier already refuses known machine
+      // clients and the service-account username convention, but both read configuration or
+      // convention; this one is structural: whoever presented the bearer token on THIS request
+      // cannot also be the actor it names.
+      if (claims.authorizedParty && claims.authorizedParty === machineClientId) {
+        await reply.status(401).send({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+        return null;
+      }
       const actor = await resolveAssertedActor(pool, claims);
       let allowed: boolean;
       try {

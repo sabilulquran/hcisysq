@@ -44,6 +44,7 @@ function assertionClaims() {
     issuer: "https://identity.example.test/realms/sq-staff",
     subject: "actor-sub",
     jti: randomUUID(),
+    authorizedParty: "sq-hub",
     expiresAt: new Date(Date.now() + 60_000),
   };
 }
@@ -234,6 +235,51 @@ describe("AUTH-014 role administration channel", () => {
     });
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({ code: "ROLE_DELEGATION_FORBIDDEN" });
+    await instance.close();
+  });
+
+  it("refuses an actor assertion issued to the very machine client that presented the bearer", async () => {
+    // Structural, not configuration-dependent: whoever presented the machine token on THIS request
+    // cannot also be the human it names. The Keycloak probe of 2026-10-31 showed the machine client
+    // can mint exactly such a token from its own client-credentials token, with no human anywhere.
+    const pool = { query: async () => ({ rowCount: 1, rows: [{
+      id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+      principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+    }] }) } as unknown as Pool;
+
+    const instance = Fastify();
+    registerRoleAdministrationRoutes(instance, pool, config(true), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => ({ ...assertionClaims(), authorizedParty: "sq-hub-role-administration" }),
+      applicationAccess: { isAllowed: async () => true },
+    });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers, payload: grantBody,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ code: "ROLE_ADMIN_ACTOR_ASSERTION_INVALID" });
+    await instance.close();
+  });
+
+  it("accepts an actor assertion issued to a different client than the bearer", async () => {
+    // The corrected design: sq-hub issues the assertion, the machine client presents the bearer.
+    const pool = { query: async () => ({ rowCount: 1, rows: [{
+      id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+      principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+    }] }) } as unknown as Pool;
+
+    const instance = Fastify();
+    registerRoleAdministrationRoutes(instance, pool, config(true), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => ({ ...assertionClaims(), authorizedParty: "sq-hub" }),
+      applicationAccess: { isAllowed: async () => true },
+    });
+    const response = await instance.inject({
+      method: "GET", url: "/internal/v1/role-administration/catalog", headers,
+    });
+    // Reaches the handler rather than being refused at the door; the query itself is mocked.
+    expect(response.statusCode).not.toBe(401);
     await instance.close();
   });
 

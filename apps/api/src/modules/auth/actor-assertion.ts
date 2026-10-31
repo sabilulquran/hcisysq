@@ -33,6 +33,8 @@ export class ActorAssertionError extends Error {
 export interface ActorAssertionClaims {
   issuer: string;
   subject: string;
+  /** The client the assertion was issued to. Used to refuse a machine vouching for itself. */
+  authorizedParty: string | null;
   /** §2.11: the token id this assertion is spent under. Required; an assertion without one
    * could not be made single use, and would stay replayable for its whole lifetime. */
   jti: string;
@@ -94,7 +96,7 @@ export function createActorAssertionVerifier(input: {
     if ((azp && input.machineClients.has(azp)) || username.startsWith("service-account-")) {
       throw new ActorAssertionError("ACTOR_ASSERTION_INVALID", "actor assertion is a machine token");
     }
-    return { issuer, subject, jti, expiresAt: new Date(payload.exp * 1000) };
+    return { issuer, subject, jti, authorizedParty: azp, expiresAt: new Date(payload.exp * 1000) };
   };
 }
 

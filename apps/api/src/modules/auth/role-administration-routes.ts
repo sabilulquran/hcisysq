@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { OrgAccessPolicyError } from "../employees/org-access-policy.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import {
@@ -56,6 +57,19 @@ const assignmentBodySchema = z.object({
 }).strict();
 
 const removalBodySchema = z.object({ requestId: z.string().uuid() }).strict();
+/**
+ * The org-access policy codes this channel is allowed to pass on, named one by one.
+ *
+ * `OrgAccessPolicyError.code` is a bare `string`, and the module it comes from deals in employee
+ * data. Forwarding the whole class would mean that any assert added there later publishes its
+ * code and its Indonesian message through a cross-application machine channel, with no AUTH-014
+ * review. Only these three are reachable from `createRoleAssignment`; anything else is a surprise
+ * and must surface as a 500 rather than be dressed up as the caller's mistake.
+ */
+const FORWARDED_POLICY_CODES = new Set([
+  "UNIT_SCOPE_REQUIRES_UNIT", "NON_UNIT_SCOPE_FORBIDS_UNIT", "INVALID_ASSIGNMENT_PERIOD",
+]);
+
 const accountLookupQuerySchema = pageQuerySchema.extend({
   issuer: z.string().trim().min(1).max(500),
   subject: z.string().trim().min(1).max(255),
@@ -229,6 +243,18 @@ export function registerRoleAdministrationRoutes(
   async function sendDomainError(reply: FastifyReply, error: unknown): Promise<boolean> {
     if (error instanceof AuthError) {
       await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      return true;
+    }
+    // createRoleAssignment validates dates and scope through the org-access policy, which raises
+    // its own error type. Without this the channel answered 500 for an end date before the start
+    // date, or unit scope with no unit — ordinary input mistakes reported as a server fault, and
+    // SQ Hub reads 5xx as "outcome unknown" and asks the operator to send the request again.
+    //
+    // `/admin/org-access` maps the same codes to 400, but the two are not equivalent in effect:
+    // there the caller is a break-glass principal and nothing is consumed, while here the actor
+    // assertion has already been spent (§2.11), so a rejected date costs one attempt.
+    if (error instanceof OrgAccessPolicyError && FORWARDED_POLICY_CODES.has(error.code)) {
+      await reply.status(400).send({ code: error.code, message: error.message });
       return true;
     }
     if (typeof error === "object" && error !== null && (error as { code?: string }).code === "23505"

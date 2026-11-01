@@ -219,13 +219,67 @@ Follow-up (`TBD`, outside this repository): the Hub/Aset release tooling (`sq-co
 and honour the same lock. Until it does, the announcement rule in §3 is the only guard for
 cross-app releases.
 
-## 5. Retention
+## 5. Two traps in any Android-side script (OPS-MI8-REL-001 §5)
+
+Both were found on 2026-11-01, in review of the AUTH-014 ignition scripts, before either ran with
+`--apply`. They are not specific to those scripts: any script that runs on the Android side and
+touches a chrooted service meets them.
+
+### 5.1 There is no `/tmp` on the Android side
+
+`/tmp` exists only inside the chroot (`/data/local/ubuntu26/tmp`). On Android, `ls -d /tmp` answers
+`No such file or directory`.
+
+This bites in a way that reads as a different problem entirely. A line such as
+
+```sh
+chroot "$R" /usr/bin/wc -c < /tmp/secret.file     # WRONG
+```
+
+looks like it reads a file inside the chroot, but **the redirection is performed by the calling
+shell, before `chroot` runs**, so it opens `/tmp/secret.file` on the *Android* side and fails. The
+script then reports whatever its guard says for an empty read — in the case found, "secret could
+not be read from Keycloak", which sends the operator to look at Keycloak for a fault that is in the
+script.
+
+Rule: keep two names for every shared temporary file, the chroot path and the Android path
+(`$R$chroot_path`), and use the Android one for every redirection, `cp`, `chmod` and `ls` that the
+Android shell performs. Pass the chroot path only to commands that actually run inside the chroot.
+
+### 5.2 `sq-corectl.sh restart` does not wait, and the old process still answers
+
+`restart` is one line: `kill -TERM` to the pid in `sq-core-pids/<svc>.pid`. It returns immediately.
+The worker relaunches the service within its 15 s loop.
+
+So a script that restarts a service and then polls `/health` can be answered **by the process it
+just asked to stop**, which is still listening while it shuts down. The poll passes, the script
+reports success, and the service has not yet read the configuration the script just wrote. A
+configuration change verified this way is not verified at all — and the failure is silent, because
+everything it printed was true.
+
+Rule: wait for the **pid to change** in `sq-core-pids/<svc>.pid`, and only then poll `/health`.
+Apply the same waiting function to the automatic rollback path, which has exactly the same race.
+
+### 5.3 Proving a service actually loaded a value
+
+Neither the file nor a healthy `/health` proves the running process read it. `/proc/<pid>/environ`
+of the service's own `node` process does, and it can be read without printing any value:
+
+```sh
+tr '\0' '\n' < /proc/<node-pid>/environ | grep -cE '^(KEY_A|KEY_B|KEY_C)='
+```
+
+Count only. For a secret, the count is the evidence and the value never leaves the device; for a
+switch such as `HCIS_ROLE_ADMIN_ENABLED=1`, the whole assignment is safe to print and is the only
+proof of the switch obtainable without logging in.
+
+## 6. Retention
 
 Keep the current release and at least the previous one. Older release directories (~135 MB each)
 may be deleted by hand once the new release has run for 7 days without rollback. Keep
 `pre-release` dumps for 30 days. The `.pre-<name>` launcher/worker copies stay as audit evidence.
 
-## 6. Failure behaviour
+## 7. Failure behaviour
 
 | Phase | On failure | Production impact |
 |---|---|---|
@@ -237,7 +291,7 @@ may be deleted by hand once the new release has run for 7 days without rollback.
 | cutover | `rollback` | HCIS down until rollback (≤ 2 min) |
 | verify | `rollback` unless the owner accepts | as observed |
 
-## 7. Audit and evidence
+## 8. Audit and evidence
 
 Each `--apply` run writes a local log `mi8-release-<name>-<stamp>.log` (in the current directory,
 not committed). Record in a dated note under `docs/development/` (as with
@@ -245,7 +299,7 @@ not committed). Record in a dated note under `docs/development/` (as with
 migration names applied, backup path and sha256, launcher/worker before/after sha256, timestamps,
 health results. Never record `final.env` values, tokens, cookies or employee data.
 
-## 8. Known limits and follow-ups
+## 9. Known limits and follow-ups
 
 - Resolved 2026-10-15/16 by OPS-MI8-BAK-001 (`mi8vps-sq-core-production-backup-plan.md`):
   `sqcore_hcis` and the other SQ Core production databases are backed up daily at 19 UTC (02:00 WIB)

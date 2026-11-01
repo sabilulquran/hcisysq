@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 
 import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { OrgAccessPolicyError } from "../employees/org-access-policy.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import {
@@ -229,6 +230,15 @@ export function registerRoleAdministrationRoutes(
   async function sendDomainError(reply: FastifyReply, error: unknown): Promise<boolean> {
     if (error instanceof AuthError) {
       await reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      return true;
+    }
+    // createRoleAssignment validates dates and scope through the org-access policy, which raises
+    // its own error type. Without this the channel answered 500 for an end date before the start
+    // date, or unit scope with no unit — ordinary input mistakes reported as a server fault, and
+    // SQ Hub reads 5xx as "outcome unknown" and asks the operator to send the request again.
+    // `/admin/org-access` already maps these to 400 with the same code; the channel now matches.
+    if (error instanceof OrgAccessPolicyError) {
+      await reply.status(400).send({ code: error.code, message: error.message });
       return true;
     }
     if (typeof error === "object" && error !== null && (error as { code?: string }).code === "23505"

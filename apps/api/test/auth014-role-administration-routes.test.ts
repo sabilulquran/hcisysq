@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config/env.js";
 import { ActorAssertionError } from "../src/modules/auth/actor-assertion.js";
 import { registerRoleAdministrationRoutes } from "../src/modules/auth/role-administration-routes.js";
+import { OrgAccessPolicyError } from "../src/modules/employees/org-access-policy.js";
 import { OrganizationDirectoryMachineAuthError } from "../src/modules/organization-directory/machine-auth.js";
 import { ApplicationAccessError } from "../src/modules/auth/application-access.js";
 
@@ -565,6 +566,38 @@ describe("AUTH-014 role administration channel", () => {
     expect(response.json()).toEqual({ code: "ROLE_ADMIN_ACTOR_ASSERTION_SPENT" });
     expect(connected, "a spent assertion must not reach the grant").toBe(false);
     await instance.close();
+  });
+
+  it("answers a date or scope mistake with 400 and its code, not a 500", async () => {
+    // Found by the SQ Hub side on 2026-11-01. createRoleAssignment validates dates and scope
+    // through the org-access policy, which raises OrgAccessPolicyError — a type sendDomainError
+    // did not know. The channel answered 500, and SQ Hub reads 5xx as "outcome unknown" and tells
+    // the operator to send the request again, for what is only a typo in a date field.
+    for (const [code, message] of [
+      ["INVALID_ASSIGNMENT_PERIOD", "Tanggal berakhir mendahului tanggal mulai."],
+      ["UNIT_SCOPE_REQUIRES_UNIT", "Scope unit menuntut unit."],
+      ["NON_UNIT_SCOPE_FORBIDS_UNIT", "Scope non-unit tidak boleh membawa unit."],
+    ] as const) {
+      const instance = Fastify();
+      registerRoleAdministrationRoutes(instance, {
+        query: async () => ({ rowCount: 1, rows: [{
+          id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+          principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+        }] }),
+        connect: async () => { throw new OrgAccessPolicyError(code, message); },
+      } as unknown as Pool, config(true), {
+        verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+        verifyActorAssertion: async () => assertionClaims(),
+        applicationAccess: { isAllowed: async () => true },
+      });
+      const response = await instance.inject({
+        method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+        headers, payload: { ...grantBody, requestId: randomUUID() },
+      });
+      expect(response.statusCode, code).toBe(400);
+      expect(response.json()).toEqual({ code, message });
+      await instance.close();
+    }
   });
 
   it("answers a replayed requestId with 409 rather than a 500", async () => {

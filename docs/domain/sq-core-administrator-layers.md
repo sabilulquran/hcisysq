@@ -124,6 +124,10 @@ Berurutan; kegagalan di mana pun berarti tidak ada assignment dan tidak ada audi
 7. **Invarian domain yang sudah ada:** target wajib `principal_type = 'EMPLOYEE'`; role wajib ada di `HCIS_ROLES`; seluruh permission role wajib ada di `HCIS_PERMISSIONS`; `assertAssignmentScope` dan `assertAssignmentDates`; mandat dan scope organisasi wajib untuk `human_capital_admin`, `human_capital_lead`, `foundation_board_viewer`, dan `hcis_module_admin`; pencabutan token aktivasi untuk role di luar bundle operasional HC.
 8. **Larangan permission identitas.** Lihat §2.6.
 
+Langkah 7 melempar `OrgAccessPolicyError`, bukan `AuthError`, dan sampai 2026-11-01 kanal tidak mengenalnya: tanggal berakhir yang mendahului tanggal mulai, atau scope unit tanpa unit, dijawab `500`. Ditemukan dari sisi SQ Hub, yang membaca `5xx` sebagai "hasil tidak pasti" dan meminta operator mengirim ulang — untuk salah ketik tanggal. Keempatnya (`INVALID_ASSIGNMENT_PERIOD`, `UNIT_SCOPE_REQUIRES_UNIT`, `NON_UNIT_SCOPE_FORBIDS_UNIT`, `SELF_MANAGER_FORBIDDEN`) kini dijawab `400` dengan kodenya sendiri, seperti yang sudah dilakukan `/admin/org-access`.
+
+Perlu dinyatakan karena tidak kentara: **assertion tetap terbelanjakan** ketika langkah 7 menolak, karena ia dibelanjakan sebelum domain dipanggil (§2.11). Satu salah ketik tanggal berarti satu assertion terpakai, dan Hub harus menerbitkan yang baru untuk percobaan berikutnya. Itu konsekuensi "satu assertion adalah satu percobaan", bukan kekeliruan — memindahkan validasi ke depan akan menyalin aturan domain ke lapisan route, yang `AGENTS.md` §4 larang.
+
 ### 2.5 Satu pelonggaran yang dilakukan dengan sadar
 
 Rancangan pertama menulis "invarian domain yang sudah ada, tanpa pelonggaran". Itu tidak benar, dan bila diterapkan apa adanya kanal ini tidak akan pernah bisa memberi apa pun. `requireDelegation` (`role-assignment.ts`) menuntut dua hal yang tidak mungkin dipenuhi aktor mana pun di bawah rancangan ini:

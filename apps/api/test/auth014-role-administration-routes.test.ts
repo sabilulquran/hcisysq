@@ -568,15 +568,22 @@ describe("AUTH-014 role administration channel", () => {
     await instance.close();
   });
 
-  it("answers a date or scope mistake with 400 and its code, not a 500", async () => {
-    // Found by the SQ Hub side on 2026-11-01. createRoleAssignment validates dates and scope
-    // through the org-access policy, which raises OrgAccessPolicyError — a type sendDomainError
-    // did not know. The channel answered 500, and SQ Hub reads 5xx as "outcome unknown" and tells
-    // the operator to send the request again, for what is only a typo in a date field.
-    for (const [code, message] of [
-      ["INVALID_ASSIGNMENT_PERIOD", "Tanggal berakhir mendahului tanggal mulai."],
-      ["UNIT_SCOPE_REQUIRES_UNIT", "Scope unit menuntut unit."],
-      ["NON_UNIT_SCOPE_FORBIDS_UNIT", "Scope non-unit tidak boleh membawa unit."],
+  it("answers a date or scope mistake with 400 and its own code, before touching the database", async () => {
+    // Found from the SQ Hub side on 2026-11-01: these raise OrgAccessPolicyError, a type
+    // sendDomainError did not know, so the channel answered 500 — and SQ Hub reads 5xx as
+    // "outcome unknown" and tells the operator to send the request again, for a typo in a date.
+    //
+    // Driven through the real payload, not by throwing from a mock. createRoleAssignment runs
+    // both asserts BEFORE atomic() calls pool.connect(), so a mock that throws from connect
+    // would sit on the wrong side of the real throw and would stay green if the asserts were
+    // ever dropped. Here connect failing IS the failure.
+    for (const [patch, code, message] of [
+      [{ startsOn: "2026-05-01", endsOn: "2026-04-01" },
+        "INVALID_ASSIGNMENT_PERIOD", "Tanggal selesai assignment tidak boleh sebelum tanggal mulai."],
+      [{ scopeType: "unit" as const, organizationalUnitId: null },
+        "UNIT_SCOPE_REQUIRES_UNIT", "Scope unit wajib menunjuk unit organisasi."],
+      [{ scopeType: "organization" as const, organizationalUnitId: "00000000-0000-4000-8000-00000000002a" },
+        "NON_UNIT_SCOPE_FORBIDS_UNIT", "Unit organisasi hanya boleh diisi untuk scope unit."],
     ] as const) {
       const instance = Fastify();
       registerRoleAdministrationRoutes(instance, {
@@ -584,7 +591,7 @@ describe("AUTH-014 role administration channel", () => {
           id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
           principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
         }] }),
-        connect: async () => { throw new OrgAccessPolicyError(code, message); },
+        connect: async () => { throw new Error("database must not be reached"); },
       } as unknown as Pool, config(true), {
         verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
         verifyActorAssertion: async () => assertionClaims(),
@@ -592,12 +599,40 @@ describe("AUTH-014 role administration channel", () => {
       });
       const response = await instance.inject({
         method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
-        headers, payload: { ...grantBody, requestId: randomUUID() },
+        headers, payload: { ...grantBody, requestId: randomUUID(), ...patch },
       });
       expect(response.statusCode, code).toBe(400);
+      // The real message, not one the test invented: if it ever starts carrying employee data,
+      // this fails rather than passing on a string the test supplied itself.
       expect(response.json()).toEqual({ code, message });
       await instance.close();
     }
+  });
+
+  it("does not pass on a policy code it was never meant to forward", async () => {
+    // OrgAccessPolicyError.code is a bare string, and the module it comes from deals in employee
+    // data. A code added there later must not reach this channel as a 400 without review.
+    const instance = Fastify();
+    registerRoleAdministrationRoutes(instance, {
+      query: async () => ({ rowCount: 1, rows: [{
+        id: "00000000-0000-4000-8000-0000000000ff", email: "actor@example.test",
+        principalType: "EMPLOYEE", accountStatus: "active", employeeStatus: "active",
+      }] }),
+      connect: async () => { throw new OrgAccessPolicyError("SELF_MANAGER_FORBIDDEN", "bukan urusan kanal ini"); },
+    } as unknown as Pool, config(true), {
+      verifyMachineToken: async () => ({ clientId: "sq-hub-role-administration" }),
+      verifyActorAssertion: async () => assertionClaims(),
+      applicationAccess: { isAllowed: async () => true },
+    });
+    const response = await instance.inject({
+      method: "POST", url: `/internal/v1/role-administration/accounts/${ACCOUNT}/role-assignments`,
+      headers, payload: grantBody,
+    });
+    // 500, not a 400 carrying a code this channel never agreed to publish. The body is not
+    // asserted here: this instance is bare Fastify, while the real app installs the SEC-10
+    // handler that keeps internal messages out of every 5xx body (`app.ts`).
+    expect(response.statusCode).toBe(500);
+    await instance.close();
   });
 
   it("answers a replayed requestId with 409 rather than a 500", async () => {

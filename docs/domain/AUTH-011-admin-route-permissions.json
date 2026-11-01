@@ -3295,6 +3295,13 @@
   {
     "file": "apps/api/src/modules/auth/role-administration-routes.ts",
     "method": "GET",
+    "url": "/internal/v1/role-administration/accounts",
+    "access": "machine-actor",
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/auth/role-administration-routes.ts",
+    "method": "GET",
     "url": "/internal/v1/role-administration/catalog",
     "access": "machine-actor",
     "permissions": []

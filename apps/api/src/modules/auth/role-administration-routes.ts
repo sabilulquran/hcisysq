@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
 import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import {
   createOrganizationDirectoryMachineTokenVerifier,
@@ -19,7 +22,7 @@ import {
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
 import {
-  allowedScopes, canDelegateRole, createRoleAssignment, removeRoleAssignment,
+  allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, removeRoleAssignment,
 } from "./role-assignment.js";
 import { AuthError, type AuthPrincipal } from "./service.js";
 
@@ -53,6 +56,10 @@ const assignmentBodySchema = z.object({
 }).strict();
 
 const removalBodySchema = z.object({ requestId: z.string().uuid() }).strict();
+const accountLookupQuerySchema = pageQuerySchema.extend({
+  issuer: z.string().trim().min(1).max(500),
+  subject: z.string().trim().min(1).max(255),
+});
 const assignmentIdSchema = z.object({ assignmentId: z.string().uuid() });
 const accountIdSchema = z.object({ accountId: z.string().uuid() });
 
@@ -279,6 +286,142 @@ export function registerRoleAdministrationRoutes(
       if (await sendDomainError(reply, error)) return;
       throw error;
     }
+  });
+
+  /**
+   * §2.1b: SQ Hub knows the person as a Keycloak subject; HCIS knows them as an account id, and
+   * the two ids never meet anywhere else. Without this route the Hub has no way to reach either
+   * the `accountId` it must POST to or the `assignmentId` it must DELETE, and the only alternative
+   * on the table was having the operator copy both UUIDs by hand out of an HCIS screen — a screen
+   * §8 schedules for deletion, and a copy-paste step whose failure mode is granting a role to the
+   * wrong person with an audit trail that looks entirely legitimate.
+   *
+   * Deliberately absent from the answer: email, name, and every other identifying field. SQ Hub
+   * already knows who this is — it supplied the subject. Returning identity here would quietly
+   * turn the role channel into a way to read employee data, which is not its authority.
+   */
+  app.get("/internal/v1/role-administration/accounts", async (request, reply) => {
+    // Like /catalog, this does NOT spend the assertion: the Hub reads here and then grants, and
+    // burning the token on the read would answer the grant itself with 409.
+    const session = await authenticate(request, reply);
+    if (!session) return;
+
+    // The other two routes reach this check inside createRoleAssignment / removeRoleAssignment.
+    // A read has no such handler to hide behind, and without it this would be the one place in
+    // the channel where a non-EMPLOYEE principal holding a valid assertion can map Keycloak
+    // subjects to HCIS accounts and read their roles.
+    try {
+      assertRoleGrantor(session.actor, "sq_hub");
+    } catch (error) {
+      if (await sendDomainError(reply, error)) return;
+      throw error;
+    }
+
+    const query = accountLookupQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.status(400).send({ code: "INVALID_REQUEST" });
+    }
+    const { issuer, subject } = query.data;
+
+    const account = await pool.query<{
+      accountId: string; principalType: string; status: string; employeeStatus: string | null;
+    }>(
+      `SELECT account.id AS "accountId", account.principal_type AS "principalType",
+              account.status, employee.status AS "employeeStatus"
+         FROM accounts account
+         LEFT JOIN employees employee ON employee.id = account.employee_id
+        WHERE account.identity_issuer = $1 AND account.identity_subject = $2`,
+      [issuer, subject],
+    );
+    // 404 and 403 say different things and must not be confused: this one means the person has no
+    // HCIS account HCIS may describe here, not that the caller may not look.
+    //
+    // A non-EMPLOYEE principal answers 404 too, not 403. This channel grants roles only to
+    // employee accounts, so a FOUNDATION_BOARD or SUPER_ADMIN account is not a target it may
+    // describe — and 403 would turn the route into an oracle for which subjects hold privileged
+    // accounts.
+    const target = account.rows[0];
+    if (account.rowCount !== 1 || !target || target.principalType !== "EMPLOYEE") {
+      return reply.status(404).send({ code: "ROLE_ADMIN_ACCOUNT_NOT_FOUND" });
+    }
+
+    // ENG-LIST-001: the scope filter (account_id) is applied before LIMIT, and the count is of the
+    // same filtered set. An account's assignments are few today, but "few today" is exactly the
+    // reasoning the standard exists to refuse.
+    const total = await pool.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM account_role_assignments WHERE account_id = $1`,
+      [target.accountId],
+    );
+
+    const rows = await pool.query<{
+      assignmentId: string; roleId: string; roleKey: string; roleName: string;
+      permissions: string[]; scopeType: string; organizationalUnitId: string | null;
+      organizationalUnitName: string | null; startsOn: string | null; endsOn: string | null;
+      createdAt: Date;
+    }>(
+      `SELECT assignment.id AS "assignmentId", assignment.role_id AS "roleId",
+              role.role_key AS "roleKey", role.name AS "roleName",
+              coalesce(array_agg(permission.permission_key)
+                FILTER (WHERE permission.permission_key IS NOT NULL), ARRAY[]::text[]) AS permissions,
+              assignment.scope_type AS "scopeType",
+              assignment.organizational_unit_id AS "organizationalUnitId",
+              unit.name AS "organizationalUnitName",
+              to_char(assignment.starts_on, 'YYYY-MM-DD') AS "startsOn",
+              to_char(assignment.ends_on, 'YYYY-MM-DD') AS "endsOn",
+              assignment.created_at AS "createdAt"
+         FROM account_role_assignments assignment
+         JOIN roles role ON role.id = assignment.role_id
+         LEFT JOIN role_permissions permission ON permission.role_id = role.id
+         LEFT JOIN organizational_units unit ON unit.id = assignment.organizational_unit_id
+        WHERE assignment.account_id = $1
+        GROUP BY assignment.id, role.role_key, role.name, unit.name
+        ORDER BY assignment.created_at DESC, assignment.id
+        LIMIT $2 OFFSET $3`,
+      [target.accountId, query.data.pageSize, pageOffset(query.data)],
+    );
+
+    // A read that is not spent and not rate limited would otherwise leave no trace at all, while
+    // every mutating call on this channel leaves two. The jti is what later ties a run of lookups
+    // to one assertion, which is the only way to tell routine use from enumeration.
+    await pool.query(
+      `INSERT INTO access_audit_events
+         (id, actor_account_id, action, entity_type, entity_id, payload, actor_source)
+       VALUES ($1,$2,'role.account.lookup','account',$3,$4::jsonb,'sq_hub')`,
+      [randomUUID(), session.actor.id, target.accountId,
+        JSON.stringify({ jti: session.claims.jti, subject, issuer })],
+    );
+
+    return reply.send({
+      account: {
+        accountId: target.accountId,
+        // Why a grant would be refused, rather than the employment data behind it. The Hub needs
+        // to warn before it posts; it does not need the person's status to do that.
+        grantable: target.status === "active" && target.employeeStatus === "active",
+        notGrantableReason: target.status !== "active" ? "account_inactive"
+          : target.employeeStatus !== "active" ? "employee_inactive" : null,
+      },
+      assignments: {
+        // ENG-LIST-001 §3.1 shape: items beside a pagination object, not spread into the parent.
+        items: rows.rows.map((row) => ({
+          assignmentId: row.assignmentId,
+          roleId: row.roleId,
+          roleKey: row.roleKey,
+          roleName: row.roleName,
+          scopeType: row.scopeType,
+          organizationalUnitId: row.organizationalUnitId,
+          organizationalUnitName: row.organizationalUnitName,
+          startsOn: row.startsOn,
+          endsOn: row.endsOn,
+          createdAt: row.createdAt.toISOString(),
+          // Assignments this channel cannot remove are still shown — the operator needs the whole
+          // picture — but flagged, so the Hub does not offer a revoke button that will answer 403.
+          // The other reason DELETE refuses, a non-employee target, cannot occur here: such an
+          // account answers 404 above.
+          revocableViaHub: canDelegateRole(row, false, "sq_hub"),
+        })),
+        pagination: pagination(query.data, total.rows[0]?.total ?? 0),
+      },
+    });
   });
 
   /**

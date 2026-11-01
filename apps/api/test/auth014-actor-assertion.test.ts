@@ -98,6 +98,36 @@ describe("AUTH-014 actor assertion verification", () => {
     await expect(verifier()(byUsername)).rejects.toMatchObject({ code: "ACTOR_ASSERTION_INVALID" });
   });
 
+  it("refuses the exact token the Keycloak probe minted from the machine client", async () => {
+    // 2026-10-31: the K-4 probe proved sq-hub-role-administration can mint a token whose audience
+    // is hcis-role-administration-actor, from its own machine token, with no human involved. The
+    // optional-scope split does not stop that, because the same client may request its own
+    // optional scope. This is the token that attack produces; it must be refused here, and it is
+    // refused on two independent grounds.
+    const minted = await sign({
+      sub: "4f0b1d3e-service-account-uuid",
+      azp: "sq-hub-role-administration",
+      preferred_username: "service-account-sq-hub-role-administration",
+    });
+    await expect(verifier()(minted)).rejects.toMatchObject({ code: "ACTOR_ASSERTION_INVALID" });
+
+    // Ground 1 alone: the issuing client is a known machine client, even without the username.
+    const byClientOnly = await sign({
+      sub: "4f0b1d3e-service-account-uuid",
+      azp: "sq-hub-role-administration",
+    });
+    await expect(verifier()(byClientOnly)).rejects.toMatchObject({ code: "ACTOR_ASSERTION_INVALID" });
+
+    // Ground 2 alone: a machine client this deployment has not listed still carries the
+    // service-account username convention. This is the one that survives a misconfigured allowlist.
+    const byUsernameOnly = await sign({
+      sub: "4f0b1d3e-service-account-uuid",
+      azp: "some-client-nobody-listed",
+      preferred_username: "service-account-some-client-nobody-listed",
+    });
+    await expect(verifier()(byUsernameOnly)).rejects.toMatchObject({ code: "ACTOR_ASSERTION_INVALID" });
+  });
+
   it("refuses a tampered signature", async () => {
     const assertion = await sign({ sub: "person-sub" });
     await expect(verifier()(`${assertion.slice(0, -4)}AAAA`)).rejects.toBeInstanceOf(ActorAssertionError);

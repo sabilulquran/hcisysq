@@ -1,6 +1,6 @@
 # AUTH-014 — Tiga lapis administrator: sisi HCIS
 
-**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1–F4 selesai, dua celah §2.11 ditutup; berikutnya Keycloak lalu SQ Hub, dan saklar F5 keputusan owner. Revisi 9.
+**Status:** ACCEPTED product decision (owner, 2026-10-27). Implementasi berjalan sejak 2026-10-30: F1–F4 selesai, dua celah §2.11 ditutup; Keycloak selesai (A, C, D); berikutnya SQ Hub, dan saklar F5 keputusan owner. Revisi 10.
 **Related:** ADR-0006 (keputusan), AUTH-010, AUTH-011, AUTH-012, AUTH-013, ORG-008, ORG-010, EMP-005, DOC-002, `HUB-IMPL-003`.
 **Supersedes:** aturan "hanya Super Admin yang memberi peran" di AUTH-011 (keputusan owner 2026-10-16), sejauh menyangkut *siapa* yang boleh memberi. Larangan self-grant, allowlist role/permission, kewajiban mandat, dan atomisitas audit **tidak** diubah.
 
@@ -34,11 +34,34 @@ Tiga endpoint internal baru, mengikuti pola yang sudah ada di
 POST   /internal/v1/role-administration/accounts/:accountId/role-assignments
 DELETE /internal/v1/role-administration/role-assignments/:assignmentId
 GET    /internal/v1/role-administration/catalog
+GET    /internal/v1/role-administration/accounts?issuer=&subject=
 ```
 
 `GET /catalog` mengembalikan role HCIS yang dapat diberikan beserta permission, kewajiban scope, dan kewajiban mandat, supaya layar SQ Hub tidak perlu menyalin daftar peran HCIS ke dalam kodenya. Daftar itu tetap milik HCIS.
 
 Seperti kedua route internal yang sudah ada, setiap balasan — termasuk `503` dan setiap penolakan — menulis `Cache-Control: no-store` sebelum apa pun yang lain. `GET /catalog` memuat seluruh peta peran dan permission HCIS dan tidak boleh tersimpan di perantara mana pun.
+
+#### 2.1b Pencarian akun: menerjemahkan subject Keycloak menjadi id HCIS
+
+SQ Hub mengenal orang sebagai **subject Keycloak**; HCIS mengenalnya sebagai **id akun**, dan kedua id itu tidak pernah bertemu di tempat lain. Tanpa route ini Hub tidak punya cara memperoleh `accountId` yang harus ia POST, mau pun `assignmentId` yang harus ia DELETE. Satu-satunya alternatif yang diajukan adalah operator menyalin kedua UUID dengan tangan dari layar HCIS.
+
+Itu ditolak karena dua alasan. Pertama, §8 menjadwalkan layar HCIS **dihapus** ketika kewenangannya pindah; membangun kanal di atas layar yang akan hilang berarti membongkarnya lagi nanti. Kedua, dan lebih menentukan: salah tempel `accountId` memberi peran kepada **orang lain**, dan auditnya akan terlihat sah sepenuhnya. Kesalahan yang tidak meninggalkan jejak sebagai kesalahan adalah kesalahan yang paling mahal.
+
+```
+GET /internal/v1/role-administration/accounts?issuer=<iss>&subject=<sub>&page=1&pageSize=25
+```
+
+Jawaban `200` memuat `account` — hanya `accountId`, `grantable`, dan `notGrantableReason` — serta `assignments` dengan bentuk ENG-LIST-001 §3.1 (`items` di samping `pagination`), tiap barisnya dengan `assignmentId`, `roleId`, `roleKey`, `roleName`, `scopeType`, unit, tanggal, dan `revocableViaHub`.
+
+Lima hal diputuskan secara sadar:
+
+- **Aktor harus pemberi peran yang sah.** `assertRoleGrantor(actor, "sq_hub")` dijalankan sebelum apa pun dibaca. Dua route mutasi menemuinya di dalam `createRoleAssignment`/`removeRoleAssignment`; pembacaan tidak punya tempat bersembunyi semacam itu, dan tanpanya route ini menjadi satu-satunya tempat di kanal di mana principal non-EMPLOYEE yang memegang assertion sah dapat memetakan subject Keycloak menjadi akun HCIS beserta perannya.
+- **`404` menutupi dua hal yang berbeda, dengan sengaja.** Tidak ada akun, dan ada akun tetapi bukan akun pegawai, dijawab sama. Kanal ini hanya memberi peran kepada akun pegawai, jadi akun `FOUNDATION_BOARD` atau `SUPER_ADMIN` bukan target yang boleh ia gambarkan — dan `403` akan menjadikan route ini oracle untuk "subject mana yang memegang akun istimewa". `404` tetap berbeda dari `403` untuk kasus aktor yang tidak berwenang.
+- **Tidak ada identitas di jawaban.** Tidak ada surel, nama, nomor identitas, mau pun status kepegawaian. SQ Hub sudah tahu siapa orangnya — ia yang mengirim `subject`. Yang dikembalikan hanya **alasan sebuah pemberian akan ditolak** (`account_inactive`, `employee_inactive`), bukan data di baliknya: cukup untuk memperingatkan, tidak cukup untuk dijadikan jalur pembacaan data pegawai. Ujinya memulangkan baris yang sengaja memuat surel dan nama, sehingga handler yang menyebarkan isi baris itu gagal.
+- **`revocableViaHub` per baris.** Penugasan yang tidak dapat dicabut lewat kanal ini tetap **ditampilkan** — operator perlu gambaran utuh — tetapi ditandai, supaya Hub tidak menawarkan tombol cabut yang pasti dijawab `403`. Sebab penolakan `DELETE` yang kedua, target bukan pegawai, tidak mungkin muncul di sini karena akun semacam itu sudah dijawab `404`.
+- **Pembacaannya tercatat.** `role.account.lookup` ditulis ke `access_audit_events` dengan `actor_source = "sq_hub"`, akun target, dan `jti` assertion. Route ini tidak membelanjakan assertion dan tidak dibatasi laju, jadi tanpa audit satu assertion yang sah menjadi kredensial baca tak terbatas selama umurnya, atas subject apa pun, tanpa meninggalkan jejak. `jti`-lah yang mengikat rentetan pembacaan ke satu presentasi, dan itu satu-satunya cara membedakan pemakaian biasa dari enumerasi.
+
+Seperti `GET /catalog`, route ini **tidak membelanjakan assertion** (§2.11): Hub membaca di sini lalu memberi peran dengan assertion yang sama. ENG-LIST-001 dipatuhi — `page`/`pageSize` bawaan 25 maksimum 100 dengan `total` dan `pageCount`, nilai di luar rentang ditolak `400` alih-alih dipangkas diam-diam, halaman di luar jangkauan menjawab `items: []` dengan angka yang benar, urutannya `created_at DESC, id` sehingga stabil antar halaman, dan filter `account_id` dijalankan sebelum `LIMIT`. Route terdaftar di `docs/development/list-endpoint-classification.json` sebagai `paged`.
 
 ### 2.2 Dua hal yang harus dibuktikan, bukan satu
 
@@ -397,6 +420,7 @@ Ditulis sebagai kebutuhan, bukan perubahan. Repository SQ Hub tidak disentuh dar
 | # | Kebutuhan | Catatan |
 |---|---|---|
 | H-1 | Layar pemberian peran per aplikasi di `/admin/access`, memakai `GET /internal/v1/role-administration/catalog` sebagai sumber daftar peran | jangan menyalin daftar peran HCIS ke kode Hub |
+| H-1b | Menerjemahkan orang menjadi `accountId` HCIS lewat `GET /internal/v1/role-administration/accounts?issuer=&subject=` (§2.1b) | jangan membuat operator menyalin UUID dengan tangan, dan jangan menyimpan pemetaannya di Hub |
 | H-2 | Sertakan assertion aktor hasil token exchange pada setiap panggilan, dan `requestId` unik | tanpa assertion HCIS menolak |
 | H-3 | Periksa keanggotaan `platform_administrators` sebelum memanggil HCIS | HCIS tidak memverifikasi kewenangan (§2.5); pemeriksaan ini **bukan** lapis tambahan, melainkan satu-satunya pemeriksaan kewenangan yang ada |
 | H-4 | Larang penghapusan pengguna Keycloak di tingkat aplikasi; sediakan hanya buat, nonaktifkan, reset kata sandi | ADR-0006 R-3 |

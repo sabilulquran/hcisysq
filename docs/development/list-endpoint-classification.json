@@ -713,6 +713,11 @@
       "reason": "Kontrak machine-to-machine untuk SQ Hub; snapshot penuh per asOf."
     },
     {
+      "url": "/internal/v1/role-administration/accounts",
+      "list": "paged",
+      "reason": "AUTH-014 §2.1b: penugasan peran satu akun. Jumlahnya kecil hari ini, tetapi bertumbuh seiring waktu dan tidak dibatasi apa pun, jadi dipaginasi alih-alih dianggap bounded."
+    },
+    {
       "url": "/internal/v1/role-administration/catalog",
       "list": "bounded",
       "reason": "AUTH-014 §2.1: katalog peran HCIS yang dapat diberikan, satu baris per peran sistem. Jumlahnya tetap dan kecil (belasan), ditentukan migration, bukan data yang bertumbuh."

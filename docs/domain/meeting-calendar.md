@@ -298,7 +298,7 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 
 ## 16. Catatan implementasi Paket 1 (2026-11-02)
 
-Hal yang tidak dijawab spesifikasi di atas diputuskan saat implementasi dengan default paling masuk akal. Semuanya `DRAFT` dan bisa diubah pemilik produk tanpa migrasi.
+Hal yang tidak dijawab spesifikasi di atas diputuskan saat implementasi dengan default paling masuk akal. Semuanya `DRAFT` (kecuali I-11) dan bisa diubah pemilik produk tanpa migrasi.
 
 | # | Keputusan | Status |
 | --- | --- | --- |
@@ -312,5 +312,5 @@ Hal yang tidak dijawab spesifikasi di atas diputuskan saat implementasi dengan d
 | I-08 | Rapat orang lain di kalender dikirim dengan `id: null`, sehingga layar tidak menawarkan tautan detail yang pasti 404. | DRAFT |
 | I-09 | Kalender pribadi menampilkan tujuan perjalanan dinas **milik sendiri**; cek ketersediaan untuk orang lain tetap tidak pernah menyebut tujuan atau jenis cuti (§6). | DRAFT |
 | I-10 | Pengaturan env: `WHATSAPP_ADAPTER` (`log` bawaan, `kirim`), `KIRIM_BASE_URL`, `KIRIM_TOKEN_URL`, `KIRIM_CLIENT_ID`, `KIRIM_CLIENT_SECRET`, `KIRIM_AUDIENCE` (bawaan `sq-hub-kirim`), `KIRIM_DEVICE_HCIS` (bawaan `hcis`), `MEETING_RUNNER_ENABLED` (bawaan `1`). API menolak start bila `kirim` dipilih tanpa keempat `KIRIM_*`. | DRAFT |
-| I-11 | Opsi **Rahasia** (K-05) dipasang sebagai pilihan B sambil menunggu jawaban akhir pemilik produk; menghapusnya hanya mengubah layar dan proyeksi kalender. | DRAFT |
+| I-11 | Opsi **Rahasia** (K-05 pilihan B, final dari pemilik produk 2026-11-02) dipasang sebagai kolom `meetings.confidential` (bawaan `false`) dan hanya diproyeksikan di API; layar tidak memutuskan apa pun. | ACCEPTED |
 

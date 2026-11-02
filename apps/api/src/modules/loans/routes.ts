@@ -1005,8 +1005,8 @@ export async function registerLoanRoutes(
       const paymentId = randomUUID();
       await client.query(
         `INSERT INTO employee_loan_payments (
-           id, loan_id, amount, paid_on, method, reference, note, idempotency_key, recorded_by_account_id
-         ) VALUES ($1, $2, $3::bigint, $4::date, $5, $6, $7, $8, $9)`,
+           id, loan_id, amount, paid_on, method, reference, note, idempotency_key, recorded_by_account_id, recorded_at
+         ) VALUES ($1, $2, $3::bigint, $4::date, $5, $6, $7, $8, $9, clock_timestamp())`,
         [
           paymentId, params.data.id, paymentAmount.toString(), body.data.paidOn, body.data.method,
           body.data.reference || null, body.data.note || null, body.data.idempotencyKey, principal.id,
@@ -1062,7 +1062,7 @@ export async function registerLoanRoutes(
       const status = repaymentStatus(principalAmount, paidAfter);
       await client.query(
         `UPDATE employee_loan_payments
-            SET status = 'REVERSED', reversed_by_account_id = $2, reversed_at = now(), reverse_reason = $3
+            SET status = 'REVERSED', reversed_by_account_id = $2, reversed_at = clock_timestamp(), reverse_reason = $3
           WHERE id = $1`,
         [params.data.paymentId, principal.id, body.data.reason],
       );

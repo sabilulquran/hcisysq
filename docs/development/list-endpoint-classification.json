@@ -852,6 +852,25 @@
       "package": "PAG-5"
     },
     {
+      "url": "/me/calendar",
+      "list": "range",
+      "reason": "CAL-001 §11: rentang tanggal maksimal 42 hari; lebih dari 500 item ditolak 400 RANGE_TOO_DENSE, tidak dipotong diam-diam."
+    },
+    {
+      "url": "/me/meetings",
+      "list": "paged"
+    },
+    {
+      "url": "/me/meetings/:id",
+      "list": "single",
+      "reason": "Satu rapat milik penyelenggara/peserta; daftar peserta dibatasi K-09 (maksimal 201 baris)."
+    },
+    {
+      "url": "/me/meetings/participant-options",
+      "list": "typeahead",
+      "reason": "Typeahead pegawai aktif berdasarkan nama: minimal 2 huruf, maksimal 20 hasil, tanpa kontak atau NIP."
+    },
+    {
       "url": "/notifications/me",
       "list": "debt",
       "reason": "limit maks 100 tanpa offset/kursor; notifikasi lama tidak terjangkau.",

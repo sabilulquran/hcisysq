@@ -3437,6 +3437,96 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "GET",
+    "url": "/me/calendar",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "GET",
+    "url": "/me/meetings",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "GET",
+    "url": "/me/meetings/participant-options",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "GET",
+    "url": "/me/meetings/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "POST",
+    "url": "/me/meetings/availability",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "POST",
+    "url": "/me/meetings",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "PATCH",
+    "url": "/me/meetings/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "POST",
+    "url": "/me/meetings/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/meetings/routes.ts",
+    "method": "POST",
+    "url": "/me/meetings/:id/response",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
     "file": "apps/api/src/modules/training/routes.ts",
     "method": "GET",
     "url": "/training/me/summary",

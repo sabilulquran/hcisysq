@@ -377,7 +377,7 @@ phase_candidate() {
 [ -d "$R$REL/$NAME" ] || fail "$NAME is not uploaded"
 [ "$(running_release node apps/api || true)" != "$NAME" ] || fail "$NAME already serves production"
 LOG=/srv/hcis/logs/candidate-$NAME.log
-nohup chroot "$R" /usr/sbin/runuser -u sqhcis -- /bin/sh -c "set -a; . /srv/hcis/shared/final.env; set +a; export HOST=127.0.0.1 PORT=$CAND_API_PORT; cd $REL/$NAME/apps/api; exec /usr/bin/node dist/server.js" </dev/null >>"$R$LOG" 2>&1 &
+nohup chroot "$R" /usr/sbin/runuser -u sqhcis -- /bin/sh -c "set -a; . /srv/hcis/shared/final.env; set +a; export HOST=127.0.0.1 PORT=$CAND_API_PORT MEETING_RUNNER_ENABLED=0; cd $REL/$NAME/apps/api; exec /usr/bin/node dist/server.js" </dev/null >>"$R$LOG" 2>&1 &
 APID=$!
 nohup chroot "$R" /usr/sbin/runuser -u sqhcis -- /bin/sh -c "cd $REL/$NAME/apps/web/dist; exec /usr/bin/python3 /srv/hcis/shared/spa_static_server.py --bind 127.0.0.1 --port $CAND_WEB_PORT" </dev/null >>"$R$LOG" 2>&1 &
 WPID=$!

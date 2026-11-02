@@ -360,6 +360,20 @@ paths:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
   /admin/training/employee-options:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
+  /me/calendar:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1calendar'
+  /me/meetings:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings'
+  /me/meetings/participant-options:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1participant-options'
+  /me/meetings/availability:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1availability'
+  /me/meetings/{id}:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}'
+  /me/meetings/{id}/cancel:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}~1cancel'
+  /me/meetings/{id}/response:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}~1response'
 
   /admin/attendance/adms/management/summary:
     get:

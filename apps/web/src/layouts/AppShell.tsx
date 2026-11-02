@@ -7,6 +7,7 @@ import type { AuthSession } from "@/types/hcis";
 import {
   ArrowLeftRight,
   CalendarDays,
+  CalendarRange,
   Camera,
   ClipboardCheck,
   Clock3,
@@ -46,6 +47,7 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
   { label: "Clock In/Out", href: "/app/attendance/clock", icon: Camera, category: "attendance" },
   { label: "Tukar Shift", href: "/app/attendance/shift-swap", icon: ArrowLeftRight, category: "attendance" },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays, category: "leave" },
+  { label: "Kalender", href: "/app/calendar", icon: CalendarRange, category: "service" },
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards, category: "pay" },
   { label: "Data Saya", href: "/app/my-data", icon: UserRoundCog, category: "service" },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },

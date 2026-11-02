@@ -182,6 +182,28 @@ features:
       - docs/domain/foundation-board-dashboard.md
       - docs/domain/access-model.md
 
+  - id: ORG-012
+    module: organization
+    name: Committees (kepanitiaan) with proposal, approval, members, and lifecycle
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: Committee and CommitteeMember models, CommitteeController,
+      CommitteeService (routes committees/propose, approve, reject, complete, cancel,
+      members). States proposed -> approved -> active -> completed / cancelled / rejected;
+      member roles chair, secretary, treasurer, member with joined/left dates; activation
+      creates a virtual unit of type committee with its own letter code, deactivated on
+      completion or cancellation; committees can issue numbered letters.
+    target_status: discovery
+    priority: later
+    risk: medium
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit; not recorded before. Schools run many
+      time-boxed committees (PPDB, ujian, wisuda, Ramadhan, events). Must stay outside the
+      ORG-004 authority structure unless an ADR decides otherwise; legacy modelled it as a
+      virtual unit, which should not be copied without review. Related to DOC-003 and
+      CAL-001 (meeting participants).
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
+
   - id: EMP-005
     module: employee
     name: Employment relationship and contracts
@@ -217,7 +239,8 @@ features:
     target_status: implementing
     priority: post-attendance-simplification
     risk: medium
-    planning_note: Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
+    planning_note: >-
+      Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -259,6 +282,26 @@ features:
     planning_note: Implemented in Package 2 step P2-3 (docs/domain/employment-administration-package2.md, 2026-10-27). Privacy-by-purpose applies and the spec names the purpose of every attribute; a family identity number is refused by the request schema and kept out of the column until encryption exists, and audit payloads carry the relation, the flags and field names but never a name, a phone number or a birth date. One spouse and one emergency-contact order per period, enforced by the database. Screen - Pegawai -> detail -> Keluarga & Alamat.
     docs:
       - docs/domain/employment-administration.md
+
+  - id: EMP-011
+    module: employee
+    name: Employee document file archive (KTP, KK, ijazah, sertifikat) with expiry
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: EmployeeDocument model (document_type, document_number,
+      file_path, mime_type, issued_at, expires_at), EmployeeDocumentController and
+      routes profile/documents (employee upload) and documents/* (HC, unit-scoped);
+      rule NoExecutableFile guards uploads.
+    target_status: discovery
+    priority: later
+    risk: high
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. HCIS keeps metadata only (EMP-007,
+      EMP-008, EMP-010) and says file upload waits for an employee-document storage
+      boundary, but no ID owned that boundary. Personal identity scans are sensitive data:
+      needs the ObjectStorage port, encryption at rest, purpose and retention rules, and
+      access audit before any upload is accepted.
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: AUTH-010
     module: authorization
@@ -426,6 +469,26 @@ features:
       - docs/domain/attendance-adms-user-experience.md
       - docs/domain/attendance-wdms-full-physical-parity-ledger.md
 
+  - id: ATT-015
+    module: attendance
+    name: Work arrangement requests (tugas luar, WFH/WFA, schedule change request)
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: WorkAssignment model with types perjalanan_dinas,
+      tugas_luar, wfh_wfa and perubahan_shift, employee request at work-assignments/*,
+      approval chain and HC review at admin/work-assignments/*, attachment, notifications
+      NewWorkAssignmentNotification and WorkAssignmentReviewedNotification.
+    target_status: discovery
+    priority: later
+    risk: high
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. perjalanan_dinas is covered by TRIP-001;
+      the other three types have no HCIS ID. ATT-008 is a swap with a colleague, not an
+      employee request to change their own schedule. An approved arrangement must become
+      an explainable attendance resolution (ATT-010/ATT-014), never synthesized punches.
+      WFH/WFA needs an owner policy decision (who may, how often) before specification.
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
+
   - id: LEAVE-001
     module: leave
     name: Submit leave request
@@ -452,6 +515,44 @@ features:
       - docs/domain/leave-policy-ysq.md
       - docs/domain/annual-leave-vertical-slice.md
       - docs/product/mvp.md
+
+  - id: LEAVE-008
+    module: leave
+    name: Leave postponement with proposed alternative dates
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: LeaveApprovalService::suspend requires a note and at least
+      one proposed start or end date, sets the request to suspended; the employee accepts
+      through leave/{leaveRequest}/accept-suspension (migrations
+      add_suspension_columns_to_leave_approvals_table, allow_suspended_status_on_leave_requests).
+    target_status: discovery
+    priority: later
+    risk: medium
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. HCIS approvers can only approve or
+      reject, so a manager who wants "not that week, the next one" has to reject. Must keep
+      APR-001 snapshot-on-submit semantics: acceptance should create a new request or a
+      recorded amendment, not silently rewrite the approved dates or the balance.
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: LEAVE-009
+    module: leave
+    name: Critical periods that require Human Capital approval for leave
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: CriticalPeriod model (label, start/end date, optional unit,
+      active), Admin/CriticalPeriodController at admin/critical-periods, and
+      ApprovalChainBuilder::isCriticalPeriodActive appends the HCM step to a leave chain
+      whose start date falls in an active critical period for the employee's unit or for all units.
+    target_status: discovery
+    priority: later
+    risk: medium
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. For schools this covers exam weeks,
+      PPDB, report-card and year-end periods. Whether such a period only adds HC review or
+      blocks leave is a business rule the owner has not decided (DRAFT default - add HC
+      review, never block).
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: PAY-003
     module: payroll
@@ -573,6 +674,29 @@ features:
       Package 1 implemented 2026-10-27 (docs/domain/hr-documents.md): SP1-SP3 with a
       date-derived validity window and employee acknowledgement.
 
+  - id: DOC-003
+    module: documents
+    name: Organization-wide outgoing letter numbering register (penomoran surat)
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: LetterNumber, LetterType and LetterNumberAccessGrant models,
+      LetterNumberController (letter-numbers create, preview, edit, status, print, CSV
+      export/import via LetterNumberExporter/Importer) and admin/letter-number-access.
+      Number format TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR (LetterNumber.php line 112), sequence
+      per type and year, issuer unit or committee, subunit letter codes; only employees
+      with an access grant may take numbers.
+    target_status: discovery
+    priority: later
+    risk: medium
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. The HCIS IssuedDocument register only
+      numbers the letters HCIS itself issues (SKK, SP, surat tugas); the legacy register is
+      the yayasan's general outgoing-letter book for every unit. Product decision needed
+      whether this belongs in HCIS or another SQ Core app. Numbers must never be reused,
+      as in DOC-001 D-03.
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
+      - docs/domain/hr-documents.md
+
   - id: TRIP-001
     module: employee-service
     name: Business travel and official trip workflow
@@ -653,7 +777,13 @@ features:
   - id: NOTIF-003
     module: notification
     name: Reminder generation and dispatch
-    legacy_evidence: scheduled reminder commands exist
+    legacy_evidence: >-
+      scheduled reminder commands exist. Legacy Laravel hcis-ysq (2026-11-02 audit):
+      reminders:dispatch every minute, reminders:generate-attendance daily 06:30 (check-in
+      reminder for active employees), reminders:generate-domain hourly (pending leave and
+      reimbursement); Reminder types agenda, check-in, check-out, leave expiring,
+      reimbursement pending and custom; per-employee ReminderPreference (enabled, lead time,
+      channels) at account/settings/reminders.
     target_status: discovery
     priority: later
     risk: medium
@@ -667,7 +797,7 @@ features:
       invitations, 30-minute reminders, cancellation, and a monthly calendar with leave and
       targeted holidays. No RSVP action, no audit, no leave/trip conflict check; the calendar
       shows every agenda title to every employee. Older GAS-HCIS has no meeting feature.
-    target_status: specified
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
@@ -676,9 +806,13 @@ features:
       leave and approved or issued trips, RSVP that frees declined time, organizer-only
       edit/cancel, yayasan-wide calendar with an optional confidential flag, and a 30-minute
       reminder as the first NOTIF-003 rule. No room booking (WORK-001 removed).
+      Implemented 2026-11-02: migration 0117 (five tables, no permission), /me/calendar and
+      /me/meetings routes, the in-process reminder/WhatsApp runner, and the Kalender screen.
+      WhatsApp stays on the `log` adapter (dry run) until the HCIS number is paired in Kirim SQ.
     docs:
       - docs/domain/meeting-calendar.md
       - docs/product/hcis-capability-map.md
+      - docs/api/meeting-calendar.openapi.yaml
 
   - id: REC-001
     module: recruitment
@@ -692,6 +826,39 @@ features:
       - docs/domain/employment-administration.md
       - docs/product/hcis-capability-map.md
       - docs/product/semarthris-benchmark-2026-09-22.md
+
+  - id: RPT-001
+    module: reporting
+    name: HR reports and exports (employee list, leave, payroll summary)
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: Admin/ReportsController at admin/reports with employeesCsv,
+      attendanceMonthly, leaveCsv and payrollCsv.
+    target_status: discovery
+    priority: later
+    risk: high
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. HCIS already has attendance reports and
+      CSV/print (ATT-009, ATT-014) and payroll period views, but no employee-list export and
+      no leave report. Exports carry personal data: each needs a permission, scope
+      filtering before export, an audit event, and no national ID or bank numbers by default.
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: HELP-001
+    module: support
+    name: In-app help center (FAQ, user guide, contact HC/support)
+    legacy_evidence: >-
+      Legacy Laravel hcis-ysq: HelpController with help/faq, help/guide and help/contact
+      (sendSupport form).
+    target_status: discovery
+    priority: before-staff-launch
+    risk: low
+    planning_note: >-
+      Found by the 2026-11-02 legacy parity audit. HCIS is about to be opened to all staff,
+      who will need a short guide per service and a known place to ask. Content can start as
+      static pages; a contact form must not become a general chat (outside HCIS scope).
+    docs:
+      - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: MIG-001
     module: migration

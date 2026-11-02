@@ -513,7 +513,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     expect(new Date(fireAt.rows[0].fire_at).toISOString()).toBe(new Date(Date.parse(at(day, "09:00")) - 30 * 60_000).toISOString());
 
     // Make every reminder due now; the cancelled meeting's reminders were cancelled already.
-    await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute'`);
+    await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = ANY($1::uuid[])`, [[meeting.id, cancelled.id]]);
     const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: null });
     const first = await runner.tick();
     expect(first.remindersFired).toBe(2);

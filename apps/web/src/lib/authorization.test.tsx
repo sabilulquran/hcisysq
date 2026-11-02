@@ -134,6 +134,9 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/trips")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["trips.read"]), "/admin/trips")).toBe(true);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/trips")).toBe(false);
+    expect(canAccessAdminPath(actor, "/admin/training")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["training.read"]), "/admin/training")).toBe(true);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/training")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/data")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/maintenance")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);

@@ -75,7 +75,7 @@ Authorization: Bearer <token client-credentials HCIS>
 
 **Aktor:** pegawai yang login ke HCIS dan tertaut ke record `employees`.
 
-**Precondition:** sesi HCIS aktif; akun bertipe pegawai dengan `employee_id`. Akun tanpa pegawai (Super Admin, akun layanan) mendapat `404 EMPLOYEE_NOT_LINKED`.
+**Precondition:** sesi HCIS aktif; akun bertipe pegawai dengan `employee_id`. Prinsipal bukan pegawai (Super Admin, Organ Yayasan) mendapat `403 FORBIDDEN`, sama seperti rute self-service lain; akun pegawai yang tidak tertaut ke data pegawai mendapat `404 EMPLOYEE_NOT_LINKED`.
 
 **API HCIS:** `GET /assets/me` (tanpa input; pegawai tidak bisa memilih `employeeId` lain).
 
@@ -155,7 +155,7 @@ Langkah ini butuh kata sandi admin Keycloak, jadi dijalankan owner dengan skrip 
 | Aset SQ 401/403 (audience/azp belum cocok) | `UNAVAILABLE`; log status |
 | Aset SQ 5xx/timeout | `UNAVAILABLE` |
 | Jawaban tidak sesuai schema | `UNAVAILABLE`; log `ASSET_CUSTODY_INVALID_RESPONSE` |
-| Pegawai tidak tertaut | `404 EMPLOYEE_NOT_LINKED` (Asset Saya) |
+| Bukan pegawai / pegawai tidak tertaut | `403 FORBIDDEN` / `404 EMPLOYEE_NOT_LINKED` (Asset Saya) |
 
 ## 10. Di luar lingkup
 

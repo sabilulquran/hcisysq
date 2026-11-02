@@ -21,7 +21,8 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AssetHoldings' }
         '401': { description: Authentication required }
-        '404': { description: EMPLOYEE_NOT_LINKED — the account is not linked to an employee }
+        '403': { description: FORBIDDEN — the principal is not an employee }
+        '404': { description: EMPLOYEE_NOT_LINKED — the employee account is not linked to an employee }
   /admin/employees/{employeeId}/assets:
     get:
       tags: [Employee Assets]

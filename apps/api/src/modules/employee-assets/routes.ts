@@ -96,8 +96,11 @@ export async function registerEmployeeAssetRoutes(
   app.get("/assets/me", async (request, reply) => {
     const principal = await authenticate(request, reply);
     if (!principal) return;
-    const linked = principal.principalType === "EMPLOYEE"
-      ? await pool.query<{ employeeId: string }>(
+    // Same answer as the other self-service routes: a non-employee principal is refused.
+    if (principal.principalType !== "EMPLOYEE") {
+      return send(reply, 403, { code: "FORBIDDEN", message: "Asset Saya hanya tersedia untuk pegawai." });
+    }
+    const linked = await pool.query<{ employeeId: string }>(
         `SELECT account.employee_id AS "employeeId"
            FROM accounts account
            JOIN employees employee ON employee.id = account.employee_id
@@ -107,9 +110,8 @@ export async function registerEmployeeAssetRoutes(
             AND employee.removed_at IS NULL
           LIMIT 1`,
         [principal.id],
-      )
-      : null;
-    const employeeId = linked?.rows[0]?.employeeId;
+      );
+    const employeeId = linked.rows[0]?.employeeId;
     if (!employeeId) {
       return send(reply, 404, { code: "EMPLOYEE_NOT_LINKED", message: "Akun ini tidak tertaut ke data pegawai." });
     }

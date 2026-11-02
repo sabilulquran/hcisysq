@@ -221,13 +221,15 @@ describe("GET /assets/me", () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it("refuses an account that is not linked to an employee", async () => {
-    for (const persona of ["unlinked", "super_admin"] as const) {
-      const app = await buildApp(persona, readerReturning(async () => ({})).reader);
-      const response = await app.inject({ method: "GET", url: "/assets/me", headers: cookie });
-      expect(response.statusCode, persona).toBe(404);
-      expect(response.json().code).toBe("EMPLOYEE_NOT_LINKED");
-    }
+  it("refuses a non-employee principal, and an employee account without an employee", async () => {
+    const admin = await buildApp("super_admin", readerReturning(async () => ({})).reader);
+    const refused = await admin.inject({ method: "GET", url: "/assets/me", headers: cookie });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().code).toBe("FORBIDDEN");
+    const unlinked = await buildApp("unlinked", readerReturning(async () => ({})).reader);
+    const missing = await unlinked.inject({ method: "GET", url: "/assets/me", headers: cookie });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().code).toBe("EMPLOYEE_NOT_LINKED");
   });
 
   it("reads the session's own employee and returns the holdings", async () => {

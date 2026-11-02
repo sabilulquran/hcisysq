@@ -112,6 +112,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/documents") return hasPermission(session, "documents.read");
   // NOTIF-002: HC-only; Super Admin legacy compatibility never carries announcements.*.
   if (path === "/admin/announcements") return hasPermission(session, "announcements.read");
+  // TRIP-001: HC-only; Super Admin legacy compatibility never carries trips.*.
+  if (path === "/admin/trips") return hasPermission(session, "trips.read");
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }

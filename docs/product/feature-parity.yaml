@@ -567,11 +567,17 @@ features:
     module: employee-service
     name: Business travel and official trip workflow
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: planned
+    target_status: implemented
     priority: later
     risk: high
-    planning_note: Product scope accepted; travel request, approval, assignment letter, attendance interaction, advance/reimbursement boundaries, and document evidence remain to be specified.
+    notes: >-
+      Package 1 implemented 2026-11-02 (docs/domain/business-travel.md): employee request,
+      APR-001 approval (direct manager then unit approver), numbered surat tugas from the
+      DOC-001 register, cancellation, completion and history. Approved trips are visible in
+      the ATT-014 exceptions tab. Attendance disposition is Package 2; advances, costs and
+      reimbursement stay with REIMB-001.
     docs:
+      - docs/domain/business-travel.md
       - docs/product/hcis-capability-map.md
 
   - id: ASSET-001

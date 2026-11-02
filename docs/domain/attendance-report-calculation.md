@@ -200,7 +200,7 @@ sendiri saat dibuka.
 |---|---|---|
 | **Detail Harian** (padanan tab "Shift") | pegawai × tanggal (× blok, setelah ATT-013) | Pegawai, NIP, Unit, Tanggal, Hari, Shift, Jam masuk/pulang jadwal, Scan masuk/pulang, **Normal/Riil** (hari kerja), Status, Terlambat (mnt), Pulang cepat (mnt), Jam kerja, Lembur disetujui, Pengecualian (cuti/klarifikasi/koreksi), Sumber, **Simbol**, Jenis hari (kerja/akhir pekan/libur). |
 | **Data Transaksi** | satu scan | Waktu, Pegawai, Sumber (Mesin/HP/Koreksi), Mesin, Tanggal kerja, Dipakai pada hasil (ya/tidak). **Tanpa aksi edit.** |
-| **Pengecualian** | satu kejadian | Cuti/izin final, penyelesaian cuti, klarifikasi (diajukan/diputuskan), koreksi HC, beserta tanggal, keputusan, dan pemutus. |
+| **Pengecualian** | satu kejadian | Cuti/izin final, penyelesaian cuti, klarifikasi (diajukan/diputuskan), koreksi HC, perjalanan dinas yang disetujui (TRIP-001 D-11, baca-saja), beserta tanggal, keputusan, dan pemutus. |
 | **Rekapitulasi** | pegawai | Kolom item yang dapat dipilih: Hari terjadwal (Normal), Hari hadir (Riil), **Presensi %** (Riil ÷ Normal), Tidak hadir, Terlambat (kali & menit), Pulang cepat (kali & menit), Tidak lengkap, Cuti/Izin per jenis, Lembur disetujui, Jam kerja, Tidak tercatat. |
 | **Lembur** | pegawai × tanggal | Jadwal, scan, lembur disetujui, sumber pengajuan, dan fakta scan di luar jadwal (ATT-011-6a). Menit lembur hanya dari pengajuan disetujui. |
 | **Tanpa Jadwal** | pegawai × tanggal tanpa jadwal yang punya scan | Scan masuk/pulang 1–5, total rentang scan. Membantu HC menemukan pegawai yang bekerja tetapi belum diberi jadwal. |

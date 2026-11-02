@@ -1,10 +1,11 @@
 import type { AttendanceCalculationScope } from "@/lib/attendanceCalculation";
 import { WorkforceAttendanceApiError } from "@/lib/workforceAttendance";
 
-// ATT-014 §20.2 tab "Pengecualian" (R2b): approved leave and clarifications/corrections in the range.
+// ATT-014 §20.2 tab "Pengecualian" (R2b): approved leave and clarifications/corrections in the range,
+// plus approved business trips (TRIP-001 D-11, read-only).
 
 export interface AttendanceException {
-  kind: "leave" | "clarification";
+  kind: "leave" | "clarification" | "trip";
   id: string;
   employeeId: string;
   employeeNumber: string;

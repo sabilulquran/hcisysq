@@ -586,11 +586,12 @@ export async function registerDocumentRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      // D-03: the number stays allocated; only the status changes.
+      // D-03: the number stays allocated; only the status changes. A surat tugas is revoked
+      // only by cancelling its trip, so the trip status follows (TRIP-001 D-14).
       const changed = await client.query<{ employeeId: string; documentKind: string }>(
         `UPDATE hr_issued_documents
             SET status = 'REVOKED', revoked_at = now(), revoked_by_account_id = $2, revoke_reason = $3
-          WHERE id = $1 AND status = 'ISSUED'
+          WHERE id = $1 AND status = 'ISSUED' AND document_kind <> 'ASSIGNMENT'
           RETURNING employee_id AS "employeeId", document_kind AS "documentKind"`,
         [params.data.id, principal.id, body.data.reason],
       );

@@ -787,7 +787,7 @@ features:
       invitations, 30-minute reminders, cancellation, and a monthly calendar with leave and
       targeted holidays. No RSVP action, no audit, no leave/trip conflict check; the calendar
       shows every agenda title to every employee. Older GAS-HCIS has no meeting feature.
-    target_status: specified
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
@@ -796,9 +796,13 @@ features:
       leave and approved or issued trips, RSVP that frees declined time, organizer-only
       edit/cancel, yayasan-wide calendar with an optional confidential flag, and a 30-minute
       reminder as the first NOTIF-003 rule. No room booking (WORK-001 removed).
+      Implemented 2026-11-02: migration 0117 (five tables, no permission), /me/calendar and
+      /me/meetings routes, the in-process reminder/WhatsApp runner, and the Kalender screen.
+      WhatsApp stays on the `log` adapter (dry run) until the HCIS number is paired in Kirim SQ.
     docs:
       - docs/domain/meeting-calendar.md
       - docs/product/hcis-capability-map.md
+      - docs/api/meeting-calendar.openapi.yaml
 
   - id: REC-001
     module: recruitment

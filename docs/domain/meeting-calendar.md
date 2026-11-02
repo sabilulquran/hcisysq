@@ -1,6 +1,7 @@
 # Kalender dan Undangan Rapat
 
 **Status:** ACCEPTED (Paket 1) — pemilik produk menyetujui K-01..K-08 pada 2026-11-02, dengan K-05 dan K-06 diubah (§3). Spesifikasi ini mengizinkan implementasi Paket 1. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
+**Implementasi:** Paket 1 terpasang 2026-11-02 (migrasi `0117_meeting_calendar.sql`, `apps/api/src/modules/meetings/`, layar `/app/calendar`, kontrak `docs/api/meeting-calendar.openapi.yaml`). Keputusan implementasi di §16. WhatsApp tetap adapter `log` (dry run) sampai prasyarat §15 terpenuhi.
 **Spesifikasi:** CAL-001
 **Tanggal:** 2026-11-02
 **Terkait:** LEAVE-001, LEAVE-002, TRIP-001, NOTIF-001, NOTIF-003, NOTIF-004, ATT-011, AUTH-011, ENG-LIST-001, WORK-001 (removed); SQ Hub ADR-0011 dan KIRIM-001 (Kirim SQ)
@@ -294,3 +295,22 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 
 - Nomor WhatsApp `hcis` sudah terhubung di Kirim SQ dan klien HCIS terdaftar di SQ Hub. Sampai itu ada, adapter tetap `log` dan fitur lain berjalan normal.
 - Kredensial klien Kirim untuk HCIS dipasang operator di env Mi8VPS; agen tidak mengetik kredensial.
+
+## 16. Catatan implementasi Paket 1 (2026-11-02)
+
+Hal yang tidak dijawab spesifikasi di atas diputuskan saat implementasi dengan default paling masuk akal. Semuanya `DRAFT` dan bisa diubah pemilik produk tanpa migrasi.
+
+| # | Keputusan | Status |
+| --- | --- | --- |
+| I-01 | "Mulai paling cepat sekarang" (K-09) diberi kelonggaran 1 menit, supaya formulir yang dibuka sesaat lalu tidak ditolak. | DRAFT |
+| I-02 | Ubah tanpa mengubah waktu hanya memeriksa **peserta baru**; ubah waktu memeriksa semua orang (jawaban mereka direset, K-11). Dengan begitu mengganti judul rapat tidak ditolak karena seorang peserta belakangan cuti (K-08). Pratinjau ketersediaan memakai aturan yang sama. | DRAFT |
+| I-03 | Peringatan `NON_WORKING_DAY` muncul sekali per tanggal untuk rapat itu, bukan per peserta, karena kalender kerja berlaku untuk seluruh organisasi. | DRAFT |
+| I-04 | Catatan jawaban peserta hanya terlihat oleh penyelenggara dan peserta itu sendiri. Tanda "belum punya akun" dan "tanpa nomor WA" hanya untuk penyelenggara (§12). | DRAFT |
+| I-05 | Peserta yang dikeluarkan dihapus dari `meeting_participants`; jejaknya tetap di `meeting_events` (`meeting.participant.removed`). Setelah itu ia mendapat 404 untuk detail rapat. | DRAFT |
+| I-06 | Undangan WhatsApp yang masih antre ditulis dari data rapat terbaru saat diserahkan, sehingga perubahan waktu sebelum undangan terkirim tidak menambah pesan "jadwal berubah" untuk orang yang sama. | DRAFT |
+| I-07 | Status `SENT` disiapkan di tabel tetapi Paket 1 belum menerima webhook `message.status` dari Kirim SQ; status terakhir yang dicatat HCIS adalah `HANDED_OVER` (atau `DRY_RUN` dengan adapter `log`). Ulang otomatis bila SQ Hub tidak menjawab: 1, 5, lalu 30 menit, kemudian `FAILED`. Penolakan 4xx langsung `FAILED`. | DRAFT |
+| I-08 | Rapat orang lain di kalender dikirim dengan `id: null`, sehingga layar tidak menawarkan tautan detail yang pasti 404. | DRAFT |
+| I-09 | Kalender pribadi menampilkan tujuan perjalanan dinas **milik sendiri**; cek ketersediaan untuk orang lain tetap tidak pernah menyebut tujuan atau jenis cuti (§6). | DRAFT |
+| I-10 | Pengaturan env: `WHATSAPP_ADAPTER` (`log` bawaan, `kirim`), `KIRIM_BASE_URL`, `KIRIM_TOKEN_URL`, `KIRIM_CLIENT_ID`, `KIRIM_CLIENT_SECRET`, `KIRIM_AUDIENCE` (bawaan `sq-hub-kirim`), `KIRIM_DEVICE_HCIS` (bawaan `hcis`), `MEETING_RUNNER_ENABLED` (bawaan `1`). API menolak start bila `kirim` dipilih tanpa keempat `KIRIM_*`. | DRAFT |
+| I-11 | Opsi **Rahasia** (K-05) dipasang sebagai pilihan B sambil menunggu jawaban akhir pemilik produk; menghapusnya hanya mengubah layar dan proyeksi kalender. | DRAFT |
+

@@ -1,0 +1,558 @@
+openapi: 3.1.0
+info:
+  title: HCIS Meeting Calendar (CAL-001 Package 1)
+  version: 1.0.0
+  description: |
+    Meeting invitations that block the participants' time, responses, edit and cancel by the
+    organizer, and the foundation-wide month calendar, as implemented in
+    apps/api/src/modules/meetings/routes.ts. Spec: docs/domain/meeting-calendar.md.
+    All routes require an EMPLOYEE session linked to an active employee (403
+    EMPLOYEE_NOT_ACTIVE otherwise) and answer with Cache-Control: no-store. No permission is
+    involved: detail access is ownership (organizer or participant row); anyone else gets 404
+    MEETING_NOT_FOUND. Errors use { code, message } plus the fields named below.
+paths:
+  /me/calendar:
+    get:
+      tags: [Meeting Calendar]
+      operationId: getMyCalendar
+      summary: Month view — every active meeting of the foundation, my cancelled meetings, my leave and trips, non-working days
+      description: |
+        K-05: a meeting I am not in shows title, time, location and organizer with `id: null`;
+        a confidential one shows only `{ kind: busy, startAt, endAt }`. Range at most 42 days.
+        More than 500 items answers 400 RANGE_TOO_DENSE instead of cutting the list
+        (ENG-LIST-001 exception recorded in the spec §11).
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Calendar items in the range
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, items]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  items:
+                    type: array
+                    items:
+                      oneOf:
+                        - $ref: '#/components/schemas/CalendarMeeting'
+                        - $ref: '#/components/schemas/CalendarBusy'
+                        - $ref: '#/components/schemas/CalendarLeave'
+                        - $ref: '#/components/schemas/CalendarTrip'
+                        - $ref: '#/components/schemas/CalendarNonWorking'
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /me/meetings:
+    get:
+      tags: [Meeting Calendar]
+      operationId: listMyMeetings
+      summary: Meetings I organize or attend; upcoming (not yet ended) or past
+      description: ENG-LIST-001 paged; the tab filter runs before LIMIT.
+      parameters:
+        - { name: tab, in: query, schema: { type: string, enum: [upcoming, past], default: upcoming } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of meetings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/MeetingSummary' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Meeting Calendar]
+      operationId: createMeeting
+      summary: Invite employees; refused with 409 MEETING_CONFLICT when anyone is busy (§6)
+      description: |
+        Employees involved are locked in id order, availability is re-checked, and an exclusion
+        constraint backs it up. Attendees get an in-app notification; WhatsApp messages are
+        queued (sent after COMMIT by the runner, never inside the request); reminders are
+        scheduled 30 minutes ahead.
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingCreateInput' }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier request with the same key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/MeetingStatus' }
+                  version: { type: integer }
+                  idempotentReplay: { type: boolean, const: true }
+        '201':
+          description: Meeting created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingWriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /me/meetings/participant-options:
+    get:
+      tags: [Meeting Calendar]
+      operationId: searchMeetingParticipants
+      summary: Typeahead of active employees by name (minimum 2 characters, at most 20 results)
+      description: Name and unit only, with flags; never e-mail, phone or employee number.
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 80 } }
+      responses:
+        '200':
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required: [id, name, unitName, hasAccount, hasWhatsApp]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        unitName: { type: [string, 'null'] }
+                        hasAccount: { type: boolean }
+                        hasWhatsApp: { type: boolean }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /me/meetings/availability:
+    post:
+      tags: [Meeting Calendar]
+      operationId: previewMeetingAvailability
+      summary: Availability preview (§6) without writing; the save re-checks under lock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startAt, endAt, participantEmployeeIds]
+              properties:
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+                participantEmployeeIds: { type: array, items: { type: string, format: uuid }, maxItems: 201 }
+                excludeMeetingId:
+                  type: [string, 'null']
+                  format: uuid
+                  description: A meeting I organize that is being edited; 404 when it is not mine.
+      responses:
+        '200':
+          description: Conflicts (would be refused) and warnings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Availability' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /me/meetings/{id}:
+    get:
+      tags: [Meeting Calendar]
+      operationId: getMyMeeting
+      summary: Detail for the organizer and participants; anyone else gets 404
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      responses:
+        '200':
+          description: Meeting detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingDetail' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Meeting Calendar]
+      operationId: updateMeeting
+      summary: Organizer edits before the start (K-11), optimistic on expectedVersion
+      description: |
+        A new time resets every attendee's answer to PENDING and re-checks everybody; otherwise
+        only newly added people are checked. Added people are invited, removed people are told,
+        and on a new time everyone remaining is told.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeetingUpdateInput' }
+      responses:
+        '200':
+          description: Stored (or nothing changed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeetingWriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /me/meetings/{id}/cancel:
+    post:
+      tags: [Meeting Calendar]
+      operationId: cancelMeeting
+      summary: Organizer cancels before the end (K-12); frees everybody's time and tells the attendees
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: CANCELLED }
+                  version: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /me/meetings/{id}/response:
+    post:
+      tags: [Meeting Calendar]
+      operationId: respondToMeeting
+      summary: Attendee answers Hadir (ACCEPTED) or Berhalangan (DECLINED) until the start
+      description: |
+        DECLINED frees the attendee's time, cancels their reminder and tells the organizer
+        in-app. Going back from DECLINED to ACCEPTED re-runs §6 for that person and may answer
+        409 MEETING_CONFLICT.
+      parameters:
+        - $ref: '#/components/parameters/MeetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              properties:
+                response: { type: string, enum: [ACCEPTED, DECLINED] }
+                note: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200':
+          description: "Stored (`changed: false` when it was already the answer)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  response: { type: string, enum: [ACCEPTED, DECLINED] }
+                  changed: { type: boolean }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  parameters:
+    MeetingId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    MeetingStatus:
+      type: string
+      enum: [ACTIVE, CANCELLED]
+    ParticipantRole:
+      type: string
+      enum: [ORGANIZER, ATTENDEE]
+    ParticipantResponse:
+      type: string
+      enum: [PENDING, ACCEPTED, DECLINED]
+    MeetingCreateInput:
+      type: object
+      required: [title, startAt, endAt, participantEmployeeIds]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 3000 }
+        location: { type: [string, 'null'], maxLength: 255 }
+        startAt: { type: string, format: date-time, description: 'Not in the past (one minute of grace).' }
+        endAt: { type: string, format: date-time, description: '15 minutes to 7 days after startAt (K-09).' }
+        participantEmployeeIds:
+          type: array
+          items: { type: string, format: uuid }
+          minItems: 1
+          maxItems: 201
+          description: 1 to 200 distinct active employees, not the organizer.
+        confidential: { type: boolean, default: false }
+        notifyWhatsApp: { type: boolean, default: true }
+    MeetingUpdateInput:
+      type: object
+      required: [expectedVersion]
+      properties:
+        expectedVersion: { type: integer, minimum: 1 }
+        title: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 3000 }
+        location: { type: [string, 'null'], maxLength: 255 }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        participantEmployeeIds:
+          type: array
+          items: { type: string, format: uuid }
+          minItems: 1
+          maxItems: 201
+          description: The complete new attendee set.
+        confidential: { type: boolean }
+        notifyWhatsApp: { type: boolean }
+    MeetingWriteResult:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/MeetingStatus' }
+        version: { type: integer }
+        idempotentReplay: { type: boolean }
+        warnings: { type: array, items: { $ref: '#/components/schemas/AvailabilityIssue' } }
+        whatsappWithoutNumber:
+          type: array
+          items: { type: string, format: uuid }
+          description: Attendees who get no WhatsApp message because they have no usable number.
+    AvailabilityIssue:
+      type: object
+      required: [reason, message]
+      properties:
+        employeeId: { type: [string, 'null'], format: uuid }
+        name: { type: [string, 'null'] }
+        reason:
+          type: string
+          enum: [MEETING_OVERLAP, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING, NON_WORKING_DAY]
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        meetingTitle:
+          type: [string, 'null']
+          description: Null when the other meeting is confidential and the caller is not in it.
+        message: { type: string, description: 'Indonesian sentence, e.g. "<Nama> bentrok dengan "<judul>" (09:00-10:00)."' }
+    Availability:
+      type: object
+      required: [conflicts, warnings]
+      properties:
+        conflicts: { type: array, items: { $ref: '#/components/schemas/AvailabilityIssue' } }
+        warnings: { type: array, items: { $ref: '#/components/schemas/AvailabilityIssue' } }
+    MeetingSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        location: { type: [string, 'null'] }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/MeetingStatus' }
+        confidential: { type: boolean }
+        organizerName: { type: string }
+        myRole: { $ref: '#/components/schemas/ParticipantRole' }
+        myResponse: { $ref: '#/components/schemas/ParticipantResponse' }
+        participantCount: { type: integer }
+    MeetingDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizerEmployeeId: { type: string, format: uuid }
+        organizerName: { type: string }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/MeetingStatus' }
+        confidential: { type: boolean }
+        notifyWhatsApp: { type: boolean }
+        version: { type: integer }
+        cancelReason: { type: [string, 'null'] }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        me:
+          type: object
+          properties:
+            role: { $ref: '#/components/schemas/ParticipantRole' }
+            response: { $ref: '#/components/schemas/ParticipantResponse' }
+            responseNote: { type: [string, 'null'] }
+        canEdit: { type: boolean }
+        canCancel: { type: boolean }
+        canRespond: { type: boolean }
+        participants:
+          type: array
+          description: Bounded by K-09 (at most 201 rows), so not paged.
+          items:
+            type: object
+            properties:
+              employeeId: { type: string, format: uuid }
+              name: { type: string }
+              unitName: { type: [string, 'null'] }
+              role: { $ref: '#/components/schemas/ParticipantRole' }
+              response: { $ref: '#/components/schemas/ParticipantResponse' }
+              responseNote: { type: [string, 'null'], description: Organizer and the participant only. }
+              respondedAt: { type: [string, 'null'], format: date-time }
+              hasAccount: { type: [boolean, 'null'], description: Organizer only (K-13). }
+              hasWhatsApp: { type: [boolean, 'null'], description: Organizer only. }
+              unavailableReason:
+                type: [string, 'null']
+                enum: [LEAVE, TRIP, null]
+                description: Approved leave or an approved/issued trip during the meeting (K-08).
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              eventType:
+                type: string
+                enum:
+                  - meeting.created
+                  - meeting.updated
+                  - meeting.participant.added
+                  - meeting.participant.removed
+                  - meeting.participant.responded
+                  - meeting.cancelled
+              occurredAt: { type: string, format: date-time }
+              actorName: { type: [string, 'null'] }
+    CalendarMeeting:
+      type: object
+      required: [kind, id, title, startAt, endAt, status, involvesMe]
+      properties:
+        kind: { type: string, const: meeting }
+        id: { type: [string, 'null'], format: uuid, description: Null for a meeting I am not in. }
+        title: { type: string }
+        location: { type: [string, 'null'] }
+        organizerName: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/MeetingStatus' }
+        confidential: { type: boolean }
+        involvesMe: { type: boolean }
+        myRole: { oneOf: [{ $ref: '#/components/schemas/ParticipantRole' }, { type: 'null' }] }
+        myResponse: { oneOf: [{ $ref: '#/components/schemas/ParticipantResponse' }, { type: 'null' }] }
+    CalendarBusy:
+      type: object
+      required: [kind, id, startAt, endAt, involvesMe]
+      properties:
+        kind: { type: string, const: busy }
+        id: { type: 'null' }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        involvesMe: { type: boolean, const: false }
+    CalendarLeave:
+      type: object
+      required: [kind, id, status, startOn, endOn]
+      properties:
+        kind: { type: string, const: leave }
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [approved, in_review] }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+    CalendarTrip:
+      type: object
+      required: [kind, id, status, destination, startOn, endOn]
+      properties:
+        kind: { type: string, const: trip }
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [APPROVED, ISSUED, IN_REVIEW] }
+        destination: { type: string }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+    CalendarNonWorking:
+      type: object
+      required: [kind, date]
+      properties:
+        kind: { type: string, const: non_working }
+        date: { type: string, format: date }
+        label: { type: [string, 'null'] }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No valid session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Not an EMPLOYEE principal (FORBIDDEN), no active employee (EMPLOYEE_NOT_ACTIVE), or not the organizer (MEETING_NOT_ORGANIZER)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: MEETING_NOT_FOUND — missing, or a meeting the caller is not in
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: |
+        MEETING_CONFLICT (with `conflicts` and `warnings` as in Availability), MEETING_START_IN_PAST,
+        MEETING_ALREADY_STARTED, MEETING_ALREADY_ENDED, MEETING_CANCELLED, MEETING_VERSION_CONFLICT
+        (with `currentVersion`), PARTICIPANT_NOT_ACTIVE (with `employeeIds`), MEETING_RESPONSE_NOT_ALLOWED.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - type: object
+                properties:
+                  conflicts: { type: array, items: { $ref: '#/components/schemas/AvailabilityIssue' } }
+                  warnings: { type: array, items: { $ref: '#/components/schemas/AvailabilityIssue' } }
+                  currentVersion: { type: integer }
+                  employeeIds: { type: array, items: { type: string, format: uuid } }

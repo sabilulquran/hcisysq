@@ -598,7 +598,7 @@ export async function registerDocumentRoutes(
     const params = idParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_DOCUMENT_ID", message: "Surat tidak valid." });
     const body = revokeBody.safeParse(request.body);
-    if (!body.success) return send(reply, 400, { code: "INVALID_DOCUMENT_REVOKE", message: "Alasan pembatalan minimal 10 karakter." });
+    if (!body.success) return send(reply, 400, { code: "INVALID_DOCUMENT_REVOKE", message: "Alasan pembatalan wajib diisi, 10 sampai 500 karakter." });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");

@@ -264,6 +264,9 @@ export function RevokeDocumentDialog({
         <p id="revoke-reason-help" className={`mt-1 text-xs ${touched && problem ? "text-danger-ink" : "text-muted-foreground"}`}>
           {touched && problem ? problem : `Minimal 10 karakter. ${reason.trim().length}/${REVOKE_REASON_MAX}`}
         </p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Alasan tampil di register bagi semua pembaca register. Jangan menuliskan nama pegawai atau isi surat.
+        </p>
         {error ? (
           <p role="alert" className="mt-3 rounded-2xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</p>
         ) : null}

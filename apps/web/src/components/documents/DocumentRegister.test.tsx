@@ -160,11 +160,11 @@ describe("DOC-002-F3 revoke reason", () => {
 
   it("shows the API's refusal inside the dialog", () => {
     const markup = renderToStaticMarkup(
-      <RevokeDocumentDialog entry={warningLetter} busy={false} error="Alasan pembatalan minimal 10 karakter."
+      <RevokeDocumentDialog entry={warningLetter} busy={false} error="Alasan pembatalan wajib diisi, 10 sampai 500 karakter."
         onCancel={() => {}} onConfirm={() => {}} />,
     );
     expect(markup).toContain('role="alert"');
-    expect(markup).toContain("Alasan pembatalan minimal 10 karakter.");
+    expect(markup).toContain("Alasan pembatalan wajib diisi, 10 sampai 500 karakter.");
   });
 });
 

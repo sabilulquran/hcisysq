@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Clock3,
   FileSignature,
+  FileText,
   Grid2X2,
   History,
   Fingerprint,
@@ -40,6 +41,7 @@ export type AdminNavKey =
   | "expiring-certificates"
   | "data-changes"
   | "decision-documents"
+  | "documents"
   | "organization"
   | "job-classifications"
   | "attendance"
@@ -88,6 +90,7 @@ const navGroups: AdminNavGroup[] = [
       { key: "expiring-certificates", label: "Sertifikat Akan Berakhir", href: "/admin/employees/certificates/expiring", icon: BadgeCheck },
       { key: "data-changes", label: "Usulan Perubahan Data", href: "/admin/employees/data-changes", icon: FileSignature },
       { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
+      { key: "documents", label: "Dokumen Kepegawaian", href: "/admin/documents", icon: FileText },
     ],
   },
   {

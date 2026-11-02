@@ -5,7 +5,7 @@
 
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DocumentRegisterSection, RevokeDocumentDialog, type RegisterView } from "@/components/documents/DocumentRegister";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -68,16 +68,21 @@ export function AdminDocumentsPage() {
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
   const { kind: registerKind, status: registerStatus, page: registerPage, pageSize: registerPageSize } = registerFilter;
+  // Only the latest request may write the view: a slower answer for the previous tab must not
+  // show certificate rows, with their Batalkan buttons, under the warning-letter tab.
+  const registerRequest = useRef(0);
   const loadRegister = useCallback(async () => {
+    const request = ++registerRequest.current;
+    const settle = (view: RegisterView) => { if (request === registerRequest.current) setRegisterView(view); };
     setRegisterView({ kind: "loading" });
     try {
       const result = await getDocumentRegister({
         kind: registerKind, status: registerStatus, page: registerPage, pageSize: registerPageSize,
       });
-      setRegisterView({ kind: "ready", items: result.items, total: result.pagination.total });
+      settle({ kind: "ready", items: result.items, total: result.pagination.total });
     } catch (cause) {
-      if (cause instanceof HrDocumentApiError && cause.status === 403) setRegisterView({ kind: "forbidden" });
-      else setRegisterView({ kind: "error", message: cause instanceof Error ? cause.message : "Register tidak dapat dimuat." });
+      if (cause instanceof HrDocumentApiError && cause.status === 403) settle({ kind: "forbidden" });
+      else settle({ kind: "error", message: cause instanceof Error ? cause.message : "Register tidak dapat dimuat." });
     }
   }, [registerKind, registerStatus, registerPage, registerPageSize]);
 
@@ -88,8 +93,9 @@ export function AdminDocumentsPage() {
     router.history.push(`/admin/documents${writeRegisterFilter(searchStr, next)}`);
   };
 
-  const load = async () => {
-    setLoading(true);
+  /** `quiet` refreshes in place, so a revocation does not unmount the page under the user. */
+  const load = async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) setLoading(true);
     try {
       const [requestList, letterList] = await Promise.allSettled([
         getDocumentRequests(),
@@ -157,7 +163,7 @@ export function AdminDocumentsPage() {
       await revokeIssuedDocument(revokeTarget.id, reason);
       setRevokeTarget(null);
       setNotice(`Surat ${revokeTarget.documentNumber} dibatalkan; nomornya tetap terpakai.`);
-      await Promise.all([loadRegister(), load()]);
+      await Promise.all([loadRegister(), load({ quiet: true })]);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Surat belum dapat dibatalkan.";
       if (cause instanceof HrDocumentApiError && (cause.status === 403 || cause.status === 409)) {
@@ -165,7 +171,7 @@ export function AdminDocumentsPage() {
         // the register as it is now.
         setRevokeTarget(null);
         setError(message);
-        await loadRegister();
+        await Promise.all([loadRegister(), load({ quiet: true })]);
       } else {
         setRevokeError(message);
       }
@@ -184,7 +190,7 @@ export function AdminDocumentsPage() {
   };
 
   return (
-    <AdminShell active="services" title="Dokumen Kepegawaian" description="Surat keterangan dan surat peringatan pegawai.">
+    <AdminShell active="documents" title="Dokumen Kepegawaian" description="Surat keterangan dan surat peringatan pegawai.">
       {error ? <div className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 

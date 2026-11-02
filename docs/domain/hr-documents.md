@@ -221,7 +221,7 @@ Ditambahkan 2026-11-02. Sebelumnya aturan pembatalan hanya ada di API, sedangkan
 | --- | --- |
 | Aktor | Pemegang `documents.correct` (role `document_corrector`, D-16). |
 | Prasyarat | Surat ada di register dengan status `ISSUED` (termasuk SP yang sudah dibaca atau kedaluwarsa, D-19). |
-| Layar | `/admin/documents`, bagian **Register surat terbit**, dengan tab **Surat keterangan** dan **Surat peringatan** serta filter status (semua, terbit, dibatalkan). |
+| Layar | `/admin/documents` (menu **Pegawai → Dokumen Kepegawaian**), bagian **Register surat terbit**, dengan tab **Surat keterangan** dan **Surat peringatan** serta filter status (semua, terbit, dibatalkan). `documents.read` membuka shell admin, karena `document_corrector` tidak membawa izin admin lain; tanpa itu shell memantulkan satu-satunya role yang boleh membatalkan. |
 | Input | Alasan pembatalan, 10–500 karakter setelah dipangkas, wajib. |
 | Transisi | `ISSUED -> REVOKED`; `revoked_at`, `revoked_by_account_id`, dan `revoke_reason` disimpan; nomor tetap terpakai (D-03) dan isi surat tidak diubah (D-14). |
 | Permission | API memeriksa `documents.correct` di setiap panggilan. Layar hanya menyembunyikan tombol **Batalkan** dari akun tanpa izin itu; tidak ada keputusan otorisasi lain di frontend. |

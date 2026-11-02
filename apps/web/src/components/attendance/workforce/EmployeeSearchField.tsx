@@ -9,18 +9,26 @@ export interface PickedEmployee {
   employeeNumber: string;
 }
 
+type SearchResult = Pick<AdminEmployeeListItem, "id" | "fullName" | "employeeNumber" | "unitName">;
+
+const searchActiveEmployees = async (q: string): Promise<SearchResult[]> =>
+  (await listEmployees({ q, status: "active", pageSize: 20 })).items;
+
 /**
  * ATT-011-1 (L-4): server-side search over all active employees by name or NIP, instead of a
  * dropdown holding only the first page. Needs employees.manage; the caller hides it otherwise.
+ * A module whose register opens a narrower search passes its own `search` (LOAN-001 borrowers).
  */
-export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
+export function EmployeeSearchField({ value, onChange, label = "Pegawai", search = searchActiveEmployees, emptyText = "Tidak ada pegawai aktif yang cocok." }: {
   value: PickedEmployee | null;
   onChange: (employee: PickedEmployee | null) => void;
   label?: string;
+  search?: (q: string) => Promise<SearchResult[]>;
+  emptyText?: string;
 }) {
   const inputId = useId();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AdminEmployeeListItem[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,13 +38,13 @@ export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
     let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listEmployees({ q: needle, status: "active", pageSize: 20 })
-        .then((page) => { if (active) { setResults(page.items); setError(null); } })
+      void search(needle)
+        .then((items) => { if (active) { setResults(items); setError(null); } })
         .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Pegawai tidak dapat dicari."); })
         .finally(() => { if (active) setLoading(false); });
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, value]);
+  }, [query, value, search]);
 
   if (value) {
     return (
@@ -74,7 +82,7 @@ export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
             </li>
           ))}
         </ul>
-      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">Tidak ada pegawai aktif yang cocok.</p> : null}
+      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">{emptyText}</p> : null}
     </div>
   );
 }

@@ -3419,6 +3419,132 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans/borrowers",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans/:id",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/disburse",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/payments",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/payments/:paymentId/reverse",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/cancel",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/employee-assets/routes.ts",
     "method": "GET",
     "url": "/assets/me",

@@ -1,0 +1,669 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee Loans (LOAN-001 Package 1)
+  version: 1.0.0
+  description: |
+    Employee loan requests, the APR-001 approver inbox and the Finance register with
+    disbursement, instalment schedule and repayments, as implemented in
+    apps/api/src/modules/loans/routes.ts. Spec: docs/domain/employee-loans.md.
+    All routes use the session cookie and answer with Cache-Control: no-store.
+    Errors use { code, message }.
+
+    Money: every amount is whole rupiah carried as a JSON integer. A fractional number or a
+    string is refused with 400, never rounded. The database caps every amount at
+    1,000,000,000, far below 2^53. No interest field exists (D-02). Payroll is not touched:
+    automatic deduction through PAY-003 is Package 2 (spec §9).
+paths:
+  /loans/me:
+    get:
+      tags: [Employee Loans]
+      operationId: listMyLoans
+      summary: The signed-in employee's loans, newest first
+      description: EMPLOYEE principal only; ENG-LIST-001 paged.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Status'
+      responses:
+        '200':
+          description: One page of loans
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Employee Loans]
+      operationId: submitLoan
+      summary: Submit a loan; the APR-001 chain is resolved and snapshotted in the same transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoanSubmitInput' }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier submission with the same key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/LoanStatus' }
+                  idempotentReplay: { type: boolean, const: true }
+        '201':
+          description: Submitted; the first approval step is pending
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: IN_REVIEW }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        employeeId: { type: string, format: uuid }
+                        name: { type: string }
+                  idempotentReplay: { type: boolean, const: false }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /loans/me/preview:
+    post:
+      tags: [Employee Loans]
+      operationId: previewLoan
+      summary: Validate the terms, show the indicative schedule and the approvers, store nothing
+      description: The schedule assumes the first instalment next month; Finance fixes the real month at disbursement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoanTerms' }
+      responses:
+        '200':
+          description: Preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedule:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sequence: { type: integer }
+                        dueMonth: { $ref: '#/components/schemas/Month' }
+                        amount: { $ref: '#/components/schemas/Rupiah' }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        name: { type: string }
+                        sources: { type: array, items: { type: string } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /loans/me/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    get:
+      tags: [Employee Loans]
+      operationId: getMyLoan
+      summary: One own loan with schedule, repayments, approval steps and history
+      responses:
+        '200':
+          description: Loan detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanDetail' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /loans/me/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    post:
+      tags: [Employee Loans]
+      operationId: cancelMyLoan
+      summary: Cancel an own loan while IN_REVIEW or APPROVED (D-08)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChanged' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /loans/approvals:
+    get:
+      tags: [Employee Loans]
+      operationId: listLoanApprovals
+      summary: Pending loan approval steps owned by the signed-in employee
+      description: Ownership of the snapshotted step, not a permission. ENG-LIST-001 paged.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of pending steps
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        stepId: { type: string, format: uuid }
+                        loanId: { type: string, format: uuid }
+                        sources: { type: array, items: { type: string } }
+                        requesterName: { type: string }
+                        requesterNumber: { type: string }
+                        unitName: { type: [string, 'null'] }
+                        purpose: { type: string }
+                        tenorMonths: { type: integer }
+                        principal: { $ref: '#/components/schemas/Rupiah' }
+                        submittedAt: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /loans/approvals/{stepId}/decision:
+    parameters:
+      - name: stepId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Employee Loans]
+      operationId: decideLoanApproval
+      summary: Approve or reject the active step (rejection needs a note)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [decision]
+                  properties:
+                    decision: { type: string, const: approve }
+                    note: { type: [string, 'null'], maxLength: 1000 }
+                - type: object
+                  required: [decision, note]
+                  properties:
+                    decision: { type: string, const: reject }
+                    note: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200':
+          description: Decision stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loanId: { type: string, format: uuid }
+                  loanStatus: { $ref: '#/components/schemas/LoanStatus' }
+                  stepStatus: { type: string, enum: [approved, rejected] }
+                  nextPendingStepId: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/loans:
+    get:
+      tags: [Employee Loans]
+      operationId: listLoans
+      summary: The loan register (loans.read)
+      description: ENG-LIST-001 paged; filters run before LIMIT.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Status'
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: One page of loans
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/loans/borrowers:
+    get:
+      tags: [Employee Loans]
+      operationId: searchLoanBorrowers
+      summary: Typeahead over employees who have at least one loan (loans.read)
+      description: Searches borrowers only, so loans.read opens no wider employee directory. ENG-LIST-001 paged.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of borrowers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        unitName: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/loans/{id}:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    get:
+      tags: [Employee Loans]
+      operationId: getLoan
+      summary: One loan with schedule, repayments, approval steps and history (loans.read)
+      responses:
+        '200':
+          description: Loan detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoanDetail' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /admin/loans/{id}/disburse:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    post:
+      tags: [Employee Loans]
+      operationId: disburseLoan
+      summary: Record the disbursement of an APPROVED loan and fix its schedule (loans.manage, D-09)
+      description: Refused with 403 LOAN_SELF_ACTION_FORBIDDEN on the actor's own loan (D-14).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disbursedOn, method]
+              properties:
+                disbursedOn: { type: string, format: date, description: Not after today and not before the final approval (Asia/Jakarta) }
+                method: { type: string, enum: [CASH, TRANSFER] }
+                reference: { type: [string, 'null'], maxLength: 200 }
+                firstDueMonth:
+                  oneOf:
+                    - type: 'null'
+                    - $ref: '#/components/schemas/Month'
+                  description: Defaults to the month after disbursement; never earlier.
+      responses:
+        '200':
+          description: Disbursed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: DISBURSED }
+                  firstDueMonth: { $ref: '#/components/schemas/Month' }
+                  instalments: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/loans/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    post:
+      tags: [Employee Loans]
+      operationId: recordLoanPayment
+      summary: Record a repayment of a DISBURSED loan; paying the whole balance settles it (loans.manage, D-10)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, paidOn, method, idempotencyKey]
+              properties:
+                amount: { $ref: '#/components/schemas/Rupiah' }
+                paidOn: { type: string, format: date, description: Between the disbursement date and today }
+                method:
+                  type: string
+                  enum: [CASH, TRANSFER, PAYROLL_DEDUCTION]
+                  description: PAYROLL_DEDUCTION records by hand a deduction that appeared on the official imported slip.
+                reference: { type: [string, 'null'], maxLength: 200 }
+                note: { type: [string, 'null'], maxLength: 500 }
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier payment with the same key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  paymentId: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/LoanStatus' }
+                  idempotentReplay: { type: boolean, const: true }
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  paymentId: { type: string, format: uuid }
+                  status: { type: string, enum: [DISBURSED, PAID_OFF] }
+                  idempotentReplay: { type: boolean, const: false }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/loans/{id}/payments/{paymentId}/reverse:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+      - name: paymentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Employee Loans]
+      operationId: reverseLoanPayment
+      summary: Mark a payment as reversed with a reason; the balance is recomputed (loans.manage, D-12)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: Reversed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  paymentId: { type: string, format: uuid }
+                  status: { type: string, enum: [DISBURSED, PAID_OFF] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/loans/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/LoanId'
+    post:
+      tags: [Employee Loans]
+      operationId: cancelLoan
+      summary: Cancel a loan while IN_REVIEW or APPROVED (loans.manage, D-08)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChanged' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+components:
+  parameters:
+    LoanId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Status:
+      name: status
+      in: query
+      schema: { $ref: '#/components/schemas/LoanStatus' }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Rupiah:
+      type: integer
+      minimum: 0
+      maximum: 1000000000
+      description: Whole rupiah. Never fractional; a request with a fraction or a string is refused.
+    Month:
+      type: string
+      pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+      description: Calendar month, YYYY-MM.
+    LoanStatus:
+      type: string
+      enum: [IN_REVIEW, APPROVED, REJECTED, CANCELLED, DISBURSED, PAID_OFF]
+    LoanTerms:
+      type: object
+      required: [principal, tenorMonths]
+      properties:
+        principal:
+          allOf:
+            - $ref: '#/components/schemas/Rupiah'
+          description: D-03 DRAFT; Rp100.000 to Rp10.000.000.
+        tenorMonths: { type: integer, enum: [3, 6, 12], description: D-04 DRAFT }
+    LoanSubmitInput:
+      allOf:
+        - $ref: '#/components/schemas/LoanTerms'
+        - type: object
+          required: [purpose, idempotencyKey]
+          properties:
+            purpose: { type: string, minLength: 10, maxLength: 1000 }
+            idempotencyKey: { type: string, format: uuid }
+    LoanSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/LoanStatus' }
+        tenorMonths: { type: integer }
+        purpose: { type: string }
+        principal: { $ref: '#/components/schemas/Rupiah' }
+        paidTotal: { $ref: '#/components/schemas/Rupiah' }
+        outstanding: { $ref: '#/components/schemas/Rupiah' }
+        submittedAt: { type: string, format: date-time }
+        finalDecidedAt: { type: [string, 'null'], format: date-time }
+        disbursedOn: { type: [string, 'null'], format: date }
+        firstDueMonth: { type: [string, 'null'] }
+        currentApproverName: { type: [string, 'null'] }
+        employeeId: { type: string, format: uuid, description: Register only }
+        employeeName: { type: string, description: Register only }
+        employeeNumber: { type: string, description: Register only }
+        unitName: { type: [string, 'null'], description: Register only }
+    LoanPage:
+      type: object
+      required: [items, pagination]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/LoanSummary' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    LoanDetail:
+      allOf:
+        - $ref: '#/components/schemas/LoanSummary'
+        - type: object
+          properties:
+            cancelReason: { type: [string, 'null'] }
+            disbursementMethod: { type: [string, 'null'], enum: [CASH, TRANSFER, null] }
+            disbursementReference: { type: [string, 'null'] }
+            paidOffAt: { type: [string, 'null'], format: date-time }
+            schedule:
+              type: array
+              description: Empty until disbursement. Payments fill instalments oldest first (D-11).
+              items:
+                type: object
+                properties:
+                  sequence: { type: integer }
+                  dueMonth: { $ref: '#/components/schemas/Month' }
+                  amount: { $ref: '#/components/schemas/Rupiah' }
+                  paid: { $ref: '#/components/schemas/Rupiah' }
+                  state: { type: string, enum: [PAID, PARTIAL, UNPAID] }
+                  overdue: { type: boolean }
+            payments:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  amount: { $ref: '#/components/schemas/Rupiah' }
+                  paidOn: { type: string, format: date }
+                  method: { type: string, enum: [CASH, TRANSFER, PAYROLL_DEDUCTION] }
+                  reference: { type: [string, 'null'] }
+                  note: { type: [string, 'null'] }
+                  status: { type: string, enum: [ACTIVE, REVERSED] }
+                  recordedAt: { type: string, format: date-time }
+                  recordedByName: { type: [string, 'null'] }
+                  reversedAt: { type: [string, 'null'], format: date-time }
+                  reverseReason: { type: [string, 'null'] }
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  order: { type: integer }
+                  status: { type: string, enum: [waiting, pending, approved, rejected, cancelled] }
+                  sources: { type: array, items: { type: string } }
+                  approverName: { type: string }
+                  actedAt: { type: [string, 'null'], format: date-time }
+                  decisionNote: { type: [string, 'null'] }
+            events:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  eventType:
+                    type: string
+                    enum:
+                      - loan.request.submitted
+                      - loan.approval.approved_step
+                      - loan.request.approved
+                      - loan.request.rejected
+                      - loan.request.cancelled
+                      - loan.disbursed
+                      - loan.payment.recorded
+                      - loan.payment.reversed
+                      - loan.paid_off
+                  occurredAt: { type: string, format: date-time }
+                  note: { type: [string, 'null'] }
+                  metadata: { type: object, description: Ids, methods, dates and months only — never an amount }
+                  actorName: { type: [string, 'null'] }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No valid session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Wrong principal type, missing permission, a step the caller does not own, or the actor's own loan
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: |
+        Business rule refused the transition, e.g. LOAN_PRINCIPAL_OUT_OF_RANGE, LOAN_TENOR_OUT_OF_RANGE,
+        LOAN_ALREADY_OPEN, APPROVER_ACCOUNT_NOT_READY, STEP_NOT_PENDING, LOAN_NOT_DISBURSABLE,
+        LOAN_EMPLOYEE_NOT_ACTIVE, LOAN_DISBURSED_BEFORE_APPROVAL, LOAN_DISBURSED_IN_FUTURE,
+        LOAN_FIRST_DUE_TOO_EARLY, LOAN_NOT_REPAYABLE, LOAN_PAYMENT_DATE, LOAN_PAYMENT_EXCEEDS_BALANCE,
+        LOAN_PAYMENT_ALREADY_REVERSED, LOAN_NOT_CANCELLABLE, LOAN_STATE_CONFLICT.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    StatusChanged:
+      description: Transition stored
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              status: { $ref: '#/components/schemas/LoanStatus' }

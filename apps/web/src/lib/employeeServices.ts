@@ -97,8 +97,8 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   },
   {
     key: "loan", label: "Pinjaman",
-    description: "Pengajuan pinjaman pegawai dan pemantauan angsuran.",
-    featureIds: ["LOAN-001"], stage: "discovery", category: "finance", href: "/app/services/loan",
+    description: "Ajukan pinjaman tanpa bunga dan pantau cicilan serta sisanya.",
+    featureIds: ["LOAN-001"], stage: "available", category: "finance", href: "/app/loans",
   },
   {
     key: "performance", label: "Kinerja / KPI",

@@ -33,6 +33,9 @@ describe("admin module catalog", () => {
     // TRIP-001 Package 1 ships the register and the surat tugas; costs stay out (REIMB-001).
     expect(getAdminService("business-travel")?.stage).toBe("available");
     expect(getAdminService("business-travel")?.href).toBe("/admin/trips");
+    // LOAN-001 Package 1: the register, disbursement and repayments; no payroll deduction yet.
+    expect(getAdminService("loans")?.stage).toBe("available");
+    expect(getAdminService("loans")?.href).toBe("/admin/loans");
   });
 
   it("routes every planned module to the authenticated admin coming-soon surface", () => {

@@ -21,6 +21,9 @@ export const HC_ADMIN_PERMISSIONS = [
   "announcements.read", "announcements.manage",
   // TRIP-001: migration 0116 grants both to human_capital_admin.
   "trips.read", "trips.manage",
+  // LOAN-001 D-13: migration 0123 grants loans.read to human_capital_admin. loans.manage stays
+  // with finance_officer, which owns the money.
+  "loans.read",
   // ORG-011: migration 0110 grants both to human_capital_admin.
   "job_classifications.read", "job_classifications.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
@@ -43,6 +46,11 @@ export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
 /** TRIP-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRIP_PERMISSIONS = ["trips.read", "trips.manage"] as const;
 export type TripPermission = (typeof TRIP_PERMISSIONS)[number];
+
+/** LOAN-001: Finance and HC only; never granted through legacy Super Admin compatibility.
+ * Migration 0123 grants both to finance_officer and loans.read to human_capital_admin. */
+export const LOAN_PERMISSIONS = ["loans.read", "loans.manage"] as const;
+export type LoanPermission = (typeof LOAN_PERMISSIONS)[number];
 
 /** ORG-011: HC-only; never granted through legacy Super Admin compatibility. The catalog is
  * compensation reference data, so reading it is not part of the ordinary structure read. */

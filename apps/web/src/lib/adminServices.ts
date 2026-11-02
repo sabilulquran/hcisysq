@@ -145,11 +145,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "loans",
     label: "Pinjaman Pegawai",
-    description: "Kelola pengajuan, persetujuan, dan angsuran pinjaman pegawai.",
+    description: "Register pinjaman pegawai, pencairan, dan pencatatan cicilan.",
     featureIds: ["LOAN-001"],
-    stage: "discovery",
+    stage: "available",
     category: "payroll-benefits",
-    href: "/admin/services/loans",
+    href: "/admin/loans",
+    details: [
+      "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
+      "Pencairan, jadwal cicilan tanpa bunga, pembayaran, dan pelunasan oleh Keuangan",
+      "Potongan otomatis lewat payroll belum (menunggu PAY-003 lulus parallel run)",
+    ],
   },
   {
     key: "performance",

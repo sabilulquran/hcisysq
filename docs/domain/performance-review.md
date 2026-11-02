@@ -36,6 +36,7 @@ Sumber: `hcysq/hcis-ysq` (Laravel, HEAD `30264ba`), `hcysq/GAS-HCIS`. Dibaca saj
 | Pengesahan | Kepala HC/super admin approve/reject satu langkah; rantai lain kosmetik | HC mengesahkan atau mengembalikan ke penilai (D-07) |
 | Tanda tangan | Hanya blok penilai di cetakan LPK; pegawai "Tandai dibaca" | Pegawai menandai sudah dibaca dengan tanggapan opsional (D-09); cetak di luar Paket 1 |
 | Payroll | **Tidak tersambung.** Persentase "Kinerja Tahunan/Bulanan" di slip GAS adalah input manual sheet | Tidak tersambung di Paket 1; kontrak di §11 |
+| Trend | Kolom `trend` (naik/stabil/turun dibanding periode sebelumnya, PO 2026-05-31), dihitung dari grade di layar | Disimpan saat disahkan (D-16) |
 | Kunci | Penilaian yang sudah disahkan masih dapat diubah dan dihapus; tidak ada tutup periode | Hasil final tidak berubah; siklus ditutup (D-10, D-11) |
 
 Data penilaian lama dikosongkan saat go-live legacy, sehingga tidak ada migrasi data.
@@ -66,7 +67,7 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | D-04 | Skala 1–4 legacy: 4 Sangat baik, 3 Baik, 2 Cukup, 1 Kurang. | DRAFT (mengikuti legacy) |
 | D-05 | Nilai akhir = Σ(nilai × bobot) / 100, antara 1,00 dan 4,00, tepat dua desimal. Bobot bilangan bulat dengan jumlah tepat 100. Rubrik default lima indikator: Hasil kerja 30, Disiplin dan kehadiran 20, Akhlak dan adab 20, Kerja sama dan komunikasi 15, Inisiatif dan pengembangan diri 15. HC mengubahnya selama siklus `DRAFT`. | DRAFT |
 | D-06 | Predikat: **A Sangat baik** ≥ 3,50; **B Baik** ≥ 2,50; **C Cukup** ≥ 1,50; **D Kurang** di bawahnya — batas legacy. Batas dapat diubah per siklus selama `DRAFT`; harus mencakup 1,00. | DRAFT |
-| D-07 | Hasil penilai disahkan HC (`performance.manage`). HC dapat **mengembalikan** ke penilai dengan alasan; itulah kalibrasi Paket 1 — HC tidak pernah mengetik nilai pengganti. Pengesah tidak boleh pegawai yang dinilai maupun penilainya. | DRAFT |
+| D-07 | Hasil penilai disahkan HC (`performance.manage`). HC dapat **mengembalikan** ke penilai dengan alasan; itulah kalibrasi Paket 1 — HC tidak pernah mengetik nilai pengganti. Pengesah tidak boleh pegawai yang dinilai maupun penilainya. Admin HC yang juga peserta tidak dapat mengganti penilai, mengeluarkan, atau memasukkan kembali penilaiannya sendiri, dan di layar HC melihat penilaiannya sendiri seperti pegawai lain (hasil baru tampak setelah final). | DRAFT |
 | D-08 | Penilai dapat menilai setelah pegawai mengirim penilaian diri, atau setelah batas penilaian diri lewat tanpa kiriman, supaya pegawai yang diam tidak menahan siklus. Pegawai masih boleh mengirim penilaian diri terlambat selama penilai belum menilai. | DRAFT |
 | D-09 | Pegawai melihat nilai penilai dan predikat **setelah disahkan**, lalu dapat menandai sudah dibaca dengan tanggapan opsional (≤ 1000 karakter). Tanggapan tidak mengubah nilai. Tidak ada banding di Paket 1. | DRAFT |
 | D-10 | Siklus ditutup HC pada atau sesudah akhir periode. Penutupan ditolak selama masih ada penilaian menunggu pengesahan. Penilaian yang belum dinilai menjadi `UNRATED` (tanpa predikat). Siklus tertutup tidak dapat dibuka kembali. | DRAFT |
@@ -74,6 +75,7 @@ Termasuk (Paket 1): siklus, rubrik per siklus, peserta, penilaian diri, penilaia
 | D-12 | Paket 1 tidak menyimpan persentase atau nominal dan tidak dibaca payroll. | ACCEPTED |
 | D-13 | `performance.read` dan `performance.manage` dibawa `human_capital_admin`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy. Penilai melihat penilaian yang ditugaskan kepadanya saja; pegawai melihat miliknya saja. | DRAFT |
 | D-14 | Peserta dapat ditambahkan selama `DRAFT` dan `OPEN` (satu per satu atau semua pegawai aktif sekaligus). Pegawai yang berhenti atau dipindahkan dari siklus dikeluarkan HC dengan alasan (`REMOVED`); menambahkannya kembali menghidupkan penilaian yang sama. | DRAFT |
+| D-16 | Saat disahkan, sistem menyimpan **trend** dibanding penilaian final sebelumnya dengan jenis siklus yang sama: `FIRST` (belum ada pembanding), `IMPROVING`, `STABLE`, `DECLINING`. Dibandingkan pada nilai akhir, bukan kode predikat, karena rubrik dua siklus bisa berbeda. Legacy menyimpan trend atas keputusan PO 2026-05-31. | DRAFT |
 | D-15 | Penilai yang akunnya belum aktif tetap dapat ditunjuk; rekap HC menandainya. Penilaian menunggu sampai akun itu aktif. Ini sengaja: HCIS belum live ke staf dan approval berbasis struktur menunggu akun pemimpin. | DRAFT |
 
 ## 5. Actor
@@ -145,7 +147,7 @@ Hanya penilai tersimpan; lainnya 404 (penilaian orang lain tidak dapat dibedakan
 
 `performance.manage`; status `HC_VALIDATION`; lainnya 409 `PERFORMANCE_NOT_IN_VALIDATION`. Pengesah adalah pegawai yang dinilai atau penilainya: 403 `PERFORMANCE_SELF_VALIDATION`.
 
-- Sahkan → `FINALIZED`, audit `performance.review.finalized`, notifikasi pegawai.
+- Sahkan → `FINALIZED` dengan trend (D-16), audit `performance.review.finalized`, notifikasi pegawai.
 - Kembalikan (alasan 10–1000) → `MANAGER_REVIEW`, nilai akhir dan predikat dikosongkan, nilai indikator penilai disimpan sebagai isian awal, audit `performance.review.returned` dengan alasan, notifikasi penilai.
 
 ### 7.7 Menunjuk penilai
@@ -187,7 +189,7 @@ Migrasi `0121` menambah izin ke role yang sudah ada, jadi rilisnya berdiri sendi
 
 Setiap event memuat aktor, waktu (`clock_timestamp()`), alasan sebagai `note`, dan metadata aman (penilai lama/baru, sumber penilai, predikat). Nilai per indikator **tidak** disalin ke event; nilai hanya ada di baris penilaian.
 
-Pegawai melihat riwayat penilaiannya sendiri setelah final; riwayat event yang memuat alasan pengembalian hanya terlihat oleh HC dan penilai, karena itu bagian dari kalibrasi.
+Pegawai melihat riwayat penilaiannya sendiri tanpa catatan apa pun dan tanpa event kalibrasi. Penilai melihat event penilaian yang ditugaskan kepadanya, tetapi catatannya hanya alasan pengembalian HC; alasan penunjukan ulang atau pengeluaran tetap hanya untuk HC. Mengeluarkan peserta menghapus nilai akhir dan predikatnya.
 
 ## 10. Notifikasi (NOTIF-004, kategori `system`)
 
@@ -197,7 +199,7 @@ Pegawai melihat riwayat penilaiannya sendiri setelah final; riwayat event yang m
 - dikembalikan HC → penilai;
 - disahkan → pegawai.
 
-Ditulis dalam transaksi yang sama dengan transisinya, idempoten per `eventKey`. Isi notifikasi tidak memuat nilai atau predikat.
+Ditulis dalam transaksi yang sama dengan transisinya. Setiap kejadian memakai `eventKey` sendiri, sehingga pemberitahuan ulang (peserta dimasukkan kembali, penilai ditunjuk ulang, dikembalikan lagi) tidak tertelan oleh kejadian sebelumnya. Isi notifikasi tidak memuat nilai atau predikat.
 
 ## 11. Kontrak sambungan payroll (Paket berikutnya, belum dibangun)
 

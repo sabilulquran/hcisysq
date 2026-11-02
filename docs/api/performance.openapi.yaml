@@ -598,6 +598,10 @@ components:
         ratedAt: { type: [string, 'null'], format: date-time }
         finalizedAt: { type: [string, 'null'], format: date-time }
         acknowledgedAt: { type: [string, 'null'], format: date-time }
+        trend:
+          type: [string, 'null']
+          enum: [FIRST, IMPROVING, STABLE, DECLINING, null]
+          description: Set when FINALIZED, against the previous final review of the same cycle kind (D-16)
         finalScore: { type: [number, 'null'], minimum: 1, maximum: 4, description: Null for the employee until FINALIZED }
         predicateCode: { type: [string, 'null'] }
         predicateLabel: { type: [string, 'null'] }

@@ -12,6 +12,7 @@ import {
   PerformancePolicyError,
   predicateFor,
   statusOnClose,
+  trendFrom,
   validateCyclePeriod,
   validateRubric,
   validateScores,
@@ -84,6 +85,13 @@ describe("PERF-001 domain rules", () => {
     expect(canRaterReview({ status: "SELF_ASSESSMENT", selfDueOn: "2026-11-25", today: "2026-11-26" })).toBe(true);
     expect(canRaterReview({ status: "MANAGER_REVIEW", selfDueOn: "2026-11-25", today: "2026-11-01" })).toBe(true);
     expect(canRaterReview({ status: "HC_VALIDATION", selfDueOn: "2026-11-25", today: "2026-12-01" })).toBe(false);
+  });
+
+  it("D-16: the trend compares the final score with the previous final review", () => {
+    expect(trendFrom(3.1, null)).toBe("FIRST");
+    expect(trendFrom(3.1, 3)).toBe("IMPROVING");
+    expect(trendFrom(3, 3)).toBe("STABLE");
+    expect(trendFrom(2.9, 3)).toBe("DECLINING");
   });
 
   it("D-10: closing leaves unfinished reviews without a predicate", () => {

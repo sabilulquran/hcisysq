@@ -196,7 +196,7 @@ export function EmployeePerformancePage() {
                       }, selected)} />
                   ) : selected.allowedActions.includes("rate") ? (
                     <ScoreForm key={`rate-${selected.id}-${selected.status}`} kind="rating" rubric={selected.rubric}
-                      initial={selected.rating?.scores ?? null} busy={busy}
+                      initial={selected.rating?.scores ?? null} initialText={selected.rating} busy={busy}
                       onSubmit={(input) => void run(async () => {
                         const result = await submitRating(selected.id, input);
                         return `Nilai terkirim: ${formatScore(result.finalScore)} · ${result.predicateLabel}. Menunggu pengesahan Human Capital.`;

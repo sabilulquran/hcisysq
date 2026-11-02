@@ -200,6 +200,19 @@ export function canRaterReview(input: { status: ReviewStatus; selfDueOn: string;
   return input.status === "SELF_ASSESSMENT" && input.today > input.selfDueOn;
 }
 
+export type Trend = "FIRST" | "IMPROVING" | "STABLE" | "DECLINING";
+
+/**
+ * D-16: legacy kept a trend against the previous period. Compared on the final score, not the
+ * predicate code, because two cycles may carry different rubrics.
+ */
+export function trendFrom(current: number, previous: number | null): Trend {
+  if (previous === null) return "FIRST";
+  if (current > previous) return "IMPROVING";
+  if (current < previous) return "DECLINING";
+  return "STABLE";
+}
+
 /** D-10: closing the cycle. Reviews nobody finished stay without a predicate. */
 export function statusOnClose(status: ReviewStatus): ReviewStatus {
   if (status === "SELF_ASSESSMENT" || status === "MANAGER_REVIEW") return "UNRATED";

@@ -254,7 +254,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
 
     actAs("employee");
     const result = await app.inject({ method: "GET", url: `/performance/me/${reviewId}` });
-    expect(result.json()).toMatchObject({ status: "FINALIZED", finalScore: 3.5, predicateCode: "A", predicateLabel: "Sangat baik" });
+    expect(result.json()).toMatchObject({ status: "FINALIZED", finalScore: 3.5, predicateCode: "A", predicateLabel: "Sangat baik", trend: "FIRST" });
     expect(result.json().rating.strengths).toBe("Teliti");
     expect(result.json().allowedActions).toEqual(["acknowledge"]);
     const ack = await app.inject({ method: "POST", url: `/performance/me/${reviewId}/acknowledge`, payload: { comment: "Terima kasih" } });
@@ -381,18 +381,19 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     expect(searched.json().items.map((item: { employeeId: string }) => item.employeeId)).toEqual([people.other.employeeId]);
   });
 
-  it("PERF-001-E/G/K: a current cycle cannot close early, is frozen once open, and owns its period", async () => {
-    const { cycleId } = await openCycleWith(0, ["employee"]);
+  it("PERF-001-E/G/K: a cycle cannot close before its last day, is frozen once open, and owns its period", async () => {
+    // Next month, so the check holds on the last day of the current month too.
+    const { cycleId } = await openCycleWith(1, ["employee"]);
     actAs("hc", HC);
     expect((await app.inject({ method: "POST", url: `/admin/performance/cycles/${cycleId}/close` })).json().code)
       .toBe("PERFORMANCE_CYCLE_NOT_ENDED");
     expect((await app.inject({ method: "PATCH", url: `/admin/performance/cycles/${cycleId}`, payload: { name: "Nama baru" } })).json().code)
       .toBe("PERFORMANCE_CYCLE_LOCKED");
-    const duplicate = await createCycle(0);
+    const duplicate = await createCycle(1);
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json().code).toBe("PERFORMANCE_CYCLE_PERIOD_TAKEN");
 
-    const next = await createCycle(1);
+    const next = await createCycle(2);
     const nextId = next.json().id as string;
     const badRubric = await app.inject({
       method: "PATCH", url: `/admin/performance/cycles/${nextId}`,
@@ -401,10 +402,45 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     expect(badRubric.json().code).toBe("PERFORMANCE_RUBRIC_INVALID");
     expect((await app.inject({ method: "POST", url: `/admin/performance/cycles/${nextId}/open` })).json().code).toBe("PERFORMANCE_CYCLE_EMPTY");
     expect((await app.inject({ method: "POST", url: `/admin/performance/cycles/${nextId}/cancel`, payload: { reason: "Salah membuat periode" } })).statusCode).toBe(200);
-    expect((await createCycle(1)).statusCode).toBe(201);
+    expect((await createCycle(2)).statusCode).toBe(201);
 
     const list = await app.inject({ method: "GET", url: "/admin/performance/cycles?pageSize=2" });
     expect(list.json().pagination).toMatchObject({ pageSize: 2, total: 3 });
+  });
+
+  it("D-07: an HC admin who is a participant cannot steer or preview their own review", async () => {
+    const { cycleId, reviewOf } = await openCycleWith(0, ["hc", "employee"]);
+    const own = reviewOf("hc");
+    await client.query("UPDATE performance_reviews SET rater_employee_id = $2, rater_source = 'HC_ASSIGNED' WHERE id = $1", [own, people.manager.employeeId]);
+    actAs("hc");
+    expect((await app.inject({ method: "POST", url: `/performance/me/${own}/self-assessment`, payload: { scores: all(3) } })).statusCode).toBe(200);
+    expect((await rate(own, all(2))).statusCode).toBe(200);
+
+    actAs("hc", HC);
+    const detail = await app.inject({ method: "GET", url: `/admin/performance/reviews/${own}` });
+    expect(detail.json()).toMatchObject({ status: "HC_VALIDATION", finalScore: null, predicateCode: null, rating: null, allowedActions: [] });
+    const table = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?employeeId=${people.hc.employeeId}` });
+    expect(table.json().items[0]).toMatchObject({ predicateCode: null, finalScore: null });
+    for (const [url, payload] of [
+      [`/admin/performance/reviews/${own}/finalize`, {}],
+      [`/admin/performance/reviews/${own}/remove`, { reason: "Keluar sendiri" }],
+    ] as const) {
+      const response = await app.inject({ method: "POST", url, payload });
+      expect(response.statusCode, url).toBe(403);
+      expect(response.json().code).toBe("PERFORMANCE_SELF_VALIDATION");
+    }
+
+    // A colleague removes it; the actor still cannot revive it to start over.
+    await client.query("UPDATE performance_reviews SET status = 'REMOVED', final_score = NULL, predicate_code = NULL, predicate_label = NULL WHERE id = $1", [own]);
+    const readd = await app.inject({ method: "POST", url: `/admin/performance/cycles/${cycleId}/participants`, payload: { employeeIds: [people.hc.employeeId] } });
+    expect(readd.statusCode).toBe(403);
+
+    // Rater notes stay limited to HC's return reasons.
+    const other = reviewOf("employee");
+    await app.inject({ method: "POST", url: `/admin/performance/reviews/${other}/rater`, payload: { raterEmployeeId: people.outsider.employeeId, reason: "Konflik kepentingan" } });
+    actAs("outsider");
+    const raterView = await app.inject({ method: "GET", url: `/performance/team/${other}` });
+    expect(raterView.json().events.find((event: { eventType: string }) => event.eventType === "performance.review.rater_assigned").note).toBeNull();
   });
 
   it("adds every active employee at once and skips those already in", async () => {

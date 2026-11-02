@@ -11,6 +11,7 @@ import {
   raterSourceLabel,
   reviewStatusLabel,
   SCALE_OPTIONS,
+  trendLabel,
   type ReviewDetail,
   type Rubric,
   type Scores,
@@ -42,6 +43,7 @@ export function ReviewDetailPanel({ review, actions, form }: { review: ReviewDet
             {formatScore(review.finalScore)} <span className="text-base">· {review.predicateCode} {review.predicateLabel}</span>
           </p>
           {review.status === "HC_VALIDATION" ? <p className="mt-1 text-xs text-muted-foreground">Belum disahkan Human Capital.</p> : null}
+          {review.trend ? <p className="mt-1 text-xs text-muted-foreground">{trendLabel(review.trend)}</p> : null}
         </div>
       ) : null}
 
@@ -107,17 +109,19 @@ const area = "mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-2
  * Self-assessment (notes only) or rating (strengths, improvements, notes). The server validates
  * the scores and computes the result; the form only collects one whole number per indicator.
  */
-export function ScoreForm({ rubric, initial, kind, busy, onSubmit }: {
+export function ScoreForm({ rubric, initial, initialText, kind, busy, onSubmit }: {
   rubric: Rubric;
   initial?: Scores | null;
+  /** A returned rating keeps its written feedback; otherwise resubmitting would erase it. */
+  initialText?: { strengths: string | null; improvements: string | null; note: string | null } | null;
   kind: "self" | "rating";
   busy: boolean;
   onSubmit: (input: { scores: Scores; strengths: string | null; improvements: string | null; note: string | null }) => void;
 }) {
   const [scores, setScores] = useState<Scores>(() => ({ ...(initial ?? {}) }));
-  const [strengths, setStrengths] = useState("");
-  const [improvements, setImprovements] = useState("");
-  const [note, setNote] = useState("");
+  const [strengths, setStrengths] = useState(initialText?.strengths ?? "");
+  const [improvements, setImprovements] = useState(initialText?.improvements ?? "");
+  const [note, setNote] = useState(initialText?.note ?? "");
   const complete = rubric.indicators.every((indicator) => scores[indicator.code] !== undefined);
 
   return (

@@ -41,6 +41,7 @@ function review(overrides: Partial<ReviewDetail> = {}): ReviewDetail {
     ratedAt: null,
     finalizedAt: null,
     acknowledgedAt: null,
+    trend: null,
     finalScore: null,
     predicateCode: null,
     predicateLabel: null,
@@ -92,5 +93,8 @@ describe("PERF-001 review panel", () => {
     const prefilled = renderToStaticMarkup(<ScoreForm kind="self" rubric={rubric} initial={{ TASK_RESULT: 3, AKHLAK: 2 }} busy={false} onSubmit={() => undefined} />);
     expect(prefilled).not.toMatch(/<button type="submit" disabled=""/);
     expect(prefilled).not.toContain("Area perbaikan");
+    const returned = renderToStaticMarkup(<ScoreForm kind="rating" rubric={rubric} initial={{ TASK_RESULT: 3, AKHLAK: 2 }}
+      initialText={{ strengths: "Teliti sekali", improvements: null, note: null }} busy={false} onSubmit={() => undefined} />);
+    expect(returned).toContain("Teliti sekali");
   });
 });

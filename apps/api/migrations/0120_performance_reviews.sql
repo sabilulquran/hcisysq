@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
   final_score numeric(3, 2) NULL CHECK (final_score IS NULL OR final_score BETWEEN 1 AND 4),
   predicate_code text NULL,
   predicate_label text NULL,
+  -- D-16: compared with the employee's previous final review of the same kind, kept as legacy did.
+  trend text NULL CHECK (trend IN ('FIRST', 'IMPROVING', 'STABLE', 'DECLINING')),
   finalized_by_account_id uuid NULL REFERENCES accounts(id),
   finalized_at timestamptz NULL,
   acknowledged_at timestamptz NULL,
@@ -73,7 +75,7 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
   -- A result exists exactly while it awaits validation or is final.
   CHECK ((status IN ('HC_VALIDATION', 'FINALIZED')) = (final_score IS NOT NULL AND predicate_code IS NOT NULL)
          OR status = 'REMOVED'),
-  CHECK (status <> 'FINALIZED' OR finalized_at IS NOT NULL),
+  CHECK (status <> 'FINALIZED' OR (finalized_at IS NOT NULL AND trend IS NOT NULL)),
   CHECK (acknowledged_at IS NULL OR status = 'FINALIZED')
 );
 

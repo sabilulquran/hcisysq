@@ -81,6 +81,7 @@ export interface ReviewSummary {
   ratedAt: string | null;
   finalizedAt: string | null;
   acknowledgedAt: string | null;
+  trend: "FIRST" | "IMPROVING" | "STABLE" | "DECLINING" | null;
   finalScore: number | null;
   predicateCode: string | null;
   predicateLabel: string | null;
@@ -243,6 +244,17 @@ const EVENT_LABELS: Record<string, string> = {
   "performance.review.removed": "Dikeluarkan dari siklus",
   "performance.review.unrated": "Tidak dinilai sampai siklus ditutup",
 };
+
+const TREND_LABELS: Record<string, string> = {
+  FIRST: "Belum ada pembanding",
+  IMPROVING: "Naik dari periode sebelumnya",
+  STABLE: "Stabil dari periode sebelumnya",
+  DECLINING: "Turun dari periode sebelumnya",
+};
+
+export function trendLabel(trend: string | null) {
+  return trend ? TREND_LABELS[trend] ?? trend : null;
+}
 
 export function eventLabel(eventType: string) {
   return EVENT_LABELS[eventType] ?? eventType;

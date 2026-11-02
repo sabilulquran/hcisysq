@@ -36,6 +36,7 @@ import {
   PerformancePolicyError,
   predicateFor,
   REVIEW_STATUSES,
+  trendFrom,
   validateCyclePeriod,
   validateRubric,
   validateScores,
@@ -303,7 +304,7 @@ const REVIEW_COLUMNS = `
   review.rater_employee_id AS "raterEmployeeId", rater.full_name AS "raterName", review.rater_source AS "raterSource",
   (rater_account.status = 'active') AS "raterAccountReady",
   review.self_submitted_at AS "selfSubmittedAt", review.rated_at AS "ratedAt",
-  review.finalized_at AS "finalizedAt", review.acknowledged_at AS "acknowledgedAt"`;
+  review.finalized_at AS "finalizedAt", review.acknowledged_at AS "acknowledgedAt", review.trend`;
 const REVIEW_JOINS = `
   JOIN performance_cycles cycle ON cycle.id = review.cycle_id
   JOIN employees employee ON employee.id = review.employee_id
@@ -311,9 +312,17 @@ const REVIEW_JOINS = `
   LEFT JOIN employees rater ON rater.id = review.rater_employee_id
   LEFT JOIN accounts rater_account ON rater_account.employee_id = rater.id AND rater_account.principal_type = 'EMPLOYEE'`;
 
-/** The result columns; an employee sees them only once the review is FINALIZED (D-09). */
-function resultColumns(view: View) {
-  const visible = view === "employee" ? "review.status = 'FINALIZED'" : "TRUE";
+/**
+ * The result columns; an employee sees them only once the review is FINALIZED (D-09). In the HC
+ * views `viewerParam` names the viewer's employee id, so an HC admin who is a participant does not
+ * see their own result early either.
+ */
+function resultColumns(view: View, viewerParam?: string) {
+  const visible = view === "employee"
+    ? "review.status = 'FINALIZED'"
+    : view === "hc" && viewerParam
+      ? `(review.status = 'FINALIZED' OR review.employee_id IS DISTINCT FROM ${viewerParam}::uuid)`
+      : "TRUE";
   return `
     CASE WHEN ${visible} THEN review.final_score::float8 END AS "finalScore",
     CASE WHEN ${visible} THEN review.predicate_code END AS "predicateCode",
@@ -325,13 +334,23 @@ function listItem({ total, ...row }: Record<string, unknown> & { total?: number 
   return row;
 }
 
-async function loadReviewDetail(db: Queryable, id: string, view: View, owner: { employeeId?: string; raterEmployeeId?: string } = {}) {
+async function employeeIdOf(db: Queryable, accountId: string): Promise<string | null> {
+  const result = await db.query<{ employeeId: string | null }>(`SELECT employee_id AS "employeeId" FROM accounts WHERE id = $1`, [accountId]);
+  return result.rows[0]?.employeeId ?? null;
+}
+
+async function loadReviewDetail(
+  db: Queryable,
+  id: string,
+  view: View,
+  owner: { employeeId?: string; raterEmployeeId?: string; viewerEmployeeId?: string | null } = {},
+) {
   const found = await db.query<Record<string, unknown> & {
     status: ReviewStatus; cycleStatus: CycleStatus; selfDueOn: string; rubric: Rubric;
     selfScores: unknown; selfNote: string | null; raterScores: unknown; strengths: string | null;
     improvements: string | null; raterNote: string | null; acknowledgementComment: string | null;
   }>(
-    `SELECT ${REVIEW_COLUMNS}, ${resultColumns(view)}, cycle.rubric,
+    `SELECT ${REVIEW_COLUMNS}, ${resultColumns(view, "$5")}, cycle.rubric,
             review.self_scores AS "selfScores", review.self_note AS "selfNote",
             review.rater_scores AS "raterScores", review.strengths, review.improvements, review.rater_note AS "raterNote",
             review.acknowledgement_comment AS "acknowledgementComment", review.removed_reason AS "removedReason"
@@ -341,22 +360,30 @@ async function loadReviewDetail(db: Queryable, id: string, view: View, owner: { 
         AND ($2::uuid IS NULL OR review.employee_id = $2)
         AND ($3::uuid IS NULL OR review.rater_employee_id = $3)
         AND ($4::boolean OR cycle.status IN ('OPEN', 'CLOSED'))`,
-    [id, owner.employeeId ?? null, owner.raterEmployeeId ?? null, view === "hc"],
+    // $5 exists only in the HC query: an unreferenced parameter has no type and fails in PostgreSQL.
+    [id, owner.employeeId ?? null, owner.raterEmployeeId ?? null, view === "hc", ...(view === "hc" ? [owner.viewerEmployeeId ?? null] : [])],
   );
   const row = found.rows[0];
   if (!row) return null;
+  // An HC admin reading their own review gets the employee's view of it (PERF-001-A, D-07).
+  const viewer = view === "hc" ? owner.viewerEmployeeId ?? null : null;
+  const ownReview = viewer !== null && row.employeeId === viewer;
+  const viewerIsRater = viewer !== null && row.raterEmployeeId === viewer;
+  const restricted = view === "employee" || ownReview;
+  // HC sees every note; the rater only HC's return reasons; the employee none (spec §9).
   const events = await db.query(
     `SELECT event.id, event.event_type AS "eventType", event.occurred_at AS "occurredAt",
-            CASE WHEN $3::boolean THEN event.note END AS note, event.metadata, actor.full_name AS "actorName"
+            CASE WHEN $3::boolean OR ($4::boolean AND event.event_type = 'performance.review.returned') THEN event.note END AS note,
+            event.metadata, actor.full_name AS "actorName"
        FROM performance_events event
        LEFT JOIN accounts account ON account.id = event.actor_account_id
        LEFT JOIN employees actor ON actor.id = account.employee_id
       WHERE event.review_id = $1 AND ($2::text[] IS NULL OR event.event_type = ANY($2::text[]))
       ORDER BY event.occurred_at ASC, event.id ASC`,
-    [id, view === "employee" ? EMPLOYEE_VISIBLE_EVENTS : null, view !== "employee"],
+    [id, restricted ? EMPLOYEE_VISIBLE_EVENTS : null, view === "hc" && !ownReview, view === "rater"],
   );
   const { rubric, selfScores, selfNote, raterScores, strengths, improvements, raterNote, ...rest } = row;
-  const showRating = view !== "employee" || row.status === "FINALIZED";
+  const showRating = !restricted || row.status === "FINALIZED";
   const open = row.cycleStatus === "OPEN";
   const date = today();
   const allowedActions = view === "employee"
@@ -366,11 +393,13 @@ async function loadReviewDetail(db: Queryable, id: string, view: View, owner: { 
       ]
     : view === "rater"
       ? (open && canRaterReview({ status: row.status, selfDueOn: row.selfDueOn, today: date }) ? ["rate"] : [])
-      : [
-          ...(open && row.status === "HC_VALIDATION" ? ["finalize", "return"] : []),
-          ...((open || row.cycleStatus === "DRAFT") && ["SELF_ASSESSMENT", "MANAGER_REVIEW"].includes(row.status) ? ["assign-rater"] : []),
-          ...((open || row.cycleStatus === "DRAFT") && ACTIVE_REVIEW_STATUSES.includes(row.status) ? ["remove"] : []),
-        ];
+      : ownReview
+        ? []
+        : [
+            ...(open && row.status === "HC_VALIDATION" && !viewerIsRater ? ["finalize", "return"] : []),
+            ...((open || row.cycleStatus === "DRAFT") && ["SELF_ASSESSMENT", "MANAGER_REVIEW"].includes(row.status) ? ["assign-rater"] : []),
+            ...((open || row.cycleStatus === "DRAFT") && ACTIVE_REVIEW_STATUSES.includes(row.status) ? ["remove"] : []),
+          ];
   return {
     ...rest,
     rubric,
@@ -465,7 +494,7 @@ export async function registerPerformanceRoutes(
 
   async function notifyParticipant(client: PoolClient, cycle: CycleRow, employeeId: string, reviewId: string, actorAccountId: string) {
     await notifyEmployee(client, employeeId, {
-      eventKey: `performance.${reviewId}.open`,
+      eventKey: `performance.${reviewId}.open.${randomUUID()}`,
       category: "system",
       title: "Penilaian kinerja dibuka",
       body: `Isi penilaian diri untuk ${cycle.name} paling lambat ${cycle.selfDueOn}.`,
@@ -534,7 +563,7 @@ export async function registerPerformanceRoutes(
       await addEvent(client, { cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id, eventType: "performance.review.self_submitted" });
       if (review.raterEmployeeId) {
         await notifyEmployee(client, review.raterEmployeeId, {
-          eventKey: `performance.${review.id}.self_submitted`,
+          eventKey: `performance.${review.id}.self_submitted.${randomUUID()}`,
           category: "system",
           title: "Penilaian kinerja menunggu Anda",
           body: `${employee.fullName} sudah mengirim penilaian diri untuk ${cycle.name}.`,
@@ -804,6 +833,11 @@ export async function registerPerformanceRoutes(
         [cycle.id, candidates],
       );
       const byEmployee = new Map(existing.rows.map((row) => [row.employeeId, row]));
+      // D-07: re-adding restarts a review from scratch, so nobody may do it to their own.
+      const actorEmployeeId = await employeeIdOf(client, principal.id);
+      if (actorEmployeeId && byEmployee.get(actorEmployeeId)?.status === "REMOVED") {
+        throw new PerformanceError(403, "PERFORMANCE_SELF_VALIDATION", "Anda tidak dapat memasukkan kembali penilaian Anda sendiri.");
+      }
       const effectiveDate = today() < cycle.periodEnd ? today() : cycle.periodEnd;
       const summary = { added: 0, readded: 0, alreadyIn: 0, withoutRater: 0 };
       for (const employeeId of candidates) {
@@ -939,19 +973,22 @@ export async function registerPerformanceRoutes(
   });
 
   app.get("/admin/performance/cycles/:id/reviews", async (request, reply) => {
-    if (!(await requirePermission(request, reply, "performance.read"))) return;
+    const principal = await requirePermission(request, reply, "performance.read");
+    if (!principal) return;
     const params = idParams.safeParse(request.params);
     const query = adminReviewQuery.safeParse(request.query);
     if (!params.success || !query.success) return invalid(reply, "Filter tidak valid.");
     const filter = query.data;
+    const viewer = await employeeIdOf(pool, principal.id);
     // ENG-LIST-001: every filter runs before LIMIT; the page carries the true total.
     const result = await pool.query<{ total: number }>(
-      `SELECT ${REVIEW_COLUMNS}, ${resultColumns("hc")}, count(*) OVER ()::int AS total
+      `SELECT ${REVIEW_COLUMNS}, ${resultColumns("hc", "$9")}, count(*) OVER ()::int AS total
          FROM performance_reviews review
          ${REVIEW_JOINS}
         WHERE review.cycle_id = $1
           AND ($2::text IS NULL OR review.status = $2)
-          AND ($3::text IS NULL OR (review.status = 'FINALIZED' AND review.predicate_code = $3))
+          AND ($3::text IS NULL OR (review.status = 'FINALIZED' AND review.predicate_code = $3
+                                    AND review.employee_id IS DISTINCT FROM $9::uuid))
           AND ($4::uuid IS NULL OR review.employee_id = $4)
           AND ($5::boolean IS NULL OR (review.rater_employee_id IS NULL) = $5)
           AND ($6::text IS NULL OR employee.full_name ILIKE '%' || $6 || '%' OR employee.employee_number ILIKE '%' || $6 || '%')
@@ -959,48 +996,50 @@ export async function registerPerformanceRoutes(
         LIMIT $7 OFFSET $8`,
       [params.data.id, filter.status ?? null, filter.predicate ?? null, filter.employeeId ?? null,
         filter.raterMissing === undefined ? null : filter.raterMissing === "true", filter.q ?? null,
-        filter.pageSize, pageOffset(filter)],
+        filter.pageSize, pageOffset(filter), viewer],
     );
     return send(reply, 200, { items: result.rows.map(listItem), pagination: pagination(filter, result.rows[0]?.total ?? 0) });
   });
 
   app.get("/admin/performance/reviews/:id", async (request, reply) => {
-    if (!(await requirePermission(request, reply, "performance.read"))) return;
+    const principal = await requirePermission(request, reply, "performance.read");
+    if (!principal) return;
     const params = idParams.safeParse(request.params);
     if (!params.success) return invalid(reply);
     return handle(reply, async () => {
-      const detail = await loadReviewDetail(pool, params.data.id, "hc");
+      const detail = await loadReviewDetail(pool, params.data.id, "hc", { viewerEmployeeId: await employeeIdOf(pool, principal.id) });
       if (!detail) throw NOT_FOUND();
       return send(reply, 200, detail);
     });
   });
 
   app.get("/admin/performance/employees/:employeeId/reviews", async (request, reply) => {
-    if (!(await requirePermission(request, reply, "performance.read"))) return;
+    const principal = await requirePermission(request, reply, "performance.read");
+    if (!principal) return;
     const params = employeeParams.safeParse(request.params);
     const query = pageQuerySchema.safeParse(request.query);
     if (!params.success || !query.success) return invalid(reply, "Filter tidak valid.");
+    const viewer = await employeeIdOf(pool, principal.id);
     const result = await pool.query<{ total: number }>(
-      `SELECT ${REVIEW_COLUMNS}, ${resultColumns("hc")}, count(*) OVER ()::int AS total
+      `SELECT ${REVIEW_COLUMNS}, ${resultColumns("hc", "$4")}, count(*) OVER ()::int AS total
          FROM performance_reviews review
          ${REVIEW_JOINS}
         WHERE review.employee_id = $1 AND cycle.status <> 'CANCELLED'
         ORDER BY cycle.period_start DESC, cycle.kind ASC, review.id DESC
         LIMIT $2 OFFSET $3`,
-      [params.data.employeeId, query.data.pageSize, pageOffset(query.data)],
+      [params.data.employeeId, query.data.pageSize, pageOffset(query.data), viewer],
     );
     return send(reply, 200, { items: result.rows.map(listItem), pagination: pagination(query.data, result.rows[0]?.total ?? 0) });
   });
 
-  /** D-07: the validator is never the reviewed employee or the rater. */
-  async function assertNotPartyTo(client: PoolClient, accountId: string, review: LockedReview) {
-    const actor = await client.query<{ employeeId: string | null }>(
-      `SELECT employee_id AS "employeeId" FROM accounts WHERE id = $1`,
-      [accountId],
-    );
-    const employeeId = actor.rows[0]?.employeeId ?? null;
-    if (employeeId && (employeeId === review.employeeId || employeeId === review.raterEmployeeId)) {
-      throw new PerformanceError(403, "PERFORMANCE_SELF_VALIDATION", "Anda tidak dapat mengesahkan penilaian Anda sendiri atau yang Anda nilai.");
+  /**
+   * D-07: the validator is never the reviewed employee or the rater, and no HC action (rater,
+   * remove, re-add) may touch the actor's own review, which would let them steer their result.
+   */
+  async function assertNotPartyTo(client: PoolClient, accountId: string, review: LockedReview, rater = true) {
+    const employeeId = await employeeIdOf(client, accountId);
+    if (employeeId && (employeeId === review.employeeId || (rater && employeeId === review.raterEmployeeId))) {
+      throw new PerformanceError(403, "PERFORMANCE_SELF_VALIDATION", "Anda tidak dapat mengubah penilaian Anda sendiri atau mengesahkan yang Anda nilai.");
     }
   }
 
@@ -1015,15 +1054,28 @@ export async function registerPerformanceRoutes(
         throw new PerformanceError(409, "PERFORMANCE_NOT_IN_VALIDATION", "Penilaian ini tidak sedang menunggu pengesahan.");
       }
       await assertNotPartyTo(client, principal.id, review);
+      const scores = await client.query<{ current: number; previous: number | null }>(
+        `SELECT review.final_score::float8 AS current,
+                (SELECT earlier.final_score::float8
+                   FROM performance_reviews earlier
+                   JOIN performance_cycles earlier_cycle ON earlier_cycle.id = earlier.cycle_id
+                  WHERE earlier.employee_id = review.employee_id AND earlier.status = 'FINALIZED'
+                    AND earlier_cycle.kind = $2 AND earlier_cycle.period_start < $3::date
+                  ORDER BY earlier_cycle.period_start DESC
+                  LIMIT 1) AS previous
+           FROM performance_reviews review WHERE review.id = $1`,
+        [review.id, cycle.kind, cycle.periodStart],
+      );
+      const trend = trendFrom(scores.rows[0]!.current, scores.rows[0]!.previous);
       await client.query(
         `UPDATE performance_reviews
-            SET status = 'FINALIZED', finalized_by_account_id = $2, finalized_at = now(), updated_at = now()
+            SET status = 'FINALIZED', finalized_by_account_id = $2, finalized_at = now(), trend = $3, updated_at = now()
           WHERE id = $1`,
-        [review.id, principal.id],
+        [review.id, principal.id, trend],
       );
       await addEvent(client, {
         cycleId: cycle.id, reviewId: review.id, actorAccountId: principal.id, eventType: "performance.review.finalized",
-        metadata: { predicateCode: review.predicateCode },
+        metadata: { predicateCode: review.predicateCode, trend },
       });
       await notifyEmployee(client, review.employeeId, {
         eventKey: `performance.${review.id}.finalized`,
@@ -1033,7 +1085,7 @@ export async function registerPerformanceRoutes(
         href: `/app/performance?review=${review.id}`,
         actorAccountId: principal.id,
       });
-      return [200, { id: review.id, status: "FINALIZED" }];
+      return [200, { id: review.id, status: "FINALIZED", trend }];
     });
   });
 
@@ -1086,6 +1138,7 @@ export async function registerPerformanceRoutes(
       if (!["DRAFT", "OPEN"].includes(cycle.status) || !["SELF_ASSESSMENT", "MANAGER_REVIEW"].includes(review.status)) {
         throw new PerformanceError(409, "PERFORMANCE_RATER_LOCKED", "Penilai hanya dapat diganti sebelum penilaian atasan dikirim.");
       }
+      await assertNotPartyTo(client, principal.id, review, false);
       const rater = await client.query(
         `SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL`,
         [body.data.raterEmployeeId],
@@ -1108,7 +1161,7 @@ export async function registerPerformanceRoutes(
       });
       if (cycle.status === "OPEN") {
         await notifyEmployee(client, body.data.raterEmployeeId, {
-          eventKey: `performance.${review.id}.rater.${body.data.raterEmployeeId}`,
+          eventKey: `performance.${review.id}.rater.${randomUUID()}`,
           category: "system",
           title: "Anda ditunjuk sebagai penilai",
           body: `Human Capital menunjuk Anda menilai satu pegawai pada ${cycle.name}.`,
@@ -1131,8 +1184,13 @@ export async function registerPerformanceRoutes(
       if (!["DRAFT", "OPEN"].includes(cycle.status) || !ACTIVE_REVIEW_STATUSES.includes(review.status)) {
         throw new PerformanceError(409, "PERFORMANCE_NOT_REMOVABLE", "Penilaian yang sudah final atau siklus yang sudah ditutup tidak dapat diubah.");
       }
+      await assertNotPartyTo(client, principal.id, review, false);
+      // A removed review carries no result: only FINALIZED results ever count (spec §11).
       await client.query(
-        `UPDATE performance_reviews SET status = 'REMOVED', removed_reason = $2, updated_at = now() WHERE id = $1`,
+        `UPDATE performance_reviews
+            SET status = 'REMOVED', removed_reason = $2, final_score = NULL, predicate_code = NULL, predicate_label = NULL,
+                updated_at = now()
+          WHERE id = $1`,
         [review.id, body.data.reason],
       );
       await addEvent(client, {

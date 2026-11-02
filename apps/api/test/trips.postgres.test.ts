@@ -352,6 +352,12 @@ describe.skipIf(!allowed)("TRIP-001 business travel", () => {
       "trip.request.submitted", "trip.approval.approved_step", "trip.approval.approved_step", "trip.request.approved",
       "trip.assignment.issued", "trip.request.cancelled", "trip.assignment.revoked",
     ]);
+    const register = await client.query<{ eventType: string }>(
+      `SELECT event_type AS "eventType" FROM hr_document_audit_events
+        WHERE issued_document_id = $1 ORDER BY occurred_at, event_type`,
+      [issued.documentId],
+    );
+    expect(register.rows.map((row) => row.eventType).sort()).toEqual(["doc.issued", "doc.revoked"]);
   });
 
   it("an employee cancels a trip still in review, and the approver's inbox empties", async () => {

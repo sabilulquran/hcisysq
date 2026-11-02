@@ -92,6 +92,8 @@ Langkah, dalam satu transaksi:
 
 Pratinjau (`POST /trips/me/preview`) menjalankan langkah 3–5 tanpa menyimpan, supaya pegawai tahu siapa penyetujunya sebelum mengirim.
 
+Pemeriksaan D-05 hanya berjalan dari sisi perjalanan pada Paket 1: modul cuti belum menolak cuti yang beririsan dengan perjalanan yang sudah disetujui. Cek arah sebaliknya adalah tindak lanjut di LEAVE-001, bukan bagian paket ini.
+
 Kegagalan (409 kecuali disebut lain): `TRIP_DATE_RANGE`, `TRIP_TOO_LONG`, `TRIP_START_IN_PAST`, `TRIP_OVERLAP`, `TRIP_LEAVE_OVERLAP`, `DIRECT_MANAGER_MISSING`, `UNIT_APPROVER_MISSING`, `APPROVAL_CHAIN_EMPTY`, `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`; input tidak valid 400 `INVALID_TRIP_REQUEST`; akun bukan pegawai aktif 403 `EMPLOYEE_NOT_ACTIVE`.
 
 > Konsekuensi yang diketahui: sebelum akun pemimpin diaktifkan, pengajuan di production berhenti di `APPROVER_ACCOUNT_NOT_READY`. Itu perilaku yang benar (APR-001-E), bukan cacat. Alurnya diuji dengan data sintetis di test integrasi.
@@ -127,7 +129,7 @@ Hanya approver yang tersimpan pada tahap `pending` yang dapat memutuskan; lainny
 
 ### 5.5 Penerbitan surat tugas
 
-Actor `trips.manage`; precondition `APPROVED`. Dalam satu transaksi: resolusi penandatangan (D-07), alokasi nomor (D-06), simpan dokumen `ASSIGNMENT` di `hr_issued_documents` dengan snapshot isi (D-13), pengajuan → `ISSUED`, audit `trip.assignment.issued`, notifikasi pegawai. Tanpa penandatangan eligible: 409 `DOCUMENT_SIGNER_UNAVAILABLE`, pengajuan tetap `APPROVED`, nomor tidak terpakai.
+Actor `trips.manage`; precondition `APPROVED` dan pegawai masih `active` (bila tidak: 409 `TRIP_EMPLOYEE_NOT_ACTIVE`, HC membatalkan perjalanannya). Dalam satu transaksi: resolusi penandatangan (D-07), alokasi nomor (D-06), simpan dokumen `ASSIGNMENT` di `hr_issued_documents` dengan snapshot isi (D-13), pengajuan → `ISSUED`, audit `trip.assignment.issued`, notifikasi pegawai. Tanpa penandatangan eligible: 409 `DOCUMENT_SIGNER_UNAVAILABLE`, pengajuan tetap `APPROVED`, nomor tidak terpakai.
 
 ### 5.6 Pembatalan
 
@@ -154,7 +156,9 @@ Tabel `business_trip_events` adalah riwayat per pengajuan sekaligus audit event:
 
 `trip.request.submitted`, `trip.approval.approved_step`, `trip.request.approved`, `trip.request.rejected`, `trip.request.cancelled`, `trip.assignment.issued`, `trip.assignment.revoked`, `trip.request.completed`.
 
-Setiap event memuat aktor, waktu, dan metadata aman (id tahap, nomor surat, peran pembatal). Alasan penolakan/pembatalan disimpan sebagai `note`. Tidak ada nominal, karena Paket 1 tidak punya nominal.
+Setiap event memuat aktor, waktu (`clock_timestamp()`, sehingga dua event dalam satu transaksi tetap berurutan), dan metadata aman (id tahap, nomor surat, peran pembatal). Alasan penolakan/pembatalan disimpan sebagai `note`. Tidak ada nominal, karena Paket 1 tidak punya nominal.
+
+Penerbitan dan pencabutan surat tugas juga dicatat di log register DOC-001 (`doc.issued`, `doc.revoked`, metadata `source = TRIP-001`).
 
 Pegawai melihat riwayat perjalanannya sendiri; pemegang `trips.read` melihat riwayat semua perjalanan.
 

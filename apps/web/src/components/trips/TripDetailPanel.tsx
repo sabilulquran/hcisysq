@@ -15,6 +15,12 @@ import {
   type TripDetail,
 } from "@/lib/trips";
 
+/** The letter is dated on the Jakarta calendar, like its number (DOC-001 §9). */
+function jakartaDateOf(instant: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date(instant));
+}
+
 const STEP_LABELS: Record<string, string> = {
   waiting: "Menunggu giliran",
   pending: "Sedang diputuskan",
@@ -53,7 +59,7 @@ function AssignmentLetterPaper({ letter }: { letter: AssignmentLetter }) {
       </dl>
       <p className="mt-4">Demikian surat tugas ini dibuat untuk dilaksanakan dengan penuh tanggung jawab.</p>
       <div className="mt-8 ml-auto w-56 text-center">
-        <p>{formatTripDate(letter.issuedAt.slice(0, 10))}</p>
+        <p>{formatTripDate(jakartaDateOf(letter.issuedAt))}</p>
         <p className="mt-1">{letter.signer.title ?? ""}</p>
         <p className="mt-14 font-bold underline">{letter.signer.name ?? "-"}</p>
       </div>

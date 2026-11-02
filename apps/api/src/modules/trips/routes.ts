@@ -207,9 +207,11 @@ async function addEvent(
   note: string | null = null,
   metadata: Record<string, unknown> = {},
 ) {
+  // clock_timestamp(), not now(): two events written in one transaction (approved_step then
+  // request.approved, cancelled then revoked) must keep their order in the history.
   await db.query(
-    `INSERT INTO business_trip_events (id, request_id, event_type, actor_account_id, note, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+    `INSERT INTO business_trip_events (id, request_id, event_type, actor_account_id, note, metadata, occurred_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, clock_timestamp())`,
     [randomUUID(), requestId, eventType, actorAccountId, note, JSON.stringify(metadata)],
   );
 }
@@ -371,11 +373,15 @@ export async function registerTripRoutes(
     client: PoolClient,
     input: { id: string; ownerEmployeeId: string | null; by: TripCanceller; actorAccountId: string; reason: string },
   ) {
-    const found = await client.query<{ employeeId: string; status: TripStatus; documentId: string | null; destination: string }>(
-      `SELECT employee_id AS "employeeId", status, issued_document_id AS "documentId", destination
-         FROM business_trip_requests
-        WHERE id = $1 AND ($2::uuid IS NULL OR employee_id = $2)
-        FOR UPDATE`,
+    const found = await client.query<{
+      employeeId: string; status: TripStatus; documentId: string | null; documentNumber: string | null; destination: string;
+    }>(
+      `SELECT trip.employee_id AS "employeeId", trip.status, trip.issued_document_id AS "documentId",
+              document.document_number AS "documentNumber", trip.destination
+         FROM business_trip_requests trip
+         LEFT JOIN hr_issued_documents document ON document.id = trip.issued_document_id
+        WHERE trip.id = $1 AND ($2::uuid IS NULL OR trip.employee_id = $2)
+        FOR UPDATE OF trip`,
       [input.id, input.ownerEmployeeId],
     );
     const trip = found.rows[0];
@@ -415,7 +421,7 @@ export async function registerTripRoutes(
         employeeId: trip.employeeId,
         actorAccountId: input.actorAccountId,
         reason: input.reason,
-        metadata: { source: "TRIP-001", tripId: input.id },
+        metadata: { source: "TRIP-001", tripId: input.id, documentCode: ASSIGNMENT_DOCUMENT_CODE, documentNumber: trip.documentNumber },
       });
     }
     if (input.by === "hc") {
@@ -644,6 +650,14 @@ export async function registerTripRoutes(
     }
     return transact(reply, async (client) => {
       const actor = await loadEmployeeContext(client, principal.id);
+      // Lock order trip -> step, the same as cancelTrip, so a decision racing a cancellation
+      // waits instead of deadlocking.
+      await client.query(
+        `SELECT 1 FROM business_trip_requests
+          WHERE id = (SELECT request_id FROM business_trip_approval_steps WHERE id = $1)
+          FOR UPDATE`,
+        [params.data.stepId],
+      );
       const found = await client.query<{
         id: string; requestId: string; approverEmployeeId: string; requestStatus: TripStatus;
         requesterEmployeeId: string; destination: string;
@@ -792,6 +806,9 @@ export async function registerTripRoutes(
       }
       const employee = await loadEmployeeFacts(client, trip.employeeId);
       if (!employee) throw new TripError(404, "TRIP_NOT_FOUND", "Pegawai perjalanan ini tidak ditemukan.");
+      if (employee.status !== "active") {
+        throw new TripError(409, "TRIP_EMPLOYEE_NOT_ACTIVE", "Pegawai ini sudah tidak aktif; batalkan perjalanannya.");
+      }
       // TRIP-001-F: without an eligible signer issueDocument throws before a number is taken,
       // and the rollback leaves the trip APPROVED.
       const issued = await issueDocument(client, {
@@ -817,6 +834,14 @@ export async function registerTripRoutes(
       );
       await addEvent(client, params.data.id, principal.id, "trip.assignment.issued", null, {
         documentId: issued.id, documentNumber: issued.documentNumber,
+      });
+      // The DOC-001 register log sees the issue as well as a later revoke.
+      await writeDocumentAudit(client, {
+        eventType: "doc.issued",
+        issuedDocumentId: issued.id,
+        employeeId: trip.employeeId,
+        actorAccountId: principal.id,
+        metadata: { source: "TRIP-001", tripId: params.data.id, documentCode: ASSIGNMENT_DOCUMENT_CODE, documentNumber: issued.documentNumber },
       });
       await notifyEmployee(client, trip.employeeId, {
         eventKey: `trip.${params.data.id}.issued`,

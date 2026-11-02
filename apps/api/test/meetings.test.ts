@@ -117,6 +117,17 @@ describe("CAL-001 §6 availability", () => {
     expect(describeIssue(result.conflicts[0]!)).toBe('Ahmad bentrok dengan "Rapat kurikulum" (09:30-11:00).');
   });
 
+  it("blocks a scheduled training session (TRAIN-001 §7.3), not a touching one", () => {
+    const result = availability({
+      trainings: [
+        { employeeId: "b", sessionId: "s1", title: "Tahsin Guru — Sesi 1", startMs: wib("2026-11-10T08:00"), endMs: wib("2026-11-10T09:30") },
+        { employeeId: "a", sessionId: "s2", title: "Pedagogi — Sesi 2", startMs: wib("2026-11-10T10:00"), endMs: wib("2026-11-10T12:00") },
+      ],
+    });
+    expect(result.conflicts).toEqual([expect.objectContaining({ employeeId: "b", reason: "IN_TRAINING", trainingTitle: "Tahsin Guru — Sesi 1" })]);
+    expect(describeIssue(result.conflicts[0]!)).toBe('Budi sedang mengikuti pelatihan "Tahsin Guru — Sesi 1" (08:00-09:30).');
+  });
+
   it("hides the title of a confidential meeting the viewer is not in (CAL-001-B)", () => {
     const result = availability({
       meetings: [{ employeeId: "a", meetingId: "m1", title: null, startMs: wib("2026-11-10T09:00"), endMs: wib("2026-11-10T10:00") }],

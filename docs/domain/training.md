@@ -78,6 +78,7 @@ Termasuk (Paket 1 = R1 + inti R2 discovery):
 | D-15 | Notifikasi Paket 1 hanya in-app (NOTIF-004). | DRAFT |
 | D-16 | Tidak ada target jam pelatihan per pegawai yang ditanam di kode; rekap jam tampil tanpa target (discovery §12 no. 3). | DRAFT |
 | D-17 | Satu sesi berlangsung 15 menit sampai 12 jam, paling banyak 50 sesi per program. | DRAFT |
+| D-18 | Rekap jam tahun tertentu memuat pegawai aktif (termasuk yang belum punya jam) dan pegawai yang sudah keluar bila punya jam terverifikasi pada tahun itu. | DRAFT |
 
 ## 5. Actor
 
@@ -107,7 +108,7 @@ Input buat/ubah: `title` (3–200), `category` (D-02), `description?` (≤ 2000)
 SCHEDULED -> CANCELLED   (HC, alasan 5–500, sebelum program ditutup)
 ```
 
-Input: `title` (3–200), `startAt`, `endAt` (ISO 8601 dengan zona), `location?` (≤ 200), `speakerEmployeeId?` (pegawai aktif) atau `speakerName?` (≤ 150, narasumber luar). Validasi D-17; 400 `INVALID_TRAINING_SESSION`, 409 `TRAINING_SESSION_LIMIT`.
+Input: `title` (3–200), `startAt`, `endAt` (ISO 8601 dengan zona), `location?` (≤ 200), `speakerEmployeeId?` (pegawai aktif) atau `speakerName?` (≤ 150, narasumber luar). Validasi D-17 (batas 50 menghitung juga sesi yang dibatalkan); 400 `INVALID_TRAINING_SESSION`, 409 `TRAINING_SESSION_LIMIT`. Sesi dalam satu program tidak boleh beririsan satu sama lain, siapa pun pesertanya (409 `TRAINING_SESSION_OVERLAP`), supaya jam tidak terhitung ganda. Peserta terdaftar yang sudah tidak aktif tidak menghalangi penjadwalan dan tidak diperiksa bentroknya.
 
 Sesi boleh dibuat dengan waktu yang sudah lewat (pencatatan susulan, D-04). Waktu sesi tidak dapat diubah lagi setelah ada kehadiran tercatat untuk sesi itu (409 `TRAINING_SESSION_HAS_ATTENDANCE`). Judul, lokasi, dan narasumber dapat diubah selama program `ACTIVE`. Perubahan waktu atau narasumber menjalankan cek bentrok §7 untuk semua peserta terdaftar dan narasumber internal, lalu memberi tahu peserta. Pembatalan sesi memberi tahu peserta; kehadiran sesi itu tidak dihitung.
 
@@ -250,7 +251,7 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 - TRAIN-001-G: program yang ditutup terkunci; program yang dibatalkan membebaskan waktu peserta (view kosong).
 - TRAIN-001-H: catatan eksternal masa depan ditolak; verifikasi/penolakan hanya dari `SUBMITTED`; replay idempotency tidak menggandakan.
 - TRAIN-001-I: sertifikat bertipe palsu atau > 2 MB ditolak; sertifikat tersimpan terenkripsi dan hanya dapat diunduh pemilik atau `training.read`.
-- TRAIN-001-J: rekap jam hanya menjumlahkan catatan `VERIFIED` pada tahun yang diminta, termasuk pegawai aktif tanpa jam.
+- TRAIN-001-J: rekap jam hanya menjumlahkan catatan `VERIFIED` pada tahun yang diminta, termasuk pegawai aktif tanpa jam dan pegawai yang sudah keluar tetapi punya jam terverifikasi pada tahun itu (D-18).
 - TRAIN-001-K: setiap transisi menulis audit event dengan aktor; tidak ada isi sertifikat di audit.
 
 ## 16. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk

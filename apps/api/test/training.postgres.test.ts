@@ -268,6 +268,52 @@ describe.skipIf(!allowed)("TRAIN-001 training records", () => {
     expect((await session(id, future, "09:00", "10:00")).statusCode).toBe(201);
   });
 
+  it("review fixes: program-internal overlap, partial session edit, departed participants, hours of leavers", async () => {
+    const id = await program("Orientasi Pegawai Baru");
+    const first = await session(id, future, "08:00", "10:00", { location: "Aula" });
+    expect(first.statusCode).toBe(201);
+    // Two sessions of one program never overlap, even with nobody enrolled yet.
+    expect((await session(id, future, "09:00", "11:00")).json().code).toBe("TRAINING_SESSION_OVERLAP");
+    expect((await session(id, future, "10:00", "11:00")).statusCode).toBe(201);
+
+    // A title-only edit keeps the location.
+    expect((await call("PATCH", `/admin/training/sessions/${first.json().id}`, { title: "Sesi pembuka" })).statusCode).toBe(200);
+    const kept = await client.query<{ location: string | null }>(`SELECT location FROM training_sessions WHERE id = $1`, [first.json().id]);
+    expect(kept.rows[0]!.location).toBe("Aula");
+
+    // A participant who later leaves does not block rescheduling.
+    expect((await enroll(id, "aisyah", "bilal")).statusCode).toBe(200);
+    await client.query(`UPDATE employees SET status = 'inactive' WHERE id = $1`, [people.bilal.employeeId]);
+    const moved = await call("PATCH", `/admin/training/sessions/${first.json().id}`, {
+      startAt: wib(addDays(future, 2), "08:00"), endAt: wib(addDays(future, 2), "10:00"),
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+
+    // Verified hours of someone who has left still appear in that year's summary.
+    await client.query(
+      `INSERT INTO training_records(id, employee_id, source, role, title, category, organizer, start_on, end_on, hours, status, idempotency_key)
+       VALUES ($1,$2,'EXTERNAL','PARTICIPANT','Seminar Lama','OTHER','Mitra',$3,$3,4,'VERIFIED',$4)`,
+      [randomUUID(), people.bilal.employeeId, past, randomUUID()],
+    );
+    const hours = await call("GET", `/admin/training/hours?year=${past.slice(0, 4)}&q=Pegawai bilal`);
+    expect(hours.json().items).toEqual([expect.objectContaining({ employeeId: people.bilal.employeeId, totalHours: 4 })]);
+  });
+
+  it("review fixes: a 2 MB certificate fits the body limit and any filename downloads", async () => {
+    actAs("aisyah");
+    const big = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(2_000_000, 0x20)]).toString("base64");
+    const created = await call("POST", "/training/me/records", {
+      title: "Diklat Panjang", category: "OTHER", organizer: "Lembaga Mitra",
+      startOn: addDays(today, -3), endOn: addDays(today, -3), hours: 8, idempotencyKey: randomUUID(),
+      certificate: { fileName: "Sertifikat – تحفيظ.pdf", contentType: "application/pdf", contentBase64: big },
+    });
+    expect(created.statusCode, created.body.slice(0, 200)).toBe(201);
+    const download = await call("GET", `/training/me/records/${created.json().id}/certificate`);
+    expect(download.statusCode).toBe(200);
+    expect(download.headers["content-disposition"]).toContain("filename*=UTF-8''Sertifikat%20%E2%80%93");
+    expect(download.rawPayload.length).toBe(2_000_009);
+  });
+
   it("TRAIN-001-D/E: capacity, and attendance only for enrolled participants after the start", async () => {
     const id = await program("Orientasi", { capacity: 1 });
     const upcoming = await session(id, future, "08:00", "09:00");

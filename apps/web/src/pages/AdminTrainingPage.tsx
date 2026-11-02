@@ -426,7 +426,7 @@ function ProgramPanel({ program, canManage, action, onClose, reload }: {
           ))}
         </ol>
       )}
-      {sheet ? <AttendanceSheet session={sheet} editable={editable} action={action} onClose={() => setSheet(null)} onSaved={refresh} /> : null}
+      {sheet ? <AttendanceSheet key={sheet.id} session={sheet} editable={editable} action={action} onClose={() => setSheet(null)} onSaved={refresh} /> : null}
 
       {editable ? (
         <form onSubmit={addSession} className="mt-3 grid gap-3 rounded-2xl border border-border/70 p-3 sm:grid-cols-3">

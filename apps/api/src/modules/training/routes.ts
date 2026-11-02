@@ -46,6 +46,9 @@ import {
 
 type Queryable = Pool | PoolClient;
 
+/** A 2 MB certificate grows by a third as base64 inside JSON; same limit as leave evidence. */
+const CERTIFICATE_BODY_LIMIT = 3_500_000;
+
 const idParams = z.object({ id: z.string().uuid() });
 const participantParams = z.object({ id: z.string().uuid(), employeeId: z.string().uuid() });
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -76,7 +79,7 @@ const sessionPatch = z.object({
   title: z.string().trim().min(3).max(200).optional(),
   startAt: instant.optional(),
   endAt: instant.optional(),
-  location: optionalText(200),
+  location: optionalText(200).optional(),
   speakerEmployeeId: z.string().uuid().nullable().optional(),
   speakerName: z.string().trim().min(2).max(150).nullable().optional(),
 }).refine((value) => !(value.speakerEmployeeId && value.speakerName), { message: "speaker" })
@@ -159,8 +162,10 @@ function knownError(error: unknown): TrainingError | null {
   return null;
 }
 
-function safeDownloadName(value: string) {
-  return value.replace(/[\r\n"\\]/g, "_");
+/** ASCII fallback plus RFC 5987 UTF-8 name: Node refuses header characters above U+00FF. */
+function contentDisposition(fileName: string) {
+  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
 const notFound = () => new TrainingError(404, "TRAINING_PROGRAM_NOT_FOUND", "Program pelatihan tidak ditemukan.");
@@ -232,11 +237,54 @@ async function lockProgram(db: Queryable, id: string, requireActive = true): Pro
   return program;
 }
 
+interface SessionRow {
+  programId: string;
+  title: string;
+  startAt: Date;
+  endAt: Date;
+  status: string;
+  speakerEmployeeId: string | null;
+  speakerName: string | null;
+}
+
+/**
+ * Locks the program first (the order every write uses), then reads the session under its own
+ * row lock, so a concurrent change of the same session cannot be acted on from a stale read.
+ */
+async function lockSession(db: Queryable, id: string): Promise<{ program: ProgramRow; session: SessionRow }> {
+  const owner = await db.query<{ programId: string }>(`SELECT program_id AS "programId" FROM training_sessions WHERE id = $1`, [id]);
+  if (!owner.rows[0]) throw new TrainingError(404, "TRAINING_SESSION_NOT_FOUND", "Sesi pelatihan tidak ditemukan.");
+  const program = await lockProgram(db, owner.rows[0].programId);
+  const found = await db.query<SessionRow>(
+    `SELECT program_id AS "programId", title, start_at AS "startAt", end_at AS "endAt", status,
+            speaker_employee_id AS "speakerEmployeeId", speaker_name AS "speakerName"
+       FROM training_sessions WHERE id = $1 FOR UPDATE`,
+    [id],
+  );
+  const session = found.rows[0]!;
+  if (session.status !== "SCHEDULED") throw new TrainingError(409, "TRAINING_SESSION_CANCELLED", "Sesi ini sudah dibatalkan.");
+  return { program, session };
+}
+
+/** Sessions of one program never overlap each other, whoever is enrolled (hours would count twice). */
+async function assertNoProgramOverlap(db: Queryable, programId: string, sessionId: string | null, interval: Interval) {
+  const clash = await db.query<{ title: string }>(
+    `SELECT title FROM training_sessions
+      WHERE program_id = $1 AND status = 'SCHEDULED' AND ($2::uuid IS NULL OR id <> $2)
+        AND busy && tstzrange($3::timestamptz, $4::timestamptz, '[)')
+      LIMIT 1`,
+    [programId, sessionId, new Date(interval.startMs).toISOString(), new Date(interval.endMs).toISOString()],
+  );
+  if (clash.rows[0]) {
+    throw new TrainingError(409, "TRAINING_SESSION_OVERLAP", `Waktu ini beririsan dengan sesi "${clash.rows[0].title}" di program yang sama.`);
+  }
+}
+
 /**
  * §7.2: lock every person involved, in id order, before computing availability. CAL-001 locks
  * the same rows, so a meeting and a session for one person cannot both pass the check.
  */
-async function lockPeople(db: Queryable, ids: readonly string[]) {
+async function lockPeople(db: Queryable, ids: readonly string[], mustBeActive: readonly string[] = ids) {
   const unique = [...new Set(ids)].sort();
   if (unique.length === 0) return [];
   const result = await db.query<{ id: string; fullName: string; status: string }>(
@@ -245,11 +293,13 @@ async function lockPeople(db: Queryable, ids: readonly string[]) {
       ORDER BY id ASC FOR UPDATE`,
     [unique],
   );
-  const inactive = unique.filter((id) => !result.rows.some((row) => row.id === id && row.status === "active"));
+  const active = new Set(result.rows.filter((row) => row.status === "active").map((row) => row.id));
+  const inactive = [...new Set(mustBeActive)].filter((id) => !active.has(id));
   if (inactive.length > 0) {
     throw new TrainingError(409, "TRAINING_EMPLOYEE_NOT_ACTIVE", "Pegawai yang dipilih harus pegawai aktif.", { employeeIds: inactive });
   }
-  return result.rows.map((row) => ({ employeeId: row.id, name: row.fullName }));
+  // Someone already enrolled who has since left is locked but not checked: their time is moot.
+  return result.rows.filter((row) => active.has(row.id)).map((row) => ({ employeeId: row.id, name: row.fullName }));
 }
 
 /** §7.1 sources, reduced to intervals for `evaluateAvailability`. */
@@ -535,7 +585,7 @@ export async function registerTrainingRoutes(
     const base64 = decryptSecret({ ciphertext: certificate.ciphertext, iv: certificate.iv, tag: certificate.authTag }, encryptionKey!);
     reply.header("Cache-Control", "private, no-store");
     reply.header("Content-Type", certificate.contentType);
-    reply.header("Content-Disposition", `attachment; filename="${safeDownloadName(certificate.fileName)}"`);
+    reply.header("Content-Disposition", contentDisposition(certificate.fileName));
     return reply.send(Buffer.from(base64, "base64"));
   }
 
@@ -590,7 +640,7 @@ export async function registerTrainingRoutes(
     });
   });
 
-  app.post("/training/me/records", async (request, reply) => {
+  app.post("/training/me/records", { bodyLimit: CERTIFICATE_BODY_LIMIT }, async (request, reply) => {
     const principal = await requireEmployee(request, reply);
     if (!principal) return;
     const body = externalBody.safeParse(request.body);
@@ -644,7 +694,7 @@ export async function registerTrainingRoutes(
     });
   });
 
-  app.post("/training/me/records/:id/certificate", async (request, reply) => {
+  app.post("/training/me/records/:id/certificate", { bodyLimit: CERTIFICATE_BODY_LIMIT }, async (request, reply) => {
     const principal = await requireEmployee(request, reply);
     if (!principal) return;
     const params = idParams.safeParse(request.params);
@@ -980,14 +1030,16 @@ export async function registerTrainingRoutes(
       const program = await lockProgram(client, params.data.id);
       const interval = validateSessionTimes(body.data.startAt, body.data.endAt);
       const count = await client.query<{ count: number }>(
-        `SELECT count(*)::int AS count FROM training_sessions WHERE program_id = $1 AND status = 'SCHEDULED'`,
+        // Cancelled sessions count too, so the detail list stays bounded (D-17).
+        `SELECT count(*)::int AS count FROM training_sessions WHERE program_id = $1`,
         [program.id],
       );
       if ((count.rows[0]?.count ?? 0) >= MAX_SESSIONS_PER_PROGRAM) {
         throw new TrainingError(409, "TRAINING_SESSION_LIMIT", `Satu program paling banyak ${MAX_SESSIONS_PER_PROGRAM} sesi.`);
       }
+      await assertNoProgramOverlap(client, program.id, null, interval);
       const speaker = body.data.speakerEmployeeId ?? null;
-      const people = await lockPeople(client, [...await enrolledIds(client, program.id), ...(speaker ? [speaker] : [])]);
+      const people = await lockPeople(client, [...await enrolledIds(client, program.id), ...(speaker ? [speaker] : [])], speaker ? [speaker] : []);
       const warnings = await assertAvailable(client, [{ id: null, title: body.data.title, ...interval }], people);
       const id = randomUUID();
       await client.query(
@@ -1012,19 +1064,7 @@ export async function registerTrainingRoutes(
     const body = sessionPatch.safeParse(request.body);
     if (!body.success) return invalid(reply, "INVALID_TRAINING_SESSION", "Judul, waktu, atau narasumber sesi tidak valid.");
     return transact(reply, async (client) => {
-      const found = await client.query<{
-        programId: string; title: string; startAt: Date; endAt: Date; status: string;
-        speakerEmployeeId: string | null; speakerName: string | null;
-      }>(
-        `SELECT program_id AS "programId", title, start_at AS "startAt", end_at AS "endAt", status,
-                speaker_employee_id AS "speakerEmployeeId", speaker_name AS "speakerName"
-           FROM training_sessions WHERE id = $1`,
-        [params.data.id],
-      );
-      const current = found.rows[0];
-      if (!current) throw new TrainingError(404, "TRAINING_SESSION_NOT_FOUND", "Sesi pelatihan tidak ditemukan.");
-      const program = await lockProgram(client, current.programId);
-      if (current.status !== "SCHEDULED") throw new TrainingError(409, "TRAINING_SESSION_CANCELLED", "Sesi ini sudah dibatalkan.");
+      const { program, session: current } = await lockSession(client, params.data.id);
       const timesChanged = body.data.startAt !== undefined
         && (Date.parse(body.data.startAt) !== current.startAt.getTime() || Date.parse(body.data.endAt!) !== current.endAt.getTime());
       if (timesChanged) {
@@ -1036,13 +1076,14 @@ export async function registerTrainingRoutes(
       const interval = timesChanged
         ? validateSessionTimes(body.data.startAt!, body.data.endAt!)
         : { startMs: current.startAt.getTime(), endMs: current.endAt.getTime() };
+      if (timesChanged) await assertNoProgramOverlap(client, program.id, params.data.id, interval);
       const speakerSent = "speakerEmployeeId" in body.data || "speakerName" in body.data;
       const speaker = speakerSent ? body.data.speakerEmployeeId ?? null : current.speakerEmployeeId;
       const speakerName = speakerSent ? body.data.speakerName ?? null : current.speakerName;
       const title = body.data.title ?? current.title;
       let warnings: Conflict[] = [];
       if (timesChanged || speaker !== current.speakerEmployeeId) {
-        const people = await lockPeople(client, [...await enrolledIds(client, program.id), ...(speaker ? [speaker] : [])]);
+        const people = await lockPeople(client, [...await enrolledIds(client, program.id), ...(speaker ? [speaker] : [])], speaker ? [speaker] : []);
         warnings = await assertAvailable(client, [{ id: params.data.id, title, ...interval }], people);
       }
       await client.query(
@@ -1051,7 +1092,7 @@ export async function registerTrainingRoutes(
                 speaker_employee_id = $7, speaker_name = $8, updated_at = now()
           WHERE id = $1`,
         [params.data.id, title, new Date(interval.startMs).toISOString(), new Date(interval.endMs).toISOString(),
-          "location" in body.data, body.data.location ?? null, speaker, speakerName],
+          body.data.location !== undefined, body.data.location ?? null, speaker, speakerName],
       );
       await audit(client, {
         eventType: "training.session.updated", programId: program.id, sessionId: params.data.id, actorAccountId: principal.id,
@@ -1078,14 +1119,7 @@ export async function registerTrainingRoutes(
     const body = shortReason.safeParse(request.body);
     if (!body.success) return invalid(reply, "INVALID_TRAINING_CANCEL", "Alasan pembatalan minimal 5 karakter.");
     return transact(reply, async (client) => {
-      const found = await client.query<{ programId: string; title: string; status: string }>(
-        `SELECT program_id AS "programId", title, status FROM training_sessions WHERE id = $1`,
-        [params.data.id],
-      );
-      const session = found.rows[0];
-      if (!session) throw new TrainingError(404, "TRAINING_SESSION_NOT_FOUND", "Sesi pelatihan tidak ditemukan.");
-      const program = await lockProgram(client, session.programId);
-      if (session.status !== "SCHEDULED") throw new TrainingError(409, "TRAINING_SESSION_CANCELLED", "Sesi ini sudah dibatalkan.");
+      const { program, session } = await lockSession(client, params.data.id);
       await client.query(
         `UPDATE training_sessions SET status = 'CANCELLED', cancel_reason = $2, updated_at = now() WHERE id = $1`,
         [params.data.id, body.data.reason],
@@ -1254,15 +1288,8 @@ export async function registerTrainingRoutes(
     const body = attendanceBody.safeParse(request.body);
     if (!body.success) return invalid(reply, "INVALID_TRAINING_ATTENDANCE", "Daftar hadir tidak valid (1–100 baris).");
     return transact(reply, async (client) => {
-      const found = await client.query<{ programId: string; status: string; startAt: Date }>(
-        `SELECT program_id AS "programId", status, start_at AS "startAt" FROM training_sessions WHERE id = $1`,
-        [params.data.id],
-      );
-      const session = found.rows[0];
-      if (!session) throw new TrainingError(404, "TRAINING_SESSION_NOT_FOUND", "Sesi pelatihan tidak ditemukan.");
-      // Locking the program serializes attendance with closing it (§6.5).
-      const program = await lockProgram(client, session.programId);
-      if (session.status !== "SCHEDULED") throw new TrainingError(409, "TRAINING_SESSION_CANCELLED", "Sesi ini sudah dibatalkan.");
+      // Locking the program serializes attendance with closing it (§6.5) and with rescheduling.
+      const { program, session } = await lockSession(client, params.data.id);
       if (session.startAt.getTime() > Date.now()) {
         throw new TrainingError(409, "TRAINING_SESSION_NOT_STARTED", "Kehadiran dicatat setelah sesi dimulai.");
       }
@@ -1420,7 +1447,7 @@ export async function registerTrainingRoutes(
   app.post("/admin/training/records/:id/verify", (request, reply) => decide(request, reply, "VERIFIED"));
   app.post("/admin/training/records/:id/reject", (request, reply) => decide(request, reply, "REJECTED"));
 
-  app.post("/admin/training/records/:id/certificate", async (request, reply) => {
+  app.post("/admin/training/records/:id/certificate", { bodyLimit: CERTIFICATE_BODY_LIMIT }, async (request, reply) => {
     const principal = await requirePermission(request, reply, "training.manage");
     if (!principal) return;
     const params = idParams.safeParse(request.params);
@@ -1458,7 +1485,8 @@ export async function registerTrainingRoutes(
     if (!query.success) return invalid(reply, "INVALID_TRAINING_FILTER", "Filter tidak valid.");
     const year = query.data.year ?? currentYear();
     const q = query.data.q ? `%${query.data.q}%` : null;
-    // TRAIN-001-J: every active employee appears, including those without any hours.
+    // TRAIN-001-J: every active employee appears, including those without any hours, and so does
+    // anyone who has since left but has verified hours in that year.
     const result = await pool.query<{ total: number }>(
       `SELECT employee.id AS "employeeId", employee.full_name AS "fullName", employee.employee_number AS "employeeNumber",
               unit.name AS "unitName",
@@ -1472,7 +1500,11 @@ export async function registerTrainingRoutes(
          LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
          LEFT JOIN training_records record
            ON record.employee_id = employee.id AND record.status = 'VERIFIED' AND extract(year FROM record.end_on) = $1
-        WHERE employee.status = 'active' AND employee.removed_at IS NULL
+        WHERE employee.removed_at IS NULL
+          AND (employee.status = 'active' OR EXISTS (
+            SELECT 1 FROM training_records verified
+             WHERE verified.employee_id = employee.id AND verified.status = 'VERIFIED'
+               AND extract(year FROM verified.end_on) = $1))
           AND ($2::text IS NULL OR employee.full_name ILIKE $2 OR employee.employee_number ILIKE $2)
         GROUP BY employee.id, unit.name
         ORDER BY employee.full_name ASC, employee.id ASC

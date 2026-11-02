@@ -10,7 +10,9 @@ describe("employee service catalog", () => {
   it("keeps implemented and planned employee services distinguishable", () => {
     expect(getEmployeeService("attendance")?.stage).toBe("available");
     expect(getEmployeeService("reimbursement")?.stage).toBe("deferred");
-    expect(getEmployeeService("performance")?.stage).toBe("discovery");
+    // PERF-001 Package 1 ships self-assessment, rating, validation and history.
+    expect(getEmployeeService("performance")?.stage).toBe("available");
+    expect(getEmployeeService("performance")?.href).toBe("/app/performance");
     expect(getEmployeeService("clock-in")?.stage).toBe("available");
     expect(getEmployeeService("work-schedule")?.stage).toBe("available");
     expect(getEmployeeService("attendance-clarification")?.stage).toBe("available");

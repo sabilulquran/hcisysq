@@ -154,11 +154,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "performance",
     label: "Kinerja / KPI",
-    description: "Kelola sasaran, indikator, penilaian, dan hasil kinerja.",
+    description: "Siklus penilaian kinerja, pengesahan hasil, dan rekap predikat.",
     featureIds: ["PERF-001"],
-    stage: "discovery",
+    stage: "available",
     category: "talent",
-    href: "/admin/services/performance",
+    href: "/admin/performance",
+    details: [
+      "Penilaian diri pegawai dan penilaian atasan menurut struktur",
+      "Pengesahan Human Capital, predikat A–D, dan riwayat per pegawai",
+      "Belum memengaruhi tunjangan kinerja (menunggu PAY-003)",
+    ],
   },
   {
     key: "learning",

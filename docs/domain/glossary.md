@@ -52,6 +52,9 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Loan | Pinjaman pegawai dengan principal, tenor/cicilan, status, approval, dan rekonsiliasi. |
 | Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
 | Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
+| Performance Review Cycle / Siklus Penilaian | Satu periode penilaian kinerja (bulanan atau tahun ajaran) dengan rubrik yang dibekukan saat siklus dibuka (PERF-001). |
+| Rater / Penilai | Pegawai yang menilai kinerja seorang pegawai pada satu siklus: atasan langsung menurut struktur yang disnapshot saat pegawai masuk siklus, atau pegawai yang ditunjuk HC. |
+| Predicate / Predikat Kinerja | Hasil akhir penilaian kinerja (A Sangat baik, B Baik, C Cukup, D Kurang) yang dihitung dari rata-rata berbobot skala 1–4 dan berlaku setelah disahkan HC. Belum dipakai payroll. |
 | Assignment Letter / Surat Tugas | Surat bernomor yang diterbitkan HC untuk perjalanan dinas yang sudah disetujui. Tercatat di register dokumen DOC-001 (`document_kind = ASSIGNMENT`); nomor tidak pernah didaur ulang. |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
 | Legacy HCIS | Implementasi sebelumnya yang digunakan untuk discovery dan sumber migrasi. |

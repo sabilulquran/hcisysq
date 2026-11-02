@@ -102,8 +102,8 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   },
   {
     key: "performance", label: "Kinerja / KPI",
-    description: "Sasaran, penilaian kinerja, dan riwayat hasil evaluasi.",
-    featureIds: ["PERF-001"], stage: "discovery", category: "development", href: "/app/services/performance",
+    description: "Penilaian diri, hasil penilaian kinerja, dan riwayatnya.",
+    featureIds: ["PERF-001"], stage: "available", category: "development", href: "/app/performance",
   },
   {
     key: "training", label: "Training / LMS",

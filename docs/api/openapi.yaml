@@ -31,6 +31,7 @@ tags:
   - name: Employment
   - name: HR Documents
   - name: Business Travel
+  - name: Employee Loans
   - name: Training
 
 paths:
@@ -312,6 +313,32 @@ paths:
   /admin/trips/{id}/cancel:
     $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1cancel'
 
+  /loans/me:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1me'
+  /loans/me/preview:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1me~1preview'
+  /loans/me/{id}:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1me~1{id}'
+  /loans/me/{id}/cancel:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1me~1{id}~1cancel'
+  /loans/approvals:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1approvals'
+  /loans/approvals/{stepId}/decision:
+    $ref: './employee-loans.openapi.yaml#/paths/~1loans~1approvals~1{stepId}~1decision'
+  /admin/loans:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans'
+  /admin/loans/borrowers:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1borrowers'
+  /admin/loans/{id}:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}'
+  /admin/loans/{id}/disburse:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1disburse'
+  /admin/loans/{id}/payments:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1payments'
+  /admin/loans/{id}/payments/{paymentId}/reverse:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1payments~1{paymentId}~1reverse'
+  /admin/loans/{id}/cancel:
+    $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1cancel'
   /training/me/summary:
     $ref: './training.openapi.yaml#/paths/~1training~1me~1summary'
   /training/me/records:

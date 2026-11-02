@@ -9,6 +9,7 @@ import {
   DOCUMENT_PERMISSIONS,
   EMPLOYMENT_PERMISSIONS,
   HC_ADMIN_PERMISSIONS,
+  LOAN_PERMISSIONS,
   PAYROLL_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
 
@@ -181,6 +182,8 @@ describe("AUTH-011 route manifest coverage", () => {
     const known = new Set<string>([
       ...ADMIN_PERMISSIONS, ...HC_ADMIN_PERMISSIONS, "leave.hc.approve",
       ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
+      // LOAN-001: loans.manage belongs to finance_officer, outside both bundles.
+      ...LOAN_PERMISSIONS,
       ACCESS_REACTIVATION_PERMISSION,
     ]);
     for (const entry of await manifest()) {

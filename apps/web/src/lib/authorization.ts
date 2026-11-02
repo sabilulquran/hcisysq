@@ -44,6 +44,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     // DOC-002-F: document_corrector carries only documents.read and documents.correct, so
     // without this the shell bounced the one role that may revoke a letter (spec §12).
     "documents.read",
+    // LOAN-001: finance_officer reaches the loan register with loans.read, which no bundle
+    // above carries for that role.
+    "loans.read",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which
@@ -117,6 +120,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/announcements") return hasPermission(session, "announcements.read");
   // TRIP-001: HC-only; Super Admin legacy compatibility never carries trips.*.
   if (path === "/admin/trips") return hasPermission(session, "trips.read");
+  // LOAN-001: Finance and HC only; Super Admin legacy compatibility never carries loans.*.
+  if (path === "/admin/loans") return hasPermission(session, "loans.read");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
   if (path === "/admin/training") return hasPermission(session, "training.read");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

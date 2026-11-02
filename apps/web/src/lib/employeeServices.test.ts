@@ -27,6 +27,9 @@ describe("employee service catalog", () => {
     // TRIP-001 Package 1 ships request, approval and the surat tugas.
     expect(getEmployeeService("business-travel")?.stage).toBe("available");
     expect(getEmployeeService("business-travel")?.href).toBe("/app/trips");
+    // LOAN-001 Package 1 ships request, approval, schedule and repayment records.
+    expect(getEmployeeService("loan")?.stage).toBe("available");
+    expect(getEmployeeService("loan")?.href).toBe("/app/loans");
     expect(getEmployeeService("training")?.stage).toBe("available");
     expect(getEmployeeService("training")?.href).toBe("/app/training");
   });

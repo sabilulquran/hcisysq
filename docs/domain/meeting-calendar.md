@@ -46,7 +46,7 @@ Yang **tidak** ada di legacy: ruang rapat sebagai sumber daya yang dipesan, rapa
 
 ## 3. Keputusan
 
-Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat."
+Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat." Untuk judul rapat K-05, pemilik produk memilih opsi B (terlihat, dengan centang Rahasia per rapat): "Ya, pilihan B".
 
 | # | Keputusan | Status |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat."
 | K-02 | Bentrok dengan rapat aktif lain **ditolak** (blokir keras), seperti legacy. Tidak ada tombol "paksa". | ACCEPTED |
 | K-03 | Cuti `approved` dan perjalanan dinas `APPROVED`/`ISSUED` peserta juga **menolak** undangan. Cuti `in_review` dan perjalanan `IN_REVIEW` hanya **peringatan**. | ACCEPTED |
 | K-04 | Peserta dapat menjawab **Hadir** atau **Berhalangan** (alasan opsional). Peserta yang Berhalangan **tidak lagi memblokir** waktunya. | ACCEPTED |
-| K-05 | Rapat **terlihat** di kalender semua pegawai aktif (pemilik produk). Bukan peserta melihat judul, jam, lokasi, dan nama penyelenggara; daftar peserta dan keterangan hanya untuk peserta. Penyelenggara dapat mencentang **Rahasia**: bagi bukan peserta rapat itu tampil sebagai "Sibuk" tanpa judul, lokasi, dan penyelenggara. Default tidak rahasia. | ACCEPTED (terlihat); opsi Rahasia DRAFT |
+| K-05 | Rapat **terlihat** di kalender semua pegawai aktif (pemilik produk). Bukan peserta melihat judul, jam, lokasi, dan nama penyelenggara; daftar peserta dan keterangan hanya untuk peserta. Penyelenggara dapat mencentang **Rahasia**: bagi bukan peserta rapat itu tampil sebagai "Sibuk" tanpa judul, lokasi, dan penyelenggara. Default tidak rahasia. | ACCEPTED (2026-11-02, termasuk opsi Rahasia) |
 | K-06 | WhatsApp dan pengingat **masuk Paket 1** (pemilik produk). WhatsApp lewat Kirim SQ di SQ Hub (ADR-0011) dengan nomor milik HCIS; HCIS tidak memanggil JalurPesan atau Starsender langsung. | ACCEPTED |
 | K-07 | **Tidak ada pemesanan ruang rapat.** Lokasi teks bebas, sejalan dengan WORK-001 yang dihapus pemilik produk 2026-11-02. | ACCEPTED |
 | K-08 | Pengajuan atau persetujuan cuti dan perjalanan dinas **tidak** dicek terhadap rapat. Bila cuti/dinas disetujui setelah undangan, peserta ditandai "berhalangan (cuti/dinas)" saat dibaca dan penyelenggara melihatnya. | ACCEPTED |

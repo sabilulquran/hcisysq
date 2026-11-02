@@ -47,7 +47,7 @@ Termasuk (Paket 1):
 
 | # | Keputusan | Status |
 | --- | --- | --- |
-| D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan dan TRIP-001. Kunci alur rollout ORG-004: `LOAN`; tanpa baris rollout, mode `LEGACY`. **Keuangan bukan tahap approval**, tetapi pencairan oleh Keuangan adalah gerbang terakhir: Keuangan dapat membatalkan pinjaman yang sudah disetujui sebelum mencairkannya. Legacy memakai rantai lebih panjang (garis atasan → Kepala HCM → Kepala Keuangan → Direktur) yang tidak dapat dipetakan tanpa resolver jabatan; resolver APR-001 tidak boleh membaca teks jabatan. | DRAFT |
+| D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan dan TRIP-001. Kunci alur rollout ORG-004: `LOAN`; tanpa baris rollout, mode `LEGACY`. **Keuangan bukan tahap approval**, tetapi pencairan oleh Keuangan adalah gerbang terakhir: Keuangan dapat membatalkan pinjaman yang sudah disetujui sebelum mencairkannya. Legacy memakai rantai lebih panjang (versi lama: slot tetap HCM → Keuangan → Yayasan; versi baru: garis atasan → Kepala HCM → Kepala Keuangan → Direktur) yang tidak dapat dipetakan tanpa resolver jabatan; resolver APR-001 tidak boleh membaca teks jabatan. | DRAFT |
 | D-02 | **Tanpa bunga**, sesuai praktik lembaga keagamaan dan legacy. Total cicilan = pokok. | DRAFT |
 | D-03 | Pokok **Rp100.000 sampai Rp10.000.000**, bilangan bulat rupiah. Batas bawah dari legacy; legacy tidak punya batas atas. | DRAFT |
 | D-04 | Tenor **3, 6, atau 12 bulan**, sama dengan pilihan legacy. | DRAFT |
@@ -55,12 +55,12 @@ Termasuk (Paket 1):
 | D-06 | **Satu pinjaman terbuka per pegawai** (`IN_REVIEW`, `APPROVED`, `DISBURSED`), sama dengan legacy. Dijaga route dan indeks unik parsial database. | DRAFT |
 | D-07 | Cicilan = pokok ÷ tenor **dibulatkan ke bawah ke Rp1.000**; **cicilan terakhir menanggung sisanya**, sehingga jumlah jadwal selalu tepat sama dengan pokok. Contoh Rp1.000.000 / 3 = Rp333.000, Rp333.000, Rp334.000. | DRAFT |
 | D-08 | Pembatalan hanya **sebelum pencairan**: pegawai atau Keuangan, status `IN_REVIEW`/`APPROVED`, alasan wajib. Setelah cair, pinjaman hanya selesai lewat pelunasan. | DRAFT |
-| D-09 | Pencairan oleh Keuangan: tanggal cair tidak setelah hari ini dan tidak sebelum persetujuan akhir (WIB); cara `CASH` atau `TRANSFER`; cicilan pertama paling cepat **bulan setelah pencairan** (default bulan itu). Jadwal dibuat sekali dan tidak dapat diubah. | DRAFT |
+| D-09 | Pencairan oleh Keuangan: tanggal cair tidak setelah hari ini dan tidak sebelum persetujuan akhir (WIB); cara `CASH` atau `TRANSFER`; cicilan pertama paling cepat **bulan setelah pencairan** (default bulan itu) dan paling lambat tiga bulan sesudahnya, karena jadwal tidak dapat dikoreksi. Jadwal dibuat sekali dan tidak dapat diubah. | DRAFT |
 | D-10 | Pembayaran: nominal bulat positif, **tidak boleh melebihi sisa**, tanggal antara tanggal cair dan hari ini. Cara `CASH`, `TRANSFER`, atau `PAYROLL_DEDUCTION` (potongan gaji yang **dicatat manual** setelah tampil di slip resmi). Pembayaran sebesar sisa = **pelunasan**; status menjadi `PAID_OFF`. Pembayaran sebagian dan pelunasan dipercepat diperbolehkan. | DRAFT |
 | D-11 | Pembayaran mengisi cicilan **paling awal lebih dulu**. Karena pengisiannya kumulatif, status tiap cicilan dihitung dari total pembayaran yang berlaku; tidak ada alokasi yang disimpan, sehingga koreksi tidak meninggalkan sisa alokasi. Cicilan yang bulannya sudah lewat dan belum lunas ditandai "lewat bulan". | ACCEPTED |
 | D-12 | Pembayaran tidak pernah dihapus. Kesalahan dikoreksi dengan menandai pembayaran `REVERSED` beserta alasan (10–500); sisa dan status dihitung ulang (pinjaman lunas dapat kembali `DISBURSED`). | DRAFT |
 | D-13 | `loans.read` dan `loans.manage` dibawa **`finance_officer`** ("Staf Keuangan (Kasbon)", pemegang register kasbon PAY-003). `human_capital_admin` hanya membawa `loans.read`. Keduanya berscope organisasi; Super Admin tidak menerimanya lewat kompatibilitas legacy. | DRAFT |
-| D-14 | **Pemisahan tugas:** pemegang `loans.manage` tidak dapat mencairkan, mencatat atau mengoreksi pembayaran, maupun membatalkan pinjamannya sendiri (403 `LOAN_SELF_ACTION_FORBIDDEN`). Pemohon tidak pernah menjadi approver-nya sendiri (resolver APR-001 membuangnya). | ACCEPTED |
+| D-14 | **Pemisahan tugas:** pemegang `loans.manage` tidak dapat mencairkan, mencatat atau mengoreksi pembayaran, maupun membatalkan pinjamannya sendiri (403 `LOAN_SELF_ACTION_FORBIDDEN`). Approver dalam rantai pinjaman itu (sudah memutuskan atau belum) tidak dapat mencairkannya (403 `LOAN_APPROVER_CANNOT_DISBURSE`), sehingga tidak ada satu orang yang membawa pinjaman dari persetujuan sampai uang keluar. Pemohon tidak pernah menjadi approver-nya sendiri (resolver APR-001 membuangnya). | ACCEPTED |
 | D-15 | **Nominal tidak pernah muncul di log, notifikasi, atau metadata riwayat.** Nominal hanya ada di kolom uang dan di respons kepada orang yang berhak melihatnya (§6). | ACCEPTED |
 | D-16 | Uang disimpan sebagai `bigint` rupiah dan dihitung dengan `bigint` di domain; tidak pernah floating point. API membawanya sebagai bilangan bulat JSON; pecahan atau string ditolak 400, tidak dibulatkan. | ACCEPTED |
 
@@ -131,13 +131,13 @@ Hanya approver yang tersimpan pada tahap `pending` yang dapat memutuskan; lainny
 
 Actor `loans.manage`, bukan pemilik pinjaman (D-14). Precondition `APPROVED` dan pegawai masih `active` (bila tidak: 409 `LOAN_EMPLOYEE_NOT_ACTIVE`; Keuangan membatalkan pinjamannya). Input `disbursedOn`, `method` (`CASH`/`TRANSFER`), `reference` opsional (≤200), `firstDueMonth` opsional (`YYYY-MM`).
 
-Dalam satu transaksi: validasi D-09 (`LOAN_DISBURSED_IN_FUTURE`, `LOAN_DISBURSED_BEFORE_APPROVAL`, `LOAN_FIRST_DUE_TOO_EARLY`), buat jadwal D-07 (`tenorMonths` baris), pinjaman → `DISBURSED`, audit `loan.disbursed`, notifikasi pegawai. Status lain: 409 `LOAN_NOT_DISBURSABLE`.
+Dalam satu transaksi: tolak approver pinjaman itu (D-14), validasi D-09 (`LOAN_DISBURSED_IN_FUTURE`, `LOAN_DISBURSED_BEFORE_APPROVAL`, `LOAN_FIRST_DUE_TOO_EARLY`, `LOAN_FIRST_DUE_TOO_LATE`), buat jadwal D-07 (`tenorMonths` baris), pinjaman → `DISBURSED`, audit `loan.disbursed`, notifikasi pegawai. Status lain: 409 `LOAN_NOT_DISBURSABLE`.
 
 ### 5.6 Pembayaran dan pelunasan
 
 Actor `loans.manage`, bukan pemilik. Precondition `DISBURSED` (lainnya 409 `LOAN_NOT_REPAYABLE`). Input `amount`, `paidOn`, `method`, `reference` (≤200, misalnya nomor bukti atau periode slip), `note` (≤500), `idempotencyKey`.
 
-Dalam satu transaksi dengan baris pinjaman terkunci: replay bila kunci sudah dipakai untuk pinjaman ini; validasi D-10 (`LOAN_PAYMENT_DATE`, `LOAN_PAYMENT_EXCEEDS_BALANCE`); simpan pembayaran; `paid_total` bertambah; status `PAID_OFF` bila sama dengan pokok; audit `loan.payment.recorded` (dan `loan.paid_off`); notifikasi pegawai tanpa nominal.
+Dalam satu transaksi dengan baris pinjaman terkunci: replay bila kunci sudah dipakai untuk pinjaman ini dengan nominal, tanggal, dan cara yang sama (kunci yang sama dengan nilai lain: 409 `IDEMPOTENCY_KEY_REUSED`; pengajuan pinjaman diperlakukan sama untuk pokok dan tenor); validasi D-10 (`LOAN_PAYMENT_DATE`, `LOAN_PAYMENT_EXCEEDS_BALANCE`); simpan pembayaran; `paid_total` bertambah; status `PAID_OFF` bila sama dengan pokok; audit `loan.payment.recorded` (dan `loan.paid_off`); notifikasi pegawai tanpa nominal.
 
 ### 5.7 Koreksi pembayaran
 
@@ -168,7 +168,7 @@ Tabel `employee_loan_events` adalah riwayat per pinjaman sekaligus audit event, 
 
 Setiap event memuat aktor, waktu (`clock_timestamp()`), dan metadata aman: id tahap/pembayaran, cara bayar, tanggal, bulan cicilan pertama, jumlah cicilan, tenor. **Tidak pernah nominal** (D-15). Alasan penolakan, pembatalan, dan koreksi disimpan sebagai `note`. Nominal pembayaran dibaca dari `employee_loan_payments`, yang juga append-only kecuali transisi `ACTIVE → REVERSED`.
 
-Kerahasiaan log: PostgreSQL menaruh baris yang gagal — termasuk nominal — di detail galat. Route pinjaman mengubah galat constraint menjadi 409 `LOAN_STATE_CONFLICT` dan galat database lain menjadi galat baru yang hanya membawa kodenya, sebelum mencapai error handler yang menulis log. Pesan trigger invarian hanya menyebut aturan, tidak pernah angka.
+Kerahasiaan log: PostgreSQL menaruh baris yang gagal — termasuk nominal — di `detail` galat. Route pinjaman memetakan balapan unik yang wajar (pinjaman terbuka kedua, tahap aktif, kunci idempotensi) ke 409. Galat database lain — termasuk CHECK atau trigger invarian uang, yang berarti cacat kode, bukan balapan — menjadi 500 yang **dicatat** dengan kode, nama constraint, dan pesan saja; `detail` dibuang sebelum mencapai error handler. Pesan CHECK dan trigger hanya menyebut aturan, tidak pernah angka.
 
 ## 8. Notifikasi (NOTIF-004, kategori `system`)
 
@@ -217,7 +217,8 @@ Aturan database (migrasi `0122`):
 - `employee_loans` unik pada `(employee_id, idempotency_key)`; indeks unik parsial satu pinjaman terbuka per pegawai (D-06);
 - `CHECK` status: `DISBURSED`/`PAID_OFF` ⇔ data pencairan lengkap; `paid_total` 0 sebelum cair; `PAID_OFF` ⇔ `paid_total = principal_amount` ⇔ `paid_off_at` terisi; `0 ≤ paid_total ≤ principal_amount`;
 - **trigger invarian uang yang ditunda sampai COMMIT** (`employee_loan_assert_money`): pinjaman cair punya tepat `tenor_months` cicilan yang jumlahnya sama dengan pokok; pinjaman yang belum cair tidak punya cicilan atau pembayaran; `paid_total` sama dengan jumlah pembayaran `ACTIVE`;
-- cicilan tidak dapat di-UPDATE/DELETE; pembayaran, pinjaman, dan event tidak dapat di-DELETE;
+- cicilan dan event tidak dapat di-UPDATE/DELETE; pinjaman dan pembayaran tidak dapat di-DELETE; pembayaran hanya dapat berubah `ACTIVE → REVERSED` beserta kolom koreksinya;
+- catatan pengujian: test integrasi menjalankan trigger tertunda lewat `SET CONSTRAINTS ALL IMMEDIATE`, karena COMMIT route menjadi savepoint di dalam transaksi test;
 - `employee_loan_approval_steps` unik pada `(loan_id, step_order)`, satu `pending` per pinjaman;
 - tidak ada endpoint hapus.
 

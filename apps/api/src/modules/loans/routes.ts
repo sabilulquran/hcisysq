@@ -122,11 +122,15 @@ function today(): string {
   return jakartaDate(new Date());
 }
 
+const STATE_CONFLICT: [string, string] = ["LOAN_STATE_CONFLICT", "Data pinjaman sudah berubah. Muat ulang lalu coba lagi."];
+/** Unique races a well-behaved client can lose. Anything else in class 23 is a bug, not a race. */
 const UNIQUE_CONFLICTS: Record<string, [string, string]> = {
   employee_loans_one_open_idx: ["LOAN_ALREADY_OPEN", "Masih ada pinjaman yang diajukan atau belum lunas."],
   employee_loan_approval_steps_one_pending_idx: [
     "APPROVAL_STATE_CONFLICT", "Tahap persetujuan aktif sudah berubah. Muat ulang sebelum mengambil keputusan.",
   ],
+  employee_loans_employee_id_idempotency_key_key: STATE_CONFLICT,
+  employee_loan_payments_loan_id_idempotency_key_key: STATE_CONFLICT,
 };
 
 function knownError(error: unknown): LoanError | null {
@@ -138,19 +142,25 @@ function knownError(error: unknown): LoanError | null {
     return new LoanError(409, error.code, error.message);
   }
   const database = error as { code?: unknown; severity?: unknown; constraint?: unknown };
-  if (typeof database.code === "string" && typeof database.severity === "string" && database.code.startsWith("23")) {
-    const [code, message] = UNIQUE_CONFLICTS[String(database.constraint)]
-      ?? ["LOAN_STATE_CONFLICT", "Data pinjaman sudah berubah. Muat ulang lalu coba lagi."];
-    return new LoanError(409, code, message);
+  if (database.code === "23505" && typeof database.severity === "string") {
+    const conflict = UNIQUE_CONFLICTS[String(database.constraint)];
+    if (conflict) return new LoanError(409, conflict[0], conflict[1]);
   }
   return null;
 }
 
-/** Spec §7: an unexpected database error keeps its code and loses the row it was quoting. */
+/**
+ * Spec §7: an unexpected database error — including a broken money invariant (CHECK or the
+ * deferred trigger), which means a code bug — becomes a logged 500 that keeps its code, its
+ * constraint and its message (amount-free by design), and loses `detail`, where PostgreSQL
+ * quotes the failing row with its amounts.
+ */
 function scrubbed(error: unknown): unknown {
-  const database = error as { code?: unknown; severity?: unknown };
+  const database = error as { code?: unknown; severity?: unknown; constraint?: unknown; message?: unknown };
   if (typeof database.code === "string" && typeof database.severity === "string") {
-    return Object.assign(new Error(`employee loan database error ${database.code}`), { code: database.code });
+    return Object.assign(new Error(`employee loan database error ${database.code}: ${String(database.message)}`), {
+      code: database.code, constraint: database.constraint,
+    });
   }
   return error;
 }
@@ -172,7 +182,7 @@ async function loadEmployeeContext(db: Queryable, accountId: string, lock = fals
         AND account.principal_type = 'EMPLOYEE'
         AND account.status = 'active'
         AND employee.removed_at IS NULL
-      ${lock ? "FOR UPDATE OF employee" : ""}`,
+      ${lock ? "FOR NO KEY UPDATE OF employee" : ""}`,
     [accountId],
   );
   const employee = result.rows[0];
@@ -593,11 +603,19 @@ export async function registerLoanRoutes(
       // Locking the employee row serializes this employee's submissions, so two clicks
       // cannot both pass the one-open-loan check (D-06).
       const employee = await loadEmployeeContext(client, principal.id, true);
-      const replay = await client.query<{ id: string; status: LoanStatus }>(
-        `SELECT id, status FROM employee_loans WHERE employee_id = $1 AND idempotency_key = $2`,
+      const replay = await client.query<{ id: string; status: LoanStatus; principal: string; tenorMonths: number }>(
+        `SELECT id, status, principal_amount::text AS principal, tenor_months AS "tenorMonths"
+           FROM employee_loans WHERE employee_id = $1 AND idempotency_key = $2`,
         [employee.id, body.data.idempotencyKey],
       );
-      if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
+      const previous = replay.rows[0];
+      if (previous) {
+        // A key names one submission; the same key with other terms is a client bug, not a retry.
+        if (toRupiah(previous.principal) !== toRupiah(body.data.principal) || previous.tenorMonths !== body.data.tenorMonths) {
+          throw new LoanError(409, "IDEMPOTENCY_KEY_REUSED", "Pengajuan ini sudah terkirim dengan nilai lain. Muat ulang halaman.");
+        }
+        return [200, { id: previous.id, status: previous.status, idempotentReplay: true }];
+      }
 
       const submittedOn = today();
       const principalAmount = toRupiah(body.data.principal);
@@ -812,6 +830,7 @@ export async function registerLoanRoutes(
     const query = adminListQuery.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_LOAN_FILTER", message: "Filter tidak valid." });
     // ENG-LIST-001: filters run before LIMIT; the page carries the true total.
+    return handle(reply, async () => {
     const result = await pool.query<SummaryRow>(
       `SELECT ${SUMMARY_COLUMNS},
               loan.employee_id AS "employeeId", employee.full_name AS "employeeName",
@@ -830,6 +849,7 @@ export async function registerLoanRoutes(
       items: result.rows.map(summary),
       pagination: pagination(query.data, result.rows[0]?.total ?? 0),
     });
+    });
   });
 
   // ENG-LIST-001 typeahead for the register filter. It searches borrowers only — people the
@@ -838,6 +858,7 @@ export async function registerLoanRoutes(
     if (!(await requirePermission(request, reply, "loans.read"))) return;
     const query = borrowerQuery.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_LOAN_FILTER", message: "Kata kunci minimal 2 huruf." });
+    return handle(reply, async () => {
     const result = await pool.query<{ total: number }>(
       `SELECT employee.id, employee.full_name AS "fullName", employee.employee_number AS "employeeNumber",
               unit.name AS "unitName", count(*) OVER ()::int AS total
@@ -853,15 +874,18 @@ export async function registerLoanRoutes(
       items: result.rows.map(({ total, ...row }) => { void total; return row; }),
       pagination: pagination(query.data, result.rows[0]?.total ?? 0),
     });
+    });
   });
 
   app.get("/admin/loans/:id", async (request, reply) => {
     if (!(await requirePermission(request, reply, "loans.read"))) return;
     const params = idParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_LOAN_ID", message: "Pinjaman tidak valid." });
-    const detail = await loadLoanDetail(pool, params.data.id, null);
-    if (!detail) return send(reply, 404, { code: "LOAN_NOT_FOUND", message: "Pinjaman tidak ditemukan." });
-    return send(reply, 200, detail);
+    return handle(reply, async () => {
+      const detail = await loadLoanDetail(pool, params.data.id, null);
+      if (!detail) return send(reply, 404, { code: "LOAN_NOT_FOUND", message: "Pinjaman tidak ditemukan." });
+      return send(reply, 200, detail);
+    });
   });
 
   app.post("/admin/loans/:id/disburse", async (request, reply) => {
@@ -878,6 +902,19 @@ export async function registerLoanRoutes(
       await assertNotOwnLoan(client, principal.id, loan.employeeId);
       if (loan.status !== "APPROVED") {
         throw new LoanError(409, "LOAN_NOT_DISBURSABLE", "Hanya pinjaman yang sudah disetujui yang dapat dicairkan.");
+      }
+      // D-14: the cash gate is independent of the approval. Whoever sits in this loan's chain
+      // (decided or not) cannot also hand over the money.
+      const approver = await client.query(
+        `SELECT 1 FROM employee_loan_approval_steps step
+          WHERE step.loan_id = $1
+            AND (step.acted_by_account_id = $2
+              OR step.approver_employee_id = (SELECT employee_id FROM accounts WHERE id = $2))
+          LIMIT 1`,
+        [params.data.id, principal.id],
+      );
+      if (approver.rows[0]) {
+        throw new LoanError(403, "LOAN_APPROVER_CANNOT_DISBURSE", "Penyetuju pinjaman ini tidak boleh sekaligus mencairkannya.");
       }
       const employee = await client.query<{ status: string }>(
         `SELECT status FROM employees WHERE id = $1 AND removed_at IS NULL`,
@@ -937,12 +974,18 @@ export async function registerLoanRoutes(
     return transact(reply, async (client) => {
       const loan = await lockLoan(client, params.data.id);
       await assertNotOwnLoan(client, principal.id, loan.employeeId);
-      const replay = await client.query<{ id: string }>(
-        `SELECT id FROM employee_loan_payments WHERE loan_id = $1 AND idempotency_key = $2`,
+      const replay = await client.query<{ id: string; amount: string; paidOn: string; method: string }>(
+        `SELECT id, amount::text AS amount, to_char(paid_on, 'YYYY-MM-DD') AS "paidOn", method
+           FROM employee_loan_payments WHERE loan_id = $1 AND idempotency_key = $2`,
         [params.data.id, body.data.idempotencyKey],
       );
-      if (replay.rows[0]) {
-        return [200, { id: params.data.id, paymentId: replay.rows[0].id, status: loan.status, idempotentReplay: true }];
+      const previous = replay.rows[0];
+      if (previous) {
+        if (toRupiah(previous.amount) !== toRupiah(body.data.amount)
+          || previous.paidOn !== body.data.paidOn || previous.method !== body.data.method) {
+          throw new LoanError(409, "IDEMPOTENCY_KEY_REUSED", "Pembayaran ini sudah tercatat dengan nilai lain. Muat ulang halaman.");
+        }
+        return [200, { id: params.data.id, paymentId: previous.id, status: loan.status, idempotentReplay: true }];
       }
       if (loan.status !== "DISBURSED") {
         throw new LoanError(409, "LOAN_NOT_REPAYABLE", loan.status === "PAID_OFF"
@@ -981,7 +1024,7 @@ export async function registerLoanRoutes(
       });
       if (status === "PAID_OFF") await addEvent(client, params.data.id, principal.id, "loan.paid_off");
       await notifyEmployee(client, loan.employeeId, {
-        eventKey: status === "PAID_OFF" ? `loan.${params.data.id}.paid_off` : `loan.payment.${paymentId}`,
+        eventKey: `loan.payment.${paymentId}`,
         category: "system",
         title: status === "PAID_OFF" ? "Pinjaman lunas" : "Pembayaran pinjaman dicatat",
         body: status === "PAID_OFF"

@@ -252,6 +252,8 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
     const replay = await submit({ idempotencyKey: key });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({ id: first.id, idempotentReplay: true });
+    // The same key with other terms is not a retry.
+    expect((await submit({ idempotencyKey: key, principal: 2_000_000 })).json().code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect((await submit()).json().code).toBe("LOAN_ALREADY_OPEN");
 
     // Once cancelled, the employee may ask again.
@@ -272,6 +274,12 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
     const self = await app.inject({ method: "POST", url: `/admin/loans/${loan.id}/disburse`, payload: { disbursedOn: today, method: "CASH" } });
     expect(self.statusCode).toBe(403);
     expect(self.json().code).toBe("LOAN_SELF_ACTION_FORBIDDEN");
+
+    // D-14: an approver of this loan holding loans.manage cannot also hand over the money.
+    actAs("manager", FINANCE);
+    const approverDisburse = await app.inject({ method: "POST", url: `/admin/loans/${loan.id}/disburse`, payload: { disbursedOn: today, method: "CASH" } });
+    expect(approverDisburse.statusCode).toBe(403);
+    expect(approverDisburse.json().code).toBe("LOAN_APPROVER_CANNOT_DISBURSE");
 
     expect((await disburse(loan.id, { firstDueMonth: today.slice(0, 7) })).json().code).toBe("LOAN_FIRST_DUE_TOO_EARLY");
     const response = await disburse(loan.id);
@@ -303,6 +311,7 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
     const first = await pay(loan.id, 400_000, { idempotencyKey: key });
     expect(first.statusCode, first.body).toBe(201);
     expect((await pay(loan.id, 400_000, { idempotencyKey: key })).json()).toMatchObject({ idempotentReplay: true });
+    expect((await pay(loan.id, 500_000, { idempotencyKey: key })).json().code).toBe("IDEMPOTENCY_KEY_REUSED");
 
     let state = await detail(loan.id);
     expect(state).toMatchObject({ status: "DISBURSED", paidTotal: 400_000, outstanding: 600_000 });
@@ -376,6 +385,12 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
 
     await client.query("SAVEPOINT tamper");
     await expect(client.query("DELETE FROM employee_loan_payments WHERE loan_id = $1", [loan.id])).rejects.toThrow(/append-only/);
+    await client.query("ROLLBACK TO SAVEPOINT tamper");
+
+    // A payment only ever moves ACTIVE -> REVERSED; its amount never changes in place.
+    await client.query("SAVEPOINT tamper");
+    await expect(client.query("UPDATE employee_loan_payments SET amount = amount + 1 WHERE loan_id = $1", [loan.id]))
+      .rejects.toThrow(/may only be reversed/);
     await client.query("ROLLBACK TO SAVEPOINT tamper");
   });
 

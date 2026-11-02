@@ -18,6 +18,8 @@ export const MIN_PRINCIPAL = 100_000n;
 export const MAX_PRINCIPAL = 10_000_000n;
 /** D-04 DRAFT: tenor in monthly instalments, the three choices legacy HCIS offered. */
 export const TENOR_OPTIONS = [3, 6, 12] as const;
+/** D-09 DRAFT: how many months after the earliest allowed month the first instalment may fall. */
+export const MAX_FIRST_DUE_DELAY_MONTHS = 3;
 /** D-07 DRAFT: instalments are rounded down to this unit; the last one carries the remainder. */
 export const INSTALMENT_ROUNDING = 1_000n;
 
@@ -29,6 +31,7 @@ export type LoanPolicyCode =
   | "LOAN_TENOR_OUT_OF_RANGE"
   | "LOAN_INVALID_MONTH"
   | "LOAN_FIRST_DUE_TOO_EARLY"
+  | "LOAN_FIRST_DUE_TOO_LATE"
   | "LOAN_DISBURSED_IN_FUTURE"
   | "LOAN_PAYMENT_EXCEEDS_BALANCE"
   | "LOAN_PAYMENT_NOT_POSITIVE";
@@ -130,7 +133,8 @@ export function buildInstalmentSchedule(input: {
 
 /**
  * D-09: disbursement date no later than today; first instalment no earlier than the month
- * after disbursement. Without an explicit month the first instalment falls in that next month.
+ * after disbursement and no later than three months after that. Without an explicit month the
+ * first instalment falls in that next month.
  */
 export function resolveFirstDueMonth(input: { disbursedOn: string; firstDueMonth?: string | null; today: string }): string {
   if (!isCalendarDate(input.disbursedOn)) {
@@ -144,6 +148,13 @@ export function resolveFirstDueMonth(input: { disbursedOn: string; firstDueMonth
   if (!isMonth(month)) throw new LoanPolicyError("LOAN_INVALID_MONTH", "Bulan cicilan pertama tidak valid.");
   if (month < earliest) {
     throw new LoanPolicyError("LOAN_FIRST_DUE_TOO_EARLY", "Cicilan pertama paling cepat bulan setelah pencairan.");
+  }
+  // The schedule cannot be changed later, so a typo such as 2099 must not reach it.
+  if (month > addMonths(earliest, MAX_FIRST_DUE_DELAY_MONTHS)) {
+    throw new LoanPolicyError(
+      "LOAN_FIRST_DUE_TOO_LATE",
+      `Cicilan pertama paling lambat ${MAX_FIRST_DUE_DELAY_MONTHS} bulan setelah bulan cicilan paling awal.`,
+    );
   }
   return month;
 }

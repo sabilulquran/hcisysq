@@ -184,13 +184,14 @@ export const TENOR_OPTIONS = [3, 6, 12] as const;
 
 /**
  * Reads what a person typed as rupiah ("1.500.000", "Rp 1500000") into a whole number, or
- * null. Digits only — a comma or a fraction is refused rather than rounded, so no amount
- * passes through floating-point arithmetic.
+ * null. Plain digits, or digits grouped by dots in threes; anything else — a comma, a decimal
+ * point such as "50000.00", a stray dot — is refused rather than guessed, so "50000.00" never
+ * becomes five million and no amount passes through floating-point arithmetic.
  */
 export function parseRupiahInput(text: string): number | null {
-  const cleaned = text.replace(/^\s*rp\.?\s*/i, "").replace(/\./g, "").trim();
-  if (!/^\d{1,13}$/.test(cleaned)) return null;
-  const value = Number(cleaned);
+  const cleaned = text.trim().replace(/^rp\.?\s*/i, "");
+  if (!/^\d{1,13}$/.test(cleaned) && !/^\d{1,3}(\.\d{3}){1,4}$/.test(cleaned)) return null;
+  const value = Number(cleaned.replace(/\./g, ""));
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 

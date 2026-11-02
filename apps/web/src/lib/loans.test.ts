@@ -10,7 +10,11 @@ describe("LOAN-001 rupiah input", () => {
   });
 
   it("refuses fractions, commas, signs and empty input instead of rounding them", () => {
-    for (const text of ["1.500.000,50", "1500000.5e0", "-1000", "0", "", "satu juta", "1,5 juta", "12345678901234"]) {
+    // A decimal point must never be read as a thousands dot: "50000.00" is not five million.
+    for (const text of [
+      "1.500.000,50", "1500000.5e0", "-1000", "0", "", "satu juta", "1,5 juta", "12345678901234",
+      "50000.00", "1.5", "1.50.000", "1500.000.0",
+    ]) {
       expect(parseRupiahInput(text), text).toBeNull();
     }
   });

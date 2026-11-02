@@ -81,7 +81,11 @@ export function EmployeeLoansPage() {
 
   const update = (patch: Partial<ReturnType<typeof emptyForm>>) => {
     setForm((current) => ({ ...current, ...patch }));
-    if (patch.principal !== undefined || patch.tenorMonths !== undefined) setPreview(null);
+    if (patch.principal !== undefined || patch.tenorMonths !== undefined) {
+      setPreview(null);
+      // The server refuses a reused key with other terms: new terms, new submission.
+      setIdempotencyKey(crypto.randomUUID());
+    }
   };
 
   const run = async (action: () => Promise<void>, fallback: string) => {

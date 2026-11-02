@@ -17,6 +17,7 @@
 --   DROP TABLE IF EXISTS employee_loans;
 --   DROP FUNCTION IF EXISTS employee_loan_assert_money();
 --   DROP FUNCTION IF EXISTS employee_loan_refuse_change();
+--   DROP FUNCTION IF EXISTS employee_loan_payment_only_reversal();
 
 CREATE TABLE IF NOT EXISTS employee_loans (
   id uuid PRIMARY KEY,
@@ -145,6 +146,26 @@ DROP TRIGGER IF EXISTS employee_loan_payments_no_delete ON employee_loan_payment
 CREATE TRIGGER employee_loan_payments_no_delete
   BEFORE DELETE ON employee_loan_payments
   FOR EACH ROW EXECUTE FUNCTION employee_loan_refuse_change();
+-- A payment changes once, ACTIVE -> REVERSED, and only its reversal columns move with it.
+CREATE OR REPLACE FUNCTION employee_loan_payment_only_reversal() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.status <> 'ACTIVE' OR NEW.status <> 'REVERSED'
+     OR NEW.id <> OLD.id OR NEW.loan_id <> OLD.loan_id OR NEW.amount <> OLD.amount
+     OR NEW.paid_on <> OLD.paid_on OR NEW.method <> OLD.method
+     OR NEW.reference IS DISTINCT FROM OLD.reference OR NEW.note IS DISTINCT FROM OLD.note
+     OR NEW.idempotency_key <> OLD.idempotency_key
+     OR NEW.recorded_by_account_id <> OLD.recorded_by_account_id OR NEW.recorded_at <> OLD.recorded_at THEN
+    RAISE EXCEPTION 'employee loan payment may only be reversed' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS employee_loan_payments_only_reversal ON employee_loan_payments;
+CREATE TRIGGER employee_loan_payments_only_reversal
+  BEFORE UPDATE ON employee_loan_payments
+  FOR EACH ROW EXECUTE FUNCTION employee_loan_payment_only_reversal();
 DROP TRIGGER IF EXISTS employee_loans_no_delete ON employee_loans;
 CREATE TRIGGER employee_loans_no_delete
   BEFORE DELETE ON employee_loans

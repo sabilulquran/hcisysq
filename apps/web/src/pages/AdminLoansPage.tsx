@@ -60,6 +60,12 @@ export function AdminLoansPage() {
   // Disbursing, recording and cancelling need loans.manage; reading the register needs loans.read.
   const canManage = hasPermission(session, "loans.manage");
   const paymentAmount = parseRupiahInput(payment.amount);
+  // The server refuses a reused key with other terms, so a changed amount, date or method is a
+  // new payment and takes a new key.
+  const changePayment = (patch: Partial<ReturnType<typeof emptyPayment>>) => {
+    setPayment((current) => ({ ...current, ...patch }));
+    setPaymentKey(crypto.randomUUID());
+  };
 
   const load = async () => {
     setLoading(true);
@@ -266,18 +272,18 @@ export function AdminLoansPage() {
                           <div className="mt-2 grid gap-3 sm:grid-cols-2">
                             <label className="text-xs font-semibold text-muted-foreground">Jumlah (Rp)
                               <input inputMode="numeric" autoComplete="off" value={payment.amount} placeholder="Contoh: 250.000" className={field}
-                                onChange={(event) => setPayment({ ...payment, amount: event.target.value })} />
+                                onChange={(event) => changePayment({ amount: event.target.value })} />
                               {payment.amount && paymentAmount === null ? (
                                 <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
                               ) : null}
                             </label>
                             <label className="text-xs font-semibold text-muted-foreground">Tanggal bayar
                               <input type="date" min={selected.disbursedOn ?? undefined} max={todayInJakarta()} value={payment.paidOn} className={field}
-                                onChange={(event) => setPayment({ ...payment, paidOn: event.target.value })} />
+                                onChange={(event) => changePayment({ paidOn: event.target.value })} />
                             </label>
                             <label className="text-xs font-semibold text-muted-foreground">Cara
                               <select value={payment.method} className={field}
-                                onChange={(event) => setPayment({ ...payment, method: event.target.value as LoanPaymentMethod })}>
+                                onChange={(event) => changePayment({ method: event.target.value as LoanPaymentMethod })}>
                                 {(Object.keys(PAYMENT_METHOD_LABELS) as LoanPaymentMethod[]).map((key) => <option key={key} value={key}>{PAYMENT_METHOD_LABELS[key]}</option>)}
                               </select>
                             </label>
@@ -292,7 +298,7 @@ export function AdminLoansPage() {
                               Catat pembayaran
                             </button>
                             <button type="button" disabled={busy}
-                              onClick={() => setPayment({ ...payment, amount: String(selected.outstanding) })}
+                              onClick={() => changePayment({ amount: String(selected.outstanding) })}
                               className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
                               Isi sisa ({formatRupiah(selected.outstanding)}) untuk pelunasan
                             </button>

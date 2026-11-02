@@ -86,6 +86,9 @@ describe("LOAN-001 money rules", () => {
     expect(resolveFirstDueMonth({ disbursedOn: "2026-12-31", firstDueMonth: "2027-02", today: "2027-01-05" })).toBe("2027-02");
     expect(() => resolveFirstDueMonth({ disbursedOn: "2026-11-02", firstDueMonth: "2026-11", today: "2026-11-02" }))
       .toThrow(expect.objectContaining({ code: "LOAN_FIRST_DUE_TOO_EARLY" }));
+    expect(resolveFirstDueMonth({ disbursedOn: "2026-11-02", firstDueMonth: "2027-03", today: "2026-11-02" })).toBe("2027-03");
+    expect(() => resolveFirstDueMonth({ disbursedOn: "2026-11-02", firstDueMonth: "2027-04", today: "2026-11-02" }))
+      .toThrow(expect.objectContaining({ code: "LOAN_FIRST_DUE_TOO_LATE" }));
     expect(() => resolveFirstDueMonth({ disbursedOn: "2026-11-03", today: "2026-11-02" }))
       .toThrow(expect.objectContaining({ code: "LOAN_DISBURSED_IN_FUTURE" }));
     expect(() => resolveFirstDueMonth({ disbursedOn: "2026-11-02", firstDueMonth: "2026-13", today: "2026-11-02" }))

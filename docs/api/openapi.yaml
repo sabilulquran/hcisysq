@@ -30,6 +30,7 @@ tags:
   - name: Payslips
   - name: Employment
   - name: HR Documents
+  - name: Business Travel
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -286,6 +287,29 @@ paths:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals'
   /leave/approvals/{stepId}/decision:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals~1{stepId}~1decision'
+
+  /trips/me:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1me'
+  /trips/me/preview:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1me~1preview'
+  /trips/me/{id}:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1me~1{id}'
+  /trips/me/{id}/cancel:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1me~1{id}~1cancel'
+  /trips/me/{id}/complete:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1me~1{id}~1complete'
+  /trips/approvals:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1approvals'
+  /trips/approvals/{stepId}/decision:
+    $ref: './business-travel.openapi.yaml#/paths/~1trips~1approvals~1{stepId}~1decision'
+  /admin/trips:
+    $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips'
+  /admin/trips/{id}:
+    $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}'
+  /admin/trips/{id}/issue:
+    $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1issue'
+  /admin/trips/{id}/cancel:
+    $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1cancel'
 
   /admin/attendance/adms/management/summary:
     get:

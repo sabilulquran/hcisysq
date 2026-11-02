@@ -207,7 +207,7 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - PERF-001 Performance/KPI;
 - TRAIN-001 Training/LMS;
 - REC-001 Recruitment;
-- TRIP-001 Business travel;
+- TRIP-001 Business travel — Package 1 implemented, `docs/domain/business-travel.md`;
 - ASSET-001 Employee assets;
 - REIMB-001 Reimbursement;
 - LOAN-001 Employee loan;

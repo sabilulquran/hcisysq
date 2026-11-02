@@ -24,6 +24,9 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("announcements")?.stage).toBe("available");
     expect(getEmployeeService("announcements")?.href).toBe("/app/announcements");
     expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");
+    // TRIP-001 Package 1 ships request, approval and the surat tugas.
+    expect(getEmployeeService("business-travel")?.stage).toBe("available");
+    expect(getEmployeeService("business-travel")?.href).toBe("/app/trips");
   });
 
   it("maps every planned service to a real coming-soon route and feature id", () => {

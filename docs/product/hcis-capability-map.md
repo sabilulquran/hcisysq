@@ -101,7 +101,7 @@ Employee services continue with:
 
 - Employee data change request — EMP-003.
 - Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
-- Business travel / official travel workflow — TRIP-001.
+- Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Attendance disposition is Package 2; costs stay with REIMB-001.
 - Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.
 
@@ -111,7 +111,7 @@ Employee services continue with:
 - Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
 - Reminders and scheduled notifications — NOTIF-003.
-- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Specified as PROPOSED in `docs/domain/meeting-calendar.md`; implementation waits for owner decisions. In-app only in Package 1; no room booking.
+- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is specified and accepted in `docs/domain/meeting-calendar.md`: in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking.
 
 ### 7. Talent acquisition
 

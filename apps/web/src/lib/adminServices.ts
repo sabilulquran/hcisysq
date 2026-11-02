@@ -186,11 +186,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "business-travel",
     label: "Perjalanan Dinas",
-    description: "Kelola pengajuan, approval, surat tugas, dan administrasi perjalanan.",
+    description: "Register perjalanan dinas pegawai dan penerbitan surat tugas bernomor.",
     featureIds: ["TRIP-001"],
-    stage: "planned",
+    stage: "available",
     category: "employee-services",
-    href: "/admin/services/business-travel",
+    href: "/admin/trips",
+    details: [
+      "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
+      "Surat tugas bernomor dari register dokumen",
+      "Biaya, uang muka, dan reimbursement belum (REIMB-001)",
+    ],
   },
   {
     key: "documents",

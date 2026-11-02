@@ -87,8 +87,29 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().url().refine((value) => ["https:", "http:"].includes(new URL(value).protocol)).optional(),
     ),
+    // CAL-001 §9.2: `log` sends nothing (dry run). `kirim` hands messages to Kirim SQ on SQ Hub and
+    // needs the client credentials an operator installs once the HCIS number is paired (§15).
+    WHATSAPP_ADAPTER: z.preprocess((value) => value === "" ? undefined : value, z.enum(["log", "kirim"]).default("log")),
+    KIRIM_BASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+    KIRIM_TOKEN_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+    KIRIM_CLIENT_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    KIRIM_CLIENT_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+    KIRIM_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-hub-kirim")),
+    KIRIM_DEVICE_HCIS: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/).default("hcis"),
+    ),
+    // §9.3: the reminder and WhatsApp runner inside the API process; "0" stops it (e.g. a second instance).
+    MEETING_RUNNER_ENABLED: z.preprocess((value) => value === "" ? undefined : value, z.enum(["0", "1"]).default("1")),
   })
   .superRefine((value, ctx) => {
+    if (value.WHATSAPP_ADAPTER === "kirim") {
+      for (const key of ["KIRIM_BASE_URL", "KIRIM_TOKEN_URL", "KIRIM_CLIENT_ID", "KIRIM_CLIENT_SECRET"] as const) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when WHATSAPP_ADAPTER=kirim` });
+      }
+    }
+
     const biometricKeyringRequested =
       value.BIOMETRIC_COLLECTION_ENABLED === "1" ||
       value.MOBILE_ATTENDANCE_ENABLED === "1" ||

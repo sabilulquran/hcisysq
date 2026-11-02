@@ -383,7 +383,7 @@ components:
         endOn: { type: string, format: date }
         meetingTitle:
           type: [string, 'null']
-          description: Null when the other meeting is confidential and the caller is not in it.
+          description: Null when the other meeting is confidential and the caller is not in it; startAt and endAt are then left out too.
         message: { type: string, description: 'Indonesian sentence, e.g. "<Nama> bentrok dengan "<judul>" (09:00-10:00)."' }
     Availability:
       type: object
@@ -450,7 +450,7 @@ components:
               unavailableReason:
                 type: [string, 'null']
                 enum: [LEAVE, TRIP, null]
-                description: Approved leave or an approved/issued trip during the meeting (K-08).
+                description: Approved leave or an approved/issued trip during the meeting (K-08). Organizer and the participant only.
         events:
           type: array
           items:

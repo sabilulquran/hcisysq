@@ -62,6 +62,8 @@ Termasuk (Paket 1):
 | D-14 | Pembatalan SP yang sudah terbit butuh permission terpisah `documents.correct` dan alasan; nilai lama tetap tersimpan. | ACCEPTED |
 | D-15 | Isi surat tidak boleh memuat gaji, NIK lengkap, nomor rekening, data medis, atau alamat rumah. Nomor identitas ditampilkan tersamar bila diperlukan. | ACCEPTED |
 | D-16 | `documents.correct` dibawa role tersendiri `document_corrector`, bukan bundel mana pun. Konsekuensi yang **disengaja**: pemegangnya dapat membatalkan surat peringatan yang tidak dapat ia baca isinya, karena pembatalan adalah tindakan atas register (nomor dan status), bukan atas isi surat. Alasan pembatalan wajib dan tercatat di audit. | ACCEPTED (2026-10-27) |
+| D-18 | Register surat terbit memuat surat peringatan untuk pemegang `documents.read`, tetapi **hanya fakta register**: nomor, tingkat (sudah tersirat di nomor), status, tanggal terbit, serta waktu dan alasan pembatalan. Identitas pegawai, perihal, uraian, dan snapshot isi SP **tidak** ikut, sehingga D-13 tetap berlaku: pemegang `document_corrector` mengenali SP dari nomornya saja. Pemegang `documents.discipline.manage` tetap melihat identitas dan perihal di daftar surat peringatan. | DRAFT (2026-11-02) |
+| D-19 | SP yang sudah ditandai dibaca, atau yang masa berlakunya sudah lewat, **tetap dapat dibatalkan**. Tanda terima dan kedaluwarsa bukan status tersimpan register (§5.2), jadi keduanya tidak mengunci pembatalan; yang mengunci hanya status `REVOKED`. | DRAFT (2026-11-02) |
 | D-17 | Setiap migrasi yang menambahkan izin ke sebuah role harus dijalankan **setelah** build yang mengenal kunci izin itu berjalan. `canDelegateRole` menolak role yang membawa izin di luar allowlist-nya, sehingga build lama akan menolak pemberian/pencabutan role tersebut selama jendela antara migrasi dan restart. | ACCEPTED (2026-10-27) |
 
 ## 4. Objek
@@ -192,7 +194,7 @@ DOC-002:
 - DOC-002-C: pegawai tidak dapat menandai tanda terima milik orang lain.
 - DOC-002-D: SP dianggap berlaku hanya bila statusnya `ISSUED`, tanggal berlakunya sudah lewat, dan belum melewati tanggal berakhir — seluruhnya diturunkan saat dibaca, tanpa job terjadwal. SP yang dibatalkan tidak pernah tampil berlaku.
 - DOC-002-E: menerbitkan SP1 saat ada SP2 aktif menghasilkan peringatan, bukan penolakan (D-11).
-- DOC-002-F: pembatalan membutuhkan `documents.correct` dan alasan; nomor tetap terpakai.
+- DOC-002-F: pembatalan membutuhkan `documents.correct` dan alasan; nomor tetap terpakai. Alur layarnya di §12.
 - DOC-002-G: pratinjau notifikasi tidak memuat isi naratif.
 - DOC-002-H: atasan tanpa `documents.discipline.manage` tidak melihat SP bawahannya (D-13).
 - DOC-002-I: `human_capital_admin` dapat menerbitkan dan membaca surat peringatan; `documents.correct` hanya dibawa `document_corrector` (D-16).
@@ -206,6 +208,32 @@ Semua dijawab dengan default `DRAFT` di §3 supaya implementasi tidak berhenti. 
 2. masa berlaku surat peringatan (D-10);
 3. apakah atasan langsung berhak melihat SP bawahannya (D-13);
 4. apakah surat keterangan perlu persetujuan di atas HC untuk kasus tertentu (D-07);
-5. siapa yang memegang role `document_corrector` di YSQ (D-16); sampai Super Admin memberikannya, pembatalan surat tidak tersedia bagi siapa pun dan tombolnya tidak ditampilkan.
+5. siapa yang memegang role `document_corrector` di YSQ (D-16); sampai Super Admin memberikannya, pembatalan surat tidak tersedia bagi siapa pun dan tombolnya tidak ditampilkan;
+6. apakah pemegang `document_corrector` perlu melihat nama pegawai pada SP di register (D-18), dan apakah pegawai perlu diberi notifikasi saat SP-nya dibatalkan (saat ini tidak; statusnya berubah di layar dokumen pegawai).
 
 Follow-up yang diketahui, di luar paket ini: resolver penandatangan (`modules/documents/signer-authority.ts`, warisan PAYSLIP-005) masih memakai `current_date` basis data, sehingga masa jabatan penanda tangan berganti pada 00:00 UTC (07:00 WIB), bukan tengah malam Jakarta. Perbaikannya menyentuh slip gaji juga, jadi menjadi perubahan tersendiri.
+
+## 12. Alur layar pembatalan surat (DOC-002-F)
+
+Ditambahkan 2026-11-02. Sebelumnya aturan pembatalan hanya ada di API, sedangkan register di layar hanya memuat surat keterangan, sehingga pemegang `document_corrector` (yang tidak membawa `documents.discipline.manage`) tidak dapat menemukan SP yang hendak dibatalkan.
+
+| Unsur | Isi |
+| --- | --- |
+| Aktor | Pemegang `documents.correct` (role `document_corrector`, D-16). |
+| Prasyarat | Surat ada di register dengan status `ISSUED` (termasuk SP yang sudah dibaca atau kedaluwarsa, D-19). |
+| Layar | `/admin/documents` (menu **Pegawai → Dokumen Kepegawaian**), bagian **Register surat terbit**, dengan tab **Surat keterangan** dan **Surat peringatan** serta filter status (semua, terbit, dibatalkan). `documents.read` membuka shell admin, karena `document_corrector` tidak membawa izin admin lain; tanpa itu shell memantulkan satu-satunya role yang boleh membatalkan. |
+| Input | Alasan pembatalan, 10–500 karakter setelah dipangkas, wajib. |
+| Transisi | `ISSUED -> REVOKED`; `revoked_at`, `revoked_by_account_id`, dan `revoke_reason` disimpan; nomor tetap terpakai (D-03) dan isi surat tidak diubah (D-14). |
+| Permission | API memeriksa `documents.correct` di setiap panggilan. Layar hanya menyembunyikan tombol **Batalkan** dari akun tanpa izin itu; tidak ada keputusan otorisasi lain di frontend. |
+| Audit | `doc.discipline.revoked` untuk SP, `doc.revoked` untuk surat keterangan; memuat id surat, pegawai, aktor, alasan, serta `documentCode` dan `documentNumber` di metadata. Isi naratif SP tidak pernah masuk audit (§7). |
+| Kegagalan | Tanpa izin → `403 DOCUMENT_FORBIDDEN`; alasan kurang dari 10 karakter → `400 INVALID_DOCUMENT_REVOKE` dan dialog tetap terbuka dengan pesannya; surat sudah dibatalkan atau tidak ada → `409 DOCUMENT_NOT_REVOCABLE`, register dimuat ulang. |
+
+Register (`GET /admin/documents/register`) mengikuti ENG-LIST-001 §3.1: `kind` (`CERTIFICATE` bawaan, atau `DISCIPLINARY`), `status` (`ISSUED`/`REVOKED`, opsional), `page`, `pageSize` (bawaan 25, maksimum 100); filter berjalan di SQL sebelum `LIMIT` dan `total` memakai filter yang sama. Baris SP tidak membawa identitas pegawai, signer, maupun snapshot isi (D-18). Tab, filter status, halaman, dan ukuran halaman disimpan di query string layar (`registerKind`, `registerStatus`, `registerPage`, `registerPageSize`).
+
+Acceptance:
+
+- DOC-002-F1: tombol **Batalkan** tampil hanya untuk pemegang `documents.correct` dan hanya pada surat berstatus terbit.
+- DOC-002-F2: pemegang `documents.read` tanpa `documents.discipline.manage` melihat SP di register tanpa nama pegawai, perihal, maupun uraian.
+- DOC-002-F3: dialog pembatalan tidak mengirim alasan kosong atau kurang dari 10 karakter; API tetap menolaknya dengan `400` bila dikirim langsung.
+- DOC-002-F4: pembatalan menulis satu audit event berisi alasan, dan nomor surat yang dibatalkan tidak pernah dialokasikan ulang ke surat berikutnya.
+- DOC-002-F5: surat yang dibatalkan tampil berstatus **Dibatalkan** beserta tanggal dan alasannya di register, dan sebagai **Dibatalkan** di daftar surat peringatan HC.

@@ -20,6 +20,34 @@ const hcAdmin = [
 ];
 const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage"];
 
+describe("DOC-002-F document corrector", () => {
+  const corrector = session("EMPLOYEE", ["documents.read", "documents.correct"]);
+
+  it("reaches the admin shell and the documents screen with its own role alone", () => {
+    // The shell used to bounce this role to "/", so the one account that may revoke a letter
+    // could never open the screen that revokes it.
+    expect(canAccessAdminPath(corrector, "/admin")).toBe(true);
+    expect(canAccessAdminPath(corrector, "/admin/documents")).toBe(true);
+    expect(canAccessAdminPath(corrector, "/admin/employees")).toBe(false);
+  });
+
+  it("finds the screen in the menu, which an account without documents.read does not", () => {
+    for (const compact of [false, true]) {
+      const html = renderToStaticMarkup(<AdminNavigation active="documents" session={corrector} compact={compact} />);
+      expect(html).toContain('href="/admin/documents"');
+      expect(html).not.toContain('href="/admin/employees"');
+      const other = renderToStaticMarkup(
+        <AdminNavigation active="overview" session={session("EMPLOYEE", ["employees.manage"])} compact={compact} />,
+      );
+      expect(other).not.toContain('href="/admin/documents"');
+    }
+  });
+
+  it("does not open the shell to documents.correct without documents.read", () => {
+    expect(canAccessAdminPath(session("EMPLOYEE", ["documents.correct"]), "/admin")).toBe(false);
+  });
+});
+
 describe("PAY-003 payroll screens", () => {
   const board = session("FOUNDATION_BOARD", ["board.read"]);
   const employee = session("EMPLOYEE", ["payslips.read.own"]);

@@ -3,14 +3,17 @@
 //
 // The API authorizes every call; a section the account cannot read simply stays empty.
 
+import { useLocation, useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DocumentRegisterSection, RevokeDocumentDialog, type RegisterView } from "@/components/documents/DocumentRegister";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 import {
+  HrDocumentApiError,
   approveDocumentRequest,
   documentStatusLabel,
   getDisciplinaryLetters,
@@ -18,14 +21,15 @@ import {
   getDocumentRequests,
   issueDisciplinaryLetter,
   issueDocumentRequest,
+  readRegisterFilter,
   rejectDocumentRequest,
   revokeIssuedDocument,
+  writeRegisterFilter,
   type DisciplinaryLetterSummary,
   type DocumentRequestSummary,
-  type IssuedDocumentSummary,
+  type RegisterEntry,
+  type RegisterFilter,
 } from "@/lib/hrDocuments";
-
-type RegisterRow = IssuedDocumentSummary & { employeeName: string; employeeNumber: string };
 
 function formatDate(value: string | null) {
   if (!value) return "-";
@@ -41,10 +45,9 @@ function todayInJakarta() {
 
 export function AdminDocumentsPage() {
   const [requests, setRequests] = useState<DocumentRequestSummary[]>([]);
-  const [register, setRegister] = useState<RegisterRow[]>([]);
   const [letters, setLetters] = useState<DisciplinaryLetterSummary[]>([]);
   const [disciplineReadable, setDisciplineReadable] = useState(false);
-  const [totals, setTotals] = useState({ requests: 0, register: 0, letters: 0 });
+  const [totals, setTotals] = useState({ requests: 0, letters: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,22 +60,50 @@ export function AdminDocumentsPage() {
   // DOC-001/DOC-002: revoking needs documents.correct, which is a separate role grant. Without
   // it the button would only produce a raw 403, so it is not offered.
   const canRevoke = hasPermission(session, "documents.correct");
+  const router = useRouter();
+  const { searchStr } = useLocation();
+  const registerFilter = readRegisterFilter(searchStr);
+  const [registerView, setRegisterView] = useState<RegisterView>({ kind: "loading" });
+  const [revokeTarget, setRevokeTarget] = useState<RegisterEntry | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const { kind: registerKind, status: registerStatus, page: registerPage, pageSize: registerPageSize } = registerFilter;
+  // Only the latest request may write the view: a slower answer for the previous tab must not
+  // show certificate rows, with their Batalkan buttons, under the warning-letter tab.
+  const registerRequest = useRef(0);
+  const loadRegister = useCallback(async () => {
+    const request = ++registerRequest.current;
+    const settle = (view: RegisterView) => { if (request === registerRequest.current) setRegisterView(view); };
+    setRegisterView({ kind: "loading" });
     try {
-      const [requestList, registerList, letterList] = await Promise.allSettled([
+      const result = await getDocumentRegister({
+        kind: registerKind, status: registerStatus, page: registerPage, pageSize: registerPageSize,
+      });
+      settle({ kind: "ready", items: result.items, total: result.pagination.total });
+    } catch (cause) {
+      if (cause instanceof HrDocumentApiError && cause.status === 403) settle({ kind: "forbidden" });
+      else settle({ kind: "error", message: cause instanceof Error ? cause.message : "Register tidak dapat dimuat." });
+    }
+  }, [registerKind, registerStatus, registerPage, registerPageSize]);
+
+  useEffect(() => { void loadRegister(); }, [loadRegister]);
+
+  // ENG-LIST-001-J: a history entry per change, so refresh, sharing and Back all keep the view.
+  const changeRegisterFilter = (next: RegisterFilter) => {
+    router.history.push(`/admin/documents${writeRegisterFilter(searchStr, next)}`);
+  };
+
+  /** `quiet` refreshes in place, so a revocation does not unmount the page under the user. */
+  const load = async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) setLoading(true);
+    try {
+      const [requestList, letterList] = await Promise.allSettled([
         getDocumentRequests(),
-        getDocumentRegister(),
         getDisciplinaryLetters(),
       ]);
       if (requestList.status === "rejected") throw requestList.reason;
       setRequests(requestList.value.items);
       setTotals((current) => ({ ...current, requests: requestList.value.pagination.total }));
-      if (registerList.status === "fulfilled") {
-        setRegister(registerList.value.items);
-        setTotals((current) => ({ ...current, register: registerList.value.pagination.total }));
-      }
       setDisciplineReadable(letterList.status === "fulfilled");
       if (letterList.status === "fulfilled") {
         setLetters(letterList.value.items);
@@ -118,10 +149,35 @@ export function AdminDocumentsPage() {
     void run(() => rejectDocumentRequest(requestId, note.trim()), "Permintaan ditolak.");
   };
 
-  const revoke = (documentId: string) => {
-    const reason = window.prompt("Alasan pembatalan (minimal 10 karakter)");
-    if (!reason || reason.trim().length < 10) return;
-    void run(() => revokeIssuedDocument(documentId, reason.trim()), "Surat dibatalkan; nomornya tetap terpakai.");
+  const openRevoke = (entry: RegisterEntry) => {
+    setRevokeError(null);
+    setRevokeTarget(entry);
+  };
+
+  const confirmRevoke = async (reason: string) => {
+    if (!revokeTarget) return;
+    setBusy(true);
+    setRevokeError(null);
+    setNotice(null);
+    try {
+      await revokeIssuedDocument(revokeTarget.id, reason);
+      setRevokeTarget(null);
+      setNotice(`Surat ${revokeTarget.documentNumber} dibatalkan; nomornya tetap terpakai.`);
+      await Promise.all([loadRegister(), load({ quiet: true })]);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Surat belum dapat dibatalkan.";
+      if (cause instanceof HrDocumentApiError && (cause.status === 403 || cause.status === 409)) {
+        // Forbidden or already revoked: the dialog cannot fix either, so close it and show
+        // the register as it is now.
+        setRevokeTarget(null);
+        setError(message);
+        await Promise.all([loadRegister(), load({ quiet: true })]);
+      } else {
+        setRevokeError(message);
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitLetter = (event: React.FormEvent) => {
@@ -134,7 +190,7 @@ export function AdminDocumentsPage() {
   };
 
   return (
-    <AdminShell active="services" title="Dokumen Kepegawaian" description="Surat keterangan dan surat peringatan pegawai.">
+    <AdminShell active="documents" title="Dokumen Kepegawaian" description="Surat keterangan dan surat peringatan pegawai.">
       {error ? <div className="mb-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
@@ -189,36 +245,15 @@ export function AdminDocumentsPage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            <h2 className="text-sm font-bold text-brand-heading">Register surat terbit</h2>
-            {register.length ? (
-              <ul className="mt-3 divide-y divide-border/70">
-                {register.map((document) => (
-                  <li key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-brand-heading">{document.documentNumber}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {document.employeeName} ({document.employeeNumber}) · {formatDate(document.issuedAt)}
-                        {document.status === "REVOKED" ? " · dibatalkan" : ""}
-                      </p>
-                    </div>
-                    {document.status === "ISSUED" && canRevoke ? (
-                      <button type="button" disabled={busy} onClick={() => revoke(document.id)}
-                        className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
-                        Batalkan
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">Belum ada surat yang terbit.</p>
-            )}
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Nomor surat tidak pernah dipakai ulang. Surat yang dibatalkan tetap memegang nomornya.
-              {totals.register > register.length ? ` Menampilkan ${register.length} terbaru dari ${totals.register}.` : ""}
-            </p>
-          </section>
+          <DocumentRegisterSection
+            filter={registerFilter}
+            view={registerView}
+            canRevoke={canRevoke}
+            busy={busy}
+            onFilterChange={changeRegisterFilter}
+            onRevoke={openRevoke}
+            onRetry={() => void loadRegister()}
+          />
 
           {disciplineReadable ? (
             <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
@@ -270,7 +305,7 @@ export function AdminDocumentsPage() {
                       <p className="text-sm text-muted-foreground">{letter.subject}</p>
                       <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
                         {letter.documentNumber} · {formatDate(letter.effectiveDate)} s.d. {formatDate(letter.expiresOn)}
-                        {letter.active ? "" : " · tidak berlaku"}
+                        {letter.status === "REVOKED" ? " · dibatalkan" : letter.active ? "" : " · tidak berlaku"}
                         {letter.acknowledgedAt ? ` · dibaca ${formatDate(letter.acknowledgedAt)}` : " · belum dibaca"}
                       </p>
                     </li>
@@ -286,6 +321,15 @@ export function AdminDocumentsPage() {
           ) : null}
         </div>
       )}
+      {revokeTarget ? (
+        <RevokeDocumentDialog
+          entry={revokeTarget}
+          busy={busy}
+          error={revokeError}
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={(reason) => void confirmRevoke(reason)}
+        />
+      ) : null}
     </AdminShell>
   );
 }

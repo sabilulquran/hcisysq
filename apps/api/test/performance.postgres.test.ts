@@ -374,6 +374,7 @@ describe.skipIf(!allowed)("PERF-001 performance review", () => {
     expect((await reviewRow(reviewOf("other"))).status).toBe("UNRATED");
     expect((await rate(reviewOf("other"))).json().code).toBe("PERFORMANCE_CYCLE_NOT_OPEN");
 
+    actAs("hc", HC);
     const filtered = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?predicate=D` });
     expect(filtered.json().pagination.total).toBe(1);
     const searched = await app.inject({ method: "GET", url: `/admin/performance/cycles/${cycleId}/reviews?q=kinerja%20other` });

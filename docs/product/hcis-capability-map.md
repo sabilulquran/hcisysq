@@ -102,7 +102,7 @@ Employee services continue with:
 - Employee data change request — EMP-003.
 - Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
 - Business travel / official travel workflow — TRIP-001.
-- Employee asset assignment and return — ASSET-001.
+- Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - Desk/workplace booking — WORK-001.
 
 ### 6. Communication

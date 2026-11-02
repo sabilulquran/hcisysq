@@ -532,12 +532,22 @@ features:
   - id: TRAIN-001
     module: training
     name: Internal training and learning records
-    legacy_evidence: internal LMS/training module exists
-    target_status: discovery
+    legacy_evidence: >-
+      internal LMS/training module exists (Laravel hcysq/hcis-ysq @30264ba: modules, lessons with
+      YouTube video, quizzes, evaluation forms, QR session check-in, certificates); GAS-HCIS only
+      lists training names on the profile
+    target_status: implemented
     priority: later
     risk: medium
+    notes: >-
+      Package 1 implemented 2026-11-02 (docs/domain/training.md): training record keeping, not an
+      LMS. Programs with scheduled sessions blocked against meetings, leave, trips and other
+      training; participants; per-session attendance; internal records on closing; external
+      records verified by HC; encrypted certificates; yearly hours. Evaluation (R3) and online
+      modules (R4) stay in discovery.
     planning_note: HCIS feature, not a separate SQ Core app (Product Owner, 2026-10-20). Staged R1 training records, R2 offline programs, R3 training evaluation (four-level framework, evaluation plans, form/test/rubric instruments), R4 online modules with server-hosted video that cannot be skipped or sped up, enforced by server-side progress crediting. Storage goes through the ObjectStorage port and must not assume Mi8VPS.
     docs:
+      - docs/domain/training.md
       - docs/domain/training-lms-discovery.md
       - docs/product/hcis-capability-map.md
 

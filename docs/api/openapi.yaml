@@ -31,6 +31,7 @@ tags:
   - name: Employment
   - name: HR Documents
   - name: Business Travel
+  - name: Training
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -310,6 +311,55 @@ paths:
     $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1issue'
   /admin/trips/{id}/cancel:
     $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1cancel'
+
+  /training/me/summary:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1summary'
+  /training/me/records:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1records'
+  /training/me/records/{id}/withdraw:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1records~1{id}~1withdraw'
+  /training/me/records/{id}/certificate:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1records~1{id}~1certificate'
+  /training/me/programs:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1programs'
+  /training/me/programs/{id}:
+    $ref: './training.openapi.yaml#/paths/~1training~1me~1programs~1{id}'
+  /admin/training/programs:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs'
+  /admin/training/programs/{id}:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}'
+  /admin/training/programs/{id}/cancel:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1cancel'
+  /admin/training/programs/{id}/complete:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1complete'
+  /admin/training/programs/{id}/sessions:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1sessions'
+  /admin/training/sessions/{id}:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1sessions~1{id}'
+  /admin/training/sessions/{id}/cancel:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1sessions~1{id}~1cancel'
+  /admin/training/programs/{id}/participants:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1participants'
+  /admin/training/programs/{id}/participants/{employeeId}/withdraw:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1participants~1{employeeId}~1withdraw'
+  /admin/training/sessions/{id}/attendance:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1sessions~1{id}~1attendance'
+  /admin/training/availability:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1availability'
+  /admin/training/records:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1records'
+  /admin/training/records/{id}:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1records~1{id}'
+  /admin/training/records/{id}/verify:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1records~1{id}~1verify'
+  /admin/training/records/{id}/reject:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1records~1{id}~1reject'
+  /admin/training/records/{id}/certificate:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1records~1{id}~1certificate'
+  /admin/training/hours:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
+  /admin/training/employee-options:
+    $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
 
   /admin/attendance/adms/management/summary:
     get:

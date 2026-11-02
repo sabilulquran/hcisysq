@@ -53,6 +53,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
 | Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
 | Assignment Letter / Surat Tugas | Surat bernomor yang diterbitkan HC untuk perjalanan dinas yang sudah disetujui. Tercatat di register dokumen DOC-001 (`document_kind = ASSIGNMENT`); nomor tidak pernah didaur ulang. |
+| Training Program / Program Pelatihan | Wadah pelatihan internal dengan sesi terjadwal, peserta, dan daftar hadir per sesi (TRAIN-001). Kehadiran sesi bukan presensi kerja. |
+| Training Record / Catatan Pelatihan | Riwayat resmi pelatihan per pegawai: internal (dibuat saat program ditutup) atau eksternal (diajukan pegawai, diverifikasi HC), dengan jam pelatihan dan sertifikat opsional (TRAIN-001). |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
 | Legacy HCIS | Implementasi sebelumnya yang digunakan untuk discovery dan sumber migrasi. |
 | Synthetic Data | Data buatan yang tidak berasal dari atau sengaja menyerupai data individu nyata. |

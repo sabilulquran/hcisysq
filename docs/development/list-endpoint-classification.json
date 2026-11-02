@@ -573,6 +573,28 @@
       "list": "paged"
     },
     {
+      "url": "/admin/performance/cycles",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/performance/cycles/:id",
+      "list": "single",
+      "reason": "Satu siklus penilaian beserta rekap per status dan predikat serta riwayat tingkat siklus."
+    },
+    {
+      "url": "/admin/performance/cycles/:id/reviews",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/performance/employees/:employeeId/reviews",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/performance/reviews/:id",
+      "list": "single",
+      "reason": "Satu penilaian kinerja beserta rubrik dan riwayatnya."
+    },
+    {
       "url": "/admin/trips",
       "list": "paged"
     },
@@ -879,6 +901,24 @@
     {
       "url": "/payslips/:id",
       "list": "single"
+    },
+    {
+      "url": "/performance/me",
+      "list": "paged"
+    },
+    {
+      "url": "/performance/me/:id",
+      "list": "single",
+      "reason": "Satu penilaian kinerja milik pegawai beserta riwayat yang boleh dilihatnya."
+    },
+    {
+      "url": "/performance/team",
+      "list": "paged"
+    },
+    {
+      "url": "/performance/team/:id",
+      "list": "single",
+      "reason": "Satu penilaian yang ditugaskan kepada penilai beserta penilaian diri dan riwayatnya."
     },
     {
       "url": "/ready",

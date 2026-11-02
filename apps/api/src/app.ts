@@ -58,6 +58,7 @@ import { registerJobClassificationRoutes } from "./modules/organization/job-clas
 import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerEmployeeAssetRoutes } from "./modules/employee-assets/routes.js";
 import { registerTripRoutes } from "./modules/trips/routes.js";
+import { registerPerformanceRoutes } from "./modules/performance/routes.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
 import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
@@ -206,6 +207,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerJobClassificationRoutes(app, pool, config);
   await registerDocumentRoutes(app, pool, config);
   await registerTripRoutes(app, pool, config);
+  await registerPerformanceRoutes(app, pool, config);
 
   app.setErrorHandler((error, request, reply) => {
     const databaseError = error as Error & { code?: string; constraint?: string };

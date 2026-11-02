@@ -219,11 +219,12 @@ Follow-up (`TBD`, outside this repository): the Hub/Aset release tooling (`sq-co
 and honour the same lock. Until it does, the announcement rule in §3 is the only guard for
 cross-app releases.
 
-## 5. Two traps in any Android-side script (OPS-MI8-REL-001 §5)
+## 5. Traps in any Android-side script (OPS-MI8-REL-001 §5)
 
-Both were found on 2026-11-01, in review of the AUTH-014 ignition scripts, before either ran with
-`--apply`. They are not specific to those scripts: any script that runs on the Android side and
-touches a chrooted service meets them.
+Found on 2026-11-01 and 2026-11-02, in review and first runs of the AUTH-014 ignition scripts.
+None is specific to those scripts: any script that runs on the Android side and touches a
+chrooted service meets them. Expect this list to grow; the chroot boundary is the common cause,
+and each entry below is a different way of getting the wrong side of it.
 
 ### 5.1 There is no `/tmp` on the Android side
 
@@ -260,7 +261,35 @@ everything it printed was true.
 Rule: wait for the **pid to change** in `sq-core-pids/<svc>.pid`, and only then poll `/health`.
 Apply the same waiting function to the automatic rollback path, which has exactly the same race.
 
-### 5.3 Proving a service actually loaded a value
+### 5.3 `chroot ... /bin/sh -c` keeps the Android `PATH`
+
+A shell started inside the chroot inherits the caller's environment, and the Android `PATH` names
+only Android directories:
+
+```text
+/sbin:/system/sbin:/product/bin:/apex/com.android.runtime/bin:/system/bin:/system/xbin:...
+```
+
+None of them exists inside the chroot, so `grep`, `cat`, `sed` and every other GNU tool are not
+found. Observed 2026-11-02, when a release-adjacent script stopped with
+`/bin/sh: 3: grep: not found` in the middle of rewriting a configuration file.
+
+```sh
+chroot "$R" /bin/sh -c 'grep -v "^KEY" file > new'                      # WRONG
+chroot "$R" /bin/sh -c 'PATH=/usr/bin:/bin; export PATH; grep -v ...'   # right
+```
+
+What makes this one hard to see is that a script usually gets it right *somewhere*. The script in
+question already wrapped `kcadm` in `/usr/bin/env PATH=...` — the same fix, two screens higher —
+so the author had already met the problem and solved it without noticing it was general. Set
+`PATH` in **every** chroot invocation, not only the ones that failed loudly the first time.
+
+This trap is why §5.1 is worth stating separately: the two look alike (both are about which side
+of the chroot boundary a thing is resolved on) but fail in opposite directions. §5.1 resolves a
+path too early, on the Android side; this one resolves a command too late, with the wrong
+environment. Fixing one does nothing for the other.
+
+### 5.4 Proving a service actually loaded a value
 
 Neither the file nor a healthy `/health` proves the running process read it. `/proc/<pid>/environ`
 of the service's own `node` process does, and it can be read without printing any value:

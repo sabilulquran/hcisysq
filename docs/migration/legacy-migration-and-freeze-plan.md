@@ -31,7 +31,7 @@ Each item is DISCOVERY until a named owner answers it. Record answers in a dated
 
 | # | Question | Why it matters | Owner (proposed) |
 |---|---|---|---|
-| D1 | Which system and host is "legacy HCIS"? Who administers it? Is it still accepting writes today? | Nothing can be extracted or frozen without this. | Owner |
+| D1 | Which system and host is "legacy HCIS"? Who administers it? Is it still accepting writes today? Partly answered 2026-11-02 (CAL-001 discovery): the source is the Laravel app in GitHub `hcysq/hcis-ysq`, preceded by Apps Script `hcysq/GAS-HCIS`. Host, database and write status remain open. | Nothing can be extracted or frozen without this. | Owner |
 | D2 | Which domains must exist in HCIS YSQ before legacy is frozen? Proposed minimum: employee master (done), **leave balances as of a cut-off date**, open leave requests, last N months of payslips employees still need to see. | Defines the rehearsal scope; everything else can be archived read-only. | Owner + HC |
 | D3 | Source of truth for leave balances at cut-off: legacy computed balance, HC spreadsheet, or recomputation from history? | LEAVE-002 has no opening-balance import; we must build one (§4) and know what to reconcile against. | HC |
 | D4 | Historical attendance and payslips: migrate, or keep legacy read-only as the archive? | Migrating history is expensive; a read-only archive with a retention date is often enough. | Owner + HC + Finance |

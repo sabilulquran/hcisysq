@@ -205,7 +205,7 @@ Benchmark call-screen dapat menjadi evidence untuk screening adapter/evidence/ma
 Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah ada:
 
 - PERF-001 Performance/KPI;
-- TRAIN-001 Training/LMS;
+- TRAIN-001 Training/LMS — Package 1 (training record keeping) implemented, `docs/domain/training.md`;
 - REC-001 Recruitment;
 - TRIP-001 Business travel — Package 1 implemented, `docs/domain/business-travel.md`;
 - ASSET-001 Employee assets;

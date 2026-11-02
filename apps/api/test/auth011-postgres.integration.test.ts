@@ -190,10 +190,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(316);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(339);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(84);
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(92);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
     // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still

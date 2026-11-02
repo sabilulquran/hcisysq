@@ -140,6 +140,9 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "loans.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/loans")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/loans")).toBe(false);
+    expect(canAccessAdminPath(actor, "/admin/training")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["training.read"]), "/admin/training")).toBe(true);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/training")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/data")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/maintenance")).toBe(true);
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);

@@ -106,9 +106,9 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["PERF-001"], stage: "discovery", category: "development", href: "/app/services/performance",
   },
   {
-    key: "training", label: "Training / LMS",
-    description: "Pelatihan internal, pembelajaran, dan catatan pengembangan.",
-    featureIds: ["TRAIN-001"], stage: "discovery", category: "development", href: "/app/services/training",
+    key: "training", label: "Pelatihan",
+    description: "Jadwal pelatihan, riwayat, sertifikat, dan jam pelatihan Anda.",
+    featureIds: ["TRAIN-001"], stage: "available", category: "development", href: "/app/training",
   },
   {
     key: "profile-change", label: "Data Saya",

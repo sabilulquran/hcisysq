@@ -1,14 +1,14 @@
 # Kalender dan Undangan Rapat
 
-**Status:** PROPOSED — spesifikasi Paket 1. Implementasi menunggu persetujuan pemilik produk atas keputusan K-01..K-08 (§3). Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
+**Status:** ACCEPTED (Paket 1) — pemilik produk menyetujui K-01..K-08 pada 2026-11-02, dengan K-05 dan K-06 diubah (§3). Spesifikasi ini mengizinkan implementasi Paket 1. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
 **Spesifikasi:** CAL-001
 **Tanggal:** 2026-11-02
-**Terkait:** LEAVE-001, LEAVE-002, TRIP-001, NOTIF-001, NOTIF-003, NOTIF-004, ATT-011, AUTH-011, ENG-LIST-001, WORK-001 (removed)
-**Roadmap:** `docs/product/hcis-capability-map.md` §5, `docs/product/feature-parity.yaml` (CAL-001)
+**Terkait:** LEAVE-001, LEAVE-002, TRIP-001, NOTIF-001, NOTIF-003, NOTIF-004, ATT-011, AUTH-011, ENG-LIST-001, WORK-001 (removed); SQ Hub ADR-0011 dan KIRIM-001 (Kirim SQ)
+**Roadmap:** `docs/product/hcis-capability-map.md` §6, `docs/product/feature-parity.yaml` (CAL-001)
 
 ## 1. Tujuan
 
-Pegawai dapat mengundang pegawai lain ke rapat atau kegiatan berjam, dan HCIS **menolak undangan yang membuat jadwal seorang peserta bertabrakan**. Setiap pegawai melihat satu kalender pribadi berisi rapatnya, cutinya, perjalanan dinasnya, dan hari libur.
+Pegawai dapat mengundang pegawai lain ke rapat atau kegiatan berjam, dan HCIS **menolak undangan yang membuat jadwal seorang peserta bertabrakan**. Setiap pegawai melihat satu kalender berisi rapat yayasan, cutinya, perjalanan dinasnya, dan hari libur.
 
 Paket 1 menghasilkan:
 
@@ -16,8 +16,10 @@ Paket 1 menghasilkan:
 - pemblokiran waktu peserta: rapat aktif lain, cuti yang disetujui, dan perjalanan dinas yang disetujui menolak undangan (§6);
 - konfirmasi hadir (Hadir / Berhalangan) oleh peserta;
 - ubah dan batal oleh penyelenggara;
-- notifikasi in-app (NOTIF-004) untuk undangan, perubahan, dan pembatalan;
-- kalender bulanan pribadi dan daftar rapat Akan Datang / Lewat.
+- notifikasi in-app (NOTIF-004) dan WhatsApp lewat Kirim SQ untuk undangan, perubahan, dan pembatalan (§9);
+- pengingat 30 menit sebelum rapat, in-app dan WhatsApp (§9.3);
+- kalender bulanan yang menampilkan semua rapat yayasan, dengan rapat bertanda **Rahasia** hanya tampil sebagai "Sibuk" bagi bukan peserta (K-05);
+- daftar rapat saya Akan Datang / Lewat.
 
 ## 2. Bukti legacy
 
@@ -33,7 +35,7 @@ HCIS lama adalah aplikasi Laravel di repository GitHub **`hcysq/hcis-ysq`** (aku
 | Konfirmasi hadir | kolom `agenda_participants.response` (`pending/accepted/declined`) | Kolom ada, **tetapi tidak ada route atau tombol untuk menjawab**. Peserta yang (secara data) menolak tetap memblokir waktunya. |
 | Notifikasi | `app/Notifications/AgendaInvitationNotification.php`, `AgendaCancelledNotification.php` | In-app (kanal `database`). WhatsApp lewat Starsender bila penyelenggara mencentang `notify_whatsapp`, dikirim langsung di request. |
 | Pengingat | `app/Services/ReminderService.php::scheduleForAgenda`, `DispatchReminders` | Default 30 menit sebelum mulai, in-app, bisa diatur per pegawai (`reminder_preferences`). **Cacat:** pengingat tidak dihapus saat agenda dibatalkan atau peserta dikeluarkan, sehingga tetap terkirim. |
-| Kalender bulanan | `app/Http/Controllers/CalendarController.php` | Grid 6 minggu: agenda, cuti `approved` milik sendiri, hari libur (cuti bersama dibedakan dari nama), tanggal Hijriah dengan offset setelan. **Semua agenda aktif seluruh yayasan ditampilkan ke semua pegawai**, termasuk judulnya (warna ungu, tanpa tautan) — kebocoran informasi. |
+| Kalender bulanan | `app/Http/Controllers/CalendarController.php` | Grid 6 minggu: agenda, cuti `approved` milik sendiri, hari libur (cuti bersama dibedakan dari nama), tanggal Hijriah dengan offset setelan. Semua agenda aktif seluruh yayasan ditampilkan ke semua pegawai, termasuk judulnya (warna ungu, tanpa tautan), tanpa cara menyembunyikan rapat yang sensitif. |
 | Jadwal Saya | `app/Http/Controllers/ScheduleController.php` | Gabungan shift kerja, agenda sendiri, libur, cuti, dan jadwal menguji rekrutmen. |
 | Agenda hari ini | `HomeDataAssembler::getTodayAgenda`, `YayasanDashboardController` | Panel di beranda; dihapus dari beranda pegawai 3 Juli 2026 (`ba888d7`) karena duplikat Kalender, tetap ada di dashboard yayasan. |
 | Hari libur | `app/Http/Controllers/Admin/HolidayController.php`, `HolidayPolicy`, `HolidayTarget::matchesEmployee` | Dikelola Kepala HR dan super_admin. Berlaku untuk semua, atau ditargetkan per pegawai, unit, jabatan, atau role. |
@@ -44,28 +46,32 @@ Yang **tidak** ada di legacy: ruang rapat sebagai sumber daya yang dipesan, rapa
 
 ## 3. Keputusan
 
+Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat."
+
 | # | Keputusan | Status |
 | --- | --- | --- |
-| K-01 | **Semua pegawai aktif dengan akun** boleh membuat undangan, seperti legacy. Tidak ada permission baru untuk membuat. | DRAFT |
-| K-02 | Bentrok dengan rapat aktif lain **ditolak** (blokir keras), seperti legacy. Tidak ada tombol "paksa". | DRAFT |
-| K-03 | Cuti `approved` dan perjalanan dinas `APPROVED`/`ISSUED` peserta juga **menolak** undangan. Cuti `in_review` dan perjalanan `IN_REVIEW` hanya **peringatan**. Baru, tidak ada di legacy. | DRAFT |
-| K-04 | Peserta dapat menjawab **Hadir** atau **Berhalangan** (alasan opsional). Peserta yang Berhalangan **tidak lagi memblokir** waktunya. Baru; legacy hanya punya kolomnya. | DRAFT |
-| K-05 | Kalender hanya menampilkan rapat yang pegawai itu ikuti. Rapat orang lain **tidak** ditampilkan, judulnya pun tidak. Pesan bentrok hanya menyebut nama peserta dan jam sibuk, bukan judul rapat lain, kecuali pembuat undangan juga peserta rapat itu. Memperbaiki kebocoran legacy. | DRAFT |
-| K-06 | Paket 1 hanya notifikasi **in-app**. WhatsApp menunggu adapter NOTIF-001; pengingat 30 menit sebelum rapat menunggu penjalan NOTIF-003 (Paket 2). | DRAFT |
-| K-07 | **Tidak ada pemesanan ruang rapat.** Lokasi teks bebas. Pemesanan sumber daya ikut keputusan WORK-001 yang dihapus pemilik produk 2026-11-02. | DRAFT |
-| K-08 | Pengajuan atau persetujuan cuti dan perjalanan dinas **tidak** dicek terhadap rapat. Hak cuti dan tugas dinas lebih kuat dari undangan; bila cuti/dinas disetujui setelah undangan, peserta ditandai "berhalangan (cuti/dinas)" saat dibaca dan penyelenggara melihatnya. | DRAFT |
+| K-01 | **Semua pegawai aktif dengan akun** boleh membuat undangan, seperti legacy. Tidak ada permission baru untuk membuat. | ACCEPTED |
+| K-02 | Bentrok dengan rapat aktif lain **ditolak** (blokir keras), seperti legacy. Tidak ada tombol "paksa". | ACCEPTED |
+| K-03 | Cuti `approved` dan perjalanan dinas `APPROVED`/`ISSUED` peserta juga **menolak** undangan. Cuti `in_review` dan perjalanan `IN_REVIEW` hanya **peringatan**. | ACCEPTED |
+| K-04 | Peserta dapat menjawab **Hadir** atau **Berhalangan** (alasan opsional). Peserta yang Berhalangan **tidak lagi memblokir** waktunya. | ACCEPTED |
+| K-05 | Rapat **terlihat** di kalender semua pegawai aktif (pemilik produk). Bukan peserta melihat judul, jam, lokasi, dan nama penyelenggara; daftar peserta dan keterangan hanya untuk peserta. Penyelenggara dapat mencentang **Rahasia**: bagi bukan peserta rapat itu tampil sebagai "Sibuk" tanpa judul, lokasi, dan penyelenggara. Default tidak rahasia. | ACCEPTED (terlihat); opsi Rahasia DRAFT |
+| K-06 | WhatsApp dan pengingat **masuk Paket 1** (pemilik produk). WhatsApp lewat Kirim SQ di SQ Hub (ADR-0011) dengan nomor milik HCIS; HCIS tidak memanggil JalurPesan atau Starsender langsung. | ACCEPTED |
+| K-07 | **Tidak ada pemesanan ruang rapat.** Lokasi teks bebas, sejalan dengan WORK-001 yang dihapus pemilik produk 2026-11-02. | ACCEPTED |
+| K-08 | Pengajuan atau persetujuan cuti dan perjalanan dinas **tidak** dicek terhadap rapat. Bila cuti/dinas disetujui setelah undangan, peserta ditandai "berhalangan (cuti/dinas)" saat dibaca dan penyelenggara melihatnya. | ACCEPTED |
 | K-09 | Durasi rapat 15 menit sampai 7 hari. Mulai paling cepat sekarang (WIB). Lokasi ≤255, judul 3–200, keterangan ≤3000, peserta 1–200 selain penyelenggara. | DRAFT |
 | K-10 | Rapat pada hari libur atau akhir pekan di kalender kerja (`leave_calendar_*`) hanya **peringatan**, karena kegiatan pesantren sering berjalan di hari libur. | DRAFT |
 | K-11 | Ubah hanya oleh penyelenggara, hanya sebelum rapat dimulai, dan tidak untuk rapat batal (sama dengan legacy). Perubahan waktu mengembalikan jawaban semua peserta ke `PENDING` dan memberi tahu semua peserta; perubahan judul/lokasi/keterangan saja tidak mengubah jawaban. | DRAFT |
 | K-12 | Batal hanya oleh penyelenggara, sebelum rapat selesai, alasan wajib 5–500 karakter. | DRAFT |
-| K-13 | Pegawai tanpa akun aktif (HCIS belum live ke staf) **boleh** diundang: waktunya tetap terblokir, tetapi ia tidak menerima notifikasi. Layar memberi tanda "belum punya akun". | DRAFT |
+| K-13 | Pegawai tanpa akun aktif (HCIS belum live ke staf) **boleh** diundang: waktunya tetap terblokir. Ia tidak menerima notifikasi in-app, tetapi tetap menerima WhatsApp bila nomornya ada. Layar memberi tanda "belum punya akun". | DRAFT |
+| K-14 | WhatsApp undangan, perubahan, dan pembatalan dikirim bila penyelenggara mencentang **"Kirim juga lewat WhatsApp"** (default tercentang). Pengingat WhatsApp selalu dikirim bila nomor ada. Tidak ada preferensi pengingat per pegawai di Paket 1. | DRAFT |
+| K-15 | Pengingat satu kali, **30 menit sebelum mulai** (default legacy), untuk penyelenggara dan peserta yang tidak Berhalangan. | DRAFT |
 
 ## 4. Batas
 
 | Di luar Paket 1 | Alasan / pemilik |
 | --- | --- |
-| WhatsApp dan email undangan | NOTIF-001 (adapter eksternal belum ada). |
-| Pengingat sebelum rapat | NOTIF-003 (penjalan terjadwal belum diputuskan). Paket 2 CAL-001 menambah aturan `meeting.upcoming` dan wajib menghapus pengingat untuk rapat batal dan peserta yang dikeluarkan. |
+| Email undangan | NOTIF-001 adapter email belum ada. |
+| Preferensi pengingat per pegawai (jeda, kanal) | Legacy punya; ditunda sampai ada permintaan. |
 | Ruang rapat, proyektor, kendaraan | K-07; WORK-001 removed. |
 | Rapat berulang (mingguan) | Paket 2 bila diminta; legacy tidak punya. |
 | Google Calendar / `.ics` | Tidak ada di legacy; butuh keputusan terpisah. |
@@ -75,16 +81,17 @@ Yang **tidak** ada di legacy: ruang rapat sebagai sumber daya yang dipesan, rapa
 | Kehadiran rapat (absen rapat, notulen) | Bukan HR inti; tidak diminta. |
 | Kepanitiaan | Fitur legacy terpisah; perlu ID sendiri bila dibawa. |
 | Register admin seluruh rapat | Paket 2 bila dibutuhkan untuk menangani penyalahgunaan; akan butuh permission `meetings.read`/`meetings.manage`. |
+| Tanggal Hijriah di kalender | Legacy punya; Paket 2. |
 
 ## 5. Actor
 
 | Actor | Boleh |
 | --- | --- |
 | Penyelenggara (pegawai aktif dengan akun) | Membuat, mengubah, membatalkan rapatnya; melihat jawaban peserta. |
-| Peserta | Melihat rapat yang ia ikuti; menjawab Hadir/Berhalangan; mengubah jawabannya sampai rapat dimulai. |
-| Pegawai lain | Tidak melihat apa pun tentang rapat yang tidak ia ikuti, selain "sibuk HH:MM–HH:MM" pada pesan bentrok (K-05). |
+| Peserta | Melihat detail rapat yang ia ikuti; menjawab Hadir/Berhalangan; mengubah jawabannya sampai rapat dimulai. |
+| Pegawai aktif lain | Melihat rapat di kalender sesuai K-05: judul, jam, lokasi, penyelenggara untuk rapat biasa; "Sibuk" saja untuk rapat Rahasia. Tidak melihat daftar peserta, keterangan, atau jawaban. |
 
-Akses adalah kepemilikan dari sesi (penyelenggara atau baris peserta), bukan permission. Akun tanpa Employee aktif mendapat 403 `EMPLOYEE_NOT_ACTIVE`. `SUPER_ADMIN` tidak memakai layar ini (sama dengan legacy).
+Akses detail adalah kepemilikan dari sesi (penyelenggara atau baris peserta), bukan permission. Akun tanpa Employee aktif mendapat 403 `EMPLOYEE_NOT_ACTIVE`. `SUPER_ADMIN` tidak memakai layar ini (sama dengan legacy).
 
 ## 6. Aturan ketersediaan (domain)
 
@@ -105,7 +112,7 @@ Untuk setiap orang dalam `{penyelenggara} ∪ peserta`:
 
 Tanggal penuh dikonversi ke interval `[tanggal 00:00 WIB, tanggal+1 00:00 WIB)`.
 
-Rincian yang dikembalikan ke pembuat undangan hanya: id dan nama pegawai, kode alasan, dan jam/tanggal sibuk. **Tidak** ada judul rapat lain (kecuali pembuat juga peserta rapat itu), jenis cuti, alasan cuti, atau tujuan dinas.
+Rincian yang dikembalikan ke pembuat undangan: id dan nama pegawai, kode alasan, jam/tanggal sibuk, dan judul rapat yang bentrok **hanya bila rapat itu tidak Rahasia atau pembuat juga pesertanya** (konsisten dengan K-05). Tidak pernah: jenis cuti, alasan cuti, atau tujuan dinas.
 
 Kontrak baca TRIP-001 dan LEAVE dikoordinasikan dengan sesi TRIP-001 pada 2026-11-02: CAL-001 hanya membaca `employee_id`, `start_on`, `end_on`, `status`; tidak ada hook dan tidak ada penulisan ke tabel cuti atau perjalanan.
 
@@ -123,9 +130,9 @@ Sebagai jaring pengaman, `meeting_participants` menyimpan salinan `busy tstzrang
 
 ### 7.1 Membuat
 
-Input: `title`, `description?`, `location?`, `startAt`, `endAt`, `participantEmployeeIds[]`, header `Idempotency-Key`.
+Input: `title`, `description?`, `location?`, `startAt`, `endAt`, `participantEmployeeIds[]`, `confidential` (default `false`), `notifyWhatsApp` (default `true`), header `Idempotency-Key`.
 
-Validasi: K-09; peserta unik, bukan penyelenggara, semua Employee aktif; ketersediaan §6 tanpa BLOCK. Hasil: rapat `ACTIVE`, penyelenggara `ORGANIZER`/`ACCEPTED`, peserta `ATTENDEE`/`PENDING`. Notifikasi undangan ke peserta yang punya akun.
+Validasi: K-09; peserta unik, bukan penyelenggara, semua Employee aktif; ketersediaan §6 tanpa BLOCK. Hasil: rapat `ACTIVE`, penyelenggara `ORGANIZER`/`ACCEPTED`, peserta `ATTENDEE`/`PENDING`. Notifikasi undangan (§9) dan pengingat dijadwalkan (§9.3).
 
 Layar memanggil cek ketersediaan (§11) saat waktu atau peserta berubah, supaya bentrok terlihat sebelum Kirim. Hasil cek itu hanya pratinjau; pemeriksaan yang mengikat dijalankan lagi saat simpan.
 
@@ -137,6 +144,8 @@ ACTIVE                (setelah endAt tampil di tab "Lewat"; tidak ada state SELE
 CANCELLED -> terminal
 ```
 
+Rapat batal hilang dari kalender bukan peserta; bagi peserta tetap tampil dicoret dengan label "Dibatalkan".
+
 ### 7.3 Jawaban peserta
 
 ```text
@@ -145,29 +154,31 @@ ACCEPTED <-> DECLINED             (peserta, sebelum startAt)
 * -> PENDING                      (penyelenggara mengubah waktu, K-11)
 ```
 
-`DECLINED` membebaskan waktu peserta (`blocks_time = false`). Kembali ke `ACCEPTED` menjalankan ulang cek §6 untuk orang itu; bila waktunya sudah dipakai rapat lain, jawaban ditolak 409 `MEETING_CONFLICT`.
+`DECLINED` membebaskan waktu peserta (`blocks_time = false`) dan membatalkan pengingatnya. Kembali ke `ACCEPTED` menjalankan ulang cek §6 untuk orang itu; bila waktunya sudah dipakai rapat lain, jawaban ditolak 409 `MEETING_CONFLICT`.
 
 ### 7.4 Mengubah
 
-Hanya penyelenggara, rapat `ACTIVE`, sekarang < `startAt`, dengan `expectedVersion` (optimistic concurrency, 409 `MEETING_VERSION_CONFLICT`). Peserta yang ditambahkan mendapat undangan; peserta yang dikeluarkan mendapat pemberitahuan "dikeluarkan"; bila waktu berubah, semua peserta tersisa diberi tahu dan jawabannya kembali `PENDING`.
+Hanya penyelenggara, rapat `ACTIVE`, sekarang < `startAt`, dengan `expectedVersion` (optimistic concurrency, 409 `MEETING_VERSION_CONFLICT`). Peserta yang ditambahkan mendapat undangan; peserta yang dikeluarkan mendapat pemberitahuan "dikeluarkan" dan pengingatnya dibatalkan; bila waktu berubah, semua peserta tersisa diberi tahu, jawabannya kembali `PENDING`, dan waktu pengingat dihitung ulang. `confidential` boleh diubah.
 
 ### 7.5 Berhalangan karena cuti/dinas belakangan (K-08)
 
-Saat dibaca, peserta yang punya cuti `approved` atau perjalanan `APPROVED`/`ISSUED` yang beririsan ditandai `unavailableReason = LEAVE | TRIP`. Tidak ada penulisan otomatis ke jawaban dan tidak ada notifikasi di Paket 1.
+Saat dibaca, peserta yang punya cuti `approved` atau perjalanan `APPROVED`/`ISSUED` yang beririsan ditandai `unavailableReason = LEAVE | TRIP`. Tidak ada penulisan otomatis ke jawaban dan tidak ada notifikasi di Paket 1. Pengingat tetap dikirim kecuali peserta menjawab Berhalangan.
 
 ### 7.6 Kegagalan
 
-400 `INVALID_MEETING`; 403 `EMPLOYEE_NOT_ACTIVE`, `MEETING_NOT_ORGANIZER`; 404 `MEETING_NOT_FOUND` (juga untuk rapat yang tidak boleh dilihat, supaya keberadaannya tidak bocor); 409 `MEETING_CONFLICT` (dengan daftar §6), `MEETING_START_IN_PAST`, `MEETING_ALREADY_STARTED`, `MEETING_CANCELLED`, `MEETING_VERSION_CONFLICT`, `PARTICIPANT_NOT_ACTIVE`.
+400 `INVALID_MEETING`; 403 `EMPLOYEE_NOT_ACTIVE`, `MEETING_NOT_ORGANIZER`; 404 `MEETING_NOT_FOUND` (juga untuk detail rapat yang tidak boleh dilihat); 409 `MEETING_CONFLICT` (dengan daftar §6), `MEETING_START_IN_PAST`, `MEETING_ALREADY_STARTED`, `MEETING_CANCELLED`, `MEETING_VERSION_CONFLICT`, `PARTICIPANT_NOT_ACTIVE`.
 
 ## 8. Audit dan riwayat
 
 Tabel `meeting_events` adalah riwayat per rapat sekaligus audit event:
 
-`meeting.created`, `meeting.updated` (metadata: field yang berubah, waktu lama/baru), `meeting.participant.added`, `meeting.participant.removed`, `meeting.participant.responded`, `meeting.cancelled`.
+`meeting.created`, `meeting.updated` (metadata: field yang berubah, waktu lama/baru, perubahan `confidential`), `meeting.participant.added`, `meeting.participant.removed`, `meeting.participant.responded`, `meeting.cancelled`.
 
-Setiap event memuat aktor, waktu, dan metadata aman. Isi keterangan rapat tidak disalin ke metadata event. Legacy tidak punya audit agenda.
+Setiap event memuat aktor, waktu, dan metadata aman. Isi keterangan rapat tidak disalin ke metadata event. Status pengiriman WhatsApp disimpan di `meeting_notification_deliveries` (§10), bukan sebagai audit event. Legacy tidak punya audit agenda.
 
-## 9. Notifikasi (NOTIF-004, kategori `system`)
+## 9. Notifikasi
+
+### 9.1 In-app (NOTIF-004, kategori `system`)
 
 - undangan baru / ditambahkan → peserta itu;
 - waktu berubah → semua peserta tersisa;
@@ -177,15 +188,50 @@ Setiap event memuat aktor, waktu, dan metadata aman. Isi keterangan rapat tidak 
 
 Ditulis dalam transaksi yang sama dengan perubahannya, idempoten per `eventKey`. Peserta tanpa akun dilewati (K-13).
 
+### 9.2 WhatsApp (NOTIF-001 lewat Kirim SQ)
+
+HCIS memakai port `WhatsAppSender` dengan dua adapter, sesuai ADR-0011:
+
+- `log` (default): tidak mengirim apa pun, mencatat `dry_run`. Dipakai sampai nomor HCIS di Kirim SQ siap dan kredensial klien HCIS terpasang;
+- `kirim`: `POST /internal/kirim/messages` ke SQ Hub dengan token client credentials dan `Idempotency-Key`.
+
+Aturan:
+
+- Event yang dikirim ke WhatsApp: undangan, perubahan waktu, dikeluarkan, dibatalkan (bila `notifyWhatsApp`, K-14), dan pengingat (§9.3). Jawaban Berhalangan ke penyelenggara hanya in-app.
+- Nomor tujuan: nomor telepon pegawai di data kontak HCIS. Tanpa nomor → dilewati, dan detail rapat menandai "tanpa nomor WA" bagi penyelenggara.
+- Isi pesan: judul, hari/tanggal, jam WIB, lokasi, nama penyelenggara, dan tautan ke HCIS. Tidak ada keterangan rapat, daftar peserta, atau data pegawai lain.
+- Kunci idempotensi: `cal:<meetingId>:<employeeId>:<event>:<version>`.
+- Pengiriman tidak berjalan di dalam transaksi bisnis dan tidak membuat request pengguna menunggu SQ Hub: transaksi menulis baris `meeting_notification_deliveries` berstatus `QUEUED`, lalu penjalan latar (§9.3) menyerahkannya ke Kirim SQ. Bila SQ Hub tidak tersedia, baris diulang dengan kunci yang sama.
+- `kedaluwarsa` pesan undangan/perubahan = `startAt`; pesan pengingat = `startAt`. Jam kirim otomatis 06.00–21.00 WIB ditegakkan Kirim SQ; pesan yang kedaluwarsa sebelum jendela kirim berikutnya tidak terkirim, dan in-app tetap jalan.
+- Batal setelah undangan WA masih antre: baris undangan yang belum diserahkan ditandai `SKIPPED`.
+
+### 9.3 Pengingat dan penjalan (NOTIF-003, aturan pertama)
+
+CAL-001 adalah aturan pengingat pertama NOTIF-003 dan menjawab lima pertanyaan `announcements-and-reminders.md` §8 untuk rapat saja:
+
+1. **Penjalan** (DRAFT): loop berinterval 60 detik di dalam proses API HCIS, mengambil baris jatuh tempo dengan `FOR UPDATE SKIP LOCKED`. Tidak ada proses atau cron baru di Mi8VPS; preseden: worker Kirim SQ berjalan di dalam proses API SQ Hub. Bila API mati, baris tetap menunggu dan dikirim saat hidup lagi selama belum lewat `startAt`.
+2. **Idempotensi**: satu baris `meeting_reminders` per `(meeting_id, employee_id, rule_key)`; `fired_at` diisi dalam transaksi yang sama dengan penulisan notifikasi.
+3. **Aturan**: `meeting.upcoming`, `startAt − 30 menit` (K-15). Rapat yang dibuat kurang dari 30 menit sebelum mulai tidak mendapat pengingat.
+4. **Penerima**: penyelenggara dan peserta yang tidak `DECLINED`.
+5. **Kanal**: in-app dan WhatsApp.
+
+Pembatalan rapat, peserta dikeluarkan, dan jawaban Berhalangan mengisi `cancelled_at` pada pengingatnya. Saat menembak, penjalan **memeriksa ulang** bahwa rapat masih `ACTIVE`, orang itu masih peserta yang tidak Berhalangan, dan `startAt` belum lewat. Ini menutup cacat legacy (pengingat terkirim untuk agenda yang sudah batal).
+
 ## 10. Penyimpanan
 
 ```text
-meetings              id, organizer_employee_id, title, description, location,
-                      start_at, end_at, status, cancel_reason, cancelled_at,
-                      version, idempotency_key, created_by_account_id, timestamps
-meeting_participants  meeting_id, employee_id, role, response, response_note,
-                      responded_at, busy tstzrange, blocks_time boolean
-meeting_events        riwayat dan audit
+meetings                          id, organizer_employee_id, title, description, location,
+                                  start_at, end_at, status, confidential, notify_whatsapp,
+                                  cancel_reason, cancelled_at, version, idempotency_key,
+                                  created_by_account_id, timestamps
+meeting_participants              meeting_id, employee_id, role, response, response_note,
+                                  responded_at, busy tstzrange, blocks_time boolean
+meeting_events                    riwayat dan audit
+meeting_reminders                 meeting_id, employee_id, rule_key, fire_at, fired_at, cancelled_at
+meeting_notification_deliveries   meeting_id, employee_id, event, version, channel 'whatsapp',
+                                  idempotency_key, status (QUEUED, HANDED_OVER, SENT, FAILED,
+                                  SKIPPED, DRY_RUN), kirim_message_id, attempts,
+                                  next_attempt_at, error_code, timestamps
 ```
 
 Aturan:
@@ -195,60 +241,56 @@ Aturan:
 - `meeting_participants` unik pada `(meeting_id, employee_id)`; tepat satu `ORGANIZER` per rapat (indeks unik parsial);
 - `blocks_time = (meeting ACTIVE AND response <> 'DECLINED')`, dipelihara oleh kode dalam transaksi yang sama; `busy = tstzrange(start_at, end_at, '[)')`;
 - exclusion constraint §6.1;
-- indeks `(employee_id, busy)` untuk kalender pribadi;
+- indeks `meetings (start_at, end_at) WHERE status = 'ACTIVE'` untuk kalender yayasan dan `(employee_id, busy)` untuk kesibukan pribadi;
+- `meeting_reminders` unik pada `(meeting_id, employee_id, rule_key)`, indeks parsial `fire_at WHERE fired_at IS NULL AND cancelled_at IS NULL`;
+- `meeting_notification_deliveries` unik pada `idempotency_key`; nomor telepon **tidak** disimpan (dibaca dari data kontak saat penyerahan);
 - tidak ada endpoint hapus.
 
-Rollback migrasi ditulis sebagai komentar `-- Down:` (drop tiga tabel; tidak ada data lain yang tersentuh). Migrasi tidak menambah permission ke role yang sudah ada, jadi tidak memaksa rilis berdiri sendiri.
+Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada data lain yang tersentuh). Migrasi tidak menambah permission ke role yang sudah ada.
 
 ## 11. API (kontrak ringkas; OpenAPI ditulis bersama implementasi)
 
 | Method | Path | Catatan |
 | --- | --- | --- |
-| GET | `/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Rentang maks 42 hari. Item: rapat yang diikuti, cuti sendiri (`approved`, `in_review`), perjalanan sendiri (`APPROVED`, `ISSUED`, `IN_REVIEW`), libur/non-kerja. Data dibatasi rentang tanggal, bukan daftar bertumbuh; bila lebih dari 500 item, 400 `RANGE_TOO_DENSE` — tidak dipotong diam-diam (pengecualian ENG-LIST-001 yang dicatat di sini). |
-| GET | `/me/meetings?tab=upcoming\|past&page&pageSize` | ENG-LIST-001: default 25, maks 100, `total`. |
+| GET | `/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Rentang maks 42 hari. Item: semua rapat `ACTIVE` yayasan yang beririsan (rapat Rahasia yang bukan milik saya hanya `{id: null, kind: "busy", startAt, endAt}`), rapat batal yang saya ikuti, cuti sendiri (`approved`, `in_review`), perjalanan sendiri (`APPROVED`, `ISSUED`, `IN_REVIEW`), libur/non-kerja. Setiap rapat memuat `involvesMe`. Data dibatasi rentang tanggal; bila lebih dari 500 item, 400 `RANGE_TOO_DENSE` — tidak dipotong diam-diam (pengecualian ENG-LIST-001 yang dicatat di sini). |
+| GET | `/me/meetings?tab=upcoming\|past&page&pageSize` | Rapat yang saya ikuti. ENG-LIST-001: default 25, maks 100, `total`. |
 | GET | `/me/meetings/:id` | Penyelenggara dan peserta saja; lainnya 404. |
 | POST | `/me/meetings/availability` | Pratinjau §6 tanpa menulis: `startAt`, `endAt`, `participantEmployeeIds`, `excludeMeetingId?`. |
 | POST | `/me/meetings` | `Idempotency-Key` wajib. |
 | PATCH | `/me/meetings/:id` | `expectedVersion` wajib. |
 | POST | `/me/meetings/:id/cancel` | `reason`. |
 | POST | `/me/meetings/:id/response` | `response: ACCEPTED \| DECLINED`, `note?` ≤500. |
-| GET | `/me/meetings/participant-options?q=` | Typeahead pegawai aktif, minimal 2 huruf, maks 20 hasil, nama + unit saja (tanpa email/telepon/NIP lengkap). Memakai pencarian direktori yang sudah ada bila cocok. |
+| GET | `/me/meetings/participant-options?q=` | Typeahead pegawai aktif, minimal 2 huruf, maks 20 hasil, nama + unit + tanda punya akun/nomor WA saja (tanpa email, telepon, atau NIP lengkap). Memakai pencarian direktori yang sudah ada bila cocok. |
 
 ## 12. Layar
 
-- Pegawai: menu **Kalender** — tampilan bulan (grid 6 minggu) dan daftar Akan Datang/Lewat; ketuk tanggal untuk membuat rapat dengan jam awal 08:00–09:00 (perilaku legacy).
-- Form rapat: pemilih peserta typeahead; panel ketersediaan yang langsung memperlihatkan peserta yang bentrok (merah) dan peringatan (kuning) sebelum Kirim.
-- Detail rapat: daftar peserta dengan jawaban dan tanda berhalangan; tombol Hadir/Berhalangan untuk peserta; Ubah/Batalkan untuk penyelenggara.
+- Pegawai: menu **Kalender** — tampilan bulan (grid 6 minggu) dan daftar Akan Datang/Lewat; rapat saya dan rapat orang lain dibedakan warna (pola legacy: rapat saya bisa diketuk, rapat orang lain hanya ringkasan); ketuk tanggal untuk membuat rapat dengan jam awal 08:00–09:00.
+- Form rapat: pemilih peserta typeahead; centang **Rahasia** dan **Kirim juga lewat WhatsApp**; panel ketersediaan yang langsung memperlihatkan peserta yang bentrok (merah) dan peringatan (kuning) sebelum Kirim.
+- Detail rapat: daftar peserta dengan jawaban, tanda berhalangan, tanda "belum punya akun" dan "tanpa nomor WA" (hanya bagi penyelenggara); tombol Hadir/Berhalangan untuk peserta; Ubah/Batalkan untuk penyelenggara.
 - State: loading, kosong ("Belum ada rapat"), 404/forbidden, error bentrok yang menyebut nama dan jam, dan tampilan ponsel (daftar per hari, bukan grid sempit).
 
 ## 13. Acceptance criteria
 
 - CAL-001-A: pegawai aktif dapat membuat rapat dengan ≥1 peserta; peserta menerima notifikasi in-app.
-- CAL-001-B: rapat yang beririsan dengan rapat aktif lain milik salah satu peserta **atau penyelenggara** ditolak 409 dengan nama dan jam sibuk; judul rapat lain tidak ikut kecuali pembuat juga pesertanya.
+- CAL-001-B: rapat yang beririsan dengan rapat aktif lain milik salah satu peserta **atau penyelenggara** ditolak 409 dengan nama dan jam sibuk; judul rapat Rahasia tidak ikut kecuali pembuat juga pesertanya.
 - CAL-001-C: rapat yang bersentuhan (selesai 10:00, mulai 10:00) diterima.
 - CAL-001-D: rapat batal dan jawaban Berhalangan tidak memblokir waktu.
 - CAL-001-E: cuti `approved` dan perjalanan `APPROVED`/`ISSUED` menolak; yang `in_review`/`IN_REVIEW` dan hari libur hanya memberi peringatan.
 - CAL-001-F: dua undangan bersamaan untuk peserta yang sama pada jam yang sama: tepat satu berhasil (uji konkurensi nyata terhadap Postgres).
 - CAL-001-G: hanya penyelenggara yang dapat mengubah/membatalkan; tidak bisa mengubah setelah mulai atau setelah batal.
 - CAL-001-H: perubahan waktu mereset jawaban dan memberi tahu semua peserta; peserta baru diundang; peserta yang dikeluarkan diberi tahu.
-- CAL-001-I: pegawai yang bukan penyelenggara/peserta mendapat 404 untuk detail rapat dan tidak melihatnya di kalender.
+- CAL-001-I: bukan peserta mendapat 404 untuk detail rapat; di kalender ia melihat judul rapat biasa dan hanya "Sibuk" untuk rapat Rahasia, tanpa daftar peserta atau keterangan.
 - CAL-001-J: setiap transisi menulis `meeting_events`.
 - CAL-001-K: daftar rapat berhalaman sesuai ENG-LIST-001; kalender menolak rentang > 42 hari.
+- CAL-001-L: dengan adapter `log`, setiap undangan WA tercatat `DRY_RUN` tanpa panggilan jaringan; dengan adapter `kirim` (uji dengan server tiruan), pengiriman ulang memakai kunci idempotensi yang sama dan request pengguna tidak menunggu SQ Hub.
+- CAL-001-M: pengingat terkirim tepat sekali 30 menit sebelum mulai; tidak terkirim untuk rapat batal, peserta yang dikeluarkan, atau peserta Berhalangan; penjalan yang dijalankan dua kali bersamaan tidak menggandakan pengingat.
 
 ## 14. Paket berikutnya (usulan)
 
-- **Paket 2:** pengingat sebelum rapat lewat NOTIF-003 (dengan penghapusan pengingat saat batal/dikeluarkan — cacat legacy yang tidak dibawa), WhatsApp lewat NOTIF-001, tanggal Hijriah di kalender (legacy punya offset setelan).
-- **Paket 3 (bila diminta):** register admin, rapat berulang, ekspor `.ics`.
+- **Paket 2:** tanggal Hijriah, preferensi pengingat per pegawai, register admin bila dibutuhkan.
+- **Paket 3 (bila diminta):** rapat berulang, ekspor `.ics`, email.
 
-## 15. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk
+## 15. Prasyarat operasional di luar kode
 
-| # | Pertanyaan | Default |
-| --- | --- | --- |
-| K-01 | Siapa boleh mengundang? | Semua pegawai aktif |
-| K-02 | Bentrok rapat diblokir atau hanya diperingatkan? | Diblokir |
-| K-03 | Cuti/dinas ikut memblokir? | Ya bila disetujui; peringatan bila masih diajukan |
-| K-04 | Ada konfirmasi hadir? | Ya; Berhalangan membebaskan waktu |
-| K-05 | Rapat orang lain terlihat di kalender? | Tidak |
-| K-06 | WhatsApp dan pengingat di paket pertama? | Tidak; Paket 2 |
-| K-07 | Pemesanan ruang rapat? | Tidak |
-| K-08 | Cuti/dinas boleh disetujui walau ada rapat? | Ya |
+- Nomor WhatsApp `hcis` sudah terhubung di Kirim SQ dan klien HCIS terdaftar di SQ Hub. Sampai itu ada, adapter tetap `log` dan fitur lain berjalan normal.
+- Kredensial klien Kirim untuk HCIS dipasang operator di env Mi8VPS; agen tidak mengetik kredensial.

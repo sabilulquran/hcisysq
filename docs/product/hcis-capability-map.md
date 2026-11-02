@@ -2,9 +2,10 @@
 
 **Status:** ACCEPTED PRODUCT DIRECTION
 **Decision date:** 2026-09-18
-**Updated:** 2026-09-22
+**Updated:** 2026-11-02
 **Related:** UX-001 and `docs/product/feature-parity.yaml`
 **Reference benchmark:** `docs/product/semarthris-benchmark-2026-09-22.md`
+**Legacy parity audit:** `docs/product/legacy-parity-audit-2026-11-02.md` (legacy features not recorded before are listed below as DISCOVERY)
 
 ## Product boundary
 
@@ -38,6 +39,8 @@ ATT-006 may use approved evidence mechanisms such as GPS, geotagging/geofence, p
 
 ATT-007 must not be inferred from raw punches alone. Schedule, holiday, tolerance, leave/permission, and approved policy inputs are prerequisites for lateness/overtime conclusions.
 
+- Work arrangement requests — ATT-015 (DISCOVERY). The legacy app let an employee ask for *tugas luar* (working at another site for a day), WFH/WFA, or a change to their own schedule, each approved through a chain and reviewed by HC. Business trips from the same legacy form now live in TRIP-001, and ATT-008 only swaps a shift with a colleague, so the other three requests have no home yet. An approved arrangement must explain the day's attendance result rather than create punches, and WFH/WFA needs an owner policy before it is specified.
+
 ### 2. Leave and approval
 
 - Leave and permission submission — LEAVE-001.
@@ -45,6 +48,9 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 - Reusable approval engine — APR-001.
 
 Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
+
+- Leave postponement with proposed alternative dates — LEAVE-008 (DISCOVERY). In the legacy app an approver could hold a request and propose other dates, and the employee accepted them. HCIS approvers can only approve or reject today. A postponement must keep the APR-001 snapshot: accepting it records a new request or an explicit amendment, never a silent edit of approved dates or balance.
+- Critical periods for leave — LEAVE-009 (DISCOVERY). Legacy HC could mark periods (for the whole yayasan or one unit) during which any leave also needs HC approval; for schools these are exam weeks, PPDB, report cards and year-end. Whether a critical period only adds HC review or blocks leave is an open business rule; the DRAFT default is to add HC review and never block.
 
 ### 3. Compensation and employee financial services
 
@@ -104,6 +110,8 @@ Employee services continue with:
 - Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Attendance disposition is Package 2; costs stay with REIMB-001.
 - Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.
+- Employee document file archive — EMP-011 (DISCOVERY). The legacy app stored scans of identity cards, family cards, diplomas and certificates with an expiry date, uploaded by the employee or by HC. HCIS records the same facts as metadata only (EMP-007, EMP-008, EMP-010) and has been waiting for a "document storage boundary" that no ID owned. EMP-011 owns it: object storage through the ObjectStorage port, encryption, a stated purpose and retention per document kind, and an audit of every read before any upload is accepted.
+- Organization-wide letter numbering — DOC-003 (DISCOVERY). Legacy had the yayasan's general outgoing-letter book: letter types, a number per type and year in the form `TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR`, issuing unit or committee, print and CSV import/export, and only employees granted access could take a number. The HCIS register from DOC-001 numbers only the letters HCIS issues itself. Whether the general letter book belongs in HCIS or another SQ Core app is an open product decision.
 
 ### 6. Communication
 
@@ -141,6 +149,9 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY, ADR-0005 PROPOSED).
 - Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).
+- Committees (kepanitiaan) — ORG-012 (DISCOVERY).
+
+`ORG-012` covers the time-boxed committees a school runs every year (PPDB, exams, graduation, Ramadhan, events). Legacy let an employee propose a committee, a leader approve it, and the committee then had a chair, secretary, treasurer and members with join and leave dates until it was completed or cancelled; an active committee could also issue numbered letters (DOC-003). Legacy modelled each committee as a virtual unit in the organization tree. HCIS should not copy that without an ADR, because ORG-004 units carry approval authority and a committee should not.
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 
@@ -149,6 +160,11 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 `ORG-007` adds an optional legal-entity/company boundary above ORG-004 without turning HCIS into SaaS multi-tenancy. Each legal entity owns its own organization structure and sites; a person/account may later have separate employment relationships in more than one entity. Existing YSQ remains compatible as the first/default legal entity if this capability is implemented. The readiness assessment, staged plan E1..E6, and DRAFT defaults for the open ORG-007 decisions are in `docs/domain/multi-entity-readiness.md`.
 
 `ORG-011` introduces effective-dated job classification and optional grade catalogs that live outside ORG-004 change sets. They carry no monetary values and no authority; PAY-003 keeps the salary scale (education x MKG) and the versioned allowance policy tables.
+
+### 9. Reporting and user support
+
+- HR reports and exports — RPT-001 (DISCOVERY). Legacy HC could download the employee list, a leave report and a payroll summary as CSV, besides the monthly attendance report. HCIS already has attendance reports (ATT-009, ATT-014) but no employee-list export and no leave report. Every export needs its own permission, scope filtering before the export, an audit event, and leaves out identity and bank numbers by default.
+- In-app help center — HELP-001 (DISCOVERY). Legacy had FAQ, a user guide and a contact form. HCIS is about to open to all staff, so a short guide per service and one known place to ask HC are worth having before launch. A contact form must not grow into general chat, which stays outside HCIS.
 
 ## UX presentation
 

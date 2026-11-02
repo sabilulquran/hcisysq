@@ -119,7 +119,7 @@ Employee services continue with:
 - Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
 - Reminders and scheduled notifications — NOTIF-003.
-- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is specified and accepted in `docs/domain/meeting-calendar.md`: in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking.
+- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is accepted in `docs/domain/meeting-calendar.md` and implemented (menu Kalender, `/me/calendar`, `/me/meetings`): in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking. WhatsApp runs on the `log` adapter (dry run) until the HCIS number is paired.
 
 ### 7. Talent acquisition
 

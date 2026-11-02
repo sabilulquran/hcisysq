@@ -149,7 +149,8 @@ its own, or split so that the build which knows the key ships one release before
 Starts the new release next to production, as `sqhcis`:
 
 - API on `127.0.0.1:3391` (`final.env` with `PORT=3391`): `/health` and `/ready` must return 200
-  within 90 s. The API has no background timers, so a candidate serves only gate requests.
+  within 90 s. The candidate starts with `MEETING_RUNNER_ENABLED=0`, so the CAL-001 reminder and
+  WhatsApp runner (the API's only background timer) never runs in it; a candidate serves only gate requests.
 - Web on `127.0.0.1:3291` with `spa_static_server.py`: `/` and `/login` 200 with `no-store`, the
   hashed entry script from `index.html` 200 with `immutable`, `/assets/does-not-exist.js` 404.
 

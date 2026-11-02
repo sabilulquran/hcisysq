@@ -251,7 +251,9 @@ export class MeetingRunner {
       }
       // Anything else (a malformed answer, a bug) counts as a failed attempt under the same limit,
       // so one bad row neither stops the batch nor retries forever.
-      this.log.error({ err: error, deliveryId: row.id }, "meeting WhatsApp hand-over failed unexpectedly");
+      // Only the error's name: a parse error can quote part of a response body.
+      this.log.error({ error: error instanceof Error ? error.name : typeof error, deliveryId: row.id },
+        "meeting WhatsApp hand-over failed unexpectedly");
       const delay = retryDelayMs(row.attempts);
       if (delay === null) await this.finish(row.id, "FAILED", { errorCode: "unexpected" });
       else await this.finish(row.id, "QUEUED", { errorCode: "unexpected", retryInMs: delay });

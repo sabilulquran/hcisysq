@@ -203,7 +203,6 @@ After organization/pilot readiness is stable, target modules include:
 - employment certificates, warning letters, and broader employee document services;
 - business/official travel;
 - employee-assigned asset handover and return;
-- desk/workplace booking;
 - organization sites, branches, and work locations within one YSQ organization;
 - richer organization/academic calendar management;
 - announcement, reminder, production email, and WhatsApp notification adapters;

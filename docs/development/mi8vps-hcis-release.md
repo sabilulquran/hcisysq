@@ -289,7 +289,26 @@ of the chroot boundary a thing is resolved on) but fail in opposite directions. 
 path too early, on the Android side; this one resolves a command too late, with the wrong
 environment. Fixing one does nothing for the other.
 
-### 5.4 Proving a service actually loaded a value
+### 5.4 An environment switch is a configuration change; validate it before restarting
+
+Setting one key is rarely setting one key. `HCIS_ROLE_ADMIN_ENABLED=1` makes four other keys
+mandatory (`apps/api/src/config/env.ts`), and the API refuses to start without them. Observed
+2026-11-02 05:52 UTC: the switch was flipped alone, HCIS would not come up, and automatic rollback
+restored the file — about 2.5 minutes of downtime for something a check would have caught in a
+second.
+
+The fix is not a list of which keys go together; that list grows. Before restarting anything,
+load the proposed environment through the **running release's own** `loadConfig()`:
+
+```sh
+runuser -u <svc-user> -- /bin/sh -c 'set -a; . /path/to/candidate.env; set +a;   cd <release>/apps/api && node -e "require(\"./dist/config/env.js\").loadConfig(process.env)"'
+```
+
+It touches no service, costs nothing, and answers exactly the question the restart would have
+answered expensively. Treat a configuration edit the way §4.6 treats a new build: gate it before
+it reaches production, not by watching production react to it.
+
+### 5.5 Proving a service actually loaded a value
 
 Neither the file nor a healthy `/health` proves the running process read it. `/proc/<pid>/environ`
 of the service's own `node` process does, and it can be read without printing any value:

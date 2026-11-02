@@ -273,7 +273,8 @@ describe.skipIf(!allowed)("TRIP-001 business travel", () => {
 
   it("TRIP-001-E: refuses past starts, trips over 30 days and overlapping trips or leave", async () => {
     expect((await submit({ startOn: addDays(today, -1), endOn: today })).json().code).toBe("TRIP_START_IN_PAST");
-    expect((await submit({ startOn: addDays(today, 1), endOn: addDays(today, 30) })).json().code).toBe("TRIP_TOO_LONG");
+    // +1..+31 is 31 days inclusive; +1..+29 is 29 and allowed (D-03 caps at 30).
+    expect((await submit({ startOn: addDays(today, 1), endOn: addDays(today, 31) })).json().code).toBe("TRIP_TOO_LONG");
     expect((await submit({ startOn: addDays(today, 1), endOn: addDays(today, 29) })).statusCode).toBe(201);
     expect((await submit({ startOn: addDays(today, 5), endOn: addDays(today, 40) })).json().code).toBe("TRIP_TOO_LONG");
     const overlap = await submit({ startOn: addDays(today, 29), endOn: addDays(today, 31) });

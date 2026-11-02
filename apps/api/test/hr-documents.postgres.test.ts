@@ -375,6 +375,153 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(row.rows[0]).toEqual({ status: "REVOKED", documentNumber: number });
   });
 
+  async function issueWarningLetter(level: "SP1" | "SP2" | "SP3" = "SP1") {
+    const previous = permissions;
+    permissions = [...permissions, "documents.discipline.manage"];
+    const issue = await app.inject({
+      method: "POST",
+      url: "/admin/documents/disciplinary",
+      payload: {
+        employeeId, level, subject: "Perihal rahasia sintetis",
+        narrative: "Uraian rahasia sintetis untuk pengujian register.",
+        effectiveDate: "2026-10-01", expiresOn: "2099-01-06",
+      },
+    });
+    permissions = previous;
+    expect(issue.statusCode, issue.body).toBe(201);
+    const row = await client.query<{ issuedDocumentId: string }>(
+      `SELECT issued_document_id AS "issuedDocumentId" FROM hr_disciplinary_letters WHERE id = $1`,
+      [issue.json().id],
+    );
+    return { issuedDocumentId: row.rows[0]!.issuedDocumentId, documentNumber: issue.json().documentNumber as string };
+  }
+
+  it("DOC-002-F2: the register lists warning letters without who received them or what they say", async () => {
+    await addSigner();
+    const letter = await issueWarningLetter();
+    // A document_corrector holds documents.read and documents.correct, not discipline.manage.
+    permissions = ["documents.read", "documents.correct"];
+    const forbiddenList = await app.inject({ method: "GET", url: "/admin/documents/disciplinary" });
+    expect(forbiddenList.statusCode).toBe(403);
+
+    const register = await app.inject({ method: "GET", url: "/admin/documents/register?kind=DISCIPLINARY" });
+    expect(register.statusCode, register.body).toBe(200);
+    const items = register.json().items as Array<Record<string, unknown>>;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: letter.issuedDocumentId, documentKind: "DISCIPLINARY", documentCode: "SP1",
+      documentNumber: letter.documentNumber, status: "ISSUED",
+      employeeName: null, employeeNumber: null, signer: null, revokedAt: null, revokeReason: null,
+    });
+    expect(register.body).not.toContain("Dokumen Primary");
+    expect(register.body).not.toContain("rahasia sintetis");
+
+    // The certificate register is the default and never mixes the two kinds.
+    const certificates = await app.inject({ method: "GET", url: "/admin/documents/register" });
+    expect(certificates.json().items).toEqual([]);
+    expect(certificates.json().pagination.total).toBe(0);
+
+    permissions = [];
+    expect((await app.inject({ method: "GET", url: "/admin/documents/register?kind=DISCIPLINARY" })).statusCode).toBe(403);
+    permissions = ["documents.read"];
+    expect((await app.inject({ method: "GET", url: "/admin/documents/register?kind=OTHER" })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/admin/documents/register?pageSize=101" })).statusCode).toBe(400);
+  });
+
+  it("DOC-002-F3/F4: a corrector who cannot read the letter revokes it with a reason, audited, number kept", async () => {
+    await addSigner();
+    const letter = await issueWarningLetter();
+    // Acknowledged first: D-19 says the acknowledgement does not lock the letter.
+    const acknowledged = await client.query(
+      `UPDATE hr_disciplinary_letters SET acknowledged_at = now() WHERE issued_document_id = $1`,
+      [letter.issuedDocumentId],
+    );
+    expect(acknowledged.rowCount).toBe(1);
+    const url = `/admin/documents/issued/${letter.issuedDocumentId}/revoke`;
+    const revokedEvents = async () =>
+      (await client.query(`SELECT 1 FROM hr_document_audit_events WHERE event_type LIKE '%revoked'`)).rowCount;
+
+    // The HC admin bundle without documents.correct is refused, and nothing changes.
+    permissions = ["documents.read", "documents.manage", "documents.discipline.manage"];
+    const forbidden = await app.inject({ method: "POST", url, payload: { reason: "Diterbitkan atas pegawai yang keliru" } });
+    expect(forbidden.statusCode, forbidden.body).toBe(403);
+    expect(forbidden.json().code).toBe("DOCUMENT_FORBIDDEN");
+
+    permissions = ["documents.read", "documents.correct"];
+    for (const payload of [{}, { reason: "" }, { reason: "   singkat   " }, { reason: "x".repeat(501) }]) {
+      const refused = await app.inject({ method: "POST", url, payload });
+      expect(refused.statusCode, JSON.stringify(payload)).toBe(400);
+      expect(refused.json().code).toBe("INVALID_DOCUMENT_REVOKE");
+    }
+    const untouched = await client.query<{ status: string }>(
+      `SELECT status FROM hr_issued_documents WHERE id = $1`, [letter.issuedDocumentId],
+    );
+    expect(untouched.rows[0]!.status).toBe("ISSUED");
+    expect(await revokedEvents()).toBe(0);
+
+    const reason = "Diterbitkan atas pegawai yang keliru";
+    const revoked = await app.inject({ method: "POST", url, payload: { reason: `  ${reason}  ` } });
+    expect(revoked.statusCode, revoked.body).toBe(200);
+    expect(revoked.json()).toEqual({ id: letter.issuedDocumentId, status: "REVOKED" });
+
+    const audit = await client.query(
+      `SELECT event_type AS "eventType", reason, actor_account_id AS actor, issued_document_id AS issued,
+              employee_id AS employee, metadata
+         FROM hr_document_audit_events WHERE event_type LIKE '%revoked'`,
+    );
+    expect(audit.rows).toEqual([{
+      eventType: "doc.discipline.revoked", reason, actor: accountId, issued: letter.issuedDocumentId,
+      employee: employeeId, metadata: { documentCode: "SP1", documentNumber: letter.documentNumber },
+    }]);
+    expect(JSON.stringify(audit.rows[0])).not.toContain("rahasia sintetis");
+
+    // The register shows the revocation; the letter and its number are still there.
+    const register = await app.inject({ method: "GET", url: "/admin/documents/register?kind=DISCIPLINARY&status=REVOKED" });
+    const row = (register.json().items as Array<Record<string, unknown>>)[0]!;
+    expect(row).toMatchObject({ documentNumber: letter.documentNumber, status: "REVOKED", revokeReason: reason });
+    expect(row.revokedAt).toEqual(expect.any(String));
+    const issuedOnly = await app.inject({ method: "GET", url: "/admin/documents/register?kind=DISCIPLINARY&status=ISSUED" });
+    expect(issuedOnly.json().pagination.total).toBe(0);
+
+    // A second attempt is a conflict and writes no second event.
+    const again = await app.inject({ method: "POST", url, payload: { reason: "Percobaan pembatalan kedua" } });
+    expect(again.statusCode).toBe(409);
+    expect(await revokedEvents()).toBe(1);
+
+    // D-03: the next letter of the same level takes a new number, never the revoked one.
+    const next = await issueWarningLetter();
+    expect(next.documentNumber).not.toBe(letter.documentNumber);
+    const sequences = await client.query<{ documentNumber: string; status: string }>(
+      `SELECT document_number AS "documentNumber", status FROM hr_issued_documents
+        WHERE document_kind = 'DISCIPLINARY' ORDER BY number_sequence`,
+    );
+    expect(sequences.rows).toEqual([
+      { documentNumber: letter.documentNumber, status: "REVOKED" },
+      { documentNumber: next.documentNumber, status: "ISSUED" },
+    ]);
+  });
+
+  it("ENG-LIST-001: the register pages with a stable order and a filtered total", async () => {
+    await addSigner();
+    const numbers: string[] = [];
+    for (let index = 0; index < 3; index += 1) numbers.push((await issueWarningLetter()).documentNumber);
+    // One issued_at for all three, so only the id tie-breaker keeps the pages apart.
+    await client.query(`UPDATE hr_issued_documents SET issued_at = '2026-10-01T03:00:00Z' WHERE document_kind = 'DISCIPLINARY'`);
+    const page = async (n: number) => (await app.inject({
+      method: "GET", url: `/admin/documents/register?kind=DISCIPLINARY&page=${n}&pageSize=2`,
+    })).json() as { items: Array<{ documentNumber: string }>; pagination: Record<string, number> };
+    const first = await page(1);
+    const second = await page(2);
+    expect(first.pagination).toEqual({ page: 1, pageSize: 2, total: 3, pageCount: 2 });
+    expect(first.items).toHaveLength(2);
+    expect(second.items).toHaveLength(1);
+    expect([...first.items, ...second.items].map((item) => item.documentNumber).sort()).toEqual([...numbers].sort());
+    expect((await page(1)).items).toEqual(first.items);
+    const beyond = await page(5);
+    expect(beyond.items).toEqual([]);
+    expect(beyond.pagination.total).toBe(3);
+  });
+
   it("DOC-002-G: the notification preview carries no narrative", async () => {
     await addSigner();
     permissions = [...permissions, "documents.discipline.manage"];

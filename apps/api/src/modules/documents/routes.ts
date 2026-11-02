@@ -59,6 +59,12 @@ const requestQuery = pageQuerySchema.extend({
   status: z.enum(["SUBMITTED", "APPROVED", "REJECTED", "CANCELLED", "ISSUED"]).optional(),
 });
 
+// D-18: the register serves both kinds; a warning letter row carries register facts only.
+const registerQuery = pageQuerySchema.extend({
+  kind: z.enum(["CERTIFICATE", "DISCIPLINARY"]).default("CERTIFICATE"),
+  status: z.enum(["ISSUED", "REVOKED"]).optional(),
+});
+
 const OPEN_REQUEST_STATES = ["SUBMITTED", "APPROVED"] as const;
 
 function send(reply: FastifyReply, status: number, body: unknown) {
@@ -551,23 +557,33 @@ export async function registerDocumentRoutes(
 
   app.get("/admin/documents/register", async (request, reply) => {
     if (!(await requirePermission(request, reply, "documents.read"))) return;
-    const query = pageQuerySchema.safeParse(request.query);
+    const query = registerQuery.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_DOCUMENT_FILTER", message: "Filter tidak valid." });
+    const { kind } = query.data;
+    const status = query.data.status ?? null;
+    const where = "WHERE issued.document_kind = $1 AND ($2::text IS NULL OR issued.status = $2)";
+    // D-18 / D-13: documents.read alone must not reveal who received a warning letter or what
+    // it says, so a DISCIPLINARY row leaves out the employee, the signer and the snapshot.
+    const disciplinary = kind === "DISCIPLINARY";
     const [items, count] = await Promise.all([
       pool.query(
         `SELECT issued.id, issued.document_kind AS "documentKind", issued.document_code AS "documentCode",
                 issued.document_number AS "documentNumber", issued.status,
-                issued.issued_at AS "issuedAt", issued.signer,
-                employee.full_name AS "employeeName", employee.employee_number AS "employeeNumber"
+                issued.issued_at AS "issuedAt", issued.revoked_at AS "revokedAt",
+                issued.revoke_reason AS "revokeReason",
+                ${disciplinary ? "NULL" : "issued.signer"} AS signer,
+                ${disciplinary ? "NULL" : "employee.full_name"} AS "employeeName",
+                ${disciplinary ? "NULL" : "employee.employee_number"} AS "employeeNumber"
            FROM hr_issued_documents issued
            JOIN employees employee ON employee.id = issued.employee_id
-          WHERE issued.document_kind = 'CERTIFICATE'
+           ${where}
           ORDER BY issued.issued_at DESC, issued.id DESC
-          LIMIT $1 OFFSET $2`,
-        [query.data.pageSize, pageOffset(query.data)],
+          LIMIT $3 OFFSET $4`,
+        [kind, status, query.data.pageSize, pageOffset(query.data)],
       ),
       pool.query<{ total: number }>(
-        `SELECT count(*)::int AS total FROM hr_issued_documents WHERE document_kind = 'CERTIFICATE'`,
+        `SELECT count(*)::int AS total FROM hr_issued_documents issued ${where}`,
+        [kind, status],
       ),
     ]);
     return send(reply, 200, {
@@ -587,11 +603,15 @@ export async function registerDocumentRoutes(
     try {
       await client.query("BEGIN");
       // D-03: the number stays allocated; only the status changes.
-      const changed = await client.query<{ employeeId: string; documentKind: string }>(
+      // D-19: an acknowledged or expired letter is still ISSUED in storage, so it stays revocable.
+      const changed = await client.query<{
+        employeeId: string; documentKind: string; documentCode: string; documentNumber: string;
+      }>(
         `UPDATE hr_issued_documents
             SET status = 'REVOKED', revoked_at = now(), revoked_by_account_id = $2, revoke_reason = $3
           WHERE id = $1 AND status = 'ISSUED'
-          RETURNING employee_id AS "employeeId", document_kind AS "documentKind"`,
+          RETURNING employee_id AS "employeeId", document_kind AS "documentKind",
+                    document_code AS "documentCode", document_number AS "documentNumber"`,
         [params.data.id, principal.id, body.data.reason],
       );
       if (!changed.rows[0]) {
@@ -604,6 +624,7 @@ export async function registerDocumentRoutes(
         employeeId: changed.rows[0].employeeId,
         actorAccountId: principal.id,
         reason: body.data.reason,
+        metadata: { documentCode: changed.rows[0].documentCode, documentNumber: changed.rows[0].documentNumber },
       });
       await client.query("COMMIT");
       return send(reply, 200, { id: params.data.id, status: "REVOKED" });

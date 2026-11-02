@@ -46,10 +46,19 @@ export interface DisciplinaryLetterSummary {
   employeeNumber?: string;
 }
 
+/** Carries the HTTP status and code, so a screen can tell forbidden from a failure. */
+export class HrDocumentApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code: string | null) {
+    super(message);
+    this.name = "HrDocumentApiError";
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
-  const body = await response.json().catch(() => null) as T | { message?: string } | null;
+  const body = await response.json().catch(() => null) as T | { message?: string; code?: string } | null;
   if (!response.ok) {
-    throw new Error((body as { message?: string } | null)?.message ?? "Dokumen tidak dapat diproses.");
+    const failure = body as { message?: string; code?: string } | null;
+    throw new HrDocumentApiError(failure?.message ?? "Dokumen tidak dapat diproses.", response.status, failure?.code ?? null);
   }
   return body as T;
 }
@@ -127,10 +136,84 @@ export async function issueDocumentRequest(requestId: string) {
   return post<{ id: string; documentNumber: string }>(`/admin/documents/requests/${requestId}/issue`);
 }
 
-export async function getDocumentRegister(page = 1) {
-  return get<Page<IssuedDocumentSummary & { employeeName: string; employeeNumber: string }>>(
-    `/admin/documents/register?page=${page}&pageSize=${ADMIN_PAGE_SIZE}`,
-  );
+export type RegisterKind = "CERTIFICATE" | "DISCIPLINARY";
+
+/**
+ * One register row. D-18: a warning letter row carries register facts only, so its employee,
+ * signer and content are always null; the number is how a corrector recognizes it.
+ */
+export interface RegisterEntry {
+  id: string;
+  documentKind: RegisterKind;
+  documentCode: string;
+  documentNumber: string;
+  status: IssuedDocumentSummary["status"];
+  issuedAt: string;
+  revokedAt: string | null;
+  revokeReason: string | null;
+  signer: IssuedDocumentSummary["signer"] | null;
+  employeeName: string | null;
+  employeeNumber: string | null;
+}
+
+export interface RegisterFilter {
+  kind: RegisterKind;
+  status: IssuedDocumentSummary["status"] | null;
+  page: number;
+  pageSize: number;
+}
+
+export const REGISTER_PAGE_SIZES = [10, 25, 50, 100] as const;
+export const DEFAULT_REGISTER_FILTER: RegisterFilter = { kind: "CERTIFICATE", status: null, page: 1, pageSize: 25 };
+
+/** ENG-LIST-001-J: the register keeps its tab, filter and page in the query string. */
+export function readRegisterFilter(search: string): RegisterFilter {
+  const params = new URLSearchParams(search);
+  const kind = params.get("registerKind");
+  const status = params.get("registerStatus");
+  const page = Number(params.get("registerPage") ?? "1");
+  const pageSize = Number(params.get("registerPageSize") ?? String(DEFAULT_REGISTER_FILTER.pageSize));
+  return {
+    kind: kind === "DISCIPLINARY" ? "DISCIPLINARY" : "CERTIFICATE",
+    status: status === "ISSUED" || status === "REVOKED" ? status : null,
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    pageSize: (REGISTER_PAGE_SIZES as readonly number[]).includes(pageSize) ? pageSize : DEFAULT_REGISTER_FILTER.pageSize,
+  };
+}
+
+/** Writes the register filter into `search`, leaving any other parameter as it was. */
+export function writeRegisterFilter(search: string, filter: RegisterFilter): string {
+  const params = new URLSearchParams(search);
+  const set = (key: string, value: string | null, fallback: string | null) => {
+    if (value === null || value === fallback) params.delete(key);
+    else params.set(key, value);
+  };
+  set("registerKind", filter.kind, DEFAULT_REGISTER_FILTER.kind);
+  set("registerStatus", filter.status, null);
+  set("registerPage", String(filter.page), "1");
+  set("registerPageSize", String(filter.pageSize), String(DEFAULT_REGISTER_FILTER.pageSize));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getDocumentRegister(filter: RegisterFilter) {
+  const params = new URLSearchParams({
+    kind: filter.kind, page: String(filter.page), pageSize: String(filter.pageSize),
+  });
+  if (filter.status) params.set("status", filter.status);
+  return get<Page<RegisterEntry>>(`/admin/documents/register?${params.toString()}`);
+}
+
+/** Mirrors the API's own limits so the dialog can say so before sending; the API still decides. */
+export const REVOKE_REASON_MIN = 10;
+export const REVOKE_REASON_MAX = 500;
+
+export function revokeReasonProblem(reason: string): string | null {
+  const length = reason.trim().length;
+  if (length === 0) return "Alasan pembatalan wajib diisi.";
+  if (length < REVOKE_REASON_MIN) return `Alasan minimal ${REVOKE_REASON_MIN} karakter (sekarang ${length}).`;
+  if (length > REVOKE_REASON_MAX) return `Alasan maksimal ${REVOKE_REASON_MAX} karakter.`;
+  return null;
 }
 
 export async function revokeIssuedDocument(documentId: string, reason: string) {

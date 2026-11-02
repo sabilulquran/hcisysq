@@ -41,6 +41,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "payroll.periods.manage", "payroll.approve", "payroll.reopen.approve", "payroll.payments.confirm",
     "payroll.reports.read.organization", "payroll.policies.manage", "payroll.loans.manage",
     "payroll.profiles.manage",
+    // DOC-002-F: document_corrector carries only documents.read and documents.correct, so
+    // without this the shell bounced the one role that may revoke a letter (spec §12).
+    "documents.read",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which

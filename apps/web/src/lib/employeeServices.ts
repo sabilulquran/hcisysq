@@ -131,11 +131,6 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["ASSET-001"], stage: "available", category: "employee-services", href: "/app/services/assets",
   },
   {
-    key: "desk-booking", label: "Desk Booking",
-    description: "Pesan meja atau fasilitas kerja bersama yang tersedia.",
-    featureIds: ["WORK-001"], stage: "planned", category: "employee-services", href: "/app/services/desk-booking",
-  },
-  {
     key: "announcements", label: "Pengumuman",
     description: "Informasi dan pengumuman penting dari organisasi.",
     featureIds: ["NOTIF-002"], stage: "available", category: "information", href: "/app/announcements",

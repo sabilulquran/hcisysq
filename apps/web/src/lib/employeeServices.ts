@@ -121,6 +121,11 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["DOC-001", "DOC-002"], stage: "available", category: "employee-services", href: "/app/documents",
   },
   {
+    key: "meeting-calendar", label: "Kalender & Rapat",
+    description: "Kalender rapat yayasan, cuti, dan dinas; undang rekan rapat tanpa jadwal bentrok.",
+    featureIds: ["CAL-001"], stage: "available", category: "employee-services", href: "/app/calendar",
+  },
+  {
     key: "business-travel", label: "Perjalanan Dinas",
     description: "Ajukan dan pantau perjalanan atau penugasan dinas.",
     featureIds: ["TRIP-001"], stage: "available", category: "employee-services", href: "/app/trips",

@@ -352,6 +352,21 @@ paths:
   /admin/performance/employees/{employeeId}/reviews:
     $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1employees~1{employeeId}~1reviews'
 
+  /me/calendar:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1calendar'
+  /me/meetings:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings'
+  /me/meetings/participant-options:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1participant-options'
+  /me/meetings/availability:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1availability'
+  /me/meetings/{id}:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}'
+  /me/meetings/{id}/cancel:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}~1cancel'
+  /me/meetings/{id}/response:
+    $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1meetings~1{id}~1response'
+
   /admin/attendance/adms/management/summary:
     get:
       tags: [Attendance]

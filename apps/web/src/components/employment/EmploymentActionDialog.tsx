@@ -30,6 +30,8 @@ import { CATEGORY_LABEL, EmploymentApiError, formatDate } from "@/lib/employment
 import { listEmployees } from "@/lib/adminEmployees";
 import { listDecisionDocuments, type DecisionDocument } from "@/lib/decision-documents";
 
+import { TerminationAssetWarning } from "./TerminationAssetWarning";
+
 const field =
   "h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15";
 const primaryButton =
@@ -368,6 +370,8 @@ export function EmploymentActionDialog({
         {error ? (
           <p role="alert" className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</p>
         ) : null}
+
+        {actionType === "TERMINATION" ? <TerminationAssetWarning employeeId={employeeId} /> : null}
 
         <form onSubmit={check} className="mt-4 grid gap-3 sm:grid-cols-2">
           {actionType === "PLACEMENT_END" ? (

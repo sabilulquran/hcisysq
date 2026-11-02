@@ -56,6 +56,7 @@ import { registerNotificationRoutes } from "./modules/notifications/routes.js";
 import { registerAnnouncementRoutes } from "./modules/announcements/routes.js";
 import { registerJobClassificationRoutes } from "./modules/organization/job-classification-routes.js";
 import { registerDocumentRoutes } from "./modules/documents/routes.js";
+import { registerEmployeeAssetRoutes } from "./modules/employee-assets/routes.js";
 import { registerTripRoutes } from "./modules/trips/routes.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
 import { registerOrganizationDirectoryRoutes } from "./modules/organization-directory/routes.js";
@@ -172,6 +173,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerDecisionDocumentRoutes(app, pool, config);
   await registerEmploymentActionRoutes(app, pool, config);
   await registerEmploymentSelfServiceRoutes(app, pool, config);
+  await registerEmployeeAssetRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
   await registerAttendanceWorkforceRoutes(app, pool, config);
   await registerAttendanceShiftSwapRoutes(app, pool, config);

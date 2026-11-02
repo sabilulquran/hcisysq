@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee Assets (ASSET-001)
+  version: 1.0.0
+  description: >-
+    Read-only view of assets an employee holds, read live from Aset SQ ASQ-004
+    (GET /internal/v1/person-custody/{personRef}). HCIS stores no asset data.
+    Spec: docs/domain/employee-assets.md.
+paths:
+  /assets/me:
+    get:
+      tags: [Employee Assets]
+      summary: Assets the signed-in employee currently holds
+      description: >-
+        The employee comes from the session; no employee id is accepted. Aset SQ
+        failures answer 200 with status UNAVAILABLE so the screen can still link to Aset SQ.
+      responses:
+        '200':
+          description: Holdings, or why they could not be read
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetHoldings' }
+        '401': { description: Authentication required }
+        '403': { description: FORBIDDEN — the principal is not an employee }
+        '404': { description: EMPLOYEE_NOT_LINKED — the employee account is not linked to an employee }
+  /admin/employees/{employeeId}/assets:
+    get:
+      tags: [Employee Assets]
+      summary: Assets an employee holds, for the Termination warning
+      description: Requires employment.manage.
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Holdings, or why they could not be read
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssetHoldings' }
+        '400': { description: INVALID_EMPLOYEE }
+        '401': { description: Authentication required }
+        '403': { description: EMPLOYMENT_FORBIDDEN — employment.manage is required }
+        '404': { description: EMPLOYEE_NOT_FOUND — unknown or removed from the master }
+components:
+  schemas:
+    AssetHoldings:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status, selfServiceUrl]
+          properties:
+            status:
+              type: string
+              enum: [NOT_CONFIGURED, UNAVAILABLE]
+              description: NOT_CONFIGURED before the machine client exists; UNAVAILABLE when Aset SQ failed.
+            selfServiceUrl: { type: string, format: uri }
+        - type: object
+          additionalProperties: false
+          required: [status, generatedAt, clearance, counts, assignments, truncated, selfServiceUrl]
+          properties:
+            status: { type: string, const: AVAILABLE }
+            generatedAt: { type: string, format: date-time }
+            clearance:
+              type: string
+              enum: [CLEAR, OUTSTANDING]
+            counts:
+              type: object
+              additionalProperties: false
+              required: [outstanding, pendingAcceptance, overdue]
+              properties:
+                outstanding: { type: integer, minimum: 0 }
+                pendingAcceptance: { type: integer, minimum: 0 }
+                overdue: { type: integer, minimum: 0 }
+            assignments:
+              type: array
+              maxItems: 200
+              items: { $ref: '#/components/schemas/AssetAssignment' }
+            truncated:
+              type: boolean
+              description: True when Aset SQ cut the list at 200; counts stay complete.
+            selfServiceUrl: { type: string, format: uri }
+    AssetAssignment:
+      type: object
+      additionalProperties: false
+      required: [assignmentId, assetTag, assetLabel, custodyState, checkoutAt, expectedReturnOn, overdue]
+      properties:
+        assignmentId: { type: string, format: uuid }
+        assetTag: { type: string }
+        assetLabel: { type: string }
+        custodyState:
+          type: string
+          enum: [ACTIVE, PENDING_ACCEPTANCE]
+        checkoutAt: { type: string, format: date-time }
+        expectedReturnOn: { type: [string, 'null'], format: date }
+        overdue: { type: boolean }

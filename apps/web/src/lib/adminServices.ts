@@ -198,15 +198,6 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
-    key: "assets",
-    label: "Asset Pegawai",
-    description: "Kelola penyerahan, pemegang, kondisi, dan pengembalian aset kerja.",
-    featureIds: ["ASSET-001"],
-    stage: "planned",
-    category: "employee-services",
-    href: "/admin/services/assets",
-  },
-  {
     key: "documents",
     label: "Dokumen Kepegawaian",
     description: "Kelola surat keterangan, surat peringatan, dan dokumen HR terkait.",

@@ -3417,5 +3417,23 @@
     "permissions": [
       "trips.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-assets/routes.ts",
+    "method": "GET",
+    "url": "/assets/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-assets/routes.ts",
+    "method": "GET",
+    "url": "/admin/employees/:employeeId/assets",
+    "permissions": [
+      "employment.manage"
+    ]
   }
 ]

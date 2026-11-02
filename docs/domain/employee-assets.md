@@ -4,6 +4,7 @@
 **Spesifikasi:** ASSET-001 (Employee asset assignment and return)
 **Tanggal:** 2026-11-02
 **Terkait:** EMP-005 (tindakan Pemberhentian), ORG-006/ORG-010 (Organization Directory), AUTH-013, ADR-0002; Aset SQ ADR-0001, ASQ-001, ASQ-002, ASQ-004
+**Implementasi:** `apps/api/src/modules/employee-assets/` (adapter `aset-sq-client.ts`, rute `routes.ts`), `apps/web/src/pages/EmployeeAssetsPage.tsx`, `apps/web/src/components/employment/TerminationAssetWarning.tsx`; kontrak `docs/api/employee-assets.openapi.yaml`. Fitur mati sampai tiga variabel §7 diisi.
 **Roadmap:** `docs/product/hcis-capability-map.md` §5, `docs/design/employee-self-service-experience.md` (Layanan Pegawai → Asset Saya)
 
 ## 1. Keputusan
@@ -74,7 +75,7 @@ Authorization: Bearer <token client-credentials HCIS>
 
 **Aktor:** pegawai yang login ke HCIS dan tertaut ke record `employees`.
 
-**Precondition:** sesi HCIS aktif; akun bertipe pegawai dengan `employee_id`. Akun tanpa pegawai (Super Admin, akun layanan) mendapat `404 EMPLOYEE_NOT_LINKED`.
+**Precondition:** sesi HCIS aktif; akun bertipe pegawai dengan `employee_id`. Prinsipal bukan pegawai (Super Admin, Organ Yayasan) mendapat `403 FORBIDDEN`, sama seperti rute self-service lain; akun pegawai yang tidak tertaut ke data pegawai mendapat `404 EMPLOYEE_NOT_LINKED`.
 
 **API HCIS:** `GET /assets/me` (tanpa input; pegawai tidak bisa memilih `employeeId` lain).
 
@@ -138,7 +139,7 @@ HCIS tidak me-log isi jawaban, person ref, atau secret; kegagalan dicatat dengan
 
 Issuer token memakai `OIDC_ISSUER` yang sudah ada. Ketiga variabel wajib harus diisi bersama atau tidak sama sekali; setengah terisi menolak start. Client mesin ini tidak boleh sama dengan `SQ_HUB_MACHINE_CLIENT_ID` atau client kanal lain.
 
-Adapter: timeout 5 detik, token di-cache sampai 30 detik sebelum kedaluwarsa, jawaban divalidasi dengan schema ketat (jawaban yang tidak cocok = `UNAVAILABLE`).
+Adapter: timeout 5 detik untuk discovery, pengambilan token, dan panggilan Aset SQ; token di-cache sampai 30 detik sebelum kedaluwarsa, satu permintaan token dipakai bersama, dan dibuang saat Aset SQ menjawab 401. Jawaban divalidasi dengan schema ketat yang juga memeriksa konsistensi `clearance`, hitungan, dan daftar (jawaban yang tidak cocok = `UNAVAILABLE`). Tautan `selfServiceUrl` hanya diteruskan bila origin-nya sama dengan `ASET_SQ_SELF_SERVICE_URL`; selain itu diganti tautan yang dikonfigurasi. `ASET_SQ_PERSON_CUSTODY_URL` harus http(s) tanpa query atau fragment.
 
 ## 8. Provisioning Keycloak (owner)
 
@@ -154,14 +155,14 @@ Langkah ini butuh kata sandi admin Keycloak, jadi dijalankan owner dengan skrip 
 | Aset SQ 401/403 (audience/azp belum cocok) | `UNAVAILABLE`; log status |
 | Aset SQ 5xx/timeout | `UNAVAILABLE` |
 | Jawaban tidak sesuai schema | `UNAVAILABLE`; log `ASSET_CUSTODY_INVALID_RESPONSE` |
-| Pegawai tidak tertaut | `404 EMPLOYEE_NOT_LINKED` (Asset Saya) |
+| Bukan pegawai / pegawai tidak tertaut | `403 FORBIDDEN` / `404 EMPLOYEE_NOT_LINKED` (Asset Saya) |
 
 ## 10. Di luar lingkup
 
 - Serah terima, konfirmasi, penolakan, dan pengembalian aset: tetap di Aset SQ.
 - Blokir Pemberhentian karena aset (lihat `DRAFT` di §5).
 - Notifikasi otomatis ke pegawai atau unit aset saat Pemberhentian dicatat (kandidat lanjutan, butuh kontrak event).
-- Kartu admin "Asset Pegawai" di HCIS: diarahkan ke Aset SQ, bukan layar HCIS.
+- Kartu admin "Asset Pegawai" di katalog modul HCIS: dihapus. Pengelolaan aset ada di Aset SQ, yang sudah muncul di peluncur aplikasi.
 - Akses Aplikasi Aset SQ untuk seluruh pegawai: pegawai butuh akses `aset-sq` di SQ Hub untuk menerima/menolak aset di Aset SQ. Itu keputusan pemberian akses di SQ Hub, bukan bagian ASSET-001.
 
 ## 11. Acceptance

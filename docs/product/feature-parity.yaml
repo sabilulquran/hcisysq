@@ -587,9 +587,13 @@ features:
     target_status: planned
     priority: later
     risk: medium
-    planning_note: Scope is employee-assigned assets, not a general warehouse or accounting inventory system.
+    planning_note: >-
+      Specified 2026-11-02 (docs/domain/employee-assets.md). Aset SQ stays the asset and
+      custody system of record; HCIS shows a read-only Asset Saya and an asset warning in
+      the Termination dialog through Aset SQ ASQ-004. No asset tables in HCIS.
     docs:
       - docs/product/hcis-capability-map.md
+      - docs/domain/employee-assets.md
 
   - id: WORK-001
     module: workplace

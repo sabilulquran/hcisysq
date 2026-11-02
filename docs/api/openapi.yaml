@@ -29,6 +29,7 @@ tags:
   - name: Attendance
   - name: Payslips
   - name: Employment
+  - name: HR Documents
   - name: Business Travel
 
 paths:
@@ -2632,6 +2633,92 @@ paths:
     $ref: './employment.openapi.yaml#/paths/~1admin~1employees~1{employeeId}~1employment~1timeline'
   /admin/employment/consistency:
     $ref: './employment.openapi.yaml#/paths/~1admin~1employment~1consistency'
+  /admin/documents/register:
+    get:
+      tags: [HR Documents]
+      operationId: listIssuedDocumentRegister
+      summary: Page through the register of issued letters, one kind at a time (DOC-001, DOC-002-F, ENG-LIST-001)
+      description: >
+        Needs documents.read. Server-side offset pagination per ENG-LIST-001 §3.1; kind and status
+        filter in SQL before LIMIT and the total uses the same filter. Ordered by issuedAt then id,
+        newest first. D-18: a DISCIPLINARY row carries register facts only, so employeeName,
+        employeeNumber and signer are always null for it and no row carries the letter's content.
+      parameters:
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [CERTIFICATE, DISCIPLINARY], default: CERTIFICATE } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ISSUED, REVOKED] } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: One page of the register with the filtered total
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, documentKind, documentCode, documentNumber, status, issuedAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        documentKind: { type: string, enum: [CERTIFICATE, DISCIPLINARY] }
+                        documentCode: { type: string, description: 'Certificate type code, or SP1/SP2/SP3' }
+                        documentNumber: { type: string, description: 'D-03: stays allocated after revocation' }
+                        status: { type: string, enum: [ISSUED, REVOKED] }
+                        issuedAt: { type: string, format: date-time }
+                        revokedAt: { type: [string, 'null'], format: date-time }
+                        revokeReason: { type: [string, 'null'] }
+                        signer:
+                          type: [object, 'null']
+                          properties:
+                            title: { type: string }
+                            name: { type: [string, 'null'] }
+                        employeeName: { type: [string, 'null'] }
+                        employeeNumber: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { description: 'INVALID_DOCUMENT_FILTER: an unknown kind or status, or a page parameter out of range' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.read' }
+  /admin/documents/issued/{id}/revoke:
+    post:
+      tags: [HR Documents]
+      operationId: revokeIssuedDocument
+      summary: Revoke an issued letter, keeping its number (DOC-002-F, D-03, D-14, D-16)
+      description: >
+        Needs documents.correct (role document_corrector only). The holder may revoke a warning letter
+        whose content they cannot read: revocation acts on the register, not on the letter. An
+        acknowledged or expired warning letter is still revocable (D-19). Writes doc.discipline.revoked
+        or doc.revoked with the reason, document code and number; the letter's narrative never reaches
+        the audit trail.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: Issued document id from the register }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500, description: 'Trimmed before the length check' }
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [REVOKED] }
+        '400': { description: 'INVALID_DOCUMENT_ID or INVALID_DOCUMENT_REVOKE: the reason is missing or outside 10–500 characters' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: 'DOCUMENT_FORBIDDEN: the account lacks documents.correct' }
+        '409': { description: 'DOCUMENT_NOT_REVOCABLE: no such letter, or it is already revoked' }
 components:
   securitySchemes:
     StaffIdentityBearer:

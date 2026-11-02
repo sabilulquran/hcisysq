@@ -23,6 +23,7 @@ import {
   type BusyDates,
   type DeliveryEvent,
   type Interval,
+  type MessageFacts,
 } from "./domain.js";
 import { normalizeWhatsAppNumber } from "./whatsapp.js";
 
@@ -71,7 +72,9 @@ export async function loadActorEmployee(db: Queryable, accountId: string): Promi
 export async function lockEmployees(client: PoolClient, ids: readonly string[]) {
   const sorted = [...new Set(ids)].sort();
   if (sorted.length === 0) return;
-  await client.query(`SELECT id FROM employees WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, [sorted]);
+  // NO KEY UPDATE: writers still queue behind each other, but the runner's foreign-key checks
+  // (KEY SHARE) on the same rows do not, so it cannot deadlock with a request.
+  await client.query(`SELECT id FROM employees WHERE id = ANY($1::uuid[]) ORDER BY id FOR NO KEY UPDATE`, [sorted]);
 }
 
 /** Names of the people to check; refuses anyone who is not an active employee. */
@@ -227,11 +230,32 @@ export async function addMeetingEvent(
 
 /**
  * §9.3: one pending reminder per person who has not declined, 30 minutes before the start.
- * A reminder that already fired for the same time stays fired; a new time fires again. None
- * at all when the meeting starts in less than 30 minutes.
+ * A reminder that already fired for the same time stays fired; a new time fires again. A new
+ * time less than 30 minutes ahead gets no reminder. When the time did not change and the
+ * reminder is already due, the due rows are left for the runner (only people who declined or
+ * left lose theirs): an answer given in the minute before the runner ticks must not cancel
+ * everybody's reminder.
  */
-export async function syncReminders(db: PoolClient, meetingId: string, startMs: number, nowMs = Date.now()) {
-  const fireAt = reminderFireAt(startMs, nowMs);
+export async function syncReminders(
+  db: PoolClient,
+  meetingId: string,
+  startMs: number,
+  options: { timeChanged: boolean; nowMs?: number },
+) {
+  const fireAt = reminderFireAt(startMs, options.nowMs ?? Date.now());
+  if (fireAt === null && !options.timeChanged) {
+    await db.query(
+      `UPDATE meeting_reminders reminder SET cancelled_at = now()
+        WHERE reminder.meeting_id = $1 AND reminder.fired_at IS NULL AND reminder.cancelled_at IS NULL
+          AND NOT EXISTS (
+                SELECT 1 FROM meeting_participants participant
+                 WHERE participant.meeting_id = reminder.meeting_id
+                   AND participant.employee_id = reminder.employee_id
+                   AND participant.response <> 'DECLINED')`,
+      [meetingId],
+    );
+    return;
+  }
   await db.query(
     `UPDATE meeting_reminders reminder SET cancelled_at = now()
       WHERE reminder.meeting_id = $1 AND reminder.fired_at IS NULL AND reminder.cancelled_at IS NULL
@@ -273,7 +297,14 @@ export async function cancelReminders(db: PoolClient, meetingId: string, employe
  */
 export async function enqueueWhatsApp(
   db: PoolClient,
-  input: { meetingId: string; employeeIds: readonly string[]; event: DeliveryEvent; version: number },
+  input: {
+    meetingId: string;
+    employeeIds: readonly string[];
+    event: DeliveryEvent;
+    version: number;
+    /** Freezes the message content (a "removed" message describes the meeting as it was). */
+    facts?: Omit<MessageFacts, "link">;
+  },
 ) {
   if (input.employeeIds.length === 0) return { queued: 0, withoutNumber: [] as string[] };
   const phones = await db.query<{ id: string; phone: string | null }>(
@@ -287,15 +318,18 @@ export async function enqueueWhatsApp(
     // before it left needs no second message (it would say "berubah" before "undangan").
     await db.query(
       `INSERT INTO meeting_notification_deliveries
-         (id, meeting_id, employee_id, event, version, idempotency_key, status)
-       SELECT $1::uuid, $2::uuid, $3::uuid, $4::text, $5::integer, $6::text, 'QUEUED'
+         (id, meeting_id, employee_id, event, version, idempotency_key, status, message_facts)
+       SELECT $1::uuid, $2::uuid, $3::uuid, $4::text, $5::integer, $6::text, 'QUEUED', $7::jsonb
         WHERE $4::text <> 'rescheduled' OR NOT EXISTS (
           SELECT 1 FROM meeting_notification_deliveries queued
            WHERE queued.meeting_id = $2::uuid AND queued.employee_id = $3::uuid
-             AND queued.event = 'invited' AND queued.status = 'QUEUED')
+             AND queued.event = 'invited' AND queued.status = 'QUEUED'
+             -- Never claimed yet: an invitation already in flight may carry the old time.
+             AND queued.attempts = 0)
        ON CONFLICT (idempotency_key) DO NOTHING`,
       [randomUUID(), input.meetingId, employeeId, input.event, input.version,
-        deliveryKey(input.meetingId, employeeId, input.event, input.version)],
+        deliveryKey(input.meetingId, employeeId, input.event, input.version),
+        input.facts ? JSON.stringify(input.facts) : null],
     );
   }
   return { queued: reachable.length, withoutNumber };

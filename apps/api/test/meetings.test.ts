@@ -122,7 +122,9 @@ describe("CAL-001 §6 availability", () => {
       meetings: [{ employeeId: "a", meetingId: "m1", title: null, startMs: wib("2026-11-10T09:00"), endMs: wib("2026-11-10T10:00") }],
     });
     expect(result.conflicts[0]!.meetingTitle).toBeNull();
-    expect(describeIssue(result.conflicts[0]!)).toBe("Ahmad sudah ada rapat lain (09:00-10:00).");
+    // Nor its exact hours (I-12): probing slots must not map out who attends it.
+    expect(result.conflicts[0]!.startAt).toBeUndefined();
+    expect(describeIssue(result.conflicts[0]!)).toBe("Ahmad sudah ada rapat lain pada waktu itu.");
   });
 
   it("blocks approved leave and approved/issued trips; pending ones only warn (CAL-001-E)", () => {

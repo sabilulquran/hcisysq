@@ -160,7 +160,8 @@ const MEETING_COLUMNS = `
 /** Locks the meeting and returns it with the actor's own row; null when the actor is not in it. */
 async function lockMeetingFor(client: PoolClient, meetingId: string, employeeId: string) {
   const found = await client.query<MeetingRow>(
-    `SELECT ${MEETING_COLUMNS} FROM meetings meeting WHERE meeting.id = $1 FOR UPDATE`,
+    // NO KEY UPDATE: see lockEmployees — the runner's foreign-key checks must not wait on it.
+    `SELECT ${MEETING_COLUMNS} FROM meetings meeting WHERE meeting.id = $1 FOR NO KEY UPDATE`,
     [meetingId],
   );
   const meeting = found.rows[0];
@@ -241,11 +242,12 @@ async function loadMeetingDetail(db: Queryable, meetingId: string, viewerEmploye
     ...allowedActions(state(meeting), { employeeId: viewerEmployeeId, role: myRole }, Date.now()),
     participants: participants.rows.map(({ phone, responseNote, hasAccount, ...row }) => ({
       ...row,
-      // DRAFT: response notes, account and WhatsApp flags are for the organizer (§12).
+      // I-04: response notes, account and WhatsApp flags are for the organizer (§12); K-08: so is
+      // whether someone is away on leave or a trip (a participant still sees their own).
       responseNote: isOrganizer || row.employeeId === viewerEmployeeId ? responseNote : null,
       hasAccount: isOrganizer ? hasAccount : null,
       hasWhatsApp: isOrganizer ? normalizeWhatsAppNumber(phone) !== null : null,
-      unavailableReason: unavailable.get(row.employeeId) ?? null,
+      unavailableReason: isOrganizer || row.employeeId === viewerEmployeeId ? unavailable.get(row.employeeId) ?? null : null,
     })),
     events: events.rows,
   };
@@ -459,7 +461,8 @@ export async function registerMeetingRoutes(
     return handle(reply, async () => {
       const me = await loadActorEmployee(pool, principal.id);
       const wanted = interval(body.data.startAt, body.data.endAt);
-      validateMeetingTimes({ ...wanted, nowMs: Date.now(), requireFutureStart: false });
+      // I-12: only future windows; a past one would only serve to look into other people's days.
+      validateMeetingTimes({ ...wanted, nowMs: Date.now() });
       const ids = [...new Set(body.data.participantEmployeeIds)].filter((id) => id !== me.id);
       let existing: { participantEmployeeIds: string[]; timeChanged: boolean } | null = null;
       if (body.data.excludeMeetingId) {
@@ -502,17 +505,22 @@ export async function registerMeetingRoutes(
     const input = body.data;
     return transact(reply, async (client) => {
       const organizer = await loadActorEmployee(client, principal.id);
-      const replay = await client.query<{ id: string; status: MeetingStatus; version: number }>(
+      const findReplay = async () => (await client.query<{ id: string; status: MeetingStatus; version: number }>(
         `SELECT id, status, version FROM meetings WHERE organizer_employee_id = $1 AND idempotency_key = $2`,
         [organizer.id, key.data],
-      );
-      if (replay.rows[0]) return [200, { ...replay.rows[0], idempotentReplay: true }];
+      )).rows[0];
+      const replay = await findReplay();
+      if (replay) return [200, { ...replay, idempotentReplay: true }];
 
       const nowMs = Date.now();
       const wanted = interval(input.startAt, input.endAt);
       validateMeetingTimes({ ...wanted, nowMs });
       const attendees = normalizeParticipants(organizer.id, input.participantEmployeeIds);
       await lockEmployees(client, [organizer.id, ...attendees]);
+      // A double click that raced this one may have committed while we waited for the locks:
+      // answer it as a replay rather than as a conflict with itself.
+      const raced = await findReplay();
+      if (raced) return [200, { ...raced, idempotentReplay: true }];
       const people = await loadActivePeople(client, [organizer.id, ...attendees]);
       const availability = await checkAvailability(client, {
         interval: wanted, people, excludeMeetingId: null, viewerEmployeeId: organizer.id,
@@ -555,7 +563,7 @@ export async function registerMeetingRoutes(
       const whatsapp = input.notifyWhatsApp
         ? await enqueueWhatsApp(client, { meetingId: id, employeeIds: attendees, event: "invited", version: 1 })
         : null;
-      await syncReminders(client, id, wanted.startMs, nowMs);
+      await syncReminders(client, id, wanted.startMs, { timeChanged: true, nowMs });
       return [201, {
         id, status: "ACTIVE", version: 1, idempotentReplay: false,
         warnings: withMessages(availability).warnings,
@@ -666,7 +674,7 @@ export async function registerMeetingRoutes(
           [meeting.id, startAt, endAt, added],
         );
       }
-      await syncReminders(client, meeting.id, wanted.startMs, nowMs);
+      await syncReminders(client, meeting.id, wanted.startMs, { timeChanged, nowMs });
 
       await addMeetingEvent(client, meeting.id, principal.id, "meeting.updated", {
         version,
@@ -704,7 +712,17 @@ export async function registerMeetingRoutes(
       const withoutNumber: string[] = [];
       if (next.notifyWhatsApp) {
         for (const [event, ids] of [["invited", added], ["removed", removed], ["rescheduled", timeChanged ? kept : []]] as const) {
-          const queued = await enqueueWhatsApp(client, { meetingId: meeting.id, employeeIds: ids, event, version });
+          const queued = await enqueueWhatsApp(client, {
+            meetingId: meeting.id, employeeIds: ids, event, version,
+            // Someone no longer invited is told about the meeting as they knew it, never its new
+            // title, time or location.
+            ...(event === "removed" ? {
+              facts: {
+                title: meeting.title, startMs: meeting.startAt.getTime(), endMs: meeting.endAt.getTime(),
+                location: meeting.location, organizerName: actor.fullName,
+              },
+            } : {}),
+          });
           withoutNumber.push(...queued.withoutNumber);
         }
       }
@@ -792,7 +810,7 @@ export async function registerMeetingRoutes(
         await cancelReminders(client, meeting.id, [actor.id]);
         await skipQueuedWhatsApp(client, meeting.id, [actor.id], ["reminder"], "participant_declined");
       } else {
-        await syncReminders(client, meeting.id, meeting.startAt.getTime());
+        await syncReminders(client, meeting.id, meeting.startAt.getTime(), { timeChanged: false });
       }
       await addMeetingEvent(client, meeting.id, principal.id, "meeting.participant.responded", {
         employeeId: actor.id, response, previousResponse: own.response,

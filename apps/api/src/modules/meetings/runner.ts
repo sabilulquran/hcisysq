@@ -8,7 +8,7 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "../../config/env.js";
 import { publicOrigin } from "../auth/csrf.js";
-import { formatWibRange, retryDelayMs, whatsappText, type DeliveryEvent } from "./domain.js";
+import { formatWibRange, retryDelayMs, whatsappText, type DeliveryEvent, type MessageFacts } from "./domain.js";
 import { enqueueWhatsApp, meetingHref, notifyPeople } from "./service.js";
 import {
   createWhatsAppSender,
@@ -31,8 +31,12 @@ export interface TickResult {
   delivered: number;
 }
 
-/** Seconds a claimed delivery stays invisible to other runners while its HTTP call runs. */
-const CLAIM_LEASE = "2 minutes";
+/**
+ * How long a claimed delivery stays invisible to other runners. A batch of 5 with a 10-second
+ * timeout, a token call and one re-auth retry stays well inside it.
+ */
+const CLAIM_LEASE = "5 minutes";
+const DELIVERY_BATCH = 5;
 
 export class MeetingRunner {
   private timer: NodeJS.Timeout | null = null;
@@ -141,6 +145,7 @@ export class MeetingRunner {
   async handOverDeliveries(): Promise<number> {
     const claimed = await this.pool.query<{
       id: string; meetingId: string; employeeId: string; event: DeliveryEvent; idempotencyKey: string; attempts: number;
+      facts: Omit<MessageFacts, "link"> | null;
     }>(
       `WITH due AS (
          SELECT id FROM meeting_notification_deliveries
@@ -153,8 +158,9 @@ export class MeetingRunner {
           SET attempts = delivery.attempts + 1, next_attempt_at = now() + interval '${CLAIM_LEASE}', updated_at = now()
          FROM due WHERE delivery.id = due.id
        RETURNING delivery.id, delivery.meeting_id AS "meetingId", delivery.employee_id AS "employeeId",
-                 delivery.event, delivery.idempotency_key AS "idempotencyKey", delivery.attempts`,
-      [this.options.batchSize ?? 20],
+                 delivery.event, delivery.idempotency_key AS "idempotencyKey", delivery.attempts,
+                 delivery.message_facts AS facts`,
+      [this.options.batchSize ?? DELIVERY_BATCH],
     );
     let delivered = 0;
     for (const row of claimed.rows) {
@@ -175,7 +181,10 @@ export class MeetingRunner {
     );
   }
 
-  private async deliver(row: { id: string; meetingId: string; employeeId: string; event: DeliveryEvent; idempotencyKey: string; attempts: number }) {
+  private async deliver(row: {
+    id: string; meetingId: string; employeeId: string; event: DeliveryEvent; idempotencyKey: string; attempts: number;
+    facts: Omit<MessageFacts, "link"> | null;
+  }) {
     const facts = await this.pool.query<{
       title: string; startAt: Date; endAt: Date; location: string | null; status: string; started: boolean;
       organizerName: string; phone: string | null; attending: boolean;
@@ -214,11 +223,13 @@ export class MeetingRunner {
         device: this.options.device,
         to,
         text: whatsappText(row.event, {
-          title: meeting.title,
-          startMs,
-          endMs: meeting.endAt.getTime(),
-          location: meeting.location,
-          organizerName: meeting.organizerName,
+          ...(row.facts ?? {
+            title: meeting.title,
+            startMs,
+            endMs: meeting.endAt.getTime(),
+            location: meeting.location,
+            organizerName: meeting.organizerName,
+          }),
           link: this.options.origin ? `${this.options.origin}${meetingHref(row.meetingId)}` : null,
         }),
         expiresAt: meeting.startAt.toISOString(),
@@ -238,7 +249,13 @@ export class MeetingRunner {
         await this.finish(row.id, "FAILED", { errorCode: error.code });
         return false;
       }
-      throw error;
+      // Anything else (a malformed answer, a bug) counts as a failed attempt under the same limit,
+      // so one bad row neither stops the batch nor retries forever.
+      this.log.error({ err: error, deliveryId: row.id }, "meeting WhatsApp hand-over failed unexpectedly");
+      const delay = retryDelayMs(row.attempts);
+      if (delay === null) await this.finish(row.id, "FAILED", { errorCode: "unexpected" });
+      else await this.finish(row.id, "QUEUED", { errorCode: "unexpected", retryInMs: delay });
+      return false;
     }
   }
 }

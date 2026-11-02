@@ -188,12 +188,13 @@ export function evaluateAvailability(input: AvailabilityInput): Availability {
 
   for (const meeting of input.meetings) {
     if (!names.has(meeting.employeeId) || !overlaps(input.interval, meeting)) continue;
+    // A confidential meeting the asker is not in: neither its title nor its exact hours, so
+    // probing slots cannot map out who attends it (I-12).
     conflicts.push({
       employeeId: meeting.employeeId,
       name: names.get(meeting.employeeId)!,
       reason: "MEETING_OVERLAP",
-      startAt: iso(meeting.startMs),
-      endAt: iso(meeting.endMs),
+      ...(meeting.title === null ? {} : { startAt: iso(meeting.startMs), endAt: iso(meeting.endMs) }),
       meetingTitle: meeting.title,
     });
   }
@@ -226,6 +227,7 @@ export function evaluateAvailability(input: AvailabilityInput): Availability {
 /** The Indonesian sentence the organizer reads for one conflict (legacy wording, §2). */
 export function describeIssue(issue: AvailabilityIssue): string {
   const who = issue.name ?? "Rapat";
+  if (issue.reason === "MEETING_OVERLAP" && !issue.startAt) return `${who} sudah ada rapat lain pada waktu itu.`;
   const range = issue.startAt && issue.endAt
     ? `${formatWibTime(Date.parse(issue.startAt))}-${formatWibTime(Date.parse(issue.endAt))}`
     : issue.startOn === issue.endOn ? formatWibDate(issue.startOn!) : `${formatWibDate(issue.startOn!)} – ${formatWibDate(issue.endOn!)}`;

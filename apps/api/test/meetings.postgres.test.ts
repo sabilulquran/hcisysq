@@ -260,7 +260,15 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     await created({ confidential: true, participantEmployeeIds: [people.alice.employeeId] });
     const outsider = await create({ startAt: at(day, "09:15"), endAt: at(day, "09:45"), participantEmployeeIds: [people.alice.employeeId] }, "outsider");
     expect(outsider.json().conflicts[0]).toMatchObject({ employeeId: people.alice.employeeId, meetingTitle: null });
+    expect(outsider.json().conflicts[0].startAt).toBeUndefined();
     expect(outsider.body).not.toContain("Rapat kurikulum tahfidz");
+    // The preview refuses past windows, which would only serve to look into someone's day.
+    actAs("outsider");
+    const past = await app.inject({
+      method: "POST", url: "/me/meetings/availability",
+      payload: { startAt: at(jakartaDate(-1), "09:00"), endAt: at(jakartaDate(-1), "10:00"), participantEmployeeIds: [people.alice.employeeId] },
+    });
+    expect(past.json().code).toBe("MEETING_START_IN_PAST");
 
     // Alice herself sees the title of her own confidential meeting.
     const inside = await create({ startAt: at(day, "09:15"), endAt: at(day, "09:45"), participantEmployeeIds: [people.bob.employeeId] }, "alice");
@@ -536,6 +544,60 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = $1`, [later.id]);
     await runner.tick();
     expect(await reminderTitles("outsider")).toHaveLength(0);
+  });
+
+  it("review: an answer given after the reminder is due but before the runner ticks keeps everyone's reminder", async () => {
+    const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.bob.employeeId] });
+    // The meeting starts in 20 minutes; reminders were due 10 minutes ago and the runner has not run.
+    await client.query(
+      `UPDATE meetings SET start_at = now() + interval '20 minutes', end_at = now() + interval '80 minutes' WHERE id = $1`, [meeting.id],
+    );
+    await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '10 minutes' WHERE meeting_id = $1`, [meeting.id]);
+    expect((await respond(meeting.id, "alice", "ACCEPTED")).statusCode).toBe(200);
+    expect((await respond(meeting.id, "bob", "DECLINED")).statusCode).toBe(200);
+    const pending = await client.query<{ employeeId: string }>(
+      `SELECT employee_id AS "employeeId" FROM meeting_reminders WHERE meeting_id = $1 AND fired_at IS NULL AND cancelled_at IS NULL`,
+      [meeting.id],
+    );
+    expect(pending.rows.map((row) => row.employeeId).sort()).toEqual([people.organizer.employeeId, people.alice.employeeId].sort());
+  });
+
+  it("review: a removed person's WhatsApp describes the meeting as they knew it; leave and trip flags are the organizer's", async () => {
+    const meeting = await created({ confidential: true, participantEmployeeIds: [people.alice.employeeId, people.outsider.employeeId] });
+    actAs("organizer");
+    const edited = await app.inject({
+      method: "PATCH", url: `/me/meetings/${meeting.id}`,
+      payload: {
+        expectedVersion: 1, title: "Pembinaan pegawai tertutup", location: "Ruang ketua",
+        startAt: at(day, "13:00"), endAt: at(day, "14:00"), participantEmployeeIds: [people.alice.employeeId],
+      },
+    });
+    expect(edited.statusCode, edited.body).toBe(200);
+    const removed = await client.query(
+      `SELECT message_facts FROM meeting_notification_deliveries WHERE meeting_id = $1 AND employee_id = $2 AND event = 'removed'`,
+      [meeting.id, people.outsider.employeeId],
+    );
+    expect(removed.rows[0].message_facts).toMatchObject({
+      title: "Rapat kurikulum tahfidz", location: "Ruang guru", startMs: Date.parse(at(day, "09:00")),
+    });
+    const texts: string[] = [];
+    const runner = new MeetingRunner(savepointPool(client), {
+      name: "log", send: async (message) => { texts.push(message.text); return { id: "x", dryRun: true }; },
+    }, { device: "hcis", origin: null });
+    await runner.tick();
+    const outsiderText = texts.find((text) => text.includes("tidak lagi diundang"))!;
+    expect(outsiderText).toContain("Rapat kurikulum tahfidz");
+    expect(outsiderText).not.toMatch(/Pembinaan|Ruang ketua|13:00/);
+
+    await client.query(
+      `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling, idempotency_key)
+       VALUES ($1,$2,'annual','approved',$3,$3,1,'none',$4)`,
+      [randomUUID(), people.alice.employeeId, day, randomUUID()],
+    );
+    const flag = (body: { participants: Array<{ employeeId: string; unavailableReason: unknown }> }) =>
+      body.participants.find((row) => row.employeeId === people.alice.employeeId)!.unavailableReason;
+    expect(flag((await detail(meeting.id, "organizer")).json())).toBe("LEAVE");
+    expect(flag((await detail(meeting.id, "alice")).json())).toBe("LEAVE");
   });
 });
 

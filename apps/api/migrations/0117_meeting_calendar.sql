@@ -125,6 +125,9 @@ CREATE TABLE IF NOT EXISTS meeting_notification_deliveries (
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   next_attempt_at timestamptz NOT NULL DEFAULT now(),
   error_code text NULL,
+  -- Title/time/location as the recipient knew them, for a "removed" message: a person who is no
+  -- longer invited must not learn a later title, time or location of a confidential meeting.
+  message_facts jsonb NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

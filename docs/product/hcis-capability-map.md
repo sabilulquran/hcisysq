@@ -82,7 +82,7 @@ See `docs/domain/payroll-engine-discovery.md`.
 ### 4. Performance and development
 
 - Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. Results do not feed tunjangan kinerja until the PAY-003 link (spec §11).
-- Training / LMS and learning records — TRAIN-001.
+- Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. Evaluation and online modules remain discovery.
 
 TRAIN-001 stays inside HCIS (Product Owner decision, 2026-10-20). Discovery direction, including training evaluation and server-hosted video, is in `docs/domain/training-lms-discovery.md`.
 

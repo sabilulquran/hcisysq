@@ -595,6 +595,46 @@
       "reason": "Satu penilaian kinerja beserta rubrik dan riwayatnya."
     },
     {
+      "url": "/admin/training/employee-options",
+      "list": "typeahead",
+      "reason": "Pencarian pegawai aktif untuk peserta dan narasumber pelatihan; q minimal 2 huruf, maksimal 20."
+    },
+    {
+      "url": "/admin/training/hours",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs/:id",
+      "list": "single",
+      "reason": "Satu program pelatihan dengan sesinya; D-17 membatasi paling banyak 50 sesi."
+    },
+    {
+      "url": "/admin/training/programs/:id/participants",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/records",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/records/:id",
+      "list": "single",
+      "reason": "Satu catatan pelatihan beserta beberapa event audit miliknya."
+    },
+    {
+      "url": "/admin/training/records/:id/certificate",
+      "list": "single",
+      "reason": "Unduhan satu berkas sertifikat."
+    },
+    {
+      "url": "/admin/training/sessions/:id/attendance",
+      "list": "paged"
+    },
+    {
       "url": "/admin/trips",
       "list": "paged"
     },
@@ -942,6 +982,28 @@
     {
       "url": "/ready",
       "list": "single"
+    },
+    {
+      "url": "/training/me/programs",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/programs/:id",
+      "list": "single",
+      "reason": "Satu program pelatihan dengan sesinya; D-17 membatasi paling banyak 50 sesi."
+    },
+    {
+      "url": "/training/me/records",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/records/:id/certificate",
+      "list": "single",
+      "reason": "Unduhan satu berkas sertifikat milik pegawai."
+    },
+    {
+      "url": "/training/me/summary",
+      "list": "aggregate"
     },
     {
       "url": "/trips/approvals",

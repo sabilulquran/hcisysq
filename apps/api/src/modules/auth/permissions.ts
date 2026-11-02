@@ -23,6 +23,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "trips.read", "trips.manage",
   // PERF-001: migration 0121 grants both to human_capital_admin.
   "performance.read", "performance.manage",
+  // TRAIN-001: migration 0119 grants both to human_capital_admin.
+  "training.read", "training.manage",
   // ORG-011: migration 0110 grants both to human_capital_admin.
   "job_classifications.read", "job_classifications.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
@@ -49,6 +51,9 @@ export type TripPermission = (typeof TRIP_PERMISSIONS)[number];
 /** PERF-001: HC-only; never granted through legacy Super Admin compatibility. Results are personal data. */
 export const PERFORMANCE_PERMISSIONS = ["performance.read", "performance.manage"] as const;
 export type PerformancePermission = (typeof PERFORMANCE_PERMISSIONS)[number];
+/** TRAIN-001: HC-only; never granted through legacy Super Admin compatibility. */
+export const TRAINING_PERMISSIONS = ["training.read", "training.manage"] as const;
+export type TrainingPermission = (typeof TRAINING_PERMISSIONS)[number];
 
 /** ORG-011: HC-only; never granted through legacy Super Admin compatibility. The catalog is
  * compensation reference data, so reading it is not part of the ordinary structure read. */

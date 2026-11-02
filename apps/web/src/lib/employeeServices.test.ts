@@ -29,6 +29,8 @@ describe("employee service catalog", () => {
     // TRIP-001 Package 1 ships request, approval and the surat tugas.
     expect(getEmployeeService("business-travel")?.stage).toBe("available");
     expect(getEmployeeService("business-travel")?.href).toBe("/app/trips");
+    expect(getEmployeeService("training")?.stage).toBe("available");
+    expect(getEmployeeService("training")?.href).toBe("/app/training");
   });
 
   it("maps every planned service to a real coming-soon route and feature id", () => {

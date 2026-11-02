@@ -119,6 +119,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/trips") return hasPermission(session, "trips.read");
   // PERF-001: HC-only; Super Admin legacy compatibility never carries performance.*.
   if (path === "/admin/performance") return hasPermission(session, "performance.read");
+  // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
+  if (path === "/admin/training") return hasPermission(session, "training.read");
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }

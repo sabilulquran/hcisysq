@@ -51,6 +51,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Payslip | Dokumen hasil payroll untuk satu pegawai dan satu periode dengan akses sangat terbatas. |
 | Loan | Pinjaman pegawai dengan principal, tenor/cicilan, status, approval, dan rekonsiliasi. |
 | Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
+| Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
+| Assignment Letter / Surat Tugas | Surat bernomor yang diterbitkan HC untuk perjalanan dinas yang sudah disetujui. Tercatat di register dokumen DOC-001 (`document_kind = ASSIGNMENT`); nomor tidak pernah didaur ulang. |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
 | Legacy HCIS | Implementasi sebelumnya yang digunakan untuk discovery dan sumber migrasi. |
 | Synthetic Data | Data buatan yang tidak berasal dari atau sengaja menyerupai data individu nyata. |

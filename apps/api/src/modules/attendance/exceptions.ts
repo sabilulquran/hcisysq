@@ -6,6 +6,8 @@ import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
 // ATT-014 §20.2 tab "Pengecualian" (package R2b): approved leave and attendance clarifications or HC
 // corrections that touch the range, read-only. Leave is listed per request overlapping the range;
 // clarifications per work date, every status, so HC also sees what is still waiting.
+// TRIP-001 D-11: approved business trips are listed too, per trip overlapping the range. Read-only:
+// nothing here writes attendance, and a trip never stands in for a punch.
 
 export type AttendanceExceptionFilter = PageQuery & {
   from: string;
@@ -15,7 +17,7 @@ export type AttendanceExceptionFilter = PageQuery & {
 };
 
 export type AttendanceException = {
-  kind: "leave" | "clarification";
+  kind: "leave" | "clarification" | "trip";
   id: string;
   employeeId: string;
   employeeNumber: string;
@@ -23,7 +25,7 @@ export type AttendanceException = {
   unitName: string | null;
   startOn: string;
   endOn: string;
-  /** Leave: policy key. Clarification: lateness, early_leave, missing_check_in, ... */
+  /** Leave: policy key. Clarification: lateness, early_leave, missing_check_in, ... Trip: destination. */
   type: string;
   /** Leave: the policy name from the catalog; null for clarifications (labelled on screen). */
   typeName: string | null;
@@ -60,6 +62,12 @@ export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: At
          clarification.status, clarification.reason
        FROM attendance_clarifications clarification
        WHERE clarification.work_date BETWEEN $1::date AND $2::date
+       UNION ALL
+       SELECT 'trip', trip.id, trip.employee_id, trip.start_on, trip.end_on,
+         trip.destination, NULL, NULL, trip.status, trip.purpose
+       FROM business_trip_requests trip
+       WHERE trip.status IN ('APPROVED', 'ISSUED', 'COMPLETED')
+         AND trip.start_on <= $2::date AND trip.end_on >= $1::date
      )
      SELECT items.kind, items.id, scoped.id AS "employeeId", scoped.employee_number AS "employeeNumber",
        scoped.full_name AS "employeeName", scoped.unit_name AS "unitName",
@@ -77,7 +85,8 @@ export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: At
     items: result.rows.map(({ total: rowTotal, ...row }) => {
       void rowTotal;
       const policy = row.kind === "leave" ? LEAVE_POLICY_CATALOG.find((item) => item.key === row.type) : undefined;
-      return { ...row, typeName: policy?.name ?? (row.kind === "leave" ? row.type : null) };
+      const typeName = row.kind === "trip" ? "Perjalanan Dinas" : policy?.name ?? (row.kind === "leave" ? row.type : null);
+      return { ...row, typeName };
     }),
   };
 }

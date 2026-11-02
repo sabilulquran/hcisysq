@@ -186,9 +186,12 @@ async function allocateNumber(client: PoolClient, numberCode: string, issuedAt: 
   return { year, sequence, documentNumber: formatDocumentNumber(numberCode, sequence, issuedAt) };
 }
 
+/** ASSIGNMENT is the TRIP-001 surat tugas; it shares this register and its counters. */
+export type IssuedDocumentKind = "CERTIFICATE" | "DISCIPLINARY" | "ASSIGNMENT";
+
 export interface IssuedDocument {
   id: string;
-  documentKind: "CERTIFICATE" | "DISCIPLINARY";
+  documentKind: IssuedDocumentKind;
   documentCode: string;
   documentNumber: string;
   signerTitle: SignerTitle;
@@ -199,7 +202,7 @@ export interface IssuedDocument {
 export async function issueDocument(
   client: PoolClient,
   input: {
-    documentKind: "CERTIFICATE" | "DISCIPLINARY";
+    documentKind: IssuedDocumentKind;
     documentCode: string;
     numberCode: string;
     employee: EmployeeFacts;

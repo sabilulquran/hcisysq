@@ -115,7 +115,7 @@ Payroll calculation is an HC/admin workspace capability, not an employee launche
 
 - Data Saya — EMP-003 — discovery for change requests; current identity/master data remains authoritative.
 - Dokumen — DOC-001 / DOC-002 — discovery.
-- Perjalanan Dinas — TRIP-001 — planned.
+- Perjalanan Dinas — TRIP-001 — available (Package 1).
 - Asset Saya — ASSET-001 — read-only view of assets held, sourced live from Aset SQ; actions stay in Aset SQ (`docs/domain/employee-assets.md`).
 
 ### Informasi

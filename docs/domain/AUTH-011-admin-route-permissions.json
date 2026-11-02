@@ -3305,5 +3305,117 @@
     "url": "/internal/v1/role-administration/catalog",
     "access": "machine-actor",
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "GET",
+    "url": "/trips/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "GET",
+    "url": "/trips/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/trips/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/trips/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/trips/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/trips/me/:id/complete",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "GET",
+    "url": "/trips/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/trips/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "GET",
+    "url": "/admin/trips",
+    "permissions": [
+      "trips.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "GET",
+    "url": "/admin/trips/:id",
+    "permissions": [
+      "trips.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/admin/trips/:id/issue",
+    "permissions": [
+      "trips.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/trips/routes.ts",
+    "method": "POST",
+    "url": "/admin/trips/:id/cancel",
+    "permissions": [
+      "trips.manage"
+    ]
   }
 ]

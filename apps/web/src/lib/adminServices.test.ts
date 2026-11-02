@@ -30,6 +30,9 @@ describe("admin module catalog", () => {
     expect(getAdminService("communications")?.stage).toBe("available");
     expect(getAdminService("communications")?.href).toBe("/admin/announcements");
     expect(getAdminService("communications")?.featureIds).not.toContain("NOTIF-003");
+    // TRIP-001 Package 1 ships the register and the surat tugas; costs stay out (REIMB-001).
+    expect(getAdminService("business-travel")?.stage).toBe("available");
+    expect(getAdminService("business-travel")?.href).toBe("/admin/trips");
   });
 
   it("routes every planned module to the authenticated admin coming-soon surface", () => {

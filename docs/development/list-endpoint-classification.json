@@ -568,6 +568,15 @@
       "list": "paged"
     },
     {
+      "url": "/admin/trips",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/trips/:id",
+      "list": "single",
+      "reason": "Satu perjalanan dinas beserta tahap approval dan riwayatnya."
+    },
+    {
       "url": "/announcements/me",
       "list": "bounded",
       "reason": "Pengumuman yang ditujukan ke satu pegawai; dibatasi snapshot penerima miliknya."
@@ -864,6 +873,19 @@
     {
       "url": "/ready",
       "list": "single"
+    },
+    {
+      "url": "/trips/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/trips/me",
+      "list": "paged"
+    },
+    {
+      "url": "/trips/me/:id",
+      "list": "single",
+      "reason": "Satu perjalanan dinas milik pegawai beserta tahap approval dan riwayatnya."
     }
   ]
 }

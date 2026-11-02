@@ -123,7 +123,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "business-travel", label: "Perjalanan Dinas",
     description: "Ajukan dan pantau perjalanan atau penugasan dinas.",
-    featureIds: ["TRIP-001"], stage: "planned", category: "employee-services", href: "/app/services/business-travel",
+    featureIds: ["TRIP-001"], stage: "available", category: "employee-services", href: "/app/trips",
   },
   {
     key: "assets", label: "Asset Saya",

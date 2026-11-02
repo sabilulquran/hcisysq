@@ -78,7 +78,7 @@ DisciplinaryLetter (DOC-002)
   -> acknowledgement pegawai
 ```
 
-`IssuedDocument` adalah satu register bersama untuk kedua jenis, dibedakan `document_kind`.
+`IssuedDocument` adalah satu register bersama untuk kedua jenis, dibedakan `document_kind`. Sejak TRIP-001 register ini juga memuat surat tugas (`ASSIGNMENT`, kode nomor `ST`); surat tugas hanya dicabut lewat pembatalan perjalanan, bukan lewat tombol Batalkan register (`docs/domain/business-travel.md` D-14).
 
 ### 4.1 Snapshot isi
 

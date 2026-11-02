@@ -50,7 +50,6 @@ const icons = {
   documents: FileText,
   "business-travel": Landmark,
   assets: FileText,
-  "desk-booking": CalendarDays,
   announcements: Megaphone,
   notifications: BellRing,
   reminders: BellRing,

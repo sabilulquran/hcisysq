@@ -42,7 +42,6 @@ const icons = {
   recruitment: UsersRound,
   "business-travel": Landmark,
   assets: FileText,
-  workplace: Building2,
   documents: FileText,
   communications: Megaphone,
   sites: Building2,

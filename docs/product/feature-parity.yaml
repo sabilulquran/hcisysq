@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-10-22
+updated_at: 2026-11-02
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -593,10 +593,10 @@ features:
     module: workplace
     name: Desk and workplace booking
     legacy_evidence: none recorded; product owner accepted this HCIS scope on 2026-09-18
-    target_status: planned
-    priority: later
+    target_status: removed
+    priority: none
     risk: medium
-    planning_note: Product scope accepted; resource types, availability, conflicts, approval, and location semantics remain to be specified.
+    planning_note: Removed by the product owner on 2026-11-02 ("ga begitu urgent, hapus aja ga usah dibangun"); desks at YSQ units are fixed, so shared desk booking has no operational need. Not to be built without a new product owner decision.
     docs:
       - docs/product/hcis-capability-map.md
 

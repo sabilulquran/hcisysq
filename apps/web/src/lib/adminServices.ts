@@ -47,7 +47,7 @@ export const adminServiceCategories: Array<{
   {
     key: "employee-services",
     label: "Layanan Pegawai",
-    description: "Perjalanan dinas, aset, workplace, dokumen, dan komunikasi.",
+    description: "Perjalanan dinas, aset, dokumen, dan komunikasi.",
   },
   {
     key: "organization",
@@ -200,15 +200,6 @@ export const adminServices: AdminServiceDefinition[] = [
     stage: "planned",
     category: "employee-services",
     href: "/admin/services/assets",
-  },
-  {
-    key: "workplace",
-    label: "Desk / Workplace Booking",
-    description: "Kelola resource kerja bersama dan reservasinya.",
-    featureIds: ["WORK-001"],
-    stage: "planned",
-    category: "employee-services",
-    href: "/admin/services/workplace",
   },
   {
     key: "documents",

@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED  
 **Specification:** UX-001  
-**Related feature IDs:** EMP-003, ATT-001, ATT-002, ATT-003, ATT-006, ATT-007, ATT-008, APR-001, LEAVE-001, LEAVE-002, PAY-002, REIMB-001, LOAN-001, PERF-001, TRAIN-001, DOC-001, DOC-002, TRIP-001, ASSET-001, WORK-001, NOTIF-001, NOTIF-002, NOTIF-003  
+**Related feature IDs:** EMP-003, ATT-001, ATT-002, ATT-003, ATT-006, ATT-007, ATT-008, APR-001, LEAVE-001, LEAVE-002, PAY-002, REIMB-001, LOAN-001, PERF-001, TRAIN-001, DOC-001, DOC-002, TRIP-001, ASSET-001, NOTIF-001, NOTIF-002, NOTIF-003  
 **Decision date:** 2026-09-18
 
 ## Purpose
@@ -117,7 +117,6 @@ Payroll calculation is an HC/admin workspace capability, not an employee launche
 - Dokumen — DOC-001 / DOC-002 — discovery.
 - Perjalanan Dinas — TRIP-001 — planned.
 - Asset Saya — ASSET-001 — read-only view of assets held, sourced live from Aset SQ; actions stay in Aset SQ (`docs/domain/employee-assets.md`).
-- Desk Booking — WORK-001 — planned.
 
 ### Informasi
 

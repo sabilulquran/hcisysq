@@ -642,6 +642,28 @@ features:
     priority: later
     risk: medium
 
+  - id: CAL-001
+    module: workplace
+    name: Meeting invitations, participant time blocking, and personal calendar
+    legacy_evidence: >-
+      Legacy Laravel HCIS (GitHub hcysq/hcis-ysq @30264ba312d8) has Agenda invitations with
+      participant conflict blocking (AgendaConflictService), in-app and Starsender WhatsApp
+      invitations, 30-minute reminders, cancellation, and a monthly calendar with leave and
+      targeted holidays. No RSVP action, no audit, no leave/trip conflict check; the calendar
+      shows every agenda title to every employee. Older GAS-HCIS has no meeting feature.
+    target_status: specified
+    priority: later
+    risk: medium
+    planning_note: >-
+      Specified 2026-11-02 as PROPOSED (docs/domain/meeting-calendar.md). Package 1: in-app
+      invitations, hard block on overlapping active meetings, approved leave and approved or
+      issued trips, RSVP that frees declined time, organizer-only edit/cancel, private personal
+      calendar. Owner decisions K-01..K-08 pending before implementation. WhatsApp waits for
+      NOTIF-001, reminders for NOTIF-003; no room booking (WORK-001 removed).
+    docs:
+      - docs/domain/meeting-calendar.md
+      - docs/product/hcis-capability-map.md
+
   - id: REC-001
     module: recruitment
     name: Candidate application and recruitment workflow

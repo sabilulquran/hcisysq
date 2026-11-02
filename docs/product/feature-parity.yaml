@@ -661,11 +661,11 @@ features:
     priority: later
     risk: medium
     planning_note: >-
-      Specified 2026-11-02 as PROPOSED (docs/domain/meeting-calendar.md). Package 1: in-app
-      invitations, hard block on overlapping active meetings, approved leave and approved or
-      issued trips, RSVP that frees declined time, organizer-only edit/cancel, private personal
-      calendar. Owner decisions K-01..K-08 pending before implementation. WhatsApp waits for
-      NOTIF-001, reminders for NOTIF-003; no room booking (WORK-001 removed).
+      Package 1 ACCEPTED 2026-11-02 (docs/domain/meeting-calendar.md): in-app and WhatsApp
+      (Kirim SQ, ADR-0011) invitations, hard block on overlapping active meetings, approved
+      leave and approved or issued trips, RSVP that frees declined time, organizer-only
+      edit/cancel, yayasan-wide calendar with an optional confidential flag, and a 30-minute
+      reminder as the first NOTIF-003 rule. No room booking (WORK-001 removed).
     docs:
       - docs/domain/meeting-calendar.md
       - docs/product/hcis-capability-map.md

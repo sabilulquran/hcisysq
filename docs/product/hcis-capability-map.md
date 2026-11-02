@@ -111,7 +111,7 @@ Employee services continue with:
 - Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
 - Reminders and scheduled notifications — NOTIF-003.
-- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Specified as PROPOSED in `docs/domain/meeting-calendar.md`; implementation waits for owner decisions. In-app only in Package 1; no room booking.
+- Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is specified and accepted in `docs/domain/meeting-calendar.md`: in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking.
 
 ### 7. Talent acquisition
 

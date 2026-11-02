@@ -121,4 +121,6 @@ Yang harus diputuskan sebelum implementasi:
 4. **Penerima**: pegawai ybs, atasan, atau Human Capital.
 5. **Kanal**: in-app saja, atau menunggu NOTIF-001.
 
+Untuk pengingat rapat, kelima pertanyaan dijawab oleh CAL-001 (`meeting-calendar.md` §9.3): penjalan di dalam proses API, satu baris per rapat/pegawai/aturan, H-30 menit, peserta yang tidak berhalangan, in-app dan WhatsApp lewat Kirim SQ. Aturan pengingat lain tetap perlu jawaban sendiri.
+
 Sampai kelimanya dijawab, NOTIF-003 tetap `discovery` di katalog layanan dan tidak boleh diiklankan sebagai tersedia.

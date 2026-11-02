@@ -4,6 +4,7 @@
 **Spesifikasi:** ASSET-001 (Employee asset assignment and return)
 **Tanggal:** 2026-11-02
 **Terkait:** EMP-005 (tindakan Pemberhentian), ORG-006/ORG-010 (Organization Directory), AUTH-013, ADR-0002; Aset SQ ADR-0001, ASQ-001, ASQ-002, ASQ-004
+**Implementasi:** `apps/api/src/modules/employee-assets/` (adapter `aset-sq-client.ts`, rute `routes.ts`), `apps/web/src/pages/EmployeeAssetsPage.tsx`, `apps/web/src/components/employment/TerminationAssetWarning.tsx`; kontrak `docs/api/employee-assets.openapi.yaml`. Fitur mati sampai tiga variabel §7 diisi.
 **Roadmap:** `docs/product/hcis-capability-map.md` §5, `docs/design/employee-self-service-experience.md` (Layanan Pegawai → Asset Saya)
 
 ## 1. Keputusan
@@ -161,7 +162,7 @@ Langkah ini butuh kata sandi admin Keycloak, jadi dijalankan owner dengan skrip 
 - Serah terima, konfirmasi, penolakan, dan pengembalian aset: tetap di Aset SQ.
 - Blokir Pemberhentian karena aset (lihat `DRAFT` di §5).
 - Notifikasi otomatis ke pegawai atau unit aset saat Pemberhentian dicatat (kandidat lanjutan, butuh kontrak event).
-- Kartu admin "Asset Pegawai" di HCIS: diarahkan ke Aset SQ, bukan layar HCIS.
+- Kartu admin "Asset Pegawai" di katalog modul HCIS: dihapus. Pengelolaan aset ada di Aset SQ, yang sudah muncul di peluncur aplikasi.
 - Akses Aplikasi Aset SQ untuk seluruh pegawai: pegawai butuh akses `aset-sq` di SQ Hub untuk menerima/menolak aset di Aset SQ. Itu keputusan pemberian akses di SQ Hub, bukan bagian ASSET-001.
 
 ## 11. Acceptance

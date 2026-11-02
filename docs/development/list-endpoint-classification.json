@@ -418,6 +418,11 @@
       "reason": "Riwayat alamat satu pegawai; dua jenis dengan beberapa periode."
     },
     {
+      "url": "/admin/employees/:employeeId/assets",
+      "list": "bounded",
+      "reason": "Aset yang sedang dipegang satu pegawai, dibaca dari Aset SQ ASQ-004: paling banyak 200 butir dengan hitungan lengkap dan penanda truncated (ASSET-001 §4)."
+    },
+    {
       "url": "/admin/employees/:employeeId/education",
       "list": "bounded",
       "reason": "Riwayat pendidikan satu pegawai; beberapa baris per orang."
@@ -571,6 +576,11 @@
       "url": "/announcements/me",
       "list": "bounded",
       "reason": "Pengumuman yang ditujukan ke satu pegawai; dibatasi snapshot penerima miliknya."
+    },
+    {
+      "url": "/assets/me",
+      "list": "bounded",
+      "reason": "Aset yang sedang dipegang satu pegawai, dibaca dari Aset SQ ASQ-004: paling banyak 200 butir dengan hitungan lengkap dan penanda truncated (ASSET-001 §4)."
     },
     {
       "url": "/attendance/clarifications/me",

@@ -67,6 +67,7 @@ import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
 import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { AdminServicesPage } from "@/pages/AdminServicesPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
+import { EmployeeAssetsPage } from "@/pages/EmployeeAssetsPage";
 import { EmployeeComingSoonPage } from "@/pages/EmployeeComingSoonPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePage";
@@ -263,6 +264,14 @@ const employeeServicesRoute = createRoute({
   path: "/app/services",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeServicesPage,
+});
+
+// ASSET-001: a real page; the static segment wins over $serviceKey.
+const employeeAssetsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/services/assets",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeAssetsPage,
 });
 
 const employeeComingSoonRoute = createRoute({
@@ -691,6 +700,7 @@ const routeTree = rootRoute.addChildren([
   employeeAttendanceResolutionRoute,
   employeeApprovalsRoute,
   employeeServicesRoute,
+  employeeAssetsRoute,
   employeeComingSoonRoute,
   hcLeaveValidationRoute,
   hcPlannedLeaveRoute,

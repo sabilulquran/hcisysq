@@ -128,7 +128,7 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   {
     key: "assets", label: "Asset Saya",
     description: "Lihat aset organisasi yang menjadi tanggung jawab Anda.",
-    featureIds: ["ASSET-001"], stage: "planned", category: "employee-services", href: "/app/services/assets",
+    featureIds: ["ASSET-001"], stage: "available", category: "employee-services", href: "/app/services/assets",
   },
   {
     key: "desk-booking", label: "Desk Booking",

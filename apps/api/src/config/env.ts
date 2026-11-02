@@ -72,6 +72,14 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
     ),
+    // ASSET-001 §7: read-only person custody from Aset SQ ASQ-004, with a dedicated machine client.
+    ASET_SQ_PERSON_CUSTODY_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+    ASET_SQ_MACHINE_CLIENT_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    ASET_SQ_MACHINE_CLIENT_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+    ASET_SQ_SELF_SERVICE_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().refine((value) => ["https:", "http:"].includes(new URL(value).protocol)).optional(),
+    ),
   })
   .superRefine((value, ctx) => {
     const biometricKeyringRequested =
@@ -210,6 +218,35 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ["GOVERNANCE_SUMMARY_ENABLED"],
           message: "GOVERNANCE_SUMMARY_ENABLED=true requires AUTH_MODE=oidc",
+        });
+      }
+    }
+
+    const asetSqKeys = ["ASET_SQ_PERSON_CUSTODY_URL", "ASET_SQ_MACHINE_CLIENT_ID", "ASET_SQ_MACHINE_CLIENT_SECRET"] as const;
+    if (asetSqKeys.some((key) => value[key])) {
+      // All or nothing: half a configuration would only fail on first use.
+      for (const key of asetSqKeys) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when any ASET_SQ_* client setting is set` });
+      }
+      // The token issuer is the staff realm of the OIDC login.
+      if (value.AUTH_MODE !== "oidc") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ASET_SQ_MACHINE_CLIENT_ID"],
+          message: "The Aset SQ person custody client requires AUTH_MODE=oidc",
+        });
+      }
+      // A dedicated client (ASSET-001 §7): one leaked secret must not open another channel.
+      if (value.ASET_SQ_MACHINE_CLIENT_ID && [
+        value.SQ_HUB_MACHINE_CLIENT_ID,
+        value.OIDC_CLIENT_ID,
+        "sq-hub-identity-management",
+      ].includes(value.ASET_SQ_MACHINE_CLIENT_ID)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ASET_SQ_MACHINE_CLIENT_ID"],
+          message: "ASET_SQ_MACHINE_CLIENT_ID must be a dedicated client, not one HCIS or SQ Hub already uses",
         });
       }
     }

@@ -193,15 +193,6 @@ export const adminServices: AdminServiceDefinition[] = [
     href: "/admin/services/business-travel",
   },
   {
-    key: "assets",
-    label: "Asset Pegawai",
-    description: "Kelola penyerahan, pemegang, kondisi, dan pengembalian aset kerja.",
-    featureIds: ["ASSET-001"],
-    stage: "planned",
-    category: "employee-services",
-    href: "/admin/services/assets",
-  },
-  {
     key: "workplace",
     label: "Desk / Workplace Booking",
     description: "Kelola resource kerja bersama dan reservasinya.",

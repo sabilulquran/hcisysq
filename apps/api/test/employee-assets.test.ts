@@ -7,19 +7,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const ISSUER = "https://login.example.test/realms/sq-staff";
 const grant = vi.fn(async () => ({ access_token: "synthetic-aset-token", expires_in: 300 }));
+const discovery = vi.fn();
 
 vi.mock("openid-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openid-client")>();
   return {
     ...actual,
-    discovery: vi.fn(
-      async () =>
-        new actual.Configuration(
-          { issuer: ISSUER, token_endpoint: `${ISSUER}/protocol/openid-connect/token` },
-          "hcis-aset-custody",
-          "synthetic-secret",
-        ),
-    ),
+    discovery: (...args: unknown[]) => {
+      discovery(...args);
+      return Promise.resolve(new actual.Configuration(
+        { issuer: ISSUER, token_endpoint: `${ISSUER}/protocol/openid-connect/token` },
+        "hcis-aset-custody",
+        "synthetic-secret",
+      ));
+    },
     clientCredentialsGrant: (...args: unknown[]) => grant(...(args as [])),
   };
 });
@@ -29,7 +30,7 @@ const {
   AsetSqPersonCustodyClient,
   PersonCustodyUnavailableError,
 } = await import("../src/modules/employee-assets/aset-sq-client.js");
-const { registerEmployeeAssetRoutes } = await import("../src/modules/employee-assets/routes.js");
+const { loadAssetHoldings, registerEmployeeAssetRoutes } = await import("../src/modules/employee-assets/routes.js");
 type PersonCustodyReader = import("../src/modules/employee-assets/aset-sq-client.js").PersonCustodyReader;
 
 const EMPLOYEE_ID = "10000000-0000-4000-8000-000000000001";
@@ -107,10 +108,36 @@ describe("Aset SQ person custody adapter", () => {
     ["an answer with extra fields", () => json({ ...custody(), purchaseCost: "1" }), "INVALID_RESPONSE"],
     ["an answer about someone else", () => json(custody(`hcis:employee:${OTHER_ID}`)), "INVALID_RESPONSE"],
     ["a script link", () => json({ ...custody(), selfServiceUrl: "javascript:alert(1)" }), "INVALID_RESPONSE"],
+    ["clearance that contradicts the counts", () => json({ ...custody(), clearance: "CLEAR" }), "INVALID_RESPONSE"],
+    ["a list longer than the count", () => json({ ...custody(), counts: { outstanding: 0, pendingAcceptance: 0, overdue: 0 } }), "INVALID_RESPONSE"],
+    ["a timeout", () => { throw new DOMException("The operation was aborted due to timeout", "TimeoutError"); }, "UNREACHABLE"],
   ])("treats %s as unavailable", async (_label, respond, failure) => {
     vi.stubGlobal("fetch", vi.fn(async () => respond()));
     const client = new AsetSqPersonCustodyClient(ISSUER, "hcis-aset-custody", "synthetic-secret", BASE_URL);
     await expect(client.read(EMPLOYEE_ID)).rejects.toMatchObject({ name: "PersonCustodyUnavailableError", failure });
+  });
+
+  it("bounds discovery and the token grant at 5 s and the request with an abort signal", async () => {
+    const fetchMock = vi.fn(async () => json(custody()));
+    vi.stubGlobal("fetch", fetchMock);
+    discovery.mockClear();
+    await new AsetSqPersonCustodyClient(ISSUER, "hcis-aset-custody", "synthetic-secret", BASE_URL).read(EMPLOYEE_ID);
+    expect(discovery.mock.calls[0]?.[4]).toEqual({ timeout: 5 });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("drops the cached token after a 401 and shares one grant between concurrent reads", async () => {
+    const responses = [json({ error: {} }, 401), json(custody()), json(custody()), json(custody())];
+    vi.stubGlobal("fetch", vi.fn(async () => responses.shift()!));
+    const client = new AsetSqPersonCustodyClient(ISSUER, "hcis-aset-custody", "synthetic-secret", BASE_URL);
+    await expect(client.read(EMPLOYEE_ID)).rejects.toMatchObject({ failure: "HTTP_ERROR", httpStatus: 401 });
+    await client.read(EMPLOYEE_ID);
+    expect(grant).toHaveBeenCalledTimes(2);
+
+    const fresh = new AsetSqPersonCustodyClient(ISSUER, "hcis-aset-custody", "synthetic-secret", BASE_URL);
+    await Promise.all([fresh.read(EMPLOYEE_ID), fresh.read(EMPLOYEE_ID)]);
+    expect(grant).toHaveBeenCalledTimes(3);
   });
 
   it("reports a token failure without calling Aset SQ", async () => {
@@ -261,6 +288,27 @@ describe("GET /admin/employees/:employeeId/assets", () => {
   });
 });
 
+describe("loadAssetHoldings", () => {
+  const fallback = "https://aset.sabilulquran.or.id/my-assets";
+
+  it("passes on only a link on the configured Aset SQ origin", async () => {
+    const reader = (url: string) => ({ read: async () => ({ ...withoutPersonRef(custody()), selfServiceUrl: url }) }) as unknown as PersonCustodyReader;
+    const log = { warn: vi.fn() };
+    expect((await loadAssetHoldings(reader("https://evil.example/phish"), EMPLOYEE_ID, fallback, log)).selfServiceUrl).toBe(fallback);
+    expect((await loadAssetHoldings(reader("https://aset.sabilulquran.or.id/my-assets"), EMPLOYEE_ID, fallback, log)).selfServiceUrl)
+      .toBe("https://aset.sabilulquran.or.id/my-assets");
+  });
+
+  it("logs a short code and status only, never the person", async () => {
+    const log = { warn: vi.fn() };
+    const reader = { read: async () => { throw new PersonCustodyUnavailableError("HTTP_ERROR", 503); } } as unknown as PersonCustodyReader;
+    const result = await loadAssetHoldings(reader, EMPLOYEE_ID, fallback, log);
+    expect(result).toEqual({ status: "UNAVAILABLE", selfServiceUrl: fallback });
+    expect(log.warn).toHaveBeenCalledWith({ code: "ASSET_CUSTODY_HTTP_ERROR", httpStatus: 503 }, expect.any(String));
+    expect(JSON.stringify(log.warn.mock.calls)).not.toContain(EMPLOYEE_ID);
+  });
+});
+
 describe("ASSET-001 configuration", () => {
   const oidcEnv = {
     NODE_ENV: "test",
@@ -288,6 +336,9 @@ describe("ASSET-001 configuration", () => {
 
   it("refuses a partial set, local login, and a reused client", () => {
     expect(() => loadConfig({ ...oidcEnv, ASET_SQ_PERSON_CUSTODY_URL: BASE_URL })).toThrow(/ASET_SQ_MACHINE_CLIENT_ID/);
+    for (const url of ["ftp://127.0.0.1:3303", "http://127.0.0.1:3303/?x=1", "http://127.0.0.1:3303/#frag"]) {
+      expect(() => loadConfig({ ...oidcEnv, ...aset, ASET_SQ_PERSON_CUSTODY_URL: url }), url).toThrow();
+    }
     expect(() => loadConfig({ NODE_ENV: "test", DATABASE_URL: "postgres://x", AUTH_MODE: "local", ...aset })).toThrow(/AUTH_MODE=oidc/);
     for (const reused of ["hcis-hub-machine", "hcis", "sq-hub-identity-management"]) {
       expect(() => loadConfig({ ...oidcEnv, ...aset, ASET_SQ_MACHINE_CLIENT_ID: reused }), reused).toThrow(/dedicated client/);

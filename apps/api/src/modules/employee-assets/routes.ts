@@ -54,7 +54,10 @@ export async function loadAssetHoldings(
 ): Promise<AssetHoldings> {
   if (!reader) return { status: "NOT_CONFIGURED", selfServiceUrl: fallbackUrl };
   try {
-    return { status: "AVAILABLE", ...(await reader.read(employeeId)) };
+    const custody = await reader.read(employeeId);
+    // The link leaves HCIS; only one on the configured Aset SQ origin is passed on.
+    const sameOrigin = new URL(custody.selfServiceUrl).origin === new URL(fallbackUrl).origin;
+    return { status: "AVAILABLE", ...custody, selfServiceUrl: sameOrigin ? custody.selfServiceUrl : fallbackUrl };
   } catch (error) {
     // Short code only: no person reference, token, or response body in the log.
     const failure = error instanceof PersonCustodyUnavailableError ? error.failure : "UNEXPECTED";
@@ -127,7 +130,9 @@ export async function registerEmployeeAssetRoutes(
       "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
       [params.data.employeeId],
     );
-    if (!employee.rows[0]) return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
-    return send(reply, 200, await loadAssetHoldings(reader, params.data.employeeId, fallbackUrl, request.log));
+    const employeeId = employee.rows[0]?.id;
+    if (!employeeId) return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
+    // The stored id, not the request's spelling: Aset SQ matches lowercase person refs exactly.
+    return send(reply, 200, await loadAssetHoldings(reader, employeeId, fallbackUrl, request.log));
   });
 }

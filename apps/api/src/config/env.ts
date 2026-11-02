@@ -73,7 +73,14 @@ const envSchema = z
       z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),
     ),
     // ASSET-001 §7: read-only person custody from Aset SQ ASQ-004, with a dedicated machine client.
-    ASET_SQ_PERSON_CUSTODY_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
+    // A base URL only: http(s), no query or fragment, because the request path is appended to it.
+    ASET_SQ_PERSON_CUSTODY_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().refine((value) => {
+        const url = new URL(value);
+        return ["https:", "http:"].includes(url.protocol) && !url.search && !url.hash;
+      }).optional(),
+    ),
     ASET_SQ_MACHINE_CLIENT_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     ASET_SQ_MACHINE_CLIENT_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
     ASET_SQ_SELF_SERVICE_URL: z.preprocess(

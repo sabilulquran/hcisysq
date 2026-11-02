@@ -6,6 +6,8 @@ import * as oidc from "openid-client";
 import { z } from "zod";
 
 const REQUEST_TIMEOUT_MS = 5_000;
+/** openid-client takes seconds; discovery and the token grant each get the same 5 s. */
+const OIDC_TIMEOUT_SECONDS = 5;
 /** Refresh the machine token this long before Keycloak says it expires. */
 const TOKEN_EARLY_REFRESH_MS = 30_000;
 const DEFAULT_TOKEN_LIFETIME_MS = 60_000;
@@ -28,7 +30,10 @@ const assignmentSchema = z
   })
   .strict();
 
-/** ASQ-004 contract v1, validated strictly: anything else is "unavailable", never shown. */
+/**
+ * ASQ-004 contract v1, validated strictly: anything else is "unavailable", never shown. The
+ * fields must also agree with each other, or the screen could say "0 assets" next to a list.
+ */
 const personCustodySchema = z
   .object({
     personRef: z.string(),
@@ -45,7 +50,12 @@ const personCustodySchema = z
     truncated: z.boolean(),
     selfServiceUrl: httpUrl,
   })
-  .strict();
+  .strict()
+  .refine((value) => value.clearance === (value.counts.outstanding > 0 ? "OUTSTANDING" : "CLEAR"))
+  .refine((value) => value.counts.pendingAcceptance <= value.counts.outstanding && value.counts.overdue <= value.counts.outstanding)
+  .refine((value) => value.truncated
+    ? value.assignments.length < value.counts.outstanding
+    : value.assignments.length === value.counts.outstanding);
 
 export type PersonCustody = Omit<z.infer<typeof personCustodySchema>, "personRef">;
 
@@ -71,6 +81,8 @@ export function personRefFor(employeeId: string): string {
 export class AsetSqPersonCustodyClient implements PersonCustodyReader {
   private configurationPromise: Promise<oidc.Configuration> | null = null;
   private cachedToken: { value: string; expiresAt: number } | null = null;
+  /** One grant at a time: concurrent readers share it instead of each asking Keycloak. */
+  private pendingToken: Promise<string> | null = null;
   private readonly issuer: string;
   private readonly baseUrl: string;
 
@@ -130,6 +142,13 @@ export class AsetSqPersonCustodyClient implements PersonCustodyReader {
   private async getToken(): Promise<string> {
     const cached = this.cachedToken;
     if (cached && this.now() < cached.expiresAt - TOKEN_EARLY_REFRESH_MS) return cached.value;
+    this.pendingToken ??= this.fetchToken().finally(() => {
+      this.pendingToken = null;
+    });
+    return this.pendingToken;
+  }
+
+  private async fetchToken(): Promise<string> {
     try {
       const configuration = await this.getConfiguration();
       const tokens = await oidc.clientCredentialsGrant(configuration);
@@ -146,7 +165,12 @@ export class AsetSqPersonCustodyClient implements PersonCustodyReader {
   private async getConfiguration(): Promise<oidc.Configuration> {
     if (!this.configurationPromise) {
       this.configurationPromise = oidc
-        .discovery(new URL(this.issuer), this.clientId, this.clientSecret)
+        .discovery(new URL(this.issuer), this.clientId, this.clientSecret, undefined, { timeout: OIDC_TIMEOUT_SECONDS })
+        .then((configuration) => {
+          // Applies to the token grant too; the library default is 30 s.
+          configuration.timeout = OIDC_TIMEOUT_SECONDS;
+          return configuration;
+        })
         .catch((error: unknown) => {
           this.configurationPromise = null;
           throw error;

@@ -26,6 +26,7 @@ const ALLOWED_SAMPLES = [
 const REFUSED_SAMPLES = [
   "/employees/me/employment",
   "/notifications/me",
+  "/assets/me",
   "/attendance/me/schedule",
   "/attendance/clarifications/me",
   "/leave/approvals",

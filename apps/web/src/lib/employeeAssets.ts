@@ -29,6 +29,7 @@ async function get(path: string): Promise<AssetHoldings> {
   if (!response.ok) {
     throw new Error((body as { message?: string } | null)?.message ?? "Data aset tidak dapat dimuat.");
   }
+  if (!body || typeof body !== "object" || !("status" in body)) throw new Error("Data aset tidak dapat dimuat.");
   return body as AssetHoldings;
 }
 

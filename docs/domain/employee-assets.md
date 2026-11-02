@@ -139,7 +139,7 @@ HCIS tidak me-log isi jawaban, person ref, atau secret; kegagalan dicatat dengan
 
 Issuer token memakai `OIDC_ISSUER` yang sudah ada. Ketiga variabel wajib harus diisi bersama atau tidak sama sekali; setengah terisi menolak start. Client mesin ini tidak boleh sama dengan `SQ_HUB_MACHINE_CLIENT_ID` atau client kanal lain.
 
-Adapter: timeout 5 detik, token di-cache sampai 30 detik sebelum kedaluwarsa, jawaban divalidasi dengan schema ketat (jawaban yang tidak cocok = `UNAVAILABLE`).
+Adapter: timeout 5 detik untuk discovery, pengambilan token, dan panggilan Aset SQ; token di-cache sampai 30 detik sebelum kedaluwarsa, satu permintaan token dipakai bersama, dan dibuang saat Aset SQ menjawab 401. Jawaban divalidasi dengan schema ketat yang juga memeriksa konsistensi `clearance`, hitungan, dan daftar (jawaban yang tidak cocok = `UNAVAILABLE`). Tautan `selfServiceUrl` hanya diteruskan bila origin-nya sama dengan `ASET_SQ_SELF_SERVICE_URL`; selain itu diganti tautan yang dikonfigurasi. `ASET_SQ_PERSON_CUSTODY_URL` harus http(s) tanpa query atau fragment.
 
 ## 8. Provisioning Keycloak (owner)
 

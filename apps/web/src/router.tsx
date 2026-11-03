@@ -62,6 +62,7 @@ import { AdminPage } from "@/pages/AdminPage";
 import { AdminAnnouncementsPage } from "@/pages/AdminAnnouncementsPage";
 import { AdminDocumentsPage } from "@/pages/AdminDocumentsPage";
 import { AdminTripsPage } from "@/pages/AdminTripsPage";
+import { AdminPerformancePage } from "@/pages/AdminPerformancePage";
 import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
@@ -77,6 +78,7 @@ import { EmployeeMobileAttendancePage } from "@/pages/EmployeeMobileAttendancePa
 import { EmployeeAnnouncementsPage } from "@/pages/EmployeeAnnouncementsPage";
 import { EmployeeDocumentsPage } from "@/pages/EmployeeDocumentsPage";
 import { EmployeeTripsPage } from "@/pages/EmployeeTripsPage";
+import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeCalendarPage } from "@/pages/EmployeeCalendarPage";
@@ -208,6 +210,13 @@ const employeeTripsRoute = createRoute({
   path: "/app/trips",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeTripsPage,
+});
+
+const employeePerformanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/performance",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeePerformancePage,
 });
 
 const employeeLoansRoute = createRoute({
@@ -687,6 +696,13 @@ const adminTripsRoute = createRoute({
   component: AdminTripsPage,
 });
 
+const adminPerformanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/performance",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/performance"),
+  component: AdminPerformancePage,
+});
+
 const adminLoansRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/loans",
@@ -747,6 +763,7 @@ const routeTree = rootRoute.addChildren([
   employeeNotificationsRoute,
   employeeDocumentsRoute,
   employeeTripsRoute,
+  employeePerformanceRoute,
   employeeLoansRoute,
   employeeTrainingRoute,
   employeeCalendarRoute,
@@ -814,6 +831,7 @@ const routeTree = rootRoute.addChildren([
   adminPayslipsRoute,
   adminDocumentsRoute,
   adminTripsRoute,
+  adminPerformanceRoute,
   adminLoansRoute,
   adminTrainingRoute,
   adminAnnouncementsRoute,

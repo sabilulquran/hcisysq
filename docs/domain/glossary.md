@@ -57,6 +57,9 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Pelunasan | LOAN-001: pembayaran sebesar sisa pinjaman; pinjaman menjadi Lunas. |
 | Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
 | Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
+| Performance Review Cycle / Siklus Penilaian | Satu periode penilaian kinerja (bulanan atau tahun ajaran) dengan rubrik yang dibekukan saat siklus dibuka (PERF-001). |
+| Rater / Penilai | Pegawai yang menilai kinerja seorang pegawai pada satu siklus: atasan langsung menurut struktur yang disnapshot saat pegawai masuk siklus, atau pegawai yang ditunjuk HC. |
+| Predicate / Predikat Kinerja | Hasil akhir penilaian kinerja (A Sangat baik, B Baik, C Cukup, D Kurang) yang dihitung dari rata-rata berbobot skala 1–4 dan berlaku setelah disahkan HC. Belum dipakai payroll. |
 | Assignment Letter / Surat Tugas | Surat bernomor yang diterbitkan HC untuk perjalanan dinas yang sudah disetujui. Tercatat di register dokumen DOC-001 (`document_kind = ASSIGNMENT`); nomor tidak pernah didaur ulang. |
 | Training Program / Program Pelatihan | Wadah pelatihan internal dengan sesi terjadwal, peserta, dan daftar hadir per sesi (TRAIN-001). Kehadiran sesi bukan presensi kerja. |
 | Training Record / Catatan Pelatihan | Riwayat resmi pelatihan per pegawai: internal (dibuat saat program ditutup) atau eksternal (diajukan pegawai, diverifikasi HC), dengan jam pelatihan dan sertifikat opsional (TRAIN-001). |

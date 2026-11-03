@@ -3915,5 +3915,195 @@
     "permissions": [
       "training.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/performance/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/performance/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/performance/me/:id/self-assessment",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/performance/me/:id/acknowledge",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/performance/team",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/performance/team/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/performance/team/:id/rating",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/admin/performance/cycles",
+    "permissions": [
+      "performance.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/cycles",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/admin/performance/cycles/:id",
+    "permissions": [
+      "performance.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/performance/cycles/:id",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/cycles/:id/participants",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/cycles/:id/open",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/cycles/:id/close",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/cycles/:id/cancel",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/admin/performance/cycles/:id/reviews",
+    "permissions": [
+      "performance.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/admin/performance/reviews/:id",
+    "permissions": [
+      "performance.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "GET",
+    "url": "/admin/performance/employees/:employeeId/reviews",
+    "permissions": [
+      "performance.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/finalize",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/return",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/rater",
+    "permissions": [
+      "performance.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/performance/routes.ts",
+    "method": "POST",
+    "url": "/admin/performance/reviews/:id/remove",
+    "permissions": [
+      "performance.manage"
+    ]
   }
 ]

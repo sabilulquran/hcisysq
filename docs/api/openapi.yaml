@@ -31,6 +31,7 @@ tags:
   - name: Employment
   - name: HR Documents
   - name: Business Travel
+  - name: Performance
   - name: Employee Loans
   - name: Training
 
@@ -312,6 +313,46 @@ paths:
     $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1issue'
   /admin/trips/{id}/cancel:
     $ref: './business-travel.openapi.yaml#/paths/~1admin~1trips~1{id}~1cancel'
+  /performance/me:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1me'
+  /performance/me/{id}:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1me~1{id}'
+  /performance/me/{id}/self-assessment:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1me~1{id}~1self-assessment'
+  /performance/me/{id}/acknowledge:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1me~1{id}~1acknowledge'
+  /performance/team:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1team'
+  /performance/team/{id}:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1team~1{id}'
+  /performance/team/{id}/rating:
+    $ref: './performance.openapi.yaml#/paths/~1performance~1team~1{id}~1rating'
+  /admin/performance/cycles:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles'
+  /admin/performance/cycles/{id}:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}'
+  /admin/performance/cycles/{id}/participants:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}~1participants'
+  /admin/performance/cycles/{id}/open:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}~1open'
+  /admin/performance/cycles/{id}/close:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}~1close'
+  /admin/performance/cycles/{id}/cancel:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}~1cancel'
+  /admin/performance/cycles/{id}/reviews:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1cycles~1{id}~1reviews'
+  /admin/performance/reviews/{id}:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1reviews~1{id}'
+  /admin/performance/reviews/{id}/finalize:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1reviews~1{id}~1finalize'
+  /admin/performance/reviews/{id}/return:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1reviews~1{id}~1return'
+  /admin/performance/reviews/{id}/rater:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1reviews~1{id}~1rater'
+  /admin/performance/reviews/{id}/remove:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1reviews~1{id}~1remove'
+  /admin/performance/employees/{employeeId}/reviews:
+    $ref: './performance.openapi.yaml#/paths/~1admin~1performance~1employees~1{employeeId}~1reviews'
 
   /loans/me:
     $ref: './employee-loans.openapi.yaml#/paths/~1loans~1me'

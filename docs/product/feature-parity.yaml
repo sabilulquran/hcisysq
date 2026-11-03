@@ -634,10 +634,19 @@ features:
   - id: PERF-001
     module: performance
     name: Performance review and tier
-    legacy_evidence: performance review with tier exists
-    target_status: discovery
+    legacy_evidence: >-
+      performance review with tier exists (hcysq/hcis-ysq: monthly review, 1-4 scale, weighted
+      aspects, grade A-D, supervisor rater by level, one-step HC approval; not linked to payroll)
+    target_status: implemented
     priority: later
     risk: high
+    notes: >-
+      Package 1 implemented 2026-11-02 (docs/domain/performance-review.md): monthly and annual
+      cycles with a per-cycle rubric, self-assessment, rating by the line manager from the
+      structure, HC validation or return, A-D predicate, acknowledgement, history and HC recap.
+      The tunjangan kinerja link to PAY-003 is specified as a contract (spec §11) and not built.
+    docs:
+      - docs/domain/performance-review.md
 
   - id: TRAIN-001
     module: training

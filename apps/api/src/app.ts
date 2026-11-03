@@ -59,6 +59,7 @@ import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerEmployeeAssetRoutes } from "./modules/employee-assets/routes.js";
 import { registerTrainingRoutes } from "./modules/training/routes.js";
 import { registerTripRoutes } from "./modules/trips/routes.js";
+import { registerPerformanceRoutes } from "./modules/performance/routes.js";
 import { registerLoanRoutes } from "./modules/loans/routes.js";
 import { registerMeetingRoutes } from "./modules/meetings/routes.js";
 import { registerMeetingRunner } from "./modules/meetings/runner.js";
@@ -210,6 +211,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerJobClassificationRoutes(app, pool, config);
   await registerDocumentRoutes(app, pool, config);
   await registerTripRoutes(app, pool, config);
+  await registerPerformanceRoutes(app, pool, config);
   await registerLoanRoutes(app, pool, config);
   await registerTrainingRoutes(app, pool, config);
   await registerMeetingRoutes(app, pool, config);

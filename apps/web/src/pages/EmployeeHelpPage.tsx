@@ -152,6 +152,7 @@ export function EmployeeHelpPage() {
     if (browsing) {
       setArticles([]);
       setPagination(null);
+      setError(null);
       return;
     }
     let active = true;
@@ -174,6 +175,9 @@ export function EmployeeHelpPage() {
     setTopic(next);
     setPage(1);
     setOpenId(null);
+    // A failed fetch must not leave the previous topic's articles under the new one.
+    setArticles([]);
+    setError(null);
   };
 
   const counts = new Map(overview?.topics.map((entry) => [entry.topic, entry.faqCount + entry.guideCount]) ?? []);

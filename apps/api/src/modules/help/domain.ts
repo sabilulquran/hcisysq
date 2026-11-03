@@ -28,28 +28,32 @@ export class HelpError extends Error {
   }
 }
 
+/** Postgres refuses NUL in text; refusing it here keeps that a 400 instead of a 500. */
+export const text = () => z.string().refine((value) => !value.includes("\u0000")).pipe(z.string().trim());
+
 // D-05: plain text. The body keeps its line breaks; only the outer whitespace is trimmed.
 export const articleInput = z.object({
   kind: z.enum(HELP_KINDS),
   topic: z.enum(HELP_TOPICS),
-  title: z.string().trim().min(5).max(200),
-  body: z.string().trim().min(20).max(8000),
+  title: text().pipe(z.string().min(5).max(200)),
+  body: text().pipe(z.string().min(20).max(8000)),
   sortOrder: z.number().int().min(0).max(9999).default(100),
 });
 export const articleEdit = articleInput.extend({
   version: z.number().int().min(1),
-  changeNote: z.string().trim().max(300).optional(),
+  changeNote: text().pipe(z.string().max(300)).optional(),
 });
 
-const phoneLike = z.string().trim().regex(/^\+?[0-9][0-9 -]{4,18}[0-9]$/);
+// D-09: 6–20 characters of digits, with an optional leading + and spaces or dashes inside.
+const phoneLike = text().pipe(z.string().regex(/^(?=.{6,20}$)\+?[0-9][0-9 -]*[0-9]$/));
 export const contactInput = z.discriminatedUnion("channel", [
   z.object({ channel: z.literal("WHATSAPP"), value: phoneLike }),
   z.object({ channel: z.literal("PHONE"), value: phoneLike }),
-  z.object({ channel: z.literal("EMAIL"), value: z.string().trim().email().max(200) }),
-  z.object({ channel: z.literal("OFFICE"), value: z.string().trim().min(2).max(200) }),
+  z.object({ channel: z.literal("EMAIL"), value: text().pipe(z.string().email().max(200)) }),
+  z.object({ channel: z.literal("OFFICE"), value: text().pipe(z.string().min(2).max(200)) }),
 ]).and(z.object({
-  label: z.string().trim().min(2).max(100),
-  note: z.string().trim().max(200).optional(),
+  label: text().pipe(z.string().min(2).max(100)),
+  note: text().pipe(z.string().max(200)).optional(),
   sortOrder: z.number().int().min(0).max(9999).default(100),
   active: z.boolean().default(true),
 }));

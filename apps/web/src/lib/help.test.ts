@@ -29,10 +29,13 @@ describe("HELP-001 client helpers", () => {
   });
 
   it("flags only untouched initial drafts for review (D-03)", () => {
-    expect(isUnreviewedSeed({ origin: "SEED", version: 1, status: "DRAFT" })).toBe(true);
-    expect(isUnreviewedSeed({ origin: "SEED", version: 2, status: "DRAFT" })).toBe(false);
-    expect(isUnreviewedSeed({ origin: "SEED", version: 1, status: "PUBLISHED" })).toBe(false);
-    expect(isUnreviewedSeed({ origin: "HC", version: 1, status: "DRAFT" })).toBe(false);
+    const seed = { origin: "SEED", version: 1, status: "DRAFT", publishedAt: null } as const;
+    expect(isUnreviewedSeed(seed)).toBe(true);
+    expect(isUnreviewedSeed({ ...seed, version: 2 })).toBe(false);
+    expect(isUnreviewedSeed({ ...seed, status: "PUBLISHED" })).toBe(false);
+    expect(isUnreviewedSeed({ ...seed, origin: "HC" })).toBe(false);
+    // Published once, archived and restored: HC has reviewed it already.
+    expect(isUnreviewedSeed({ ...seed, publishedAt: "2026-11-03T02:00:00Z" })).toBe(false);
   });
 
   it("splits plain text into paragraphs on blank lines (D-05)", () => {

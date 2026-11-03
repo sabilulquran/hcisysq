@@ -65,6 +65,10 @@ describe("HELP-001 rules", () => {
     expect(articleEdit.safeParse({ ...base, body: "pendek" }).success).toBe(false);
     expect(articleEdit.safeParse({ ...base, body: "x".repeat(8001) }).success).toBe(false);
     expect(articleEdit.safeParse({ ...base, changeNote: "x".repeat(301) }).success).toBe(false);
+    // Postgres refuses NUL in text; it must be a 400, not a 500.
+    expect(articleEdit.safeParse({ ...base, body: "Isi dengan karakter \u0000 nol." }).success).toBe(false);
+    // Length counts after trimming.
+    expect(articleEdit.safeParse({ ...base, title: "  abc  " }).success).toBe(false);
   });
 
   it("D-09: validates contact values per channel", () => {
@@ -76,6 +80,9 @@ describe("HELP-001 rules", () => {
     expect(contact("EMAIL", "bukan-email").success).toBe(false);
     expect(contact("OFFICE", "Ruang HC, gedung utama").success).toBe(true);
     expect(contact("FAX", "0274").success).toBe(false);
+    expect(contact("PHONE", `+${"1".repeat(20)}`).success).toBe(false);
+    expect(contact("PHONE", "1".repeat(20)).success).toBe(true);
+    expect(contactInput.safeParse({ label: "Layanan\u0000HC", channel: "OFFICE", value: "Ruang HC" }).success).toBe(false);
   });
 
   it("D-01: the topic list matches the database CHECK in migration 0130", async () => {
@@ -139,7 +146,7 @@ describe("HELP-001 route guards", () => {
 
   it("refuses an invalid search or filter before touching the database", async () => {
     const employee = await appFor({ id: "e", email: "e@example.invalid", principalType: "EMPLOYEE" });
-    for (const url of ["/help/articles?q=a", "/help/articles?topic=PAYROLL", "/help/articles?pageSize=101", `/help/articles?q=${"x".repeat(101)}`]) {
+    for (const url of ["/help/articles?q=a", "/help/articles?q=ab%00", "/help/articles?topic=PAYROLL", "/help/articles?pageSize=101", `/help/articles?q=${"x".repeat(101)}`]) {
       expect((await employee.inject({ method: "GET", url })).statusCode, url).toBe(400);
     }
     // A malformed id is simply not found for a reader.

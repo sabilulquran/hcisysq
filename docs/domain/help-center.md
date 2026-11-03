@@ -35,7 +35,7 @@ Termasuk (Paket 1): artikel FAQ dan panduan pada daftar topik tetap, status draf
 | --- | --- | --- |
 | D-01 | Artikel punya **jenis** `FAQ` atau `GUIDE` (panduan) dan **satu topik** dari daftar tetap: `GENERAL` (Umum & akun), `ATTENDANCE` (Kehadiran), `OVERTIME` (Lembur), `LEAVE` (Cuti & izin), `PAYSLIP` (Slip gaji), `TRIPS` (Perjalanan dinas), `CALENDAR` (Kalender & rapat), `TRAINING` (Pelatihan), `LOANS` (Pinjaman), `ASSETS` (Asset Saya), `DOCUMENTS` (Dokumen), `PERFORMANCE` (Kinerja), `APPROVALS` (Persetujuan). Dijaga CHECK database dan validasi API. | DRAFT |
 | D-02 | Status artikel `DRAFT` → `PUBLISHED` → `ARCHIVED`, dan `ARCHIVED` → `DRAFT` (pulihkan). Pegawai hanya melihat `PUBLISHED`. **"Hapus" di layar admin berarti arsip**: artikel tidak pernah dihapus permanen supaya revisi dan audit tetap utuh. Menerbitkan ulang artikel arsip harus lewat pulihkan dulu. | DRAFT |
-| D-03 | **Isi awal dimuat sebagai `DRAFT`** dengan asal `SEED`, sehingga tidak ada teks yang belum ditinjau HC sampai ke pegawai. HC meninjau, mengubah bila perlu, lalu menerbitkan per artikel. Layar admin menandainya "Draf awal — perlu ditinjau". | DRAFT |
+| D-03 | **Isi awal dimuat sebagai `DRAFT`** dengan asal `SEED`, sehingga tidak ada teks yang belum ditinjau HC sampai ke pegawai. HC meninjau, mengubah bila perlu, lalu menerbitkan per artikel. Layar admin menandainya "Draf awal — perlu ditinjau" selama artikel itu belum pernah diedit maupun diterbitkan. | DRAFT |
 | D-04 | Mengedit artikel `PUBLISHED` **langsung berlaku** (tidak ada salinan draf terpisah); artikel `ARCHIVED` tidak dapat diedit sebelum dipulihkan. Setiap simpan menaikkan `version` dan menulis **revisi** berisi isi lengkap. Edit dan terbit membawa `version` yang dibaca; bila berbeda, API menjawab 409 `HELP_ARTICLE_STALE` supaya dua admin tidak saling menimpa. | DRAFT |
 | D-05 | Judul 5–200 karakter, isi 20–8.000 karakter, **teks biasa** dengan paragraf dipisah baris kosong; tidak pernah HTML atau skrip, dan layar menampilkannya sebagai teks. Catatan perubahan opsional ≤ 300 karakter. HC dilarang menulis data pribadi, gaji, atau nomor identitas di dalam artikel (diingatkan di layar admin). | ACCEPTED |
 | D-06 | **Pencarian:** `q` 2–100 karakter dipecah menjadi paling banyak 8 kata; setiap kata harus muncul di judul atau isi (tidak peka huruf besar/kecil, `%`/`_` diperlakukan harfiah). Urutan hasil: kecocokan judul lebih banyak dulu, lalu urutan topik (D-01), lalu `sortOrder`, lalu judul. Filter `topic` dan `kind` boleh digabung dengan `q`. | ACCEPTED |
@@ -62,13 +62,13 @@ Termasuk (Paket 1): artikel FAQ dan panduan pada daftar topik tetap, status draf
 | `DRAFT`, `PUBLISHED` | edit | (tetap) | `version` cocok (D-04) |
 | `DRAFT` | terbitkan | `PUBLISHED` | `version` cocok |
 | `DRAFT`, `PUBLISHED` | arsipkan ("hapus") | `ARCHIVED` | alasan opsional ≤ 300 |
-| `ARCHIVED` | pulihkan | `DRAFT` | — |
+| `ARCHIVED` | pulihkan | `DRAFT` | — (`published_at` tetap menyimpan waktu terbit terakhir) |
 
 Transisi lain menjawab 409 (`HELP_ARTICLE_NOT_PUBLISHABLE`, `HELP_ARTICLE_ARCHIVED`, `HELP_ARTICLE_NOT_ARCHIVED`, `HELP_ARTICLE_ALREADY_ARCHIVED`). Artikel yang tidak ada menjawab 404 `HELP_ARTICLE_NOT_FOUND`; bagi pegawai, artikel yang tidak terbit juga 404.
 
 ### 5.2 Membuat dan mengedit
 
-Input: `kind`, `topic`, `title`, `body`, `sortOrder` (0–9999, default 100), dan untuk edit `version` serta `changeNote` opsional. Simpan dalam satu transaksi: baris artikel, revisi (`version`, isi lengkap, actor, catatan), dan audit event. Input tidak valid menjawab 400 `INVALID_HELP_ARTICLE`.
+Input: `kind`, `topic`, `title`, `body`, `sortOrder` (0–9999, default 100), dan untuk edit `version` serta `changeNote` opsional. Simpan dalam satu transaksi: baris artikel, revisi (`version`, isi lengkap, actor, catatan), dan audit event. Input tidak valid, termasuk teks yang memuat karakter NUL, menjawab 400 `INVALID_HELP_ARTICLE`.
 
 ### 5.3 Kontak
 

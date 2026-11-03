@@ -28,6 +28,7 @@ import {
   HELP_TOPICS,
   HelpError,
   searchClause,
+  text,
   searchPatterns,
   type HelpStatus,
 } from "./domain.js";
@@ -37,7 +38,7 @@ type Db = Pick<PoolClient, "query">;
 // An empty search box sends `q=`; that means "no search", not a too-short query.
 const optionalQuery = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-  z.string().trim().min(2).max(100).optional(),
+  text().pipe(z.string().min(2).max(100)).optional(),
 );
 const readerQuery = pageQuerySchema.extend({
   q: optionalQuery,
@@ -47,7 +48,7 @@ const readerQuery = pageQuerySchema.extend({
 const adminQuery = readerQuery.extend({ status: z.enum(HELP_STATUSES).optional() });
 const idParams = z.object({ id: z.string().uuid() });
 const versionBody = z.object({ version: z.number().int().min(1) });
-const archiveBody = z.object({ reason: z.string().trim().max(300).optional() });
+const archiveBody = z.object({ reason: text().pipe(z.string().max(300)).optional() });
 
 const ARTICLE_COLUMNS = `
   article.id, article.kind, article.topic, article.title, article.body, article.status,
@@ -273,7 +274,7 @@ export async function registerHelpRoutes(
       articleList(query.data, false),
       pool.query<{ status: HelpStatus; total: number; seedDrafts: number }>(
         `SELECT status, count(*)::int AS total,
-                count(*) FILTER (WHERE origin = 'SEED' AND version = 1)::int AS "seedDrafts"
+                count(*) FILTER (WHERE origin = 'SEED' AND version = 1 AND published_at IS NULL)::int AS "seedDrafts"
            FROM help_articles GROUP BY status`,
       ),
     ]);
@@ -424,7 +425,7 @@ export async function registerHelpRoutes(
       assertRestorable(current.status);
       await client.query(
         `UPDATE help_articles
-            SET status = 'DRAFT', archived_at = NULL, published_at = NULL,
+            SET status = 'DRAFT', archived_at = NULL,
                 updated_by_account_id = $2, updated_at = now()
           WHERE id = $1`,
         [params.data.id, principal.id],

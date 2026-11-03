@@ -350,7 +350,7 @@ function ArticlesTab() {
                   <p className="font-semibold text-brand-heading">{article.title}</p>
                   <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
                     {kindLabel[article.kind]} · {topicLabel(article.topic)} · urutan {article.sortOrder} · versi {article.version}
-                    {article.publishedAt ? ` · terbit ${formatDateTime(article.publishedAt)}` : ""}
+                    {article.publishedAt ? ` · ${article.status === "PUBLISHED" ? "terbit" : "terakhir terbit"} ${formatDateTime(article.publishedAt)}` : ""}
                   </p>
                   <div className="mt-1.5"><StatusBadge article={article} /></div>
                 </div>

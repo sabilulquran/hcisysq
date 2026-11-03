@@ -134,8 +134,8 @@ export const auditLabel: Record<string, string> = {
 };
 
 /** D-03: initial content HC has not touched yet. */
-export function isUnreviewedSeed(article: Pick<AdminHelpArticle, "origin" | "version" | "status">) {
-  return article.origin === "SEED" && article.version === 1 && article.status === "DRAFT";
+export function isUnreviewedSeed(article: Pick<AdminHelpArticle, "origin" | "version" | "status" | "publishedAt">) {
+  return article.origin === "SEED" && article.version === 1 && article.status === "DRAFT" && !article.publishedAt;
 }
 
 /** D-09: the link a contact opens, or null for a place to visit. */

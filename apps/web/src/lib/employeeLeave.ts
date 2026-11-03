@@ -56,7 +56,9 @@ export interface LeaveRequestSummary {
   finalDecidedAt: string | null;
   currentApproverName: string | null;
   /** LEAVE-009: null when the request touched no critical period. */
-  criticalReviewStatus?: "waiting" | "pending" | "approved" | "rejected" | null;
+  criticalReviewStatus?: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
+  /** LEAVE-010: the API says whether the requester may still withdraw it. */
+  canCancel: boolean;
 }
 
 export interface AnnualLeavePreview {
@@ -173,6 +175,18 @@ export async function getLeaveApprovalInbox(): Promise<{ items: LeaveApprovalInb
     await fetch("/api/leave/approvals", {
       credentials: "include",
       headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+/** LEAVE-010: withdraw my own request while it still awaits a decision. */
+export async function cancelLeaveRequest(requestId: string, reason: string | null): Promise<{ id: string; status: "cancelled" }> {
+  return readJson(
+    await fetch(`/api/leave/me/requests/${requestId}/cancel`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ reason }),
     }),
   );
 }

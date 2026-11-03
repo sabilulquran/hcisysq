@@ -24,6 +24,7 @@ Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang a
    - untuk payroll v1 (DRAFT), baca `domain/payroll-legacy-flow-audit.md` (audit alur spreadsheet + keputusan owner), `domain/payroll-calculation-v1.md`, dan `architecture/adr/0003-payroll-calculation-in-hcis.md` (PROPOSED).
    - untuk multi-company/legal entity, baca `domain/multi-company-organization.md` (ORG-007).
    - untuk akses Panel Organ Yayasan bagi Employee dan governance summary ke SQ Hub Ringkasan Yayasan, baca `domain/foundation-board-governance-summary.md` (ORG-010, ACCEPTED) setelah `domain/foundation-board-dashboard.md` (ORG-003).
+   - untuk akun Organ Yayasan sebagai approver struktural, baca `domain/organ-account-approver.md` (ORG-012, ACCEPTED); konsep Portal Organ Yayasan ada di `product/organ-portal-concept.md` (GOV-001, DRAFT).
    - untuk evidence benchmarking SemartHRIS dan guardrail yang tidak boleh dicopy, baca `product/semarthris-benchmark-2026-09-22.md`.
 11. `architecture/system-context.md`
 12. ADR yang relevan

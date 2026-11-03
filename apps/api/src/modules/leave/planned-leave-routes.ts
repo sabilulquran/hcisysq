@@ -25,6 +25,7 @@ import {
 } from "./domain/planned-leave-policy.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
 import { criticalPeriodTreatment } from "./domain/critical-period.js";
+import { notifyApprovalRequested } from "./approver-notifications.js";
 import { attachCriticalReview, loadApplicableCriticalPeriods } from "./critical-period-store.js";
 import {
   calculateWorkingDays,
@@ -131,7 +132,8 @@ interface PlannedSummaryRow {
     | "approved"
     | "rejected"
     | null;
-  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | null;
+  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
+  canCancel: boolean;
 }
 
 interface HcQueueRow {
@@ -676,7 +678,8 @@ export async function registerPlannedLeaveRoutes(
           END AS "currentApproverName",
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus",
-          critical_review.status AS "criticalReviewStatus"
+          critical_review.status AS "criticalReviewStatus",
+          (request.status = 'in_review' AND request.line_handling = 'approval') AS "canCancel"
         FROM leave_requests request
         LEFT JOIN leave_request_approval_steps active_step
           ON active_step.leave_request_id = request.id AND active_step.status = 'pending'
@@ -879,6 +882,12 @@ export async function registerPlannedLeaveRoutes(
             firstStep.accountId ? "account" : "employee",
             firstStep.accountId ?? firstStep.employeeId!,
           );
+          await notifyApprovalRequested(client, {
+            requestId,
+            stepId: firstStep.id,
+            approverEmployeeId: firstStep.employeeId,
+            approverAccountId: firstStep.accountId,
+          });
         }
         await client.query("COMMIT");
         return reply.status(201).send({

@@ -165,6 +165,43 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /leave/me/requests/{id}/cancel:
+    post:
+      tags: [Leave]
+      summary: Withdraw my own line-approval leave while it still awaits a decision (LEAVE-010)
+      description: >
+        Ownership, not a permission. Allowed while the request is in_review and its line handling is
+        approval (Cuti Tahunan, planned leave), at any stage: line step, critical-period review, or HC
+        task. The request, open steps, open HC task and open critical review become cancelled; the
+        event leave.request.cancelled records the stage and the reason; the approver who was waiting
+        receives an in-app notification. The request row is locked as an approval decision locks it.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { const: cancelled }
+        '400': { description: 'INVALID_LEAVE_CANCELLATION: reason longer than 500 characters' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'LEAVE_REQUEST_NOT_FOUND: no such request of mine' }
+        '409': { description: 'LEAVE_REQUEST_NOT_CANCELLABLE: already decided or cancelled, or a special leave report' }
+
   /leave/approvals:
     get:
       tags: [Approvals]
@@ -269,6 +306,7 @@ components:
         submittedAt: { type: string, format: date-time }
         finalDecidedAt: { type: [string, 'null'], format: date-time }
         currentApproverName: { type: [string, 'null'] }
+        canCancel: { type: boolean, description: 'LEAVE-010: the requester may still withdraw it' }
   responses:
     Problem:
       description: Error

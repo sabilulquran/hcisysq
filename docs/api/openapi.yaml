@@ -289,6 +289,8 @@ paths:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1annual~1submit'
   /leave/me/requests:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1requests'
+  /leave/me/requests/{id}/cancel:
+    $ref: './leave.openapi.yaml#/paths/~1leave~1me~1requests~1{id}~1cancel'
   /leave/approvals:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals'
   /leave/approvals/{stepId}/decision:

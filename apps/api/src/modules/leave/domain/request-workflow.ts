@@ -1,5 +1,6 @@
 export type LeaveRequestStatus = "in_review" | "approved" | "rejected" | "cancelled";
-export type LeaveApprovalStepStatus = "waiting" | "pending" | "approved" | "rejected";
+export type LeaveApprovalStepStatus = "waiting" | "pending" | "approved" | "rejected" | "cancelled";
+export type LeaveLineHandling = "approval" | "notify" | "none";
 
 export interface LeaveApprovalStepState {
   id: string;
@@ -17,6 +18,7 @@ export class LeaveWorkflowError extends Error {
   constructor(
     readonly code:
       | "REQUEST_NOT_REVIEWABLE"
+      | "LEAVE_REQUEST_NOT_CANCELLABLE"
       | "STEP_NOT_PENDING"
       | "STEP_ORDER_INVALID"
       | "APPROVAL_STATE_INVALID",
@@ -108,4 +110,23 @@ export function decideLeaveApprovalStep(input: {
     decidedStepStatus: "approved",
     nextPendingStepId: next?.id ?? null,
   };
+}
+
+/**
+ * LEAVE-010: the requester may withdraw line-approval leave (Cuti Tahunan, planned leave) for
+ * as long as it awaits any decision. Approved leave is post-approval cancellation, which stays
+ * with HC; special leave reports are withdrawn through HC.
+ */
+export function canCancelLeaveRequest(request: { status: LeaveRequestStatus; lineHandling: LeaveLineHandling }) {
+  return request.status === "in_review" && request.lineHandling === "approval";
+}
+
+export function assertLeaveRequestCancellable(request: { status: LeaveRequestStatus; lineHandling: LeaveLineHandling }) {
+  if (canCancelLeaveRequest(request)) return;
+  throw new LeaveWorkflowError(
+    "LEAVE_REQUEST_NOT_CANCELLABLE",
+    request.status !== "in_review"
+      ? "Pengajuan ini sudah diputuskan atau dibatalkan, sehingga tidak dapat dibatalkan lagi."
+      : "Laporan cuti khusus dibatalkan melalui Human Capital.",
+  );
 }

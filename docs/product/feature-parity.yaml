@@ -541,6 +541,24 @@ features:
     docs:
       - docs/product/legacy-parity-audit-2026-11-02.md
 
+  - id: LEAVE-010
+    module: leave
+    name: Approver in-app notification and requester cancellation of pending leave
+    legacy_evidence: >-
+      Not a legacy port. Found while writing the HELP-001 help articles (2026-11-03): HCIS only wrote
+      an outbox intent for the approver and had no cancel action for the requester.
+    target_status: implemented
+    priority: mvp
+    risk: medium
+    notes: >-
+      Implemented 2026-11-03 (docs/domain/workflows/leave-request.md "LEAVE-010"). The active line
+      approver gets an in-app notification (NOTIF-004) when their step becomes pending; the requester
+      can cancel Cuti Tahunan and planned leave while in_review at any stage, which closes open steps,
+      the HC task and the critical review (migration 0134) and tells the waiting approver. Special leave
+      reports and approved leave stay with HC (DRAFT).
+    docs:
+      - docs/domain/workflows/leave-request.md
+
   - id: LEAVE-009
     module: leave
     name: Critical periods that require Human Capital approval for leave

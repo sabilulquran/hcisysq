@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
+import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
 import { AppShell } from "@/layouts/AppShell";
 import {
   getPlannedLeaveSummary,
@@ -340,9 +341,26 @@ export function EmployeePlannedLeavePage() {
                     <p className="text-sm font-bold text-brand-heading">{item.policyName}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{formatDate(item.startOn)} – {formatDate(item.endOn)} · {item.workingDays} hari kerja · {item.validationSummary.calendarDurationDays ?? "—"} hari kalender</p>
                   </div>
-                  <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">{item.status === "approved" ? "Selesai" : item.status === "rejected" ? "Ditolak" : "Diproses"}</span>
+                  <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">{item.status === "approved" ? "Selesai" : item.status === "rejected" ? "Ditolak" : item.status === "cancelled" ? "Dibatalkan" : "Diproses"}</span>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-brand-primary-deep">{item.nextAction}</p>
+                {item.canCancel ? (
+                  <div className="mt-2">
+                    <CancelLeaveRequest
+                      requestId={item.id}
+                      onDone={(outcome) => {
+                        if (outcome.ok) {
+                          setError(null);
+                          setSuccess(`Pengajuan ${item.policyName} dibatalkan.`);
+                        } else {
+                          setSuccess(null);
+                          setError(outcome.message);
+                        }
+                        void load();
+                      }}
+                    />
+                  </div>
+                ) : null}
                 {item.hcTaskStatus === "needs_correction" ? (
                   <div className="mt-3 rounded-2xl border border-warning-line bg-warning-soft p-3">
                     <p className="text-xs font-semibold text-warning-ink">Human Capital meminta kelengkapan dokumen.</p>

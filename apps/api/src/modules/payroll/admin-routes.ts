@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie } from "../auth/service.js";
+import { loanBody, policyBody, profileBody } from "./admin-schemas.js";
 import {
   createLoan,
   listCompensationProfiles,
@@ -20,63 +21,14 @@ import {
   openCompensationProfile,
   openPolicyVersion,
   setLoanDeductions,
+  settledPeriodConflict,
 } from "./admin-store.js";
 import { ownEmploymentIds } from "./inputs-store.js";
-import { POLICY_KEYS, validatePolicyPayload } from "./policy.js";
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
-
-const policyBody = z.object({
-  policyKey: z.enum([...POLICY_KEYS, "VARIANCE_THRESHOLD", "PPH21_TER"] as [string, ...string[]]),
-  effectiveFrom: isoDate,
-  payload: z.record(z.string(), z.unknown()),
-  source: z.string().trim().min(3).max(500),
-  note: z.string().trim().max(500).optional(),
-  // Opening a version that reaches back into a period already calculated needs
-  // to be said out loud, with a reason that goes into the note.
-  backdateReason: z.string().trim().min(10).max(500).optional(),
-});
+import { validatePolicyPayload } from "./policy.js";
 
 const policyQuery = z.object({ policyKey: z.string().max(64).optional() });
 
 const employmentParams = z.object({ employmentId: z.string().uuid() });
-
-const profileBody = z.object({
-  effectiveFrom: isoDate,
-  backdateReason: z.string().trim().min(10).max(500).optional(),
-  education: z.enum(["SD", "SMP", "SLTA", "D1_D2", "D3_D4", "S1", "S2_S3"]).nullable().optional(),
-  workPattern: z.enum(["FULL", "HALF_DAY", "HALF_DAY_II"]).nullable().optional(),
-  unitRef: z.string().uuid().nullable().optional(),
-  functionalPositionRef: z.string().uuid().nullable().optional(),
-  structuralPositionRef: z.string().uuid().nullable().optional(),
-  teachingHoursPerWeek: z.number().min(0).max(168).nullable().optional(),
-  spouseCount: z.number().int().min(0).max(4).optional(),
-  childCount: z.number().int().min(0).max(20).optional(),
-  registeredDependants: z.number().int().min(0).max(24).optional(),
-  specialQualificationTarget: z.number().int().min(0).nullable().optional(),
-  annualPerformanceRate: z.number().min(0).max(2).nullable().optional(),
-  monthlyPerformanceRate: z.number().min(0).max(2).nullable().optional(),
-  bpjsSegment: z.enum(["PPU_YAYASAN", "PBI", "MANDIRI", "BELUM_TERDAFTAR"]).optional(),
-  bpjsActiveFrom: isoDate.nullable().optional(),
-  bpjsExtraFamilyOverride: z.number().int().min(0).max(20).nullable().optional(),
-  bpjsExtraFamilyOverrideReason: z.string().trim().max(500).nullable().optional(),
-  bpjsDecisionReference: z.string().trim().max(200).nullable().optional(),
-  ptkpStatus: z.string().trim().max(16).nullable().optional(),
-  pjMediaRatePerContent: z.number().int().min(0).nullable().optional(),
-  // The transfer list prints the bank beside the account, so the profile has
-  // to be able to carry one; before this it could only ever be empty there.
-  bankName: z.string().trim().max(120).nullable().optional(),
-  bankAccountNumber: z.string().trim().max(64).nullable().optional(),
-  bankAccountName: z.string().trim().max(200).nullable().optional(),
-});
-
-const loanBody = z.object({
-  employeeId: z.string().uuid(),
-  grantedOn: isoDate,
-  principal: z.number().int().positive(),
-  instalment: z.number().int().positive().nullable().optional(),
-  note: z.string().trim().max(500).optional(),
-});
 
 // ENG-LIST-001: the register grows with every kasbon, so it is read a page at
 // a time with the total beside it.
@@ -112,37 +64,6 @@ const loanDeductionsBody = z.object({
 });
 
 const periodParams = z.object({ periodId: z.string().uuid() });
-
-/**
- * A period that has been calculated rests on the reference data as it stood then.
- * Opening a version or a profile that reaches back before such a period would
- * change what a recalculation produces for a month already being paid, so it is
- * refused unless the caller says so explicitly and gives a reason
- * (specification section 3, "perubahan tidak menimpa histori").
- */
-async function settledPeriodConflict(
-  pool: Pool,
-  effectiveFrom: string,
-): Promise<{ periodMonth: string } | null> {
-  const { rows } = await pool.query<{ periodMonth: string }>(
-    `SELECT to_char(period_month, 'YYYY-MM') AS "periodMonth"
-     FROM payroll_periods
-     WHERE state = ANY($2::text[]) AND pay_date >= $1::date
-     ORDER BY period_month
-     LIMIT 1`,
-    [effectiveFrom, SETTLED_STATES],
-  );
-  return rows[0] ?? null;
-}
-
-const SETTLED_STATES = [
-  "CALCULATED",
-  "SUBMITTED",
-  "APPROVED",
-  "PAYMENT_CONFIRMED",
-  "PUBLISHED",
-  "REOPEN_REQUESTED",
-];
 
 function send(reply: FastifyReply, status: number, body: unknown) {
   reply.header("Cache-Control", "no-store");

@@ -147,7 +147,7 @@ Setiap input mencatat aktor, waktu, alasan bila diwajibkan, dan audit event.
 
 ## 5. Perhitungan
 
-Semua uang dalam **rupiah bulat** (integer); tidak ada satuan di bawah rupiah dan tidak ada pembulatan ke ratusan. Fungsi perhitungan murni dan deterministik untuk snapshot input + versi kebijakan yang sama.
+Semua uang dalam **rupiah bulat** (integer); tidak ada satuan di bawah rupiah dan tidak ada pembulatan ke ratusan. Satu pengecualian pada data masukan, bukan pada uang yang dibayar: nominal tabel skala gaji pokok disimpan apa adanya dari legacy (pecahan), karena `BASIC` dibulatkan sekali setelah pengali (PAY-003-MIG §3.4). Fungsi perhitungan murni dan deterministik untuk snapshot input + versi kebijakan yang sama.
 
 **Aturan pembulatan (lengkap, perbaikan review 2026-10-27).**
 
@@ -334,6 +334,8 @@ Data acuan dibaca berhalaman: `GET /payroll/loans` dan `GET /payroll/employments
 - Histori `PAYROLL` lama tidak dihitung ulang; tetap sebagai arsip/slip impor PAY-001.
 
 Setiap migration memiliki rollback/recovery plan pada spesifikasi implementasinya.
+
+Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payroll-initial-data-load.md` (CLI `payroll:initial-load`, dry-run default, idempoten, rollback §8). Pemuatan itu juga membuat skema `SALARY_SCALE` menerima nominal skala pecahan; `BASIC` tetap rupiah bulat.
 
 ### 9.2 Parallel run
 

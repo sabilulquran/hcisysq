@@ -220,6 +220,31 @@ Follow-up (`TBD`, outside this repository): the Hub/Aset release tooling (`sq-co
 and honour the same lock. Until it does, the announcement rule in §3 is the only guard for
 cross-app releases.
 
+### 4.11 one-off data CLIs from a release
+
+Every CLI under `apps/api/src/modules/*/cli/` is compiled into the bundle by `tsc`, so a release
+ships it at `apps/api/dist/modules/<module>/cli/<name>.js`; nothing extra is packaged. Examples:
+`employment/cli/employment-baseline.js` (EMP-005) and `payroll/cli/payroll-initial-load.js`
+(PAY-003-MIG, `docs/domain/payroll-initial-data-load.md`).
+
+Run one from the **running** release (prove it from the `hcis` process `cwd`, §1), as the service
+user, with the production environment, and with `PATH` set inside the chroot (§5.3):
+
+```sh
+R=/data/local/ubuntu26
+REL=/srv/hcis/releases/hcis-<sha8>-<yyyymmdd>
+chroot "$R" /usr/bin/env PATH=/usr/bin:/bin runuser -u sqhcis -- /bin/sh -c \
+  "set -a; . /srv/hcis/shared/final.env; set +a; cd $REL/apps/api && \
+   node dist/modules/payroll/cli/payroll-initial-load.js --file /srv/hcis/shared/import/<file>.json \
+   --actor-account <uuid>"            # dry-run; add --apply only after a clean dry-run
+```
+
+An input file with personal data (the payroll initial load is one) is copied to
+`/srv/hcis/shared/import/` as `root:sqhcis 0640` for the run and deleted right after; it is never
+committed, logged or left on the workstation outside the session scratch area. Take a
+`pg_dump` of `sqcore_hcis` before any `--apply` (as in §4.4), and never run one during the 19 UTC
+backup hour.
+
 ## 5. Traps in any Android-side script (OPS-MI8-REL-001 §5)
 
 Found on 2026-11-01 and 2026-11-02, in review and first runs of the AUTH-014 ignition scripts.

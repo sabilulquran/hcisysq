@@ -105,6 +105,7 @@ Untuk setiap orang dalam `{penyelenggara} ∪ peserta`:
 | Sumber | Kondisi | Hasil |
 | --- | --- | --- |
 | Rapat lain | status `ACTIVE`, orang itu penyelenggara atau peserta dengan jawaban `PENDING`/`ACCEPTED`, interval beririsan, bukan rapat yang sedang diubah | **BLOCK** `MEETING_OVERLAP` |
+| Pelatihan (TRAIN-001) | view `training_employee_busy` (sesi `SCHEDULED` program `ACTIVE`, peserta `ENROLLED` atau narasumber internal), interval beririsan | **BLOCK** `IN_TRAINING` |
 | Cuti | `leave_requests.status = 'approved'`, `[start_on, end_on]` (tanggal penuh WIB, inklusif) beririsan | **BLOCK** `ON_LEAVE` |
 | Cuti | `status = 'in_review'`, beririsan | WARN `LEAVE_PENDING` |
 | Perjalanan dinas | `business_trip_requests.status IN ('APPROVED','ISSUED')`, `[start_on, end_on]` beririsan | **BLOCK** `ON_TRIP` |
@@ -114,6 +115,8 @@ Untuk setiap orang dalam `{penyelenggara} ∪ peserta`:
 Tanggal penuh dikonversi ke interval `[tanggal 00:00 WIB, tanggal+1 00:00 WIB)`.
 
 Rincian yang dikembalikan ke pembuat undangan: id dan nama pegawai, kode alasan, jam/tanggal sibuk, dan judul rapat yang bentrok **hanya bila rapat itu tidak Rahasia atau pembuat juga pesertanya** (konsisten dengan K-05). Tidak pernah: jenis cuti, alasan cuti, atau tujuan dinas.
+
+Pelatihan memakai kontrak baca TRAIN-001 §7.3 (`docs/domain/training.md`): CAL-001 hanya membaca view `training_employee_busy`; judul pelatihan boleh tampil karena pelatihan tidak rahasia. Sebaliknya TRAIN-001 membaca `meeting_participants` dengan aturan yang sama saat menjadwalkan sesi. Keduanya mengunci baris `employees` urut `id` sebelum memeriksa, sehingga rapat dan sesi pelatihan untuk orang yang sama tidak dapat lolos bersamaan; exclusion constraint §6.1 hanya menjaga rapat vs rapat.
 
 Kontrak baca TRIP-001 dan LEAVE dikoordinasikan dengan sesi TRIP-001 pada 2026-11-02: CAL-001 hanya membaca `employee_id`, `start_on`, `end_on`, `status`; tidak ada hook dan tidak ada penulisan ke tabel cuti atau perjalanan.
 

@@ -256,6 +256,32 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     expect(first.id).toBeTruthy();
   });
 
+  it("TRAIN-001 §7.3: a scheduled training session blocks the participant", async () => {
+    const programId = randomUUID();
+    const sessionId = randomUUID();
+    await client.query(
+      `INSERT INTO training_programs(id, title, category, organizer, status, created_by_account_id)
+       VALUES ($1, 'Tahsin Guru', 'QURANIC', 'Yayasan', 'ACTIVE', $2)`,
+      [programId, people.organizer.accountId!],
+    );
+    await client.query(
+      `INSERT INTO training_sessions(id, program_id, title, start_at, end_at, status) VALUES ($1, $2, 'Sesi 1', $3, $4, 'SCHEDULED')`,
+      [sessionId, programId, at(day, "09:30"), at(day, "11:00")],
+    );
+    await client.query(
+      `INSERT INTO training_participants(program_id, employee_id, status, enrolled_by_account_id) VALUES ($1, $2, 'ENROLLED', $3)`,
+      [programId, people.alice.employeeId, people.organizer.accountId!],
+    );
+    const clash = await create({ participantEmployeeIds: [people.alice.employeeId] });
+    expect(clash.statusCode).toBe(409);
+    expect(clash.json().conflicts).toEqual([expect.objectContaining({
+      employeeId: people.alice.employeeId, reason: "IN_TRAINING", trainingTitle: "Tahsin Guru — Sesi 1",
+    })]);
+    // Withdrawn from the program: free again.
+    await client.query(`UPDATE training_participants SET status = 'WITHDRAWN', withdraw_reason = 'Pindah unit' WHERE program_id = $1`, [programId]);
+    expect((await create({ participantEmployeeIds: [people.alice.employeeId] })).statusCode).toBe(201);
+  });
+
   it("CAL-001-B: hides the title of a confidential conflict unless the inviter is in that meeting", async () => {
     await created({ confidential: true, participantEmployeeIds: [people.alice.employeeId] });
     const outsider = await create({ startAt: at(day, "09:15"), endAt: at(day, "09:45"), participantEmployeeIds: [people.alice.employeeId] }, "outsider");

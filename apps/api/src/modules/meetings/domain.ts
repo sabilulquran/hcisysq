@@ -125,7 +125,7 @@ export function normalizeParticipants(organizerEmployeeId: string, ids: readonly
 
 // ------------------------------------------------------------ availability
 
-export type BlockReason = "MEETING_OVERLAP" | "ON_LEAVE" | "ON_TRIP";
+export type BlockReason = "MEETING_OVERLAP" | "ON_LEAVE" | "ON_TRIP" | "IN_TRAINING";
 export type WarningReason = "LEAVE_PENDING" | "TRIP_PENDING" | "NON_WORKING_DAY";
 
 export interface BusyMeeting {
@@ -133,6 +133,15 @@ export interface BusyMeeting {
   meetingId: string;
   /** Null when the meeting is confidential and the person asking is not in it (§6, K-05). */
   title: string | null;
+  startMs: number;
+  endMs: number;
+}
+
+/** TRAIN-001 §7.3: a scheduled training session the person attends or leads. */
+export interface BusyTraining {
+  employeeId: string;
+  sessionId: string;
+  title: string;
   startMs: number;
   endMs: number;
 }
@@ -148,6 +157,8 @@ export interface AvailabilityInput {
   interval: Interval;
   people: ReadonlyArray<{ employeeId: string; name: string }>;
   meetings: readonly BusyMeeting[];
+  /** TRAIN-001 sessions (view training_employee_busy); training is never confidential. */
+  trainings?: readonly BusyTraining[];
   leaves: readonly BusyDates[];
   trips: readonly BusyDates[];
   /** WIB dates inside the interval that are not working days (leave_calendar_*). */
@@ -163,6 +174,7 @@ export interface AvailabilityIssue {
   startOn?: string;
   endOn?: string;
   meetingTitle?: string | null;
+  trainingTitle?: string;
 }
 
 export interface Availability {
@@ -176,7 +188,8 @@ export const BLOCKING_TRIP_STATUSES = ["APPROVED", "ISSUED"] as const;
 export const WARNING_TRIP_STATUSES = ["IN_REVIEW"] as const;
 
 /**
- * §6: a person is blocked by another active meeting they still attend, by approved leave and
+ * §6: a person is blocked by another active meeting they still attend, by a scheduled training
+ * session (TRAIN-001), by approved leave and
  * by an approved or issued business trip; pending leave or trips and non-working days only
  * warn. Leave type, leave reason and trip destination never leave this function.
  */
@@ -196,6 +209,18 @@ export function evaluateAvailability(input: AvailabilityInput): Availability {
       reason: "MEETING_OVERLAP",
       ...(meeting.title === null ? {} : { startAt: iso(meeting.startMs), endAt: iso(meeting.endMs) }),
       meetingTitle: meeting.title,
+    });
+  }
+
+  for (const training of input.trainings ?? []) {
+    if (!names.has(training.employeeId) || !overlaps(input.interval, training)) continue;
+    conflicts.push({
+      employeeId: training.employeeId,
+      name: names.get(training.employeeId)!,
+      reason: "IN_TRAINING",
+      startAt: iso(training.startMs),
+      endAt: iso(training.endMs),
+      trainingTitle: training.title,
     });
   }
 
@@ -236,6 +261,7 @@ export function describeIssue(issue: AvailabilityIssue): string {
       return issue.meetingTitle
         ? `${who} bentrok dengan "${issue.meetingTitle}" (${range}).`
         : `${who} sudah ada rapat lain (${range}).`;
+    case "IN_TRAINING": return `${who} sedang mengikuti pelatihan "${issue.trainingTitle}" (${range}).`;
     case "ON_LEAVE": return `${who} sedang cuti (${range}).`;
     case "ON_TRIP": return `${who} sedang perjalanan dinas (${range}).`;
     case "LEAVE_PENDING": return `${who} punya pengajuan cuti yang belum diputus (${range}).`;

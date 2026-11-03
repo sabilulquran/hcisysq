@@ -446,6 +446,8 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     actAs("outsider");
     const calendar = await app.inject({ method: "GET", url: `/me/calendar?from=${day}&to=${day}` });
     expect(calendar.statusCode, calendar.body).toBe(200);
+    // K-16: the test config has no Kirim SQ adapter, so the screen must not offer WhatsApp.
+    expect(calendar.json().whatsappDelivery).toBe("dry_run");
     const items = calendar.json().items as Array<Record<string, unknown>>;
     expect(items).toContainEqual(expect.objectContaining({
       kind: "meeting", id: null, title: "Rapat kurikulum tahfidz", location: "Ruang guru", organizerName: people.organizer.name, involvesMe: false,

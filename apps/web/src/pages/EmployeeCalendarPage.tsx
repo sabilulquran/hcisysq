@@ -101,6 +101,8 @@ export function EmployeeCalendarPage() {
   const [month, setMonth] = useState(() => jakartaDate().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(() => jakartaDate());
   const [items, setItems] = useState<CalendarItem[]>([]);
+  // K-16: unknown counts as not active, so the screen never promises a WhatsApp that is not sent.
+  const [whatsappActive, setWhatsappActive] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [listTab, setListTab] = useState<"upcoming" | "past">("upcoming");
   const [meetings, setMeetings] = useState<MeetingSummary[]>([]);
@@ -122,6 +124,7 @@ export function EmployeeCalendarPage() {
     try {
       const result = await getMyCalendar(grid[0]!.date, grid[grid.length - 1]!.date);
       setItems(result.items);
+      setWhatsappActive(result.whatsappDelivery === "active");
     } catch (cause) {
       setError(problemMessage(cause, "Kalender tidak dapat dimuat."));
     } finally {
@@ -393,6 +396,7 @@ export function EmployeeCalendarPage() {
                 key={form.editing ? `edit-${form.editing.id}-${form.editing.version}` : `new-${form.date}`}
                 defaultDate={form.date}
                 editing={form.editing}
+                whatsappActive={whatsappActive}
                 onClose={() => setForm(null)}
                 onSaved={(id, message) => {
                   setForm(null);
@@ -404,6 +408,7 @@ export function EmployeeCalendarPage() {
               <MeetingDetailPanel
                 meeting={selected}
                 busy={busy}
+                whatsappActive={whatsappActive}
                 onClose={() => setSelected(null)}
                 onRespond={(response) => respond(selected, response)}
                 onEdit={() => setForm({ date: jakartaDate(selected.startAt), editing: selected })}

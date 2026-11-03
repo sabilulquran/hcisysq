@@ -31,10 +31,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [from, to, items]
+                required: [from, to, whatsappDelivery, items]
                 properties:
                   from: { type: string, format: date }
                   to: { type: string, format: date }
+                  whatsappDelivery:
+                    type: string
+                    enum: [active, dry_run]
+                    description: |
+                      K-16: `active` only when the API runs the Kirim SQ adapter (`WHATSAPP_ADAPTER=kirim`).
+                      With `dry_run` the form hides "Kirim juga lewat WhatsApp" and the WhatsApp hints.
                   items:
                     type: array
                     items:

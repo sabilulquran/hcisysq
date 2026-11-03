@@ -505,7 +505,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     const network = vi.fn<FetchLike>();
     const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.noAccount.employeeId] });
     expect(network).not.toHaveBeenCalled();
-    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: "https://hcis.example" });
+    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: "https://hcis.example", allowlist: null });
     const tick = await runner.tick();
     expect(tick.delivered).toBe(2);
     expect((await deliveries(meeting.id)).map((row) => row.status)).toEqual(["DRY_RUN", "DRY_RUN"]);
@@ -527,7 +527,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
       new ClientCredentialsTokenProvider({ tokenUrl: "https://sso.example/token", clientId: "hcis", clientSecret: "s", audience: "sq-hub-kirim" }, fetchImpl),
       fetchImpl,
     );
-    const runner = new MeetingRunner(savepointPool(client), sender, { device: "hcis", origin: null });
+    const runner = new MeetingRunner(savepointPool(client), sender, { device: "hcis", origin: null, allowlist: null });
     await runner.tick();
     expect(await deliveries(meeting.id)).toEqual([expect.objectContaining({ status: "QUEUED", errorCode: "http_503" })]);
     // The retry is due after a minute; bring it forward.
@@ -537,6 +537,31 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     expect(keys[0]).toBe(keys[1]);
     const final = await client.query(`SELECT status, kirim_message_id, attempts FROM meeting_notification_deliveries WHERE meeting_id = $1`, [meeting.id]);
     expect(final.rows[0]).toMatchObject({ status: "HANDED_OVER", kirim_message_id: "kirim-msg-1", attempts: 2 });
+  });
+
+  it("CAL-001 K-17: before go-live real WhatsApp reaches only allowlisted employees; the rest are SKIPPED without a call", async () => {
+    const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.noAccount.employeeId] });
+    const sent: string[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      if (url.endsWith("/token")) return Response.json({ access_token: "token", expires_in: 300 });
+      sent.push(JSON.parse(init.body as string).to);
+      return Response.json({ id: `kirim-${sent.length}`, status: "antre" }, { status: 202 });
+    };
+    const sender = new KirimWhatsAppSender(
+      "http://127.0.0.1:3302",
+      new ClientCredentialsTokenProvider({ tokenUrl: "https://sso.example/token", clientId: "hcis-api", clientSecret: "s", audience: "sq-hub-kirim" }, fetchImpl),
+      fetchImpl,
+    );
+    // The allowlist holds NIPs; the phone comes from the employee record.
+    const aliceNip = (await client.query<{ nip: string }>(`SELECT employee_number AS nip FROM employees WHERE id = $1`, [people.alice.employeeId])).rows[0]!.nip;
+    const runner = new MeetingRunner(savepointPool(client), sender, { origin: null, allowlist: new Set([aliceNip]) });
+    await runner.tick();
+    expect(sent).toEqual(["+6281200000002"]);
+    const rows = await client.query<{ status: string; error_code: string | null }>(
+      `SELECT status, error_code FROM meeting_notification_deliveries WHERE meeting_id = $1 ORDER BY status`,
+      [meeting.id],
+    );
+    expect(rows.rows).toEqual([{ status: "HANDED_OVER", error_code: null }, { status: "SKIPPED", error_code: "not_allowlisted" }]);
   });
 
   it("CAL-001-M: the reminder fires once, 30 minutes ahead, for people still attending", async () => {
@@ -550,7 +575,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
 
     // Make every reminder due now; the cancelled meeting's reminders were cancelled already.
     await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = ANY($1::uuid[])`, [[meeting.id, cancelled.id]]);
-    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: null });
+    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: null, allowlist: null });
     const first = await runner.tick();
     expect(first.remindersFired).toBe(2);
     const second = await runner.tick();
@@ -611,7 +636,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     const texts: string[] = [];
     const runner = new MeetingRunner(savepointPool(client), {
       name: "log", send: async (message) => { texts.push(message.text); return { id: "x", dryRun: true }; },
-    }, { device: "hcis", origin: null });
+    }, { device: "hcis", origin: null, allowlist: null });
     await runner.tick();
     const outsiderText = texts.find((text) => text.includes("tidak lagi diundang"))!;
     expect(outsiderText).toContain("Rapat kurikulum tahfidz");
@@ -691,7 +716,7 @@ describe.skipIf(!allowed)("CAL-001 races (PostgreSQL, committed and cleaned up)"
     );
     const id = meeting.rows[0]!.id;
     await pool.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = $1`, [id]);
-    const runner = () => new MeetingRunner(pool, new LogWhatsAppSender(), { device: "hcis", origin: null });
+    const runner = () => new MeetingRunner(pool, new LogWhatsAppSender(), { device: "hcis", origin: null, allowlist: null });
     const [a, b] = await Promise.all([runner().tick(), runner().tick()]);
     expect(a.remindersFired + b.remindersFired).toBe(2);
     const sent = await pool.query(

@@ -50,6 +50,7 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
 
 - Leave postponement with proposed alternative dates — LEAVE-008 (DISCOVERY). In the legacy app an approver could hold a request and propose other dates, and the employee accepted them. HCIS approvers can only approve or reject today. A postponement must keep the APR-001 snapshot: accepting it records a new request or an explicit amendment, never a silent edit of approved dates or balance.
+- Approver in-app notification and requester cancellation of pending leave — LEAVE-010 (IMPLEMENTED 2026-11-03, `docs/domain/workflows/leave-request.md`). The active line approver is notified in HCIS when their step opens; the employee can cancel Cuti Tahunan and planned leave until it is decided.
 - Critical periods for leave — LEAVE-009 (IMPLEMENTED 2026-11-03, `docs/domain/leave-critical-periods.md`). HC marks periods (for the whole yayasan or one unit) such as exam weeks, PPDB, report cards and year-end; Cuti Tahunan and planned leave in such a period get an HC review after line approval. DRAFT default kept: review only, never block.
 
 ### 3. Compensation and employee financial services
@@ -111,6 +112,7 @@ Employee services continue with:
 - Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.
 - Employee document file archive — EMP-011 (DISCOVERY). The legacy app stored scans of identity cards, family cards, diplomas and certificates with an expiry date, uploaded by the employee or by HC. HCIS records the same facts as metadata only (EMP-007, EMP-008, EMP-010) and has been waiting for a "document storage boundary" that no ID owned. EMP-011 owns it: object storage through the ObjectStorage port, encryption, a stated purpose and retention per document kind, and an audit of every read before any upload is accepted.
+- Employee ID card — EMP-012. Package 1 is implemented (`docs/domain/employee-id-card.md`): HC uploads the photo, issues, prints (CR80) and replaces cards with history; the employee sees a digital card and can report it lost; the QR opens a public check page that reads the card's status live.
 - Organization-wide letter numbering — DOC-003 (DISCOVERY). Legacy had the yayasan's general outgoing-letter book: letter types, a number per type and year in the form `TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR`, issuing unit or committee, print and CSV import/export, and only employees granted access could take a number. The HCIS register from DOC-001 numbers only the letters HCIS issues itself. Whether the general letter book belongs in HCIS or another SQ Core app is an open product decision.
 
 ### 6. Communication
@@ -149,9 +151,9 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 - Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
 - Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY, ADR-0005 PROPOSED).
 - Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).
-- Committees (kepanitiaan) — ORG-012 (DISCOVERY).
+- Committees (kepanitiaan) — ORG-012. Package 1 implemented (`docs/domain/committees.md`).
 
-`ORG-012` covers the time-boxed committees a school runs every year (PPDB, exams, graduation, Ramadhan, events). Legacy let an employee propose a committee, a leader approve it, and the committee then had a chair, secretary, treasurer and members with join and leave dates until it was completed or cancelled; an active committee could also issue numbered letters (DOC-003). Legacy modelled each committee as a virtual unit in the organization tree. HCIS should not copy that without an ADR, because ORG-004 units carry approval authority and a committee should not.
+`ORG-012` covers the time-boxed committees a school runs every year (PPDB, exams, graduation, Ramadhan, events). Legacy let an employee propose a committee, a leader approve it, and the committee then had a chair, secretary, treasurer and members with join and leave dates until it was completed or cancelled; an active committee could also issue numbered letters (DOC-003). Legacy modelled each committee as a virtual unit in the organization tree. HCIS should not copy that without an ADR, because ORG-004 units carry approval authority and a committee should not. Package 1 therefore keeps committees outside the structure: HC records the committee and its line-up from active employees, decrees it with an SK numbered in the DOC-001 register (code `SKP`) or records an SK signed outside HCIS, and keeps the history; employees see "Kepanitiaan Saya", can invite a whole committee to a CAL-001 meeting, and HC reads a yearly participation recap for PERF-001. The proposal/approval flow and committee fees are not included.
 
 `ORG-005` represents one organization operating across multiple sites/branches/work locations. It is not commercial multi-tenancy. Work location may later participate in schedule assignment, attendance/geofence policy, temporary assignment, and workplace booking.
 

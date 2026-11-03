@@ -37,6 +37,7 @@ tags:
   - name: Training
   - name: Reports
   - name: Help Center
+  - name: Committees
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -289,6 +290,8 @@ paths:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1annual~1submit'
   /leave/me/requests:
     $ref: './leave.openapi.yaml#/paths/~1leave~1me~1requests'
+  /leave/me/requests/{id}/cancel:
+    $ref: './leave.openapi.yaml#/paths/~1leave~1me~1requests~1{id}~1cancel'
   /leave/approvals:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals'
   /leave/approvals/{stepId}/decision:
@@ -492,6 +495,68 @@ paths:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1contacts~1{id}'
   /admin/help/audit-events:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1audit-events'
+  /me/employee-card:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card'
+  /me/employee-card/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1photo'
+  /me/employee-card/signature:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1signature'
+  /me/employee-card/report-lost:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1report-lost'
+  /admin/employee-cards:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards'
+  /admin/employee-cards/employees/{employeeId}:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}'
+  /admin/employee-cards/employees/{employeeId}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}~1photo'
+  /admin/employee-cards/employees/{employeeId}/cards:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}~1cards'
+  /admin/employee-cards/cards/{cardId}/revoke:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1cards~1{cardId}~1revoke'
+  /admin/employee-cards/cards/{cardId}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1cards~1{cardId}~1photo'
+  /admin/employee-cards/print:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1print'
+  /admin/employee-cards/settings:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1settings'
+  /admin/employee-cards/settings/signature:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1settings~1signature'
+  /admin/employee-cards/audit-events:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1audit-events'
+  /public/employee-cards/{code}:
+    $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}'
+  /public/employee-cards/{code}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}~1photo'
+  /admin/committees:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees'
+  /admin/committees/employee-options:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1employee-options'
+  /admin/committees/participation:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1participation'
+  /admin/committees/participation/{employeeId}:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1participation~1{employeeId}'
+  /admin/committees/{id}:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}'
+  /admin/committees/{id}/history:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1history'
+  /admin/committees/{id}/members:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1members'
+  /admin/committees/{id}/members/{memberId}:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1members~1{memberId}'
+  /admin/committees/{id}/members/{memberId}/end:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1members~1{memberId}~1end'
+  /admin/committees/{id}/activate:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1activate'
+  /admin/committees/{id}/complete:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1complete'
+  /admin/committees/{id}/cancel:
+    $ref: './committees.openapi.yaml#/paths/~1admin~1committees~1{id}~1cancel'
+  /me/committees:
+    $ref: './committees.openapi.yaml#/paths/~1me~1committees'
+  /me/committees/meeting-groups:
+    $ref: './committees.openapi.yaml#/paths/~1me~1committees~1meeting-groups'
+  /me/committees/{id}:
+    $ref: './committees.openapi.yaml#/paths/~1me~1committees~1{id}'
   /me/calendar:
     $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1calendar'
   /me/meetings:

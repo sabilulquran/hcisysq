@@ -250,6 +250,21 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "employee-cards",
+    label: "Kartu Pegawai",
+    description: "Pas foto, penerbitan, cetak, dan penggantian kartu identitas pegawai.",
+    featureIds: ["EMP-012"],
+    stage: "available",
+    category: "employee-services",
+    href: "/admin/employee-cards",
+    accessRoles: ["HC Admin"],
+    details: [
+      "Kartu cetak CR80 dan kartu digital dari satu data",
+      "QR membuka halaman cek keaslian dengan status langsung",
+      "Terbit ulang kartu hilang atau rusak dengan riwayat lengkap",
+    ],
+  },
+  {
     key: "help-center",
     label: "Pusat Bantuan",
     description: "Kelola FAQ, panduan layanan, dan kontak Human Capital untuk pegawai.",
@@ -262,6 +277,21 @@ export const adminServices: AdminServiceDefinition[] = [
       "FAQ dan panduan per layanan dengan status draf, terbit, dan arsip",
       "Setiap perubahan tersimpan sebagai revisi dan riwayat",
       "Isi awal berupa draf yang perlu ditinjau HC sebelum terbit",
+    ],
+  },
+  {
+    key: "committees",
+    label: "Kepanitiaan",
+    description: "Panitia kegiatan lintas unit (PPDB, ujian, wisuda, Ramadhan): susunan, SK, dan rekap keikutsertaan.",
+    featureIds: ["ORG-012"],
+    stage: "available",
+    category: "organization",
+    href: "/admin/committees",
+    accessRoles: ["HC Admin"],
+    details: [
+      "Susunan panitia dari pegawai aktif: ketua, sekretaris, bendahara, koordinator seksi, anggota",
+      "SK panitia bernomor dari register surat, atau mencatat SK yang terbit di luar HCIS",
+      "Tidak mengubah struktur organisasi dan tidak memberi kewenangan persetujuan; honor tidak termasuk",
     ],
   },
   {

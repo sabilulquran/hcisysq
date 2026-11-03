@@ -377,6 +377,31 @@
       "reason": "Data master lokasi kerja (2 hari ini)."
     },
     {
+      "url": "/admin/committees",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/:id",
+      "list": "single"
+    },
+    {
+      "url": "/admin/committees/:id/history",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/employee-options",
+      "list": "typeahead",
+      "reason": "Pencarian pegawai aktif untuk susunan panitia ORG-012; q minimal 2 huruf, maksimal 20."
+    },
+    {
+      "url": "/admin/committees/participation",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/participation/:employeeId",
+      "list": "paged"
+    },
+    {
       "url": "/admin/decision-documents",
       "list": "paged",
       "reason": "Register PK/SK dengan page/pageSize (maks 100) dan urutan unik signed_on, nomor, id."
@@ -878,6 +903,59 @@
       "reason": "Tiga belas topik tetap HELP-001 (D-01) dan kontak HC aktif yang dibatasi 20 oleh rute pembuatnya (D-09)."
     },
     {
+      "url": "/admin/employee-cards",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employee-cards/employees/:employeeId",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/employees/:employeeId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/cards/:cardId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/print",
+      "list": "bounded",
+      "reason": "Batch cetak kartu pegawai; cardIds 1–50, di atas itu ditolak 400, tidak dipotong (EMP-012 §9.1)."
+    },
+    {
+      "url": "/admin/employee-cards/settings",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/settings/signature",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/audit-events",
+      "list": "paged"
+    },
+    {
+      "url": "/me/employee-card",
+      "list": "single"
+    },
+    {
+      "url": "/me/employee-card/photo",
+      "list": "single"
+    },
+    {
+      "url": "/me/employee-card/signature",
+      "list": "single"
+    },
+    {
+      "url": "/public/employee-cards/:code",
+      "list": "single"
+    },
+    {
+      "url": "/public/employee-cards/:code/photo",
+      "list": "single"
+    },
+    {
       "url": "/iclock/*",
       "list": "single"
     },
@@ -992,6 +1070,19 @@
       "url": "/me/calendar",
       "list": "range",
       "reason": "CAL-001 §11: rentang tanggal maksimal 42 hari; lebih dari 500 item ditolak 400 RANGE_TOO_DENSE, tidak dipotong diam-diam."
+    },
+    {
+      "url": "/me/committees",
+      "list": "paged"
+    },
+    {
+      "url": "/me/committees/:id",
+      "list": "single"
+    },
+    {
+      "url": "/me/committees/meeting-groups",
+      "list": "bounded",
+      "reason": "Paling banyak 20 kepanitiaan aktif milik pemanggil, masing-masing dengan anggota aktif yang dibatasi 300 oleh rute penambah anggota (ORG-012 D-06, D-16)."
     },
     {
       "url": "/me/meetings",

@@ -214,6 +214,9 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - DOC-001/DOC-002 HR documents — Package 1 implemented, `docs/domain/hr-documents.md`;
 - NOTIF-001/002/003 external notification, announcements, reminders. NOTIF-002 Package 1 implemented, `docs/domain/announcements-and-reminders.md`.
 - HELP-001 In-app help center — Package 1 implemented, `docs/domain/help-center.md`; contact form not included.
+- EMP-012 Employee ID card — Package 1 implemented, `docs/domain/employee-id-card.md`; employee self-upload of the photo is a later package.
+
+- ORG-012 Committees (kepanitiaan) — Package 1 implemented, `docs/domain/committees.md`; proposal/approval flow and fees not included.
 
 ## Anti-copy guardrails from benchmark research
 

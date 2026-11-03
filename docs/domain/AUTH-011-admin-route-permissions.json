@@ -2190,6 +2190,16 @@
   },
   {
     "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/requests/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
     "method": "GET",
     "url": "/leave/approvals",
     "access": "self-service",
@@ -4320,6 +4330,158 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/employees/:employeeId",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/employees/:employeeId/photo",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "PUT",
+    "url": "/admin/employee-cards/employees/:employeeId/photo",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-cards/employees/:employeeId/cards",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-cards/cards/:cardId/revoke",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/cards/:cardId/photo",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/print",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-cards/print",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/settings",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "PUT",
+    "url": "/admin/employee-cards/settings",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/settings/signature",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "PUT",
+    "url": "/admin/employee-cards/settings/signature",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-cards/audit-events",
+    "permissions": [
+      "employee_cards.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/me/employee-card",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/me/employee-card/photo",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "GET",
+    "url": "/me/employee-card/signature",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-cards/routes.ts",
+    "method": "POST",
+    "url": "/me/employee-card/report-lost",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
     "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
     "method": "GET",
     "url": "/attendance/arrangements/me",
@@ -4430,5 +4592,147 @@
     "permissions": [
       "attendance.arrangements.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/employee-options",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/participation",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/participation/:employeeId",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/:id",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/:id/history",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/committees/:id",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/members",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/committees/:id/members/:memberId",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/members/:memberId/end",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/activate",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/complete",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/cancel",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees/meeting-groups",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
   }
 ]

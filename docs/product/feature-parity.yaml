@@ -192,7 +192,7 @@ features:
       member roles chair, secretary, treasurer, member with joined/left dates; activation
       creates a virtual unit of type committee with its own letter code, deactivated on
       completion or cancellation; committees can issue numbered letters.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
@@ -201,8 +201,35 @@ features:
       ORG-004 authority structure unless an ADR decides otherwise; legacy modelled it as a
       virtual unit, which should not be copied without review. Related to DOC-003 and
       CAL-001 (meeting participants).
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/committees.md): HC records committees and
+      their line-up (chair, vice chair, secretary, treasurer, section coordinator, member) from
+      active employees, decrees them with an SK numbered in the DOC-001 register (code SKP) or
+      records an SK signed outside HCIS, completes or cancels them (an HCIS SK is revoked with
+      the committee), and reads a yearly participation recap; employees see Kepanitiaan Saya and
+      can invite a whole committee to a CAL-001 meeting. Committees stay outside ORG-004: no
+      virtual unit, no approval authority. Proposal/approval flow and fees are not included.
     docs:
+      - docs/domain/committees.md
+      - docs/api/committees.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: ORG-013
+    module: organization
+    name: Foundation organ accounts as structural approvers
+    legacy_evidence: >-
+      None in legacy; owner decision 2026-11-03 (production chart has Ketua and Sekretaris
+      positions held by FOUNDATION_BOARD accounts, holder_source ACCOUNT).
+    target_status: specified
+    priority: later
+    risk: medium
+    planning_note: >-
+      Specified in PR #290 under the ID ORG-012, which the registry had already given to
+      committees since the 2026-11-02 audit; renumbered to ORG-013 on 2026-11-03 with no change
+      to its decisions. Reuses the 0023 governance approver principal; no new route or role.
+    docs:
+      - docs/domain/organ-account-approver.md
+      - docs/product/organ-portal-concept.md
 
   - id: EMP-005
     module: employee
@@ -302,6 +329,27 @@ features:
       access audit before any upload is accepted.
     docs:
       - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: EMP-012
+    module: employee
+    name: Employee ID card (printed CR80 and digital) with public QR check page
+    legacy_evidence: >-
+      Cards were designed by hand in Canva (Id Card.pdf, 50 x 85 mm): photo, name, position,
+      a static QR to a third-party link shortener, no NIP, unit, validity or card number.
+    target_status: implemented
+    priority: later
+    risk: high
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/employee-id-card.md), design style B approved
+      by the owner in chat the same day: HC uploads an encrypted pas foto, issues numbered cards
+      (KP-YYMM-NNNN) valid 24 months, reissues lost or damaged cards with history, revokes, and
+      prints a 54 x 85.6 mm sheet; the employee sees the digital card and can report it lost; the
+      QR opens a public check page that reads card and employment status live and shows no name
+      or photo for a card that does not verify. Permission employee_cards.manage. The Kartu
+      Siswa of Keluarga SQ (KEL-IMPL-005) shares the visual family.
+    docs:
+      - docs/domain/employee-id-card.md
+      - docs/api/employee-cards.openapi.yaml
 
   - id: AUTH-010
     module: authorization
@@ -540,6 +588,24 @@ features:
       recorded amendment, not silently rewrite the approved dates or the balance.
     docs:
       - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: LEAVE-010
+    module: leave
+    name: Approver in-app notification and requester cancellation of pending leave
+    legacy_evidence: >-
+      Not a legacy port. Found while writing the HELP-001 help articles (2026-11-03): HCIS only wrote
+      an outbox intent for the approver and had no cancel action for the requester.
+    target_status: implemented
+    priority: mvp
+    risk: medium
+    notes: >-
+      Implemented 2026-11-03 (docs/domain/workflows/leave-request.md "LEAVE-010"). The active line
+      approver gets an in-app notification (NOTIF-004) when their step becomes pending; the requester
+      can cancel Cuti Tahunan and planned leave while in_review at any stage, which closes open steps,
+      the HC task and the critical review (migration 0136) and tells the waiting approver. Special leave
+      reports and approved leave stay with HC (DRAFT).
+    docs:
+      - docs/domain/workflows/leave-request.md
 
   - id: LEAVE-009
     module: leave

@@ -50,6 +50,8 @@ export interface PlannedLeaveSummary {
     hcTaskKind: "validate" | "approve" | null;
     hcTaskStatus: string | null;
     nextAction: string;
+    /** LEAVE-010: the API says whether the requester may still withdraw it. */
+    canCancel: boolean;
   }>;
 }
 

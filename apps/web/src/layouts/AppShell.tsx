@@ -13,6 +13,7 @@ import {
   Clock3,
   Grid2X2,
   Home,
+  IdCard,
   LifeBuoy,
   ShieldCheck,
   TimerReset,
@@ -51,6 +52,8 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
   { label: "Kalender", href: "/app/calendar", icon: CalendarRange, category: "service" },
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards, category: "pay" },
   { label: "Data Saya", href: "/app/my-data", icon: UserRoundCog, category: "service" },
+  // EMP-012: every employee session sees its own card.
+  { label: "Kartu Pegawai", href: "/app/employee-card", icon: IdCard, category: "service" },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },
   // HELP-001: every employee session reads the help center.
   { label: "Bantuan", href: "/app/help", icon: LifeBuoy, category: "service" },

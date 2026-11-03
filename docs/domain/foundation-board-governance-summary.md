@@ -59,7 +59,7 @@ Out of scope:
 | Scope | `organization` only, `organizational_unit_id` null. Unit or own scope is refused (`ROLE_SCOPE_INVALID`). |
 | Reason | Required, nonempty. The reason should name the mandate, for example the SK number for the Pengurus term. |
 | Dates | `startsOn` optional; `endsOn` strongly recommended and should equal the organ term end. Inclusive dates, as in AUTH-011. |
-| Target | `EMPLOYEE` accounts only (the existing role-assignment rule). A `FOUNDATION_BOARD` or `SUPER_ADMIN` account cannot receive it. |
+| Target | `EMPLOYEE` accounts only (the existing role-assignment rule). A `FOUNDATION_BOARD` or `SUPER_ADMIN` account cannot receive it. (ORG-013-2 adds one exception to the general rule, for `governance_leave_approver` only; `foundation_board_viewer` is unchanged.) |
 
 `board.read`:
 

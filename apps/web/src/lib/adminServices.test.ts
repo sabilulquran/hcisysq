@@ -45,6 +45,9 @@ describe("admin module catalog", () => {
     // EMP-012 Package 1: photos, issuing, printing and replacing employee cards.
     expect(getAdminService("employee-cards")?.stage).toBe("available");
     expect(getAdminService("employee-cards")?.href).toBe("/admin/employee-cards");
+    // ORG-012 Package 1: committees, decrees and the participation recap for Human Capital.
+    expect(getAdminService("committees")?.stage).toBe("available");
+    expect(getAdminService("committees")?.href).toBe("/admin/committees");
     // HELP-001 Package 1: articles, contacts and history for Human Capital.
     expect(getAdminService("help-center")?.stage).toBe("available");
     expect(getAdminService("help-center")?.href).toBe("/admin/help");

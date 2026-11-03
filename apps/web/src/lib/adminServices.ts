@@ -280,6 +280,21 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "committees",
+    label: "Kepanitiaan",
+    description: "Panitia kegiatan lintas unit (PPDB, ujian, wisuda, Ramadhan): susunan, SK, dan rekap keikutsertaan.",
+    featureIds: ["ORG-012"],
+    stage: "available",
+    category: "organization",
+    href: "/admin/committees",
+    accessRoles: ["HC Admin"],
+    details: [
+      "Susunan panitia dari pegawai aktif: ketua, sekretaris, bendahara, koordinator seksi, anggota",
+      "SK panitia bernomor dari register surat, atau mencatat SK yang terbit di luar HCIS",
+      "Tidak mengubah struktur organisasi dan tidak memberi kewenangan persetujuan; honor tidak termasuk",
+    ],
+  },
+  {
     key: "sites",
     label: "Lokasi & Cabang",
     description: "Kelola site, cabang, dan lokasi kerja dalam satu organisasi.",

@@ -216,6 +216,8 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - HELP-001 In-app help center — Package 1 implemented, `docs/domain/help-center.md`; contact form not included.
 - EMP-012 Employee ID card — Package 1 implemented, `docs/domain/employee-id-card.md`; employee self-upload of the photo is a later package.
 
+- ORG-012 Committees (kepanitiaan) — Package 1 implemented, `docs/domain/committees.md`; proposal/approval flow and fees not included.
+
 ## Anti-copy guardrails from benchmark research
 
 Benchmark tidak boleh menyebabkan HCIS mengadopsi pola berikut:

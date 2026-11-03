@@ -71,6 +71,7 @@ import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
 import { AdminEmployeeCardPrintPage } from "@/pages/AdminEmployeeCardPrintPage";
 import { AdminEmployeeCardsPage } from "@/pages/AdminEmployeeCardsPage";
+import { AdminCommitteesPage } from "@/pages/AdminCommitteesPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
@@ -91,6 +92,7 @@ import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
 import { EmployeeCardPage } from "@/pages/EmployeeCardPage";
 import { PublicCardCheckPage } from "@/pages/PublicCardCheckPage";
+import { EmployeeCommitteesPage } from "@/pages/EmployeeCommitteesPage";
 import { EmployeeCalendarPage } from "@/pages/EmployeeCalendarPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
@@ -268,6 +270,14 @@ const employeeCardRoute = createRoute({
   path: "/app/employee-card",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeCardPage,
+});
+
+// ORG-012: membership is the access rule; the API answers 404 for anything else (D-15).
+const employeeCommitteesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/committees",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeCommitteesPage,
 });
 
 const employeeTrainingRoute = createRoute({
@@ -797,6 +807,13 @@ const adminEmployeeCardPrintRoute = createRoute({
   component: AdminEmployeeCardPrintPage,
 });
 
+const adminCommitteesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/committees",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/committees"),
+  component: AdminCommitteesPage,
+});
+
 const adminTrainingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/training",
@@ -862,6 +879,7 @@ const routeTree = rootRoute.addChildren([
   employeePerformanceRoute,
   employeeLoansRoute,
   employeeTrainingRoute,
+  employeeCommitteesRoute,
   employeeHelpRoute,
   employeeCardRoute,
   employeeCalendarRoute,
@@ -935,6 +953,7 @@ const routeTree = rootRoute.addChildren([
   adminPerformanceRoute,
   adminLoansRoute,
   adminTrainingRoute,
+  adminCommitteesRoute,
   adminHrReportsRoute,
   adminHelpRoute,
   adminEmployeeCardsRoute,

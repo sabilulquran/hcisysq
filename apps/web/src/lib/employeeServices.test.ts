@@ -38,6 +38,9 @@ describe("employee service catalog", () => {
     // EMP-012 Package 1: every employee sees their own card.
     expect(getEmployeeService("employee-card")?.stage).toBe("available");
     expect(getEmployeeService("employee-card")?.href).toBe("/app/employee-card");
+    // ORG-012 Package 1: every employee sees the committees they are on.
+    expect(getEmployeeService("committees")?.stage).toBe("available");
+    expect(getEmployeeService("committees")?.href).toBe("/app/committees");
     // HELP-001 Package 1: every employee reads the help center.
     expect(getEmployeeService("help")?.stage).toBe("available");
     expect(getEmployeeService("help")?.href).toBe("/app/help");

@@ -110,6 +110,7 @@ Payroll calculation is an HC/admin workspace capability, not an employee launche
 
 - Kinerja / KPI — PERF-001 — discovery.
 - Pelatihan — TRAIN-001 — available (Package 1: jadwal, riwayat, sertifikat, jam pelatihan; LMS daring masih discovery).
+- Kepanitiaan Saya — ORG-012 — available (Package 1: kepanitiaan berjalan dan riwayat, susunan panitia, cetak SK).
 
 ### Layanan Pegawai
 

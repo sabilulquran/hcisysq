@@ -72,6 +72,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Training Record / Catatan Pelatihan | Riwayat resmi pelatihan per pegawai: internal (dibuat saat program ditutup) atau eksternal (diajukan pegawai, diverifikasi HC), dengan jam pelatihan dan sertifikat opsional (TRAIN-001). |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
 | Help Article / Artikel Bantuan | HELP-001: FAQ (tanya-jawab) atau panduan singkat satu layanan di Pusat Bantuan, pada satu topik tetap, berstatus draf, terbit, atau arsip. Pegawai hanya membaca yang terbit. |
+| Committee / Kepanitiaan | ORG-012: penugasan sementara lintas unit untuk satu kegiatan (PPDB, ujian, wisuda, Ramadhan, acara) dengan periode, susunan panitia dari pegawai, dan SK penetapan. Bukan unit organisasi, bukan tugas tambahan (`ADDITIONAL` placement), dan tidak memberi kewenangan persetujuan. |
+| SK Panitia | ORG-012: surat keputusan penetapan susunan panitia; terbit di register DOC-001 dengan kode nomor `SKP`, atau dicatat nomor dan tanggalnya bila ditandatangani di luar HCIS. |
 | Help Contact / Kontak HC | HELP-001: kanal resmi Human Capital (WhatsApp, telepon, email, atau lokasi) yang ditampilkan di Pusat Bantuan; dikelola HC, paling banyak 20. |
 | Legacy HCIS | Implementasi sebelumnya yang digunakan untuk discovery dan sumber migrasi. |
 | Synthetic Data | Data buatan yang tidak berasal dari atau sengaja menyerupai data individu nyata. |

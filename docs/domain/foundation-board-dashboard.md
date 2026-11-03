@@ -66,7 +66,7 @@ Real browser UAT verified:
 
 - ORG-003-A: `/board` requires an authenticated `FOUNDATION_BOARD` principal. (Amended by ORG-010-A: an active `EMPLOYEE` with an active employee record and effective organization-scope `board.read` is also allowed.)
 - ORG-003-B: all metrics are aggregate and live from the HCIS database.
-- ORG-003-C: initial board dashboard exposes no employee-level PII, evidence, or personal payslip data. (Amended by ORG-012-3: the leave approval inbox returns named request data only for steps owned by that principal; the dashboard itself stays aggregate.)
+- ORG-003-C: initial board dashboard exposes no employee-level PII, evidence, or personal payslip data. (Amended by ORG-013-3: the leave approval inbox returns named request data only for steps owned by that principal; the dashboard itself stays aggregate.)
 - ORG-003-D: approval readiness reports direct-manager and Unit Approver coverage without inferring hierarchy from titles.
 - ORG-003-E: leave workflow indicators show current in-review, HC-validation, and unresolved attendance-resolution workload.
 - ORG-003-F: attendance/payroll aggregate metrics remain unavailable until their aggregate semantics and permissions are explicitly specified; raw ATT-001/PAYSLIP-001 data must not be repurposed to fabricate them.

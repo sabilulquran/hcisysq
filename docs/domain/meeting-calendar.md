@@ -81,7 +81,7 @@ Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat." Untu
 | Hari libur bertarget per unit/jabatan/role | Legacy punya; HCIS baru hanya kalender kerja tingkat organisasi (`leave_calendar_exceptions`). Itu gap LEAVE-002/ATT, bukan CAL-001. |
 | Cek terhadap shift/roster kerja peserta | ATT-011 punya roster, tetapi rapat di luar jam kerja sah. Tidak dicek. |
 | Kehadiran rapat (absen rapat, notulen) | Bukan HR inti; tidak diminta. |
-| Kepanitiaan | Fitur legacy terpisah; perlu ID sendiri bila dibawa. |
+| Kepanitiaan | Fitur terpisah ORG-012 (`docs/domain/committees.md`). Kepanitiaan tidak memblokir waktu; formulir rapat hanya menawarkan "Undang seluruh panitia" yang mengisi daftar peserta dengan anggota aktif kepanitiaan si penyelenggara (ORG-012 D-16). Rapat tidak menyimpan tautan ke kepanitiaan dan semua aturan §6 tetap berlaku. |
 | Register admin seluruh rapat | Paket 2 bila dibutuhkan untuk menangani penyalahgunaan; akan butuh permission `meetings.read`/`meetings.manage`. |
 | Tanggal Hijriah di kalender | Legacy punya; Paket 2. |
 

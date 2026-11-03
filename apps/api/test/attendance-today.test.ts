@@ -184,7 +184,8 @@ function createPool() {
     }
     if (sql.includes("FROM attendance_schedule_assignments")) return { rows: [{ employeeId: SCANNED }, { employeeId: NOT_SCANNED }] };
     if (sql.includes("FROM attendance_schedule_templates")) return { rows: [{ id: "00000000-0000-4000-8000-000000014101", name: "SDIT — Hari Penuh" }] };
-    if (sql.includes("WITH latest_roster") || sql.includes("FROM leave_calendar_exceptions") || sql.includes("WITH candidates")) {
+    if (sql.includes("WITH latest_roster") || sql.includes("FROM leave_calendar_exceptions") || sql.includes("WITH candidates")
+      || sql.includes("FROM attendance_work_arrangement_requests")) {
       return { rows: [] };
     }
     throw new Error(`Unexpected SQL: ${sql}`);

@@ -51,6 +51,11 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["ATT-003"], stage: "available", category: "time-attendance", href: "/app/attendance",
   },
   {
+    key: "work-arrangements", label: "Tugas Luar & WFH",
+    description: "Ajukan tugas luar, WFH/WFA, atau ubah jadwal agar kehadiran hari itu tercatat jelas.",
+    featureIds: ["ATT-015"], stage: "available", category: "time-attendance", href: "/app/attendance/arrangements",
+  },
+  {
     key: "shift-swap", label: "Tukar Shift",
     description: "Ajukan pertukaran shift dengan rekan satu unit dan persetujuan Human Capital.",
     featureIds: ["ATT-008"], stage: "available", category: "time-attendance", href: "/app/attendance/shift-swap",

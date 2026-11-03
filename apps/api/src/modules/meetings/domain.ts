@@ -126,7 +126,7 @@ export function normalizeParticipants(organizerEmployeeId: string, ids: readonly
 // ------------------------------------------------------------ availability
 
 export type BlockReason = "MEETING_OVERLAP" | "ON_LEAVE" | "ON_TRIP" | "IN_TRAINING";
-export type WarningReason = "LEAVE_PENDING" | "TRIP_PENDING" | "NON_WORKING_DAY";
+export type WarningReason = "LEAVE_PENDING" | "TRIP_PENDING" | "NON_WORKING_DAY" | "ON_FIELD_ASSIGNMENT";
 
 export interface BusyMeeting {
   employeeId: string;
@@ -161,6 +161,8 @@ export interface AvailabilityInput {
   trainings?: readonly BusyTraining[];
   leaves: readonly BusyDates[];
   trips: readonly BusyDates[];
+  /** ATT-015 D-08: approved tugas luar; it warns and never blocks, the meeting may be the assignment. */
+  fieldAssignments?: readonly BusyDates[];
   /** WIB dates inside the interval that are not working days (leave_calendar_*). */
   nonWorkingDates: readonly string[];
 }
@@ -236,6 +238,11 @@ export function evaluateAvailability(input: AvailabilityInput): Availability {
   };
   dated(input.leaves, BLOCKING_LEAVE_STATUSES, WARNING_LEAVE_STATUSES, "ON_LEAVE", "LEAVE_PENDING");
   dated(input.trips, BLOCKING_TRIP_STATUSES, WARNING_TRIP_STATUSES, "ON_TRIP", "TRIP_PENDING");
+  for (const row of input.fieldAssignments ?? []) {
+    if (!names.has(row.employeeId)) continue;
+    if (!overlaps(input.interval, jakartaDateRangeInterval(row.startOn, row.endOn))) continue;
+    warnings.push({ employeeId: row.employeeId, name: names.get(row.employeeId)!, startOn: row.startOn, endOn: row.endOn, reason: "ON_FIELD_ASSIGNMENT" });
+  }
 
   // K-10 DRAFT: one warning per non-working date, for the meeting rather than per person.
   for (const date of input.nonWorkingDates) {
@@ -267,6 +274,7 @@ export function describeIssue(issue: AvailabilityIssue): string {
     case "LEAVE_PENDING": return `${who} punya pengajuan cuti yang belum diputus (${range}).`;
     case "TRIP_PENDING": return `${who} punya pengajuan perjalanan dinas yang belum diputus (${range}).`;
     case "NON_WORKING_DAY": return `${range} adalah hari libur/non-kerja.`;
+    case "ON_FIELD_ASSIGNMENT": return `${who} sedang tugas luar (${range}).`;
   }
 }
 

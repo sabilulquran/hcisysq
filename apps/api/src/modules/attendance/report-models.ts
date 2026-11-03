@@ -92,6 +92,9 @@ export const SYMBOL_LEGEND = [
   { symbol: "TL", label: "Tidak lengkap" },
   { symbol: "A", label: "Tidak hadir" },
   { symbol: "C", label: "Cuti/Izin" },
+  // ATT-015 §7.2: an approved arrangement explains a day without a punch.
+  { symbol: "DL", label: "Tugas luar" },
+  { symbol: "W", label: "WFH/WFA" },
   { symbol: "L", label: "Libur" },
   { symbol: "!", label: "Jadwal bermasalah" },
   { symbol: "·", label: "Tanpa jadwal / tidak tercatat / belum ditarik / hari berjalan" },
@@ -104,6 +107,8 @@ export function daySymbol(row: Pick<ReportSourceRow, "status" | "earlyLeaveMinut
     case "incomplete": return "TL";
     case "absent": return "A";
     case "leave": return "C";
+    case "field_assignment": return "DL";
+    case "remote_work": return "W";
     case "off": return "L";
     case "configuration_error": return "!";
     default: return "·";
@@ -117,6 +122,8 @@ const STATUS_WORDS: Record<CalculationRowStatus, string> = {
   late: "Terlambat",
   incomplete: "Tidak lengkap",
   leave: "Cuti/Izin",
+  field_assignment: "Tugas luar",
+  remote_work: "WFH/WFA",
   absent: "Tidak hadir",
   off: "Libur",
   configuration_error: "Jadwal bermasalah",
@@ -146,14 +153,14 @@ function clock(value: string | null) {
 
 type Totals = {
   normal: number; actual: number; present: number; late: number; lateMinutes: number; early: number; earlyMinutes: number;
-  incomplete: number; absent: number; leave: number; overtimeMinutes: number; workedMinutes: number;
+  incomplete: number; absent: number; leave: number; arranged: number; overtimeMinutes: number; workedMinutes: number;
   notCaptured: number; notCalculated: number;
 };
 
 function emptyTotals(): Totals {
   return {
     normal: 0, actual: 0, present: 0, late: 0, lateMinutes: 0, early: 0, earlyMinutes: 0, incomplete: 0, absent: 0,
-    leave: 0, overtimeMinutes: 0, workedMinutes: 0, notCaptured: 0, notCalculated: 0,
+    leave: 0, arranged: 0, overtimeMinutes: 0, workedMinutes: 0, notCaptured: 0, notCalculated: 0,
   };
 }
 
@@ -169,6 +176,7 @@ function addRow(totals: Totals, row: ReportSourceRow) {
   if (row.status === "incomplete") totals.incomplete += 1;
   if (row.status === "absent") totals.absent += 1;
   if (row.status === "leave") totals.leave += 1;
+  if (row.status === "field_assignment" || row.status === "remote_work") totals.arranged += 1;
   if (row.status === "not_captured") totals.notCaptured += 1;
   if (row.status === "not_calculated") totals.notCalculated += 1;
   totals.overtimeMinutes += row.overtimeMinutes ?? 0;
@@ -189,6 +197,7 @@ function summaryCells(totals: Totals): Record<string, ReportCell> {
     normal: totals.normal, actual: totals.actual, percent: attendancePercent(totals),
     present: totals.present, late: totals.late, lateMinutes: totals.lateMinutes, early: totals.early,
     earlyMinutes: totals.earlyMinutes, incomplete: totals.incomplete, absent: totals.absent, leave: totals.leave,
+    arranged: totals.arranged,
     overtimeMinutes: totals.overtimeMinutes, workedMinutes: totals.workedMinutes, notCaptured: totals.notCaptured,
     notCalculated: totals.notCalculated,
   };
@@ -202,6 +211,7 @@ const SUMMARY_COLUMNS: ReportColumn[] = [
   { key: "lateMinutes", label: "Menit telat", align: "center" },
   { key: "incomplete", label: "Tidak lengkap", align: "center" },
   { key: "leave", label: "Cuti/Izin", align: "center" },
+  { key: "arranged", label: "Tugas luar/WFH", align: "center" },
   { key: "absent", label: "Tidak hadir", align: "center" },
   { key: "overtimeMinutes", label: "Lembur (mnt)", align: "center" },
   { key: "percent", label: "Presensi %", align: "center" },
@@ -441,7 +451,7 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
     }),
     { key: "present", label: "Hadir", align: "center" }, { key: "late", label: "Telat", align: "center" },
     { key: "incomplete", label: "Tdk lengkap", align: "center" }, { key: "leave", label: "Cuti/Izin", align: "center" },
-    { key: "absent", label: "Tdk hadir", align: "center" },
+    { key: "arranged", label: "TL/WFH", align: "center" }, { key: "absent", label: "Tdk hadir", align: "center" },
   ];
   const groups = grouped.map(({ unitName, employees }) => {
     const unitTotals = emptyTotals();
@@ -457,7 +467,7 @@ export function buildReportTable(model: ReportModel, rows: ReportSourceRow[], fr
       return {
         employeeNumber: list[0]?.employeeNumber ?? null, employeeName: list[0]?.employeeName ?? null, ...cells,
         present: summary.present!, late: summary.late!, incomplete: summary.incomplete!, leave: summary.leave!,
-        absent: summary.absent!,
+        arranged: summary.arranged!, absent: summary.absent!,
       };
     });
     mergeTotals(grand, unitTotals);

@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 
 import { jakartaWorkDate, resolveSchedule, type ResolvedSchedule } from "./engine.js";
-import { activeEmployees, leaveDisposition } from "./reporting.js";
+import { activeEmployees, leaveDisposition, workArrangementDisposition } from "./reporting.js";
 
 // ATT-014-1 Pantauan Hari Ini: today's scan facts per employee. This read model never writes a
 // result version and never issues an attendance verdict (absent/late/incomplete); verdicts come
@@ -236,6 +236,10 @@ export async function attendanceTodayReadModel(
     const disposition = schedule.state === "scheduled"
       ? await leaveDisposition(pool, employee.employeeId, date)
       : null;
+    // ATT-015 §7.2: shown beside the card so a missing scan is visibly explained; the card itself is a scan fact.
+    const workArrangement = schedule.state === "scheduled" && !disposition
+      ? await workArrangementDisposition(pool, employee.employeeId, date)
+      : null;
     const classified = classifyToday({
       schedule,
       hasScheduleCoverage: covered.has(employee.employeeId),
@@ -261,6 +265,7 @@ export async function attendanceTodayReadModel(
       connected: classified.connected,
       fact: classified.fact,
       card: classified.card,
+      workArrangement,
     });
   }
 

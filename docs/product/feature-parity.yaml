@@ -477,16 +477,22 @@ features:
       tugas_luar, wfh_wfa and perubahan_shift, employee request at work-assignments/*,
       approval chain and HC review at admin/work-assignments/*, attachment, notifications
       NewWorkAssignmentNotification and WorkAssignmentReviewedNotification.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: high
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/attendance-remote-and-schedule-requests.md):
+      employee request for tugas luar, WFH/WFA and own schedule change, APR-001 approval
+      (direct manager then unit approver), HC application of schedule changes as a published
+      roster version, cancellation and history. An approved tugas luar or WFH/WFA becomes the
+      result status field_assignment / remote_work on a working day without punches (never a
+      synthesized punch) and justifies lateness when punches exist. WFH/WFA policy is DRAFT
+      (per day, always approved, no quota); payroll is unchanged.
     planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. perjalanan_dinas is covered by TRIP-001;
-      the other three types have no HCIS ID. ATT-008 is a swap with a colleague, not an
-      employee request to change their own schedule. An approved arrangement must become
-      an explainable attendance resolution (ATT-010/ATT-014), never synthesized punches.
-      WFH/WFA needs an owner policy decision (who may, how often) before specification.
+      Found by the 2026-11-02 legacy parity audit. perjalanan_dinas is covered by TRIP-001.
+      ATT-008 is a swap with a colleague, not an employee request to change their own schedule.
     docs:
+      - docs/domain/attendance-remote-and-schedule-requests.md
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: LEAVE-001

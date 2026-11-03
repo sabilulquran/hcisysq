@@ -175,7 +175,7 @@ async function resolveApprovalChain(db: Queryable, employee: EmployeeContext, ef
   return { chain, context: resolution.context };
 }
 
-/** D-05: one employee, one place at a time — no overlap with another trip or with leave. */
+/** D-05: one employee, one place at a time — no overlap with another trip, with leave, or with ATT-015. */
 async function assertNoOverlap(db: Queryable, employeeId: string, startOn: string, endOn: string) {
   const trips = await db.query(
     `SELECT 1 FROM business_trip_requests
@@ -196,6 +196,18 @@ async function assertNoOverlap(db: Queryable, employeeId: string, startOn: strin
   );
   if (leave.rows[0]) {
     throw new TripError(409, "TRIP_LEAVE_OVERLAP", "Tanggal ini beririsan dengan cuti yang sedang diajukan atau sudah disetujui.");
+  }
+  // ATT-015 D-08: a tugas luar or WFH/WFA that is pending or approved also occupies the dates.
+  const arrangement = await db.query(
+    `SELECT 1 FROM attendance_work_arrangement_requests
+      WHERE employee_id = $1 AND status IN ('IN_REVIEW', 'APPROVED')
+        AND arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
+        AND start_on <= $3::date AND end_on >= $2::date
+      LIMIT 1`,
+    [employeeId, startOn, endOn],
+  );
+  if (arrangement.rows[0]) {
+    throw new TripError(409, "TRIP_ARRANGEMENT_OVERLAP", "Tanggal ini beririsan dengan tugas luar atau WFH/WFA Anda.");
   }
 }
 

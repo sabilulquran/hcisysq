@@ -9,6 +9,7 @@ import { jakartaWorkDate } from "./engine.js";
 
 export type CalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
+  | "field_assignment" | "remote_work"
   | "unscheduled" | "not_captured" | "not_calculated";
 
 type EmployeeRow = { employeeId: string; employeeNumber: string; employeeName: string; unitId: string | null; unitName: string | null };
@@ -64,7 +65,8 @@ export function normalActual(status: CalculationRowStatus, blocks?: { count: num
   if (blocks && blocks.count > 1 && ["present", "late", "incomplete", "absent"].includes(status)) {
     return { normal: 1, actual: blocks.credited === null ? null : Math.round(blocks.credited * 100) / 100 };
   }
-  if (status === "present" || status === "late") return { normal: 1, actual: 1 };
+  // ATT-015 D-06: an approved tugas luar or WFH/WFA without a punch is a worked day.
+  if (status === "present" || status === "late" || status === "field_assignment" || status === "remote_work") return { normal: 1, actual: 1 };
   if (status === "absent") return { normal: 1, actual: 0 };
   if (["incomplete", "leave", "scheduled", "pending"].includes(status)) return { normal: 1, actual: null };
   return { normal: null, actual: null };
@@ -103,7 +105,8 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
        checked.worked_minutes AS "workedMinutes", checked.late_minutes AS "lateMinutes",
        checked.early_leave_minutes AS "earlyLeaveMinutes", checked.overtime_minutes AS "overtimeMinutes",
        checked.incomplete_session AS "incompleteSession",
-       (checked.source_leave_request_id IS NOT NULL OR checked.source_attendance_resolution_case_id IS NOT NULL) AS "hasDisposition",
+       (checked.source_leave_request_id IS NOT NULL OR checked.source_attendance_resolution_case_id IS NOT NULL
+         OR checked.source_work_arrangement_id IS NOT NULL) AS "hasDisposition",
        (
          EXISTS (
            SELECT 1 FROM attendance_schedule_assignments assignment
@@ -168,6 +171,18 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
              AND entry.work_date = checked.work_date
              AND roster.status = 'PUBLISHED'
              AND roster.published_at > checked.calculated_at
+         )
+         OR EXISTS (
+           -- ATT-015 §7.3: a tugas luar or WFH/WFA approved or cancelled after the day was calculated.
+           SELECT 1
+           FROM attendance_work_arrangement_requests arrangement
+           WHERE arrangement.employee_id = checked.employee_id
+             AND arrangement.arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
+             -- A cancelled request only matters when it had been approved (final_decided_at is set).
+             AND (arrangement.status = 'APPROVED'
+               OR (arrangement.status = 'CANCELLED' AND arrangement.final_decided_at IS NOT NULL))
+             AND arrangement.updated_at > checked.calculated_at
+             AND checked.work_date BETWEEN arrangement.start_on AND arrangement.end_on
          )
          OR EXISTS (
            -- §20.10: a shift whose start was moved earlier now gives a schedule to dates it did not cover.

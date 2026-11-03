@@ -5,7 +5,7 @@ import { WorkforceAttendanceApiError } from "@/lib/workforceAttendance";
 // plus approved business trips (TRIP-001 D-11, read-only).
 
 export interface AttendanceException {
-  kind: "leave" | "clarification" | "trip";
+  kind: "leave" | "clarification" | "trip" | "arrangement";
   id: string;
   employeeId: string;
   employeeNumber: string;

@@ -89,6 +89,8 @@ function attendanceStatusLabel(status: string) {
     absent: "Tidak hadir",
     off: "Libur",
     configuration_error: "Jadwal perlu diperiksa",
+    field_assignment: "Tugas luar",
+    remote_work: "WFH/WFA",
   };
   return labels[status] ?? status;
 }

@@ -253,6 +253,32 @@ describe.skipIf(!allowed)("LEAVE-010 approver notification and requester cancell
     await submitAnnual();
   });
 
+  it("LEAVE-010-C: cancelling while HC holds the task closes it and tells HC, not the line", async () => {
+    const request = await submitAnnual();
+    const [first, second] = request.approvalChain;
+    // Cuti Tanpa Gaji pattern: line approval, then an HC approval task.
+    await client.query("UPDATE leave_requests SET hc_handling = 'approve' WHERE id = $1", [request.id]);
+    await client.query(
+      `INSERT INTO leave_request_hc_tasks(id, leave_request_id, task_kind, status) VALUES ($1, $2, 'approve', 'waiting')`,
+      [randomUUID(), request.id],
+    );
+    await call("manager", "POST", `/leave/approvals/${first!.id}/decision`, { decision: "approve" });
+    const line = await call("unitApprover", "POST", `/leave/approvals/${second!.id}/decision`, { decision: "approve" });
+    expect(line.json()).toMatchObject({ requestStatus: "in_review", hcTaskStatus: "pending" });
+
+    const cancelled = await call("requester", "POST", `/leave/me/requests/${request.id}/cancel`, {});
+    expect(cancelled.statusCode, cancelled.body).toBe(200);
+    expect(await statusOf("leave_request_hc_tasks", request.id)).toEqual(["cancelled"]);
+    expect((await cancelEvent(request.id))[0]!.payload).toEqual({ policyKey: "annual", stage: "hc" });
+    const outbox = await client.query(
+      `SELECT target_type, target_key FROM leave_notification_outbox
+        WHERE leave_request_id = $1 AND event_type = 'leave.request.cancelled'`,
+      [request.id],
+    );
+    expect(outbox.rows).toEqual([{ target_type: "role", target_key: "human_capital" }]);
+    expect((await inbox("unitApprover")).map((item) => item.title)).not.toContain("Pengajuan cuti dibatalkan");
+  });
+
   it("LEAVE-010-C: cancelling during the critical-period review closes the review and tells HC", async () => {
     const period = await call("hcAdmin", "POST", "/admin/leave/critical-periods", {
       label: "Ujian Yayasan", startOn: "2099-02-02", endOn: "2099-02-06", unitId: null,

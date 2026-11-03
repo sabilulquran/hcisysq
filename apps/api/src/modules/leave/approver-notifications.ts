@@ -59,6 +59,11 @@ async function notifyApprover(
 ) {
   const notification = { ...input, category: "system" as const, href: APPROVALS_HREF };
   if (approver.approverAccountId) {
+    const active = await db.query(
+      `SELECT 1 FROM accounts WHERE id = $1 AND status = 'active'`,
+      [approver.approverAccountId],
+    );
+    if (!active.rowCount) return false;
     await notifyAccount(db, { ...notification, recipientAccountId: approver.approverAccountId });
     return true;
   }

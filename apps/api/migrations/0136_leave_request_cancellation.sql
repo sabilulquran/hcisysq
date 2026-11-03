@@ -10,13 +10,15 @@
 -- does not have exactly one such CHECK, instead of leaving an old CHECK that would still
 -- refuse 'cancelled'.
 --
--- Down (only after every 'cancelled' step, task and review is gone or rewritten; older code
--- never writes the value and reads it as "not open"):
---   UPDATE leave_request_approval_steps SET status = 'rejected' WHERE status = 'cancelled';  -- review first
---   ALTER TABLE leave_request_approval_steps DROP CONSTRAINT leave_request_approval_steps_status_check,
---     ADD CONSTRAINT leave_request_approval_steps_status_check
---       CHECK (status IN ('waiting', 'pending', 'approved', 'rejected'));
---   (same for leave_request_hc_tasks and leave_request_critical_reviews with their 0007/0128 lists)
+-- Down (normally unnecessary: older code never writes 'cancelled' and treats it as "not open").
+-- Only after the 'cancelled' rows are rewritten, and only to a value their other CHECKs accept:
+--   UPDATE leave_request_approval_steps SET status = 'rejected', acted_at = coalesce(acted_at, now())
+--    WHERE status = 'cancelled';
+--   UPDATE leave_request_hc_tasks SET status = 'rejected', acted_at = coalesce(acted_at, now())
+--    WHERE status = 'cancelled';
+--   UPDATE leave_request_critical_reviews SET status = 'rejected', acted_at = coalesce(acted_at, now())
+--    WHERE status = 'cancelled';  -- 0128 ties rejected to acted_at IS NOT NULL
+--   then restore each <table>_status_check with its 0006/0007/0128 list (without 'cancelled').
 
 DO $$
 DECLARE

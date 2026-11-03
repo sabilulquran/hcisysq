@@ -200,7 +200,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: 'LEAVE_REQUEST_NOT_FOUND: no such request of mine' }
-        '409': { description: 'LEAVE_REQUEST_NOT_CANCELLABLE: already decided or cancelled, or a special leave report' }
+        '409': { description: 'LEAVE_REQUEST_NOT_CANCELLABLE: already decided or cancelled, or a special leave report; LEAVE_REQUEST_BUSY: a decision on it is in flight, retry after reloading' }
 
   /leave/approvals:
     get:

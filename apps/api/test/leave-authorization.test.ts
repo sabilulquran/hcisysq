@@ -535,3 +535,39 @@ describe("leave approval multi-account authorization", () => {
     expect(response.json()).toMatchObject({ code: "STEP_NOT_PENDING" });
   });
 });
+
+describe("LEAVE-010 requester cancellation under contention", () => {
+  it("answers 409 LEAVE_REQUEST_BUSY instead of waiting while a decision holds the step", async () => {
+    const statements: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      if (sql.includes("FROM auth_sessions s")) return authRows("EMPLOYEE");
+      if (sql.includes("UPDATE auth_sessions SET last_seen_at")) return { rows: [], rowCount: 1 };
+      if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e")) return { rows: [employeeRow(E)], rowCount: 1 };
+      if (["BEGIN", "ROLLBACK"].includes(sql)) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM leave_requests") && sql.includes("FOR UPDATE NOWAIT")) {
+        return { rows: [{ status: "in_review", lineHandling: "approval", policyKey: "annual" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM leave_request_approval_steps") && sql.includes("FOR UPDATE NOWAIT")) {
+        throw Object.assign(new Error("could not obtain lock on row"), { code: "55P03" });
+      }
+      throw new Error(`Unexpected SQL in cancellation contention test: ${sql}`);
+    });
+    const client = { query, release: vi.fn() };
+    const app = Fastify({ logger: false });
+    await registerEmployeeLeaveRoutes(app, { query, connect: vi.fn(async () => client) } as unknown as Pool, config);
+    const response = await app.inject({
+      method: "POST",
+      url: `/leave/me/requests/${REQUEST}/cancel`,
+      headers: { cookie: "hcis_session=test-token" },
+      payload: {},
+    });
+    await app.close();
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("LEAVE_REQUEST_BUSY");
+    expect(statements).toContain("ROLLBACK");
+    expect(statements.some((sql) => sql.includes("UPDATE leave_requests"))).toBe(false);
+    // Every lock the cancellation takes is NOWAIT, so it can never hold one while waiting.
+    expect(statements.filter((sql) => /FOR UPDATE(?! NOWAIT)/.test(sql))).toEqual([]);
+  });
+});

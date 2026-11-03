@@ -854,9 +854,11 @@ export async function registerEmployeeLeaveRoutes(
     }
   });
 
-  // LEAVE-010: the requester withdraws line-approval leave that still awaits a decision. The
-  // request row is locked first — the same lock an approval decision takes — so a cancel and
-  // a decision on one request serialize and the loser sees the new state.
+  // LEAVE-010: the requester withdraws line-approval leave that still awaits a decision.
+  // Decisions lock their step/task/review together with the request; this route locks the
+  // request and then those rows, so it takes every lock NOWAIT and never waits while holding
+  // one. A cancel that meets a decision in flight answers 409 LEAVE_REQUEST_BUSY instead of
+  // risking a deadlock; the decision goes through, and a retry then sees the new state.
   app.post("/leave/me/requests/:id/cancel", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
@@ -880,7 +882,7 @@ export async function registerEmployeeLeaveRoutes(
         `SELECT status, line_handling AS "lineHandling", policy_key AS "policyKey"
            FROM leave_requests
           WHERE id = $1 AND employee_id = $2
-          FOR UPDATE`,
+          FOR UPDATE NOWAIT`,
         [params.data.id, employee.id],
       );
       const leave = found.rows[0];
@@ -889,31 +891,35 @@ export async function registerEmployeeLeaveRoutes(
       }
       assertLeaveRequestCancellable(leave);
 
-      const pendingStep = await client.query<{ approverEmployeeId: string | null; approverAccountId: string | null }>(
-        `SELECT approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"
+      const steps = await client.query<{ status: string; approverEmployeeId: string | null; approverAccountId: string | null }>(
+        `SELECT status, approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"
            FROM leave_request_approval_steps
-          WHERE leave_request_id = $1 AND status = 'pending'`,
+          WHERE leave_request_id = $1
+          FOR UPDATE NOWAIT`,
         [params.data.id],
       );
+      const hcTask = await client.query<{ status: string }>(
+        `SELECT status FROM leave_request_hc_tasks WHERE leave_request_id = $1 FOR UPDATE NOWAIT`,
+        [params.data.id],
+      );
+      const review = await client.query<{ status: string }>(
+        `SELECT status FROM leave_request_critical_reviews WHERE leave_request_id = $1 FOR UPDATE NOWAIT`,
+        [params.data.id],
+      );
+
       await client.query(
         `UPDATE leave_request_approval_steps SET status = 'cancelled'
           WHERE leave_request_id = $1 AND status IN ('waiting', 'pending')`,
         [params.data.id],
       );
-      const hcTask = await client.query<{ status: string }>(
-        `UPDATE leave_request_hc_tasks task SET status = 'cancelled', updated_at = now()
-           FROM leave_request_hc_tasks previous
-          WHERE task.id = previous.id AND task.leave_request_id = $1
-            AND task.status IN ('waiting', 'pending', 'needs_correction')
-          RETURNING previous.status`,
+      await client.query(
+        `UPDATE leave_request_hc_tasks SET status = 'cancelled', updated_at = now()
+          WHERE leave_request_id = $1 AND status IN ('waiting', 'pending', 'needs_correction')`,
         [params.data.id],
       );
-      const review = await client.query<{ status: string }>(
-        `UPDATE leave_request_critical_reviews review SET status = 'cancelled', updated_at = now()
-           FROM leave_request_critical_reviews previous
-          WHERE review.id = previous.id AND review.leave_request_id = $1
-            AND review.status IN ('waiting', 'pending')
-          RETURNING previous.status`,
+      await client.query(
+        `UPDATE leave_request_critical_reviews SET status = 'cancelled', updated_at = now()
+          WHERE leave_request_id = $1 AND status IN ('waiting', 'pending')`,
         [params.data.id],
       );
       await client.query(
@@ -921,7 +927,10 @@ export async function registerEmployeeLeaveRoutes(
         [params.data.id],
       );
 
-      const approver = pendingStep.rows[0];
+      const pending = steps.rows.find((step) => step.status === "pending");
+      const approver = pending
+        ? { approverEmployeeId: pending.approverEmployeeId, approverAccountId: pending.approverAccountId }
+        : undefined;
       const stage = approver
         ? "line"
         : review.rows[0]?.status === "pending"
@@ -941,7 +950,7 @@ export async function registerEmployeeLeaveRoutes(
           approver.approverAccountId ?? approver.approverEmployeeId!,
         );
         await notifyApprovalCancelled(client, { requestId: params.data.id, ...approver });
-      } else if (hcTask.rows.some((row) => row.status !== "waiting") || stage === "critical_review") {
+      } else if (hcTask.rows.some((row) => row.status === "pending" || row.status === "needs_correction") || stage === "critical_review") {
         await enqueueNotification(client, params.data.id, "leave.request.cancelled", "role", "human_capital");
       }
 
@@ -950,6 +959,12 @@ export async function registerEmployeeLeaveRoutes(
       return reply.send({ id: params.data.id, status: "cancelled" });
     } catch (error) {
       await client.query("ROLLBACK");
+      if ((error as { code?: unknown }).code === "55P03") {
+        return reply.status(409).send({
+          code: "LEAVE_REQUEST_BUSY",
+          message: "Pengajuan ini sedang diproses penyetuju. Muat ulang halaman, lalu coba lagi bila masih perlu dibatalkan.",
+        });
+      }
       return sendKnownError(reply, error);
     } finally {
       client.release();

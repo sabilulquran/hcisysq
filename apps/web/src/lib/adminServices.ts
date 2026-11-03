@@ -236,6 +236,21 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "help-center",
+    label: "Pusat Bantuan",
+    description: "Kelola FAQ, panduan layanan, dan kontak Human Capital untuk pegawai.",
+    featureIds: ["HELP-001"],
+    stage: "available",
+    category: "employee-services",
+    href: "/admin/help",
+    accessRoles: ["HC Admin"],
+    details: [
+      "FAQ dan panduan per layanan dengan status draf, terbit, dan arsip",
+      "Setiap perubahan tersimpan sebagai revisi dan riwayat",
+      "Isi awal berupa draf yang perlu ditinjau HC sebelum terbit",
+    ],
+  },
+  {
     key: "sites",
     label: "Lokasi & Cabang",
     description: "Kelola site, cabang, dan lokasi kerja dalam satu organisasi.",

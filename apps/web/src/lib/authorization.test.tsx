@@ -144,6 +144,12 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "loans.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/loans")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/loans")).toBe(false);
+    // HELP-001: help.manage only; other HC permissions and Super Admin legacy do not open it.
+    expect(canAccessAdminPath(actor, "/admin/help")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin/help")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["announcements.manage", "training.manage"]), "/admin/help")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/help")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/training")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["training.read"]), "/admin/training")).toBe(true);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/training")).toBe(false);

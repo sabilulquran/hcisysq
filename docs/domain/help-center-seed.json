@@ -1,0 +1,583 @@
+[
+  {
+    "kind": "GUIDE",
+    "topic": "GENERAL",
+    "title": "Panduan singkat: Memulai HCIS",
+    "body": "HCIS adalah layanan kepegawaian Yayasan Sabilul Qur'an. Di sini Anda dapat melihat kehadiran, mengajukan cuti dan lembur, membaca slip gaji, serta memakai layanan pegawai lainnya. HCIS dibuka lewat browser di HP atau komputer.\n\n1. Buka alamat HCIS (hcis.sabilulquran.or.id) di browser HP atau komputer.\n2. Tekan tombol Masuk dengan Akun SQ, lalu masuk memakai Akun SQ Anda. Akun yang sama juga dipakai untuk SQ Hub dan Aset SQ. Bila Anda masih dalam keadaan masuk di Akun SQ, HCIS biasanya langsung terbuka.\n3. Anda akan tiba di Beranda. Di sini tampil kehadiran hari ini, Akses cepat, kotak Perlu tindakan, dan ringkasan cuti tahunan.\n4. Pakai menu di sisi kiri (komputer) atau di bagian bawah layar (HP: Beranda, Hadir, Cuti, Approval, dan Lainnya). Layanan lain ada di Semua Layanan.\n5. Tekan ikon lonceng di bagian atas untuk membuka Notifikasi.\n6. Untuk keluar, tekan nama atau inisial Anda di kanan atas, lalu pilih Keluar.\n\nSetiap layanan hanya menampilkan data milik Anda sendiri. Keputusan seperti persetujuan cuti tetap dibuat oleh atasan atau HC sesuai alurnya, bukan oleh layar.\n\nBila muncul pesan bahwa akun Anda belum memiliki akses ke HCIS atau sedang tidak aktif, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Bagaimana cara masuk ke HCIS?",
+    "body": "Buka HCIS di browser, lalu tekan Masuk dengan Akun SQ. Anda masuk memakai Akun SQ, yaitu akun yang sama untuk SQ Hub, HCIS, dan Aset SQ. HCIS tidak memakai kata sandi tersendiri.\n\nSetelah berhasil, Anda langsung diarahkan ke Beranda. Bila gagal, coba sekali lagi. Bila tetap gagal, catat pesan yang muncul di layar lalu hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Saya lupa kata sandi Akun SQ. Apa yang harus saya lakukan?",
+    "body": "Kata sandi Akun SQ tidak disimpan dan tidak dapat diatur ulang dari HCIS. Hubungi Human Capital (HC) melalui kontak di halaman Bantuan agar permintaan Anda diteruskan ke pengelola Akun SQ.\n\nPengaturan profil, keamanan, dan sesi Akun SQ dibuka dari menu akun HCIS (tekan nama Anda di kanan atas, lalu pilih Akun SQ). Jangan pernah memberitahukan kata sandi Anda kepada siapa pun, termasuk petugas HC.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Muncul pesan bahwa akun saya belum memiliki akses ke HCIS. Kenapa?",
+    "body": "Pesan itu berarti Anda berhasil masuk dengan Akun SQ, tetapi akun tersebut belum diberi akses ke HCIS. Akses HCIS diberikan per akun oleh pengelola.\n\nBila pesannya berbunyi akun HCIS Anda sedang tidak aktif, status akun Anda perlu diperiksa. Untuk kedua keadaan ini, hubungi Human Capital (HC) melalui kontak di halaman Bantuan. Bila pesannya meminta mencoba lagi beberapa saat, tunggu sebentar lalu muat ulang halaman.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Apakah HCIS punya aplikasi yang harus diunduh dari Play Store?",
+    "body": "Tidak. HCIS dibuka langsung lewat browser di HP atau komputer, tanpa memasang aplikasi.\n\nUntuk Clock In/Out dari HP, browser akan meminta izin Lokasi dan Kamera. Izinkan keduanya untuk situs HCIS. Bila izin pernah ditolak, buka pengaturan situs di sebelah alamat HCIS lalu ubah menjadi diizinkan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Apa isi halaman Notifikasi?",
+    "body": "Notifikasi berisi pemberitahuan yang ditujukan khusus untuk akun Anda, misalnya pengajuan lembur yang sudah diputuskan, tukar shift, perjalanan dinas, pinjaman, surat yang terbit, penilaian kinerja, undangan rapat, dan slip gaji yang baru terbit. Buka dengan menekan ikon lonceng di bagian atas.\n\nTekan Tandai semua dibaca untuk membersihkan tanda belum dibaca. Membaca notifikasi tidak menyetujui apa pun. Saat ini notifikasi hanya tampil di dalam HCIS, belum dikirim lewat email atau WhatsApp.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Di mana saya membaca pengumuman resmi yayasan?",
+    "body": "Buka Semua Layanan, lalu pilih Pengumuman di bagian Informasi. Di sana tampil pengumuman yang sedang berlaku untuk Anda, dan pengumuman lama tetap dapat dibaca di arsip.\n\nPengumuman bertanda penting meminta Anda menekan Saya sudah membaca. Tanda ini dicatat sebagai bukti bahwa Anda sudah membacanya. Pengumuman yang sudah terbit tidak diedit; bila ada perbaikan, akan terbit ralat dan versi lama ditandai sudah diralat.",
+    "sortOrder": 70
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Bagaimana cara mengubah alamat atau nomor telepon saya di HCIS?",
+    "body": "Buka menu Data Saya, lalu tekan Ajukan perubahan alamat atau Ajukan perubahan kontak. Isi data baru, lalu tekan Kirim usulan. Pada usulan kontak, kotak yang dibiarkan kosong tidak diubah; untuk menghapus email atau telepon, centang pilihan di bawahnya.\n\nUsulan Anda diputuskan oleh HC. Statusnya tampil di daftar Usulan perubahan data saya: Menunggu keputusan, Diterima, Ditolak (beserta alasannya), atau Dibatalkan. Selama masih menunggu, Anda dapat menekan Batalkan usulan.",
+    "sortOrder": 80
+  },
+  {
+    "kind": "FAQ",
+    "topic": "GENERAL",
+    "title": "Data lain saya di HCIS salah, misalnya nama, jabatan, atau unit. Bagaimana memperbaikinya?",
+    "body": "Saat ini yang dapat Anda usulkan sendiri lewat Data Saya hanya alamat dan kontak. Data keluarga, pendidikan, keahlian, serta data kepegawaian seperti nama, jabatan, dan unit dicatat oleh HC.\n\nBila ada yang keliru, hubungi Human Capital (HC) melalui kontak di halaman Bantuan dan sebutkan data mana yang perlu diperbaiki beserta bukti pendukungnya.",
+    "sortOrder": 90
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "ATTENDANCE",
+    "title": "Panduan singkat: Kehadiran dan Clock In/Out",
+    "body": "Menu Kehadiran menampilkan status hari ini, jadwal, jam masuk dan keluar yang tercatat, Jadwal saya untuk minggu ini dan minggu depan, Klarifikasi saya, serta Riwayat 30 hari. Catatan dari mesin fingerprint dan dari presensi HP digabung di sini.\n\nCara presensi lewat HP:\n\n1. Buka menu Clock In/Out, atau tekan Buka Clock In / Out di halaman Kehadiran.\n2. Periksa kotak Persiapan presensi. Server harus berstatus siap.\n3. Tekan 1. Baca GPS dan izinkan akses lokasi.\n4. Tekan 2. Buka kamera, izinkan akses kamera, lalu tekan 3. Ambil foto. Periksa pratinjau fotonya.\n5. Tekan Clock in saat datang, atau Clock out saat pulang.\n6. Tunggu pesan bahwa presensi tersimpan, beserta keterangan lokasinya, misalnya di dalam area atau di luar area dan perlu ditinjau.\n\nLokasi hanya dibaca saat Anda menekan Baca GPS; tidak ada pelacakan di latar belakang. Foto adalah bukti presensi, bukan pengenalan wajah, dan disimpan terenkripsi.\n\nPresensi di luar area tetap tersimpan, tetapi ditandai perlu ditinjau HC. Bila pengiriman belum terkonfirmasi karena sinyal putus, tekan Coba ulang pengiriman yang sama; presensi tidak akan tercatat dua kali. Bila jam masuk atau pulang tidak tercatat, ajukan klarifikasi dari Riwayat 30 hari.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Saya lupa absen masuk atau pulang. Bagaimana memperbaikinya?",
+    "body": "Buka menu Kehadiran, lalu cari tanggalnya di Riwayat 30 hari. Tombol Ajukan klarifikasi muncul untuk tanggal berstatus Belum lengkap, Terlambat, atau Tidak hadir, paling lama 7 hari ke belakang.\n\nPilih Koreksi waktu, pilih alasan (misalnya Jam keluar belum tercatat), isi usulan jam, tulis penjelasan, lalu tekan Kirim klarifikasi. HC yang memutuskan. Statusnya tampil di Klarifikasi saya: Menunggu, Disetujui, atau Ditolak. Selama masih Menunggu, Anda dapat membatalkannya. HC juga dapat mengirim notifikasi yang meminta Anda mengajukan klarifikasi.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Apa beda Justifikasi dan Koreksi waktu pada klarifikasi kehadiran?",
+    "body": "Justifikasi dipakai bila jam yang tercatat sudah benar, tetapi ada alasan yang perlu diterima, misalnya terlambat karena tugas. Jam aktual tidak diubah; bila disetujui, keterlambatan ditandai beralasan.\n\nKoreksi waktu dipakai bila jam yang tercatat salah atau kosong. Anda mengusulkan jam masuk dan atau jam keluar yang benar. Catatan asli dari mesin atau HP tetap disimpan apa adanya; usulan Anda berlaku setelah disetujui HC.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Kenapa presensi HP saya ditandai di luar area atau perlu ditinjau?",
+    "body": "Ada tiga kemungkinan: posisi Anda di luar radius lokasi kerja, akurasi GPS kurang baik, atau lokasi kerja belum terhubung ke jadwal Anda. Presensi tetap tersimpan, hanya ditandai agar ditinjau HC.\n\nBila Anda memang bertugas di luar lokasi, ajukan klarifikasi untuk tanggal itu dengan alasan Di luar geofence dan jelaskan tugasnya. Untuk akurasi yang lebih baik, aktifkan layanan lokasi HP dan tekan Baca GPS lagi di tempat terbuka.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Tombol Clock in atau Clock out tidak bisa ditekan. Kenapa?",
+    "body": "Tombol baru aktif setelah server siap, GPS terbaca, dan foto sudah diambil. Periksa kotak Persiapan presensi untuk melihat mana yang belum siap.\n\nBila izin lokasi atau kamera ditolak, buka pengaturan situs di sebelah alamat HCIS lalu izinkan Lokasi dan Kamera. Bila kamera sedang dipakai aplikasi lain, tutup aplikasi tersebut. Bila server tertulis belum siap, berarti presensi HP sedang tidak dapat dipakai; hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Bagaimana cara tukar shift dengan rekan kerja?",
+    "body": "Buka menu Tukar Shift. Pilih Tanggal kerja, pilih Rekan satu unit yang shiftnya berbeda pada tanggal itu, tambahkan catatan bila perlu, lalu tekan Ajukan tukar shift. Tukar shift hanya untuk rekan satu unit pada tanggal yang sama dan harus diajukan sebelum shift dimulai.\n\nRekan Anda menyetujui atau menolak lebih dulu, lalu HC memberi keputusan akhir. Statusnya: Menunggu rekan, Menunggu Human Capital, Disetujui, Ditolak rekan, Ditolak Human Capital, atau Dibatalkan. Selama masih menunggu, Anda dapat menekan Batalkan pengajuan.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ATTENDANCE",
+    "title": "Jadwal kerja saya salah atau tertulis Jadwal perlu diperiksa. Siapa yang mengubahnya?",
+    "body": "Jadwal dan shift ditetapkan oleh HC. Anda dapat melihatnya di menu Kehadiran pada bagian Jadwal saya, tetapi tidak dapat mengubahnya sendiri. Tulisan Jadwal diganti berarti HC sudah mengganti jadwal pada tanggal itu.\n\nBila jadwal Anda keliru atau tertulis Jadwal perlu diperiksa, hubungi Human Capital (HC) melalui kontak di halaman Bantuan. Untuk bertukar shift dengan rekan, pakai menu Tukar Shift.",
+    "sortOrder": 70
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "OVERTIME",
+    "title": "Panduan singkat: Lembur",
+    "body": "Lembur di HCIS dicatat hanya dari pengajuan yang disetujui. Pulang lebih lambat dari jadwal tidak otomatis menjadi lembur. Lembur dapat dimulai dari Anda (pengajuan lembur) atau dari atasan (perintah lembur).\n\nCara mengajukan lembur:\n\n1. Buka menu Kehadiran, lalu cari kotak Ajukan lembur. Anda juga dapat membukanya dari Semua Layanan, bagian Waktu & Kehadiran, lalu Lembur.\n2. Isi tanggal lembur dan lamanya dalam menit.\n3. Tulis catatan singkat tentang pekerjaan yang dilakukan. Catatan boleh dikosongkan, tetapi sangat membantu atasan.\n4. Tekan Kirim pengajuan.\n5. Pantau statusnya di daftar Pengajuan terakhir: Menunggu, Disetujui, Ditolak, atau Dibatalkan.\n\nPengajuan Anda diputuskan oleh atasan langsung. Atasan dapat menyetujui sesuai pengajuan atau dengan menit yang lebih sedikit, dan wajib menulis catatan bila menolak. HC hanya menerima pemberitahuan, bukan pemberi persetujuan. Menit yang disetujui tampil sebagai Lembur disetujui di halaman Kehadiran dan di kolom Lembur pada Riwayat 30 hari.\n\nLembur dapat diajukan sebelum hari lembur dan paling lambat 7 hari sesudahnya. Bila muncul pesan bahwa atasan Anda belum tercatat, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "OVERTIME",
+    "title": "Saya pulang lebih lambat dari jadwal. Apakah otomatis dihitung lembur?",
+    "body": "Tidak. Jam pulang yang lebih lambat hanya tercatat sebagai fakta kehadiran. Lembur baru diakui setelah ada pengajuan lembur yang disetujui atasan, atau perintah lembur dari atasan yang Anda setujui.\n\nJadi, bila Anda bekerja melebihi jadwal atas permintaan atau kebutuhan pekerjaan, ajukan lembur dari menu Kehadiran pada kotak Ajukan lembur.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "OVERTIME",
+    "title": "Sampai kapan saya boleh mengajukan lembur?",
+    "body": "Pengajuan lembur boleh dibuat sebelum tanggal lembur sebagai rencana, dan paling lambat 7 hari setelah tanggal lembur. Lewat dari itu, pengajuan akan ditolak sistem.\n\nBatas ini juga berlaku untuk perintah lembur dari atasan. Pengajuan yang sudah masuk tepat waktu tetap dapat diputuskan atasan meskipun keputusannya diberikan setelah 7 hari.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "OVERTIME",
+    "title": "Atasan meminta saya lembur lewat HCIS. Apa yang harus saya lakukan?",
+    "body": "Perintah lembur tampil di menu Kehadiran, pada daftar Pengajuan terakhir, dengan judul Perintah lembur dari atasan. Periksa tanggal, lama, dan keterangannya, lalu tekan Setuju atau Tolak.\n\nLembur baru berlaku setelah Anda menekan Setuju. Persetujuan di HCIS diperlakukan sebagai persetujuan tertulis. Bila Anda menolak, atasan Anda akan diberi tahu.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "OVERTIME",
+    "title": "Bisakah saya membatalkan pengajuan lembur?",
+    "body": "Bisa, selama statusnya masih Menunggu. Buka menu Kehadiran, cari pengajuan di daftar Pengajuan terakhir, lalu tekan Batalkan.\n\nLembur yang sudah disetujui tidak dapat Anda batalkan sendiri. Bila ada kesalahan setelah disetujui, bicarakan dengan atasan Anda atau hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "OVERTIME",
+    "title": "Apakah HCIS menampilkan uang lembur saya?",
+    "body": "Tidak. HCIS hanya mencatat menit lembur yang disetujui. HCIS tidak menghitung atau menampilkan nilai uang lembur kepada pegawai.\n\nPembayaran lembur mengikuti ketentuan yayasan. Bila ada pertanyaan tentang pembayarannya, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "LEAVE",
+    "title": "Panduan singkat: Cuti & Izin",
+    "body": "Menu Cuti & Izin dipakai untuk mengajukan cuti, melaporkan kondisi khusus seperti sakit, dan melihat hak cuti tahunan Anda.\n\n1. Buka menu Cuti & Izin.\n2. Pada pertanyaan Apa yang Anda butuhkan, pilih salah satu: Cuti Tahunan, Sakit atau kondisi khusus, atau Keperluan terencana (pernikahan, menikahkan atau khitan anak, Haji wajib, dan Cuti Tanpa Gaji).\n3. Isi tanggal mulai dan selesai, serta keterangan bila perlu.\n4. Lampirkan dokumen pendukung bila diminta (PDF, JPG, atau PNG, maksimal 2 MB).\n5. Tekan Lanjutkan atau Periksa pengajuan, lalu baca ringkasannya, misalnya jumlah hari kerja, sisa hak, dan alur persetujuan.\n6. Tekan Kirim pengajuan atau Kirim laporan.\n7. Pantau statusnya di riwayat pada halaman yang sama.\n\nSiapa yang memproses: Cuti Tahunan disetujui atasan langsung lalu approver unit, kemudian HC diberi tahu. Laporan kondisi khusus diberitahukan kepada atasan, lalu HC memeriksa administrasinya. Keperluan terencana disetujui atasan dan dokumennya diperiksa HC; Cuti Tanpa Gaji juga memerlukan persetujuan HC.\n\nBila HC meminta dokumen tambahan, status berubah menjadi Perlu dilengkapi dan tombol Kirim dokumen muncul. Bila ada yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Berapa hak cuti tahunan saya?",
+    "body": "Untuk tenaga non-pendidikan, hak cuti tahunan adalah 12 hari kerja per tahun, dengan pemakaian paling banyak 3 hari kerja per periode tiga bulan (Januari–Maret, April–Juni, Juli–September, Oktober–Desember). Hak mulai dapat dipakai setelah 12 bulan bekerja; periode sebelum itu tidak berlaku mundur, dan sisa periode saat ini tidak otomatis dibawa ke periode berikutnya.\n\nUntuk tenaga pendidikan, hak tahunan dipenuhi lewat Cuti Akhir Semester dan Akhir Tahun Pelajaran sesuai kalender akademik yayasan, bukan lewat pengajuan Cuti Tahunan perorangan. Kelompok Anda tampil di kotak Hak Cuti Tahunan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Berapa hari sebelumnya saya harus mengajukan cuti?",
+    "body": "Cuti Tahunan dan keperluan terencana (pernikahan, menikahkan anak, khitan anak, Haji wajib) diajukan paling lambat 7 hari sebelumnya (H-7). Cuti Tanpa Gaji sampai 3 hari kalender juga H-7; lebih dari 3 hari kalender H-30. Cuti melahirkan diajukan H-30 dengan dokumen pendukung.\n\nKondisi mendesak seperti sakit, keguguran, atau keluarga meninggal dunia dapat dilaporkan segera, dan dokumennya boleh dilengkapi kemudian.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Saya sakit mendadak. Bagaimana cara melapor?",
+    "body": "Buka menu Cuti & Izin, pilih Sakit atau kondisi khusus, lalu pilih Sakit. Isi tanggal mulai dan selesai, ceritakan singkat bila perlu, lalu tekan Lanjutkan dan Kirim laporan. Bila kondisinya mendesak, surat dokter boleh diunggah setelahnya.\n\nAtasan Anda diberi tahu dan HC memeriksa administrasinya. Bila HC meminta dokumen, status berubah menjadi Perlu dilengkapi; unggah dokumennya lewat tombol Kirim dokumen pada riwayat.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Keperluan terencana apa saja yang bisa diajukan, dan berapa lama?",
+    "body": "Pada pilihan Keperluan terencana tersedia: pernikahan pegawai (paling lama 3 hari kerja), menikahkan anak (2 hari kerja), khitan anak (2 hari kerja), ibadah Haji wajib dengan dokumen resmi (hanya satu kali selama bekerja), dan Cuti Tanpa Gaji.\n\nCuti Tanpa Gaji dicatat sebagai tidak bergaji, tetapi halaman ini tidak menghitung potongan gaji apa pun. Sebelum dikirim, ringkasan menampilkan hari kerja terdampak, durasi kalender, dan batas minimal pengajuan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Bisakah saya membatalkan cuti yang sudah diajukan?",
+    "body": "Saat ini halaman Cuti & Izin belum menyediakan tombol pembatalan untuk pengajuan yang sudah dikirim.\n\nBila rencana Anda berubah, segera beri tahu atasan Anda dan hubungi Human Capital (HC) melalui kontak di halaman Bantuan agar pengajuan tersebut ditindaklanjuti. Periksa kembali tanggal sebelum menekan Kirim pengajuan untuk menghindari salah tanggal.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LEAVE",
+    "title": "Apa itu halaman Tindak lanjut ketidakhadiran?",
+    "body": "Halaman ini hanya muncul bila ada tanggal ketidakhadiran yang administrasi cutinya belum lengkap. Tautannya tampil di kotak Perlu tindakan pada Beranda.\n\nBila HC mengusulkan memakai Cuti Tahunan untuk tanggal tersebut, Anda dapat memilih Gunakan Cuti Tahunan atau Jangan gunakan. Bila Anda menolak, kasusnya kembali ke HC untuk diselesaikan dengan cara lain, misalnya dispensasi. Bila tertulis Sedang ditangani HC, Anda tidak perlu melakukan apa pun.",
+    "sortOrder": 70
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "PAYSLIP",
+    "title": "Panduan singkat: Slip Gaji",
+    "body": "Menu Slip Gaji menampilkan slip gaji Anda yang sudah diterbitkan oleh HC. Isi slip disiapkan dan diterbitkan HC; HCIS menampilkannya apa adanya dan tidak menghitung ulang angka di dalamnya.\n\n1. Buka menu Slip Gaji.\n2. Pilih Tahun.\n3. Tekan kolom Pilih periode slip, lalu pilih bulan yang diinginkan. Anda juga dapat mengetik nama bulan atau tahun untuk menyaring.\n4. Tekan Tampilkan. Slip berisi identitas pegawai, ringkasan gaji, kolom penghasilan dan potongan, serta penandatangan.\n5. Bila perlu menyimpan atau mencetak, tekan Cetak / Simpan PDF.\n\nSlip gaji bersifat rahasia dan pribadi. Hanya Anda yang dapat membuka slip milik Anda dari akun ini. Jangan menyebarkan atau menunjukkan isinya kepada pihak yang tidak berwenang.\n\nSlip yang masih disiapkan HC tidak ditampilkan. Saat slip baru terbit, Anda akan menerima notifikasi. Slip yang sudah terbit tidak dapat diubah dari HCIS; bila ada angka yang Anda ragukan, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PAYSLIP",
+    "title": "Kenapa slip gaji bulan ini belum muncul?",
+    "body": "Slip gaji baru tampil setelah HC menerbitkannya. Slip yang masih disiapkan atau diperiksa tidak ditampilkan kepada pegawai. Bila belum ada slip sama sekali, halaman menampilkan tulisan Belum ada slip gaji yang dipublikasikan.\n\nAnda akan menerima notifikasi saat slip baru terbit. Bila sudah lewat dari jadwal biasanya dan slip belum muncul, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PAYSLIP",
+    "title": "Angka di slip gaji saya sepertinya salah. Apa yang harus saya lakukan?",
+    "body": "Isi slip gaji disiapkan dan diterbitkan oleh HC. HCIS menampilkannya apa adanya, tidak menghitung ulang, dan Anda tidak dapat mengubahnya. Slip yang sudah terbit juga terkunci di sistem.\n\nHubungi Human Capital (HC) melalui kontak di halaman Bantuan, sebutkan periode slip dan bagian yang Anda ragukan. Jangan mengirim tangkapan layar slip ke grup atau orang lain.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PAYSLIP",
+    "title": "Bagaimana cara menyimpan atau mencetak slip gaji?",
+    "body": "Tampilkan slip periode yang diinginkan, lalu tekan Cetak / Simpan PDF. Jendela cetak browser akan terbuka dengan ukuran kertas A4.\n\nPilih printer untuk mencetak, atau pilih Simpan sebagai PDF untuk menyimpan berkas di perangkat Anda. Simpan berkas itu di tempat yang aman karena isinya rahasia.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PAYSLIP",
+    "title": "Bisakah saya melihat slip gaji bulan-bulan sebelumnya?",
+    "body": "Bisa. Semua slip yang sudah diterbitkan untuk Anda tetap tersedia. Pilih Tahun, tekan kolom Pilih periode slip untuk melihat daftar periodenya, lalu tekan Tampilkan.\n\nJumlah slip yang tersedia tertulis di bawah kolom pilihan. Bila ada periode yang seharusnya ada tetapi tidak muncul, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PAYSLIP",
+    "title": "Apakah orang lain bisa melihat slip gaji saya?",
+    "body": "Tidak. Pegawai lain, termasuk atasan Anda, tidak dapat membuka slip gaji Anda. HCIS selalu menampilkan slip berdasarkan akun yang sedang masuk, dan setiap pembukaan slip dicatat sistem.\n\nHanya petugas yang berwenang yang mengelola penyiapan dan penerbitan slip. Jaga kerahasiaannya dengan tidak meminjamkan akun dan selalu menekan Keluar bila memakai perangkat bersama.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "TRIPS",
+    "title": "Panduan singkat: Perjalanan Dinas",
+    "body": "Layanan Perjalanan Dinas dipakai untuk mengajukan penugasan ke luar tempat kerja, misalnya rapat di yayasan mitra atau kunjungan sekolah, sampai surat tugas bernomor terbit.\n\n1. Buka Semua Layanan, bagian Layanan Pegawai, lalu pilih Perjalanan Dinas.\n2. Isi Tujuan, tanggal Berangkat dan Kembali, serta Keperluan.\n3. Tekan Periksa penyetuju untuk melihat siapa yang akan menyetujui.\n4. Tekan Kirim pengajuan.\n5. Pantau di daftar Perjalanan saya. Pilih satu perjalanan untuk melihat tahap persetujuan, surat tugas, dan riwayatnya.\n6. Setelah status menjadi Surat tugas terbit, buka detailnya lalu tekan Cetak bila perlu.\n7. Setelah kembali, tekan Tandai selesai dan tulis laporan singkat hasil perjalanan.\n\nAlur status: Menunggu persetujuan, lalu Disetujui, menunggu surat tugas, lalu Surat tugas terbit, dan akhirnya Selesai. Pengajuan juga dapat berstatus Ditolak atau Dibatalkan. Persetujuan diberikan oleh atasan langsung lalu approver unit, kemudian HC menerbitkan surat tugas bernomor.\n\nBiaya perjalanan dan uang muka belum diurus di HCIS. Bila ada yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRIPS",
+    "title": "Siapa yang menyetujui perjalanan dinas saya?",
+    "body": "Saat ini perjalanan dinas disetujui oleh atasan langsung Anda, lalu oleh approver unit. Setelah semua menyetujui, HC menerbitkan surat tugas bernomor. HC tidak menjadi tahap persetujuan.\n\nSebelum mengirim, tekan Periksa penyetuju untuk melihat nama penyetujunya. Bila nama yang muncul tidak tepat, hubungi Human Capital (HC) melalui kontak di halaman Bantuan sebelum mengirim pengajuan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRIPS",
+    "title": "Apakah biaya perjalanan, uang harian, atau uang muka bisa diajukan di HCIS?",
+    "body": "Belum. Layanan Perjalanan Dinas di HCIS saat ini hanya mengurus pengajuan, persetujuan, surat tugas, dan laporan selesai. HCIS tidak mencatat atau menghitung biaya, uang harian, akomodasi, tiket, maupun uang muka.\n\nUntuk urusan biaya perjalanan, ikuti ketentuan yang berlaku di yayasan atau hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRIPS",
+    "title": "Bisakah saya mengubah tanggal atau tujuan perjalanan yang sudah diajukan?",
+    "body": "Tidak bisa diubah. Bila tanggal atau tujuan berubah, batalkan pengajuan lama lalu ajukan yang baru. Tombol Batalkan tersedia selama status Menunggu persetujuan atau Disetujui, menunggu surat tugas, dan Anda wajib menulis alasan pembatalan.\n\nSetelah surat tugas terbit, Anda tidak dapat membatalkannya sendiri. Hanya HC yang dapat membatalkan, dan surat tugasnya akan dicabut. Bila perlu, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRIPS",
+    "title": "Berapa lama maksimal perjalanan dinas dan kapan paling cepat diajukan?",
+    "body": "Saat ini satu pengajuan paling lama 30 hari kalender. Tanggal berangkat paling cepat hari ini; pengajuan mundur untuk perjalanan yang sudah berjalan tidak dapat dibuat di HCIS.\n\nPerjalanan juga tidak boleh bertumpuk dengan perjalanan dinas lain milik Anda, atau dengan cuti yang sedang diproses atau sudah disetujui.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRIPS",
+    "title": "Saya berangkat bersama rombongan. Apakah cukup satu pengajuan?",
+    "body": "Tidak. Satu pengajuan hanya untuk satu pegawai, dan diajukan oleh pegawai itu sendiri. Setiap anggota rombongan mengajukan perjalanan dinasnya masing-masing.\n\nDengan begitu, setiap anggota mendapat persetujuan dan surat tugas sendiri.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "CALENDAR",
+    "title": "Panduan singkat: Kalender & Rapat",
+    "body": "Menu Kalender menampilkan rapat yayasan, cuti dan perjalanan dinas Anda, serta hari libur dalam satu kalender bulanan. Anda juga dapat mengundang rekan ke rapat, dan HCIS menolak undangan yang membuat jadwal peserta bentrok.\n\n1. Buka menu Kalender. Tab Kalender menampilkan satu bulan; tab Rapat saya menampilkan rapat Akan datang dan Lewat.\n2. Untuk membuat rapat, tekan Buat rapat atau tekan tanggal pada kalender.\n3. Isi judul, waktu mulai dan selesai, lokasi, peserta (cari namanya), dan keterangan. Centang Rahasia bila rapat tidak boleh terlihat rinciannya oleh pegawai lain.\n4. Tekan Kirim undangan. Peserta menerima notifikasi di HCIS.\n5. Bila Anda diundang, buka rapatnya lalu jawab Hadir atau Berhalangan.\n\nUndangan ditolak bila jadwal salah satu peserta bentrok dengan rapat lain, cuti yang sudah disetujui, atau perjalanan dinas yang sudah disetujui. Cuti atau perjalanan yang masih diproses hanya memunculkan peringatan. Pengingat dikirim di HCIS 30 menit sebelum rapat dimulai.\n\nRapat hanya dapat diubah atau dibatalkan oleh penyelenggaranya. Bila ada kendala, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Kenapa undangan rapat saya ditolak karena bentrok?",
+    "body": "HCIS menolak undangan bila pada jam itu ada peserta yang sudah terjadwal di rapat lain, sedang cuti yang sudah disetujui, atau sedang perjalanan dinas yang sudah disetujui. Pesan di layar menyebutkan siapa yang bentrok.\n\nPilih waktu lain atau keluarkan peserta tersebut. Tidak ada tombol untuk memaksa. Cuti atau perjalanan yang masih diproses tidak menolak undangan, tetapi memunculkan peringatan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Bagaimana cara menjawab undangan rapat?",
+    "body": "Buka menu Kalender, pilih rapatnya (atau buka dari notifikasi), lalu tekan Hadir atau Berhalangan. Saat memilih Berhalangan, Anda boleh menulis alasan.\n\nJawaban Berhalangan membebaskan waktu Anda sehingga dapat dipakai untuk rapat lain, dan penyelenggara diberi tahu. Anda dapat mengubah jawaban kembali menjadi Hadir selama waktunya belum terpakai rapat lain.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Apakah semua pegawai bisa melihat rapat saya?",
+    "body": "Rapat tampil di kalender semua pegawai, tetapi pegawai yang bukan peserta hanya melihat judul, jam, lokasi, dan nama penyelenggara. Daftar peserta dan keterangan hanya terlihat oleh peserta.\n\nBila penyelenggara mencentang Rahasia, pegawai yang bukan peserta hanya melihat tulisan Sibuk tanpa judul, lokasi, dan penyelenggara.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Bagaimana cara mengubah atau membatalkan rapat?",
+    "body": "Hanya penyelenggara yang dapat mengubah atau membatalkan rapat. Perubahan hanya bisa dilakukan sebelum rapat dimulai. Bila waktunya diubah, jawaban semua peserta kembali menjadi Belum menjawab dan mereka diberi tahu.\n\nUntuk membatalkan, buka rapatnya lalu tekan Batalkan rapat dan tulis alasan (5 sampai 500 karakter). Semua peserta akan diberi tahu.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Apakah undangan dan pengingat rapat dikirim lewat WhatsApp?",
+    "body": "Saat ini undangan, perubahan, pembatalan, dan pengingat rapat sampai lewat Notifikasi di HCIS. Pengingat dikirim 30 menit sebelum rapat dimulai kepada penyelenggara dan peserta yang tidak berhalangan.\n\nPengiriman lewat WhatsApp dari HCIS belum aktif, walaupun pilihannya sudah tampil di formulir rapat. Jadi, pastikan Anda rutin membuka Notifikasi.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "FAQ",
+    "topic": "CALENDAR",
+    "title": "Apakah saya bisa memesan ruang rapat lewat HCIS?",
+    "body": "Belum. HCIS tidak menyediakan pemesanan ruang rapat. Lokasi rapat diisi sebagai teks biasa, misalnya nama ruangan atau tautan rapat daring.\n\nPastikan ketersediaan ruangan dengan pengelola ruangan di unit Anda sebelum mengirim undangan.",
+    "sortOrder": 70
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "TRAINING",
+    "title": "Panduan singkat: Pelatihan",
+    "body": "Layanan Pelatihan menampilkan program pelatihan yang Anda ikuti, riwayat pelatihan, sertifikat, dan jumlah jam pelatihan Anda. Pelatihan dari pihak luar dapat Anda catat sendiri lalu diverifikasi HC.\n\n1. Buka Semua Layanan, bagian Kinerja & Pengembangan, lalu pilih Pelatihan.\n2. Lihat ringkasan Jam pelatihan tahun ini, jam internal dan eksternal, serta jam sebagai narasumber.\n3. Pada Program yang saya ikuti, pilih satu program untuk melihat jadwal sesi dan kehadiran Anda.\n4. Pada Riwayat pelatihan, lihat catatan pelatihan Anda dan buka Sertifikat bila tersedia.\n5. Untuk pelatihan dari pihak luar, isi formulir Catat pelatihan dari pihak luar: nama pelatihan, penyelenggara, kategori, tanggal mulai dan selesai, jumlah jam, sertifikat (PDF, JPG, atau PNG, maksimal 2 MB), dan ringkasan materi bila ada.\n6. Tekan Kirim untuk diverifikasi.\n\nPelatihan dari pihak luar berstatus Menunggu verifikasi sampai HC memutuskan, lalu menjadi Terverifikasi atau Ditolak. Selama masih menunggu, Anda dapat menekan Tarik.\n\nPeserta program internal didaftarkan oleh HC, dan kehadiran setiap sesi juga dicatat HC. Bila ada data yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRAINING",
+    "title": "Bagaimana cara mendaftar program pelatihan internal?",
+    "body": "Saat ini pegawai tidak mendaftar sendiri. Peserta program pelatihan internal ditambahkan oleh HC.\n\nSetelah Anda didaftarkan, program itu muncul di bagian Program yang saya ikuti beserta jadwal sesinya, dan Anda menerima notifikasi. Bila Anda ingin ikut suatu program, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRAINING",
+    "title": "Kehadiran saya di sesi pelatihan belum tercatat atau salah. Apa yang harus saya lakukan?",
+    "body": "Kehadiran sesi pelatihan dicatat oleh HC dengan pilihan Hadir, Tidak hadir, atau Izin. Sebelum dicatat, sesi tertulis Kehadiran belum dicatat.\n\nBila catatannya keliru, segera hubungi Human Capital (HC) melalui kontak di halaman Bantuan. Koreksi masih bisa dilakukan selama program belum ditutup. Setelah program ditutup, catatannya terkunci. Kehadiran sesi pelatihan tidak sama dengan presensi kerja.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRAINING",
+    "title": "Kapan saya dinyatakan menyelesaikan program pelatihan?",
+    "body": "Saat ini peserta dinyatakan menyelesaikan program bila jam sesi yang dihadiri minimal 80 persen dari total jam sesi program. HC dapat mengatur batas lain untuk program tertentu. Izin tidak dihitung sebagai hadir.\n\nPeserta yang hadir sebagian (minimal satu sesi) tetap tercatat di riwayat dengan keterangan Belum memenuhi kehadiran. Jam pelatihan internal dihitung dari lama sesi yang Anda hadiri.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRAINING",
+    "title": "Pelatihan eksternal yang saya catat ditolak. Apa yang harus saya lakukan?",
+    "body": "Baca alasan penolakan dari HC pada riwayat atau notifikasi. Catatan yang ditolak tidak dapat diubah; perbaiki datanya lalu catat ulang sebagai catatan baru.\n\nPastikan tanggal selesai tidak di masa depan, jumlah jam antara 0,5 dan 200 jam, dan sertifikat yang diunggah terbaca jelas.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "TRAINING",
+    "title": "Apakah jam pelatihan memengaruhi presensi, gaji, atau nilai kinerja saya?",
+    "body": "Tidak. Pelatihan tidak mengubah catatan presensi kerja maupun gaji, dan jam pelatihan bukan bagian dari nilai penilaian kinerja.\n\nRekap jam pelatihan tampil sebagai catatan pengembangan diri Anda, tanpa target jam tertentu.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "LOANS",
+    "title": "Panduan singkat: Pinjaman",
+    "body": "Layanan Pinjaman dipakai untuk mengajukan pinjaman tanpa bunga, lalu memantau persetujuan, jadwal cicilan, pembayaran, dan sisa pinjaman.\n\n1. Buka Semua Layanan, bagian Keuangan Saya, lalu pilih Pinjaman.\n2. Isi Pokok pinjaman (hanya angka dan titik ribuan, tanpa koma), pilih Lama cicilan (3, 6, atau 12 bulan), dan tulis Keperluan.\n3. Tekan Lihat cicilan dan penyetuju untuk melihat perkiraan cicilan dan siapa yang akan menyetujui.\n4. Tekan Kirim pengajuan.\n5. Pantau di daftar Pinjaman saya. Pilih pinjaman untuk melihat persetujuan, jadwal cicilan, pembayaran, dan riwayatnya.\n\nAlur status: Menunggu persetujuan, lalu Disetujui, menunggu pencairan, lalu Berjalan setelah dicairkan, dan Lunas setelah semua terbayar. Pengajuan juga dapat Ditolak atau Dibatalkan.\n\nPinjaman disetujui oleh atasan langsung lalu approver unit. Setelah itu Keuangan mencairkan dana dan menetapkan jadwal cicilan. Cicilan tidak dipotong otomatis dari gaji; Keuangan mencatat setiap pembayaran di HCIS.\n\nBila ada yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LOANS",
+    "title": "Apakah pinjaman dikenai bunga?",
+    "body": "Tidak. Pinjaman di HCIS tanpa bunga, sehingga total cicilan sama dengan pokok pinjaman.\n\nSaat ini cicilan dihitung dari pokok dibagi lama cicilan, dibulatkan ke bawah ke ribuan rupiah, dan cicilan terakhir menanggung sisanya. Contoh: pinjaman Rp1.000.000 selama 3 bulan dicicil Rp333.000, Rp333.000, dan Rp334.000.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LOANS",
+    "title": "Berapa batas pinjaman, dan bolehkah saya punya dua pinjaman sekaligus?",
+    "body": "Saat ini pokok pinjaman antara Rp100.000 dan Rp10.000.000, dengan lama cicilan 3, 6, atau 12 bulan. Tidak ada syarat masa kerja; cukup pegawai aktif dengan akun aktif.\n\nSetiap pegawai hanya boleh punya satu pinjaman terbuka, yaitu yang masih menunggu persetujuan, menunggu pencairan, atau sedang berjalan. Pinjaman baru dapat diajukan setelah pinjaman sebelumnya lunas, ditolak, atau dibatalkan.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LOANS",
+    "title": "Apakah cicilan pinjaman otomatis dipotong dari gaji?",
+    "body": "Tidak. HCIS tidak memotong gaji secara otomatis. Pembayaran cicilan dicatat oleh Keuangan, baik tunai, transfer, maupun potong gaji yang dicatat manual setelah potongan itu tampil di slip gaji resmi.\n\nAnda dapat memeriksa setiap pembayaran dan sisa pinjaman di detail pinjaman pada halaman Pinjaman. Cicilan yang bulannya sudah lewat dan belum lunas akan ditandai lewat bulan.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LOANS",
+    "title": "Bisakah saya membatalkan pengajuan pinjaman?",
+    "body": "Bisa, selama dana belum dicairkan, yaitu saat status Menunggu persetujuan atau Disetujui, menunggu pencairan. Buka detail pinjaman, tekan Batalkan pengajuan, lalu tulis alasannya.\n\nSetelah dana dicairkan, pinjaman tidak dapat dibatalkan dan hanya selesai dengan pelunasan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "LOANS",
+    "title": "Kapan cicilan pertama dimulai, dan bolehkah saya melunasi lebih cepat?",
+    "body": "Bulan cicilan yang pasti ditetapkan Keuangan saat pencairan. Saat ini cicilan pertama paling cepat bulan setelah pencairan dan paling lambat tiga bulan sesudahnya. Jadwal yang sudah ditetapkan tidak dapat diubah.\n\nPembayaran sebagian dan pelunasan lebih cepat diperbolehkan. Hubungi Keuangan untuk melakukan pembayaran; setelah dicatat, sisa pinjaman berkurang dan status menjadi Lunas bila sudah terbayar seluruhnya.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "ASSETS",
+    "title": "Panduan singkat: Asset Saya",
+    "body": "Asset Saya menampilkan aset organisasi yang sedang menjadi tanggung jawab Anda, misalnya laptop atau peralatan kerja, menurut catatan Aset SQ. Halaman ini hanya untuk melihat; HCIS tidak mengubah data aset.\n\n1. Buka Semua Layanan, bagian Layanan Pegawai, lalu pilih Asset Saya.\n2. Lihat ringkasannya: berapa aset yang sedang Anda pegang, berapa yang menunggu konfirmasi Anda, dan berapa yang lewat tanggal kembali.\n3. Periksa daftar aset beserta tanggal Harus kembali bila ada.\n4. Untuk menerima, menolak, atau mengembalikan aset, tekan Buka Aset SQ dan lanjutkan di sana.\n\nAset yang ditandai Menunggu konfirmasi Anda sudah diserahkan kepada Anda tetapi belum Anda konfirmasi di Aset SQ. Aset yang ditandai Lewat tanggal kembali seharusnya sudah dikembalikan.\n\nBila daftar aset belum dapat ditampilkan, buka Aset SQ langsung. Bila ada aset yang tidak sesuai dengan yang Anda pegang, hubungi pengelola aset melalui Aset SQ, atau hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ASSETS",
+    "title": "Kenapa saya tidak bisa menerima atau mengembalikan aset di HCIS?",
+    "body": "Karena data dan serah terima aset dikelola di Aset SQ, bukan di HCIS. Asset Saya di HCIS hanya menampilkan daftar aset yang sedang Anda pegang.\n\nTekan Buka Aset SQ untuk menerima, menolak, atau mengembalikan aset. Anda masuk ke Aset SQ dengan Akun SQ yang sama.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ASSETS",
+    "title": "Muncul pesan Daftar aset belum dapat ditampilkan di HCIS. Apa artinya?",
+    "body": "Artinya HCIS belum dapat mengambil data dari Aset SQ, entah karena sambungannya belum diaktifkan atau Aset SQ sedang tidak dapat dihubungi.\n\nAnda tetap dapat melihat aset Anda langsung di Aset SQ lewat tombol Buka Aset SQ. Bila sambungan sedang terganggu, coba lagi beberapa saat kemudian.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ASSETS",
+    "title": "Apa arti tanda Menunggu konfirmasi Anda dan Lewat tanggal kembali?",
+    "body": "Menunggu konfirmasi Anda berarti aset sudah diserahkan kepada Anda, tetapi Anda belum menerimanya di Aset SQ. Aset ini tetap dihitung sebagai aset yang Anda pegang.\n\nLewat tanggal kembali berarti aset masih Anda pegang padahal tanggal Harus kembali sudah lewat. Segera kembalikan aset tersebut atau bicarakan dengan pengelola aset.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "ASSETS",
+    "title": "Ada aset yang tidak saya pegang tetapi tercantum atas nama saya. Apa yang harus saya lakukan?",
+    "body": "HCIS hanya menampilkan data dari Aset SQ dan tidak dapat mengubahnya. Bila aset baru diserahkan dan belum Anda terima, Anda dapat menolaknya di Aset SQ.\n\nUntuk kesalahan lain, hubungi pengelola aset melalui Aset SQ, atau hubungi Human Capital (HC) melalui kontak di halaman Bantuan. Bila muncul tulisan Sebagian aset tidak ditampilkan, buka Aset SQ untuk melihat daftar lengkapnya.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "DOCUMENTS",
+    "title": "Panduan singkat: Dokumen Kepegawaian",
+    "body": "Layanan Dokumen dipakai untuk meminta surat keterangan dan melihat dokumen kepegawaian yang sudah terbit untuk Anda, termasuk surat peringatan bila ada.\n\n1. Buka Semua Layanan, bagian Layanan Pegawai, lalu pilih Dokumen.\n2. Pada Minta surat keterangan, pilih Jenis surat dan tulis keperluannya, misalnya pengajuan beasiswa anak.\n3. Tekan Kirim permintaan.\n4. Pantau di Permintaan saya. Statusnya: Menunggu keputusan, Disetujui, menunggu terbit, Sudah terbit, Ditolak, atau Dibatalkan.\n5. Selama masih Menunggu keputusan, Anda dapat menekan Batalkan.\n6. Surat yang sudah terbit tampil di Surat yang sudah terbit, lengkap dengan nomor surat, tanggal, dan penandatangan.\n\nPermintaan diputuskan oleh HC. Nomor surat baru diberikan saat surat terbit, dan Anda menerima notifikasi saat permintaan diputuskan dan saat surat terbit. Bila permintaan ditolak, catatan HC tampil di bawahnya.\n\nSurat keterangan penghasilan belum tersedia. Bila ada yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "DOCUMENTS",
+    "title": "Surat apa saja yang bisa saya minta lewat HCIS?",
+    "body": "Jenis surat yang dapat Anda minta tampil di pilihan Jenis surat. Untuk pegawai aktif, yang tersedia saat ini adalah Surat Keterangan Kerja. Surat keterangan penghasilan belum tersedia.\n\nSurat keterangan pengalaman kerja (paklaring) diperuntukkan bagi pegawai yang hubungan kerjanya sudah berakhir dan diterbitkan langsung oleh HC, bukan diminta lewat halaman ini.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "DOCUMENTS",
+    "title": "Bagaimana cara mendapatkan salinan surat yang sudah terbit?",
+    "body": "Surat yang sudah terbit tercatat di bagian Surat yang sudah terbit beserta nomor, tanggal terbit, dan penandatangannya. Saat ini halaman Dokumen belum menyediakan tombol cetak atau unduh untuk surat tersebut.\n\nUntuk mendapatkan salinan cetaknya, hubungi Human Capital (HC) melalui kontak di halaman Bantuan dan sebutkan nomor suratnya.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "DOCUMENTS",
+    "title": "Berapa banyak permintaan surat yang boleh saya ajukan sekaligus?",
+    "body": "Saat ini setiap pegawai boleh memiliki paling banyak 3 permintaan surat yang masih terbuka sekaligus.\n\nBila batas itu tercapai, tunggu sampai salah satu permintaan diputuskan, atau batalkan permintaan yang masih Menunggu keputusan dan tidak lagi Anda perlukan.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "DOCUMENTS",
+    "title": "Saya menerima surat peringatan di HCIS. Apa arti tombol Saya telah membaca?",
+    "body": "Surat peringatan hanya dapat dilihat oleh Anda dan petugas HC yang berwenang; atasan tidak otomatis melihatnya. Tombol Saya telah membaca adalah tanda terima bahwa Anda sudah melihat surat tersebut. Tanda ini bukan persetujuan dan tidak membatalkan surat.\n\nSaat ini masa berlaku surat peringatan umumnya 6 bulan sejak tanggal berlaku. Bila ada pertanyaan tentang isinya, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "PERFORMANCE",
+    "title": "Panduan singkat: Penilaian Kinerja",
+    "body": "Layanan Kinerja dipakai untuk mengisi penilaian diri dan melihat hasil penilaian kinerja Anda pada setiap siklus. Atasan Anda memberi nilai, lalu HC mengesahkan.\n\n1. Buka Semua Layanan, bagian Kinerja & Pengembangan, lalu pilih Kinerja / KPI.\n2. Pada tab Penilaian saya, pilih penilaian dari siklus yang sedang berjalan.\n3. Bila statusnya Menunggu penilaian diri, pilih nilai 1 sampai 4 untuk setiap indikator, tulis capaian dan kendala bila perlu, lalu tekan Kirim penilaian diri.\n4. Penilaian lalu berpindah ke status Menunggu penilai, kemudian Menunggu pengesahan HC.\n5. Setelah status Final, nilai dan predikat Anda tampil. Tekan Tandai sudah dibaca dan tulis tanggapan bila ingin.\n\nSkala nilai: 4 Sangat baik, 3 Baik, 2 Cukup, 1 Kurang. Penilaian diri menjadi bahan pertimbangan atasan dan tidak dihitung ke nilai akhir. Penilaian yang tidak dinilai sampai siklus ditutup berstatus Tidak dinilai.\n\nPenilaian ini belum memengaruhi tunjangan kinerja. Bila penilai Anda tidak tepat atau ada yang tidak sesuai, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PERFORMANCE",
+    "title": "Apakah penilaian diri saya ikut menentukan nilai akhir?",
+    "body": "Tidak. Saat ini nilai akhir hanya berasal dari nilai yang diberikan penilai, yaitu atasan langsung Anda. Penilaian diri menjadi bahan pertimbangan penilai sebelum memberi nilai.\n\nMeski begitu, isilah penilaian diri dengan jujur dan lengkap, termasuk capaian dan kendala, agar atasan memahami pekerjaan Anda.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PERFORMANCE",
+    "title": "Bagaimana nilai akhir dan predikat dihitung?",
+    "body": "Setiap indikator dinilai 1 sampai 4 dan punya bobot. Nilai akhir adalah rata-rata berbobot dari nilai penilai, antara 1,00 dan 4,00. Indikator bawaan saat ini: Hasil kerja 30 persen, Disiplin dan kehadiran 20, Akhlak dan adab 20, Kerja sama dan komunikasi 15, serta Inisiatif dan pengembangan diri 15.\n\nPredikat bawaan: A Sangat baik untuk nilai 3,50 ke atas, B Baik mulai 2,50, C Cukup mulai 1,50, dan D Kurang di bawahnya. HC dapat menyesuaikan indikator, bobot, dan batas predikat untuk siklus tertentu sebelum siklus dibuka.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PERFORMANCE",
+    "title": "Saya tidak setuju dengan hasil penilaian. Bisakah saya mengajukan banding?",
+    "body": "Saat ini belum ada proses banding di HCIS. Anda dapat menyampaikan tanggapan saat menekan Tandai sudah dibaca, paling banyak 1000 karakter. Tanggapan dicatat, tetapi tidak mengubah nilai.\n\nPenilaian yang sudah Final tidak dapat diubah. Bila ada keberatan, bicarakan dengan atasan Anda atau hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PERFORMANCE",
+    "title": "Saya terlambat mengisi penilaian diri. Apakah masih bisa?",
+    "body": "Masih bisa, selama penilai belum memberi nilai. Bila batas penilaian diri sudah lewat, penilai boleh langsung menilai tanpa menunggu penilaian diri Anda.\n\nJadi, segera isi penilaian diri begitu siklus dibuka. Anda akan menerima notifikasi saat penilaian kinerja dibuka.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "PERFORMANCE",
+    "title": "Apakah hasil penilaian kinerja memengaruhi gaji atau tunjangan saya?",
+    "body": "Saat ini tidak. Hasil penilaian kinerja di HCIS belum dipakai untuk menghitung tunjangan kinerja atau gaji, dan tidak menyimpan persentase maupun nominal uang.\n\nHasilnya dipakai sebagai catatan kinerja dan bahan pembinaan. Riwayat penilaian Anda dari siklus-siklus sebelumnya tetap dapat dilihat di tab Penilaian saya.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "GUIDE",
+    "topic": "APPROVALS",
+    "title": "Panduan singkat: Persetujuan untuk atasan dan approver",
+    "body": "Bagian ini untuk atasan langsung dan approver unit yang memutuskan pengajuan anggota timnya. Pengajuan cuti, perjalanan dinas, dan pinjaman yang menunggu keputusan Anda dikumpulkan di menu Persetujuan.\n\n1. Buka menu Persetujuan di kelompok Tugas (di HP: Approval). Jumlah yang menunggu juga tampil di kotak Perlu tindakan pada Beranda.\n2. Periksa bagian Cuti, Perjalanan Dinas, dan Pinjaman. Hanya tahap yang sedang menjadi giliran Anda yang muncul.\n3. Baca rinciannya, misalnya tanggal, jumlah hari kerja, dan peran Anda (Atasan langsung atau Approver unit).\n4. Tekan Setujui atau Tolak. Alasan penolakan cuti boleh dikosongkan; untuk perjalanan dinas dan pinjaman, alasan wajib minimal 5 karakter.\n5. Setelah Anda menyetujui, pengajuan berlanjut ke penyetuju berikutnya atau selesai.\n\nPersetujuan lain ada di tempat masing-masing: lembur bawahan di menu Lembur Tim, penilaian kinerja anggota tim di tab Tim yang saya nilai pada halaman Kinerja, dan permintaan tukar shift dari rekan di menu Tukar Shift pada bagian Menunggu keputusan Anda.\n\nDaftar penyetuju ditetapkan saat pegawai mengajukan. Bila Anda merasa tidak seharusnya menjadi penyetuju, atau tidak dapat memutuskan karena berhalangan, hubungi Human Capital (HC) melalui kontak di halaman Bantuan.",
+    "sortOrder": 10
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Kenapa saya melihat menu Persetujuan padahal saya bukan atasan?",
+    "body": "Menu Persetujuan dan Lembur Tim tampil untuk semua pegawai, tetapi isinya hanya muncul bila Anda tercatat sebagai penyetuju sebuah pengajuan.\n\nBila Anda bukan penyetuju, halaman itu akan tertulis Tidak ada approval yang menunggu. Anda tidak perlu melakukan apa pun.",
+    "sortOrder": 20
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Bagaimana cara menyetujui lembur bawahan saya?",
+    "body": "Buka menu Lembur Tim, tab Perlu persetujuan. Untuk setiap pengajuan, Anda dapat mengubah Menit disetujui (tidak boleh melebihi yang diajukan), lalu tekan Setujui. Untuk menolak, isi Catatan terlebih dahulu karena wajib, lalu tekan Tolak.\n\nUntuk beberapa pengajuan sekaligus, centang pengajuannya lalu tekan Setujui sesuai pengajuan. Persetujuan di HCIS berlaku sebagai persetujuan tertulis, dan HC menerima pemberitahuan atas lembur yang disetujui.",
+    "sortOrder": 30
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Bagaimana cara memerintahkan lembur kepada bawahan?",
+    "body": "Buka menu Lembur Tim, lalu tekan Perintahkan lembur. Cari bawahan langsung dengan nama atau NIP (bisa lebih dari satu orang), isi Tanggal, Durasi (menit), dan Keterangan, lalu tekan Kirim.\n\nPerintah lembur baru berlaku setelah pegawai menekan Setuju. Statusnya tampil di tab Perintah lembur: Menunggu persetujuan pegawai, Disetujui pegawai, Ditolak pegawai, atau Dibatalkan. Selama masih menunggu, Anda dapat menekan Batalkan perintah.",
+    "sortOrder": 40
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Struktur atau atasan berubah setelah pegawai mengajukan. Siapa yang menyetujui?",
+    "body": "Daftar penyetuju ditetapkan dan disimpan saat pegawai mengajukan. Perubahan struktur organisasi sesudahnya tidak memindahkan pengajuan yang sudah berjalan; pengajuan tetap menunggu penyetuju yang tercatat.\n\nBila penyetuju yang tercatat sudah tidak dapat memutuskan, misalnya karena pindah tugas, hubungi Human Capital (HC) melalui kontak di halaman Bantuan. Pengajuan baru akan memakai struktur yang berlaku saat diajukan.",
+    "sortOrder": 50
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Apakah saya mendapat pemberitahuan saat ada pengajuan yang perlu saya setujui?",
+    "body": "Untuk perjalanan dinas, pinjaman, lembur, dan penilaian kinerja, Anda menerima notifikasi di HCIS saat tiba giliran Anda.\n\nUntuk pengajuan cuti, saat ini belum ada notifikasi khusus. Periksa menu Persetujuan secara rutin, atau lihat kotak Perlu tindakan di Beranda yang menampilkan jumlah persetujuan yang menunggu.",
+    "sortOrder": 60
+  },
+  {
+    "kind": "FAQ",
+    "topic": "APPROVALS",
+    "title": "Bagaimana cara menilai kinerja anggota tim saya?",
+    "body": "Buka halaman Kinerja, lalu pilih tab Tim yang saya nilai. Pilih penilaian anggota tim, baca penilaian dirinya, lalu pilih nilai 1 sampai 4 untuk setiap indikator dan tekan Kirim nilai.\n\nAnda dapat menilai setelah pegawai mengirim penilaian diri, atau setelah batas penilaian diri lewat. Nilai Anda kemudian disahkan HC. Bila HC mengembalikannya, Anda akan diberi tahu beserta alasannya dan dapat menilai ulang.",
+    "sortOrder": 70
+  }
+]

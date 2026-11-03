@@ -13,6 +13,7 @@ import {
   Clock3,
   Grid2X2,
   Home,
+  LifeBuoy,
   ShieldCheck,
   TimerReset,
   UserRoundCog,
@@ -51,6 +52,8 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards, category: "pay" },
   { label: "Data Saya", href: "/app/my-data", icon: UserRoundCog, category: "service" },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },
+  // HELP-001: every employee session reads the help center.
+  { label: "Bantuan", href: "/app/help", icon: LifeBuoy, category: "service" },
 ];
 
 const managementNavigation = [

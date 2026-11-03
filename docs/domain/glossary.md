@@ -66,6 +66,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Training Program / Program Pelatihan | Wadah pelatihan internal dengan sesi terjadwal, peserta, dan daftar hadir per sesi (TRAIN-001). Kehadiran sesi bukan presensi kerja. |
 | Training Record / Catatan Pelatihan | Riwayat resmi pelatihan per pegawai: internal (dibuat saat program ditutup) atau eksternal (diajukan pegawai, diverifikasi HC), dengan jam pelatihan dan sertifikat opsional (TRAIN-001). |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
+| Help Article / Artikel Bantuan | HELP-001: FAQ (tanya-jawab) atau panduan singkat satu layanan di Pusat Bantuan, pada satu topik tetap, berstatus draf, terbit, atau arsip. Pegawai hanya membaca yang terbit. |
+| Help Contact / Kontak HC | HELP-001: kanal resmi Human Capital (WhatsApp, telepon, email, atau lokasi) yang ditampilkan di Pusat Bantuan; dikelola HC, paling banyak 20. |
 | Legacy HCIS | Implementasi sebelumnya yang digunakan untuk discovery dan sumber migrasi. |
 | Synthetic Data | Data buatan yang tidak berasal dari atau sengaja menyerupai data individu nyata. |
 

@@ -226,7 +226,7 @@ export function createWhatsAppSender(
 
 /**
  * CAL-001 K-17: null when every recipient may receive real WhatsApp (`WHATSAPP_RECIPIENT_MODE=all`),
- * otherwise the allowed E.164 numbers. An empty set allows nobody.
+ * otherwise the NIPs (employee numbers) allowed to. An empty set allows nobody.
  */
 export function whatsappAllowlist(config: Pick<ApiConfig, "WHATSAPP_RECIPIENT_MODE" | "WHATSAPP_ALLOWLIST">): ReadonlySet<string> | null {
   return config.WHATSAPP_RECIPIENT_MODE === "all" ? null : new Set(config.WHATSAPP_ALLOWLIST);

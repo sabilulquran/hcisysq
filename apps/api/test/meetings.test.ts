@@ -385,10 +385,10 @@ describe("CAL-001 WhatsApp", () => {
     const defaults = loadConfig(base);
     expect(defaults.WHATSAPP_RECIPIENT_MODE).toBe("allowlist");
     expect(whatsappAllowlist(defaults)).toEqual(new Set());
-    const listed = loadConfig({ ...base, WHATSAPP_ALLOWLIST: "0812-3456-7890, +6281234567890 ,628111111111" });
-    expect(whatsappAllowlist(listed)).toEqual(new Set(["+6281234567890", "+628111111111"]));
-    expect(() => loadConfig({ ...base, WHATSAPP_ALLOWLIST: "021-555-1234" })).toThrow(/not an Indonesian mobile number/);
-    expect(whatsappAllowlist(loadConfig({ ...base, WHATSAPP_RECIPIENT_MODE: "all", WHATSAPP_ALLOWLIST: "08123456789" }))).toBeNull();
+    const listed = loadConfig({ ...base, WHATSAPP_ALLOWLIST: "202001011990010001, 202001011990010002 ,202001011990010001" });
+    expect(whatsappAllowlist(listed)).toEqual(new Set(["202001011990010001", "202001011990010002"]));
+    expect(() => loadConfig({ ...base, WHATSAPP_ALLOWLIST: "+62 812 3456 7890" })).toThrow(/NIPs/);
+    expect(whatsappAllowlist(loadConfig({ ...base, WHATSAPP_RECIPIENT_MODE: "all", WHATSAPP_ALLOWLIST: "202001011990010001" }))).toBeNull();
   });
 
   it("kirim adapter re-authenticates once on 401 and classifies failures", async () => {

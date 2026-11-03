@@ -539,7 +539,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     expect(final.rows[0]).toMatchObject({ status: "HANDED_OVER", kirim_message_id: "kirim-msg-1", attempts: 2 });
   });
 
-  it("CAL-001 K-17: before go-live real WhatsApp reaches only allowlisted numbers; the rest are SKIPPED without a call", async () => {
+  it("CAL-001 K-17: before go-live real WhatsApp reaches only allowlisted employees; the rest are SKIPPED without a call", async () => {
     const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.noAccount.employeeId] });
     const sent: string[] = [];
     const fetchImpl: FetchLike = async (url, init) => {
@@ -552,7 +552,9 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
       new ClientCredentialsTokenProvider({ tokenUrl: "https://sso.example/token", clientId: "hcis-api", clientSecret: "s", audience: "sq-hub-kirim" }, fetchImpl),
       fetchImpl,
     );
-    const runner = new MeetingRunner(savepointPool(client), sender, { origin: null, allowlist: new Set(["+6281200000002"]) });
+    // The allowlist holds NIPs; the phone comes from the employee record.
+    const aliceNip = (await client.query<{ nip: string }>(`SELECT employee_number AS nip FROM employees WHERE id = $1`, [people.alice.employeeId])).rows[0]!.nip;
+    const runner = new MeetingRunner(savepointPool(client), sender, { origin: null, allowlist: new Set([aliceNip]) });
     await runner.tick();
     expect(sent).toEqual(["+6281200000002"]);
     const rows = await client.query<{ status: string; error_code: string | null }>(

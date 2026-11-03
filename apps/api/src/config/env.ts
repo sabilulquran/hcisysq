@@ -103,19 +103,19 @@ const envSchema = z
       z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/).optional(),
     ),
     // CAL-001 K-17: until the owner declares HCIS live to staff, real WhatsApp goes only to the
-    // numbers in WHATSAPP_ALLOWLIST; everyone else is recorded SKIPPED (not_allowlisted).
-    // `all` is the one switch that lifts it.
+    // employees whose NIP (`employees.employee_number`) is in WHATSAPP_ALLOWLIST; everyone else is
+    // recorded SKIPPED (not_allowlisted). The list holds NIPs, never phone numbers, so no private
+    // number is copied into final.env. `all` is the one switch that lifts it.
     WHATSAPP_RECIPIENT_MODE: z.preprocess((value) => value === "" ? undefined : value, z.enum(["allowlist", "all"]).default("allowlist")),
     WHATSAPP_ALLOWLIST: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().optional().transform((value, ctx) => {
-        const numbers = (value ?? "").split(",").map((part) => part.trim()).filter(Boolean);
-        const normalized = numbers.map((part) => normalizeIndonesianMobile(part));
-        if (normalized.some((part) => part === null)) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "WHATSAPP_ALLOWLIST holds a number that is not an Indonesian mobile number" });
+        const nips = (value ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+        if (nips.some((part) => !/^[A-Za-z0-9.-]{1,40}$/.test(part))) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "WHATSAPP_ALLOWLIST must be comma-separated NIPs (employee numbers)" });
           return z.NEVER;
         }
-        return [...new Set(normalized as string[])];
+        return [...new Set(nips)];
       }),
     ),
     // §9.3: the reminder and WhatsApp runner inside the API process; "0" stops it (e.g. a second instance).
@@ -334,14 +334,6 @@ const envSchema = z
   });
 
 export type ApiConfig = z.infer<typeof envSchema>;
-
-/** E.164 for an Indonesian mobile number (+628…), else null. Same rule as the WhatsApp port. */
-function normalizeIndonesianMobile(input: string): string | null {
-  const digits = input.replace(/[\s.\-()]/g, "").replace(/^\+/, "");
-  if (!/^\d+$/.test(digits)) return null;
-  const national = digits.startsWith("62") ? digits.slice(2) : digits.startsWith("0") ? digits.slice(1) : digits.startsWith("8") ? digits : null;
-  return national && /^8\d{8,11}$/.test(national) ? `+62${national}` : null;
-}
 
 type KirimSettingsSource = Pick<
   ApiConfig,

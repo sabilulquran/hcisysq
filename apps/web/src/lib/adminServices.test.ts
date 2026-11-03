@@ -42,6 +42,9 @@ describe("admin module catalog", () => {
     // LOAN-001 Package 1: the register, disbursement and repayments; no payroll deduction yet.
     expect(getAdminService("loans")?.stage).toBe("available");
     expect(getAdminService("loans")?.href).toBe("/admin/loans");
+    // HELP-001 Package 1: articles, contacts and history for Human Capital.
+    expect(getAdminService("help-center")?.stage).toBe("available");
+    expect(getAdminService("help-center")?.href).toBe("/admin/help");
     // TRAIN-001 Package 1 ships training records; LMS content and evaluation stay later.
     expect(getAdminService("learning")?.stage).toBe("available");
     expect(getAdminService("learning")?.href).toBe("/admin/training");

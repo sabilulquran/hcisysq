@@ -164,7 +164,7 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 ### 9. Reporting and user support
 
 - HR reports and exports — RPT-001 (DISCOVERY). Legacy HC could download the employee list, a leave report and a payroll summary as CSV, besides the monthly attendance report. HCIS already has attendance reports (ATT-009, ATT-014) but no employee-list export and no leave report. Every export needs its own permission, scope filtering before the export, an audit event, and leaves out identity and bank numbers by default.
-- In-app help center — HELP-001 (DISCOVERY). Legacy had FAQ, a user guide and a contact form. HCIS is about to open to all staff, so a short guide per service and one known place to ask HC are worth having before launch. A contact form must not grow into general chat, which stays outside HCIS.
+- In-app help center — HELP-001. Package 1 is implemented (`docs/domain/help-center.md`): FAQ and a short guide per service on a fixed topic list, search, HC contacts, and an HC admin screen with revisions and audit history. The initial content ships as drafts for HC to review before publishing. There is no contact form; a form must not grow into general chat, which stays outside HCIS.
 
 ## UX presentation
 

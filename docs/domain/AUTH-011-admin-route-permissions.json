@@ -4107,6 +4107,140 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/help/overview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/help/articles",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/help/articles/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/admin/help/articles",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "POST",
+    "url": "/admin/help/articles",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/admin/help/articles/:id",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "PUT",
+    "url": "/admin/help/articles/:id",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "POST",
+    "url": "/admin/help/articles/:id/publish",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "POST",
+    "url": "/admin/help/articles/:id/archive",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "POST",
+    "url": "/admin/help/articles/:id/restore",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/admin/help/articles/:id/revisions",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/admin/help/contacts",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "POST",
+    "url": "/admin/help/contacts",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "PUT",
+    "url": "/admin/help/contacts/:id",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "DELETE",
+    "url": "/admin/help/contacts/:id",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/help/routes.ts",
+    "method": "GET",
+    "url": "/admin/help/audit-events",
+    "permissions": [
+      "help.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
     "method": "GET",
     "url": "/attendance/arrangements/me",

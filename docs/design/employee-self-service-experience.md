@@ -122,6 +122,7 @@ Payroll calculation is an HC/admin workspace capability, not an employee launche
 
 - Pengumuman — NOTIF-002 — discovery.
 - Notifikasi & Pengingat — NOTIF-001 / NOTIF-003 — discovery.
+- Pusat Bantuan — HELP-001 — available (Package 1); also a "Bantuan" entry in the employee navigation.
 
 Fingerprint/device administration, payroll processing, recruitment, and multi-site/branch configuration belong to HC/admin workspaces and therefore are not shown as ordinary employee actions.
 

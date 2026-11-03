@@ -481,6 +481,27 @@
       "list": "single"
     },
     {
+      "url": "/admin/help/articles",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/help/articles/:id",
+      "list": "single"
+    },
+    {
+      "url": "/admin/help/articles/:id/revisions",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/help/audit-events",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/help/contacts",
+      "list": "bounded",
+      "reason": "Kontak HC Pusat Bantuan; rute pembuatnya menolak kontak ke-21 (HELP-001 D-09)."
+    },
+    {
       "url": "/admin/job-classifications",
       "list": "paged"
     },
@@ -819,6 +840,19 @@
     {
       "url": "/health",
       "list": "single"
+    },
+    {
+      "url": "/help/articles",
+      "list": "paged"
+    },
+    {
+      "url": "/help/articles/:id",
+      "list": "single"
+    },
+    {
+      "url": "/help/overview",
+      "list": "bounded",
+      "reason": "Tiga belas topik tetap HELP-001 (D-01) dan kontak HC aktif yang dibatasi 20 oleh rute pembuatnya (D-09)."
     },
     {
       "url": "/iclock/*",

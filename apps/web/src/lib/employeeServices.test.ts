@@ -35,6 +35,9 @@ describe("employee service catalog", () => {
     // LOAN-001 Package 1 ships request, approval, schedule and repayment records.
     expect(getEmployeeService("loan")?.stage).toBe("available");
     expect(getEmployeeService("loan")?.href).toBe("/app/loans");
+    // HELP-001 Package 1: every employee reads the help center.
+    expect(getEmployeeService("help")?.stage).toBe("available");
+    expect(getEmployeeService("help")?.href).toBe("/app/help");
     expect(getEmployeeService("training")?.stage).toBe("available");
     expect(getEmployeeService("training")?.href).toBe("/app/training");
   });

@@ -969,8 +969,17 @@ export async function registerWorkArrangementRoutes(
       if (item.employeeStatus !== "active") {
         throw new ArrangementError(409, "ARRANGEMENT_EMPLOYEE_NOT_ACTIVE", "Pegawai ini sudah tidak aktif; batalkan pengajuannya.");
       }
-      // The same date lock as a shift swap decision, so the two cannot publish over each other.
+      // The same date lock as a shift swap decision, then the roster-week and employee locks of
+      // Perubahan Jadwal (ATT-011-4, sorted like there), all before the stale check: a schedule change
+      // committed by HC in between would otherwise be copied and then silently overwritten.
       await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`shift-swap:${item.employeeId}:${item.workDate}`]);
+      const week = await client.query<{ weekStart: string }>(
+        `SELECT date_trunc('week', $1::date)::date::text AS "weekStart"`,
+        [item.workDate],
+      );
+      for (const key of [`attendance-roster-week:${week.rows[0]!.weekStart}`, `attendance-schedule-employee:${item.employeeId}`].sort()) {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
+      }
       await assertNoActiveShiftSwap(client, item.employeeId, item.workDate);
       const current = await resolveSchedule(client, item.employeeId, item.workDate);
       if (current.state !== "scheduled"

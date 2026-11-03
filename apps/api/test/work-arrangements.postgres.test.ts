@@ -339,7 +339,16 @@ describe.skipIf(!allowed)("ATT-015 work arrangements", () => {
   });
 
   it("ATT-015-H: approved leave on the same day wins over the arrangement", async () => {
-    const request = await approved();
+    const twoDaysAgo = addDays(today, -2);
+    // A holiday inside the range stays a rest day, untouched by the arrangement.
+    await client.query(
+      `INSERT INTO leave_calendar_exceptions (calendar_date, is_working_day, label) VALUES ($1::date, false, 'Libur Sintetis')
+       ON CONFLICT (calendar_date) DO UPDATE SET is_working_day = false`,
+      [twoDaysAgo],
+    );
+    const request = await approved({ startOn: twoDaysAgo, endOn: yesterday });
+    expect(await latestResult(twoDaysAgo)).toMatchObject({ status: "off", justified: false, sourceWorkArrangementId: null });
+    expect((await latestResult(yesterday))?.status).toBe("field_assignment");
     await client.query(
       `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling, idempotency_key)
        VALUES ($1,$2,'annual','approved',$3,$3,1,'none',$4)`,
@@ -347,7 +356,7 @@ describe.skipIf(!allowed)("ATT-015 work arrangements", () => {
     );
     await materializeAttendanceResult(savepointPool(client), people.requester.employeeId, yesterday);
     expect(await latestResult(yesterday)).toMatchObject({ status: "leave", sourceWorkArrangementId: null });
-    void request;
+    expect(request.final.recalculatedDates).toBe(2);
   });
 
   it("ATT-015-J: a schedule change is applied by HC as a new roster version, and refused when stale", async () => {

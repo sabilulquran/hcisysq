@@ -738,8 +738,9 @@ export async function materializeAttendanceResult(
     );
     const disposition = leaveDisposition.rows[0] ?? null;
 
-    // ATT-015 §7.1: an approved tugas luar or WFH/WFA counts only when no leave or resolution decided the day.
-    const arrangementResult = disposition ? null : await client.query<WorkArrangementRow>(
+    // ATT-015 §7.1: an approved tugas luar or WFH/WFA counts only on a scheduled working day that no leave
+    // or resolution decided. Rest days and misconfigured days stay untouched, hash and source column included.
+    const arrangementResult = disposition || schedule.state !== "scheduled" ? null : await client.query<WorkArrangementRow>(
       `SELECT id,
               CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
        FROM attendance_work_arrangement_requests

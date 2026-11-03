@@ -15,6 +15,8 @@
 --   ALTER TABLE attendance_result_versions ADD CONSTRAINT attendance_result_versions_status_check
 --     CHECK (status IN ('scheduled', 'pending', 'present', 'late', 'incomplete', 'leave', 'absent', 'off', 'configuration_error'));
 
+-- The migrator runs this file in one transaction, so the DROP holds ACCESS EXCLUSIVE until COMMIT either
+-- way; the table is small (one row per employee-day version), and the scan takes well under a second.
 ALTER TABLE attendance_result_versions DROP CONSTRAINT IF EXISTS attendance_result_versions_status_check;
 ALTER TABLE attendance_result_versions ADD CONSTRAINT attendance_result_versions_status_check
   CHECK (status IN (
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS attendance_work_arrangement_requests (
   schedule_snapshot jsonb NULL,
   applied_roster_id uuid NULL REFERENCES attendance_rosters(id),
   cancelled_by_account_id uuid NULL REFERENCES accounts(id),
-  cancel_reason text NULL,
+  cancel_reason text NULL CHECK (cancel_reason IS NULL OR char_length(cancel_reason) BETWEEN 5 AND 500),
   submitted_at timestamptz NOT NULL DEFAULT now(),
   final_decided_at timestamptz NULL,
   applied_at timestamptz NULL,

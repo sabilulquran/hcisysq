@@ -1,7 +1,7 @@
-# ORG-012 — Akun Organ Yayasan sebagai approver struktural
+# ORG-013 — Akun Organ Yayasan sebagai approver struktural
 
 **Status:** ACCEPTED (keputusan owner 2026-11-03). Penyimpanan principal akun, permission, role, dan route keputusan sudah ada sejak migrasi `0023_leave_approval_principals.sql`. Yang belum ada adalah resolusi struktural ORG-004 ke principal akun dan kanal pemberian role ke akun `FOUNDATION_BOARD`.
-**Specification:** ORG-012
+**Specification:** ORG-013
 **Menutup:** gap W-3 di `organization-designer-ux-gap-analysis.md` dan keputusan E di `organization-designer-ux-implementation-plan.md`
 **Related:** ORG-004 (`dynamic-organization-structure.md`), APR-001 (`workflows/approval-engine.md`), LEAVE-003-N, ORG-003, ORG-010, AUTH-014 (`sq-core-administrator-layers.md`), GOV-001 (`../product/organ-portal-concept.md`, DRAFT)
 
@@ -36,13 +36,13 @@ Tidak termasuk:
 - aturan workflow, role, permission, atau route baru;
 - akses organ ke `/app` atau `/admin`. `FOUNDATION_BOARD` tetap ditolak di sana;
 - akses payroll untuk Pengurus. ADR-0003 (amandemen 2026-10-27), ORG-003-F, dan ORG-010-F tetap berlaku;
-- token hasil token exchange pada route keputusan (lihat ORG-012-3);
-- aktivasi `STRUCTURE`. ORG-012 hanya berpengaruh bila rollout workflow tersebut sudah `STRUCTURE`, dan aktivasi itu tetap melalui `org004-operational-validation.md`;
+- token hasil token exchange pada route keputusan (lihat ORG-013-3);
+- aktivasi `STRUCTURE`. ORG-013 hanya berpengaruh bila rollout workflow tersebut sudah `STRUCTURE`, dan aktivasi itu tetap melalui `org004-operational-validation.md`;
 - persetujuan akhir MPP di Karir SQ (REC-IMPL-006). Aplikasi itu memakai mesinnya sendiri dan mengikuti keputusan yang sama di repository-nya.
 
 ## Aturan
 
-### ORG-012-1 Resolusi jabatan `ACCOUNT`
+### ORG-013-1 Resolusi jabatan `ACCOUNT`
 
 Saat traversal resolver mencapai incumbent efektif:
 
@@ -58,7 +58,7 @@ Saat traversal resolver mencapai incumbent efektif:
 
 Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 
-### ORG-012-2 Pemberian role ke akun Organ Yayasan
+### ORG-013-2 Pemberian role ke akun Organ Yayasan
 
 - Role yang dipakai adalah `governance_leave_approver` yang sudah ada. Tidak ada role atau migrasi role baru.
 - Role ini tidak membawa `board.read`, data pribadi, atau payroll. Akses baca dasbor tetap lewat ORG-003/ORG-010.
@@ -72,7 +72,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 - `governance_leave_approver` ditambahkan ke `HCIS_ROLES` agar invarian AUTH-014 yang lain tetap berlaku, dan `leave.governance.approve` ditambahkan ke `HCIS_PERMISSIONS` hanya untuk role ini. Target `EMPLOYEE` ditolak untuk role ini di semua kanal. Rujukan amandemen sudah dicatat di ORG-003, ORG-010 §1, dan AUTH-014.
 - Capability selain `leave.governance.approve` hanya ditambahkan ketika spesifikasi workflow menetapkan langkah yang jatuh ke jabatan organ.
 
-### ORG-012-3 Keputusan oleh principal akun
+### ORG-013-3 Keputusan oleh principal akun
 
 - Keputusan memakai `GET /leave/approvals` dan `POST /leave/approvals/:stepId/decision` yang sudah ada, beserta transisi, audit event, concurrency, dan notifikasi APR-001. Tidak ada state baru.
 - **v1 hanya menerima sesi cookie.** Route keputusan tetap menolak bearer, sehingga ORG-010-E tidak berubah.
@@ -84,7 +84,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 - **Batas data (amandemen terbatas ORG-003-C).** Data pengajuan bernama hanya dikembalikan untuk langkah yang dimiliki principal itu. Isinya jenis pengajuan, nama dan jabatan pengaju, periode, dan alasan pengajuan. Riwayat langkah hanya memuat status, waktu, dan jabatan approver, tanpa `decision_note` approver lain dan tanpa lampiran. Dasbor `/board` tetap agregat.
 - Tampilan v1 (`DRAFT`): sampai Portal Organ Yayasan tersedia, kotak persetujuan tampil di `/board` memakai route di atas.
 
-### ORG-012-4 Notifikasi oversight
+### ORG-013-4 Notifikasi oversight
 
 - Penerima oversight dihitung dari `positionKey` langkah final yang tersimpan di konteks resolusi, bukan dari `approver_employee_id`. Dengan begitu langkah final milik akun, misalnya Sekretaris, tetap menghasilkan oversight ke Ketua.
 - Penerima boleh berupa jabatan `ACCOUNT` dan disimpan sebagai `account_id` pada notification intent.
@@ -121,10 +121,10 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 
 ## Acceptance criteria
 
-- ORG-012-A: di `STRUCTURE`, jabatan `ACCOUNT` dengan akun `FOUNDATION_BOARD` aktif yang memegang `leave.governance.approve` menghasilkan langkah approval milik akun itu.
-- ORG-012-B: kepemilikan jabatan tanpa capability tidak pernah menghasilkan approver.
-- ORG-012-C: akun `EMPLOYEE` selalu diselesaikan sebagai principal pegawai. Orang yang sama ditentukan oleh akun atau `employee_id`, dan akun organ yang emailnya cocok dengan pegawai aktif ditolak. Self-approval diperiksa saat submit dan saat keputusan. Dedupe memakai kunci principal.
-- ORG-012-D: principal akun memutuskan lewat route `/leave/approvals` yang sudah ada, hanya dengan sesi cookie, dengan transisi dan audit APR-001, tanpa akses `/app` atau `/admin`.
-- ORG-012-E: `governance_leave_approver` hanya membawa `leave.governance.approve`, dan hanya dapat diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan dan tanggal berakhir. Target `EMPLOYEE` selalu ditolak.
-- ORG-012-F: perilaku `LEGACY` tidak berubah. SHADOW tetap tidak membuat langkah atau oversight, tetapi diagnostik shadow dan preview resolusi boleh berubah.
-- ORG-012-G: oversight dihitung dari jabatan langkah final, termasuk bila langkah final milik akun.
+- ORG-013-A: di `STRUCTURE`, jabatan `ACCOUNT` dengan akun `FOUNDATION_BOARD` aktif yang memegang `leave.governance.approve` menghasilkan langkah approval milik akun itu.
+- ORG-013-B: kepemilikan jabatan tanpa capability tidak pernah menghasilkan approver.
+- ORG-013-C: akun `EMPLOYEE` selalu diselesaikan sebagai principal pegawai. Orang yang sama ditentukan oleh akun atau `employee_id`, dan akun organ yang emailnya cocok dengan pegawai aktif ditolak. Self-approval diperiksa saat submit dan saat keputusan. Dedupe memakai kunci principal.
+- ORG-013-D: principal akun memutuskan lewat route `/leave/approvals` yang sudah ada, hanya dengan sesi cookie, dengan transisi dan audit APR-001, tanpa akses `/app` atau `/admin`.
+- ORG-013-E: `governance_leave_approver` hanya membawa `leave.governance.approve`, dan hanya dapat diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan dan tanggal berakhir. Target `EMPLOYEE` selalu ditolak.
+- ORG-013-F: perilaku `LEGACY` tidak berubah. SHADOW tetap tidak membuat langkah atau oversight, tetapi diagnostik shadow dan preview resolusi boleh berubah.
+- ORG-013-G: oversight dihitung dari jabatan langkah final, termasuk bila langkah final milik akun.

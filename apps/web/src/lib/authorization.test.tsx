@@ -149,6 +149,14 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "loans.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/loans")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/loans")).toBe(false);
+    // ORG-012: committees.read only; other HC permissions and Super Admin legacy do not open it.
+    expect(canAccessAdminPath(actor, "/admin/committees")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["committees.read"]), "/admin/committees")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["committees.read"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["committees.manage"]), "/admin/committees")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["organization.manage", "training.manage"]), "/admin/committees")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/committees")).toBe(false);
+    expect(canAccessAdminPath(session("FOUNDATION_BOARD", ["committees.read"]), "/admin/committees")).toBe(false);
     // HELP-001: help.manage only; other HC permissions and Super Admin legacy do not open it.
     expect(canAccessAdminPath(actor, "/admin/help")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin/help")).toBe(true);

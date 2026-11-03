@@ -17,7 +17,7 @@ Dokumen ini menyimpan baseline dari implementasi sebelumnya dan aturan permissio
 - Role menentukan capability; scope menentukan area/data tempat capability itu berlaku.
 - Role bukan pengganti policy berbasis resource.
 - Akses diberikan secara least privilege.
-- Organ Yayasan (`FOUNDATION_BOARD`) default-nya read only untuk statistik dan report yang diizinkan. Pengecualiannya hanya keputusan pada langkah approval yang tersimpan atas nama akunnya, dan hanya bila akun itu memegang `leave.governance.approve` (ORG-012).
+- Organ Yayasan (`FOUNDATION_BOARD`) default-nya read only untuk statistik dan report yang diizinkan. Pengecualiannya hanya keputusan pada langkah approval yang tersimpan atas nama akunnya, dan hanya bila akun itu memegang `leave.governance.approve` (ORG-013).
 - Super Admin adalah kewenangan teknis sistem, bukan representasi jabatan organisasi.
 - Status akun aktif adalah precondition terpisah dari role.
 - Akses data lintas unit harus eksplisit.
@@ -35,7 +35,7 @@ Nama final dapat disesuaikan saat implementasi, tetapi konsepnya:
 | Management | Management dashboard/report sesuai mandat |
 | Special Approver | Capability approval tertentu bila tidak berasal dari struktur normal |
 | Panel Organ Yayasan (`foundation_board_viewer`, ORG-010 ACCEPTED) | Hanya `board.read` scope organization: membaca `/board` dan governance summary untuk Pengurus bergaji yang tercatat sebagai Employee. Tanpa mutasi. Hanya Super Admin yang memberikan. |
-| Penyetuju cuti governance (`governance_leave_approver`, sudah ada sejak migrasi 0023; ORG-012 ACCEPTED) | Hanya `leave.governance.approve`: memutuskan langkah cuti yang tersimpan atas nama akun Organ Yayasan, misalnya Sekretaris untuk cuti Direktur. Tidak membawa `board.read`, data pribadi, atau payroll. Diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan (nomor SK) dan tanggal berakhir. |
+| Penyetuju cuti governance (`governance_leave_approver`, sudah ada sejak migrasi 0023; ORG-013 ACCEPTED) | Hanya `leave.governance.approve`: memutuskan langkah cuti yang tersimpan atas nama akun Organ Yayasan, misalnya Sekretaris untuk cuti Direktur. Tidak membawa `board.read`, data pribadi, atau payroll. Diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan (nomor SK) dan tanggal berakhir. |
 
 Jangan membuat role kombinasi seperti `pegawai-kepala-unit-finance`. Satu employee dapat memiliki lebih dari satu assignment.
 
@@ -156,6 +156,17 @@ Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/
 | `help.manage` | HC Admin (`human_capital_admin`) | membuat, mengedit, menerbitkan, mengarsipkan, memulihkan artikel; mengelola kontak HC; membaca revisi dan riwayat |
 
 Membaca Pusat Bantuan tidak membutuhkan permission: setiap sesi `EMPLOYEE` membaca artikel terbit dan kontak aktif (D-07). Super Admin tidak memperoleh `help.manage` lewat kompatibilitas legacy.
+
+### Kepanitiaan (ORG-012)
+
+Migration `0135_committee_permissions.sql`, berscope organisasi (`docs/domain/committees.md` §6, D-18 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `committees.read` | HC Admin (`human_capital_admin`) | daftar, detail, riwayat, rekap keikutsertaan |
+| `committees.manage` | HC Admin (`human_capital_admin`) | mencatat, mengelola anggota, menetapkan (SK), menyelesaikan, membatalkan; pencarian pegawai |
+
+Kepanitiaan Saya tidak membutuhkan permission: aksesnya keanggotaan. Kepanitiaan tidak memberi kewenangan approval apa pun. Super Admin tidak memperoleh `committees.*` lewat kompatibilitas legacy.
 
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 

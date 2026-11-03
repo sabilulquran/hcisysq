@@ -286,8 +286,8 @@ Compatibility rules:
 - ambiguous/missing principal shapes fail closed;
 - employee removal or later organization changes do not rewrite a historical approval step;
 - removed employees are not eligible to become new authorities, but their historical employee/approval records remain auditable;
-- this compatibility does not create governance routing under `LEGACY`, and does not authorize SHADOW/STRUCTURE, except as specified by ORG-012 for `STRUCTURE`;
-- ORG-012 (ACCEPTED 2026-11-03, `../organ-account-approver.md`) lets a structural resolver produce an account principal for an account-held position under `STRUCTURE`, only for an active `FOUNDATION_BOARD` account without `employee_id` that holds `leave.governance.approve`. An `EMPLOYEE` account in such a position resolves as the employee principal.
+- this compatibility does not create governance routing under `LEGACY`, and does not authorize SHADOW/STRUCTURE, except as specified by ORG-013 for `STRUCTURE`;
+- ORG-013 (ACCEPTED 2026-11-03, `../organ-account-approver.md`) lets a structural resolver produce an account principal for an account-held position under `STRUCTURE`, only for an active `FOUNDATION_BOARD` account without `employee_id` that holds `leave.governance.approve`. An `EMPLOYEE` account in such a position resolves as the employee principal.
 
 ## Required data
 

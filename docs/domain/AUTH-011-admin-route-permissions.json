@@ -4440,5 +4440,147 @@
     "permissions": [
       "attendance.arrangements.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/employee-options",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/participation",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/participation/:employeeId",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/:id",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/admin/committees/:id/history",
+    "permissions": [
+      "committees.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/committees/:id",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/members",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/committees/:id/members/:memberId",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/members/:memberId/end",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/activate",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/complete",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "POST",
+    "url": "/admin/committees/:id/cancel",
+    "permissions": [
+      "committees.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees/meeting-groups",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/committees/routes.ts",
+    "method": "GET",
+    "url": "/me/committees/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
   }
 ]

@@ -554,7 +554,7 @@ features:
       Implemented 2026-11-03 (docs/domain/workflows/leave-request.md "LEAVE-010"). The active line
       approver gets an in-app notification (NOTIF-004) when their step becomes pending; the requester
       can cancel Cuti Tahunan and planned leave while in_review at any stage, which closes open steps,
-      the HC task and the critical review (migration 0134) and tells the waiting approver. Special leave
+      the HC task and the critical review (migration 0136) and tells the waiting approver. Special leave
       reports and approved leave stay with HC (DRAFT).
     docs:
       - docs/domain/workflows/leave-request.md

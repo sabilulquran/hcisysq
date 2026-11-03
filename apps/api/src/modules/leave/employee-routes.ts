@@ -32,10 +32,13 @@ import {
   attachCriticalReview,
   loadApplicableCriticalPeriods,
 } from "./critical-period-store.js";
+import { notifyApprovalCancelled, notifyApprovalRequested } from "./approver-notifications.js";
 import {
+  assertLeaveRequestCancellable,
   decideLeaveApprovalStep,
   LeaveWorkflowError,
   type LeaveApprovalStepState,
+  type LeaveLineHandling,
   type LeaveRequestStatus,
 } from "./domain/request-workflow.js";
 import {
@@ -60,6 +63,10 @@ const annualSubmitSchema = annualRequestSchema.extend({
   idempotencyKey: z.string().uuid(),
 });
 const stepParamSchema = z.object({ stepId: z.string().uuid() });
+const requestParamSchema = z.object({ id: z.string().uuid() });
+const cancelSchema = z.object({
+  reason: z.string().trim().max(500).nullable().optional().transform((value) => value || null),
+});
 const decisionSchema = z.object({
   decision: z.enum(["approve", "reject"]),
   note: z.string().trim().max(1000).nullable().optional(),
@@ -117,7 +124,8 @@ interface RequestSummaryRow {
   submittedAt: Date;
   finalDecidedAt: Date | null;
   currentApproverName: string | null;
-  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | null;
+  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
+  canCancel: boolean;
 }
 
 interface InboxRow {
@@ -579,7 +587,8 @@ export async function registerEmployeeLeaveRoutes(
                 THEN 'Penyetuju Pengurus Yayasan'
               ELSE NULL
             END AS "currentApproverName",
-            critical_review.status AS "criticalReviewStatus"
+            critical_review.status AS "criticalReviewStatus",
+            (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
@@ -776,6 +785,12 @@ export async function registerEmployeeLeaveRoutes(
           firstStep.accountId ? "account" : "employee",
           firstStep.accountId ?? firstStep.employeeId!,
         );
+        await notifyApprovalRequested(client, {
+          requestId,
+          stepId: firstStep.id,
+          approverEmployeeId: firstStep.employeeId,
+          approverAccountId: firstStep.accountId,
+        });
       }
 
       await client.query("COMMIT");
@@ -815,7 +830,8 @@ export async function registerEmployeeLeaveRoutes(
           r.submitted_at AS "submittedAt",
           r.final_decided_at AS "finalDecidedAt",
           approver.full_name AS "currentApproverName",
-          critical_review.status AS "criticalReviewStatus"
+          critical_review.status AS "criticalReviewStatus",
+          (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel"
         FROM leave_requests r
         LEFT JOIN leave_request_approval_steps current_step
           ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
@@ -835,6 +851,123 @@ export async function registerEmployeeLeaveRoutes(
       });
     } catch (error) {
       return sendKnownError(reply, error);
+    }
+  });
+
+  // LEAVE-010: the requester withdraws line-approval leave that still awaits a decision.
+  // Decisions lock their step/task/review together with the request; this route locks the
+  // request and then those rows, so it takes every lock NOWAIT and never waits while holding
+  // one. A cancel that meets a decision in flight answers 409 LEAVE_REQUEST_BUSY instead of
+  // risking a deadlock; the decision goes through, and a retry then sees the new state.
+  app.post("/leave/me/requests/:id/cancel", async (request, reply) => {
+    const principal = await authenticateEmployee(request, reply);
+    if (!principal) return;
+    const params = requestParamSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(404).send({ code: "LEAVE_REQUEST_NOT_FOUND", message: "Pengajuan cuti tidak ditemukan." });
+    }
+    const body = cancelSchema.safeParse(request.body ?? {});
+    if (!body.success) {
+      return reply.status(400).send({
+        code: "INVALID_LEAVE_CANCELLATION",
+        message: "Alasan pembatalan paling panjang 500 karakter.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const employee = await loadEmployeeContext(client, principal.id);
+      const found = await client.query<{ status: LeaveRequestStatus; lineHandling: LeaveLineHandling; policyKey: string }>(
+        `SELECT status, line_handling AS "lineHandling", policy_key AS "policyKey"
+           FROM leave_requests
+          WHERE id = $1 AND employee_id = $2
+          FOR UPDATE NOWAIT`,
+        [params.data.id, employee.id],
+      );
+      const leave = found.rows[0];
+      if (!leave) {
+        throw new EmployeeLeaveError(404, "LEAVE_REQUEST_NOT_FOUND", "Pengajuan cuti tidak ditemukan.");
+      }
+      assertLeaveRequestCancellable(leave);
+
+      const steps = await client.query<{ status: string; approverEmployeeId: string | null; approverAccountId: string | null }>(
+        `SELECT status, approver_employee_id AS "approverEmployeeId", approver_account_id AS "approverAccountId"
+           FROM leave_request_approval_steps
+          WHERE leave_request_id = $1
+          FOR UPDATE NOWAIT`,
+        [params.data.id],
+      );
+      const hcTask = await client.query<{ status: string }>(
+        `SELECT status FROM leave_request_hc_tasks WHERE leave_request_id = $1 FOR UPDATE NOWAIT`,
+        [params.data.id],
+      );
+      const review = await client.query<{ status: string }>(
+        `SELECT status FROM leave_request_critical_reviews WHERE leave_request_id = $1 FOR UPDATE NOWAIT`,
+        [params.data.id],
+      );
+
+      await client.query(
+        `UPDATE leave_request_approval_steps SET status = 'cancelled'
+          WHERE leave_request_id = $1 AND status IN ('waiting', 'pending')`,
+        [params.data.id],
+      );
+      await client.query(
+        `UPDATE leave_request_hc_tasks SET status = 'cancelled', updated_at = now()
+          WHERE leave_request_id = $1 AND status IN ('waiting', 'pending', 'needs_correction')`,
+        [params.data.id],
+      );
+      await client.query(
+        `UPDATE leave_request_critical_reviews SET status = 'cancelled', updated_at = now()
+          WHERE leave_request_id = $1 AND status IN ('waiting', 'pending')`,
+        [params.data.id],
+      );
+      await client.query(
+        `UPDATE leave_requests SET status = 'cancelled', updated_at = now() WHERE id = $1`,
+        [params.data.id],
+      );
+
+      const pending = steps.rows.find((step) => step.status === "pending");
+      const approver = pending
+        ? { approverEmployeeId: pending.approverEmployeeId, approverAccountId: pending.approverAccountId }
+        : undefined;
+      const stage = approver
+        ? "line"
+        : review.rows[0]?.status === "pending"
+          ? "critical_review"
+          : "hc";
+      await addEvent(client, params.data.id, principal.id, "leave.request.cancelled", {
+        policyKey: leave.policyKey,
+        stage,
+        ...(body.data.reason ? { reason: body.data.reason } : {}),
+      });
+      if (approver) {
+        await enqueueNotification(
+          client,
+          params.data.id,
+          "leave.request.cancelled",
+          approver.approverAccountId ? "account" : "employee",
+          approver.approverAccountId ?? approver.approverEmployeeId!,
+        );
+        await notifyApprovalCancelled(client, { requestId: params.data.id, ...approver });
+      } else if (hcTask.rows.some((row) => row.status === "pending" || row.status === "needs_correction") || stage === "critical_review") {
+        await enqueueNotification(client, params.data.id, "leave.request.cancelled", "role", "human_capital");
+      }
+
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ id: params.data.id, status: "cancelled" });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      if ((error as { code?: unknown }).code === "55P03") {
+        return reply.status(409).send({
+          code: "LEAVE_REQUEST_BUSY",
+          message: "Pengajuan ini sedang diproses penyetuju. Muat ulang halaman, lalu coba lagi bila masih perlu dibatalkan.",
+        });
+      }
+      return sendKnownError(reply, error);
+    } finally {
+      client.release();
     }
   });
 
@@ -907,7 +1040,7 @@ export async function registerEmployeeLeaveRoutes(
         requesterEmployeeId: string;
         approverEmployeeId: string | null;
         approverAccountId: string | null;
-        status: "waiting" | "pending" | "approved" | "rejected";
+        status: LeaveApprovalStepState["status"];
         requestStatus: LeaveRequestStatus;
         hcHandling: HcHandling;
         policyKey: string;
@@ -946,11 +1079,7 @@ export async function registerEmployeeLeaveRoutes(
         await assertGovernanceApprovalCapability(client, principal.id);
       }
 
-      const allStepsResult = await client.query<{
-        id: string;
-        order: number;
-        status: "waiting" | "pending" | "approved" | "rejected";
-      }>(
+      const allStepsResult = await client.query<LeaveApprovalStepState>(
         `SELECT id, step_order AS "order", status
          FROM leave_request_approval_steps
          WHERE leave_request_id = $1
@@ -992,6 +1121,12 @@ export async function registerEmployeeLeaveRoutes(
             target.approverAccountId ? "account" : "employee",
             target.approverAccountId ?? target.approverEmployeeId!,
           );
+          await notifyApprovalRequested(client, {
+            requestId: current.requestId,
+            stepId: decision.nextPendingStepId,
+            approverEmployeeId: target.approverEmployeeId,
+            approverAccountId: target.approverAccountId,
+          });
         }
       }
 

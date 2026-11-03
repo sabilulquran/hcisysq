@@ -8,13 +8,15 @@
 --   * an untouched DRAFT seed (version 1, never published) is corrected in place as initial content:
 --     article and revision 1 get the new text and stay version 1, so it still counts as a draft HC
 --     has to review (D-03), and audit records help.article.seed_corrected;
---   * a seed HC published without editing is edited like any other save (D-04): version + 1, a full
---     revision with a change note, and help.article.edited without an actor;
+--   * a seed HC published without ever saving it (no revision with an actor) and whose body is still
+--     the 0130 text is edited like any other save (D-04): version + 1, a full revision with a change
+--     note, and help.article.edited without an actor;
 --   * anything HC edited or archived is left alone; HC updates it on the admin screen.
 -- Re-running is harmless: once the body has changed, nothing matches.
 --
--- Down: none needed for safety. To restore the 0130 wording of an untouched draft, run the same
--- statement with old and new swapped; a published one is edited back on the admin screen.
+-- Down: none needed for safety. To restore the 0130 wording of an untouched draft, run only the
+-- draft and draft_revision parts with old and new swapped; a published one is edited back by HC
+-- on the admin screen.
 
 WITH changes(id, old_body, new_body, change_note) AS (VALUES
   ('99431555-85a0-56fd-9546-d9d6bbc390e7',
@@ -99,7 +101,7 @@ Bila HC meminta dokumen tambahan, status berubah menjadi Perlu dilengkapi dan to
    $help$Untuk perjalanan dinas, pinjaman, lembur, dan penilaian kinerja, Anda menerima notifikasi di HCIS saat tiba giliran Anda.
 
 Untuk pengajuan cuti, saat ini belum ada notifikasi khusus. Periksa menu Persetujuan secara rutin, atau lihat kotak Perlu tindakan di Beranda yang menampilkan jumlah persetujuan yang menunggu.$help$,
-   $help$Ya. Untuk cuti, perjalanan dinas, pinjaman, lembur, dan penilaian kinerja, Anda menerima notifikasi di HCIS saat tiba giliran Anda. Untuk cuti, Anda juga diberi tahu bila pemohon membatalkan pengajuan yang sedang menunggu keputusan Anda.
+   $help$Ya. Untuk perjalanan dinas, pinjaman, lembur, dan penilaian kinerja, Anda menerima notifikasi di HCIS saat tiba giliran Anda. Untuk Cuti Tahunan dan keperluan terencana, atasan langsung dan approver unit menerima notifikasi saat tiba gilirannya, dan diberi tahu bila pemohon membatalkan pengajuan yang sedang menunggu keputusannya. Pemeriksaan cuti oleh HC tetap dipantau dari antrean HC.
 
 Notifikasi hanya penunjuk. Keputusan tetap diambil di menu Persetujuan, dan kotak Perlu tindakan di Beranda menampilkan jumlah persetujuan yang menunggu.$help$,
    $help$Penyetuju cuti kini menerima notifikasi di HCIS (LEAVE-010).$help$),
@@ -135,6 +137,8 @@ live AS (
     FROM changes
    WHERE article.id = changes.id::uuid
      AND article.origin = 'SEED' AND article.status = 'PUBLISHED' AND article.body = changes.old_body
+     AND NOT EXISTS (SELECT 1 FROM help_article_revisions saved
+                      WHERE saved.article_id = article.id AND saved.actor_account_id IS NOT NULL)
   RETURNING article.id, article.kind, article.topic, article.title, article.body, article.status,
             article.version, changes.change_note
 ),
@@ -156,6 +160,6 @@ draft_audit AS (
 INSERT INTO help_audit_events (id, event_type, article_id, reason, metadata)
 SELECT gen_random_uuid(), 'help.article.edited', live.id, live.change_note,
        jsonb_build_object('kind', live.kind, 'topic', live.topic, 'title', live.title,
-                          'version', live.version, 'status', live.status, 'origin', 'SEED',
-                          'migration', '0137')
+                          'version', live.version, 'status', live.status, 'previousTitle', live.title,
+                          'origin', 'SEED', 'migration', '0137')
   FROM live;

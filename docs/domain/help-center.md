@@ -109,7 +109,7 @@ Isi awal dimasukkan di migration yang sama (D-03), dihasilkan dari `docs/domain/
 Tujuh artikel isi awal menjelaskan celah yang sejak 2026-11-03 ditutup: pilihan WhatsApp rapat yang tampil padahal belum aktif (CAL-001 K-16), surat terbit yang tidak bisa dicetak (DOC-001 D-20), dan cuti yang tidak bisa dibatalkan serta penyetuju cuti yang tidak diberi notifikasi (LEAVE-010). Migration `0137_help_center_gap_articles.sql` menyesuaikan artikel itu tanpa pernah menimpa suntingan HC:
 
 - artikel isi awal yang masih draf dan belum disentuh (`origin = SEED`, `version = 1`, belum pernah terbit, isi persis sama dengan 0130) dikoreksi di tempat sebagai isi awal: artikel dan revisi 1 mendapat teks baru, tetap versi 1 sehingga tetap terhitung "draf awal perlu ditinjau" (D-03), dan audit mencatat `help.article.seed_corrected` dengan catatan perubahan;
-- artikel isi awal yang sudah diterbitkan HC tanpa diubah disunting seperti simpan biasa (D-04): versi naik, revisi lengkap dengan catatan perubahan, audit `help.article.edited` tanpa actor;
+- artikel isi awal yang diterbitkan HC tanpa pernah disimpan HC (tidak ada revisi ber-actor) dan isinya masih teks 0130 disunting seperti simpan biasa (D-04): versi naik, revisi lengkap dengan catatan perubahan, audit `help.article.edited` tanpa actor;
 - artikel yang sudah diubah atau diarsipkan HC dibiarkan; HC menyesuaikannya di layar admin.
 
 Artikel yang disentuh: FAQ rapat lewat WhatsApp, FAQ salinan surat terbit, panduan Dokumen Kepegawaian, FAQ pembatalan cuti, panduan Cuti & Izin, FAQ notifikasi untuk penyetuju, dan FAQ isi halaman Notifikasi. `help-center-seed.json` tetap potret isi 0130.

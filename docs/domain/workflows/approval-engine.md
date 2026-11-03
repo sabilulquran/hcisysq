@@ -287,6 +287,7 @@ Compatibility rules:
 - employee removal or later organization changes do not rewrite a historical approval step;
 - removed employees are not eligible to become new authorities, but their historical employee/approval records remain auditable;
 - this compatibility does not create governance routing under `LEGACY`, and does not authorize SHADOW/STRUCTURE.
+- ORG-012 (ACCEPTED 2026-11-03, `../organ-account-approver.md`) lets a structural resolver produce an account principal for an account-held position under `STRUCTURE`, when the account is active and holds the workflow capability. An account linked to an active employee is stored as the employee principal.
 
 ## Required data
 

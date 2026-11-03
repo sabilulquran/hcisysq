@@ -53,7 +53,8 @@ export type AttendanceSession = {
 };
 
 export type AttendanceComputation = {
-  status: "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error";
+  status: "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
+    | "field_assignment" | "remote_work";
   firstCheckInAt: Date | null;
   lastCheckOutAt: Date | null;
   workedMinutes: number;
@@ -88,6 +89,9 @@ type LeaveDispositionRow = {
   resolutionCaseId: string | null;
   disposition: "leave" | "absent";
 };
+
+/** ATT-015 §7.1: an approved tugas luar or WFH/WFA covering the day. */
+type WorkArrangementRow = { id: string; disposition: "field_assignment" | "remote_work" };
 
 type OvertimeRow = { id: string; approvedMinutes: number };
 
@@ -208,6 +212,12 @@ export function evaluateSessions(input: {
   schedule: ResolvedSchedule;
   sessions: AttendanceSession[];
   attendanceDisposition: "leave" | "absent" | null;
+  /**
+   * ATT-015 D-06: an approved tugas luar or WFH/WFA. It explains the day and never becomes a punch: without
+   * any session the day takes this status; with sessions they stand, and lateness, early leave and being
+   * outside the geofence are justified.
+   */
+  workArrangement?: "field_assignment" | "remote_work" | null;
   lateJustified: boolean;
   earlyLeaveJustified: boolean;
   outsideGeofenceJustified: boolean;
@@ -215,11 +225,15 @@ export function evaluateSessions(input: {
   now?: Date;
 }): AttendanceComputation {
   const now = input.now ?? new Date();
-  const justified = input.lateJustified || input.earlyLeaveJustified || input.outsideGeofenceJustified;
+  const arranged = input.workArrangement ?? null;
+  const lateJustified = input.lateJustified || arranged !== null;
+  const earlyLeaveJustified = input.earlyLeaveJustified || arranged !== null;
+  const outsideGeofenceJustified = input.outsideGeofenceJustified || arranged !== null;
+  const justified = lateJustified || earlyLeaveJustified || outsideGeofenceJustified;
   const empty = (status: AttendanceComputation["status"]) => emptyComputation(status, {
-    lateJustified: input.lateJustified,
-    earlyLeaveJustified: input.earlyLeaveJustified,
-    outsideGeofenceJustified: input.outsideGeofenceJustified,
+    lateJustified,
+    earlyLeaveJustified,
+    outsideGeofenceJustified,
     overtimeMinutes: input.overtimeMinutes,
   });
   if (input.schedule.state === "configuration_error") {
@@ -233,6 +247,9 @@ export function evaluateSessions(input: {
   }
   if (input.attendanceDisposition === "absent") {
     return empty("absent");
+  }
+  if (arranged && input.sessions.length === 0) {
+    return empty(arranged);
   }
   const scheduledStart = input.schedule.scheduledStartAt;
   const scheduledEnd = input.schedule.scheduledEndAt;
@@ -284,9 +301,9 @@ export function evaluateSessions(input: {
     earlyLeaveMinutes,
     incompleteSession,
     justified,
-    lateJustified: input.lateJustified,
-    earlyLeaveJustified: input.earlyLeaveJustified,
-    outsideGeofenceJustified: input.outsideGeofenceJustified,
+    lateJustified,
+    earlyLeaveJustified,
+    outsideGeofenceJustified,
     overtimeMinutes: input.overtimeMinutes,
     sessions: input.sessions,
   };
@@ -721,6 +738,21 @@ export async function materializeAttendanceResult(
     );
     const disposition = leaveDisposition.rows[0] ?? null;
 
+    // ATT-015 §7.1: an approved tugas luar or WFH/WFA counts only when no leave or resolution decided the day.
+    const arrangementResult = disposition ? null : await client.query<WorkArrangementRow>(
+      `SELECT id,
+              CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
+       FROM attendance_work_arrangement_requests
+       WHERE employee_id = $1
+         AND status = 'APPROVED'
+         AND arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
+         AND $2::date BETWEEN start_on AND end_on
+       ORDER BY submitted_at, id
+       LIMIT 1`,
+      [employeeId, workDate],
+    );
+    const arrangement = arrangementResult?.rows[0] ?? null;
+
     // ATT-011-6a §7.5: every approved request of the day counts, summed (no longer the latest only).
     const overtime = await client.query<OvertimeRow>(
       `SELECT id, approved_minutes AS "approvedMinutes"
@@ -768,22 +800,25 @@ export async function materializeAttendanceResult(
       schedule,
       sessions,
       attendanceDisposition: disposition?.disposition ?? null,
+      workArrangement: arrangement?.disposition ?? null,
       lateJustified,
       earlyLeaveJustified,
       outsideGeofenceJustified,
       overtimeMinutes,
       now,
     });
-    // ATT-013: a scheduled multi-block day without a leave or absence decision is judged per block.
+    // ATT-013: a scheduled multi-block day without a leave or absence decision is judged per block. An
+    // approved arrangement on a day without any session has already decided the day (ATT-015 §7.1).
     let blockResults: BlockComputation[] = [];
-    if (schedule.state === "scheduled" && (schedule.blocks?.length ?? 0) > 1 && !disposition) {
+    if (schedule.state === "scheduled" && (schedule.blocks?.length ?? 0) > 1 && !disposition
+      && !(arrangement && sessions.length === 0)) {
       const multi = evaluateBlocks({
         schedule,
         events,
         corrections: clarifications.rows.filter((item) => item.mode === "correction"),
-        lateJustified,
-        earlyLeaveJustified,
-        outsideGeofenceJustified,
+        lateJustified: lateJustified || arrangement !== null,
+        earlyLeaveJustified: earlyLeaveJustified || arrangement !== null,
+        outsideGeofenceJustified: outsideGeofenceJustified || arrangement !== null,
         overtimeMinutes,
         now,
       });
@@ -807,6 +842,8 @@ export async function materializeAttendanceResult(
       clarifications: clarifications.rows.map((item) => item.id),
       leave: disposition?.leaveRequestId ?? null,
       resolutionCase: disposition?.resolutionCaseId ?? null,
+      // Only days with an approved arrangement carry it, so every other day keeps its input hash.
+      ...(arrangement ? { workArrangement: arrangement.id } : {}),
       overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
       // The kind of day is part of the input: versions are immutable, so a day calculated before
       // ATT-011-6a gets one new version carrying day_type on its next Kalkulasi, then stays stable.
@@ -885,11 +922,11 @@ export async function materializeAttendanceResult(
          incomplete_session, justified, late_justified, early_leave_justified,
          outside_geofence_justified, overtime_minutes, input_hash, source_event_ids,
          source_clarification_ids, source_leave_request_id, source_attendance_resolution_case_id, safe_metadata,
-         day_type, holiday_scheduled_work
+         day_type, holiday_scheduled_work, source_work_arrangement_id
        ) VALUES (
          $1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12,
          $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24::jsonb, $25::jsonb, $26, $27, $28::jsonb,
-         $29, $30
+         $29, $30, $31
        )
        RETURNING
          id, employee_id AS "employeeId", work_date::text AS "workDate", version, status,
@@ -915,7 +952,7 @@ export async function materializeAttendanceResult(
         JSON.stringify(clarifications.rows.map((item) => item.id)), disposition?.leaveRequestId ?? null,
         disposition?.resolutionCaseId ?? null,
         JSON.stringify({ overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds }),
-        dayType, holidayScheduledWork,
+        dayType, holidayScheduledWork, arrangement?.id ?? null,
       ],
     );
     const insertedResult = result.rows[0];

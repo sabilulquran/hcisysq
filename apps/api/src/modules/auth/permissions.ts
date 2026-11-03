@@ -21,6 +21,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "announcements.read", "announcements.manage",
   // TRIP-001: migration 0116 grants both to human_capital_admin.
   "trips.read", "trips.manage",
+  // ATT-015: migration 0125 grants both to human_capital_admin.
+  "attendance.arrangements.read", "attendance.arrangements.manage",
   // PERF-001: migration 0121 grants both to human_capital_admin.
   "performance.read", "performance.manage",
   // LOAN-001 D-13: migration 0123 grants loans.read to human_capital_admin. loans.manage stays
@@ -50,6 +52,10 @@ export type AnnouncementPermission = (typeof ANNOUNCEMENT_PERMISSIONS)[number];
 /** TRIP-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRIP_PERMISSIONS = ["trips.read", "trips.manage"] as const;
 export type TripPermission = (typeof TRIP_PERMISSIONS)[number];
+
+/** ATT-015: HC-only; never granted through legacy Super Admin compatibility. */
+export const WORK_ARRANGEMENT_PERMISSIONS = ["attendance.arrangements.read", "attendance.arrangements.manage"] as const;
+export type WorkArrangementPermission = (typeof WORK_ARRANGEMENT_PERMISSIONS)[number];
 
 /** PERF-001: HC-only; never granted through legacy Super Admin compatibility. Results are personal data. */
 export const PERFORMANCE_PERMISSIONS = ["performance.read", "performance.manage"] as const;

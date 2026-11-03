@@ -199,6 +199,20 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "work-arrangements",
+    label: "Tugas Luar, WFH & Ubah Jadwal",
+    description: "Register pengajuan tugas luar, WFH/WFA, dan ubah jadwal; terapkan ubah jadwal yang sudah disetujui.",
+    featureIds: ["ATT-015"],
+    stage: "available",
+    category: "attendance",
+    href: "/admin/attendance/arrangements",
+    details: [
+      "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
+      "Tugas luar dan WFH yang disetujui menjelaskan hari tanpa scan; jam absen tidak diisi otomatis",
+      "Ubah jadwal diterapkan HC sebagai roster terbit",
+    ],
+  },
+  {
     key: "business-travel",
     label: "Perjalanan Dinas",
     description: "Register perjalanan dinas pegawai dan penerbitan surat tugas bernomor.",

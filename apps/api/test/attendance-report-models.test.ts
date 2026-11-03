@@ -84,7 +84,7 @@ describe("ATT-014 report models", () => {
 
   it("builds the employee summary with subtotals per unit and a grand total", () => {
     const table = buildReportTable("employee_summary", rows, "2026-10-01", "2026-10-04");
-    expect(table.columns.map((column) => column.label)).toEqual(["NIP", "Nama", "Hari kerja", "Hadir", "Terlambat", "Menit telat", "Tidak lengkap", "Cuti/Izin", "Tidak hadir", "Lembur (mnt)", "Presensi %"]);
+    expect(table.columns.map((column) => column.label)).toEqual(["NIP", "Nama", "Hari kerja", "Hadir", "Terlambat", "Menit telat", "Tidak lengkap", "Cuti/Izin", "Tugas luar/WFH", "Tidak hadir", "Lembur (mnt)", "Presensi %"]);
     expect(table.groups[0]!.rows[0]).toMatchObject({ employeeName: "Pegawai A", normal: 2, present: 2, late: 1, lateMinutes: 12, percent: 100 });
     expect(table.groups[1]!.subtotal).toMatchObject({ employeeNumber: "Jumlah SMPIT", absent: 1, incomplete: 1, notCaptured: 1 });
     expect(table.total).toMatchObject({ employeeNumber: "Jumlah seluruhnya", normal: 4, actual: 2, percent: 50 });

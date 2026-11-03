@@ -94,6 +94,8 @@ Pratinjau (`POST /trips/me/preview`) menjalankan langkah 3–5 tanpa menyimpan, 
 
 Pemeriksaan D-05 hanya berjalan dari sisi perjalanan pada Paket 1: modul cuti belum menolak cuti yang beririsan dengan perjalanan yang sudah disetujui. Cek arah sebaliknya adalah tindak lanjut di LEAVE-001, bukan bagian paket ini.
 
+Sejak ATT-015 (D-08), perjalanan juga ditolak bila beririsan dengan tugas luar atau WFH/WFA milik pegawai yang `IN_REVIEW`/`APPROVED` (`TRIP_ARRANGEMENT_OVERLAP`); ATT-015 menolak arah sebaliknya.
+
 Kegagalan (409 kecuali disebut lain): `TRIP_DATE_RANGE`, `TRIP_TOO_LONG`, `TRIP_START_IN_PAST`, `TRIP_OVERLAP`, `TRIP_LEAVE_OVERLAP`, `DIRECT_MANAGER_MISSING`, `UNIT_APPROVER_MISSING`, `APPROVAL_CHAIN_EMPTY`, `APPROVER_NOT_ACTIVE`, `APPROVER_ACCOUNT_NOT_READY`; input tidak valid 400 `INVALID_TRIP_REQUEST`; akun bukan pegawai aktif 403 `EMPLOYEE_NOT_ACTIVE`.
 
 > Konsekuensi yang diketahui: sebelum akun pemimpin diaktifkan, pengajuan di production berhenti di `APPROVER_ACCOUNT_NOT_READY`. Itu perilaku yang benar (APR-001-E), bukan cacat. Alurnya diuji dengan data sintetis di test integrasi.

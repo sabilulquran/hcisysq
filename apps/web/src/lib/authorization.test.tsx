@@ -20,6 +20,21 @@ const hcAdmin = [
 ];
 const workforcePermissions = ["attendance.schedule.manage", "attendance.policy.manage", "attendance.clarification.manage", "attendance.reports.read", "attendance.overtime.manage", "attendance.shift_swap.manage"];
 
+describe("EMP-012 employee cards in the admin menu", () => {
+  it("lists Kartu Pegawai for an employee_cards.manage holder, even with nothing else", () => {
+    for (const compact of [false, true]) {
+      const holder = renderToStaticMarkup(<AdminNavigation active="employee-cards" session={session("EMPLOYEE", ["employee_cards.manage"])} compact={compact} />);
+      expect(holder).toContain('href="/admin/employee-cards"');
+      expect(holder).toContain('aria-current="page"');
+    }
+  });
+
+  it("hides it from HC permissions without employee_cards.manage and from the legacy Super Admin", () => {
+    expect(renderToStaticMarkup(<AdminNavigation active="overview" session={session("EMPLOYEE", hcAdmin)} />)).not.toContain('href="/admin/employee-cards"');
+    expect(renderToStaticMarkup(<AdminNavigation active="overview" session={session("SUPER_ADMIN", hcAdmin)} />)).not.toContain('href="/admin/employee-cards"');
+  });
+});
+
 describe("DOC-002-F document corrector", () => {
   const corrector = session("EMPLOYEE", ["documents.read", "documents.correct"]);
 

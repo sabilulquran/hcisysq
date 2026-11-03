@@ -109,25 +109,49 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     employeeId: string,
     workDate: string,
     checkedIn: boolean,
-    options: { version?: number; dayType?: string | null; holidayScheduledWork?: boolean | null } = {},
+    options: {
+      version?: number;
+      dayType?: string | null;
+      holidayScheduledWork?: boolean | null;
+      status?: string;
+      sourceWorkArrangementId?: string | null;
+    } = {},
   ) {
     await pool.query(
       `INSERT INTO attendance_result_versions(
          id, employee_id, work_date, version, status, first_check_in_at, input_hash,
-         day_type, holiday_scheduled_work)
-       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9)`,
+         day_type, holiday_scheduled_work, source_work_arrangement_id)
+       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10)`,
       [
         randomUUID(),
         employeeId,
         workDate,
         options.version ?? 1,
-        checkedIn ? "present" : "absent",
+        options.status ?? (checkedIn ? "present" : "absent"),
         checkedIn ? `${workDate}T01:00:00.000Z` : null,
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, ""),
         options.dayType === undefined ? "working_day" : options.dayType,
         options.holidayScheduledWork ?? null,
+        options.sourceWorkArrangementId ?? null,
       ],
     );
+  }
+
+  /** An ATT-015 request, so a day's result can point at it as the engine does. */
+  async function workArrangement(
+    employeeId: string,
+    workDate: string,
+    type: "FIELD_ASSIGNMENT" | "REMOTE_WORK",
+    status: "APPROVED" | "CANCELLED",
+  ) {
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO attendance_work_arrangement_requests(
+         id, employee_id, arrangement_type, start_on, end_on, location, purpose, status, idempotency_key)
+       VALUES ($1, $2, $3, $4::date, $4::date, 'Sekolah mitra', 'Mendampingi santri lomba', $5, $6)`,
+      [id, employeeId, type, workDate, status, randomUUID()],
+    );
+    return id;
   }
 
   beforeEach(async () => {
@@ -268,6 +292,91 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     const { employeeId } = await newEmployment("KONTRAK");
     await attendanceDay(employeeId, "2026-09-01", true, { version: 1 });
     await attendanceDay(employeeId, "2026-09-01", false, { version: 2 });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("earns transport on an approved field assignment without a check-in (ATT-015 D-07)", async () => {
+    const { employmentId, employeeId } = await newEmployment("KONTRAK_HONORER");
+    const noPunch = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "field_assignment",
+      sourceWorkArrangementId: noPunch,
+    });
+    // With a punch the engine writes an ordinary present day; it counted before and still does.
+    const withPunch = await workArrangement(employeeId, "2026-09-02", "FIELD_ASSIGNMENT", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-02", true, { sourceWorkArrangementId: withPunch });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([{ employmentId, days: 2 }]);
+  });
+
+  it("earns no transport on remote work without a check-in", async () => {
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
+    const request = await workArrangement(employeeId, "2026-09-01", "REMOTE_WORK", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "remote_work",
+      sourceWorkArrangementId: request,
+    });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("earns no transport on a field assignment that falls on a rest day", async () => {
+    const { employeeId } = await newEmployment("LEPAS");
+    const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "field_assignment",
+      dayType: "rest_day",
+      sourceWorkArrangementId: request,
+    });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("earns transport on a field assignment on a holiday the employee was scheduled to work", async () => {
+    const { employmentId, employeeId } = await newEmployment("KONTRAK");
+    const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "field_assignment",
+      dayType: "public_holiday",
+      holidayScheduledWork: true,
+      sourceWorkArrangementId: request,
+    });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([{ employmentId, days: 1 }]);
+  });
+
+  it("stops transport once a cancellation's recompute has written the day again", async () => {
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
+    const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "CANCELLED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      version: 1,
+      status: "field_assignment",
+      sourceWorkArrangementId: request,
+    });
+    await attendanceDay(employeeId, "2026-09-01", false, { version: 2 });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("pays no transport for a cancelled field assignment whose recompute has not run yet", async () => {
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
+    const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "CANCELLED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "field_assignment",
+      sourceWorkArrangementId: request,
+    });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("gives a permanent employee no transport for a field assignment", async () => {
+    const { employeeId } = await newEmployment("TETAP");
+    const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "APPROVED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "field_assignment",
+      sourceWorkArrangementId: request,
+    });
     const resolved = await resolveAttendanceInputs(pool, window());
     expect(resolved.attendanceDays).toEqual([]);
   });

@@ -2631,6 +2631,16 @@
   {
     "file": "apps/api/src/modules/documents/routes.ts",
     "method": "GET",
+    "url": "/documents/me/issued/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
     "url": "/documents/me/disciplinary",
     "access": "self-service",
     "principals": [

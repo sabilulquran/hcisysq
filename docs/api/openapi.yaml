@@ -2831,6 +2831,46 @@ paths:
     $ref: './employment.openapi.yaml#/paths/~1admin~1employees~1{employeeId}~1employment~1timeline'
   /admin/employment/consistency:
     $ref: './employment.openapi.yaml#/paths/~1admin~1employment~1consistency'
+  /documents/me/issued/{id}:
+    get:
+      tags: [HR Documents]
+      operationId: getMyIssuedDocumentLetter
+      summary: Open my own issued certificate to print or save as PDF (DOC-001 D-20)
+      description: >
+        Self access by ownership, not a permission: the active employee linked to the session must own
+        the letter, otherwise 404 as if it did not exist. Only CERTIFICATE letters with status ISSUED are
+        served; a revoked letter answers 409 DOCUMENT_REVOKED. Every successful opening writes the audit
+        event doc.opened with the document code and number. The snapshot carries the D-15 facts only.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The letter as issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, documentCode, documentNumber, status, issuedAt, signer, contentSnapshot]
+                properties:
+                  id: { type: string, format: uuid }
+                  documentCode: { type: string }
+                  documentNumber: { type: string }
+                  status: { type: string, enum: [ISSUED] }
+                  issuedAt: { type: string, format: date-time }
+                  signer:
+                    type: object
+                    required: [title, name]
+                    properties:
+                      title: { type: string }
+                      name: { type: [string, 'null'] }
+                  contentSnapshot:
+                    type: object
+                    description: employeeNumber, fullName, positionTitle, unitName, startedOn, endedOn, purpose, documentLabel
+                    additionalProperties: true
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: 'FORBIDDEN or EMPLOYEE_LINK_REQUIRED: not an active employee session' }
+        '404': { description: 'DOCUMENT_NOT_FOUND: no such letter of mine' }
+        '409': { description: 'DOCUMENT_REVOKED: the letter was revoked and cannot be printed' }
   /admin/documents/register:
     get:
       tags: [HR Documents]

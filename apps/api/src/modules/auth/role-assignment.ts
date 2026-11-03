@@ -8,8 +8,8 @@ import {
   HC_OPERATIONAL_PERMISSIONS,
   hasEffectiveOrganizationPermission,
   HC_LEAD_ROLE_KEY, HELP_PERMISSIONS, IDENTITY_PERMISSIONS, JOB_CLASSIFICATION_PERMISSIONS, LOAN_PERMISSIONS,
-  MODULE_ADMIN_ROLE_KEY, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS, PERFORMANCE_PERMISSIONS, TRAINING_PERMISSIONS, TRIP_PERMISSIONS,
-  WORK_ARRANGEMENT_PERMISSIONS,
+  MODULE_ADMIN_ROLE_KEY, PAYROLL_PERMISSIONS, PAYROLL_ROLE_KEYS, PERFORMANCE_PERMISSIONS, REPORT_PERMISSIONS, TRAINING_PERMISSIONS,
+  TRIP_PERMISSIONS, WORK_ARRANGEMENT_PERMISSIONS,
 } from "./permissions.js";
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
@@ -23,7 +23,7 @@ const HCIS_PERMISSIONS: readonly string[] = [
   ...WORK_ARRANGEMENT_PERMISSIONS,
   ACCESS_REACTIVATION_PERMISSION,
   "employees.read.unit", "attendance.read.unit",
-  "leave.approve", "leave.hc.approve", "reports.read.organization", "reports.export.organization", BOARD_READ_PERMISSION,
+  "leave.approve", "leave.hc.approve", ...REPORT_PERMISSIONS, BOARD_READ_PERMISSION,
   ...PAYROLL_PERMISSIONS,
   // AUTH-014 §2.6: IDENTITY_PERMISSIONS are deliberately absent. They live in ADMIN_PERMISSIONS,
   // which legacy Super Admin compatibility still reads, but no role may carry them.
@@ -59,9 +59,13 @@ export type AssignmentScope = RoleAssignmentInput["scopeType"];
 // (organization/repository.ts capabilityValid) accepts any scope, which is why Kepala Unit stays
 // unit-scoped. Each role works with exactly the scopes listed here and the screen offers no other;
 // anything not listed is organization-only. "own" works for no role: self-service needs none.
+// RPT-001 D-02: the two report roles also work for one unit, because the report routes read their
+// unit-scoped assignments (REPORT_PERMISSIONS only; docs/domain/hr-reports.md).
 const ROLE_SCOPES: Readonly<Record<string, readonly AssignmentScope[]>> = {
   human_capital: ["organization", "unit"],
   unit_manager: ["unit"],
+  finance: ["organization", "unit"],
+  management: ["organization", "unit"],
 };
 
 export function allowedScopes(roleKey: string): readonly AssignmentScope[] {

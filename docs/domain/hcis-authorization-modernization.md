@@ -88,11 +88,12 @@ Separately grantable, excluded permissions are:
 
 Permission guards read organization-scoped assignments only, so a role granted
 with any other scope is stored, shown on the Akses screen, and grants nothing.
-Two readers do look at other scopes: ATT-011 lists unit-scoped holders as a unit's
-staff, and authority eligibility (`capabilityValid` in
-`organization/repository.ts`) accepts a capability from any scope. Both stay
-satisfied: `human_capital` and `unit_manager` keep unit scope, and every other
-role keeps organization scope. Before this decision only Kepala HC, Human Capital Administrator and
+Three readers do look at other scopes: ATT-011 lists unit-scoped holders as a unit's
+staff, authority eligibility (`capabilityValid` in
+`organization/repository.ts`) accepts a capability from any scope, and the RPT-001
+report routes read unit-scoped `reports.*` assignments (see the table below). All stay
+satisfied: `human_capital` and `unit_manager` keep unit scope, `finance` and `management`
+gained it with RPT-001, and every other role keeps organization scope. Before this decision only Kepala HC, Human Capital Administrator and
 Panel Organ Yayasan refused such a grant; every other role accepted it silently.
 
 Each role now works with exactly these scopes, and the API refuses any other with
@@ -102,6 +103,7 @@ Each role now works with exactly these scopes, and the API refuses any other wit
 |---|---|---|
 | `human_capital` | organization or unit | Organization grants the HC operational bundle; unit names the HC officer of one unit, which ATT-011 reads. |
 | `unit_manager` | unit | It names who leads one unit; organization-wide it means nothing. |
+| `finance`, `management` | organization or unit | RPT-001 (2026-11-03): the report routes read their unit-scoped assignments and show only that unit's employees (`docs/domain/hr-reports.md` D-02). |
 | every other role | organization | Its permissions are organization-wide or are read only from organization scope. |
 
 `own` is allowed for no role: employee self-service needs no assignment. The three
@@ -132,10 +134,12 @@ changed (migration 0109); `role_key`, permissions and assignments are untouched.
 | `special_approver` | Special Approver | Penyetuju Cuti di Luar Jalur |
 
 `finance` ("Pembaca Laporan") and `management` ("Pimpinan (Laporan)") carry
-`reports.read.organization` / `reports.export.organization`, which **no screen
-checks yet**, so today both grant nothing; their descriptions say so. They also
-overlap. Wiring them to real reports, or merging them, is a separate decision
-(`TBD`). "Penyetuju Cuti Khusus" was avoided because *cuti khusus* is a leave type
+`reports.read.organization` / `reports.export.organization`. Until 2026-11-03 no
+screen checked them. **RPT-001** (`docs/domain/hr-reports.md`) wires them to Laporan
+HR: Pembaca Laporan reads, Pimpinan (Laporan) reads and exports, each for the whole
+organization or one unit; migration 0126 updates their descriptions. These two keys
+are the only ones whose API honours a unit-scoped assignment, and `/auth/me` lists
+them in `authorization.unitPermissions` for the screen (D-15). "Penyetuju Cuti Khusus" was avoided because *cuti khusus* is a leave type
 this role does not approve.
 
 Actual leave decisions still require the snapshotted assigned employee and

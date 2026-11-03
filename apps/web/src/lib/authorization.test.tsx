@@ -266,3 +266,35 @@ describe("ORG-010 /board route eligibility", () => {
     expect(canAccessAdminPath(session("FOUNDATION_BOARD", ["board.read"]), "/admin")).toBe(false);
   });
 });
+
+describe("RPT-001 Laporan HR", () => {
+  const unitScoped = (permissions: string[]): AuthSession => ({
+    ...session("EMPLOYEE", []), authorization: { organizationPermissions: [], unitPermissions: permissions },
+  });
+
+  it("opens the shell and the screen for either report role, organization- or unit-scoped", () => {
+    for (const actor of [
+      session("EMPLOYEE", ["reports.read.organization"]),
+      session("EMPLOYEE", ["reports.read.organization", "reports.export.organization"]),
+      unitScoped(["reports.read.organization"]),
+    ]) {
+      expect(canAccessAdminPath(actor, "/admin")).toBe(true);
+      expect(canAccessAdminPath(actor, "/admin/reports")).toBe(true);
+      expect(canAccessAdminPath(actor, "/admin/employees")).toBe(false);
+      const html = renderToStaticMarkup(<AdminNavigation active="reports" session={actor} />);
+      expect(html).toContain('href="/admin/reports"');
+      expect(html).not.toContain('href="/admin/access"');
+    }
+  });
+
+  it("stays closed to HC, Super Admin, the board and export alone", () => {
+    expect(canAccessAdminPath(session("EMPLOYEE", hcAdmin), "/admin/reports")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", hcAdmin), "/admin/reports")).toBe(false);
+    expect(canAccessAdminPath(session("FOUNDATION_BOARD", ["reports.read.organization"]), "/admin/reports")).toBe(false);
+    expect(canAccessAdminPath(unitScoped(["reports.export.organization"]), "/admin/reports")).toBe(false);
+    // A unit-scoped hint never opens any other screen.
+    expect(canAccessAdminPath(unitScoped(["reports.read.organization", "employees.manage"]), "/admin/employees")).toBe(false);
+    const html = renderToStaticMarkup(<AdminNavigation active="overview" session={session("EMPLOYEE", hcAdmin)} />);
+    expect(html).not.toContain('href="/admin/reports"');
+  });
+});

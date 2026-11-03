@@ -34,6 +34,7 @@ tags:
   - name: Performance
   - name: Employee Loans
   - name: Training
+  - name: Help Center
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -428,6 +429,30 @@ paths:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
   /admin/training/employee-options:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
+  /help/overview:
+    $ref: './help-center.openapi.yaml#/paths/~1help~1overview'
+  /help/articles:
+    $ref: './help-center.openapi.yaml#/paths/~1help~1articles'
+  /help/articles/{id}:
+    $ref: './help-center.openapi.yaml#/paths/~1help~1articles~1{id}'
+  /admin/help/articles:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles'
+  /admin/help/articles/{id}:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles~1{id}'
+  /admin/help/articles/{id}/publish:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles~1{id}~1publish'
+  /admin/help/articles/{id}/archive:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles~1{id}~1archive'
+  /admin/help/articles/{id}/restore:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles~1{id}~1restore'
+  /admin/help/articles/{id}/revisions:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1articles~1{id}~1revisions'
+  /admin/help/contacts:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1contacts'
+  /admin/help/contacts/{id}:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1contacts~1{id}'
+  /admin/help/audit-events:
+    $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1audit-events'
   /me/calendar:
     $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1calendar'
   /me/meetings:

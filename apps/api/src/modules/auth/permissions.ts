@@ -28,6 +28,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "loans.read",
   // TRAIN-001: migration 0119 grants both to human_capital_admin.
   "training.read", "training.manage",
+  // HELP-001 D-08: migration 0131 grants help.manage to human_capital_admin.
+  "help.manage",
   // ORG-011: migration 0110 grants both to human_capital_admin.
   "job_classifications.read", "job_classifications.manage",
   // EMP-005 D-15: migration 0101 grants this to human_capital_admin, so the
@@ -61,6 +63,10 @@ export type LoanPermission = (typeof LOAN_PERMISSIONS)[number];
 /** TRAIN-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRAINING_PERMISSIONS = ["training.read", "training.manage"] as const;
 export type TrainingPermission = (typeof TRAINING_PERMISSIONS)[number];
+/** HELP-001: HC-only; never granted through legacy Super Admin compatibility. Reading the help
+ * center needs no permission (D-07). */
+export const HELP_PERMISSIONS = ["help.manage"] as const;
+export type HelpPermission = (typeof HELP_PERMISSIONS)[number];
 
 /** ORG-011: HC-only; never granted through legacy Super Admin compatibility. The catalog is
  * compensation reference data, so reading it is not part of the ordinary structure read. */

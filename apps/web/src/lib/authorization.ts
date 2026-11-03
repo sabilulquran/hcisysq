@@ -47,6 +47,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     // LOAN-001: finance_officer reaches the loan register with loans.read, which no bundle
     // above carries for that role.
     "loans.read",
+    // HELP-001: help.manage opens its own screen even for an account holding nothing else.
+    "help.manage",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which
@@ -126,6 +128,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/loans") return hasPermission(session, "loans.read");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
   if (path === "/admin/training") return hasPermission(session, "training.read");
+  // HELP-001: HC-only; Super Admin legacy compatibility never carries help.manage.
+  if (path === "/admin/help") return hasPermission(session, "help.manage");
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }

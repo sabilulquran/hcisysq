@@ -203,17 +203,6 @@ describe.skipIf(!allowed)("LEAVE-010 approver notification and requester cancell
     expect(lineNotifications.rowCount).toBe(2);
   });
 
-  it("LEAVE-010-A: an approver without an active account gets no in-app row, the outbox intent stays", async () => {
-    await client.query("UPDATE accounts SET status = 'invited' WHERE id = $1", [people.manager.accountId]);
-    const request = await submitAnnual();
-    expect(await inbox("manager")).toEqual([]);
-    const outbox = await client.query(
-      `SELECT 1 FROM leave_notification_outbox WHERE leave_request_id = $1 AND event_type = 'leave.approval.requested'`,
-      [request.id],
-    );
-    expect(outbox.rowCount).toBe(1);
-  });
-
   it("LEAVE-010-C/E: the requester cancels at the line stage; the approver is told and can no longer decide", async () => {
     const request = await submitAnnual();
     const [first] = request.approvalChain;

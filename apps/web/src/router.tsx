@@ -67,6 +67,7 @@ import { AdminWorkArrangementsPage } from "@/pages/AdminWorkArrangementsPage";
 import { AdminPerformancePage } from "@/pages/AdminPerformancePage";
 import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
+import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
@@ -766,6 +767,13 @@ const adminTrainingRoute = createRoute({
   component: AdminTrainingPage,
 });
 
+const adminHrReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/reports",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/reports"),
+  component: AdminHrReportsPage,
+});
+
 const adminAnnouncementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/announcements",
@@ -888,6 +896,7 @@ const routeTree = rootRoute.addChildren([
   adminPerformanceRoute,
   adminLoansRoute,
   adminTrainingRoute,
+  adminHrReportsRoute,
   adminHelpRoute,
   adminAnnouncementsRoute,
   adminAccessRoute,

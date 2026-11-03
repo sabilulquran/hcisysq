@@ -642,6 +642,20 @@
       "reason": "Satu penilaian kinerja beserta rubrik dan riwayatnya."
     },
     {
+      "url": "/admin/reports/hr/:report",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/reports/hr/:report/export",
+      "list": "export",
+      "reason": "RPT-001 D-11: ekspor lengkap dibaca per 1.000 baris dalam satu snapshot sampai 50.000 baris; di atasnya ditolak 422 EXPORT_TOO_LARGE."
+    },
+    {
+      "url": "/admin/reports/hr/access",
+      "list": "bounded",
+      "reason": "RPT-001 D-14: scope akun, katalog lima laporan, unit dalam scope (data referensi puluhan, seperti dropdown unit Daftar Pegawai) dan nilai jenis kepegawaian yang berbeda."
+    },
+    {
       "url": "/admin/training/employee-options",
       "list": "typeahead",
       "reason": "Pencarian pegawai aktif untuk peserta dan narasumber pelatihan; q minimal 2 huruf, maksimal 20."

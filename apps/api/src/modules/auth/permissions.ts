@@ -154,6 +154,18 @@ export const BOARD_READ_PERMISSION = "board.read";
 export const BOARD_VIEWER_ROLE_KEY = "foundation_board_viewer";
 
 /**
+ * RPT-001 (docs/domain/hr-reports.md D-01, D-02): finance ("Pembaca Laporan") carries read,
+ * management ("Pimpinan (Laporan)") carries both. Outside every HC bundle and outside legacy Super
+ * Admin compatibility (D-13). Despite the ".organization" suffix from migration 0004, the report
+ * routes also honour a unit-scoped assignment of these two keys, and they are the only keys that do.
+ */
+export const REPORT_PERMISSIONS = ["reports.read.organization", "reports.export.organization"] as const;
+export type ReportPermission = (typeof REPORT_PERMISSIONS)[number];
+/** RPT-001 D-15: permissions whose API honours a unit-scoped assignment. Every other guard reads
+ * organization scope only (AUTH-011 §Scope per peran). */
+export const UNIT_SCOPED_PERMISSIONS: readonly string[] = REPORT_PERMISSIONS;
+
+/**
  * AUTH-014 §4 (migration 0111): the Module Administrator. Module configuration only — shifts and
  * schedules, attendance policy, non-destructive device work, leave types, payroll policy and
  * periods. It never grants a role and never touches an account, which is the whole line between
@@ -204,6 +216,9 @@ export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 
 export interface AuthorizationContext {
   organizationPermissions: string[];
+  /** RPT-001 D-15: only on /auth/me and login, only keys in UNIT_SCOPED_PERMISSIONS. UI hint;
+   * the report routes resolve the scope themselves on every call. */
+  unitPermissions?: string[];
 }
 
 /** @deprecated AUTH-011: remove only after accepted OIDC cutover and administrator UAT.
@@ -280,4 +295,40 @@ export async function resolveAuthorizationContext(
      ORDER BY role_permission.permission_key`, [principal.id],
   );
   return { organizationPermissions: result.rows.map((row) => row.permissionKey) };
+}
+
+/**
+ * RPT-001 D-15: the UNIT_SCOPED_PERMISSIONS this account holds through an effective unit-scoped
+ * assignment, so the screen can offer the report menu. Same account, employee and date checks as
+ * the organization guard. Nothing authorizes from this list; the report routes resolve the units.
+ */
+export async function resolveUnitScopedPermissions(
+  db: Pick<Pool, "query">, principal: AuthPrincipal,
+): Promise<string[]> {
+  if (principal.principalType !== "EMPLOYEE") return [];
+  const result = await db.query<{ permissionKey: string }>(
+    `SELECT DISTINCT role_permission.permission_key AS "permissionKey"
+     FROM account_role_assignments assignment
+     JOIN role_permissions role_permission ON role_permission.role_id = assignment.role_id
+     JOIN accounts principal_account ON principal_account.id = assignment.account_id
+     JOIN employees principal_employee ON principal_employee.id = principal_account.employee_id
+     WHERE assignment.account_id = $1
+       AND role_permission.permission_key = ANY($2::text[])
+       AND principal_account.principal_type = 'EMPLOYEE'
+       AND principal_account.status = 'active' AND principal_employee.status = 'active'
+       AND assignment.scope_type = 'unit'
+       AND assignment.organizational_unit_id IS NOT NULL
+       AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
+       AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
+     ORDER BY role_permission.permission_key`, [principal.id, [...UNIT_SCOPED_PERMISSIONS]],
+  );
+  return result.rows.map((row) => row.permissionKey);
+}
+
+/** /auth/me and login: the organization context plus the RPT-001 unit-scoped hint. */
+export async function resolveSessionAuthorization(
+  db: Pick<Pool, "query">, principal: AuthPrincipal,
+): Promise<AuthorizationContext> {
+  const context = await resolveAuthorizationContext(db, principal);
+  return { ...context, unitPermissions: await resolveUnitScopedPermissions(db, principal) };
 }

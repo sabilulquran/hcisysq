@@ -11,6 +11,7 @@ import {
   HC_ADMIN_PERMISSIONS,
   LOAN_PERMISSIONS,
   PAYROLL_PERMISSIONS,
+  REPORT_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
 
 // AUTH-011 / SEC-02: every route registered by createApp must be either explicitly public
@@ -184,6 +185,8 @@ describe("AUTH-011 route manifest coverage", () => {
       ...PAYROLL_PERMISSIONS, ...EMPLOYMENT_PERMISSIONS, ...DOCUMENT_PERMISSIONS,
       // LOAN-001: loans.manage belongs to finance_officer, outside both bundles.
       ...LOAN_PERMISSIONS,
+      // RPT-001: the report roles' keys, outside both bundles and honoured from unit scope too.
+      ...REPORT_PERMISSIONS,
       ACCESS_REACTIVATION_PERMISSION,
     ]);
     for (const entry of await manifest()) {

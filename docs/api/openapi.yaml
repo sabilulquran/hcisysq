@@ -35,6 +35,7 @@ tags:
   - name: Performance
   - name: Employee Loans
   - name: Training
+  - name: Reports
   - name: Help Center
 
 paths:
@@ -461,6 +462,12 @@ paths:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
   /admin/training/employee-options:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
+  /admin/reports/hr/access:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1access'
+  /admin/reports/hr/{report}:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1{report}'
+  /admin/reports/hr/{report}/export:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1{report}~1export'
   /help/overview:
     $ref: './help-center.openapi.yaml#/paths/~1help~1overview'
   /help/articles:
@@ -3715,6 +3722,15 @@ components:
             organizationPermissions:
               type: array
               uniqueItems: true
+              items: { type: string }
+            unitPermissions:
+              type: array
+              uniqueItems: true
+              description: >-
+                RPT-001 D-15, /auth/me and login only. Permissions held through an effective
+                unit-scoped assignment, listed only for permissions whose API honours unit scope
+                (reports.read.organization, reports.export.organization). A UI hint; the report
+                routes resolve the units themselves.
               items: { type: string }
 
     Actor:

@@ -4,6 +4,14 @@ export function hasPermission(session: AuthSession | null, permission: string): 
   return session?.authorization?.organizationPermissions.includes(permission) === true;
 }
 
+/**
+ * RPT-001 D-15: the report roles work for the whole organization or for one unit, so either list
+ * opens the screen. Only the report keys are ever in unitPermissions; no other check reads it.
+ */
+export function hasReportPermission(session: AuthSession | null, permission: "reports.read.organization" | "reports.export.organization"): boolean {
+  return hasPermission(session, permission) || session?.authorization?.unitPermissions?.includes(permission) === true;
+}
+
 const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/shifts": "attendance.schedule.manage",
   "/admin/attendance/schedules": "attendance.schedule.manage",
@@ -26,6 +34,8 @@ const ATTENDANCE_SUMMARY_PERMISSIONS = [
 // UI eligibility only. The API independently authorizes every operation.
 export function canAccessAdminPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType === "FOUNDATION_BOARD") return false;
+  // RPT-001: Pembaca Laporan and Pimpinan (Laporan) hold nothing else that opens the shell.
+  if (path === "/admin" && hasReportPermission(session, "reports.read.organization")) return true;
   if (path === "/admin") return [
     "employees.manage", "organization.manage", "access.manage", "attendance.records.manage",
     "leave.configuration.manage", "payslips.import", "attendance.devices.read",
@@ -132,6 +142,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/loans") return hasPermission(session, "loans.read");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
   if (path === "/admin/training") return hasPermission(session, "training.read");
+  // RPT-001: organization- or unit-scoped; the API narrows every report to the account's units.
+  if (path === "/admin/reports") return hasReportPermission(session, "reports.read.organization");
   // HELP-001: HC-only; Super Admin legacy compatibility never carries help.manage.
   if (path === "/admin/help") return hasPermission(session, "help.manage");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

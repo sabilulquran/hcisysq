@@ -9,6 +9,7 @@ import {
   BadgeCheck,
   ClipboardCheck,
   Clock3,
+  FileBarChart,
   FileSignature,
   FileText,
   Grid2X2,
@@ -56,6 +57,7 @@ export type AdminNavKey =
   | "leave-critical-periods"
   | "payslips"
   | "payroll"
+  | "reports"
   | "access"
   | "services";
 
@@ -130,6 +132,11 @@ const navGroups: AdminNavGroup[] = [
       { key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards },
       { key: "payroll", label: "Payroll", href: "/admin/payroll", icon: Calculator },
     ],
+  },
+  {
+    // RPT-001: the report roles' only screen; organization- or unit-scoped.
+    label: "Laporan",
+    items: [{ key: "reports", label: "Laporan HR", href: "/admin/reports", icon: FileBarChart }],
   },
   {
     label: "Sistem",

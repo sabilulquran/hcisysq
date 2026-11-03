@@ -16,6 +16,7 @@ import {
   Grid2X2,
   History,
   Fingerprint,
+  IdCard,
   KeyRound,
   LayoutDashboard,
   Settings2,
@@ -44,6 +45,7 @@ export type AdminNavKey =
   | "data-changes"
   | "decision-documents"
   | "documents"
+  | "employee-cards"
   | "organization"
   | "job-classifications"
   | "committees"
@@ -96,6 +98,8 @@ const navGroups: AdminNavGroup[] = [
       { key: "data-changes", label: "Usulan Perubahan Data", href: "/admin/employees/data-changes", icon: FileSignature },
       { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
       { key: "documents", label: "Dokumen Kepegawaian", href: "/admin/documents", icon: FileText },
+      // EMP-012: shown only to employee_cards.manage holders (canAccessAdminPath).
+      { key: "employee-cards", label: "Kartu Pegawai", href: "/admin/employee-cards", icon: IdCard },
     ],
   },
   {

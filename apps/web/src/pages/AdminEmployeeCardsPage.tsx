@@ -572,7 +572,7 @@ export function AdminEmployeeCardsPage() {
     { key: "history", label: "Riwayat" },
   ], []);
   return (
-    <AdminShell active="services" title="Kartu Pegawai" description="Pas foto, penerbitan, cetak, dan penggantian kartu identitas pegawai.">
+    <AdminShell active="employee-cards" title="Kartu Pegawai" description="Pas foto, penerbitan, cetak, dan penggantian kartu identitas pegawai.">
       <div className="mb-5 flex gap-2 overflow-x-auto" role="group" aria-label="Bagian Kartu Pegawai">
         {tabs.map((entry) => (
           <button key={entry.key} type="button" aria-pressed={tab === entry.key} onClick={() => setTab(entry.key)}

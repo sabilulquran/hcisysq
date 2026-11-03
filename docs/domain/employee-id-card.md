@@ -140,7 +140,7 @@ Semua jawaban `Cache-Control: no-store`. Tanpa sesi di `/me/*` dan `/admin/*` 40
 ## 10. Layar
 
 - **Pegawai `/app/employee-card` ("Kartu Pegawai")**, di navigasi "Saya" dan katalog Semua Layanan: kartu depan, tombol "Lihat belakang", "Perbesar QR", status kartu, dan "Laporkan kartu hilang" dengan konfirmasi. Keadaan memuat, gagal (coba lagi), belum punya kartu, kartu tidak berlaku, dan tampilan ponsel.
-- **Admin `/admin/employee-cards` ("Kartu Pegawai")**, kartu di katalog layanan admin: daftar pegawai (pencarian, filter status kartu, pagination, pilih banyak untuk cetak), panel pegawai (foto dengan unggah/ganti dan pemotongan 3:4, kartu aktif, terbitkan/terbitkan ulang/cabut, riwayat kartu, tanda "data berubah"), tab Pengaturan (penanda tangan, gambar tanda tangan, masa berlaku), tab Riwayat (audit).
+- **Admin `/admin/employee-cards` ("Kartu Pegawai")**, di menu Administrasi grup Pegawai (hanya bagi pemegang `employee_cards.manage`) dan kartu di katalog layanan admin: daftar pegawai (pencarian, filter status kartu, pagination, pilih banyak untuk cetak), panel pegawai (foto dengan unggah/ganti dan pemotongan 3:4, kartu aktif, terbitkan/terbitkan ulang/cabut, riwayat kartu, tanda "data berubah"), tab Pengaturan (penanda tangan, gambar tanda tangan, masa berlaku), tab Riwayat (audit).
 - **Cetak `/admin/employee-cards/print?cardIds=…`**: satu halaman 54 × 85,6 mm per sisi, depan lalu belakang, dengan tombol Cetak yang mencatat `printed`.
 - **Publik `/cek/{code}`** tanpa login: status sah/tidak berlaku dengan ikon dan teks (tidak hanya warna), D-11.
 

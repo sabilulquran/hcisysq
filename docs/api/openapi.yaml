@@ -495,6 +495,38 @@ paths:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1contacts~1{id}'
   /admin/help/audit-events:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1audit-events'
+  /me/employee-card:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card'
+  /me/employee-card/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1photo'
+  /me/employee-card/signature:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1signature'
+  /me/employee-card/report-lost:
+    $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card~1report-lost'
+  /admin/employee-cards:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards'
+  /admin/employee-cards/employees/{employeeId}:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}'
+  /admin/employee-cards/employees/{employeeId}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}~1photo'
+  /admin/employee-cards/employees/{employeeId}/cards:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1employees~1{employeeId}~1cards'
+  /admin/employee-cards/cards/{cardId}/revoke:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1cards~1{cardId}~1revoke'
+  /admin/employee-cards/cards/{cardId}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1cards~1{cardId}~1photo'
+  /admin/employee-cards/print:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1print'
+  /admin/employee-cards/settings:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1settings'
+  /admin/employee-cards/settings/signature:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1settings~1signature'
+  /admin/employee-cards/audit-events:
+    $ref: './employee-cards.openapi.yaml#/paths/~1admin~1employee-cards~1audit-events'
+  /public/employee-cards/{code}:
+    $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}'
+  /public/employee-cards/{code}/photo:
+    $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}~1photo'
   /admin/committees:
     $ref: './committees.openapi.yaml#/paths/~1admin~1committees'
   /admin/committees/employee-options:

@@ -250,6 +250,21 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "employee-cards",
+    label: "Kartu Pegawai",
+    description: "Pas foto, penerbitan, cetak, dan penggantian kartu identitas pegawai.",
+    featureIds: ["EMP-012"],
+    stage: "available",
+    category: "employee-services",
+    href: "/admin/employee-cards",
+    accessRoles: ["HC Admin"],
+    details: [
+      "Kartu cetak CR80 dan kartu digital dari satu data",
+      "QR membuka halaman cek keaslian dengan status langsung",
+      "Terbit ulang kartu hilang atau rusak dengan riwayat lengkap",
+    ],
+  },
+  {
     key: "help-center",
     label: "Pusat Bantuan",
     description: "Kelola FAQ, panduan layanan, dan kontak Human Capital untuk pegawai.",

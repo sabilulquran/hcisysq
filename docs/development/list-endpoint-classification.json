@@ -903,6 +903,59 @@
       "reason": "Tiga belas topik tetap HELP-001 (D-01) dan kontak HC aktif yang dibatasi 20 oleh rute pembuatnya (D-09)."
     },
     {
+      "url": "/admin/employee-cards",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employee-cards/employees/:employeeId",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/employees/:employeeId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/cards/:cardId/photo",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/print",
+      "list": "bounded",
+      "reason": "Batch cetak kartu pegawai; cardIds 1–50, di atas itu ditolak 400, tidak dipotong (EMP-012 §9.1)."
+    },
+    {
+      "url": "/admin/employee-cards/settings",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/settings/signature",
+      "list": "single"
+    },
+    {
+      "url": "/admin/employee-cards/audit-events",
+      "list": "paged"
+    },
+    {
+      "url": "/me/employee-card",
+      "list": "single"
+    },
+    {
+      "url": "/me/employee-card/photo",
+      "list": "single"
+    },
+    {
+      "url": "/me/employee-card/signature",
+      "list": "single"
+    },
+    {
+      "url": "/public/employee-cards/:code",
+      "list": "single"
+    },
+    {
+      "url": "/public/employee-cards/:code/photo",
+      "list": "single"
+    },
+    {
       "url": "/iclock/*",
       "list": "single"
     },

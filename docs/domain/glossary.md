@@ -67,6 +67,8 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Predicate / Predikat Kinerja | Hasil akhir penilaian kinerja (A Sangat baik, B Baik, C Cukup, D Kurang) yang dihitung dari rata-rata berbobot skala 1–4 dan berlaku setelah disahkan HC. Belum dipakai payroll. |
 | Assignment Letter / Surat Tugas | Surat bernomor yang diterbitkan HC untuk perjalanan dinas yang sudah disetujui. Tercatat di register dokumen DOC-001 (`document_kind = ASSIGNMENT`); nomor tidak pernah didaur ulang. |
 | Training Program / Program Pelatihan | Wadah pelatihan internal dengan sesi terjadwal, peserta, dan daftar hadir per sesi (TRAIN-001). Kehadiran sesi bukan presensi kerja. |
+| Employee Card / Kartu Pegawai | EMP-012: kartu identitas pegawai ukuran CR80 (cetak dan digital) bernomor `KP-YYMM-NNNN` dengan cetakan ke-n, masa berlaku, dan QR ke halaman cek keaslian. Datanya dibekukan saat terbit; status `ACTIVE`, `REPLACED`, `REPORTED_LOST`, atau `REVOKED`. |
+| Card Check Code / Kode Cek Kartu | EMP-012: kode acak 10 karakter Crockford base32 pada QR kartu pegawai; membuka halaman cek keaslian publik yang membaca status kartu dan status kepegawaian saat itu juga. Tidak diturunkan dari NIP. |
 | Training Record / Catatan Pelatihan | Riwayat resmi pelatihan per pegawai: internal (dibuat saat program ditutup) atau eksternal (diajukan pegawai, diverifikasi HC), dengan jam pelatihan dan sertifikat opsional (TRAIN-001). |
 | Notification | Pesan yang dipicu event melalui kanal seperti in-app, email, atau WhatsApp. |
 | Help Article / Artikel Bantuan | HELP-001: FAQ (tanya-jawab) atau panduan singkat satu layanan di Pusat Bantuan, pada satu topik tetap, berstatus draf, terbit, atau arsip. Pegawai hanya membaca yang terbit. |

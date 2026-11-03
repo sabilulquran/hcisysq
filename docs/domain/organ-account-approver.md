@@ -51,8 +51,9 @@ Saat traversal resolver mencapai incumbent efektif:
 3. **Eligibility akun.** Akun `FOUNDATION_BOARD` harus `active` dan memegang `leave.governance.approve` melalui assignment `governance_leave_approver` yang efektif pada tanggal resolusi. Untuk principal akun, `requiredCapability` workflow LEAVE dipetakan ke `leave.governance.approve`, bukan `leave.approve`. Akun yang tidak memenuhi syarat dianggap tidak eligible, dan resolver mengikuti `vacancy_policy`. Kepemilikan jabatan tidak pernah memberi capability.
 4. **Orang yang sama.** Dua principal dianggap orang yang sama bila memiliki akun yang sama atau `accounts.employee_id` yang sama. Invarian: anggota organ yang juga pegawai tidak boleh memegang akun `FOUNDATION_BOARD` aktif, sehingga hand-over ORG-010 §5 wajib dilakukan. Satu identitas Akun SQ hanya terpasang pada satu akun (indeks unik migrasi 0020), sehingga pelanggaran invarian ini berbentuk dua akun dengan identitas berbeda. Karena itu invarian ditegakkan dengan pencocokan email:
    - kanal pemberian menolak `governance_leave_approver` untuk akun `FOUNDATION_BOARD` bila email akun itu, atau email pada profil Akun SQ-nya, cocok dengan email pegawai aktif, dan pemberi wajib menyatakan "bukan pegawai" di alasan;
+   - email dibandingkan setelah trim dan lowercase; email kosong di salah satu sisi tidak dianggap cocok, tetapi akun `FOUNDATION_BOARD` tanpa email ditolak di kanal pemberian;
    - resolver menjalankan pencocokan email yang sama saat submit, dan gagal sebagai configuration error bila cocok atau bila akun `FOUNDATION_BOARD` belum mempunyai identitas terpetakan.
-5. **Self-approval.** Larangan self-approval memakai definisi orang yang sama di butir 4. Larangan ini diperiksa saat submit dan diperiksa ulang saat keputusan.
+5. **Self-approval.** Larangan self-approval memakai definisi orang yang sama di butir 4, termasuk pencocokan email. Larangan ini diperiksa saat submit dan diperiksa ulang saat keputusan.
 6. **Duplicate approver.** Aturan APR-001 memakai kunci (tipe principal, id) setelah normalisasi orang yang sama. Dua principal akun yang berbeda tidak pernah digabung.
 
 Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
@@ -109,7 +110,7 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 - bentuk data salah (akun pada jabatan `EMPLOYEE`, pegawai pada jabatan `ACCOUNT`, `FOUNDATION_BOARD` dengan `employee_id`) gagal `INVALID_AUTHORITY_PRINCIPAL`;
 - akun `FOUNDATION_BOARD` dan akun `EMPLOYEE` aktif dengan identitas berbeda tetapi email sama ditolak di kanal pemberian dan menghasilkan configuration error di resolver;
 - kanal mana pun menolak `governance_leave_approver` untuk target `EMPLOYEE`;
-- self-approval lewat identitas yang sama ditolak saat submit dan saat keputusan;
+- self-approval lewat akun, `employee_id`, atau email yang sama ditolak saat submit dan saat keputusan;
 - dua principal akun berbeda (Sekretaris dan Ketua) tidak digabung oleh dedupe;
 - cuti Direktur di `STRUCTURE`: Sekretaris (akun) menyetujui, Ketua (akun) mendapat notification intent, Pembina tidak;
 - token tukar, termasuk token governance summary, ditolak 401 di route keputusan;

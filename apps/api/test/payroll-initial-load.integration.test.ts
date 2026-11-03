@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { openPolicyVersion } from "../src/modules/payroll/admin-store.js";
 import {
   InitialLoadRefused,
   MIGRATION_MARKER,
@@ -43,6 +44,7 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
   let actorAccountId: string;
   let weakAccountId: string;
   const ownedPeriodIds: string[] = [];
+  const ownedRoleIds: string[] = [];
 
   async function newEmployee(employeeNumber: string, fullName: string, category: string | null) {
     const employeeId = randomUUID();
@@ -81,6 +83,7 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
   async function newAccount(employeeId: string, permissions: string[]) {
     const accountId = randomUUID();
     const roleId = randomUUID();
+    ownedRoleIds.push(roleId);
     await pool.query(
       `INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1, $2, $3, 'EMPLOYEE', 'active')`,
       [accountId, employeeId, `mig-${accountId}@example.invalid`],
@@ -140,6 +143,11 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
   afterAll(async () => {
     if (pool) {
       await clearOwnRows();
+      // Leave no synthetic account holding payroll permissions behind in the
+      // shared database; other suites pick "any account" as their actor.
+      await pool.query("DELETE FROM account_role_assignments WHERE role_id = ANY($1::uuid[])", [ownedRoleIds]);
+      await pool.query("DELETE FROM role_permissions WHERE role_id = ANY($1::uuid[])", [ownedRoleIds]);
+      await pool.query("DELETE FROM roles WHERE id = ANY($1::uuid[])", [ownedRoleIds]);
       await pool.end();
     }
   });
@@ -211,7 +219,7 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
 
   function expectNoPersonalData(report: InitialLoadReport) {
     const text = JSON.stringify(report);
-    for (const secret of [nip.a, nip.b, nip.noEmployment, NAME_A, ACCOUNT_A, "1234567", "Pegawai Sintetis"]) {
+    for (const secret of [nip.a, nip.b, nip.noEmployment, NAME_A, ACCOUNT_A, "8800000002", "1234567", "Pegawai Sintetis"]) {
       expect(text).not.toContain(secret);
     }
   }
@@ -457,6 +465,7 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
     );
     expect(audit.rows).toEqual([
       { action: "payroll.initial_load.applied", total: 1 },
+      { action: "payroll.initial_load.started", total: 1 },
       { action: "payroll.loan.created", total: 1 },
       { action: "payroll.policy.version_opened", total: 1 },
       { action: "payroll.profile.opened", total: 2 },
@@ -476,13 +485,66 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
       format: "PAY-003-MIG/1",
       policies: [{ ...varianceRow, payload: { ...varianceRow.payload, relative: 0.2 } }],
       profiles: [{ ...profileA, bankName: "Bank Lain" }, profileB],
-      loans: [{ ...loanA, principal: 7 }],
+      // Only the DRAFT date moved: still the same migrated balance, never a second debt.
+      loans: [{ ...loanA, grantedOn: "2090-12-30" }],
     });
     const report = await runInitialLoad(pool, { file: changed, apply: false, actorAccountId, sourceName: "uji.json" });
     expect(report.policies.byKey.VARIANCE_THRESHOLD).toBe("EXISTS_DIFFERENT");
     expect(report.profiles.errors).toEqual({ EXISTS_DIFFERENT: 1 });
     expect(report.profiles.unchanged).toBe(1);
     expect(report.loans.errors).toEqual({ EXISTS_DIFFERENT: 1 });
+  });
+
+  it("keeps an identical row UNCHANGED after a later version was opened, so a re-run still recovers", async () => {
+    await runInitialLoad(pool, { file: cleanFile(), apply: true, actorAccountId, sourceName: "uji.json" });
+    await openPolicyVersion(
+      pool,
+      { policyKey: "VARIANCE_THRESHOLD", effectiveFrom: "2091-06-01", payload: varianceRow.payload, source: "uji" },
+      actorAccountId,
+    );
+    const report = await runInitialLoad(pool, { file: cleanFile(), apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(report.policies.byKey.VARIANCE_THRESHOLD).toBe("UNCHANGED");
+    expect(report.policies.error).toBe(0);
+  });
+
+  it("refuses impossible dates, over-precise numbers, misspelt and colliding symbols as INVALID", async () => {
+    const file = parseInitialLoadFile({
+      format: "PAY-003-MIG/1",
+      policies: [
+        {
+          rowId: "POL-TYPO",
+          policyKey: "FUNCTIONAL_ALLOWANCE",
+          effectiveFrom: EFFECTIVE,
+          source: "uji",
+          payload: {
+            byPosition: { "Functional:Guru Uji": 100_000 },
+            concurrentStructuralFactor: 0.7,
+            excludedUnits: [],
+            positionsWithoutAllowance: [],
+          },
+        },
+        {
+          rowId: "POL-COLLIDE",
+          policyKey: "POSITIONAL_ALLOWANCE",
+          effectiveFrom: EFFECTIVE,
+          source: "uji",
+          payload: {
+            byPosition: { "structural:Kepala Uji": 650_000, "structural:kepala  uji": 1 },
+            unitMultipliers: {},
+            positionsWithoutAllowance: [],
+          },
+        },
+        { rowId: "POL-DATE", policyKey: "OVERTIME", effectiveFrom: "2091-02-30", source: "uji", payload: { monthlyHourDivisor: 173 } },
+      ],
+      profiles: [
+        { ...profileA, rowId: "PRF-PRECISE", annualPerformanceRate: 0.12345 },
+        { ...profileB, rowId: "PRF-DATE", effectiveFrom: "2091-02-30" },
+      ],
+    });
+    const report = await runInitialLoad(pool, { file, apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(report.policies.byKey).toEqual({ FUNCTIONAL_ALLOWANCE: "INVALID", POSITIONAL_ALLOWANCE: "INVALID", OVERTIME: "INVALID" });
+    expect(report.profiles.errors).toEqual({ INVALID: 2 });
+    expect(() => parseInitialLoadFile({ format: "PAY-003-MIG/1", loan: [] })).toThrow();
   });
 
   it("refuses policies and profiles that would reach a calculated period", async () => {

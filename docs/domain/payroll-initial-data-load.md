@@ -116,6 +116,8 @@ Perbedaan yang tetap ada dan harus dijelaskan saat parallel run: pengali unit tu
 
 Kasbon pindahan tidak terhubung ke LOAN-001 (`employee_loan_id` kosong, sesuai `docs/domain/employee-loans.md` untuk kasbon lama).
 
+Pokok pindahan sudah **setelah** potongan Oktober. Register kasbon tidak menyaring kasbon menurut `granted_on`, jadi bila periode Oktober dihitung ulang di HCIS sebagai pembanding (§3), potongan kasbon Oktober **tidak** dimasukkan; selisih baris `LOAN` Oktober terhadap legacy adalah akibat yang disengaja. Potongan pertama di HCIS adalah potongan November.
+
 ### 3.7 Pemeriksaan berkas sebelum dimuat
 
 Berkas yang disiapkan dijalankan lewat engine yang sama terhadap nominal Oktober 2026 di `DATA OLAHAN GAJI`, di luar repository dan hanya dengan keluaran jumlah. Hasil pada persiapan 2026-11-03: `BASIC`, `TEACH_OVER`, `SPOUSE`, `CHILD`, `FUNC`, dan `POS` sama untuk seluruh pegawai bergaji pokok. Selisih hanya pada `PERF` untuk pegawai di bawah setahun yang belum punya nilai kinerja (legacy membayar 0, engine memakai default PAY-003 §10 butir 3), dan pada `SPECIAL_QUAL` pegawai yang sama karena targetnya menyerap `PERF` tersebut. Selisih ini harus dicatat sebagai keputusan §10 butir 3 pada gate parallel run. Satu pegawai memiliki kualifikasi khusus negatif di legacy dan akan diblokir sampai penyesuaian gaji ditetapkan (D1).
@@ -152,7 +154,8 @@ Di release Mi8VPS: `node apps/api/dist/modules/payroll/cli/payroll-initial-load.
 3. Profil: menyelesaikan NIP → pegawai → employment, menyelesaikan unit dan jabatan, lalu menjalankan `profileBody` route dan dua aturan basis data yang dipakai route (override BPJS wajib alasan; tanggal aktif BPJS wajib segmen selain `BELUM_TERDAFTAR`).
 4. Kasbon: menyelesaikan NIP → pegawai, lalu `loanBody` route.
 5. Dry-run (default) mencetak ringkasan dan berhenti. Tidak ada yang ditulis.
-6. `--apply` menolak berjalan bila rencana memuat galat apa pun, lalu menulis hanya baris berstatus `CREATE` lewat fungsi store yang sama dengan route (`openPolicyVersion`, `openCompensationProfile`, `createLoan`), sehingga setiap baris menghasilkan audit event route yang sama. Satu advisory lock mencegah dua run berjalan bersamaan.
+6. `--apply` menolak berjalan bila rencana memuat galat apa pun, mencatat `payroll.initial_load.started`, lalu menulis hanya baris berstatus `CREATE` lewat fungsi store yang sama dengan route (`openPolicyVersion`, `openCompensationProfile`, `createLoan`), sehingga setiap baris menghasilkan audit event route yang sama. Satu advisory lock mencegah dua run CLI berjalan bersamaan; lock itu tidak menahan penulisan lewat layar, jadi run dilakukan saat tidak ada yang mengubah data payroll.
+7. Setiap baris ditulis dalam transaksinya sendiri. Bila satu baris gagal di tengah, baris sebelumnya tetap tertulis, CLI mencatat `payroll.initial_load.failed` dengan jumlah yang sudah tertulis dan kode SQLSTATE, mencetak laporan beserta `startedAt`, lalu keluar dengan kode 1. Pemulihannya adalah menjalankan ulang berkas yang sama: baris yang sudah tertulis kembali `UNCHANGED`, sisanya ditulis.
 
 ### 5.1 Baris yang tidak cocok
 
@@ -171,7 +174,9 @@ Tidak ada yang ditebak. Setiap baris yang tidak dapat dicocokkan dilaporkan deng
 | `LATER_VERSION_EXISTS` | Sudah ada versi kebijakan atau profil yang berlaku setelah tanggal berkas. |
 | `SETTLED_PERIOD` | Ada periode `CALCULATED` ke atas yang tanggal gajiannya tidak sebelum tanggal berlaku. |
 
-Peringatan (baris tetap dapat ditulis): `TMT_DIFFERS`, `OUT_OF_PAYROLL_SCOPE` (kategori employment `MAGANG`/`BELUM_DIKLASIFIKASIKAN`), `UNIT_NOT_IN_POLICY` dan `POSITION_NOT_IN_POLICY` (referensi profil tidak dikenal kebijakan di berkas yang sama; periode akan terblokir `UNIT_NOT_MAPPED`/`POSITION_NOT_MAPPED`).
+Peringatan (baris tetap dapat ditulis): `TMT_DIFFERS`, `OUT_OF_PAYROLL_SCOPE` (kategori employment `MAGANG`/`BELUM_DIKLASIFIKASIKAN`), `UNIT_NOT_IN_POLICY` dan `POSITION_NOT_IN_POLICY` (referensi profil tidak dikenal kebijakan di berkas yang sama; periode akan terblokir `UNIT_NOT_MAPPED`/`POSITION_NOT_MAPPED`), `SUPERSEDES_VERSION` (baris akan menutup versi/profil terbuka yang lebih awal), `OPEN_LOAN_EXISTS` (pegawai sudah punya kasbon terbuka lain yang bukan kasbon pindahan).
+
+`INVALID` juga mencakup: tanggal yang tidak ada di kalender, jam mengajar dengan lebih dari 2 desimal atau persentase kinerja dengan lebih dari 4 desimal (kolom basis data akan membulatkannya), referensi di payload kebijakan yang setelah diselesaikan bukan uuid (simbol salah ketik), dan dua simbol yang jatuh ke uuid yang sama di satu tabel. Bagian berkas yang tidak dikenal (misalnya `loan` untuk `loans`) menolak seluruh berkas.
 
 ### 5.2 Idempoten
 
@@ -179,9 +184,9 @@ Peringatan (baris tetap dapat ditulis): `TMT_DIFFERS`, `OUT_OF_PAYROLL_SCOPE` (k
 |---|---|---|---|
 | Kebijakan | `policy_key` + `effective_from` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT` |
 | Profil | `employment_id` + `effective_from` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT` |
-| Kasbon | `employee_id` + `granted_on` + `note` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT` |
+| Kasbon | `employee_id` + penanda `[PAY-003-MIG]` di `note` (satu kasbon pindahan per pegawai) | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT`, termasuk bila hanya tanggal atau catatannya yang berubah |
 
-Payload kebijakan dibandingkan setelah kunci diurutkan; profil dibandingkan per field dengan angka dinormalisasi. Menjalankan ulang berkas yang sama setelah `--apply` menghasilkan nol `CREATE`.
+Payload kebijakan dibandingkan setelah kunci diurutkan; profil dibandingkan per field dengan angka dinormalisasi. Baris yang sudah ada persis sama selalu `UNCHANGED`, juga bila sesudahnya sudah dibuka versi yang lebih baru, sehingga run ulang tetap bisa menjadi jalur pemulihan. Menjalankan ulang berkas yang sama setelah `--apply` menghasilkan nol `CREATE`.
 
 ### 5.3 Keluaran
 
@@ -189,7 +194,7 @@ Hanya jumlah, kode, kunci kebijakan, dan `rowId` dari berkas masukan (pengenal b
 
 ## 6. Audit
 
-Setiap baris yang ditulis menghasilkan audit event yang sama dengan jalur HTTP: `payroll.policy.version_opened`, `payroll.profile.opened` (dengan `employment_id`), `payroll.loan.created`. Setelah semua baris, CLI menulis satu `payroll.initial_load.applied` berisi jumlah per bagian dan berkas sumber (nama berkas saja). Tidak ada nominal perorangan atau rekening di payload; constraint `payroll_audit_events_payload_has_no_personal_amount` tetap berlaku.
+Setiap baris yang ditulis menghasilkan audit event yang sama dengan jalur HTTP: `payroll.policy.version_opened`, `payroll.profile.opened` (dengan `employment_id`), `payroll.loan.created`. Sebelum baris pertama CLI menulis `payroll.initial_load.started` (waktu mulai, nama berkas), lalu satu `payroll.initial_load.applied` (waktu mulai dan selesai, jumlah per bagian) atau `payroll.initial_load.failed` (jumlah yang sudah tertulis, SQLSTATE). Galat basis data dicetak hanya sebagai SQLSTATE dan nama constraint, karena detailnya dapat mengutip seluruh baris termasuk rekening. Tidak ada nominal perorangan atau rekening di payload; constraint `payroll_audit_events_payload_has_no_personal_amount` tetap berlaku.
 
 ## 7. Perubahan basis data
 
@@ -197,22 +202,29 @@ Hanya data. Tidak ada migration. Satu perubahan kode di luar CLI: skema `SALARY_
 
 ## 8. Rollback dan pemulihan
 
-Selama belum ada periode yang dihitung dengan data ini (tidak ada baris `payroll_results` yang menunjuk profil, dan tidak ada potongan kasbon), pemuatan dapat dibatalkan seluruhnya:
+Selama belum ada periode yang dihitung dengan data ini, pemuatan dapat dibatalkan. Jalankan **sekali per run** (per akun pelaku), dengan `started` dan `finished` dari audit `payroll.initial_load.started` dan `.applied`/`.failed` run itu, sehingga profil yang dibuka akun yang sama lewat layar sesudahnya tidak ikut terhapus. Dalam `psql`:
 
 ```sql
+\set actor '<uuid akun pelaku>'
+\set started '<started_at>'
+\set finished '<finished_at, atau waktu audit .failed>'
 BEGIN;
 DELETE FROM payroll_loans l
  WHERE l.note LIKE '%[PAY-003-MIG]%'
+   AND l.recorded_by_account_id = :'actor'
    AND NOT EXISTS (SELECT 1 FROM payroll_loan_deductions d WHERE d.loan_id = l.id);
 DELETE FROM payroll_compensation_profiles p
- WHERE p.recorded_by_account_id = :actor
-   AND p.recorded_at >= :run_started_at
+ WHERE p.recorded_by_account_id = :'actor'
+   AND p.recorded_at BETWEEN :'started'::timestamptz AND :'finished'::timestamptz
    AND NOT EXISTS (SELECT 1 FROM payroll_results r WHERE r.compensation_profile_id = p.id);
-DELETE FROM payroll_policy_versions WHERE source LIKE '%[PAY-003-MIG]%';
+DELETE FROM payroll_policy_versions v
+ WHERE v.source LIKE '%[PAY-003-MIG]%'
+   AND v.created_by_account_id = :'actor'
+   AND NOT EXISTS (SELECT 1 FROM payroll_results r WHERE r.policy_version_ids ? v.id::text);
 COMMIT;
 ```
 
-`:run_started_at` adalah `startedAt` di keluaran `--apply` dan di audit `payroll.initial_load.applied`. Audit event tidak dihapus. Pemuatan awal tidak menutup versi pendahulu karena tabelnya kosong; bila suatu saat dijalankan di atas data yang sudah ada, rollback harus juga mengembalikan `effective_to` pendahulu, jadi jalankan dulu dry-run dan pastikan semua baris berstatus `CREATE` tanpa pendahulu.
+Audit event tidak dihapus. Pemuatan awal tidak menutup versi pendahulu karena tabelnya kosong; bila suatu saat dijalankan di atas data yang sudah ada (peringatan `SUPERSEDES_VERSION`), rollback juga harus mengembalikan `effective_to` pendahulu, jadi pastikan dry-run tidak memuat peringatan itu sebelum `--apply`.
 
 Setelah periode dihitung, koreksi tidak dilakukan dengan menghapus, tetapi dengan membuka versi atau profil baru (PAY-003 §3).
 

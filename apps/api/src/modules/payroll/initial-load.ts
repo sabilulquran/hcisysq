@@ -76,33 +76,93 @@ export function positionRef(kind: PositionKind, label: string): string {
 // ---------------------------------------------------------------------------
 // Input shape
 
-const fileShape = z.object({
-  format: z.literal(INITIAL_LOAD_FORMAT),
-  policies: z.array(z.record(z.string(), z.unknown())).default([]),
-  profiles: z.array(z.record(z.string(), z.unknown())).default([]),
-  loans: z.array(z.record(z.string(), z.unknown())).default([]),
-});
+// Strict, so a misspelt section ("loan" for "loans") is refused rather than
+// silently loading nothing.
+const fileShape = z
+  .object({
+    format: z.literal(INITIAL_LOAD_FORMAT),
+    policies: z.array(z.record(z.string(), z.unknown())).default([]),
+    profiles: z.array(z.record(z.string(), z.unknown())).default([]),
+    loans: z.array(z.record(z.string(), z.unknown())).default([]),
+  })
+  .strict();
+
+/** A calendar date that exists; the route's pattern alone accepts 2026-02-30. */
+export function isRealDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.toISOString().slice(0, 10) === value;
+}
+
+const realDate = isoDate.refine(isRealDate, "Tanggal tidak ada di kalender");
+
+/** At most `digits` decimal places, so what the numeric column stores is what the file says. */
+function decimals(digits: number) {
+  return (value: number | null | undefined) =>
+    value === null || value === undefined || Math.abs(Math.round(value * 10 ** digits) - value * 10 ** digits) < 1e-6;
+}
 
 const rowId = z.string().trim().min(1).max(64).optional();
 const label = z.string().trim().min(1).max(200).nullable().optional();
 
 // The route shapes, minus what an initial load must not do: no backdating, and
 // references come in as labels the CLI resolves rather than as raw uuids.
-const policyRow = policyBody.omit({ backdateReason: true }).extend({ rowId }).strict();
+const policyRow = policyBody
+  .omit({ backdateReason: true })
+  .extend({ rowId, effectiveFrom: realDate })
+  .strict();
 
 const profileRow = profileBody
   .omit({ backdateReason: true, unitRef: true, functionalPositionRef: true, structuralPositionRef: true })
   .extend({
     rowId,
     nip: z.string().trim().min(1).max(64),
+    effectiveFrom: realDate,
+    bpjsActiveFrom: realDate.nullable().optional(),
     unit: label,
     functional: label,
     structural: label,
-    legacyServiceStartDate: isoDate.nullable().optional(),
+    legacyServiceStartDate: realDate.nullable().optional(),
   })
+  .strict()
+  // numeric(6,2) and numeric(5,4): a value with more places would be rounded by
+  // PostgreSQL and then never compare equal on a re-run.
+  .refine((row) => decimals(2)(row.teachingHoursPerWeek), { path: ["teachingHoursPerWeek"] })
+  .refine((row) => decimals(4)(row.annualPerformanceRate) && decimals(4)(row.monthlyPerformanceRate), {
+    path: ["annualPerformanceRate"],
+  });
+
+const loanRow = loanBody
+  .omit({ employeeId: true })
+  .extend({ rowId, nip: z.string().trim().min(1).max(64), grantedOn: realDate })
   .strict();
 
-const loanRow = loanBody.omit({ employeeId: true }).extend({ rowId, nip: z.string().trim().min(1).max(64) }).strict();
+/**
+ * Where a policy payload holds references. After resolution every key or
+ * element here must be a uuid: a misspelt symbol ("Functional:" or
+ * "funtional:") would otherwise stay a literal key that nothing ever matches.
+ */
+const REFERENCE_FIELDS: Readonly<Record<string, { keys: readonly string[]; elements: readonly string[] }>> = {
+  BASIC_MULTIPLIER: { keys: ["units"], elements: ["knownUnitRefs"] },
+  PERFORMANCE: { keys: ["baseByPosition"], elements: [] },
+  FUNCTIONAL_ALLOWANCE: { keys: ["byPosition"], elements: ["excludedUnits", "positionsWithoutAllowance"] },
+  POSITIONAL_ALLOWANCE: { keys: ["byPosition", "unitMultipliers"], elements: ["positionsWithoutAllowance"] },
+};
+
+export function referencesAreUuids(policyKey: string, payload: Record<string, unknown>): boolean {
+  const fields = REFERENCE_FIELDS[policyKey];
+  if (!fields) return true;
+  for (const field of fields.keys) {
+    const value = payload[field];
+    if (value && typeof value === "object" && Object.keys(value).some((key) => !UUID.test(key))) return false;
+  }
+  for (const field of fields.elements) {
+    const value = payload[field];
+    if (Array.isArray(value) && value.some((item) => typeof item !== "string" || !UUID.test(item))) return false;
+  }
+  return true;
+}
 
 export type InitialLoadFile = z.infer<typeof fileShape>;
 
@@ -223,7 +283,7 @@ export function canonicalJson(value: unknown): string {
 
 const SYMBOL = /^(unit|functional|structural):(.+)$/;
 
-type Resolution = { value: unknown; unknownUnits: string[]; refLabels: Record<string, string> };
+type Resolution = { value: unknown; unknownUnits: string[]; refLabels: Record<string, string>; collisions: number };
 
 /**
  * Replaces `unit:<name>`, `functional:<label>` and `structural:<label>` wherever
@@ -233,6 +293,7 @@ type Resolution = { value: unknown; unknownUnits: string[]; refLabels: Record<st
 export function resolveSymbols(value: unknown, units: ReadonlyMap<string, string>): Resolution {
   const unknownUnits: string[] = [];
   const refLabels: Record<string, string> = {};
+  let collisions = 0;
 
   function resolveOne(text: string): string {
     const match = SYMBOL.exec(text);
@@ -258,14 +319,19 @@ export function resolveSymbols(value: unknown, units: ReadonlyMap<string, string
     if (node !== null && typeof node === "object") {
       const out: Record<string, unknown> = {};
       for (const [key, item] of Object.entries(node as Record<string, unknown>)) {
-        out[resolveOne(key)] = walk(item);
+        const resolved = resolveOne(key);
+        // Two spellings of one label land on one uuid; the second would silently
+        // overwrite the first amount.
+        if (Object.prototype.hasOwnProperty.call(out, resolved)) collisions += 1;
+        out[resolved] = walk(item);
       }
       return out;
     }
     return node;
   }
 
-  return { value: walk(value), unknownUnits, refLabels };
+  const resolved = walk(value);
+  return { value: resolved, unknownUnits, refLabels, collisions };
 }
 
 function withMarker(text: string, max: number): string {
@@ -425,13 +491,22 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
     const payload = resolved.value as Record<string, unknown>;
     if (Object.keys(resolved.refLabels).length > 0) payload.refLabels = resolved.refLabels;
     if (!validatePolicyPayload(data.policyKey, payload).ok) row.errors.push("INVALID");
+    if (resolved.collisions > 0 || (resolved.unknownUnits.length === 0 && !referencesAreUuids(data.policyKey, payload))) {
+      row.errors.push("INVALID");
+    }
     if (await settled(data.effectiveFrom)) row.errors.push("SETTLED_PERIOD");
     filePolicies.set(data.policyKey, payload);
 
-    for (const existing of existingPolicies.rows.filter((item) => item.policyKey === data.policyKey)) {
+    const samePolicies = existingPolicies.rows.filter((item) => item.policyKey === data.policyKey);
+    const identicalPolicy = samePolicies.some(
+      (item) => item.effectiveFrom === data.effectiveFrom && canonicalJson(item.payload) === canonicalJson(payload),
+    );
+    // Already loaded exactly as the file says: a re-run is the recovery path after
+    // a partial apply, so a version opened since must not turn it into a refusal.
+    if (identicalPolicy) row.outcome = "UNCHANGED";
+    for (const existing of identicalPolicy ? [] : samePolicies) {
       if (existing.effectiveFrom === data.effectiveFrom) {
-        if (canonicalJson(existing.payload) === canonicalJson(payload)) row.outcome = "UNCHANGED";
-        else row.errors.push("EXISTS_DIFFERENT");
+        row.errors.push("EXISTS_DIFFERENT");
       } else if (existing.effectiveFrom > data.effectiveFrom) {
         row.errors.push("LATER_VERSION_EXISTS");
       } else if (existing.effectiveTo === null) {
@@ -487,7 +562,9 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
   ];
   const employmentsByDate = new Map<string, EmploymentCandidate[]>();
   for (const date of profileDates) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    // An impossible date would abort the whole plan at the ::date cast; the row
+    // itself is refused as INVALID by its schema.
+    if (!isRealDate(date)) continue;
     const { rows } = await client.query<EmploymentCandidate>(
       `SELECT e.id AS "employmentId", e.employee_id AS "employeeId",
               to_char(coalesce(e.service_start_on, e.started_on), 'YYYY-MM-DD') AS "serviceStartDate",
@@ -607,10 +684,14 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
     if (ownEmployments.has(employment.employmentId)) row.errors.push("OWN_RECORD");
     if (await settled(data.effectiveFrom)) row.errors.push("SETTLED_PERIOD");
 
-    for (const existing of existingProfiles.rows.filter((item) => item.employmentId === employment.employmentId)) {
+    const sameProfiles = existingProfiles.rows.filter((item) => item.employmentId === employment.employmentId);
+    const identicalProfile = sameProfiles.some(
+      (item) => item.effectiveFrom === data.effectiveFrom && profileMatches(item, desired),
+    );
+    if (identicalProfile) row.outcome = "UNCHANGED";
+    for (const existing of identicalProfile ? [] : sameProfiles) {
       if (existing.effectiveFrom === data.effectiveFrom) {
-        if (profileMatches(existing, desired)) row.outcome = "UNCHANGED";
-        else row.errors.push("EXISTS_DIFFERENT");
+        row.errors.push("EXISTS_DIFFERENT");
       } else if (existing.effectiveFrom > data.effectiveFrom) {
         row.errors.push("LATER_VERSION_EXISTS");
       } else if (existing.effectiveTo === null) {
@@ -695,9 +776,14 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
     };
     if (!loanBody.safeParse({ ...desired, instalment: desired.instalment }).success) row.errors.push("INVALID");
 
+    // One migrated balance per employee: any loan carrying the marker is this
+    // row, whatever its date or note now says, so changing the DRAFT date and
+    // re-running can never open a second debt (spec §5.2).
     for (const existing of existingLoans.rows.filter((item) => item.employeeId === employeeId)) {
-      if (existing.grantedOn === desired.grantedOn && existing.note === note) {
+      if ((existing.note ?? "").includes(MIGRATION_MARKER)) {
         const same =
+          existing.grantedOn === desired.grantedOn &&
+          existing.note === note &&
           Number(existing.principal) === desired.principal &&
           (existing.instalment === null ? null : Number(existing.instalment)) === desired.instalment;
         if (same) row.outcome = "UNCHANGED";
@@ -745,7 +831,7 @@ export function planHasErrors(plan: Pick<InitialLoadReport, "actor" | "policies"
 async function planReadOnly(pool: Pool, file: InitialLoadFile, actorAccountId: string | null): Promise<Plan> {
   const client = await pool.connect();
   try {
-    await client.query("BEGIN READ ONLY");
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     try {
       return await buildPlan(client, file, actorAccountId);
     } finally {
@@ -763,6 +849,35 @@ export class InitialLoadRefused extends Error {
   ) {
     super(message);
     this.name = "InitialLoadRefused";
+  }
+}
+
+/** Raised when apply stops after some rows were written; carries what was written. */
+export class InitialLoadPartial extends Error {
+  readonly errorCode: string;
+  constructor(
+    readonly report: InitialLoadReport,
+    cause: unknown,
+  ) {
+    super("Pemuatan berhenti di tengah; sebagian baris sudah tertulis. Jalankan ulang berkas yang sama untuk melanjutkan.");
+    this.name = "InitialLoadPartial";
+    // A database error's detail can quote the whole row, bank account included,
+    // so only the SQLSTATE travels on (spec §5.3).
+    this.errorCode = (cause as { code?: string }).code ?? "UNKNOWN";
+  }
+}
+
+async function recordRun(pool: Pool, actorAccountId: string, action: string, payload: Record<string, unknown>) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await writeAudit(client, { actorAccountId, action, periodId: null, payload });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -801,45 +916,53 @@ export async function runInitialLoad(
         throw new InitialLoadRefused("Rencana memuat galat; tidak ada data yang ditulis.", planned);
       }
 
+      // The start is on record before the first row is written, so a run that
+      // stops half way can still be found and rolled back (spec §8).
+      await recordRun(pool, actorAccountId, "payroll.initial_load.started", {
+        started_at: startedAt,
+        source_file: options.sourceName,
+      });
+
       const written = { policies: 0, profiles: 0, loans: 0 };
-      for (const row of plan.policies) {
-        if (!row.write) continue;
-        await openPolicyVersion(pool, row.write, actorAccountId);
-        written.policies += 1;
-      }
-      for (const row of plan.profiles) {
-        if (!row.write) continue;
-        await openCompensationProfile(pool, row.write, actorAccountId);
-        written.profiles += 1;
-      }
-      for (const row of plan.loans) {
-        if (!row.write) continue;
-        await createLoan(pool, row.write, actorAccountId);
-        written.loans += 1;
+      try {
+        for (const row of plan.policies) {
+          if (!row.write) continue;
+          await openPolicyVersion(pool, row.write, actorAccountId);
+          written.policies += 1;
+        }
+        for (const row of plan.profiles) {
+          if (!row.write) continue;
+          await openCompensationProfile(pool, row.write, actorAccountId);
+          written.profiles += 1;
+        }
+        for (const row of plan.loans) {
+          if (!row.write) continue;
+          await createLoan(pool, row.write, actorAccountId);
+          written.loans += 1;
+        }
+      } catch (error) {
+        // Each row commits on its own, so what was written stays written. A re-run
+        // of the same file finds those rows UNCHANGED and writes the rest.
+        const partial = { ...planned, written };
+        await recordRun(pool, actorAccountId, "payroll.initial_load.failed", {
+          started_at: startedAt,
+          source_file: options.sourceName,
+          policies_written: written.policies,
+          profiles_written: written.profiles,
+          loans_written: written.loans,
+          error_code: (error as { code?: string }).code ?? "UNKNOWN",
+        }).catch(() => undefined);
+        throw new InitialLoadPartial(partial, error);
       }
 
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await writeAudit(client, {
-          actorAccountId,
-          action: "payroll.initial_load.applied",
-          periodId: null,
-          payload: {
-            started_at: startedAt,
-            source_file: options.sourceName,
-            policies_written: written.policies,
-            profiles_written: written.profiles,
-            loans_written: written.loans,
-          },
-        });
-        await client.query("COMMIT");
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
+      await recordRun(pool, actorAccountId, "payroll.initial_load.applied", {
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+        source_file: options.sourceName,
+        policies_written: written.policies,
+        profiles_written: written.profiles,
+        loans_written: written.loans,
+      });
 
       return { ...planned, written };
     } finally {

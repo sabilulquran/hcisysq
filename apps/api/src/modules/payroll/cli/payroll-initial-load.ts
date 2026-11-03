@@ -1,7 +1,7 @@
 // PAY-003-MIG initial load of payroll reference data (docs/domain/payroll-initial-data-load.md).
 // Dry-run unless --apply is given; the plan always runs in a READ ONLY transaction.
 // Prints counts, codes, policy keys and the file's own row identifiers only:
-// never a name, NIP, amount or account number.
+// never a name, NIP, amount or account number, not even in an error.
 // Production use: docs/development/mi8vps-hcis-release.md §4.11.
 //
 //   npm --workspace @hcis/api run payroll:initial-load -- --file <input.json>
@@ -12,7 +12,13 @@ import { basename, resolve } from "node:path";
 
 import { loadConfig } from "../../../config/env.js";
 import { createPool } from "../../../db/pool.js";
-import { InitialLoadRefused, parseInitialLoadFile, planHasErrors, runInitialLoad } from "../initial-load.js";
+import {
+  InitialLoadPartial,
+  InitialLoadRefused,
+  parseInitialLoadFile,
+  planHasErrors,
+  runInitialLoad,
+} from "../initial-load.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -33,9 +39,19 @@ function parseArgs(argv: string[]) {
   return { file: resolve(file), actorAccountId, apply };
 }
 
+async function readInput(path: string): Promise<unknown> {
+  const text = await readFile(path, "utf8");
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Node's own message quotes the text around the fault, which can be a NIP,
+    // a name or an account number.
+    throw new Error("Berkas masukan bukan JSON yang valid.");
+  }
+}
+
 const args = parseArgs(process.argv.slice(2));
-const raw: unknown = JSON.parse(await readFile(args.file, "utf8"));
-const file = parseInitialLoadFile(raw);
+const file = parseInitialLoadFile(await readInput(args.file));
 const config = loadConfig();
 const pool = createPool(config.DATABASE_URL);
 
@@ -55,12 +71,23 @@ try {
     );
   }
 } catch (error) {
+  process.exitCode = 1;
   if (error instanceof InitialLoadRefused) {
     console.log(JSON.stringify(error.report, null, 2));
     console.error(error.message);
-    process.exitCode = 1;
+  } else if (error instanceof InitialLoadPartial) {
+    console.log(JSON.stringify(error.report, null, 2));
+    console.error(`${error.message} (SQLSTATE ${error.errorCode})`);
   } else {
-    throw error;
+    // A database error's detail can quote a whole row; print only what identifies it.
+    const { code, constraint } = error as { code?: string; constraint?: string };
+    console.error(
+      code
+        ? `Galat basis data ${code}${constraint ? ` pada ${constraint}` : ""}.`
+        : error instanceof Error
+          ? error.message
+          : "Galat tidak dikenal.",
+    );
   }
 } finally {
   await pool.end();

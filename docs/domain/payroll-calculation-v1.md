@@ -147,7 +147,7 @@ Setiap input mencatat aktor, waktu, alasan bila diwajibkan, dan audit event.
 
 ## 5. Perhitungan
 
-Semua uang dalam **rupiah bulat** (integer); tidak ada satuan di bawah rupiah dan tidak ada pembulatan ke ratusan. Fungsi perhitungan murni dan deterministik untuk snapshot input + versi kebijakan yang sama.
+Semua uang dalam **rupiah bulat** (integer); tidak ada satuan di bawah rupiah dan tidak ada pembulatan ke ratusan. Satu pengecualian pada data masukan, bukan pada uang yang dibayar: nominal tabel skala gaji pokok disimpan apa adanya dari legacy (pecahan), karena `BASIC` dibulatkan sekali setelah pengali (PAY-003-MIG §3.4). Fungsi perhitungan murni dan deterministik untuk snapshot input + versi kebijakan yang sama.
 
 **Aturan pembulatan (lengkap, perbaikan review 2026-10-27).**
 

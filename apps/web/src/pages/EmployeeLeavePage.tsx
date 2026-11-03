@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
+import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
@@ -418,9 +419,26 @@ export function EmployeeLeavePage() {
                       : ""}
                   </p>
                 </div>
-                <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">
-                  {statusLabel(item.status)}
-                </span>
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">
+                    {statusLabel(item.status)}
+                  </span>
+                  {item.canCancel ? (
+                    <CancelLeaveRequest
+                      requestId={item.id}
+                      onDone={(outcome) => {
+                        if (outcome.ok) {
+                          setError(null);
+                          setSuccess("Pengajuan Cuti Tahunan dibatalkan.");
+                        } else {
+                          setSuccess(null);
+                          setError(outcome.message);
+                        }
+                        void load();
+                      }}
+                    />
+                  ) : null}
+                </div>
               </div>
             ))
           )}

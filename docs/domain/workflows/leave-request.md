@@ -90,7 +90,7 @@ Common input may include:
 - Request cannot overlap prohibited leave/attendance events.
 - Working-day calculation uses the same calendar in preview and submit.
 - Frontend never owns entitlement, payroll, approval, or validation rules.
-- Requester can only change/cancel requests in states allowed by policy.
+- Requester can only change/cancel requests in states allowed by policy (LEAVE-010: cancel while `in_review` for line-approval leave).
 - An actor can only act on an active step assigned to that actor.
 - Submitted approval steps are never recomputed because organization configuration later changes.
 
@@ -150,6 +150,46 @@ in_review
 
 Validation tasks distinguish `approval` from `validation`; do not infer semantics solely from the parent request state.
 
+## LEAVE-010 — Employee cancellation and in-app approver notification
+
+Added 2026-11-03 (HELP-001 finding): a line approver learned of a new request only by opening **Persetujuan**, and an employee had no way to withdraw a request they no longer needed. Decisions not yet confirmed by the product owner are marked `DRAFT`.
+
+### Approver notification (NOTIF-004)
+
+| Element | Rule |
+| --- | --- |
+| Actor | System, inside the transaction that makes a line step `pending`. |
+| Trigger | (1) Cuti Tahunan submit, (2) planned leave submit (Cuti Tanpa Gaji, Haji, and other planned policies), (3) an approval decision that activates the next line step. These are exactly the places that already enqueue the outbox intent `leave.approval.requested`. |
+| Recipient | The approver of the step that just became `pending`: the active `EMPLOYEE` account of `approver_employee_id`, or `approver_account_id` for a governance approver while that account is active. Submission already refuses an employee approver without an active account (`APPROVER_ACCOUNT_NOT_READY`); should the account become inactive later, no in-app row is written and the outbox intent and the **Persetujuan** inbox stay the source of truth. |
+| Content | Category `system`; title "Pengajuan cuti menunggu persetujuan Anda"; body `<nama pemohon> mengajukan <jenis cuti> <tanggal mulai>–<tanggal selesai> (<n> hari kerja).`; link `/app/approvals`. The reason, evidence, and medical details are **never** copied into the notification. |
+| Idempotency | `event_key = leave.approval.requested.<stepId>`: one notification per step, whatever the retries. |
+| Failure | Writing the notification is part of the same transaction as the step activation (NOTIF-004 pattern, as DOC-001 does); it adds no external call. |
+
+HC queues (validation, HC approval, critical review) keep their existing role-targeted outbox intents; in-app notification for HC is out of scope of LEAVE-010.
+
+### Employee cancellation
+
+| Element | Rule |
+| --- | --- |
+| Actor | The requesting employee (session employee owns the request). Ownership, not a permission. |
+| Precondition | Request status `in_review` **and** `line_handling = 'approval'` (Cuti Tahunan and planned leave). This covers every stage still awaiting a decision: a pending line step, a pending critical-period review (LEAVE-009), or a pending HC validation/approval task. |
+| Not allowed | `approved`, `rejected`, or `cancelled` requests (cancelling approved leave is post-approval cancellation and stays with HC, see `annual-leave-vertical-slice.md`). Special leave reports (`line_handling` `notify`/`none`) are withdrawn through HC (`DRAFT`): they record facts that HC validates rather than ask for approval. |
+| Input | Optional `reason`, at most 500 characters after trimming. |
+| Transition | `leave_requests.status in_review -> cancelled`; open line steps (`waiting`, `pending`) -> `cancelled`; an open HC task (`waiting`, `pending`, `needs_correction`) -> `cancelled`; an open critical review (`waiting`, `pending`) -> `cancelled`. Decided steps keep their history. The balance reservation and overlap guard release automatically because both count only `in_review`/`approved`. |
+| Concurrency | Decisions lock their step, HC task, or review together with the request. Cancellation locks the request and then those rows, every lock `NOWAIT`, so it never waits while holding a lock and cannot deadlock with a decision: when a decision is in flight the cancellation answers 409 `LEAVE_REQUEST_BUSY` ("sedang diproses penyetuju"), the decision completes, and a retry sees the new state. |
+| Audit | `leave_request_events` row `leave.request.cancelled` with actor, `policyKey`, `stage` (`line`, `critical_review`, or `hc`), and the reason when given. |
+| Notification | The approver whose step was `pending` receives "Pengajuan cuti dibatalkan" (`event_key = leave.request.cancelled.<requestId>`, link `/app/approvals`); outbox intent `leave.request.cancelled`. When the open task was HC's, the outbox intent targets the `human_capital` role. |
+| Failure | Not my request or missing → 404 `LEAVE_REQUEST_NOT_FOUND`; not cancellable → 409 `LEAVE_REQUEST_NOT_CANCELLABLE` with the reason; a decision in flight → 409 `LEAVE_REQUEST_BUSY`; invalid body → 400 `INVALID_LEAVE_CANCELLATION`. |
+| Screen | **Batalkan pengajuan** on each cancellable item in the Cuti Tahunan and planned leave history, with a confirmation step. The API returns `canCancel` per item; the screen does not decide. |
+
+Acceptance:
+
+- LEAVE-010-A: submitting Cuti Tahunan or planned leave creates exactly one in-app notification for the first line approver with an active account, without the reason.
+- LEAVE-010-B: approving a step creates one in-app notification for the next line approver; the last line approval creates none for line approvers.
+- LEAVE-010-C: the requester cancels an `in_review` request; the request, open steps, open HC task, and open critical review become `cancelled`, `leave.request.cancelled` is recorded, and the pending approver is notified.
+- LEAVE-010-D: cancelling someone else's request answers 404; cancelling an approved, rejected, already cancelled, or special-leave request answers 409 and changes nothing.
+- LEAVE-010-E: after cancellation the approver's inbox no longer lists the step and a late decision on it is refused.
+
 ## Calculation snapshot
 
 At submit, persist enough normalized facts to explain the decision later, for example:
@@ -171,7 +211,7 @@ Policy/config changes after submission do not rewrite the snapshot.
 ## Notifications
 
 - Requester receives submit/decision status.
-- Current line approver receives a task when line approval is required.
+- Current line approver receives a task when line approval is required, and an in-app notification when the step becomes active (LEAVE-010).
 - HC receives a notification, validation task, or approval task according to `hc_handling`.
 - Organization-event leave is communicated through calendar/event publication rather than fake employee requests.
 - Notifications must not expose unnecessary medical or personal details.

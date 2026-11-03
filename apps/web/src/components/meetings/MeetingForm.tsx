@@ -4,9 +4,10 @@
 // availability panel shows conflicts (red) and warnings (yellow) before sending. The panel
 // is a preview; the API checks again, under lock, when the meeting is saved.
 
-import { AlertTriangle, Loader2, Search, X } from "lucide-react";
+import { AlertTriangle, Loader2, Search, UsersRound, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { listMyMeetingGroups, type MeetingGroup } from "@/lib/committees";
 import {
   addDays,
   checkMeetingAvailability,
@@ -22,6 +23,9 @@ import {
   type MeetingDetail,
   type ParticipantOption,
 } from "@/lib/meetings";
+
+/** CAL-001 K-09: the API refuses more; the committee shortcut only warns early. */
+const MAX_MEETING_PARTICIPANTS = 200;
 
 interface Chosen {
   id: string;
@@ -92,6 +96,9 @@ export function MeetingForm({
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<ParticipantOption[]>([]);
   const [searching, setSearching] = useState(false);
+  // ORG-012 D-16: committees I am on, to invite the whole line-up with one choice.
+  const [groups, setGroups] = useState<MeetingGroup[]>([]);
+  const [groupNotice, setGroupNotice] = useState<string | null>(null);
   const [availability, setAvailability] = useState<Availability | null>(null);
   const [checking, setChecking] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -122,6 +129,15 @@ export function MeetingForm({
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
   }, [query]);
+
+  useEffect(() => {
+    let active = true;
+    // Optional convenience: without it the picker below still works, so a failure stays silent.
+    void listMyMeetingGroups()
+      .then((result) => { if (active) setGroups(result.items); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!timesValid || !startAt || !endAt) {
@@ -158,6 +174,21 @@ export function MeetingForm({
     setQuery("");
     setOptions([]);
     setConflicts([]);
+  };
+
+  const inviteGroup = (groupId: string) => {
+    const group = groups.find((entry) => entry.id === groupId);
+    if (!group) return;
+    const known = new Set(chosen.map((person) => person.id));
+    const added = group.members.filter((member) => !known.has(member.id));
+    setChosen((current) => [...current, ...added]);
+    setConflicts([]);
+    const total = known.size + added.length;
+    setGroupNotice(added.length === 0
+      ? `Semua anggota ${group.name} sudah ada di daftar peserta.`
+      : total > MAX_MEETING_PARTICIPANTS
+        ? `${added.length} anggota ${group.name} ditambahkan. Rapat paling banyak ${MAX_MEETING_PARTICIPANTS} peserta; kurangi dulu sebelum mengirim.`
+        : `${added.length} anggota ${group.name} ditambahkan sebagai peserta.`);
   };
 
   const remove = (id: string) => {
@@ -259,6 +290,19 @@ export function MeetingForm({
 
       <fieldset className="mt-4">
         <legend className={label}>Peserta</legend>
+        {groups.length > 0 ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <UsersRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <select aria-label="Undang seluruh panitia" value="" onChange={(event) => inviteGroup(event.target.value)}
+              className="min-h-11 rounded-xl border border-border bg-surface px-3 text-sm text-brand-heading">
+              <option value="">Undang seluruh panitia...</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>{group.name} ({group.members.length} orang)</option>
+              ))}
+            </select>
+            {groupNotice ? <span role="status" className="text-xs text-muted-foreground">{groupNotice}</span> : null}
+          </div>
+        ) : null}
         <div className="relative mt-1.5">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ketik minimal 2 huruf nama pegawai"

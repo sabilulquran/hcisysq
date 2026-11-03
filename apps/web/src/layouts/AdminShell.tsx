@@ -12,6 +12,7 @@ import {
   FileBarChart,
   FileSignature,
   FileText,
+  Flag,
   Grid2X2,
   History,
   Fingerprint,
@@ -45,6 +46,7 @@ export type AdminNavKey =
   | "documents"
   | "organization"
   | "job-classifications"
+  | "committees"
   | "attendance"
   | "attendance-shifts"
   | "attendance-schedules"
@@ -101,6 +103,8 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
       { key: "job-classifications", label: "Klasifikasi Jabatan", href: "/admin/job-classifications", icon: BadgeCheck },
+      // ORG-012: temporary cross-unit assignments; not part of the structure or its authority.
+      { key: "committees", label: "Kepanitiaan", href: "/admin/committees", icon: Flag },
     ],
   },
   {

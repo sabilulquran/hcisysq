@@ -192,7 +192,7 @@ features:
       member roles chair, secretary, treasurer, member with joined/left dates; activation
       creates a virtual unit of type committee with its own letter code, deactivated on
       completion or cancellation; committees can issue numbered letters.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
@@ -201,8 +201,35 @@ features:
       ORG-004 authority structure unless an ADR decides otherwise; legacy modelled it as a
       virtual unit, which should not be copied without review. Related to DOC-003 and
       CAL-001 (meeting participants).
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/committees.md): HC records committees and
+      their line-up (chair, vice chair, secretary, treasurer, section coordinator, member) from
+      active employees, decrees them with an SK numbered in the DOC-001 register (code SKP) or
+      records an SK signed outside HCIS, completes or cancels them (an HCIS SK is revoked with
+      the committee), and reads a yearly participation recap; employees see Kepanitiaan Saya and
+      can invite a whole committee to a CAL-001 meeting. Committees stay outside ORG-004: no
+      virtual unit, no approval authority. Proposal/approval flow and fees are not included.
     docs:
+      - docs/domain/committees.md
+      - docs/api/committees.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: ORG-013
+    module: organization
+    name: Foundation organ accounts as structural approvers
+    legacy_evidence: >-
+      None in legacy; owner decision 2026-11-03 (production chart has Ketua and Sekretaris
+      positions held by FOUNDATION_BOARD accounts, holder_source ACCOUNT).
+    target_status: specified
+    priority: later
+    risk: medium
+    planning_note: >-
+      Specified in PR #290 under the ID ORG-012, which the registry had already given to
+      committees since the 2026-11-02 audit; renumbered to ORG-013 on 2026-11-03 with no change
+      to its decisions. Reuses the 0023 governance approver principal; no new route or role.
+    docs:
+      - docs/domain/organ-account-approver.md
+      - docs/product/organ-portal-concept.md
 
   - id: EMP-005
     module: employee

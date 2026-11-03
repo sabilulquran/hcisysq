@@ -186,8 +186,9 @@ async function allocateNumber(client: PoolClient, numberCode: string, issuedAt: 
   return { year, sequence, documentNumber: formatDocumentNumber(numberCode, sequence, issuedAt) };
 }
 
-/** ASSIGNMENT is the TRIP-001 surat tugas; it shares this register and its counters. */
-export type IssuedDocumentKind = "CERTIFICATE" | "DISCIPLINARY" | "ASSIGNMENT";
+/** ASSIGNMENT is the TRIP-001 surat tugas and COMMITTEE the ORG-012 SK panitia; both share this
+ * register and its counters. */
+export type IssuedDocumentKind = "CERTIFICATE" | "DISCIPLINARY" | "ASSIGNMENT" | "COMMITTEE";
 
 export interface IssuedDocument {
   id: string;

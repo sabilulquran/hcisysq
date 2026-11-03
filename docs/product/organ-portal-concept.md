@@ -1,7 +1,7 @@
 # GOV-001 — Portal Organ Yayasan (konsep)
 
 **Status:** DRAFT. Diskusi owner 2026-11-03. Belum menjadi ADR. Bila diterima, konsep ini menggantikan SQ Hub ADR-0009 "Ringkasan Yayasan" untuk pintu masuk organ, dan ADR penggantinya ditulis di repository portal.
-**Related:** ORG-003, ORG-010, ORG-012 (`../domain/organ-account-approver.md`), SQ Hub ADR-0009 dan HUB-IMPL-021
+**Related:** ORG-003, ORG-010, ORG-013 (`../domain/organ-account-approver.md`), SQ Hub ADR-0009 dan HUB-IMPL-021
 
 ## Gagasan
 
@@ -15,7 +15,7 @@ Organ Yayasan (Pembina, Pengurus, Pengawas; sekarang sekitar 6–7 orang, jumlah
 | 2 | Organ yayasan tidak mengakses modul secara langsung, hanya portal. |
 | 3 | Pengecualian: Pengurus bergaji yang tercatat sebagai Employee tetap memakai layanan pegawai HCIS (cuti sendiri, presensi, slip gaji pribadi). |
 | 4 | **Tampilan approval ada di portal. Mesin approval tetap di aplikasi asal** (HCIS, Karir SQ). |
-| 5 | Akun Organ Yayasan boleh menjadi approver (ORG-012). |
+| 5 | Akun Organ Yayasan boleh menjadi approver (ORG-013). |
 | 6 | Tidak ada aturan approval baru. Alur yang dipakai adalah yang sudah ada: cuti Direktur (LEAVE-003-N) dan persetujuan akhir MPP bila Direktur kosong (Karir SQ REC-IMPL-006). |
 | 7 | Laporan bersifat visual dan dibantu analisis Claude API. |
 | 8 | Laporan bulanan dibuat otomatis setelah data sumber di masing-masing modul sudah disubmit atau disetujui. |
@@ -32,7 +32,7 @@ Kartu dan grafik per aplikasi, dengan angka yang dimiliki aplikasi asal (prinsip
 | Sebaran pegawai per unit | Ranking | HCIS | Ada |
 | Komposisi status kepegawaian | Composition (donut hanya bila ≤ 4 bagian) | HCIS | Ada |
 | Kesiapan organisasi (unit tanpa approver, pegawai tanpa atasan) | Angka + "Perlu perhatian" | HCIS | Ada |
-| Antrean persetujuan organ dan umurnya | Daftar | HCIS, Karir SQ | Setelah ORG-012 |
+| Antrean persetujuan organ dan umurnya | Daftar | HCIS, Karir SQ | Setelah ORG-013 |
 | Kebutuhan tenaga → lowongan → diterima | Stages | Karir SQ | Perlu governance summary |
 | Siswa baru vs target per unit | Target | SPMB | Perlu governance summary |
 | Nilai dan kondisi aset per unit | Composition | Aset SQ | Perlu governance summary |
@@ -42,7 +42,7 @@ Kartu dan grafik per aplikasi, dengan angka yang dimiliki aplikasi asal (prinsip
 
 Menampilkan langkah approval milik orang yang login dari setiap aplikasi asal, dan meneruskan keputusannya ke aplikasi itu atas nama orang tersebut (token exchange). Aplikasi asal yang mencatat state, audit, dan notifikasi.
 
-Untuk organ yang juga pegawai (misalnya Ketua yang merangkap Direktur), targetnya semua langkah approval miliknya tampil di portal, dan kotak approval HCIS untuk orang itu diganti tautan ke portal (`DRAFT`). Keputusan lewat portal membutuhkan jalur token exchange untuk mutasi, yang masih `TBD` (ORG-012-3). Sampai jalur itu ada, keputusan tetap memakai sesi cookie HCIS.
+Untuk organ yang juga pegawai (misalnya Ketua yang merangkap Direktur), targetnya semua langkah approval miliknya tampil di portal, dan kotak approval HCIS untuk orang itu diganti tautan ke portal (`DRAFT`). Keputusan lewat portal membutuhkan jalur token exchange untuk mutasi, yang masih `TBD` (ORG-013-3). Sampai jalur itu ada, keputusan tetap memakai sesi cookie HCIS.
 
 ### 3. Laporan bulanan otomatis
 
@@ -67,7 +67,7 @@ Riwayat keputusan organ dari kotak persetujuan: apa, siapa, kapan, dan alasannya
 ## Prasyarat
 
 1. ORG-004 `STRUCTURE` aktif untuk workflow cuti (masih `LEGACY` per 2026-11-03).
-2. ORG-012 diimplementasikan.
+2. ORG-013 diimplementasikan.
 3. Jabatan Pembina, Bendahara, dan Pengawas ditambahkan ke bagan.
 4. Karir SQ, SPMB, dan Aset SQ menerbitkan governance summary dan penanda tutup bulan.
 5. Client Keycloak untuk portal dan konfigurasi token exchange.

@@ -1,0 +1,697 @@
+openapi: 3.1.0
+info:
+  title: HCIS Committees (ORG-012 Package 1)
+  version: 1.0.0
+  description: |
+    Committees (kepanitiaan), their members, decrees (SK panitia), history and participation
+    recap, as implemented in apps/api/src/modules/committees/routes.ts. Spec:
+    docs/domain/committees.md. All routes use the session cookie and answer with
+    Cache-Control: no-store. Errors use { code, message } and may carry extra fields
+    (problems, fields). /admin/committees/* needs committees.read (reads) or committees.manage
+    (writes and employee search), checked before any input validation. /me/committees/* needs
+    an EMPLOYEE session linked to an active employee; access is membership, not permission.
+    Committees grant no approval authority and never write organization or employment data.
+paths:
+  /admin/committees:
+    get:
+      tags: [Committees]
+      operationId: listCommittees
+      summary: Committees in every status (committees.read), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/Status' } }
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
+        - { name: year, in: query, description: Committees whose period overlaps this calendar year, schema: { type: integer, minimum: 2000, maximum: 2100 } }
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: One page; drafts first, then active, completed, cancelled; newest start first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CommitteeSummary' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Committees]
+      operationId: createCommittee
+      summary: Record a committee as DRAFT (committees.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommitteeInput' }
+      responses:
+        '201': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/committees/employee-options:
+    get:
+      tags: [Committees]
+      operationId: searchCommitteeEmployees
+      summary: Typeahead of active employees (committees.manage); q 2–100 characters, at most 20 matches
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 100 } }
+      responses:
+        '200':
+          description: Matches by name or employee number
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required: [id, fullName, employeeNumber, unitName]
+                      properties:
+                        id: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        unitName: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/committees/participation:
+    get:
+      tags: [Committees]
+      operationId: listCommitteeParticipation
+      summary: Participation recap per employee for one calendar year (D-13, committees.read), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: Employees with at least one ACTIVE or COMPLETED committee overlapping the year, most committees first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [year, items, pagination]
+                properties:
+                  year: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [employeeId, fullName, employeeNumber, unitName, total, asChair, asCore, ongoing]
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        unitName: { type: [string, 'null'] }
+                        total: { type: integer }
+                        asChair: { type: integer }
+                        asCore: { type: integer, description: Chair, vice chair, secretary or treasurer }
+                        ongoing: { type: integer, description: ACTIVE committees with an open membership }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/committees/participation/{employeeId}:
+    get:
+      tags: [Committees]
+      operationId: listEmployeeCommitteeParticipation
+      summary: One employee's committees in a year, cancelled ones flagged, drafts never (committees.read), paged
+      parameters:
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: Memberships
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [year, employee, items, pagination]
+                properties:
+                  year: { type: integer }
+                  employee:
+                    type: object
+                    required: [id, fullName, employeeNumber, unitName]
+                    properties:
+                      id: { type: string, format: uuid }
+                      fullName: { type: string }
+                      employeeNumber: { type: string }
+                      unitName: { type: [string, 'null'] }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [memberId, committeeId, name, category, status, startOn, endOn, role, section, joinedOn, leftOn, decreeNumber]
+                      properties:
+                        memberId: { type: string, format: uuid }
+                        committeeId: { type: string, format: uuid }
+                        name: { type: string }
+                        category: { $ref: '#/components/schemas/Category' }
+                        status: { $ref: '#/components/schemas/Status' }
+                        startOn: { type: string, format: date }
+                        endOn: { type: string, format: date }
+                        role: { $ref: '#/components/schemas/Role' }
+                        section: { type: [string, 'null'] }
+                        joinedOn: { type: string, format: date }
+                        leftOn: { type: [string, 'null'], format: date }
+                        decreeNumber: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/committees/{id}:
+    get:
+      tags: [Committees]
+      operationId: getCommittee
+      summary: Committee with its whole line-up (bounded, D-06) and decree (committees.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Committee
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CommitteeDetail'
+                  - type: object
+                    required: [version, createdAt, updatedAt, members]
+                    properties:
+                      version: { type: integer, minimum: 1 }
+                      createdAt: { type: string, format: date-time }
+                      updatedAt: { type: string, format: date-time }
+                      members:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Member'
+                            - type: object
+                              required: [employeeNumber, employeeStatus, endReason]
+                              properties:
+                                employeeNumber: { type: string }
+                                employeeStatus: { type: string }
+                                endReason: { type: [string, 'null'], description: HC only (D-15) }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Committees]
+      operationId: updateCommittee
+      summary: Edit a DRAFT, or an ACTIVE committee's description, organizer and end date (D-10, committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CommitteeInput'
+                - $ref: '#/components/schemas/VersionInput'
+      responses:
+        '200': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/history:
+    get:
+      tags: [Committees]
+      operationId: listCommitteeHistory
+      summary: Audit events of one committee, newest first (committees.read), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, eventType, employeeId, reason, metadata, occurredAt, actorName]
+                      properties:
+                        id: { type: string, format: uuid }
+                        eventType: { type: string }
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        reason: { type: [string, 'null'] }
+                        metadata: { type: object, description: Names, roles, sections, dates and decree numbers only (§7) }
+                        occurredAt: { type: string, format: date-time }
+                        actorName: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/committees/{id}/members:
+    post:
+      tags: [Committees]
+      operationId: addCommitteeMember
+      summary: Add an active employee; adding a CHAIR demotes the current chair to MEMBER (committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MemberInput'
+                - type: object
+                  required: [employeeId]
+                  properties:
+                    employeeId: { type: string, format: uuid }
+      responses:
+        '201': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/members/{memberId}:
+    patch:
+      tags: [Committees]
+      operationId: updateCommitteeMember
+      summary: Change role or section; a decreed committee keeps exactly one chair (committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/MemberId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemberInput' }
+      responses:
+        '200': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/members/{memberId}/end:
+    post:
+      tags: [Committees]
+      operationId: endCommitteeMember
+      summary: Remove a draft member, or end an active membership today with an optional reason (D-11, committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/MemberId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VersionInput'
+                - type: object
+                  properties:
+                    reason: { type: [string, 'null'], maxLength: 300 }
+      responses:
+        '200': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/activate:
+    post:
+      tags: [Committees]
+      operationId: activateCommittee
+      summary: DRAFT -> ACTIVE with an HCIS-numbered decree or a recorded external one (D-07..D-09, committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VersionInput'
+                - type: object
+                  required: [decree]
+                  properties:
+                    decree:
+                      oneOf:
+                        - type: object
+                          required: [mode]
+                          properties:
+                            mode: { const: ISSUE }
+                        - type: object
+                          required: [mode, number, date]
+                          properties:
+                            mode: { const: EXTERNAL }
+                            number: { type: string, minLength: 3, maxLength: 100 }
+                            date: { type: string, format: date }
+      responses:
+        '200':
+          description: Activated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, version, decreeNumber, issuedDocumentId]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { const: ACTIVE }
+                  version: { type: integer }
+                  decreeNumber: { type: string, description: '<seq>/SKP/YSQ/<roman month>/<year> when issued in HCIS' }
+                  issuedDocumentId: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/complete:
+    post:
+      tags: [Committees]
+      operationId: completeCommittee
+      summary: ACTIVE -> COMPLETED; open memberships close (D-12, committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionInput' }
+      responses:
+        '200': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/committees/{id}/cancel:
+    post:
+      tags: [Committees]
+      operationId: cancelCommittee
+      summary: DRAFT or ACTIVE -> CANCELLED; an HCIS decree is revoked with the same reason (D-12, committees.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VersionInput'
+                - type: object
+                  required: [reason]
+                  properties:
+                    reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/WriteResult' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /me/committees:
+    get:
+      tags: [Committees]
+      operationId: listMyCommittees
+      summary: Committees the caller is or was on (never drafts), ENG-LIST-001 paged
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [current, history], default: current } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One row per committee, with the caller's latest membership
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/CommitteeBase'
+                        - type: object
+                          required: [decreeNumber, role, section, joinedOn, leftOn]
+                          properties:
+                            decreeNumber: { type: [string, 'null'] }
+                            role: { $ref: '#/components/schemas/Role' }
+                            section: { type: [string, 'null'] }
+                            joinedOn: { type: string, format: date }
+                            leftOn: { type: [string, 'null'], format: date }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /me/committees/meeting-groups:
+    get:
+      tags: [Committees]
+      operationId: listMyCommitteeMeetingGroups
+      summary: Up to 20 ACTIVE committees of the caller, each with its other active members as CAL-001 participant options (D-16)
+      responses:
+        '200':
+          description: Bounded list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      required: [id, name, members]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        members:
+                          type: array
+                          items:
+                            type: object
+                            required: [id, name, unitName, hasAccount, hasWhatsApp]
+                            properties:
+                              id: { type: string, format: uuid, description: Employee id }
+                              name: { type: string }
+                              unitName: { type: [string, 'null'] }
+                              hasAccount: { type: boolean }
+                              hasWhatsApp: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /me/committees/{id}:
+    get:
+      tags: [Committees]
+      operationId: getMyCommittee
+      summary: A committee the caller is or was on; anything else, drafts included, is 404 (ORG-012-F)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Committee with line-up (no employee numbers or contacts, D-15) and decree
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CommitteeDetail'
+                  - type: object
+                    required: [members, myMemberIds]
+                    properties:
+                      members: { type: array, items: { $ref: '#/components/schemas/Member' } }
+                      myMemberIds: { type: array, items: { type: string, format: uuid } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Year:
+      name: year
+      in: query
+      description: Calendar year; defaults to the current year in Asia/Jakarta
+      schema: { type: integer, minimum: 2000, maximum: 2100 }
+    Search:
+      name: q
+      in: query
+      description: 2–100 characters (empty means no search), matched case-insensitively and literally
+      schema: { type: string, maxLength: 100 }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        problems: { type: array, items: { type: string }, description: COMMITTEE_NOT_READY reasons }
+        fields: { type: array, items: { type: string }, description: COMMITTEE_FIELD_LOCKED fields }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Category:
+      type: string
+      description: D-01 DRAFT
+      enum: [ADMISSION, EXAM, GRADUATION, RAMADAN, EVENT, OTHER]
+    Role:
+      type: string
+      description: D-05 DRAFT, in decree order
+      enum: [CHAIR, VICE_CHAIR, SECRETARY, TREASURER, SECTION_COORDINATOR, MEMBER]
+    Status: { type: string, enum: [DRAFT, ACTIVE, COMPLETED, CANCELLED] }
+    VersionInput:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 1, description: The version last read (D-19) }
+    CommitteeInput:
+      type: object
+      required: [name, category, startOn, endOn]
+      properties:
+        name: { type: string, minLength: 3, maxLength: 200 }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        organizer: { type: [string, 'null'], minLength: 2, maxLength: 200 }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date, description: On or after startOn; at most 366 days in all (D-04) }
+    MemberInput:
+      type: object
+      required: [role, version]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        section: { type: [string, 'null'], minLength: 2, maxLength: 100, description: Required for SECTION_COORDINATOR }
+        version: { type: integer, minimum: 1 }
+    CommitteeBase:
+      type: object
+      required: [id, name, category, description, organizer, startOn, endOn, status, activatedAt, completedAt, cancelledAt, cancelReason]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: [string, 'null'] }
+        organizer: { type: [string, 'null'] }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        status: { $ref: '#/components/schemas/Status' }
+        activatedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        cancelReason: { type: [string, 'null'] }
+    CommitteeSummary:
+      allOf:
+        - $ref: '#/components/schemas/CommitteeBase'
+        - type: object
+          required: [version, decreeNumber, activeMemberCount, chairName]
+          properties:
+            version: { type: integer }
+            decreeNumber: { type: [string, 'null'] }
+            activeMemberCount: { type: integer }
+            chairName: { type: [string, 'null'] }
+    CommitteeDetail:
+      allOf:
+        - $ref: '#/components/schemas/CommitteeBase'
+        - type: object
+          required: [decreeMode, decreeNumber, decreeDate, decreeStatus, decreeSigner, decreeSnapshot]
+          properties:
+            decreeMode: { type: [string, 'null'], enum: [ISSUED, EXTERNAL, null] }
+            decreeNumber: { type: [string, 'null'] }
+            decreeDate: { type: [string, 'null'], format: date }
+            decreeStatus: { type: [string, 'null'], enum: [ISSUED, REVOKED, null], description: Only for a decree issued in HCIS }
+            decreeSigner:
+              type: [object, 'null']
+              properties:
+                title: { type: string }
+                name: { type: string }
+            decreeSnapshot:
+              type: [object, 'null']
+              description: Line-up at activation (names, units, roles, sections); never identity numbers, address, pay or contacts
+    Member:
+      type: object
+      required: [id, employeeId, fullName, unitName, role, section, joinedOn, leftOn]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        fullName: { type: string }
+        unitName: { type: [string, 'null'] }
+        role: { $ref: '#/components/schemas/Role' }
+        section: { type: [string, 'null'] }
+        joinedOn: { type: string, format: date }
+        leftOn: { type: [string, 'null'], format: date }
+  responses:
+    WriteResult:
+      description: Write accepted; carries the new version
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [id, version]
+            properties:
+              id: { type: string, format: uuid }
+              committeeId: { type: string, format: uuid }
+              status: { $ref: '#/components/schemas/Status' }
+              version: { type: integer }
+              leftOn: { type: [string, 'null'], format: date }
+    Problem:
+      description: Invalid input
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: COMMITTEE_FORBIDDEN, FORBIDDEN or EMPLOYEE_NOT_ACTIVE
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: COMMITTEE_NOT_FOUND, COMMITTEE_MEMBER_NOT_FOUND or EMPLOYEE_NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: >-
+        COMMITTEE_STALE, COMMITTEE_STATE, COMMITTEE_CLOSED, COMMITTEE_FIELD_LOCKED,
+        COMMITTEE_EMPLOYEE_NOT_ACTIVE, COMMITTEE_DUPLICATE_MEMBER, COMMITTEE_CHAIR_REQUIRED,
+        COMMITTEE_MEMBER_LIMIT, COMMITTEE_NOT_READY or DOCUMENT_SIGNER_UNAVAILABLE
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }

@@ -335,6 +335,8 @@ Data acuan dibaca berhalaman: `GET /payroll/loans` dan `GET /payroll/employments
 
 Setiap migration memiliki rollback/recovery plan pada spesifikasi implementasinya.
 
+Spesifikasi implementasi pemuatan data awal: **PAY-003-MIG** `docs/domain/payroll-initial-data-load.md` (CLI `payroll:initial-load`, dry-run default, idempoten, rollback §8). Pemuatan itu juga membuat skema `SALARY_SCALE` menerima nominal skala pecahan; `BASIC` tetap rupiah bulat.
+
 ### 9.2 Parallel run
 
 - Minimal 2–3 periode berturut-turut HCIS dan spreadsheet dijalankan bersamaan.

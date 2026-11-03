@@ -12,6 +12,37 @@ import type { Pool, PoolClient } from "pg";
 
 import { writeAudit } from "./store.js";
 
+export const SETTLED_STATES = [
+  "CALCULATED",
+  "SUBMITTED",
+  "APPROVED",
+  "PAYMENT_CONFIRMED",
+  "PUBLISHED",
+  "REOPEN_REQUESTED",
+];
+
+/**
+ * A period that has been calculated rests on the reference data as it stood then.
+ * Opening a version or a profile that reaches back before such a period would
+ * change what a recalculation produces for a month already being paid, so it is
+ * refused unless the caller says so explicitly and gives a reason
+ * (specification section 3, "perubahan tidak menimpa histori").
+ */
+export async function settledPeriodConflict(
+  db: Pick<Pool, "query"> | PoolClient,
+  effectiveFrom: string,
+): Promise<{ periodMonth: string } | null> {
+  const { rows } = await db.query<{ periodMonth: string }>(
+    `SELECT to_char(period_month, 'YYYY-MM') AS "periodMonth"
+     FROM payroll_periods
+     WHERE state = ANY($2::text[]) AND pay_date >= $1::date
+     ORDER BY period_month
+     LIMIT 1`,
+    [effectiveFrom, SETTLED_STATES],
+  );
+  return rows[0] ?? null;
+}
+
 export type PolicyRow = {
   id: string;
   policyKey: string;
@@ -134,7 +165,7 @@ export type CompensationProfileRow = {
   recordedAt: string;
 };
 
-const PROFILE_COLUMNS = `
+export const PROFILE_COLUMNS = `
   id, employment_id AS "employmentId",
   to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
   to_char(effective_to, 'YYYY-MM-DD') AS "effectiveTo",

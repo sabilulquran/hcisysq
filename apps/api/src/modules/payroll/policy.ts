@@ -48,7 +48,11 @@ const EDUCATION_LEVELS = ["SD", "SMP", "SLTA", "D1_D2", "D3_D4", "S1", "S2_S3"] 
 
 const PAYLOAD_SCHEMAS = {
   SALARY_SCALE: z.object({
-    scale: z.record(z.enum(EDUCATION_LEVELS), z.array(rupiah).min(1)),
+    // The legacy scale is chained percentage rises, so its entries are not whole
+    // rupiah, and BASIC rounds up only after the unit or work-pattern multiplier.
+    // Rounding the table first would move a Half Day salary by a rupiah against
+    // the spreadsheet; BASIC itself is still a whole rupiah (PAY-003-MIG §3.4).
+    scale: z.record(z.enum(EDUCATION_LEVELS), z.array(z.number().finite().nonnegative()).min(1)),
   }),
   BASIC_MULTIPLIER: z.object({
     units: z.record(z.string(), z.number().positive()),

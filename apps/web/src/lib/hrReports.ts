@@ -106,6 +106,20 @@ export async function downloadHrReport(report: HrReportKey, filters: HrReportFil
   URL.revokeObjectURL(url);
 }
 
+/**
+ * UI hint for the API rule (§4): an export is refused when it would be narrower than the screen,
+ * so the buttons are offered only when the chosen unit, or the whole read scope, may be exported.
+ */
+export function exportAllowedFor(access: HrReportAccess, unitId: string | undefined): boolean {
+  const exportScope = access.exportScope;
+  if (!access.canExport || !exportScope) return false;
+  if (exportScope.type === "organization") return true;
+  if (unitId) return exportScope.unitIds.includes(unitId);
+  const readUnits = access.scope.type === "unit" ? access.scope.units.map((unit) => unit.id) : null;
+  return readUnits !== null && readUnits.length === exportScope.unitIds.length
+    && readUnits.every((id) => exportScope.unitIds.includes(id));
+}
+
 /** The current month in Jakarta, as the default period (D-10). */
 export function currentMonthPeriod(now = new Date()): { from: string; to: string } {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);

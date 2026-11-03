@@ -122,7 +122,7 @@ components:
     EmploymentType:
       name: employmentType
       in: query
-      description: employees only; one of the values offered by /admin/reports/hr/access
+      description: employees only; one of the values offered by /admin/reports/hr/access (an export refuses any other with 400)
       schema: { type: string, minLength: 1, maxLength: 100 }
     From:
       name: from
@@ -209,7 +209,10 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: FORBIDDEN (no report role in any scope, or read-only on export) or REPORT_SCOPE_FORBIDDEN
+      description: >-
+        FORBIDDEN (no report role in any scope, or read-only on export), REPORT_SCOPE_FORBIDDEN
+        (unitId outside the scope), or REPORT_EXPORT_UNIT_REQUIRED (export without unitId while the
+        export scope is narrower than the read scope)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Problem' }

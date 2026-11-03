@@ -10,6 +10,7 @@ import { AdminShell } from "@/layouts/AdminShell";
 import {
   currentMonthPeriod,
   downloadHrReport,
+  exportAllowedFor,
   formatReportCell,
   getHrReportAccess,
   getHrReportPage,
@@ -85,6 +86,10 @@ export function AdminHrReportsPage() {
   }, [access, report, filters, page, pageSize]);
 
   const definition = access?.reports.find((item) => item.key === report) ?? null;
+  const exportable = access ? exportAllowedFor(access, filters.unitId) : false;
+  const exportUnits = access?.exportScope?.type === "unit"
+    ? access.filters.units.filter((unit) => access.exportScope?.unitIds.includes(unit.id)).map((unit) => unit.name)
+    : [];
 
   const apply = (next: HrReportFilters) => {
     setPage(1);
@@ -177,7 +182,12 @@ export function AdminHrReportsPage() {
             </label>
             <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
               <button type="submit" className="min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground">Tampilkan</button>
-              {access.canExport ? (
+              {access.canExport && !exportable ? (
+                <span className="text-[11px] text-muted-foreground">
+                  Unduhan akun Anda hanya untuk unit {exportUnits.join(", ")}. Pilih unit tersebut untuk mengunduh.
+                </span>
+              ) : null}
+              {exportable ? (
                 <>
                   {(["xlsx", "csv"] as const).map((format) => (
                     <button key={format} type="button" disabled={busy !== null || loading || !data?.pagination.total}

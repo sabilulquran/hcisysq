@@ -66,7 +66,9 @@ Termasuk (Paket 1):
 | Pimpinan (Laporan) | Sama, penugasan `management` | Di atas, ditambah `GET /admin/reports/hr/{report}/export` dalam scope-nya |
 | Legacy Super Admin, Panel Organ Yayasan, pegawai biasa, HC tanpa peran laporan | — | Tidak ada (403) |
 
-Scope ekspor = scope `reports.export.organization` **diiris** scope `reports.read.organization`, sehingga ekspor tidak pernah lebih luas daripada yang boleh dilihat.
+Scope ekspor = scope `reports.export.organization` **diiris** scope `reports.read.organization`, sehingga ekspor tidak pernah lebih luas daripada yang boleh dilihat. Ekspor juga tidak boleh **lebih sempit tanpa disadari**: bila akun boleh melihat lebih banyak unit daripada yang boleh diunduh (misalnya Pembaca Laporan seluruh organisasi plus Pimpinan (Laporan) satu unit), ekspor tanpa `unitId` ditolak `403 REPORT_EXPORT_UNIT_REQUIRED` dan layar meminta memilih unit itu dulu.
+
+Sebelum rilis, operator memeriksa (read-only) bahwa tidak ada penugasan `finance`/`management` ber-scope unit yang dibuat sebelum aturan ini, karena penugasan semacam itu langsung berlaku setelah rilis.
 
 ## 5. Alur
 
@@ -79,7 +81,7 @@ Scope ekspor = scope `reports.export.organization` **diiris** scope `reports.rea
 ### 5.2 Mengunduh
 
 1. `GET /admin/reports/hr/{report}/export?format=csv|xlsx&...` dengan filter yang sama tanpa `q`.
-2. API memeriksa `reports.export.organization` dan scope (D-01, §4), lalu menjalankan D-11.
+2. API memeriksa `reports.export.organization` dan scope (D-01, §4), bahwa `employmentType` adalah salah satu nilai dalam scope ekspor (sehingga hanya nilai terstruktur yang masuk audit dan kepala XLSX), lalu menjalankan D-11.
 3. Audit (D-12), lalu file dikirim: `hcis-laporan-<report>-<tanggal>.csv|xlsx`, `Cache-Control: no-store`.
 4. CSV memakai UTF-8 dengan BOM; sel yang diawali `= + - @` (atau tab/CR) diberi awalan `'` (SEC-13). XLSX memuat judul, scope, periode, dan siapa serta kapan mengunduh di atas tabel.
 
@@ -102,8 +104,9 @@ Filter: semua laporan menerima `unitId`. `employees` menerima `status` (`active`
 | `UNAUTHENTICATED` | 401 | Tanpa sesi |
 | `FORBIDDEN` | 403 | Tidak memegang permission yang diperlukan dalam scope apa pun |
 | `REPORT_SCOPE_FORBIDDEN` | 403 | `unitId` di luar scope |
+| `REPORT_EXPORT_UNIT_REQUIRED` | 403 | Ekspor tanpa `unitId` padahal scope unduh lebih sempit daripada scope baca (§4) |
 | `REPORT_NOT_FOUND` | 404 | Kunci laporan tidak dikenal |
-| `INVALID_REPORT_QUERY` | 400 | Filter, halaman, format, atau tanggal tidak valid; periode terbalik atau lebih dari 366 hari |
+| `INVALID_REPORT_QUERY` | 400 | Filter, halaman, format, atau tanggal tidak valid (termasuk tanggal mustahil seperti 30 Februari); periode terbalik atau lebih dari 366 hari; `employmentType` ekspor yang tidak ada dalam scope |
 | `EXPORT_TOO_LARGE` | 422 | Ekspor lebih dari 50.000 baris |
 
 Layar menampilkan state memuat, kosong ("Tidak ada data pada filter ini"), terlarang (pesan dan nama peran yang membukanya), dan error; tabel dapat digulir horizontal di ponsel.
@@ -130,3 +133,4 @@ Migrasi `0126_hr_reports_roles.sql` hanya memperbarui `roles.description` untuk 
 - RPT-001-F: ekspor di atas batas → 422 tanpa audit dan tanpa file.
 - RPT-001-G: `pageSize` > 100 → 400; periode > 366 hari → 400.
 - RPT-001-H: peran `finance` dan `management` menerima scope `unit`; `/auth/me` memuat `unitPermissions` untuk penugasan unit.
+- RPT-001-I: akun yang boleh melihat seluruh organisasi tetapi mengunduh satu unit → ekspor tanpa unit 403 `REPORT_EXPORT_UNIT_REQUIRED`, dengan unit itu → file.

@@ -290,6 +290,29 @@ describe.skipIf(!allowed)("RPT-001 HR reports", () => {
     expect((await get("/admin/reports/hr/employees/export?format=csv&q=alpha")).statusCode).toBe(400);
   });
 
+  it("§4: reading the organization but exporting one unit requires naming that unit; free text is checked", async () => {
+    await grant("reader", MANAGEMENT_ROLE, units.alpha);
+    actAs("reader");
+    const access = (await get("/admin/reports/hr/access")).json();
+    expect(access).toMatchObject({ scope: { type: "organization" }, canExport: true, exportScope: { type: "unit", unitIds: [units.alpha] } });
+    const wide = await get("/admin/reports/hr/employees/export?format=csv");
+    expect(wide.statusCode).toBe(403);
+    expect(wide.json().code).toBe("REPORT_EXPORT_UNIT_REQUIRED");
+    expect((await get(`/admin/reports/hr/employees/export?format=csv&unitId=${units.beta}`)).statusCode).toBe(403);
+    const narrow = await get(`/admin/reports/hr/employees/export?format=csv&unitId=${units.alpha}`);
+    expect(narrow.statusCode, narrow.body).toBe(200);
+    // Only an employment type that exists in the export scope reaches the audit.
+    expect((await get(`/admin/reports/hr/employees/export?format=csv&unitId=${units.alpha}&employmentType=Rahasia`)).statusCode).toBe(400);
+    expect((await get(`/admin/reports/hr/employees/export?format=csv&unitId=${units.alpha}&employmentType=Kontrak&status=all`)).statusCode).toBe(200);
+    expect((await exportEvents()).map((event) => event.payload.filters)).toEqual([
+      { unitId: units.alpha, status: "active", employmentType: null },
+      { unitId: units.alpha, status: "all", employmentType: "Kontrak" },
+    ]);
+    // Impossible dates are 400, not a database error; LIKE wildcards are literal.
+    expect((await get("/admin/reports/hr/leave?from=2026-02-01&to=2026-02-30")).statusCode).toBe(400);
+    expect((await get("/admin/reports/hr/employees?q=%25&status=all")).json().pagination.total).toBe(0);
+  });
+
   it("RPT-001-E: no sensitive column in any report or file", async () => {
     actAs("leader");
     for (const report of ["employees", "leave", "overtime", "trips", "training"]) {

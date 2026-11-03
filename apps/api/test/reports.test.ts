@@ -12,9 +12,11 @@ import {
   EXPORT_ROW_LIMIT,
   HR_REPORTS,
   intersectScopes,
+  isCalendarDate,
   periodError,
   REPORT_DEFINITIONS,
   reportCsv,
+  sameScope,
   scopeFromAssignments,
   SENSITIVE_COLUMN_KEYS,
 } from "../src/modules/reports/domain.js";
@@ -40,6 +42,10 @@ describe("RPT-001 domain", () => {
     expect(intersectScopes(ab, org)).toEqual(ab);
     expect(intersectScopes(a, { organization: false, unitIds: [UNIT_B] })).toEqual({ organization: false, unitIds: [] });
     expect(intersectScopes(ab, a)).toEqual(a);
+    expect(sameScope(org, org)).toBe(true);
+    expect(sameScope(org, a)).toBe(false);
+    expect(sameScope(ab, { organization: false, unitIds: [UNIT_B, UNIT_A] })).toBe(true);
+    expect(sameScope(ab, a)).toBe(false);
   });
 
   it("D-10: periods are inclusive and at most 366 days", () => {
@@ -49,6 +55,9 @@ describe("RPT-001 domain", () => {
     expect(periodError("2025-01-01", "2026-01-02")).toBe("PERIOD_TOO_LONG");
     expect(periodError("2026-02-02", "2026-02-01")).toBe("PERIOD_REVERSED");
     expect(periodError(undefined, "2026-02-01")).toBe("PERIOD_REQUIRED");
+    expect(periodError("2026-02-01", "2026-02-30")).toBe("PERIOD_REQUIRED");
+    expect(isCalendarDate("2024-02-29")).toBe(true);
+    expect(isCalendarDate("2026-02-29")).toBe(false);
   });
 
   it("D-04: no report defines a sensitive column", () => {
@@ -170,6 +179,15 @@ describe("RPT-001 routes", () => {
       report: "employees", format: "csv", filters: { unitId: null, status: "all", employmentType: null },
       scope: "organization", unitCount: null, rows: 2500,
     });
+  });
+
+  it("§4: an export narrower than the read scope needs a unit", async () => {
+    state.scopes["reports.read.organization"] = [{ scopeType: "organization", unitId: null }];
+    state.scopes["reports.export.organization"] = [{ scopeType: "unit", unitId: UNIT_A }];
+    const response = await get("/admin/reports/hr/employees/export?format=csv");
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("REPORT_EXPORT_UNIT_REQUIRED");
+    expect(state.audits).toHaveLength(0);
   });
 
   it("a read-only role cannot export; an unknown format or free-text search is 400", async () => {

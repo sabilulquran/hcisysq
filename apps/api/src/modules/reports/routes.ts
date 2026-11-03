@@ -27,6 +27,7 @@ import {
   exportFileName,
   HR_REPORTS,
   intersectScopes,
+  isCalendarDate,
   isEmptyScope,
   MAX_PERIOD_DAYS,
   NO_SCOPE,
@@ -35,6 +36,7 @@ import {
   REPORT_DEFINITIONS,
   REPORTED_TRIP_STATUSES,
   reportCsv,
+  sameScope,
   scopeAllowsUnit,
   scopeFromAssignments,
   TRIP_STATUS_LABELS,
@@ -46,7 +48,7 @@ import {
 type Queryable = Pick<Pool | PoolClient, "query">;
 type Row = Record<string, ReportCell>;
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const isoDate = z.string().refine(isCalendarDate);
 const reportParams = z.object({ report: z.enum(HR_REPORTS) });
 const filterShape = {
   unitId: z.string().uuid().optional(),
@@ -115,7 +117,8 @@ export function buildReportQuery(report: HrReport, filters: Filters, scope: Repo
   const values: unknown[] = [];
   const p = (value: unknown) => { values.push(value); return `$${values.length}`; };
   const unit = p(filters.unitId ?? null);
-  const search = p(filters.q ? `%${filters.q}%` : null);
+  // LIKE wildcards in the search are matched literally (backslash is PostgreSQL's default escape).
+  const search = p(filters.q ? `%${filters.q.replace(/[\\%_]/g, "\\$&")}%` : null);
   const base = `employee.management_scope = 'MANAGED' AND employee.removed_at IS NULL
     AND (${p(scope.organization)}::boolean OR employee.organizational_unit_id = ANY(${p(scope.unitIds)}::uuid[]))
     AND (${unit}::uuid IS NULL OR employee.organizational_unit_id = ${unit})
@@ -263,6 +266,20 @@ function appliedFilters(report: HrReport, filters: Filters) {
   return { unitId: filters.unitId ?? null, from: filters.from ?? null, to: filters.to ?? null };
 }
 
+/** D-14: the employment types present in a scope; an export accepts only one of these (D-12). */
+async function employmentTypes(db: Queryable, scope: ReportScope): Promise<string[]> {
+  const result = await db.query<{ value: string }>(
+    `SELECT DISTINCT employee.employment_type AS value
+       FROM employees employee
+      WHERE employee.management_scope = 'MANAGED' AND employee.removed_at IS NULL
+        AND employee.employment_type IS NOT NULL AND btrim(employee.employment_type) <> ''
+        AND ($1::boolean OR employee.organizational_unit_id = ANY($2::uuid[]))
+      ORDER BY 1`,
+    [scope.organization, scope.unitIds],
+  );
+  return result.rows.map((row) => row.value);
+}
+
 async function unitOptions(db: Queryable, scope: ReportScope) {
   const result = await db.query<{ id: string; name: string }>(
     `SELECT id, name FROM organizational_units
@@ -361,16 +378,6 @@ export async function registerReportRoutes(
     if (isEmptyScope(read)) return forbidden(reply);
     const exportScope = intersectScopes(read, await resolveReportScope(pool, principal, "reports.export.organization"));
     const units = await unitOptions(pool, read);
-    // D-14: the employment types present in the scope, so the filter never offers an empty one.
-    const types = await pool.query<{ value: string }>(
-      `SELECT DISTINCT employee.employment_type AS value
-         FROM employees employee
-        WHERE employee.management_scope = 'MANAGED' AND employee.removed_at IS NULL
-          AND employee.employment_type IS NOT NULL AND btrim(employee.employment_type) <> ''
-          AND ($1::boolean OR employee.organizational_unit_id = ANY($2::uuid[]))
-        ORDER BY 1`,
-      [read.organization, read.unitIds],
-    );
     return send(reply, 200, {
       scope: { type: read.organization ? "organization" : "unit", units: read.organization ? [] : units },
       canExport: !isEmptyScope(exportScope),
@@ -379,7 +386,7 @@ export async function registerReportRoutes(
         unitIds: exportScope.unitIds,
       },
       reports: HR_REPORTS.map((key) => ({ key, ...REPORT_DEFINITIONS[key] })),
-      filters: { units, employmentTypes: types.rows.map((row) => row.value) },
+      filters: { units, employmentTypes: await employmentTypes(pool, read) },
       limits: { maxPeriodDays: MAX_PERIOD_DAYS, exportRowLimit: EXPORT_ROW_LIMIT },
     });
   });
@@ -420,6 +427,19 @@ export async function registerReportRoutes(
     const report = checkRequest(request, reply, query.data);
     if (!report) return;
     if (query.data.unitId && !scopeAllowsUnit(scope, query.data.unitId)) return outOfScope(reply);
+    // §4: a file is never silently narrower than the screen. When the account may export fewer
+    // units than it may read, it names one of them.
+    if (!query.data.unitId && !sameScope(read, scope)) {
+      return send(reply, 403, {
+        code: "REPORT_EXPORT_UNIT_REQUIRED",
+        message: "Unduhan akun Anda hanya untuk sebagian unit. Pilih salah satu unit tersebut lebih dulu.",
+      });
+    }
+    // D-12: only a value the screen offers reaches the audit and the file header.
+    if (report === "employees" && query.data.employmentType
+      && !(await employmentTypes(pool, scope)).includes(query.data.employmentType)) {
+      return invalid(reply, "Jenis kepegawaian tidak dikenal.");
+    }
 
     // D-11: count and every page come from one snapshot, read 1,000 rows at a time; above the
     // limit nothing is sent, so a file is never silently short.

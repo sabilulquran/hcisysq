@@ -145,6 +145,11 @@ export function intersectScopes(left: ReportScope, right: ReportScope): ReportSc
   return { organization: false, unitIds: left.unitIds.filter((id) => other.has(id)) };
 }
 
+export function sameScope(left: ReportScope, right: ReportScope): boolean {
+  if (left.organization || right.organization) return left.organization === right.organization;
+  return left.unitIds.length === right.unitIds.length && left.unitIds.every((id) => right.unitIds.includes(id));
+}
+
 export function scopeAllowsUnit(scope: ReportScope, unitId: string): boolean {
   return scope.organization || scope.unitIds.includes(unitId);
 }
@@ -153,12 +158,18 @@ export function scopeAllowsUnit(scope: ReportScope, unitId: string): boolean {
 
 export type PeriodError = "PERIOD_REQUIRED" | "PERIOD_REVERSED" | "PERIOD_TOO_LONG";
 
-/** D-10: inclusive dates, at most 366 days. Dates are already shape-checked. */
+/** A real calendar date: 2026-02-30 is shaped right but is not one. */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/** D-10: inclusive dates, at most 366 days. */
 export function periodError(from: string | undefined, to: string | undefined): PeriodError | null {
-  if (!from || !to) return "PERIOD_REQUIRED";
+  if (!from || !to || !isCalendarDate(from) || !isCalendarDate(to)) return "PERIOD_REQUIRED";
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);
-  if (Number.isNaN(start) || Number.isNaN(end)) return "PERIOD_REQUIRED";
   if (end < start) return "PERIOD_REVERSED";
   if ((end - start) / 86_400_000 + 1 > MAX_PERIOD_DAYS) return "PERIOD_TOO_LONG";
   return null;

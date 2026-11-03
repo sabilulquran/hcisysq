@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { currentMonthPeriod, formatReportCell, reportSearchParams, type HrReportAccess } from "@/lib/hrReports";
+import { currentMonthPeriod, exportAllowedFor, formatReportCell, reportSearchParams, type HrReportAccess } from "@/lib/hrReports";
 import { ReportScopeNote } from "@/pages/AdminHrReportsPage";
 
 function access(overrides: Partial<HrReportAccess> = {}): HrReportAccess {
@@ -47,5 +47,17 @@ describe("RPT-001 Laporan HR screen", () => {
     expect(formatReportCell({ key: "h", label: "Jam", kind: "number" }, 1.5)).toBe("1,5");
     expect(formatReportCell({ key: "d", label: "Tanggal", kind: "date" }, "2026-10-05")).toBe("5 Okt 2026");
     expect(formatReportCell({ key: "t", label: "Unit", kind: "text" }, null)).toBe("—");
+  });
+
+  it("offers export only where the file would match the screen", () => {
+    expect(exportAllowedFor(access(), undefined)).toBe(true);
+    expect(exportAllowedFor(access({ canExport: false, exportScope: null }), undefined)).toBe(false);
+    // Reads the whole organization, exports unit u1 only: a unit must be chosen.
+    const mixed = access({ exportScope: { type: "unit", unitIds: ["u1"] } });
+    expect(exportAllowedFor(mixed, undefined)).toBe(false);
+    expect(exportAllowedFor(mixed, "u1")).toBe(true);
+    expect(exportAllowedFor(mixed, "u2")).toBe(false);
+    const unitOnly = access({ scope: { type: "unit", units: [{ id: "u1", name: "A" }] }, exportScope: { type: "unit", unitIds: ["u1"] } });
+    expect(exportAllowedFor(unitOnly, undefined)).toBe(true);
   });
 });

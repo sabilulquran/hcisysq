@@ -2,7 +2,7 @@ import { AlertTriangle, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { attendanceSourceLabel } from "@/lib/attendanceLabels";
+import { attendanceSourceLabel, attendanceStatusLabel } from "@/lib/attendanceLabels";
 import { TODAY_CARDS, todayCardLabel, todayDeltaLabel, todayFactLabel, todayScheduleLabel } from "@/lib/attendanceToday";
 import { getAttendanceToday, type AttendanceTodayCard, type AttendanceTodayItem } from "@/lib/workforceAttendance";
 
@@ -108,7 +108,10 @@ export function AdminAttendanceDailyPage() {
                   <td className="p-3 tabular-nums">{item.firstScanAt ? scanText(item) : "—"}</td>
                   <td className="p-3 tabular-nums">{todayDeltaLabel(item.startDeltaMinutes)}</td>
                   <td className="p-3">{attendanceSourceLabel(item.sources)}</td>
-                  <td className="p-3 text-muted-foreground">{todayFactLabel(item)}</td>
+                  <td className="p-3 text-muted-foreground">
+                    {todayFactLabel(item)}
+                    {item.workArrangement ? <span className="ml-2 rounded-full bg-surface px-2 py-0.5 text-xs font-bold text-brand-heading">{attendanceStatusLabel(item.workArrangement)}</span> : null}
+                  </td>
                 </tr>
               ))}
               {loaded && filtered.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Tidak ada pegawai yang cocok dengan filter.</td></tr> : null}
@@ -125,6 +128,7 @@ export function AdminAttendanceDailyPage() {
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{todayScheduleLabel(item, scheduleTime(item))}</p>
               <p className="mt-1 text-sm tabular-nums">{scanText(item)}{item.startDeltaMinutes !== null ? ` · ${todayDeltaLabel(item.startDeltaMinutes)}` : ""}</p>
+              {item.workArrangement ? <p className="mt-1 text-xs font-bold text-brand-heading">{attendanceStatusLabel(item.workArrangement)} (disetujui)</p> : null}
             </li>
           ))}
           {loaded && filtered.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada pegawai yang cocok dengan filter.</li> : null}

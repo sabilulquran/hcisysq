@@ -4283,5 +4283,117 @@
     "permissions": [
       "help.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/attendance/arrangements/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/attendance/arrangements/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/attendance/arrangements/schedule-options",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/attendance/arrangements/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/attendance/arrangements/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/attendance/arrangements/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/attendance/arrangements/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/attendance/arrangements/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/arrangements",
+    "permissions": [
+      "attendance.arrangements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/arrangements/:id",
+    "permissions": [
+      "attendance.arrangements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/arrangements/:id/apply",
+    "permissions": [
+      "attendance.arrangements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/work-arrangement-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/arrangements/:id/cancel",
+    "permissions": [
+      "attendance.arrangements.manage"
+    ]
   }
 ]

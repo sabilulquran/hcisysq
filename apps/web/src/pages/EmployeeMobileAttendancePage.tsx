@@ -17,7 +17,7 @@ function statusLabel(value: string | undefined) {
   const labels: Record<string, string> = {
     scheduled: "Terjadwal", pending: "Berjalan", present: "Hadir", late: "Terlambat",
     incomplete: "Belum lengkap", leave: "Cuti / Izin", absent: "Tidak hadir", off: "Libur / tanpa jadwal aktif",
-    configuration_error: "Jadwal perlu diperiksa",
+    configuration_error: "Jadwal perlu diperiksa", field_assignment: "Tugas luar", remote_work: "WFH/WFA",
   };
   return value ? labels[value] ?? value : "Belum dievaluasi";
 }

@@ -124,6 +124,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/announcements") return hasPermission(session, "announcements.read");
   // TRIP-001: HC-only; Super Admin legacy compatibility never carries trips.*.
   if (path === "/admin/trips") return hasPermission(session, "trips.read");
+  // ATT-015: HC-only; Super Admin legacy compatibility never carries attendance.arrangements.*.
+  if (path === "/admin/attendance/arrangements") return hasPermission(session, "attendance.arrangements.read");
   // PERF-001: HC-only; Super Admin legacy compatibility never carries performance.*.
   if (path === "/admin/performance") return hasPermission(session, "performance.read");
   // LOAN-001: Finance and HC only; Super Admin legacy compatibility never carries loans.*.

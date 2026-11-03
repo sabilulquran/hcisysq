@@ -179,6 +179,22 @@ export async function leaveDisposition(pool: Pool, employeeId: string, workDate:
   return result.rows[0]?.disposition ?? null;
 }
 
+/** ATT-015 §7.1: the approved tugas luar or WFH/WFA covering the day, read the same way as the engine. */
+export async function workArrangementDisposition(pool: Pick<Pool, "query">, employeeId: string, workDate: string) {
+  const result = await pool.query<{ disposition: "field_assignment" | "remote_work" }>(
+    `SELECT CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
+     FROM attendance_work_arrangement_requests
+     WHERE employee_id = $1
+       AND status = 'APPROVED'
+       AND arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
+       AND $2::date BETWEEN start_on AND end_on
+     ORDER BY submitted_at, id
+     LIMIT 1`,
+    [employeeId, workDate],
+  );
+  return result.rows[0]?.disposition ?? null;
+}
+
 function iso(value: Date | null | undefined) {
   return value?.toISOString() ?? null;
 }
@@ -228,11 +244,16 @@ export async function attendanceDailyReadModel(
     }
 
     const disposition = await leaveDisposition(pool, employee.employeeId, date);
+    // Not materialized means no punch was evaluated yet, so an approved arrangement decides the day (§7.2).
+    const arrangement = disposition || schedule.state !== "scheduled"
+      ? null
+      : await workArrangementDisposition(pool, employee.employeeId, date);
     let status = "configuration_error";
     if (disposition === "leave") status = "leave";
     else if (disposition === "absent") status = "absent";
     else if (schedule.state === "off") status = "off";
     else if (schedule.state === "configuration_error") status = "configuration_error";
+    else if (arrangement) status = arrangement;
     else if (schedule.scheduledStartAt && schedule.scheduledEndAt) {
       if (now < schedule.scheduledStartAt) status = "scheduled";
       else if (now <= schedule.scheduledEndAt) status = "pending";
@@ -436,7 +457,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
         lateMinutes: 0, earlyLeaveMinutes: 0,
       };
       if (!["off", "configuration_error"].includes(row.status)) item.expectedDays += 1;
-      if (["present", "late", "incomplete"].includes(row.status)) item.attendanceDays += 1;
+      if (["present", "late", "incomplete", "field_assignment", "remote_work"].includes(row.status)) item.attendanceDays += 1;
       if (row.status === "late") item.lateDays += 1;
       if (row.status === "absent") item.absenceDays += 1;
       if (row.status === "leave") item.leaveDays += 1;
@@ -464,7 +485,7 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
     };
     item.employeeIds.add(row.employeeId);
     if (!["off", "configuration_error"].includes(row.status)) item.expectedDays += 1;
-    if (["present", "late", "incomplete"].includes(row.status)) item.attendanceDays += 1;
+    if (["present", "late", "incomplete", "field_assignment", "remote_work"].includes(row.status)) item.attendanceDays += 1;
     if (row.status === "late") item.lateDays += 1;
     if (row.status === "absent") item.absenceDays += 1;
     if (row.status === "leave") item.leaveDays += 1;

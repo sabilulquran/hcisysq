@@ -1,0 +1,540 @@
+openapi: 3.1.0
+info:
+  title: HCIS Work Arrangements (ATT-015 Package 1)
+  version: 1.0.0
+  description: |
+    Tugas luar (FIELD_ASSIGNMENT), WFH/WFA (REMOTE_WORK) and schedule change (SCHEDULE_CHANGE)
+    requests, the APR-001 approver inbox and the Human Capital register, as implemented in
+    apps/api/src/modules/attendance/work-arrangement-routes.ts.
+    Spec: docs/domain/attendance-remote-and-schedule-requests.md.
+    All routes use the session cookie and answer with Cache-Control: no-store.
+    Errors use { code, message }. Nothing here writes a punch: an approved tugas luar or WFH/WFA is an
+    attendance disposition (result status field_assignment or remote_work), never an attendance event.
+paths:
+  /attendance/arrangements/me:
+    get:
+      tags: [Work Arrangements]
+      operationId: listMyWorkArrangements
+      summary: The signed-in employee's requests, newest first
+      description: EMPLOYEE principal only; ENG-LIST-001 paged.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/Type'
+      responses:
+        '200':
+          description: One page of requests
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArrangementPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Work Arrangements]
+      operationId: submitWorkArrangement
+      summary: Submit a request; the APR-001 chain is resolved and snapshotted in the same transaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArrangementSubmitInput' }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier submission with the same key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/ArrangementStatus' }
+                  idempotentReplay: { type: boolean, const: true }
+        '201':
+          description: Submitted; the first approval step is pending
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: IN_REVIEW }
+                  days: { type: integer, minimum: 1, maximum: 7 }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        employeeId: { type: string, format: uuid }
+                        name: { type: string }
+                  idempotentReplay: { type: boolean, const: false }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/me/preview:
+    post:
+      tags: [Work Arrangements]
+      operationId: previewWorkArrangement
+      summary: Validate dates and conflicts, resolve the approval chain and list meetings, without storing anything
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArrangementPreviewInput' }
+      responses:
+        '200':
+          description: Preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days: { type: integer }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        name: { type: string }
+                        sources: { type: array, items: { type: string } }
+                  meetings:
+                    description: D-08 warning only; meetings never block an arrangement.
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        startAt: { type: string, format: date-time }
+                        endAt: { type: string, format: date-time }
+                  scheduleChange:
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        properties:
+                          currentScheduleName: { type: [string, 'null'] }
+                          requestedScheduleName: { type: string }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/schedule-options:
+    get:
+      tags: [Work Arrangements]
+      operationId: getWorkArrangementScheduleOptions
+      summary: The employee's schedule on a date and the active shifts it may change to
+      description: Bounded (spec §11); more than 200 active shifts answers 409 SCHEDULE_OPTIONS_TOO_MANY instead of a cut list.
+      parameters:
+        - name: workDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Current schedule and options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workDate: { type: string, format: date }
+                  current:
+                    type: object
+                    properties:
+                      state: { type: string, enum: [scheduled, off, configuration_error] }
+                      scheduleTemplateId: { type: [string, 'null'], format: uuid }
+                      scheduleName: { type: [string, 'null'] }
+                      scheduledStartAt: { type: [string, 'null'], format: date-time }
+                      scheduledEndAt: { type: [string, 'null'], format: date-time }
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        startTime: { type: string, example: '07:00' }
+                        endTime: { type: string, example: '16:00' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/me/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ArrangementId'
+    get:
+      tags: [Work Arrangements]
+      operationId: getMyWorkArrangement
+      summary: One own request with approval steps and history
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArrangementDetail' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/me/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ArrangementId'
+    post:
+      tags: [Work Arrangements]
+      operationId: cancelMyWorkArrangement
+      summary: Cancel an own request while IN_REVIEW, or APPROVED before its start date (D-10)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/approvals:
+    get:
+      tags: [Work Arrangements]
+      operationId: listWorkArrangementApprovals
+      summary: Pending approval steps held by the signed-in employee
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of pending steps
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ArrangementApprovalItem' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /attendance/arrangements/approvals/{stepId}/decision:
+    parameters:
+      - name: stepId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Work Arrangements]
+      operationId: decideWorkArrangementApproval
+      summary: Approve or reject the pending step; a final approval of tugas luar/WFH recalculates past dates (§7.3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [decision]
+                  properties:
+                    decision: { type: string, const: approve }
+                    note: { type: [string, 'null'], maxLength: 1000 }
+                - type: object
+                  required: [decision, note]
+                  properties:
+                    decision: { type: string, const: reject }
+                    note: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200':
+          description: Decision stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string, format: uuid }
+                  requestStatus: { $ref: '#/components/schemas/ArrangementStatus' }
+                  stepStatus: { type: string, enum: [approved, rejected] }
+                  nextPendingStepId: { type: [string, 'null'], format: uuid }
+                  recalculatedDates: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /admin/attendance/arrangements:
+    get:
+      tags: [Work Arrangements]
+      operationId: listAdminWorkArrangements
+      summary: Human Capital register; needs attendance.arrangements.read
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/Type'
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: One page of requests
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArrangementPage' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+
+  /admin/attendance/arrangements/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ArrangementId'
+    get:
+      tags: [Work Arrangements]
+      operationId: getAdminWorkArrangement
+      summary: One request with approval steps and history; needs attendance.arrangements.read
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArrangementDetail' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /admin/attendance/arrangements/{id}/apply:
+    parameters:
+      - $ref: '#/components/parameters/ArrangementId'
+    post:
+      tags: [Work Arrangements]
+      operationId: applyScheduleChange
+      summary: Publish an approved schedule change as a new roster version (D-09); needs attendance.arrangements.manage
+      responses:
+        '200':
+          description: Applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: APPLIED }
+                  roster:
+                    type: object
+                    properties:
+                      rosterId: { type: string, format: uuid }
+                      version: { type: integer }
+                      weekStart: { type: string, format: date }
+                  recalculatedDates: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /admin/attendance/arrangements/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ArrangementId'
+    post:
+      tags: [Work Arrangements]
+      operationId: cancelWorkArrangementAsHc
+      summary: Cancel an IN_REVIEW or APPROVED request (D-10); needs attendance.arrangements.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+components:
+  parameters:
+    ArrangementId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Status:
+      name: status
+      in: query
+      schema: { $ref: '#/components/schemas/ArrangementStatus' }
+    Type:
+      name: type
+      in: query
+      schema: { $ref: '#/components/schemas/ArrangementType' }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    StatusChange:
+      description: New status; recalculatedDates is present when past dates were recalculated
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              status: { $ref: '#/components/schemas/ArrangementStatus' }
+              recalculatedDates: { type: integer }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    ArrangementType:
+      type: string
+      enum: [FIELD_ASSIGNMENT, REMOTE_WORK, SCHEDULE_CHANGE]
+    ArrangementStatus:
+      type: string
+      enum: [IN_REVIEW, APPROVED, REJECTED, CANCELLED, APPLIED]
+    ArrangementPreviewInput:
+      oneOf:
+        - type: object
+          required: [type, startOn, endOn]
+          properties:
+            type: { type: string, enum: [FIELD_ASSIGNMENT, REMOTE_WORK] }
+            startOn: { type: string, format: date }
+            endOn: { type: string, format: date }
+        - type: object
+          required: [type, startOn, endOn, scheduleTemplateId]
+          properties:
+            type: { type: string, const: SCHEDULE_CHANGE }
+            startOn: { type: string, format: date }
+            endOn: { type: string, format: date }
+            scheduleTemplateId: { type: string, format: uuid }
+    ArrangementSubmitInput:
+      description: FIELD_ASSIGNMENT and REMOTE_WORK need location; SCHEDULE_CHANGE needs scheduleTemplateId.
+      type: object
+      required: [type, startOn, endOn, purpose, idempotencyKey]
+      properties:
+        type: { $ref: '#/components/schemas/ArrangementType' }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        location: { type: string, minLength: 3, maxLength: 200 }
+        scheduleTemplateId: { type: string, format: uuid }
+        purpose: { type: string, minLength: 10, maxLength: 1000 }
+        idempotencyKey: { type: string, format: uuid }
+    ArrangementSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ArrangementType' }
+        location: { type: [string, 'null'] }
+        purpose: { type: string }
+        status: { $ref: '#/components/schemas/ArrangementStatus' }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        currentScheduleName: { type: [string, 'null'] }
+        requestedScheduleName: { type: [string, 'null'] }
+        submittedAt: { type: string, format: date-time }
+        finalDecidedAt: { type: [string, 'null'], format: date-time }
+        appliedAt: { type: [string, 'null'], format: date-time }
+        currentApproverName: { type: [string, 'null'] }
+        employeeId: { type: string, format: uuid, description: HC register only }
+        employeeName: { type: string, description: HC register only }
+        employeeNumber: { type: string, description: HC register only }
+        unitName: { type: [string, 'null'], description: HC register only }
+    ArrangementPage:
+      type: object
+      required: [items, pagination]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ArrangementSummary' } }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    ArrangementDetail:
+      allOf:
+        - $ref: '#/components/schemas/ArrangementSummary'
+        - type: object
+          properties:
+            cancelReason: { type: [string, 'null'] }
+            appliedRosterId: { type: [string, 'null'], format: uuid }
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  order: { type: integer }
+                  status: { type: string, enum: [waiting, pending, approved, rejected, cancelled] }
+                  sources: { type: array, items: { type: string } }
+                  approverName: { type: string }
+                  actedAt: { type: [string, 'null'], format: date-time }
+                  decisionNote: { type: [string, 'null'] }
+            events:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  eventType:
+                    type: string
+                    enum:
+                      - arrangement.request.submitted
+                      - arrangement.approval.approved_step
+                      - arrangement.request.approved
+                      - arrangement.request.rejected
+                      - arrangement.request.cancelled
+                      - arrangement.schedule.applied
+                  occurredAt: { type: string, format: date-time }
+                  note: { type: [string, 'null'] }
+                  metadata: { type: object }
+                  actorName: { type: [string, 'null'] }
+    ArrangementApprovalItem:
+      type: object
+      properties:
+        stepId: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        sources: { type: array, items: { type: string } }
+        requesterName: { type: string }
+        requesterNumber: { type: string }
+        unitName: { type: [string, 'null'] }
+        type: { $ref: '#/components/schemas/ArrangementType' }
+        location: { type: [string, 'null'] }
+        purpose: { type: string }
+        currentScheduleName: { type: [string, 'null'] }
+        requestedScheduleName: { type: [string, 'null'] }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        submittedAt: { type: string, format: date-time }

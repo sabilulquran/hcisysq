@@ -39,7 +39,7 @@ ATT-006 may use approved evidence mechanisms such as GPS, geotagging/geofence, p
 
 ATT-007 must not be inferred from raw punches alone. Schedule, holiday, tolerance, leave/permission, and approved policy inputs are prerequisites for lateness/overtime conclusions.
 
-- Work arrangement requests — ATT-015 (DISCOVERY). The legacy app let an employee ask for *tugas luar* (working at another site for a day), WFH/WFA, or a change to their own schedule, each approved through a chain and reviewed by HC. Business trips from the same legacy form now live in TRIP-001, and ATT-008 only swaps a shift with a colleague, so the other three requests have no home yet. An approved arrangement must explain the day's attendance result rather than create punches, and WFH/WFA needs an owner policy before it is specified.
+- Work arrangement requests — ATT-015. Package 1 implemented 2026-11-03, `docs/domain/attendance-remote-and-schedule-requests.md`: *tugas luar*, WFH/WFA and an employee's own schedule change, approved through APR-001; HC applies schedule changes. An approved tugas luar or WFH/WFA explains a day without punches (result status `field_assignment` / `remote_work`) and never creates punches. WFH/WFA policy is DRAFT (per day, always approved, no quota).
 
 ### 2. Leave and approval
 

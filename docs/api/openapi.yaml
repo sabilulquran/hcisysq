@@ -31,6 +31,7 @@ tags:
   - name: Employment
   - name: HR Documents
   - name: Business Travel
+  - name: Work Arrangements
   - name: Performance
   - name: Employee Loans
   - name: Training
@@ -299,6 +300,29 @@ paths:
     $ref: './leave-critical-periods.openapi.yaml#/paths/~1leave~1hc~1critical-reviews'
   /leave/hc/critical-reviews/{reviewId}/decision:
     $ref: './leave-critical-periods.openapi.yaml#/paths/~1leave~1hc~1critical-reviews~1{reviewId}~1decision'
+
+  /attendance/arrangements/me:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1me'
+  /attendance/arrangements/me/preview:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1me~1preview'
+  /attendance/arrangements/schedule-options:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1schedule-options'
+  /attendance/arrangements/me/{id}:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1me~1{id}'
+  /attendance/arrangements/me/{id}/cancel:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1me~1{id}~1cancel'
+  /attendance/arrangements/approvals:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1approvals'
+  /attendance/arrangements/approvals/{stepId}/decision:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1approvals~1{stepId}~1decision'
+  /admin/attendance/arrangements:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1admin~1attendance~1arrangements'
+  /admin/attendance/arrangements/{id}:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1admin~1attendance~1arrangements~1{id}'
+  /admin/attendance/arrangements/{id}/apply:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1admin~1attendance~1arrangements~1{id}~1apply'
+  /admin/attendance/arrangements/{id}/cancel:
+    $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1admin~1attendance~1arrangements~1{id}~1cancel'
 
   /trips/me:
     $ref: './business-travel.openapi.yaml#/paths/~1trips~1me'

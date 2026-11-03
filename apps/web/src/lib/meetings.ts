@@ -96,7 +96,7 @@ export interface ParticipantOption {
 export interface AvailabilityIssue {
   employeeId: string | null;
   name: string | null;
-  reason: "MEETING_OVERLAP" | "IN_TRAINING" | "ON_LEAVE" | "ON_TRIP" | "LEAVE_PENDING" | "TRIP_PENDING" | "NON_WORKING_DAY";
+  reason: "MEETING_OVERLAP" | "IN_TRAINING" | "ON_LEAVE" | "ON_TRIP" | "LEAVE_PENDING" | "TRIP_PENDING" | "NON_WORKING_DAY" | "ON_FIELD_ASSIGNMENT";
   message: string;
 }
 

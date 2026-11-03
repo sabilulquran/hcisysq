@@ -134,6 +134,11 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/trips")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["trips.read"]), "/admin/trips")).toBe(true);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/trips")).toBe(false);
+    // ATT-015: HC-only, never through Super Admin legacy compatibility.
+    expect(canAccessAdminPath(actor, "/admin/attendance/arrangements")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["attendance.arrangements.read"]), "/admin/attendance/arrangements")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["attendance.schedule.manage"]), "/admin/attendance/arrangements")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/attendance/arrangements")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/performance")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["performance.read"]), "/admin/performance")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["performance.manage"]), "/admin/performance")).toBe(false);

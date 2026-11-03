@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 
 import {
+  LEAVE_GOVERNANCE_CAPABILITY,
   OrganizationAuthorityResolver,
   OrganizationResolutionError,
   OrganizationRolloutService,
@@ -36,7 +37,11 @@ export interface LeaveAuthorityResolution {
     mode: RolloutAuthorityResult["mode"];
     authoritativeSource: RolloutAuthorityResult["authoritativeSource"];
     authorities: Array<{
-      employeeId: string;
+      employeeId: string | null;
+      /** ORG-012: set for a Foundation Board account principal. */
+      accountId?: string | undefined;
+      /** ORG-012-4: the seat that resolved, which anchors oversight for an account approver. */
+      positionKey?: string | null | undefined;
       source: LeaveApprovalSource;
       sources?: LeaveApprovalSource[] | undefined;
       path: string[];
@@ -55,6 +60,11 @@ export interface ResolveLeaveAuthoritiesInput {
     unitApproverEmployeeId: string | null;
   };
   policyChain: "LINE_AND_UNIT" | "UNIT_ONLY";
+  /**
+   * ORG-012: Leave routes that can store and decide account-principal steps opt in.
+   * Other workflows sharing this resolver keep employee-only routing.
+   */
+  allowAccountPrincipal?: boolean | undefined;
 }
 
 function organizationServices(db: Queryable) {
@@ -79,6 +89,7 @@ export async function resolveLeaveAuthorities(
       effectiveDate: input.effectiveDate,
       legacy: input.legacy,
       authorityRequirement: input.policyChain,
+      ...(input.allowAccountPrincipal ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}),
     });
   } catch (error) {
     if (error instanceof OrganizationResolutionError) {
@@ -152,7 +163,14 @@ export function snapshotLeaveRolloutAuthorities(
   const approvalChain = snapshotResolvedLeaveAuthorities({
     requesterEmployeeId: input.requesterEmployeeId,
     authorities: policyAuthorities.flatMap((authority) =>
-      sourcesOf(authority).map((source) => ({ employeeId: authority.employeeId, source })),
+      sourcesOf(authority).map((source) => authority.employeeId
+        ? { employeeId: authority.employeeId, source }
+        : {
+            principalType: "ACCOUNT" as const,
+            employeeId: null,
+            accountId: authority.accountId ?? null,
+            source,
+          }),
     ),
   });
 
@@ -163,6 +181,8 @@ export function snapshotLeaveRolloutAuthorities(
       authoritativeSource: result.authoritativeSource,
       authorities: policyAuthorities.map((authority) => ({
         employeeId: authority.employeeId,
+        ...(authority.accountId ? { accountId: authority.accountId } : {}),
+        positionKey: authority.positionKey,
         source: authority.source,
         sources: sourcesOf(authority),
         path: authority.path,
@@ -173,22 +193,67 @@ export function snapshotLeaveRolloutAuthorities(
   };
 }
 
+/**
+ * ORG-012-1 butir 5. A Foundation Board account has no employee id, so the decision repeats the
+ * submit-time e-mail match against the requester. An account without an e-mail counts as a match.
+ */
+export async function governanceActorIsRequester(
+  db: Queryable,
+  accountId: string,
+  requesterEmployeeId: string,
+): Promise<boolean> {
+  const match = await db.query<{ same: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM accounts actor
+       JOIN employees e ON e.id = $2
+       LEFT JOIN accounts ea ON ea.employee_id = e.id AND ea.principal_type = 'EMPLOYEE'
+       WHERE actor.id = $1
+         AND (
+           NULLIF(lower(btrim(actor.email)), '') IS NULL
+           OR NULLIF(lower(btrim(actor.email)), '') IN (
+             NULLIF(lower(btrim(e.email)), ''), NULLIF(lower(btrim(ea.email)), '')
+           )
+         )
+     ) AS same`,
+    [accountId, requesterEmployeeId],
+  );
+  return match.rows[0]?.same ?? true;
+}
+
+interface FinalApprover {
+  employeeId: string | null;
+  positionKey: string | null;
+}
+
 async function finalLineOrGovernanceApprover(
   db: PoolClient,
   requestId: string,
-): Promise<string | null> {
-  const result = await db.query<{ employeeId: string }>(
-    `SELECT approver_employee_id AS "employeeId"
-     FROM leave_request_approval_steps
-     WHERE leave_request_id = $1
-       AND sources && ARRAY[
+): Promise<FinalApprover | null> {
+  // ORG-012-4: an account step has no employee id, so its seat comes from the
+  // resolution context snapshotted with the request.
+  const result = await db.query<FinalApprover>(
+    `SELECT s.approver_employee_id AS "employeeId",
+            CASE WHEN s.approver_account_id IS NULL THEN NULL ELSE (
+              SELECT authority ->> 'positionKey'
+              FROM jsonb_array_elements(
+                COALESCE(r.validation_summary #> '{authorityResolution,authorities}', '[]'::jsonb)
+              ) AS authority
+              WHERE authority ->> 'accountId' = s.approver_account_id::text
+              LIMIT 1
+            ) END AS "positionKey"
+     FROM leave_request_approval_steps s
+     JOIN leave_requests r ON r.id = s.leave_request_id
+     WHERE s.leave_request_id = $1
+       AND s.sources && ARRAY[
          'DIRECT_MANAGER', 'UNIT_APPROVER', 'GOVERNANCE_APPROVER'
        ]::text[]
-     ORDER BY step_order DESC
+     ORDER BY s.step_order DESC
      LIMIT 1`,
     [requestId],
   );
-  return result.rows[0]?.employeeId ?? null;
+  const row = result.rows[0];
+  return row && (row.employeeId || row.positionKey) ? row : null;
 }
 
 async function snapshottedRolloutMode(
@@ -232,26 +297,29 @@ export async function enqueueFinalApprovalOversight(
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }
-    const finalApproverEmployeeId =
-      input.finalApproverEmployeeId ??
-      (await finalLineOrGovernanceApprover(db, input.requestId));
-    if (!finalApproverEmployeeId) {
+    const finalApprover: FinalApprover | null = input.finalApproverEmployeeId
+      ? { employeeId: input.finalApproverEmployeeId, positionKey: null }
+      : await finalLineOrGovernanceApprover(db, input.requestId);
+    if (!finalApprover) {
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }
 
     const resolver = dependencies.resolver ?? organizationServices(db).resolver;
+    // Oversight is informational: the recipient needs no approval capability.
     const recipient = await resolver.resolveOversightAbove({
-      approverEmployeeId: finalApproverEmployeeId,
+      approverEmployeeId: finalApprover.employeeId,
+      approverPositionKey: finalApprover.employeeId ? null : finalApprover.positionKey,
       effectiveDate: input.effectiveDate,
       workflowKey: input.workflowKey,
+      allowAccountRecipient: true,
     });
     if (recipient) {
       await db.query(
         `INSERT INTO leave_notification_outbox (
           id, leave_request_id, event_type, target_type, target_key, payload
         )
-        SELECT $1, $2, 'leave.oversight.approved', 'employee', $3, $4::jsonb
+        SELECT $1, $2, 'leave.oversight.approved', $5, $3, $4::jsonb
         WHERE NOT EXISTS (
           SELECT 1
           FROM leave_notification_outbox
@@ -261,13 +329,15 @@ export async function enqueueFinalApprovalOversight(
         [
           randomUUID(),
           input.requestId,
-          recipient.employeeId,
+          recipient.employeeId ?? recipient.accountId,
           JSON.stringify({
-            finalLineApproverEmployeeId: finalApproverEmployeeId,
+            finalLineApproverEmployeeId: finalApprover.employeeId,
+            ...(finalApprover.employeeId ? {} : { finalLineApproverPositionKey: finalApprover.positionKey }),
             resolutionSource: recipient.source,
             resolutionPath: recipient.path,
             incumbentKind: recipient.incumbentKind,
           }),
+          recipient.employeeId ? "employee" : "account",
         ],
       );
     }

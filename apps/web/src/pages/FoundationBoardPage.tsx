@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { BoardApprovalsSection } from "@/components/board/BoardApprovalsSection";
 import { BrandLockup } from "@/components/BrandLockup";
 import { getCurrentSession, logout } from "@/lib/auth";
 import {
@@ -44,10 +45,12 @@ export function FoundationBoardPage() {
   const [data, setData] = useState<BoardDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   // ORG-010 §1.4: an Employee with board.read keeps /app; offer the way back.
-  const [isEmployee, setIsEmployee] = useState(false);
+  // ORG-012-3: null until the session answers, so the approvals section never loads for an Employee.
+  const [principalType, setPrincipalType] = useState<string | null>(null);
+  const isEmployee = principalType === "EMPLOYEE";
 
   useEffect(() => {
-    void getCurrentSession().then((session) => setIsEmployee(session?.principal.principalType === "EMPLOYEE")).catch(() => setIsEmployee(false));
+    void getCurrentSession().then((session) => setPrincipalType(session?.principal.principalType ?? "UNKNOWN")).catch(() => setPrincipalType("UNKNOWN"));
   }, []);
 
   useEffect(() => {
@@ -132,6 +135,9 @@ export function FoundationBoardPage() {
             <p className="text-xs text-muted-foreground">Diperbarui {generatedLabel(data.generatedAt)}</p>
           ) : null}
         </section>
+
+        {/* ORG-012-3: organ accounts decide their leave steps here; employees use /app. */}
+        {principalType === "FOUNDATION_BOARD" ? <BoardApprovalsSection /> : null}
 
         {error ? (
           <div className="mt-5 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">

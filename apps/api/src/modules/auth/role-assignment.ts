@@ -13,7 +13,15 @@ import {
 } from "./permissions.js";
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
+/**
+ * ORG-012-2: the one role a Foundation Board account may receive (migration 0023). It carries only
+ * `leave.governance.approve`, and no employee account may receive it.
+ */
+export const GOVERNANCE_LEAVE_APPROVER_ROLE_KEY = "governance_leave_approver";
+const GOVERNANCE_LEAVE_APPROVE_PERMISSION = "leave.governance.approve";
+
 const HCIS_ROLES = [
+  GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
   "human_capital", "human_capital_admin", "unit_manager", "finance", "management", "special_approver", BOARD_VIEWER_ROLE_KEY,
   HC_LEAD_ROLE_KEY, DOCUMENT_CORRECTOR_ROLE_KEY, MODULE_ADMIN_ROLE_KEY, ...PAYROLL_ROLE_KEYS,
 ];
@@ -97,7 +105,10 @@ export function carriesIdentityPermission(role: AssignableRole): boolean {
 export function canDelegateRole(role: AssignableRole, delegated: boolean, channel?: GrantChannel): boolean {
   if (!HCIS_ROLES.includes(role.roleKey) || !role.permissions.length) return false;
   if (carriesIdentityPermission(role)) return false;
-  if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key))) return false;
+  // ORG-012-2: the governance Leave permission is grantable only inside its own role, so a changed
+  // bundle that slips it into another role is refused like any unknown permission.
+  if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key)
+    || (key === GOVERNANCE_LEAVE_APPROVE_PERMISSION && role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY))) return false;
   // AUTH-014 §2.5: on either channel the authority comes from the channel, not from a permission
   // the actor holds. Keeping the old `delegated` requirement here would make the whole thing
   // unusable: access.roles.assign was removed from every role by migration 0057 and may never be
@@ -158,14 +169,56 @@ async function requireDelegation(
   return role;
 }
 
-async function lockEmployeeAccount(db: PoolClient, accountId: string) {
-  const result = await db.query<{ principalType: string; employeeStatus: string }>(
-    `SELECT account.principal_type AS "principalType", employee.status AS "employeeStatus"
-     FROM accounts account LEFT JOIN employees employee ON employee.id = account.employee_id
+interface LockedTarget { principalType: string; employeeId: string | null }
+
+// AUTH-014 invariant 7, amended by ORG-012-2: the target is an employee account, except that a
+// Foundation Board account may hold the governance Leave approver role and nothing else.
+async function lockTargetAccount(db: PoolClient, accountId: string): Promise<LockedTarget> {
+  const result = await db.query<LockedTarget>(
+    `SELECT account.principal_type AS "principalType", account.employee_id AS "employeeId"
+     FROM accounts account
      WHERE account.id = $1 FOR UPDATE OF account`, [accountId],
   );
-  if (!result.rows[0]) throw new AuthError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
-  if (result.rows[0].principalType !== "EMPLOYEE") forbidden();
+  const target = result.rows[0];
+  if (!target) throw new AuthError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
+  if (target.principalType !== "EMPLOYEE" && target.principalType !== "FOUNDATION_BOARD") forbidden();
+  return target;
+}
+
+function assertTargetForRole(target: LockedTarget, roleKey: string): void {
+  const governance = roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY;
+  if (governance ? target.principalType !== "FOUNDATION_BOARD" || target.employeeId : target.principalType !== "EMPLOYEE") {
+    throw new AuthError(403, "ROLE_TARGET_INVALID", governance
+      ? "Peran penyetuju cuti governance hanya untuk akun Organ Yayasan."
+      : "Peran ini hanya dapat diberikan ke akun pegawai.");
+  }
+}
+
+/**
+ * ORG-012-1 butir 4. One Akun SQ identity maps to one account, so a member who is also staff
+ * would hold a second account with a different identity; the shared e-mail is what gives it away.
+ */
+async function assertOrganAccountIsNotEmployee(db: PoolClient, accountId: string): Promise<void> {
+  const result = await db.query<{ email: string | null; matchesEmployee: boolean }>(
+    `SELECT NULLIF(lower(btrim(a.email)), '') AS email,
+       EXISTS (
+         SELECT 1 FROM employees e
+         LEFT JOIN accounts ea ON ea.employee_id = e.id AND ea.principal_type = 'EMPLOYEE'
+         WHERE e.status = 'active' AND e.removed_at IS NULL
+           AND NULLIF(lower(btrim(a.email)), '') IN (
+             NULLIF(lower(btrim(e.email)), ''), NULLIF(lower(btrim(ea.email)), '')
+           )
+       ) AS "matchesEmployee"
+     FROM accounts a WHERE a.id = $1`, [accountId],
+  );
+  const row = result.rows[0];
+  if (!row?.email) {
+    throw new AuthError(400, "ORGAN_ACCOUNT_EMAIL_REQUIRED", "Akun Organ Yayasan wajib memiliki email.");
+  }
+  if (row.matchesEmployee) {
+    throw new AuthError(409, "ORGAN_ACCOUNT_IS_EMPLOYEE",
+      "Email akun ini milik pegawai aktif. Pindahkan dulu ke akun pegawainya (ORG-010 §5).");
+  }
 }
 
 async function atomic<T>(pool: Pool, operation: (db: PoolClient) => Promise<T>): Promise<T> {
@@ -196,8 +249,22 @@ export async function createRoleAssignment(
   assertAssignmentScope(input.scopeType, input.organizationalUnitId ?? null);
   assertAssignmentDates(input.startsOn ?? null, input.endsOn ?? null);
   return atomic(pool, async (db) => {
-    await lockEmployeeAccount(db, accountId);
+    const target = await lockTargetAccount(db, accountId);
     const role = await requireDelegation(db, actor, accountId, input.roleId, context.channel);
+    assertTargetForRole(target, role.roleKey);
+    // ORG-012-2: organization scope, the SK as reason, and an end date at the end of the term.
+    if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) {
+      if (input.scopeType !== "organization" || input.organizationalUnitId) {
+        throw new AuthError(400, "ROLE_SCOPE_INVALID", "Penyetuju cuti governance hanya dapat diberikan dengan scope organisasi.");
+      }
+      if (!input.reason?.trim()) {
+        throw new AuthError(400, "ROLE_REASON_REQUIRED", "Alasan penugasan wajib diisi, misalnya nomor SK kepengurusan.");
+      }
+      if (!input.endsOn) {
+        throw new AuthError(400, "ROLE_END_DATE_REQUIRED", "Tanggal berakhir wajib diisi, yaitu akhir masa jabatan.");
+      }
+      await assertOrganAccountIsNotEmployee(db, accountId);
+    }
     // AUTH-014 §4.1: the Module Administrator is an organization-wide configuration mandate, and a
     // unit-scoped grant of it would satisfy no guard anyway. The reason names who appointed them.
     if (role.roleKey === MODULE_ADMIN_ROLE_KEY &&
@@ -258,8 +325,9 @@ export async function removeRoleAssignment(
       `SELECT account_id AS "accountId", role_id AS "roleId" FROM account_role_assignments WHERE id = $1`, [assignmentId]);
     const assignment = result.rows[0];
     if (!assignment) throw new AuthError(404, "ASSIGNMENT_NOT_FOUND", "Assignment tidak ditemukan.");
-    await lockEmployeeAccount(db, assignment.accountId);
-    await requireDelegation(db, actor, assignment.accountId, assignment.roleId, context.channel);
+    const target = await lockTargetAccount(db, assignment.accountId);
+    const role = await requireDelegation(db, actor, assignment.accountId, assignment.roleId, context.channel);
+    assertTargetForRole(target, role.roleKey);
     const removed = await db.query("DELETE FROM account_role_assignments WHERE id = $1 RETURNING id", [assignmentId]);
     if (!removed.rowCount) throw new AuthError(404, "ASSIGNMENT_NOT_FOUND", "Assignment tidak ditemukan.");
     await writeGrantAudit(db, "role.assignment.removed", actor, context, assignmentId, assignment);

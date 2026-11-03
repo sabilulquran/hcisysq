@@ -141,24 +141,63 @@ export interface AuthorityEligibilityValidator {
     employeeId: string,
     context: AuthorityEligibilityContext,
   ): Promise<AuthorityEligibilityResult>;
+  /** ORG-012: classifies the account behind an account-held position. */
+  validateAccount?(
+    accountId: string,
+    context: AccountEligibilityContext,
+  ): Promise<AccountEligibilityResult>;
 }
+
+/** ORG-012-2: the capability an account principal needs for a Leave step (migration 0023). */
+export const LEAVE_GOVERNANCE_CAPABILITY = "leave.governance.approve";
+
+export interface AccountEligibilityContext {
+  effectiveDate: string;
+  /** Null for an informational recipient (oversight), which needs no capability. */
+  requiredCapability: string | null;
+}
+
+/**
+ * ORG-012-1. `EMPLOYEE` routes the seat to the linked employee principal;
+ * `ACCOUNT` is an eligible Foundation Board principal; `INELIGIBLE` follows the
+ * vacancy policy; `INVALID` and `CONFLICT` fail closed.
+ */
+export type AccountEligibilityResult =
+  | { kind: "EMPLOYEE"; employeeId: string }
+  | { kind: "ACCOUNT" }
+  | { kind: "INELIGIBLE"; reason: "ACCOUNT_NOT_ACTIVE" | "CAPABILITY_MISSING" }
+  | { kind: "INVALID" }
+  | { kind: "CONFLICT"; reason: "ACCOUNT_IDENTITY_MISSING" | "ACCOUNT_EMAIL_MISSING" | "ACCOUNT_PERSON_IS_EMPLOYEE" };
 
 export interface AuthorityResolutionInput {
   requesterEmployeeId: string;
   effectiveDate?: string | undefined;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
+  /**
+   * ORG-012: capability an account principal must hold. Account-held
+   * positions resolve only when the caller sets it; otherwise they keep
+   * failing with INVALID_AUTHORITY_PRINCIPAL.
+   */
+  accountCapability?: string | undefined;
 }
 
 export interface OversightResolutionInput {
-  approverEmployeeId: string;
+  /** Final line/governance approver; ignored when `approverPositionKey` is set. */
+  approverEmployeeId: string | null;
+  /** ORG-012-4: the snapshotted position of the final step, used for account approvers. */
+  approverPositionKey?: string | null | undefined;
+  /** ORG-012-4: an account-held seat may receive the oversight notification. */
+  allowAccountRecipient?: boolean | undefined;
   effectiveDate?: string | undefined;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
 }
 
 export interface ResolvedAuthority {
-  employeeId: string;
+  /** Null only for an ORG-012 account principal, which then carries `accountId`. */
+  employeeId: string | null;
+  accountId?: string | null | undefined;
   source: ResolvedAuthoritySource;
   /** All semantic sources represented by this concrete, deduplicated approver. */
   sources?: ResolvedAuthoritySource[] | undefined;

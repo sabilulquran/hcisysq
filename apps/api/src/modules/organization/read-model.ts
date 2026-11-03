@@ -5,6 +5,8 @@
 // so a failure here is reported as the employee's problem to fix, never replaced by a guess.
 
 import type {
+  AccountEligibilityContext,
+  AccountEligibilityResult,
   AuthorityEligibilityContext,
   AuthorityEligibilityResult,
   AuthorityEligibilityValidator,
@@ -87,6 +89,7 @@ export interface OrganizationPersonRow {
  */
 export class RequestScopedEligibilityValidator implements AuthorityEligibilityValidator {
   private readonly answers = new Map<string, Promise<AuthorityEligibilityResult>>();
+  private readonly accountAnswers = new Map<string, Promise<AccountEligibilityResult>>();
   private lookups = 0;
 
   constructor(private readonly inner: AuthorityEligibilityValidator) {}
@@ -94,6 +97,17 @@ export class RequestScopedEligibilityValidator implements AuthorityEligibilityVa
   /** Round trips actually made, for the performance assertions. */
   get lookupCount(): number {
     return this.lookups;
+  }
+
+  validateAccount(accountId: string, context: AccountEligibilityContext): Promise<AccountEligibilityResult> {
+    if (!this.inner.validateAccount) return Promise.resolve({ kind: "INVALID" });
+    const key = ["account", accountId, context.effectiveDate, context.requiredCapability ?? ""].join("|");
+    const cached = this.accountAnswers.get(key);
+    if (cached) return cached;
+    this.lookups += 1;
+    const answer = this.inner.validateAccount(accountId, context);
+    this.accountAnswers.set(key, answer);
+    return answer;
   }
 
   validate(employeeId: string, context: AuthorityEligibilityContext): Promise<AuthorityEligibilityResult> {
@@ -149,6 +163,13 @@ function authorityView(
   authority: ResolvedAuthority,
   nameOf: (employeeId: string) => string,
 ): OrganizationAuthorityView {
+  // The people view never opts into ORG-012 account principals.
+  if (!authority.employeeId) {
+    throw new OrganizationResolutionError(
+      "INVALID_AUTHORITY_PRINCIPAL", "Account principal outside an ORG-012 workflow.",
+      { positionKey: authority.positionKey },
+    );
+  }
   return {
     employeeId: authority.employeeId,
     employeeName: nameOf(authority.employeeId),

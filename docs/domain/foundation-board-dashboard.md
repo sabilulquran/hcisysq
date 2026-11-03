@@ -29,6 +29,10 @@ The initial board dashboard contains live aggregate data for:
   - attendance-resolution cases still open;
 - current-year employee starts and recorded exits.
 
+## Approvals section (ORG-012-3)
+
+For a `FOUNDATION_BOARD` session only, `/board` shows "Menunggu keputusan Anda": the leave steps snapshotted to that account, decided through `GET /leave/approvals` and `POST /leave/approvals/:stepId/decision`. An account without `governance_leave_approver` gets 403 and the section is hidden. An `EMPLOYEE` with `board.read` keeps deciding in `/app`. The aggregate dashboard below is unchanged.
+
 ## Privacy boundary
 
 The dashboard does not expose employee names, NIP, email, phone, dates of birth, identity numbers, uploaded evidence, or personal payslip lines.

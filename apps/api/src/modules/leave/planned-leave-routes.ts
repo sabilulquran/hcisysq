@@ -340,6 +340,7 @@ async function resolveApprovalChain(
       unitApproverEmployeeId: employee.unitApproverEmployeeId,
     },
     policyChain: policyKey === "unpaid" ? "UNIT_ONLY" : "LINE_AND_UNIT",
+    allowAccountPrincipal: true,
   });
   return {
     approvalChain: await hydrateApprovalChain(db, resolution.approvalChain),

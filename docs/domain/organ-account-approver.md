@@ -46,10 +46,12 @@ Tidak termasuk:
 
 Saat traversal resolver mencapai incumbent efektif:
 
-1. **Bentuk data.** Incumbent akun pada jabatan `ACCOUNT` diproses dengan aturan di bawah. Incumbent akun pada jabatan `EMPLOYEE`, atau incumbent pegawai pada jabatan `ACCOUNT`, tetap gagal `INVALID_AUTHORITY_PRINCIPAL`. Keduanya tidak dianggap kursi kosong.
-2. **Tipe akun.** Principal akun hanya untuk akun `FOUNDATION_BOARD` tanpa `employee_id`. Akun `EMPLOYEE` pada jabatan `ACCOUNT` diselesaikan sebagai principal pegawai lewat eligibility validator pegawai. Bila pegawainya tidak aktif, ia tidak eligible dan resolver mengikuti `vacancy_policy` jabatan. Bentuk lain (tipe akun lain, atau `FOUNDATION_BOARD` dengan `employee_id`) gagal `INVALID_AUTHORITY_PRINCIPAL`.
+1. **Bentuk data.** Jabatan `ACCOUNT` hanya menerima baris incumbency yang berisi `accountId`. Baris tersebut diproses dengan aturan di bawah. Baris incumbency berisi `accountId` pada jabatan `EMPLOYEE`, atau baris berisi `employeeId` pada jabatan `ACCOUNT`, tetap gagal `INVALID_AUTHORITY_PRINCIPAL`. Keduanya tidak dianggap kursi kosong.
+2. **Tipe akun.** Principal akun hanya untuk akun `FOUNDATION_BOARD` tanpa `employee_id`. Bila `accountId` pada baris incumbency milik akun `EMPLOYEE`, akun itu diselesaikan sebagai principal pegawai lewat eligibility validator pegawai. Bila pegawainya tidak aktif, ia tidak eligible dan resolver mengikuti `vacancy_policy` jabatan. Bentuk lain (tipe akun lain, atau `FOUNDATION_BOARD` dengan `employee_id`) gagal `INVALID_AUTHORITY_PRINCIPAL`.
 3. **Eligibility akun.** Akun `FOUNDATION_BOARD` harus `active` dan memegang `leave.governance.approve` melalui assignment `governance_leave_approver` yang efektif pada tanggal resolusi. Untuk principal akun, `requiredCapability` workflow LEAVE dipetakan ke `leave.governance.approve`, bukan `leave.approve`. Akun yang tidak memenuhi syarat dianggap tidak eligible, dan resolver mengikuti `vacancy_policy`. Kepemilikan jabatan tidak pernah memberi capability.
-4. **Orang yang sama.** Dua principal dianggap orang yang sama bila memiliki akun yang sama, `accounts.employee_id` yang sama, atau `identity_issuer + identity_subject` yang sama. Invarian: anggota organ yang juga pegawai tidak boleh memegang akun `FOUNDATION_BOARD` aktif, sehingga hand-over ORG-010 §5 wajib dilakukan. Resolver gagal sebagai configuration error bila invarian ini dilanggar, atau bila akun `FOUNDATION_BOARD` belum mempunyai identitas terpetakan.
+4. **Orang yang sama.** Dua principal dianggap orang yang sama bila memiliki akun yang sama atau `accounts.employee_id` yang sama. Invarian: anggota organ yang juga pegawai tidak boleh memegang akun `FOUNDATION_BOARD` aktif, sehingga hand-over ORG-010 §5 wajib dilakukan. Satu identitas Akun SQ hanya terpasang pada satu akun (indeks unik migrasi 0020), sehingga pelanggaran invarian ini berbentuk dua akun dengan identitas berbeda. Karena itu invarian ditegakkan dengan pencocokan email:
+   - kanal pemberian menolak `governance_leave_approver` untuk akun `FOUNDATION_BOARD` bila email akun itu, atau email pada profil Akun SQ-nya, cocok dengan email pegawai aktif, dan pemberi wajib menyatakan "bukan pegawai" di alasan;
+   - resolver menjalankan pencocokan email yang sama saat submit, dan gagal sebagai configuration error bila cocok atau bila akun `FOUNDATION_BOARD` belum mempunyai identitas terpetakan.
 5. **Self-approval.** Larangan self-approval memakai definisi orang yang sama di butir 4. Larangan ini diperiksa saat submit dan diperiksa ulang saat keputusan.
 6. **Duplicate approver.** Aturan APR-001 memakai kunci (tipe principal, id) setelah normalisasi orang yang sama. Dua principal akun yang berbeda tidak pernah digabung.
 
@@ -66,7 +68,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
   - tanggal berakhir wajib, yaitu akhir masa jabatan;
   - tanpa self-grant;
   - diaudit seperti assignment lain.
-- `governance_leave_approver` ditambahkan ke `HCIS_ROLES` agar invarian AUTH-014 yang lain tetap berlaku. Amandemen ini dicatat juga di ORG-010 §1 dan AUTH-014 §2 dalam PR implementasi.
+- `governance_leave_approver` ditambahkan ke `HCIS_ROLES` agar invarian AUTH-014 yang lain tetap berlaku, dan `leave.governance.approve` ditambahkan ke `HCIS_PERMISSIONS` hanya untuk role ini. Target `EMPLOYEE` ditolak untuk role ini di semua kanal. Rujukan amandemen sudah dicatat di ORG-003, ORG-010 §1, dan AUTH-014.
 - Capability selain `leave.governance.approve` hanya ditambahkan ketika spesifikasi workflow menetapkan langkah yang jatuh ke jabatan organ.
 
 ### ORG-012-3 Keputusan oleh principal akun
@@ -105,7 +107,8 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 - akun tanpa capability, akun suspended, atau akun inactive mengikuti `vacancy_policy` (BLOCK menghasilkan error, CLIMB naik);
 - akun `EMPLOYEE` pada jabatan `ACCOUNT` menghasilkan `approver_employee_id`, dan bila pegawainya tidak aktif, resolver mengikuti `vacancy_policy`;
 - bentuk data salah (akun pada jabatan `EMPLOYEE`, pegawai pada jabatan `ACCOUNT`, `FOUNDATION_BOARD` dengan `employee_id`) gagal `INVALID_AUTHORITY_PRINCIPAL`;
-- akun ganda (akun `FOUNDATION_BOARD` aktif dan akun `EMPLOYEE` dengan identitas yang sama) menghasilkan configuration error;
+- akun `FOUNDATION_BOARD` dan akun `EMPLOYEE` aktif dengan identitas berbeda tetapi email sama ditolak di kanal pemberian dan menghasilkan configuration error di resolver;
+- kanal mana pun menolak `governance_leave_approver` untuk target `EMPLOYEE`;
 - self-approval lewat identitas yang sama ditolak saat submit dan saat keputusan;
 - dua principal akun berbeda (Sekretaris dan Ketua) tidak digabung oleh dedupe;
 - cuti Direktur di `STRUCTURE`: Sekretaris (akun) menyetujui, Ketua (akun) mendapat notification intent, Pembina tidak;
@@ -119,8 +122,8 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 
 - ORG-012-A: di `STRUCTURE`, jabatan `ACCOUNT` dengan akun `FOUNDATION_BOARD` aktif yang memegang `leave.governance.approve` menghasilkan langkah approval milik akun itu.
 - ORG-012-B: kepemilikan jabatan tanpa capability tidak pernah menghasilkan approver.
-- ORG-012-C: akun `EMPLOYEE` selalu diselesaikan sebagai principal pegawai. Orang yang sama ditentukan oleh akun, `employee_id`, atau identitas. Self-approval diperiksa saat submit dan saat keputusan. Dedupe memakai kunci principal.
+- ORG-012-C: akun `EMPLOYEE` selalu diselesaikan sebagai principal pegawai. Orang yang sama ditentukan oleh akun atau `employee_id`, dan akun organ yang emailnya cocok dengan pegawai aktif ditolak. Self-approval diperiksa saat submit dan saat keputusan. Dedupe memakai kunci principal.
 - ORG-012-D: principal akun memutuskan lewat route `/leave/approvals` yang sudah ada, hanya dengan sesi cookie, dengan transisi dan audit APR-001, tanpa akses `/app` atau `/admin`.
-- ORG-012-E: `governance_leave_approver` hanya membawa `leave.governance.approve`, dan hanya dapat diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan dan tanggal berakhir.
+- ORG-012-E: `governance_leave_approver` hanya membawa `leave.governance.approve`, dan hanya dapat diberikan ke akun `FOUNDATION_BOARD` lewat allowlist AUTH-014 dengan alasan dan tanggal berakhir. Target `EMPLOYEE` selalu ditolak.
 - ORG-012-F: perilaku `LEGACY` tidak berubah. SHADOW tetap tidak membuat langkah atau oversight, tetapi diagnostik shadow dan preview resolusi boleh berubah.
 - ORG-012-G: oversight dihitung dari jabatan langkah final, termasuk bila langkah final milik akun.

@@ -3419,6 +3419,132 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/loans/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/loans/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans/borrowers",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "GET",
+    "url": "/admin/loans/:id",
+    "permissions": [
+      "loans.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/disburse",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/payments",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/payments/:paymentId/reverse",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/loans/routes.ts",
+    "method": "POST",
+    "url": "/admin/loans/:id/cancel",
+    "permissions": [
+      "loans.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/employee-assets/routes.ts",
     "method": "GET",
     "url": "/assets/me",
@@ -3525,5 +3651,269 @@
       "EMPLOYEE"
     ],
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/training/me/summary",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/training/me/records",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/training/me/records",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/training/me/records/:id/withdraw",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/training/me/records/:id/certificate",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/training/me/records/:id/certificate",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/training/me/programs",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/training/me/programs/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/programs/:id",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/cancel",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/complete",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/sessions",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/training/sessions/:id",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/sessions/:id/cancel",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/programs/:id/participants",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/participants",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/programs/:id/participants/:employeeId/withdraw",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/sessions/:id/attendance",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "PUT",
+    "url": "/admin/training/sessions/:id/attendance",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/availability",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/records",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/records/:id",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/records/:id/verify",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/records/:id/reject",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "POST",
+    "url": "/admin/training/records/:id/certificate",
+    "permissions": [
+      "training.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/records/:id/certificate",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/hours",
+    "permissions": [
+      "training.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/training/routes.ts",
+    "method": "GET",
+    "url": "/admin/training/employee-options",
+    "permissions": [
+      "training.manage"
+    ]
   }
 ]

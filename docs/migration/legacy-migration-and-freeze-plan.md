@@ -21,7 +21,7 @@ HCIS YSQ already serves real users on Mi8VPS. Some data reached it through dedic
 | Leave balances and history | LEAVE-002 live; no opening-balance mechanism; carry-forward not implemented | Legacy HCIS (DISCOVERY) | **Not migrated. No mechanism exists.** This is the largest functional gap for a full cutover. |
 | Attendance history | New punches flow from devices via ADMS to HCIS | Legacy HCIS records (GPS/photo) and device memory | **Not migrated.** Device-side re-pull exists only for what devices still hold. |
 | Payslips | PAYSLIP-002 imports current periods from two CSV shapes, amounts as source strings | Payroll CSVs | **Ongoing per-period import.** Historical periods: DISCOVERY whether needed. |
-| Loans | Not implemented (LOAN-001 discovery) | Legacy HCIS | **Not migrated.** Financial reconciliation critical. |
+| Loans | LOAN-001 Package 1 implemented (`docs/domain/employee-loans.md`); no import path | Legacy HCIS | **Not migrated.** Financial reconciliation critical; legacy schedules never reached the slip. |
 | Documents / attachments | Not implemented (DOC-001/002 discovery) | Legacy HCIS | **Not migrated.** Needs file + checksum migration. |
 | Activity log | HCIS has its own audit tables | Legacy HCIS | **Not migrated.** Archive, do not convert into HCIS audit events. |
 
@@ -35,7 +35,7 @@ Each item is DISCOVERY until a named owner answers it. Record answers in a dated
 | D2 | Which domains must exist in HCIS YSQ before legacy is frozen? Proposed minimum: employee master (done), **leave balances as of a cut-off date**, open leave requests, last N months of payslips employees still need to see. | Defines the rehearsal scope; everything else can be archived read-only. | Owner + HC |
 | D3 | Source of truth for leave balances at cut-off: legacy computed balance, HC spreadsheet, or recomputation from history? | LEAVE-002 has no opening-balance import; we must build one (§4) and know what to reconcile against. | HC |
 | D4 | Historical attendance and payslips: migrate, or keep legacy read-only as the archive? | Migrating history is expensive; a read-only archive with a retention date is often enough. | Owner + HC + Finance |
-| D5 | Loans, documents, activity logs: archive only, or migrate when LOAN-001/DOC-001 exist? | No target model exists yet. Proposed: archive only. | Owner + Finance |
+| D5 | Loans, documents, activity logs: archive only, or migrate when LOAN-001/DOC-001 exist? | LOAN-001 now has a target model but no import. Proposed: archive only; running legacy loans re-entered by Finance only on owner decision (LOAN-001 §11). | Owner + Finance |
 | D6 | Read-only verification period length and legacy retention / deletion date. | Required by MIG-001 §7 and the open question in `legacy-mapping.md`. | Owner |
 | D7 | Is any legacy data subject to deletion requests or special retention (payroll, tax)? | Affects what may be copied at all. | Owner |
 

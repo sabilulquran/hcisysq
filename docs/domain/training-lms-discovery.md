@@ -5,6 +5,7 @@
 **Tanggal:** 2026-10-20 (revisi 3 — jumlah peserta dan pengelola harian terjawab; revisi 2 menambah keputusan evaluasi dan rujukan LMS mapan; revisi 1 pada tanggal yang sama)
 **Terkait:** EMP-008, PERF-001, ORG-004, NOTIF-004, APR-001, ADR-0001, ADR-0002
 **Rujukan:** LMS mapan (Moodle, Totara, Canvas, Docebo) dan model evaluasi Kirkpatrick; lihat §14
+**Implementasi:** R1 dan inti R2 dibangun sebagai Paket 1 di `docs/domain/training.md` (2026-11-02). R3 dan R4 tetap discovery.
 
 ## 1. Tujuan dan batas dokumen
 

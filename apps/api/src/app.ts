@@ -57,7 +57,9 @@ import { registerAnnouncementRoutes } from "./modules/announcements/routes.js";
 import { registerJobClassificationRoutes } from "./modules/organization/job-classification-routes.js";
 import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerEmployeeAssetRoutes } from "./modules/employee-assets/routes.js";
+import { registerTrainingRoutes } from "./modules/training/routes.js";
 import { registerTripRoutes } from "./modules/trips/routes.js";
+import { registerLoanRoutes } from "./modules/loans/routes.js";
 import { registerMeetingRoutes } from "./modules/meetings/routes.js";
 import { registerMeetingRunner } from "./modules/meetings/runner.js";
 import { registerOrganizationAdminRoutes } from "./modules/organization/admin-routes.js";
@@ -208,6 +210,8 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerJobClassificationRoutes(app, pool, config);
   await registerDocumentRoutes(app, pool, config);
   await registerTripRoutes(app, pool, config);
+  await registerLoanRoutes(app, pool, config);
+  await registerTrainingRoutes(app, pool, config);
   await registerMeetingRoutes(app, pool, config);
   // CAL-001 §9.3: reminders and WhatsApp hand-over, inside this process (not in tests).
   registerMeetingRunner(app, pool, config);

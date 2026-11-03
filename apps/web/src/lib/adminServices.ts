@@ -145,11 +145,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "loans",
     label: "Pinjaman Pegawai",
-    description: "Kelola pengajuan, persetujuan, dan angsuran pinjaman pegawai.",
+    description: "Register pinjaman pegawai, pencairan, dan pencatatan cicilan.",
     featureIds: ["LOAN-001"],
-    stage: "discovery",
+    stage: "available",
     category: "payroll-benefits",
-    href: "/admin/services/loans",
+    href: "/admin/loans",
+    details: [
+      "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
+      "Pencairan, jadwal cicilan tanpa bunga, pembayaran, dan pelunasan oleh Keuangan",
+      "Potongan otomatis lewat payroll belum (menunggu PAY-003 lulus parallel run)",
+    ],
   },
   {
     key: "performance",
@@ -162,12 +167,17 @@ export const adminServices: AdminServiceDefinition[] = [
   },
   {
     key: "learning",
-    label: "Training / LMS",
-    description: "Kelola pelatihan, pembelajaran, dan riwayat pengembangan.",
+    label: "Pelatihan",
+    description: "Program pelatihan, jadwal, peserta, kehadiran, catatan, dan rekap jam pelatihan pegawai.",
     featureIds: ["TRAIN-001"],
-    stage: "discovery",
+    stage: "available",
     category: "talent",
-    href: "/admin/services/learning",
+    href: "/admin/training",
+    details: [
+      "Jadwal sesi dengan blokir bentrok rapat, cuti, perjalanan dinas, dan pelatihan lain",
+      "Verifikasi pelatihan eksternal beserta sertifikat",
+      "Materi daring, kuis, dan evaluasi belum (TRAIN-001 R3/R4)",
+    ],
   },
   {
     key: "recruitment",

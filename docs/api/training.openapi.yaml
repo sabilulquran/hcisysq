@@ -1,0 +1,1077 @@
+openapi: 3.1.0
+info:
+  title: HCIS Training Records (TRAIN-001 Package 1)
+  version: 1.0.0
+  description: |
+    Training programs with scheduled sessions, participants, per-session attendance, training
+    records (internal and external), encrypted certificates and the yearly hours summary, as
+    implemented in apps/api/src/modules/training/routes.ts. Spec: docs/domain/training.md.
+    All routes use the session cookie and answer with Cache-Control: no-store (certificate
+    downloads: private, no-store). Errors use { code, message }; a time-blocking refusal adds
+    `conflicts` (409 TRAINING_CONFLICT). /training/me/* is EMPLOYEE ownership;
+    /admin/training/* needs training.read (reads) or training.manage (writes).
+    No field holds money.
+paths:
+  /training/me/summary:
+    get:
+      tags: [Training]
+      operationId: getMyTrainingSummary
+      summary: The signed-in employee's verified training hours for one year (D-07)
+      parameters:
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: Hours summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HoursSummary' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /training/me/records:
+    get:
+      tags: [Training]
+      operationId: listMyTrainingRecords
+      summary: The signed-in employee's training records, newest first (ENG-LIST-001 paged)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: One page of records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TrainingRecord' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Training]
+      operationId: submitExternalTrainingRecord
+      summary: Submit an external training for Human Capital verification (D-09)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExternalRecordInput' }
+      responses:
+        '200':
+          description: Idempotent replay of an earlier submission with the same key
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { $ref: '#/components/schemas/RecordStatus' }
+                  idempotentReplay: { type: boolean, const: true }
+        '201':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: SUBMITTED }
+                  certificate: { oneOf: [{ $ref: '#/components/schemas/CertificateMeta' }, { type: 'null' }] }
+                  idempotentReplay: { type: boolean, const: false }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/Problem' }
+  /training/me/records/{id}/withdraw:
+    post:
+      tags: [Training]
+      operationId: withdrawExternalTrainingRecord
+      summary: Withdraw an own external record that is still SUBMITTED
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /training/me/records/{id}/certificate:
+    post:
+      tags: [Training]
+      operationId: uploadMyTrainingCertificate
+      summary: Attach or replace the certificate of an own external record that is still SUBMITTED (D-10)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CertificateInput' }
+      responses:
+        '201':
+          description: Stored, encrypted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificateMeta' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [Training]
+      operationId: downloadMyTrainingCertificate
+      summary: Download the certificate of an own record; another employee's is 404
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/CertificateFile' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /training/me/programs:
+    get:
+      tags: [Training]
+      operationId: listMyTrainingPrograms
+      summary: Programs the signed-in employee takes part in (not withdrawn), active first
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of programs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/ProgramSummary'
+                        - $ref: '#/components/schemas/MyParticipation'
+                        - type: object
+                          properties:
+                            nextSessionAt: { type: [string, 'null'], format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /training/me/programs/{id}:
+    get:
+      tags: [Training]
+      operationId: getMyTrainingProgram
+      summary: One program with its sessions (at most 50, D-17) and the employee's attendance
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Program detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ProgramSummary'
+                  - $ref: '#/components/schemas/MyParticipation'
+                  - type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Session'
+                            - type: object
+                              properties:
+                                myAttendance: { oneOf: [{ $ref: '#/components/schemas/AttendanceStatus' }, { type: 'null' }] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/training/programs:
+    get:
+      tags: [Training]
+      operationId: listTrainingPrograms
+      summary: Training programs, active first (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ProgramStatus' }
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: One page of programs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ProgramSummary' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Training]
+      operationId: createTrainingProgram
+      summary: Create an ACTIVE program (training.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgramInput' }
+      responses:
+        '201': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/training/programs/{id}:
+    get:
+      tags: [Training]
+      operationId: getTrainingProgram
+      summary: One program with its sessions (at most 50) and participant counts (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Program detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ProgramSummary'
+                  - type: object
+                    properties:
+                      sessions:
+                        type: array
+                        items:
+                          allOf:
+                            - $ref: '#/components/schemas/Session'
+                            - type: object
+                              properties:
+                                presentCount: { type: integer }
+                                recordedCount: { type: integer }
+                      participantsByStatus:
+                        type: object
+                        additionalProperties: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Training]
+      operationId: updateTrainingProgram
+      summary: Change an ACTIVE program; capacity never below the enrolled count (training.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgramPatch' }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/programs/{id}/cancel:
+    post:
+      tags: [Training]
+      operationId: cancelTrainingProgram
+      summary: Cancel an ACTIVE program and every scheduled session; participants are notified (D-13)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProgramReason' }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/programs/{id}/complete:
+    post:
+      tags: [Training]
+      operationId: completeTrainingProgram
+      summary: Close the program, compute attendance and create the training records (§6.5)
+      description: |
+        409 TRAINING_NO_SESSIONS, TRAINING_SESSIONS_NOT_FINISHED, or
+        TRAINING_ATTENDANCE_INCOMPLETE (with `missing`).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, const: COMPLETED }
+                  totalHours: { type: number }
+                  records: { type: integer }
+                  participants:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        attendedHours: { type: number }
+                        attendedAny: { type: boolean }
+                        completed: { type: boolean }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/programs/{id}/sessions:
+    post:
+      tags: [Training]
+      operationId: createTrainingSession
+      summary: Schedule a session; enrolled participants and the internal speaker are checked for conflicts (§7)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionInput' }
+      responses:
+        '201': { $ref: '#/components/responses/WithWarnings' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/sessions/{id}:
+    patch:
+      tags: [Training]
+      operationId: updateTrainingSession
+      summary: Change a session; a new time or speaker re-runs the conflict check and notifies participants
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SessionPatch' }
+      responses:
+        '200': { $ref: '#/components/responses/WithWarnings' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/sessions/{id}/cancel:
+    post:
+      tags: [Training]
+      operationId: cancelTrainingSession
+      summary: Cancel one scheduled session; participants are notified
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShortReason' }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/programs/{id}/participants:
+    get:
+      tags: [Training]
+      operationId: listTrainingParticipants
+      summary: Participants of one program, withdrawn last (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: One page of participants
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Participant' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Training]
+      operationId: enrollTrainingParticipants
+      summary: Enroll 1 to 100 active employees; capacity and conflicts are checked (§6.3)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeIds]
+              properties:
+                employeeIds: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Enrolled; employees already enrolled are reported, not duplicated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enrolled: { type: array, items: { type: string, format: uuid } }
+                  alreadyEnrolled: { type: array, items: { type: string, format: uuid } }
+                  warnings: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/programs/{id}/participants/{employeeId}/withdraw:
+    post:
+      tags: [Training]
+      operationId: withdrawTrainingParticipant
+      summary: Withdraw an enrolled participant with a reason
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: employeeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShortReason' }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/sessions/{id}/attendance:
+    get:
+      tags: [Training]
+      operationId: getTrainingSessionAttendance
+      summary: The attendance sheet of one session (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of the sheet
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, items, pagination]
+                properties:
+                  session: { $ref: '#/components/schemas/Session' }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        participantStatus: { $ref: '#/components/schemas/ParticipantStatus' }
+                        status: { oneOf: [{ $ref: '#/components/schemas/AttendanceStatus' }, { type: 'null' }] }
+                        note: { type: [string, 'null'] }
+                        recordedAt: { type: [string, 'null'], format: date-time }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Training]
+      operationId: recordTrainingAttendance
+      summary: Record attendance for up to 100 enrolled participants, from the session start (§6.4)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [employeeId, status]
+                    properties:
+                      employeeId: { type: string, format: uuid }
+                      status: { $ref: '#/components/schemas/AttendanceStatus' }
+                      note: { type: [string, 'null'], maxLength: 300 }
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId: { type: string, format: uuid }
+                  recorded: { type: integer }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/availability:
+    post:
+      tags: [Training]
+      operationId: previewTrainingAvailability
+      summary: Preview the §7 conflict check without saving (training.manage)
+      description: |
+        With startAt/endAt: one session time against the program's enrolled participants and
+        the speaker (or `employeeIds`). Without: `employeeIds` against every scheduled session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [programId]
+              properties:
+                programId: { type: string, format: uuid }
+                sessionId: { type: string, format: uuid }
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+                speakerEmployeeId: { type: [string, 'null'], format: uuid }
+                employeeIds: { type: array, minItems: 1, maxItems: 100, items: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Blocks and warnings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blocks: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+                  warnings: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/training/records:
+    get:
+      tags: [Training]
+      operationId: listTrainingRecords
+      summary: Training records of every employee, newest first (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/RecordStatus' }
+        - name: source
+          in: query
+          schema: { type: string, enum: [INTERNAL, EXTERNAL] }
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Year'
+      responses:
+        '200':
+          description: One page of records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/TrainingRecord'
+                        - $ref: '#/components/schemas/EmployeeRef'
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/training/records/{id}:
+    get:
+      tags: [Training]
+      operationId: getTrainingRecord
+      summary: One record with its audit events (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Record detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TrainingRecord'
+                  - $ref: '#/components/schemas/EmployeeRef'
+                  - type: object
+                    properties:
+                      unitName: { type: [string, 'null'] }
+                      events:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            eventType: { type: string }
+                            occurredAt: { type: string, format: date-time }
+                            note: { type: [string, 'null'] }
+                            actorName: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/training/records/{id}/verify:
+    post:
+      tags: [Training]
+      operationId: verifyTrainingRecord
+      summary: Verify a SUBMITTED external record (training.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/records/{id}/reject:
+    post:
+      tags: [Training]
+      operationId: rejectTrainingRecord
+      summary: Reject a SUBMITTED external record with a reason (training.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShortReason' }
+      responses:
+        '200': { $ref: '#/components/responses/StatusChange' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/training/records/{id}/certificate:
+    post:
+      tags: [Training]
+      operationId: uploadTrainingCertificate
+      summary: Attach or replace the certificate of an internal VERIFIED record (training.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CertificateInput' }
+      responses:
+        '201':
+          description: Stored, encrypted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertificateMeta' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [Training]
+      operationId: downloadTrainingCertificate
+      summary: Download any record's certificate (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { $ref: '#/components/responses/CertificateFile' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/training/hours:
+    get:
+      tags: [Training]
+      operationId: listTrainingHours
+      summary: Verified training hours per active employee for one year, including zero (training.read)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Year'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: One page of employees
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [year, items, pagination]
+                properties:
+                  year: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/HoursSummary'
+                        - type: object
+                          properties:
+                            employeeId: { type: string, format: uuid }
+                            fullName: { type: string }
+                            employeeNumber: { type: string }
+                            unitName: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/training/employee-options:
+    get:
+      tags: [Training]
+      operationId: searchTrainingEmployees
+      summary: Typeahead over active employees for participants and speakers, at most 20 (training.manage)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+      responses:
+        '200':
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    maxItems: 20
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        unitName: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Year:
+      name: year
+      in: query
+      description: Calendar year of the record end date; defaults to the current WIB year where a year is required.
+      schema: { type: integer, minimum: 2000, maximum: 2100 }
+    Search:
+      name: q
+      in: query
+      schema: { type: string, maxLength: 100 }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        conflicts: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+        missing: { type: integer }
+        employeeIds: { type: array, items: { type: string, format: uuid } }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Category:
+      type: string
+      description: D-02 DRAFT
+      enum: [QURANIC, PEDAGOGY, CAREGIVING, SOP_ADMIN, ORIENTATION, COACHING, OTHER]
+    ProgramStatus: { type: string, enum: [ACTIVE, COMPLETED, CANCELLED] }
+    ParticipantStatus: { type: string, enum: [ENROLLED, WITHDRAWN, COMPLETED, INCOMPLETE] }
+    AttendanceStatus: { type: string, enum: [PRESENT, ABSENT, EXCUSED] }
+    RecordStatus: { type: string, enum: [SUBMITTED, VERIFIED, REJECTED, WITHDRAWN] }
+    ProgramInput:
+      type: object
+      required: [title, category]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        organizer: { type: [string, 'null'], minLength: 3, maxLength: 200 }
+        capacity: { type: [integer, 'null'], minimum: 1, maximum: 500 }
+        minAttendancePercent: { type: integer, minimum: 50, maximum: 100, default: 80 }
+    ProgramPatch:
+      type: object
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        organizer: { type: [string, 'null'], minLength: 3, maxLength: 200 }
+        capacity: { type: [integer, 'null'], minimum: 1, maximum: 500 }
+        minAttendancePercent: { type: integer, minimum: 50, maximum: 100 }
+    ProgramSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        description: { type: [string, 'null'] }
+        organizer: { type: string }
+        capacity: { type: [integer, 'null'] }
+        minAttendancePercent: { type: integer }
+        status: { $ref: '#/components/schemas/ProgramStatus' }
+        cancelReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        closedAt: { type: [string, 'null'], format: date-time }
+        participantCount: { type: integer }
+        sessionCount: { type: integer }
+        firstSessionAt: { type: [string, 'null'], format: date-time }
+        lastSessionEndAt: { type: [string, 'null'], format: date-time }
+    MyParticipation:
+      type: object
+      properties:
+        participantStatus: { $ref: '#/components/schemas/ParticipantStatus' }
+        attendedHours: { type: [number, 'null'] }
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        programId: { type: string, format: uuid }
+        title: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        location: { type: [string, 'null'] }
+        speakerEmployeeId: { type: [string, 'null'], format: uuid }
+        speakerName: { type: [string, 'null'] }
+        status: { type: string, enum: [SCHEDULED, CANCELLED] }
+        cancelReason: { type: [string, 'null'] }
+    SessionInput:
+      type: object
+      required: [title, startAt, endAt]
+      description: speakerEmployeeId and speakerName are mutually exclusive; 15 minutes to 12 hours (D-17).
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        location: { type: [string, 'null'], maxLength: 200 }
+        speakerEmployeeId: { type: [string, 'null'], format: uuid }
+        speakerName: { type: [string, 'null'], minLength: 2, maxLength: 150 }
+    SessionPatch:
+      type: object
+      description: startAt and endAt travel together; a new time is refused once attendance exists.
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        location: { type: [string, 'null'], maxLength: 200 }
+        speakerEmployeeId: { type: [string, 'null'], format: uuid }
+        speakerName: { type: [string, 'null'], minLength: 2, maxLength: 150 }
+    Participant:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        fullName: { type: string }
+        employeeNumber: { type: string }
+        unitName: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/ParticipantStatus' }
+        withdrawReason: { type: [string, 'null'] }
+        attendedHours: { type: [number, 'null'] }
+        enrolledAt: { type: string, format: date-time }
+        presentSessions: { type: integer }
+    Conflict:
+      type: object
+      description: |
+        §7.1. `title` only for another training session or a non-confidential meeting; never a
+        leave type, leave reason or trip destination.
+      properties:
+        employeeId: { type: string, format: uuid }
+        name: { type: string }
+        reason: { type: string, enum: [IN_TRAINING, MEETING_OVERLAP, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING] }
+        sessionTitle: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        title: { type: [string, 'null'] }
+    TrainingRecord:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        source: { type: string, enum: [INTERNAL, EXTERNAL] }
+        role: { type: string, enum: [PARTICIPANT, SPEAKER] }
+        programId: { type: [string, 'null'], format: uuid }
+        title: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        organizer: { type: string }
+        description: { type: [string, 'null'] }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        hours: { type: number }
+        completed: { type: [boolean, 'null'], description: Internal participants only (D-06) }
+        status: { $ref: '#/components/schemas/RecordStatus' }
+        rejectReason: { type: [string, 'null'] }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        certificateId: { type: [string, 'null'], format: uuid }
+        certificateFileName: { type: [string, 'null'] }
+        certificateContentType: { type: [string, 'null'] }
+        certificateByteSize: { type: [integer, 'null'] }
+    EmployeeRef:
+      type: object
+      properties:
+        employeeName: { type: string }
+        employeeNumber: { type: string }
+    ExternalRecordInput:
+      type: object
+      required: [title, category, organizer, startOn, endOn, hours, idempotencyKey]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 200 }
+        category: { $ref: '#/components/schemas/Category' }
+        organizer: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date, description: Today (WIB) or earlier }
+        hours: { type: number, minimum: 0.5, maximum: 200, multipleOf: 0.25 }
+        certificate: { oneOf: [{ $ref: '#/components/schemas/CertificateInput' }, { type: 'null' }] }
+        idempotencyKey: { type: string, format: uuid }
+    CertificateInput:
+      type: object
+      required: [fileName, contentType, contentBase64]
+      description: At most 2 MB after decoding; the file signature must match the type (D-10).
+      properties:
+        fileName: { type: string, minLength: 1, maxLength: 180 }
+        contentType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+        contentBase64: { type: string }
+    CertificateMeta:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fileName: { type: string }
+        contentType: { type: string }
+        byteSize: { type: integer }
+    HoursSummary:
+      type: object
+      properties:
+        year: { type: integer }
+        totalHours: { type: number, description: Participant hours, internal and external }
+        internalHours: { type: number }
+        externalHours: { type: number }
+        speakerHours: { type: number }
+        recordCount: { type: integer }
+    ProgramReason:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 10, maxLength: 500 }
+    ShortReason:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 500 }
+  responses:
+    Problem:
+      description: Invalid input or file
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Not an employee, or the permission is missing
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Missing, or not the caller's
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: State or time-blocking conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    StatusChange:
+      description: Done
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              status: { type: string }
+    WithWarnings:
+      description: Saved; non-blocking conflicts are returned as warnings
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              status: { type: string }
+              warnings: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+    CertificateFile:
+      description: The decrypted certificate as an attachment
+      content:
+        application/pdf: { schema: { type: string, format: binary } }
+        image/jpeg: { schema: { type: string, format: binary } }
+        image/png: { schema: { type: string, format: binary } }

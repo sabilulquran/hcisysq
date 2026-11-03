@@ -1,7 +1,7 @@
 import { Loader2, Search, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
-import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { listEmployees } from "@/lib/adminEmployees";
 
 export interface PickedEmployee {
   id: string;
@@ -9,18 +9,27 @@ export interface PickedEmployee {
   employeeNumber: string;
 }
 
+export type EmployeeSearchResult = PickedEmployee & { unitName?: string | null };
+
+async function searchEmployeeRegister(q: string): Promise<EmployeeSearchResult[]> {
+  return (await listEmployees({ q, status: "active", pageSize: 20 })).items;
+}
+
 /**
  * ATT-011-1 (L-4): server-side search over all active employees by name or NIP, instead of a
- * dropdown holding only the first page. Needs employees.manage; the caller hides it otherwise.
+ * dropdown holding only the first page. The default search needs employees.manage; a module
+ * with its own permission passes its own typeahead in `search` (TRAIN-001, LOAN-001 borrowers).
  */
-export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
+export function EmployeeSearchField({ value, onChange, label = "Pegawai", search = searchEmployeeRegister, emptyText = "Tidak ada pegawai aktif yang cocok." }: {
   value: PickedEmployee | null;
   onChange: (employee: PickedEmployee | null) => void;
   label?: string;
+  search?: (q: string) => Promise<EmployeeSearchResult[]>;
+  emptyText?: string;
 }) {
   const inputId = useId();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<AdminEmployeeListItem[]>([]);
+  const [results, setResults] = useState<EmployeeSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,13 +39,13 @@ export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
     let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void listEmployees({ q: needle, status: "active", pageSize: 20 })
-        .then((page) => { if (active) { setResults(page.items); setError(null); } })
+      void search(needle)
+        .then((items) => { if (active) { setResults(items); setError(null); } })
         .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Pegawai tidak dapat dicari."); })
         .finally(() => { if (active) setLoading(false); });
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, value]);
+  }, [query, value, search]);
 
   if (value) {
     return (
@@ -67,14 +76,19 @@ export function EmployeeSearchField({ value, onChange, label = "Pegawai" }: {
           {results.map((item) => (
             <li key={item.id}>
               <button type="button" role="option" aria-selected="false" className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted"
-                onClick={() => onChange({ id: item.id, fullName: item.fullName, employeeNumber: item.employeeNumber })}>
+                onClick={() => {
+                  onChange({ id: item.id, fullName: item.fullName, employeeNumber: item.employeeNumber });
+                  // A caller that collects several picks keeps `value` null; start the next search clean.
+                  setQuery("");
+                  setResults([]);
+                }}>
                 <span className="font-semibold">{item.fullName}</span>
                 <span className="block text-xs text-muted-foreground">{item.employeeNumber}{item.unitName ? ` · ${item.unitName}` : ""}</span>
               </button>
             </li>
           ))}
         </ul>
-      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">Tidak ada pegawai aktif yang cocok.</p> : null}
+      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">{emptyText}</p> : null}
     </div>
   );
 }

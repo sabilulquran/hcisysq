@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  HandCoins,
   Loader2,
   Plane,
   ShieldCheck,
@@ -25,6 +26,12 @@ import {
   type Pagination,
   type TripApprovalItem,
 } from "@/lib/trips";
+import {
+  decideLoanApproval,
+  formatRupiah,
+  getLoanApprovals,
+  type LoanApprovalItem,
+} from "@/lib/loans";
 
 function initials(name: string) {
   return name
@@ -68,6 +75,24 @@ export function EmployeeApprovalsPage() {
     }
   };
 
+  const [loans, setLoans] = useState<LoanApprovalItem[]>([]);
+  const [loanPaging, setLoanPaging] = useState<Pagination | null>(null);
+  const [loanPage, setLoanPage] = useState(1);
+  const [loanError, setLoanError] = useState<string | null>(null);
+
+  // LOAN-001: loans use the same APR-001 snapshot in their own queue. The approver sees the
+  // amount and tenor they decide on; the API sends nothing else of the loan.
+  const loadLoans = async (page = loanPage) => {
+    try {
+      const result = await getLoanApprovals(page);
+      setLoans(result.items);
+      setLoanPaging(result.pagination);
+      setLoanError(null);
+    } catch (cause) {
+      setLoanError(cause instanceof Error ? cause.message : "Antrean pinjaman tidak dapat dimuat.");
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -91,8 +116,24 @@ export function EmployeeApprovalsPage() {
   useEffect(() => {
     void load();
     void loadTrips(1);
+    void loadLoans(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const decideLoan = async (item: LoanApprovalItem, decision: "approve" | "reject") => {
+    const note = decision === "reject" ? window.prompt("Alasan penolakan (minimal 5 karakter):") : null;
+    if (decision === "reject" && (!note || note.trim().length < 5)) return;
+    setActing(item.stepId);
+    setLoanError(null);
+    try {
+      await decideLoanApproval(item.stepId, decision, note?.trim() || null);
+      await loadLoans();
+    } catch (cause) {
+      setLoanError(cause instanceof Error ? cause.message : "Keputusan tidak dapat disimpan.");
+    } finally {
+      setActing(null);
+    }
+  };
 
   const decideTrip = async (item: TripApprovalItem, decision: "approve" | "reject") => {
     const note = decision === "reject" ? window.prompt("Alasan penolakan (minimal 5 karakter):") : null;
@@ -154,7 +195,7 @@ export function EmployeeApprovalsPage() {
           Persetujuan
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Hanya tahap approval yang sedang aktif yang muncul di sini. Rantai approver sudah disnapshot saat pegawai mengajukan cuti atau perjalanan dinas.
+          Hanya tahap approval yang sedang aktif yang muncul di sini. Rantai approver sudah disnapshot saat pegawai mengajukan cuti, perjalanan dinas, atau pinjaman.
         </p>
       </section>
 
@@ -272,6 +313,51 @@ export function EmployeeApprovalsPage() {
         {tripPaging && tripPaging.total > tripPaging.pageSize ? (
           <PaginationBar page={tripPaging.page} pageSize={tripPaging.pageSize} total={tripPaging.total}
             onPageChange={(next) => { setTripPage(next); void loadTrips(next); }} />
+        ) : null}
+      </section>
+      <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
+        <div className="flex items-center gap-3 border-b border-border/70 px-5 py-4">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-primary-deep">
+            <HandCoins className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="text-base font-bold text-brand-heading">Pinjaman</h2>
+            <p className="text-xs text-muted-foreground">{loanPaging?.total ?? 0} pengajuan menunggu keputusan.</p>
+          </div>
+        </div>
+        {loanError ? <p className="px-5 py-4 text-sm text-danger-ink">{loanError}</p> : null}
+        {loans.length === 0 && !loanError ? (
+          <p className="px-5 py-10 text-sm text-muted-foreground">Tidak ada pinjaman yang menunggu.</p>
+        ) : (
+          <div className="divide-y divide-border/70">
+            {loans.map((item) => (
+              <article key={item.stepId} className="p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-brand-heading">{item.requesterName} · {formatRupiah(item.principal)}</p>
+                    <p className="mt-1 text-sm text-foreground">{item.tenorMonths} bulan cicilan, tanpa bunga{item.unitName ? ` · ${item.unitName}` : ""}</p>
+                    <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.purpose}</p>
+                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{approverRoleLabel(item.sources)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={acting === item.stepId} onClick={() => void decideLoan(item, "reject")}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-4 text-sm font-semibold text-danger-ink hover:bg-danger-soft disabled:opacity-60">
+                      <XCircle className="h-4 w-4" aria-hidden="true" /> Tolak
+                    </button>
+                    <button type="button" disabled={acting === item.stepId} onClick={() => void decideLoan(item, "approve")}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground shadow-[var(--shadow-button)] disabled:opacity-60">
+                      {acting === item.stepId ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+                      Setujui
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+        {loanPaging && loanPaging.total > loanPaging.pageSize ? (
+          <PaginationBar page={loanPaging.page} pageSize={loanPaging.pageSize} total={loanPaging.total}
+            onPageChange={(next) => { setLoanPage(next); void loadLoans(next); }} />
         ) : null}
       </section>
     </AppShell>

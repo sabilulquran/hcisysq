@@ -500,6 +500,19 @@
       "list": "single"
     },
     {
+      "url": "/admin/loans",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/loans/:id",
+      "list": "single",
+      "reason": "Satu pinjaman beserta tahap approval, jadwal cicilan (maks. 12), pembayaran, dan riwayatnya."
+    },
+    {
+      "url": "/admin/loans/borrowers",
+      "list": "paged"
+    },
+    {
       "url": "/admin/organization",
       "list": "bounded",
       "reason": "Unit dan jabatan legacy dengan hitungan (17 unit, 47 jabatan)."
@@ -570,6 +583,46 @@
     },
     {
       "url": "/admin/payslip-imports/:batchId",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/employee-options",
+      "list": "typeahead",
+      "reason": "Pencarian pegawai aktif untuk peserta dan narasumber pelatihan; q minimal 2 huruf, maksimal 20."
+    },
+    {
+      "url": "/admin/training/hours",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs/:id",
+      "list": "single",
+      "reason": "Satu program pelatihan dengan sesinya; D-17 membatasi paling banyak 50 sesi."
+    },
+    {
+      "url": "/admin/training/programs/:id/participants",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/records",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/records/:id",
+      "list": "single",
+      "reason": "Satu catatan pelatihan beserta beberapa event audit miliknya."
+    },
+    {
+      "url": "/admin/training/records/:id/certificate",
+      "list": "single",
+      "reason": "Unduhan satu berkas sertifikat."
+    },
+    {
+      "url": "/admin/training/sessions/:id/attendance",
       "list": "paged"
     },
     {
@@ -812,6 +865,19 @@
       "package": "PAG-5"
     },
     {
+      "url": "/loans/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/loans/me",
+      "list": "paged"
+    },
+    {
+      "url": "/loans/me/:id",
+      "list": "single",
+      "reason": "Satu pinjaman milik pegawai beserta tahap approval, jadwal cicilan (maks. 12), pembayaran, dan riwayatnya."
+    },
+    {
       "url": "/me/calendar",
       "list": "range",
       "reason": "CAL-001 §11: rentang tanggal maksimal 42 hari; lebih dari 500 item ditolak 400 RANGE_TOO_DENSE, tidak dipotong diam-diam."
@@ -902,6 +968,28 @@
     {
       "url": "/ready",
       "list": "single"
+    },
+    {
+      "url": "/training/me/programs",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/programs/:id",
+      "list": "single",
+      "reason": "Satu program pelatihan dengan sesinya; D-17 membatasi paling banyak 50 sesi."
+    },
+    {
+      "url": "/training/me/records",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/records/:id/certificate",
+      "list": "single",
+      "reason": "Unduhan satu berkas sertifikat milik pegawai."
+    },
+    {
+      "url": "/training/me/summary",
+      "list": "aggregate"
     },
     {
       "url": "/trips/approvals",

@@ -126,6 +126,17 @@ Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Sel
 
 Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).
 
+### Pinjaman pegawai (LOAN-001)
+
+Migration `0123_employee_loan_permissions.sql`, berscope organisasi (`docs/domain/employee-loans.md` §6, D-13 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `loans.read` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | register, jadwal, pembayaran, riwayat |
+| `loans.manage` | Keuangan (`finance_officer`) | cair, catat/koreksi pembayaran, batal sebelum cair; tidak atas pinjaman miliknya sendiri |
+
+`payroll.loans.manage` (register kasbon PAY-003) dan `loans.*` tidak saling membuka. Super Admin tidak memperoleh `loans.*` lewat kompatibilitas legacy.
+
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 
 ## Scope

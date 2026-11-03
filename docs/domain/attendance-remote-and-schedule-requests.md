@@ -45,23 +45,23 @@ Termasuk (Paket 1):
 | Kuota WFH, persetujuan otomatis, WFH berulang | Belum ada kebijakan owner (D-02). |
 | Lampiran bukti, foto, atau titik lokasi | Belum ada object storage untuk berkas pegawai; lokasi ditulis sebagai teks (D-03). |
 | Tugas luar sebagian hari dengan jam | Paket 1 per hari penuh; jam masuk/pulang yang menyimpang dijelaskan otomatis (D-06). |
-| Dampak payroll | PAY-003 tidak diubah (D-07). |
+| Dampak payroll di luar transport | Hanya transport PKWT yang berubah (D-07); komponen lain PAY-003 tidak diubah. |
 | Pengajuan atas nama bawahan | Paket 1 hanya untuk diri sendiri. |
 
 ## 3. Keputusan
 
 | # | Keputusan | Status |
 | --- | --- | --- |
-| D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan dan perjalanan dinas. Kunci alur rollout ORG-004: `WORK_ARRANGEMENT`. Tanpa baris rollout, mode `LEGACY`. HC **tidak** menjadi tahap approval. | DRAFT |
-| D-02 | **WFH/WFA**: setiap pegawai aktif boleh mengajukan, **satu pengajuan untuk satu hari**, tanpa kuota otomatis dan tanpa persetujuan otomatis. Setiap hari WFH harus disetujui rantai D-01. | DRAFT |
-| D-03 | WFH/WFA tidak membutuhkan lampiran atau titik lokasi di Paket 1. Pegawai wajib menulis **lokasi kerja** (3–200 karakter, misalnya "Rumah, Cibinong") dan **keperluan** (10–1000). | DRAFT |
-| D-04 | **Tugas luar**: 1–7 hari kalender per pengajuan, dihitung inklusif, dengan tempat tugas (3–200) dan keperluan (10–1000). Tugas yang menginap atau lebih dari 7 hari diajukan sebagai perjalanan dinas (TRIP-001). | DRAFT |
-| D-05 | Tanggal pengajuan: tugas luar paling lambat **7 hari ke belakang** (sama dengan batas klarifikasi ATT-011-7, karena tugas luar sering mendadak) dan paling jauh 60 hari ke depan; WFH/WFA mulai **hari ini** sampai 60 hari ke depan; ubah jadwal mulai **besok** sampai 60 hari ke depan. Semua tanggal WIB. | DRAFT |
-| D-06 | Dampak kehadiran tugas luar/WFH yang `APPROVED` pada hari kerja terjadwal: tanpa punch → status hari `field_assignment` atau `remote_work` (Riil 1); dengan punch → punch tetap dipakai, keterlambatan, pulang cepat, dan di luar lokasi dianggap **dijelaskan** (`justified`). Punch tidak pernah dibuat (§1.1). Hari libur, hari tanpa jadwal, dan jadwal bermasalah tidak berubah. Cuti atau penyelesaian kehadiran yang final selalu menang. | DRAFT (larangan punch: ACCEPTED) |
-| D-07 | Payroll PAY-003 **tidak** berubah. Uang transport PKWT tetap hanya untuk hari dengan scan masuk, sehingga tugas luar atau WFH tanpa scan tidak mendapat transport. | DRAFT |
+| D-01 | Persetujuan memakai **APR-001 dengan rantai atasan langsung → approver unit**, sama dengan Cuti Tahunan dan perjalanan dinas. Kunci alur rollout ORG-004: `WORK_ARRANGEMENT`. Tanpa baris rollout, mode `LEGACY`. HC **tidak** menjadi tahap approval. | ACCEPTED (owner 2026-11-03) |
+| D-02 | **WFH/WFA**: setiap pegawai aktif boleh mengajukan, **satu pengajuan untuk satu hari**, tanpa kuota otomatis dan tanpa persetujuan otomatis. Setiap hari WFH harus disetujui rantai D-01. | ACCEPTED (owner 2026-11-03) |
+| D-03 | WFH/WFA tidak membutuhkan lampiran atau titik lokasi di Paket 1. Pegawai wajib menulis **lokasi kerja** (3–200 karakter, misalnya "Rumah, Cibinong") dan **keperluan** (10–1000). | ACCEPTED (owner 2026-11-03) |
+| D-04 | **Tugas luar**: 1–7 hari kalender per pengajuan, dihitung inklusif, dengan tempat tugas (3–200) dan keperluan (10–1000). Tugas yang menginap atau lebih dari 7 hari diajukan sebagai perjalanan dinas (TRIP-001). | ACCEPTED (owner 2026-11-03) |
+| D-05 | Tanggal pengajuan: tugas luar paling lambat **7 hari ke belakang** (sama dengan batas klarifikasi ATT-011-7, karena tugas luar sering mendadak) dan paling jauh 60 hari ke depan; WFH/WFA mulai **hari ini** sampai 60 hari ke depan; ubah jadwal mulai **besok** sampai 60 hari ke depan. Semua tanggal WIB. | ACCEPTED (owner 2026-11-03) |
+| D-06 | Dampak kehadiran tugas luar/WFH yang `APPROVED` pada hari kerja terjadwal: tanpa punch → status hari `field_assignment` atau `remote_work` (Riil 1); dengan punch → punch tetap dipakai, keterlambatan, pulang cepat, dan di luar lokasi dianggap **dijelaskan** (`justified`). Punch tidak pernah dibuat (§1.1). Hari libur, hari tanpa jadwal, dan jadwal bermasalah tidak berubah. Cuti atau penyelesaian kehadiran yang final selalu menang. | ACCEPTED (owner 2026-11-03) |
+| D-07 | Uang transport PKWT (PAY-003) diberikan untuk hari tugas luar yang `APPROVED`, juga tanpa scan (status hari `field_assignment`), karena pegawai tetap berangkat untuk bekerja. WFH/WFA tanpa scan **tidak** mendapat transport. Berlaku di mesin PAY-003 (`resolveAttendanceDays`); jalur slip resmi PAY-001/PAY-002 tidak berubah sampai PAY-003 lulus parallel run. | ACCEPTED (owner 2026-11-03, mengganti default "tidak ada transport") |
 | D-08 | Bentrok: tugas luar dan WFH ditolak bila beririsan dengan cuti `in_review`/`approved`, perjalanan dinas `IN_REVIEW`/`APPROVED`/`ISSUED`/`COMPLETED`, atau tugas luar/WFH lain milik pegawai yang `IN_REVIEW`/`APPROVED`. Pengajuan perjalanan dinas juga ditolak bila beririsan dengan tugas luar/WFH yang `IN_REVIEW`/`APPROVED`. Rapat tidak memblokir: pratinjau menampilkan rapat pegawai pada tanggal itu sebagai peringatan, dan pembuat rapat (CAL-001) mendapat peringatan `ON_FIELD_ASSIGNMENT` untuk peserta yang sedang tugas luar. | DRAFT |
-| D-09 | **Ubah jadwal**: satu tanggal, hanya dari hari kerja terjadwal ke **shift aktif lain**. Tidak dapat mengubah hari libur, hari dengan cuti/dinas/tukar shift aktif, atau memilih shift yang sama. Setelah `APPROVED`, HC menekan **Terapkan**, yang menerbitkan versi roster baru minggu itu untuk pegawai tersebut (cara yang sama dengan tukar shift ATT-008). Terapkan ditolak bila jadwal pegawai sudah berubah sejak pengajuan, bila ada draft roster minggu itu, atau bila salah satu shift sudah mulai. | DRAFT |
-| D-10 | Pembatalan: pegawai boleh membatalkan `IN_REVIEW` kapan saja dan `APPROVED` **sebelum tanggal mulai**. HC (`attendance.arrangements.manage`) boleh membatalkan `IN_REVIEW` atau `APPROVED` kapan saja. Alasan wajib. `APPLIED` adalah akhir; jadwal yang sudah diterapkan diubah lewat Perubahan Jadwal. | DRAFT |
+| D-09 | **Ubah jadwal**: satu tanggal, hanya dari hari kerja terjadwal ke **shift aktif lain**. Tidak dapat mengubah hari libur, hari dengan cuti/dinas/tukar shift aktif, atau memilih shift yang sama. Setelah `APPROVED`, HC menekan **Terapkan**, yang menerbitkan versi roster baru minggu itu untuk pegawai tersebut (cara yang sama dengan tukar shift ATT-008). Terapkan ditolak bila jadwal pegawai sudah berubah sejak pengajuan, bila ada draft roster minggu itu, atau bila salah satu shift sudah mulai. | ACCEPTED (owner 2026-11-03) |
+| D-10 | Pembatalan: pegawai boleh membatalkan `IN_REVIEW` kapan saja dan `APPROVED` **sebelum tanggal mulai**. HC (`attendance.arrangements.manage`) boleh membatalkan `IN_REVIEW` atau `APPROVED` kapan saja. Alasan wajib. `APPLIED` adalah akhir; jadwal yang sudah diterapkan diubah lewat Perubahan Jadwal. | ACCEPTED (owner 2026-11-03) |
 | D-11 | `attendance.arrangements.read` dan `attendance.arrangements.manage` dibawa `human_capital_admin`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy. Atasan melihat pengajuan bawahan hanya lewat antrean approval-nya. | DRAFT |
 | D-12 | Tidak ada perubahan isi atau tanggal setelah diajukan. Perubahan = batalkan, lalu ajukan baru. | DRAFT |
 
@@ -265,9 +265,11 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 - ATT-015-L: setiap transisi menulis event riwayat dengan aktor.
 - ATT-015-M: tab Pengecualian menampilkan pengajuan yang disetujui; Rekap memakai simbol `DL` dan `W`.
 
-## 14. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk
+## 14. Keputusan pemilik produk (2026-11-03)
 
-| # | Pertanyaan | Default yang dipakai |
+Pemilik produk menyetujui semua rekomendasi pada 2026-11-03 ("Tugas Luar & WFH setuju semua saran"): default D-01..D-06, D-09, dan D-10 dipertahankan; D-07 diubah sehingga tugas luar mendapat transport dan WFH tidak. Batas WFH per bulan tidak ditetapkan.
+
+| # | Pertanyaan | Keputusan |
 | --- | --- | --- |
 | D-01 | Siapa yang menyetujui? | Atasan langsung → approver unit; HC tidak menyetujui |
 | D-02 | Siapa boleh WFH/WFA dan berapa kali? | Semua pegawai aktif, per hari, tanpa kuota, selalu lewat persetujuan |
@@ -275,6 +277,6 @@ State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga la
 | D-04 | Batas lama tugas luar? | 7 hari; lebih dari itu atau menginap = perjalanan dinas |
 | D-05 | Boleh diajukan sesudah kejadian? | Tugas luar sampai 7 hari ke belakang; WFH mulai hari ini; ubah jadwal mulai besok |
 | D-06 | Hari tugas luar/WFH tanpa scan dihitung apa? | Dihitung masuk kerja (Riil 1), tanpa jam palsu |
-| D-07 | Tugas luar tanpa scan dapat uang transport PKWT? | Tidak (payroll tidak diubah) |
+| D-07 | Tugas luar tanpa scan dapat uang transport PKWT? | **Ya** untuk tugas luar; tidak untuk WFH (diubah owner) |
 | D-09 | Siapa menerapkan ubah jadwal? | HC, setelah atasan menyetujui |
 | D-10 | Siapa boleh membatalkan setelah disetujui? | Pegawai sebelum hari H; HC kapan saja |

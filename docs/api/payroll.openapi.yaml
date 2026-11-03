@@ -227,7 +227,9 @@ paths:
         Requires payroll.inputs.manage, and only while the period is COLLECTING or
         CALCULATED. Reads approved overtime (ATT-010) for permanent and probation
         employments, and, for contract workers, the working days with a recorded
-        check-in inside the period's cutoff window; both are stored as ordinary
+        check-in, or with an approved field assignment (ATT-015) and no check-in,
+        inside the period's cutoff window; remote-work days without a check-in do
+        not count. Both are stored as ordinary
         period inputs with origin ATTENDANCE. It replaces the whole set: a row an
         earlier resolve wrote and attendance no longer supports is removed, so a
         cancelled overtime request stops being paid. A correction typed by hand is

@@ -176,6 +176,16 @@ export async function checkAvailability(
           AND ($5::uuid IS NULL OR meeting.id <> $5)`,
       [ids, start, end, input.viewerEmployeeId, input.excludeMeetingId],
     );
+  // TRAIN-001 §7.3 read contract: scheduled sessions of active programs, participants and speakers.
+  const trainings = ids.length === 0
+    ? { rows: [] as Array<{ employeeId: string; sessionId: string; title: string; startAt: Date; endAt: Date }> }
+    : await db.query<{ employeeId: string; sessionId: string; title: string; startAt: Date; endAt: Date }>(
+      `SELECT employee_id AS "employeeId", session_id AS "sessionId", title,
+              lower(busy) AS "startAt", upper(busy) AS "endAt"
+         FROM training_employee_busy
+        WHERE employee_id = ANY($1::uuid[]) AND busy && tstzrange($2::timestamptz, $3::timestamptz, '[)')`,
+      [ids, start, end],
+    );
   const dated = ids.length === 0 ? { leaves: [], trips: [] } : await loadDatedBusy(db, ids, firstDate, lastDate);
   const nonWorking = await loadNonWorkingDates(db, firstDate, lastDate);
   return evaluateAvailability({
@@ -184,6 +194,13 @@ export async function checkAvailability(
     meetings: meetings.rows.map((row) => ({
       employeeId: row.employeeId,
       meetingId: row.meetingId,
+      title: row.title,
+      startMs: row.startAt.getTime(),
+      endMs: row.endAt.getTime(),
+    })),
+    trainings: trainings.rows.map((row) => ({
+      employeeId: row.employeeId,
+      sessionId: row.sessionId,
       title: row.title,
       startMs: row.startAt.getTime(),
       endMs: row.endAt.getTime(),

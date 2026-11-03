@@ -376,7 +376,7 @@ components:
         name: { type: [string, 'null'] }
         reason:
           type: string
-          enum: [MEETING_OVERLAP, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING, NON_WORKING_DAY]
+          enum: [MEETING_OVERLAP, IN_TRAINING, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING, NON_WORKING_DAY]
         startAt: { type: string, format: date-time }
         endAt: { type: string, format: date-time }
         startOn: { type: string, format: date }
@@ -384,6 +384,9 @@ components:
         meetingTitle:
           type: [string, 'null']
           description: Null when the other meeting is confidential and the caller is not in it; startAt and endAt are then left out too.
+        trainingTitle:
+          type: string
+          description: IN_TRAINING only; "<program> — <session>" (TRAIN-001 §7.3, training is not confidential).
         message: { type: string, description: 'Indonesian sentence, e.g. "<Nama> bentrok dengan "<judul>" (09:00-10:00)."' }
     Availability:
       type: object

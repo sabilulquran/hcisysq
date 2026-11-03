@@ -271,7 +271,7 @@ Ditetapkan ATT-011-6b. `resolution-preview` hari ini mengunci `requiredCapabilit
 | B | Pemegang izin **Terbitkan** (§5.1, pilihan i/ii/iii) | nilai operasional ORG-008-8 | sebelum ORG-008-8 di-merge |
 | C | Persetujuan query read-only production (§5.4) | ORG-008-1 (penanda read-only) dan ORG-008-4 (jabatan utama) | sebelum ORG-008-1 selesai |
 | D | **O-11 unit pilot** | uji banding dan aktivasi; **tidak** memblokir paket mana pun | setelah ORG-008-2 dirilis |
-| E | Pemetaan akun Dewan sebagai approver | aturan Direktur → Sekretaris di `STRUCTURE` | di luar ORG-008 |
+| E | Pemetaan akun Dewan sebagai approver | aturan Direktur → Sekretaris di `STRUCTURE` | di luar ORG-008. **Diputuskan 2026-11-03:** ORG-012 (`organ-account-approver.md`) |
 | F | Persetujuan rilis per paket (OPS-MI8-REL-001) | tiap rilis | per paket |
 
 ### 6.2 Pengaruh rollout yang masih `LEGACY` dengan nol baris

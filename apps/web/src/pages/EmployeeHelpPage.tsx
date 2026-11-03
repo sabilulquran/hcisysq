@@ -194,7 +194,7 @@ export function EmployeeHelpPage() {
         <label className="relative mt-5 block">
           <span className="sr-only">Cari bantuan</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input type="search" value={search} maxLength={100} onChange={(event) => setSearch(event.target.value)}
+          <input type="text" inputMode="search" enterKeyHint="search" value={search} maxLength={100} onChange={(event) => setSearch(event.target.value)}
             placeholder="Cari, misalnya: saldo cuti, lupa clock out, slip gaji"
             className="min-h-12 w-full rounded-2xl border border-border bg-surface-raised pl-10 pr-10 text-sm text-brand-heading shadow-[var(--shadow-soft)]" />
           {search ? (

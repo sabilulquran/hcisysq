@@ -310,7 +310,7 @@ function ArticlesTab() {
         <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] lg:items-end">
           <label className="text-sm font-semibold text-brand-heading sm:col-span-2 lg:col-span-1">
             Cari
-            <input type="search" value={search} maxLength={100} onChange={(event) => setSearch(event.target.value)}
+            <input type="text" inputMode="search" value={search} maxLength={100} onChange={(event) => setSearch(event.target.value)}
               placeholder="Judul atau isi" className={inputClass} />
           </label>
           <label className="text-sm font-semibold text-brand-heading">

@@ -147,6 +147,7 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     // HELP-001: help.manage only; other HC permissions and Super Admin legacy do not open it.
     expect(canAccessAdminPath(actor, "/admin/help")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin/help")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["announcements.manage", "training.manage"]), "/admin/help")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/help")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/training")).toBe(false);

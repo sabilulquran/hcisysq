@@ -203,8 +203,9 @@ describe.skipIf(!allowed)("HELP-001 help center", () => {
     expect(wildcard.json().pagination.total).toBe(0);
     const filtered = await app.inject({ method: "GET", url: `/help/articles?q=${marker}&topic=OVERTIME&kind=FAQ` });
     expect(filtered.json().items.map((item: { id: string }) => item.id)).toEqual([one.id]);
+    // Equal title rank, so the D-01 topic order decides: Kehadiran (two) before Lembur (one).
     const paged = await app.inject({ method: "GET", url: `/help/articles?q=${marker}&pageSize=1&page=2` });
-    expect(paged.json()).toMatchObject({ items: [{ id: two.id }], pagination: { page: 2, pageSize: 1, total: 2, pageCount: 2 } });
+    expect(paged.json()).toMatchObject({ items: [{ id: one.id }], pagination: { page: 2, pageSize: 1, total: 2, pageCount: 2 } });
   });
 
   it("HELP-001-C/D/H: revisions, audit, stale versions and transitions", async () => {

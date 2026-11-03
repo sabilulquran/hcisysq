@@ -87,25 +87,48 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().url().refine((value) => ["https:", "http:"].includes(new URL(value).protocol)).optional(),
     ),
-    // CAL-001 §9.2: `log` sends nothing (dry run). `kirim` hands messages to Kirim SQ on SQ Hub and
-    // needs the client credentials an operator installs once the HCIS number is paired (§15).
+    // CAL-001 §9.2: `log` sends nothing (dry run). `kirim` hands messages to Kirim SQ on SQ Hub.
+    // SQ Hub KIRIM-IMPL-003 §6: HCIS uses the machine client it already holds for SQ Hub
+    // (SQ_HUB_MACHINE_CLIENT_*), the token endpoint of OIDC_ISSUER and the SQ Hub origin, so no
+    // Kirim credential is copied into final.env. The KIRIM_* values below only override that.
     WHATSAPP_ADAPTER: z.preprocess((value) => value === "" ? undefined : value, z.enum(["log", "kirim"]).default("log")),
     KIRIM_BASE_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
     KIRIM_TOKEN_URL: z.preprocess((value) => value === "" ? undefined : value, z.string().url().optional()),
     KIRIM_CLIENT_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     KIRIM_CLIENT_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
     KIRIM_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-hub-kirim")),
+    // Unset: Kirim SQ sends through the number on the HCIS card (KIRIM-IMPL-003 §5).
     KIRIM_DEVICE_HCIS: z.preprocess(
       (value) => value === "" ? undefined : value,
-      z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/).default("hcis"),
+      z.string().trim().regex(/^[a-z][a-z0-9-]{1,30}$/).optional(),
+    ),
+    // CAL-001 K-17: until the owner declares HCIS live to staff, real WhatsApp goes only to the
+    // numbers in WHATSAPP_ALLOWLIST; everyone else is recorded SKIPPED (not_allowlisted).
+    // `all` is the one switch that lifts it.
+    WHATSAPP_RECIPIENT_MODE: z.preprocess((value) => value === "" ? undefined : value, z.enum(["allowlist", "all"]).default("allowlist")),
+    WHATSAPP_ALLOWLIST: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().optional().transform((value, ctx) => {
+        const numbers = (value ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+        const normalized = numbers.map((part) => normalizeIndonesianMobile(part));
+        if (normalized.some((part) => part === null)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "WHATSAPP_ALLOWLIST holds a number that is not an Indonesian mobile number" });
+          return z.NEVER;
+        }
+        return [...new Set(normalized as string[])];
+      }),
     ),
     // §9.3: the reminder and WhatsApp runner inside the API process; "0" stops it (e.g. a second instance).
     MEETING_RUNNER_ENABLED: z.preprocess((value) => value === "" ? undefined : value, z.enum(["0", "1"]).default("1")),
   })
   .superRefine((value, ctx) => {
     if (value.WHATSAPP_ADAPTER === "kirim") {
-      for (const key of ["KIRIM_BASE_URL", "KIRIM_TOKEN_URL", "KIRIM_CLIENT_ID", "KIRIM_CLIENT_SECRET"] as const) {
-        if (value[key]) continue;
+      const settings = kirimSettings(value);
+      for (const [key, present] of [
+        ["KIRIM_BASE_URL", settings.baseUrl], ["KIRIM_TOKEN_URL", settings.tokenUrl],
+        ["KIRIM_CLIENT_ID", settings.clientId], ["KIRIM_CLIENT_SECRET", settings.clientSecret],
+      ] as const) {
+        if (present) continue;
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when WHATSAPP_ADAPTER=kirim` });
       }
     }
@@ -311,6 +334,36 @@ const envSchema = z
   });
 
 export type ApiConfig = z.infer<typeof envSchema>;
+
+/** E.164 for an Indonesian mobile number (+628…), else null. Same rule as the WhatsApp port. */
+function normalizeIndonesianMobile(input: string): string | null {
+  const digits = input.replace(/[\s.\-()]/g, "").replace(/^\+/, "");
+  if (!/^\d+$/.test(digits)) return null;
+  const national = digits.startsWith("62") ? digits.slice(2) : digits.startsWith("0") ? digits.slice(1) : digits.startsWith("8") ? digits : null;
+  return national && /^8\d{8,11}$/.test(national) ? `+62${national}` : null;
+}
+
+type KirimSettingsSource = Pick<
+  ApiConfig,
+  "KIRIM_BASE_URL" | "KIRIM_TOKEN_URL" | "KIRIM_CLIENT_ID" | "KIRIM_CLIENT_SECRET" | "OIDC_ISSUER"
+  | "SQ_HUB_APPLICATION_ACCESS_URL" | "SQ_HUB_MACHINE_CLIENT_ID" | "SQ_HUB_MACHINE_CLIENT_SECRET"
+>;
+
+/**
+ * KIRIM-IMPL-003 §6 (SQ Hub): Kirim SQ settings derived from what HCIS already has for SQ Hub.
+ * An explicit KIRIM_* value wins; the client id and secret are only taken as a pair.
+ */
+export function kirimSettings(config: KirimSettingsSource) {
+  const explicitClient = config.KIRIM_CLIENT_ID && config.KIRIM_CLIENT_SECRET;
+  return {
+    baseUrl: config.KIRIM_BASE_URL
+      ?? (config.SQ_HUB_APPLICATION_ACCESS_URL ? new URL(config.SQ_HUB_APPLICATION_ACCESS_URL).origin : undefined),
+    tokenUrl: config.KIRIM_TOKEN_URL
+      ?? (config.OIDC_ISSUER ? `${config.OIDC_ISSUER.replace(/\/$/, "")}/protocol/openid-connect/token` : undefined),
+    clientId: explicitClient ? config.KIRIM_CLIENT_ID : config.KIRIM_CLIENT_ID ? undefined : config.SQ_HUB_MACHINE_CLIENT_ID,
+    clientSecret: explicitClient ? config.KIRIM_CLIENT_SECRET : config.KIRIM_CLIENT_ID ? undefined : config.SQ_HUB_MACHINE_CLIENT_SECRET,
+  };
+}
 
 export function isGovernanceSummaryEnabled(config: { GOVERNANCE_SUMMARY_ENABLED?: string | undefined }): boolean {
   return config.GOVERNANCE_SUMMARY_ENABLED === "true" || config.GOVERNANCE_SUMMARY_ENABLED === "1";

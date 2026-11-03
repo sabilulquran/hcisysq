@@ -539,6 +539,29 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     expect(final.rows[0]).toMatchObject({ status: "HANDED_OVER", kirim_message_id: "kirim-msg-1", attempts: 2 });
   });
 
+  it("CAL-001 K-17: before go-live real WhatsApp reaches only allowlisted numbers; the rest are SKIPPED without a call", async () => {
+    const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.noAccount.employeeId] });
+    const sent: string[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      if (url.endsWith("/token")) return Response.json({ access_token: "token", expires_in: 300 });
+      sent.push(JSON.parse(init.body as string).to);
+      return Response.json({ id: `kirim-${sent.length}`, status: "antre" }, { status: 202 });
+    };
+    const sender = new KirimWhatsAppSender(
+      "http://127.0.0.1:3302",
+      new ClientCredentialsTokenProvider({ tokenUrl: "https://sso.example/token", clientId: "hcis-api", clientSecret: "s", audience: "sq-hub-kirim" }, fetchImpl),
+      fetchImpl,
+    );
+    const runner = new MeetingRunner(savepointPool(client), sender, { origin: null, allowlist: new Set(["+6281200000002"]) });
+    await runner.tick();
+    expect(sent).toEqual(["+6281200000002"]);
+    const rows = await client.query<{ status: string; error_code: string | null }>(
+      `SELECT status, error_code FROM meeting_notification_deliveries WHERE meeting_id = $1 ORDER BY status`,
+      [meeting.id],
+    );
+    expect(rows.rows).toEqual([{ status: "HANDED_OVER", error_code: null }, { status: "SKIPPED", error_code: "not_allowlisted" }]);
+  });
+
   it("CAL-001-M: the reminder fires once, 30 minutes ahead, for people still attending", async () => {
     const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.bob.employeeId] });
     await respond(meeting.id, "bob", "DECLINED");

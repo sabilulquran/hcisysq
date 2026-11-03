@@ -67,6 +67,7 @@ Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat." Untu
 | K-14 | WhatsApp undangan, perubahan, dan pembatalan dikirim bila penyelenggara mencentang **"Kirim juga lewat WhatsApp"** (default tercentang). Pengingat WhatsApp selalu dikirim bila nomor ada. Tidak ada preferensi pengingat per pegawai di Paket 1. | DRAFT |
 | K-15 | Pengingat satu kali, **30 menit sebelum mulai** (default legacy), untuk penyelenggara dan peserta yang tidak Berhalangan. | DRAFT |
 | K-16 | Selama API memakai adapter `log` (dry run, §9.2), layar **tidak menampilkan** pilihan "Kirim juga lewat WhatsApp" maupun tanda "tanpa nomor WA", dan form menulis bahwa pemberitahuan WhatsApp belum aktif. Statusnya dibaca dari API (`whatsappDelivery` pada `GET /me/calendar`: `active` hanya bila `WHATSAPP_ADAPTER=kirim`), tidak ditulis keras di frontend. Nilai `notifyWhatsApp` rapat tetap tersimpan (bawaan `true`) sehingga perilaku K-14 berlaku begitu adapter `kirim` dinyalakan. Alasan: temuan HELP-001 2026-11-03 — pilihan yang tampil padahal tidak ada pesan terkirim menyesatkan pegawai. | ACCEPTED (2026-11-03) |
+| K-17 | Selama HCIS belum dinyatakan live ke staf oleh owner, WhatsApp sungguhan (adapter `kirim`) **hanya** dikirim ke nomor di `WHATSAPP_ALLOWLIST` (hanya nomor owner). Penerima lain dicatat `SKIPPED` dengan `error_code = not_allowlisted` tanpa panggilan ke Kirim SQ; notifikasi in-app tetap jalan. Satu saklar mencabutnya: `WHATSAPP_RECIPIENT_MODE=all` (bawaan `allowlist`; allowlist kosong berarti tidak ada yang menerima). Adapter `log` tidak dibatasi karena tidak mengirim apa pun. | ACCEPTED (owner, 2026-11-03) |
 
 ## 4. Batas
 
@@ -198,8 +199,8 @@ Ditulis dalam transaksi yang sama dengan perubahannya, idempoten per `eventKey`.
 
 HCIS memakai port `WhatsAppSender` dengan dua adapter, sesuai ADR-0011:
 
-- `log` (default): tidak mengirim apa pun, mencatat `dry_run`. Dipakai sampai nomor HCIS di Kirim SQ siap dan kredensial klien HCIS terpasang;
-- `kirim`: `POST /internal/kirim/messages` ke SQ Hub dengan token client credentials dan `Idempotency-Key`.
+- `log` (default): tidak mengirim apa pun, mencatat `dry_run`;
+- `kirim`: `POST /internal/kirim/messages` ke SQ Hub dengan token client credentials dan `Idempotency-Key`. Sesuai SQ Hub KIRIM-IMPL-003 §6, token memakai client mesin yang sudah dipegang HCIS untuk SQ Hub (`SQ_HUB_MACHINE_CLIENT_ID/SECRET`), endpoint token dari `OIDC_ISSUER`, dan alamat Kirim dari asal `SQ_HUB_APPLICATION_ACCESS_URL`; `device` tidak dikirim sehingga Kirim SQ memakai nomor pada kartu HCIS. Tidak ada kredensial Kirim yang disalin ke `final.env`. Pengaman uji coba: K-17.
 
 Aturan:
 
@@ -299,8 +300,9 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 
 ## 15. Prasyarat operasional di luar kode
 
-- Nomor WhatsApp `hcis` sudah terhubung di Kirim SQ dan klien HCIS terdaftar di SQ Hub. Sampai itu ada, adapter tetap `log` dan fitur lain berjalan normal.
-- Kredensial klien Kirim untuk HCIS dipasang operator di env Mi8VPS; agen tidak mengetik kredensial.
+- Kartu HCIS di Kirim SQ tersambung ke nomor `hcis` (KIRIM-IMPL-003). Sampai itu ada, adapter tetap `log` dan fitur lain berjalan normal.
+- Operator menyalakan `WHATSAPP_ADAPTER=kirim` dan mengisi `WHATSAPP_ALLOWLIST` (nomor owner) di `final.env`; keduanya bukan kredensial. Tidak ada secret Kirim yang dipasang.
+- Go-live ke staf: owner menyatakan siap, lalu operator mengubah `WHATSAPP_RECIPIENT_MODE=all` dan me-restart HCIS (K-17).
 
 ## 16. Catatan implementasi Paket 1 (2026-11-02)
 
@@ -317,7 +319,7 @@ Hal yang tidak dijawab spesifikasi di atas diputuskan saat implementasi dengan d
 | I-07 | Status `SENT` disiapkan di tabel tetapi Paket 1 belum menerima webhook `message.status` dari Kirim SQ; status terakhir yang dicatat HCIS adalah `HANDED_OVER` (atau `DRY_RUN` dengan adapter `log`). Ulang otomatis bila SQ Hub tidak menjawab: 1, 5, lalu 30 menit, kemudian `FAILED`. Penolakan 4xx langsung `FAILED`. | DRAFT |
 | I-08 | Rapat orang lain di kalender dikirim dengan `id: null`, sehingga layar tidak menawarkan tautan detail yang pasti 404. | DRAFT |
 | I-09 | Kalender pribadi menampilkan tujuan perjalanan dinas **milik sendiri**; cek ketersediaan untuk orang lain tetap tidak pernah menyebut tujuan atau jenis cuti (§6). | DRAFT |
-| I-10 | Pengaturan env: `WHATSAPP_ADAPTER` (`log` bawaan, `kirim`), `KIRIM_BASE_URL`, `KIRIM_TOKEN_URL`, `KIRIM_CLIENT_ID`, `KIRIM_CLIENT_SECRET`, `KIRIM_AUDIENCE` (bawaan `sq-hub-kirim`), `KIRIM_DEVICE_HCIS` (bawaan `hcis`), `MEETING_RUNNER_ENABLED` (bawaan `1`). API menolak start bila `kirim` dipilih tanpa keempat `KIRIM_*`. | DRAFT |
+| I-10 | Pengaturan env: `WHATSAPP_ADAPTER` (`log` bawaan, `kirim`), `WHATSAPP_RECIPIENT_MODE` (`allowlist` bawaan, `all`), `WHATSAPP_ALLOWLIST` (nomor dipisah koma), `MEETING_RUNNER_ENABLED` (bawaan `1`). `KIRIM_BASE_URL`, `KIRIM_TOKEN_URL`, `KIRIM_CLIENT_ID` + `KIRIM_CLIENT_SECRET` (berpasangan), `KIRIM_AUDIENCE` (bawaan `sq-hub-kirim`), dan `KIRIM_DEVICE_HCIS` (bawaan kosong = nomor kartu) hanya menimpa nilai turunan (§9.2). API menolak start bila `kirim` dipilih dan salah satu nilai tidak bisa diturunkan. Diubah 2026-11-03 mengikuti SQ Hub KIRIM-IMPL-003. | ACCEPTED |
 | I-11 | Opsi **Rahasia** (K-05 pilihan B, final dari pemilik produk 2026-11-02) dipasang sebagai kolom `meetings.confidential` (bawaan `false`) dan hanya diproyeksikan di API; layar tidak memutuskan apa pun. | ACCEPTED |
 | I-12 | Bentrok dengan rapat Rahasia yang tidak diikuti pembuat undangan disebut tanpa judul **dan tanpa jam** ("sudah ada rapat lain pada waktu itu"), dan pratinjau ketersediaan hanya menerima waktu yang akan datang, supaya pratinjau tidak dipakai menelusuri siapa yang ikut rapat Rahasia atau mengintip hari lampau orang lain. Pesan WhatsApp "dikeluarkan" memakai judul, jam, dan lokasi yang dikenal penerima sebelum perubahan. | DRAFT |
 

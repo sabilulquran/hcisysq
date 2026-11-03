@@ -13,13 +13,20 @@ import { enqueueWhatsApp, meetingHref, notifyPeople } from "./service.js";
 import {
   createWhatsAppSender,
   normalizeWhatsAppNumber,
+  whatsappAllowlist,
   WhatsAppRejectedError,
   WhatsAppRetryableError,
   type WhatsAppSender,
 } from "./whatsapp.js";
 
 export interface MeetingRunnerOptions {
-  device: string;
+  /** Omitted: Kirim SQ uses the number on the HCIS card. */
+  device?: string | undefined;
+  /**
+   * CAL-001 K-17: real WhatsApp only to these numbers while HCIS is not live to staff; null lifts
+   * it. A `log` sender is not limited: it sends nothing anyway.
+   */
+  allowlist?: ReadonlySet<string> | null;
   /** `https://hcis…` for the link in a message; null leaves the link out. */
   origin: string | null;
   batchSize?: number;
@@ -217,6 +224,10 @@ export class MeetingRunner {
       await this.finish(row.id, "SKIPPED", { errorCode: "no_phone" });
       return false;
     }
+    if (this.sender.name === "kirim" && this.options.allowlist && !this.options.allowlist.has(to)) {
+      await this.finish(row.id, "SKIPPED", { errorCode: "not_allowlisted" });
+      return false;
+    }
     const startMs = meeting.startAt.getTime();
     try {
       const result = await this.sender.send({
@@ -268,7 +279,12 @@ export function registerMeetingRunner(app: FastifyInstance, pool: Pool, config: 
   const sender = createWhatsAppSender(config, {
     log: (entry) => app.log.info({ whatsapp: entry }, "whatsapp dry run (adapter log)"),
   });
-  const runner = new MeetingRunner(pool, sender, { device: config.KIRIM_DEVICE_HCIS, origin: publicOrigin(config) }, app.log);
+  const runner = new MeetingRunner(
+    pool,
+    sender,
+    { device: config.KIRIM_DEVICE_HCIS, origin: publicOrigin(config), allowlist: whatsappAllowlist(config) },
+    app.log,
+  );
   app.addHook("onReady", async () => runner.start());
   app.addHook("onClose", async () => runner.stop());
   return runner;

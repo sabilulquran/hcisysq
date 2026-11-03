@@ -3511,7 +3511,7 @@ components:
         governanceApplied: { type: boolean }
         steps:
           description: >
-            One entry per approver. ORG-012: for Leave, an account-held seat resolves to a
+            One entry per approver. ORG-013: for Leave, an account-held seat resolves to a
             Foundation Board account; that step has employeeId null, an accountId, and the
             employeeName "Akun Organ Yayasan".
           type: array
@@ -3522,7 +3522,7 @@ components:
             - type: object
               properties:
                 employeeId: { type: [string, 'null'], format: uuid }
-                accountId: { type: string, format: uuid, description: "ORG-012: set when the recipient is a Foundation Board account" }
+                accountId: { type: string, format: uuid, description: "ORG-013: set when the recipient is a Foundation Board account" }
                 employeeName: { type: string }
                 positionTitle: { type: [string, 'null'] }
                 appliesInMode: { type: string, enum: [STRUCTURE] }

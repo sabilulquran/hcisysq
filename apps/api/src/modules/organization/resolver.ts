@@ -108,7 +108,7 @@ export class OrganizationAuthorityResolver {
       requiredCapability: input.requiredCapability,
       ...(input.allowAccountRecipient ? { accountCapability: null } : {}),
     };
-    // ORG-012-4: an account approver has no employee id, so its snapshotted
+    // ORG-013-4: an account approver has no employee id, so its snapshotted
     // position anchors the oversight lookup instead.
     const candidates = input.approverPositionKey
       ? context.snapshot.positions.filter((item) => item.stableKey === input.approverPositionKey
@@ -328,7 +328,7 @@ export class OrganizationAuthorityResolver {
         if (!candidate) continue;
         const accountHeld = (position.holderSource ?? "EMPLOYEE") === "ACCOUNT";
         if (accountHeld || candidate.accountId) {
-          // ORG-012-1: only an account row in an account-held seat may resolve,
+          // ORG-013-1: only an account row in an account-held seat may resolve,
           // and only for callers that name the account capability.
           if (!accountHeld || !candidate.accountId || candidate.employeeId
               || context.accountCapability === undefined || !this.eligibilityValidator.validateAccount) {
@@ -627,7 +627,7 @@ function appendAuthority(
   authorities: ResolvedAuthority[],
   candidate: ResolvedAuthority,
 ): void {
-  // ORG-012-1: dedupe by principal, so two different account approvers never merge.
+  // ORG-013-1: dedupe by principal, so two different account approvers never merge.
   const existing = authorities.find((item) => candidate.employeeId
     ? item.employeeId === candidate.employeeId
     : !item.employeeId && item.accountId === candidate.accountId);

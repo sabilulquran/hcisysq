@@ -38,9 +38,9 @@ export interface LeaveAuthorityResolution {
     authoritativeSource: RolloutAuthorityResult["authoritativeSource"];
     authorities: Array<{
       employeeId: string | null;
-      /** ORG-012: set for a Foundation Board account principal. */
+      /** ORG-013: set for a Foundation Board account principal. */
       accountId?: string | undefined;
-      /** ORG-012-4: the seat that resolved, which anchors oversight for an account approver. */
+      /** ORG-013-4: the seat that resolved, which anchors oversight for an account approver. */
       positionKey?: string | null | undefined;
       source: LeaveApprovalSource;
       sources?: LeaveApprovalSource[] | undefined;
@@ -61,7 +61,7 @@ export interface ResolveLeaveAuthoritiesInput {
   };
   policyChain: "LINE_AND_UNIT" | "UNIT_ONLY";
   /**
-   * ORG-012: Leave routes that can store and decide account-principal steps opt in.
+   * ORG-013: Leave routes that can store and decide account-principal steps opt in.
    * Other workflows sharing this resolver keep employee-only routing.
    */
   allowAccountPrincipal?: boolean | undefined;
@@ -194,7 +194,7 @@ export function snapshotLeaveRolloutAuthorities(
 }
 
 /**
- * ORG-012-1 butir 5. A Foundation Board account has no employee id, so the decision repeats the
+ * ORG-013-1 butir 5. A Foundation Board account has no employee id, so the decision repeats the
  * submit-time e-mail match against the requester. An account without an e-mail counts as a match.
  */
 export async function governanceActorIsRequester(
@@ -230,7 +230,7 @@ async function finalLineOrGovernanceApprover(
   db: PoolClient,
   requestId: string,
 ): Promise<FinalApprover | null> {
-  // ORG-012-4: an account step has no employee id, so its seat comes from the
+  // ORG-013-4: an account step has no employee id, so its seat comes from the
   // resolution context snapshotted with the request.
   const result = await db.query<FinalApprover>(
     `SELECT s.approver_employee_id AS "employeeId",

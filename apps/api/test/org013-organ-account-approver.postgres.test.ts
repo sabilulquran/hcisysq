@@ -9,12 +9,12 @@ import type { AuthPrincipal } from "../src/modules/auth/service.js";
 import { governanceActorIsRequester } from "../src/modules/leave/organization-authority.js";
 import { LEAVE_GOVERNANCE_CAPABILITY, PostgresOrganizationRepository } from "../src/modules/organization/index.js";
 
-// ORG-012 against real SQL. Isolated loopback database and a disposable schema; synthetic data only.
+// ORG-013 against real SQL. Isolated loopback database and a disposable schema; synthetic data only.
 const databaseUrl = process.env.HCIS_AUTH011_TEST_DATABASE_URL;
-const schema = `org012_${randomUUID().replaceAll("-", "")}`;
+const schema = `org013_${randomUUID().replaceAll("-", "")}`;
 const today = "2026-11-03";
 
-describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () => {
+describe.skipIf(!databaseUrl)("ORG-013 organ account approver (PostgreSQL)", () => {
   let pool: Pool;
   let control: Pool;
   let repository: PostgresOrganizationRepository;
@@ -25,7 +25,7 @@ describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () 
   async function employee(email: string | null, status = "active") {
     const id = randomUUID();
     await pool.query("INSERT INTO employees(id,employee_number,full_name,status,email) VALUES ($1,$2,'Pegawai Sintetis',$3,$4)",
-      [id, `ORG012-${id}`, status, email]);
+      [id, `ORG013-${id}`, status, email]);
     return id;
   }
 
@@ -56,7 +56,7 @@ describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () 
   beforeAll(async () => {
     const url = new URL(databaseUrl!);
     if (url.hostname !== "127.0.0.1" || url.pathname !== "/hcis_auth011_permissions_test") {
-      throw new Error("ORG-012 integration requires the isolated loopback hcis_auth011_permissions_test database");
+      throw new Error("ORG-013 integration requires the isolated loopback hcis_auth011_permissions_test database");
     }
     control = new Pool({ connectionString: databaseUrl });
     await control.query(`CREATE SCHEMA ${schema}`);
@@ -83,7 +83,7 @@ describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () 
 
   const context = { effectiveDate: today, requiredCapability: LEAVE_GOVERNANCE_CAPABILITY };
 
-  describe("validateAccount (ORG-012-1)", () => {
+  describe("validateAccount (ORG-013-1)", () => {
     it("accepts an active, mapped organ account that holds the capability", async () => {
       const id = await account({ principalType: "FOUNDATION_BOARD", email: "sekretaris@example.invalid" });
       await grantGovernance(id);
@@ -143,7 +143,7 @@ describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () 
     });
   });
 
-  describe("grant channel (ORG-012-2)", () => {
+  describe("grant channel (ORG-013-2)", () => {
     const input = (overrides: Record<string, unknown> = {}) => ({
       roleId: governanceRoleId, scopeType: "organization" as const,
       reason: "SK 001/2026, bukan pegawai", endsOn: "2030-12-31", ...overrides,
@@ -181,7 +181,7 @@ describe.skipIf(!databaseUrl)("ORG-012 organ account approver (PostgreSQL)", () 
     });
   });
 
-  describe("decision-time self check (ORG-012-1 butir 5)", () => {
+  describe("decision-time self check (ORG-013-1 butir 5)", () => {
     it("matches the requester by e-mail and treats an e-mail-less actor as a match", async () => {
       const requester = await employee("pemohon@example.invalid");
       const same = await account({ principalType: "FOUNDATION_BOARD", email: "PEMOHON@example.invalid" });

@@ -45,7 +45,7 @@ export function FoundationBoardPage() {
   const [data, setData] = useState<BoardDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   // ORG-010 §1.4: an Employee with board.read keeps /app; offer the way back.
-  // ORG-012-3: null until the session answers, so the approvals section never loads for an Employee.
+  // ORG-013-3: null until the session answers, so the approvals section never loads for an Employee.
   const [principalType, setPrincipalType] = useState<string | null>(null);
   const isEmployee = principalType === "EMPLOYEE";
 
@@ -136,7 +136,7 @@ export function FoundationBoardPage() {
           ) : null}
         </section>
 
-        {/* ORG-012-3: organ accounts decide their leave steps here; employees use /app. */}
+        {/* ORG-013-3: organ accounts decide their leave steps here; employees use /app. */}
         {principalType === "FOUNDATION_BOARD" ? <BoardApprovalsSection /> : null}
 
         {error ? (

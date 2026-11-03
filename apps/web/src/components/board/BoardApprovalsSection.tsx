@@ -18,7 +18,7 @@ function formatDate(value: string) {
 }
 
 /**
- * ORG-012-3 (v1, DRAFT): the leave steps snapshotted to this Foundation Board account, decided
+ * ORG-013-3 (v1, DRAFT): the leave steps snapshotted to this Foundation Board account, decided
  * through the existing `/leave/approvals` routes with the cookie session. Until the Portal Organ
  * Yayasan exists this is the only place an organ account can decide. An account without the
  * governance approver role gets 403 and sees nothing.

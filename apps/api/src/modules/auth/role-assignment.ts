@@ -14,7 +14,7 @@ import {
 import { assertAssignmentDates, assertAssignmentScope } from "../employees/org-access-policy.js";
 
 /**
- * ORG-012-2: the one role a Foundation Board account may receive (migration 0023). It carries only
+ * ORG-013-2: the one role a Foundation Board account may receive (migration 0023). It carries only
  * `leave.governance.approve`, and no employee account may receive it.
  */
 export const GOVERNANCE_LEAVE_APPROVER_ROLE_KEY = "governance_leave_approver";
@@ -105,7 +105,7 @@ export function carriesIdentityPermission(role: AssignableRole): boolean {
 export function canDelegateRole(role: AssignableRole, delegated: boolean, channel?: GrantChannel): boolean {
   if (!HCIS_ROLES.includes(role.roleKey) || !role.permissions.length) return false;
   if (carriesIdentityPermission(role)) return false;
-  // ORG-012-2: the governance Leave permission is grantable only inside its own role, so a changed
+  // ORG-013-2: the governance Leave permission is grantable only inside its own role, so a changed
   // bundle that slips it into another role is refused like any unknown permission.
   if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key)
     || (key === GOVERNANCE_LEAVE_APPROVE_PERMISSION && role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY))) return false;
@@ -171,7 +171,7 @@ async function requireDelegation(
 
 interface LockedTarget { principalType: string; employeeId: string | null }
 
-// AUTH-014 invariant 7, amended by ORG-012-2: the target is an employee account, except that a
+// AUTH-014 invariant 7, amended by ORG-013-2: the target is an employee account, except that a
 // Foundation Board account may hold the governance Leave approver role and nothing else.
 async function lockTargetAccount(db: PoolClient, accountId: string): Promise<LockedTarget> {
   const result = await db.query<LockedTarget>(
@@ -195,7 +195,7 @@ function assertTargetForRole(target: LockedTarget, roleKey: string): void {
 }
 
 /**
- * ORG-012-1 butir 4. One Akun SQ identity maps to one account, so a member who is also staff
+ * ORG-013-1 butir 4. One Akun SQ identity maps to one account, so a member who is also staff
  * would hold a second account with a different identity; the shared e-mail is what gives it away.
  */
 async function assertOrganAccountIsNotEmployee(db: PoolClient, accountId: string): Promise<void> {
@@ -252,7 +252,7 @@ export async function createRoleAssignment(
     const target = await lockTargetAccount(db, accountId);
     const role = await requireDelegation(db, actor, accountId, input.roleId, context.channel);
     assertTargetForRole(target, role.roleKey);
-    // ORG-012-2: organization scope, the SK as reason, and an end date at the end of the term.
+    // ORG-013-2: organization scope, the SK as reason, and an end date at the end of the term.
     if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) {
       if (input.scopeType !== "organization" || input.organizationalUnitId) {
         throw new AuthError(400, "ROLE_SCOPE_INVALID", "Penyetuju cuti governance hanya dapat diberikan dengan scope organisasi.");

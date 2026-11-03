@@ -163,10 +163,10 @@ function authorityView(
   authority: ResolvedAuthority,
   nameOf: (employeeId: string) => string,
 ): OrganizationAuthorityView {
-  // The people view never opts into ORG-012 account principals.
+  // The people view never opts into ORG-013 account principals.
   if (!authority.employeeId) {
     throw new OrganizationResolutionError(
-      "INVALID_AUTHORITY_PRINCIPAL", "Account principal outside an ORG-012 workflow.",
+      "INVALID_AUTHORITY_PRINCIPAL", "Account principal outside an ORG-013 workflow.",
       { positionKey: authority.positionKey },
     );
   }

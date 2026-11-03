@@ -664,7 +664,7 @@ export class PostgresOrganizationRepository {
   }
 
   /**
-   * ORG-012-1. A Foundation Board account is an approver only while it is
+   * ORG-013-1. A Foundation Board account is an approver only while it is
    * active, holds the capability at organization scope, has a mapped Akun SQ
    * identity, and its e-mail matches no active employee: the identity index
    * allows one account per identity, so a member who is also staff would show

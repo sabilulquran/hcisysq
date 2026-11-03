@@ -12,7 +12,7 @@ import {
   type OrganizationSnapshot,
 } from "../src/modules/organization/index.js";
 
-// ORG-012: account-held Foundation Board seats as structural approvers. Synthetic data only.
+// ORG-013: account-held Foundation Board seats as structural approvers. Synthetic data only.
 const effectiveFrom = "2026-01-01";
 const on = "2026-11-03";
 const director = "employee-director";
@@ -118,8 +118,8 @@ const directorLeave = {
   accountCapability: LEAVE_GOVERNANCE_CAPABILITY,
 };
 
-describe("ORG-012 organ account approver", () => {
-  it("resolves Director leave to the Secretary account and tells the Chair account (ORG-012-A, ORG-012-G)", async () => {
+describe("ORG-013 organ account approver", () => {
+  it("resolves Director leave to the Secretary account and tells the Chair account (ORG-013-A, ORG-013-G)", async () => {
     const { subject, capabilities } = resolver(structure());
     const line = await subject.resolveLineAuthorities(directorLeave);
     expect(line.governanceApplied).toBe(true);
@@ -137,7 +137,7 @@ describe("ORG-012 organ account approver", () => {
     expect(capabilities.at(-1)).toBeNull();
   });
 
-  it("keeps failing closed for callers that do not opt in (ORG-012-F)", async () => {
+  it("keeps failing closed for callers that do not opt in (ORG-013-F)", async () => {
     const { subject } = resolver(structure());
     await expect(subject.resolveLineAuthorities({ ...directorLeave, accountCapability: undefined }))
       .rejects.toMatchObject({ code: "INVALID_AUTHORITY_PRINCIPAL" });
@@ -146,7 +146,7 @@ describe("ORG-012 organ account approver", () => {
     })).rejects.toMatchObject({ code: "INVALID_AUTHORITY_PRINCIPAL" });
   });
 
-  it("never lets a seat alone grant authority: a missing capability follows the vacancy policy (ORG-012-B)", async () => {
+  it("never lets a seat alone grant authority: a missing capability follows the vacancy policy (ORG-013-B)", async () => {
     const { subject } = resolver(structure(), {
       [secretaryAccount]: { kind: "INELIGIBLE", reason: "CAPABILITY_MISSING" },
     });
@@ -173,7 +173,7 @@ describe("ORG-012 organ account approver", () => {
     expect(line.authorities).toEqual([expect.objectContaining({ accountId: chairAccount })]);
   });
 
-  it("routes an employee account in an account-held seat to its employee principal (ORG-012-C)", async () => {
+  it("routes an employee account in an account-held seat to its employee principal (ORG-013-C)", async () => {
     const { subject } = resolver(structure(), {
       [secretaryAccount]: { kind: "EMPLOYEE", employeeId: "employee-salaried-secretary" },
     });
@@ -230,7 +230,7 @@ describe("ORG-012 organ account approver", () => {
   });
 });
 
-describe("ORG-012 Leave snapshot and oversight", () => {
+describe("ORG-013 Leave snapshot and oversight", () => {
   it("stores an account principal step and keeps its seat in the resolution context", () => {
     const snapshot = snapshotLeaveRolloutAuthorities({
       mode: "STRUCTURE",
@@ -249,7 +249,7 @@ describe("ORG-012 Leave snapshot and oversight", () => {
     })]);
   });
 
-  it("anchors oversight on the account approver's seat and targets the Chair account (ORG-012-4)", async () => {
+  it("anchors oversight on the account approver's seat and targets the Chair account (ORG-013-4)", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("{authorityResolution,mode}")) return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
       if (sql.includes("FROM leave_request_approval_steps")) {

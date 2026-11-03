@@ -130,7 +130,7 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 | Kanal pemberian dan allowlist target | `apps/api/src/modules/auth/role-assignment.ts` |
 | Preview "Cek persetujuan" HC untuk cuti | `apps/api/src/modules/organization/admin-routes.ts` |
 | Kotak persetujuan `/board` (v1, `DRAFT`) | `apps/web/src/components/board/BoardApprovalsSection.tsx` |
-| Test | `apps/api/test/org012-organ-account-approver.test.ts`, `org012-organ-account-approver.postgres.test.ts` |
+| Test | `apps/api/test/org013-organ-account-approver.test.ts`, `org013-organ-account-approver.postgres.test.ts` |
 
 Workflow lain yang memakai resolver yang sama (perjalanan dinas, pinjaman, pengaturan kerja, lembur, penilaian kinerja) tidak ikut opt-in. Untuk workflow itu jabatan akun tetap gagal `INVALID_AUTHORITY_PRINCIPAL`.
 

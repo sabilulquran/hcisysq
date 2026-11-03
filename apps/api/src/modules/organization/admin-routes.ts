@@ -527,7 +527,7 @@ export async function registerOrganizationAdminRoutes(
       [employeeIds],
     );
     const byId = new Map(employees.rows.map((item) => [item.id, item]));
-    // ORG-012: an account approver has no employee record; the seat title names it.
+    // ORG-013: an account approver has no employee record; the seat title names it.
     const nameOfPrincipal = (item: { employeeId: string | null }) =>
       item.employeeId ? byId.get(item.employeeId)?.fullName ?? "" : ORGAN_ACCOUNT_LABEL;
     const titleOf = (positionKey: string | null) =>

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { QueryResult, QueryResultRow } from "pg";
 
 import type {
+  AccountEligibilityContext,
+  AccountEligibilityResult,
   AuthorityEligibilityContext,
   AuthorityEligibilityResult,
   OrganizationAuthorityBinding,
@@ -659,6 +661,67 @@ export class PostgresOrganizationRepository {
     if (!row.accountActive) return { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" };
     if (!row.capabilityValid) return { eligible: false, reason: "CAPABILITY_MISSING" };
     return { eligible: true, reason: null };
+  }
+
+  /**
+   * ORG-013-1. A Foundation Board account is an approver only while it is
+   * active, holds the capability at organization scope, has a mapped Akun SQ
+   * identity, and its e-mail matches no active employee: the identity index
+   * allows one account per identity, so a member who is also staff would show
+   * up as a second account with a different identity but the same e-mail.
+   */
+  async validateAccount(
+    accountId: string,
+    context: AccountEligibilityContext,
+  ): Promise<AccountEligibilityResult> {
+    const result = await this.db.query<{
+      principalType: string;
+      status: string;
+      employeeId: string | null;
+      hasIdentity: boolean;
+      email: string | null;
+      capabilityValid: boolean;
+      emailMatchesEmployee: boolean;
+    }>(
+      `SELECT
+         a.principal_type AS "principalType",
+         a.status,
+         a.employee_id AS "employeeId",
+         (a.identity_issuer IS NOT NULL AND a.identity_subject IS NOT NULL) AS "hasIdentity",
+         NULLIF(lower(btrim(a.email)), '') AS email,
+         $3::text IS NULL OR EXISTS (
+           SELECT 1 FROM account_role_assignments ara
+           JOIN role_permissions rp ON rp.role_id = ara.role_id
+           WHERE ara.account_id = a.id
+             AND ara.scope_type = 'organization'
+             AND rp.permission_key = $3
+             AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+             AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) AS "capabilityValid",
+         EXISTS (
+           SELECT 1 FROM employees e
+           LEFT JOIN accounts ea ON ea.employee_id = e.id AND ea.principal_type = 'EMPLOYEE'
+           WHERE e.status = 'active' AND e.removed_at IS NULL
+             AND NULLIF(lower(btrim(a.email)), '') IS NOT NULL
+             AND NULLIF(lower(btrim(a.email)), '') IN (
+               NULLIF(lower(btrim(e.email)), ''), NULLIF(lower(btrim(ea.email)), '')
+             )
+         ) AS "emailMatchesEmployee"
+       FROM accounts a WHERE a.id = $1`,
+      [accountId, context.effectiveDate, context.requiredCapability],
+    );
+    const row = result.rows[0];
+    if (!row) return { kind: "INVALID" };
+    if (row.principalType === "EMPLOYEE") {
+      return row.employeeId ? { kind: "EMPLOYEE", employeeId: row.employeeId } : { kind: "INVALID" };
+    }
+    if (row.principalType !== "FOUNDATION_BOARD" || row.employeeId) return { kind: "INVALID" };
+    if (row.status !== "active") return { kind: "INELIGIBLE", reason: "ACCOUNT_NOT_ACTIVE" };
+    if (!row.hasIdentity) return { kind: "CONFLICT", reason: "ACCOUNT_IDENTITY_MISSING" };
+    if (!row.email) return { kind: "CONFLICT", reason: "ACCOUNT_EMAIL_MISSING" };
+    if (row.emailMatchesEmployee) return { kind: "CONFLICT", reason: "ACCOUNT_PERSON_IS_EMPLOYEE" };
+    if (!row.capabilityValid) return { kind: "INELIGIBLE", reason: "CAPABILITY_MISSING" };
+    return { kind: "ACCOUNT" };
   }
 
   /**

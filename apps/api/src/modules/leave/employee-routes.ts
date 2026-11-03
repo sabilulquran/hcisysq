@@ -51,6 +51,7 @@ import {
 import {
   enqueueFinalApprovalOversight,
   LeaveOrganizationAuthorityError,
+  governanceActorIsRequester,
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
 
@@ -376,6 +377,7 @@ async function buildAnnualPreview(
       unitApproverEmployeeId: employee.unitApproverEmployeeId,
     },
     policyChain: "LINE_AND_UNIT",
+    allowAccountPrincipal: true,
   });
   const approvalChain = await hydrateApprovalChain(db, authorityResolution.approvalChain);
   // LEAVE-009: Cuti Tahunan in a critical period gets an HC review after line approval (D-02).
@@ -1077,6 +1079,13 @@ export async function registerEmployeeLeaveRoutes(
       }
       if (!actor) {
         await assertGovernanceApprovalCapability(client, principal.id);
+        if (await governanceActorIsRequester(client, principal.id, current.requesterEmployeeId)) {
+          throw new EmployeeLeaveError(
+            403,
+            "APPROVAL_SELF_FORBIDDEN",
+            "Pengajuan ini tidak dapat diputuskan oleh pemohon sendiri.",
+          );
+        }
       }
 
       const allStepsResult = await client.query<LeaveApprovalStepState>(

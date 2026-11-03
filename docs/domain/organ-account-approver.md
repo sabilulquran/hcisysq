@@ -1,6 +1,6 @@
 # ORG-013 — Akun Organ Yayasan sebagai approver struktural
 
-**Status:** ACCEPTED (keputusan owner 2026-11-03). Penyimpanan principal akun, permission, role, dan route keputusan sudah ada sejak migrasi `0023_leave_approval_principals.sql`. Yang belum ada adalah resolusi struktural ORG-004 ke principal akun dan kanal pemberian role ke akun `FOUNDATION_BOARD`.
+**Status:** ACCEPTED (keputusan owner 2026-11-03). **Diimplementasikan** di resolver, Leave (cuti tahunan dan cuti terencana), oversight, kanal pemberian role, dan kotak persetujuan `/board`. Hanya berpengaruh setelah rollout workflow cuti menjadi `STRUCTURE`, dan production masih `LEGACY`. Penyimpanan principal akun, permission, role, dan route keputusan sudah ada sejak migrasi `0023_leave_approval_principals.sql`.
 **Specification:** ORG-013
 **Menutup:** gap W-3 di `organization-designer-ux-gap-analysis.md` dan keputusan E di `organization-designer-ux-implementation-plan.md`
 **Related:** ORG-004 (`dynamic-organization-structure.md`), APR-001 (`workflows/approval-engine.md`), LEAVE-003-N, ORG-003, ORG-010, AUTH-014 (`sq-core-administrator-layers.md`), GOV-001 (`../product/organ-portal-concept.md`, DRAFT)
@@ -118,6 +118,26 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 - kanal AUTH-014 menolak target `FOUNDATION_BOARD` untuk role di luar allowlist, tanpa tanggal berakhir, atau tanpa alasan;
 - respons inbox tidak memuat `decision_note` approver lain atau lampiran;
 - mode `LEGACY` tidak berubah perilakunya.
+
+## Implementasi
+
+| Bagian | Lokasi |
+|---|---|
+| Opt-in resolver (`accountCapability`, `allowAccountRecipient`) dan principal akun | `apps/api/src/modules/organization/resolver.ts`, `domain.ts` |
+| Klasifikasi akun dan pencocokan email | `PostgresOrganizationRepository.validateAccount` |
+| Opt-in Leave, snapshot, dan oversight dari jabatan | `apps/api/src/modules/leave/organization-authority.ts` (`allowAccountPrincipal`), `employee-routes.ts`, `planned-leave-routes.ts` |
+| Pemeriksaan ulang self-approval saat keputusan | `governanceActorIsRequester`, dipanggil di `POST /leave/approvals/:stepId/decision` |
+| Kanal pemberian dan allowlist target | `apps/api/src/modules/auth/role-assignment.ts` |
+| Preview "Cek persetujuan" HC untuk cuti | `apps/api/src/modules/organization/admin-routes.ts` |
+| Kotak persetujuan `/board` (v1, `DRAFT`) | `apps/web/src/components/board/BoardApprovalsSection.tsx` |
+| Test | `apps/api/test/org013-organ-account-approver.test.ts`, `org013-organ-account-approver.postgres.test.ts` |
+
+Tindak lanjut sebelum rollout cuti ke `STRUCTURE` (`TBD`):
+
+- **Kanal SQ Hub.** Lookup `GET /internal/v1/role-administration/accounts` masih menjawab 404 untuk akun `FOUNDATION_BOARD`, sehingga Hub belum bisa memberikan role ini. Membukanya mengubah kontrak AUTH-014 dan perlu perubahan di SQ Hub. Sampai itu selesai, pemberian dan pencabutan role ini hanya lewat break-glass Super Admin, tetap dengan syarat ORG-013-2.
+- **Diagnostik oversight.** Bila akun penerima oversight `CONFLICT` atau tidak eligible, notification intent tidak dibuat. Perilaku ini fail-closed, tetapi belum dicatat di log untuk HC.
+
+Workflow lain yang memakai resolver yang sama (perjalanan dinas, pinjaman, pengaturan kerja, lembur, penilaian kinerja) tidak ikut opt-in. Untuk workflow itu jabatan akun tetap gagal `INVALID_AUTHORITY_PRINCIPAL`.
 
 ## Acceptance criteria
 

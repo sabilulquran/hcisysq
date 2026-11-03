@@ -51,7 +51,7 @@ export async function resolveOvertimeApprover(db: Db, employeeId: string, workDa
   // DRAFT: when the structure applies a governance approver instead of the line, that person decides.
   const authority = result.authorities.find((item) => sourcesOf(item).includes("DIRECT_MANAGER"))
     ?? result.authorities.find((item) => sourcesOf(item).includes("GOVERNANCE_APPROVER"));
-  if (!authority || authority.employeeId === employeeId) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
+  if (!authority?.employeeId || authority.employeeId === employeeId) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
   const active = await db.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active'", [authority.employeeId]);
   if (!active.rows[0]) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
   return {

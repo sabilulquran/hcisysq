@@ -10,8 +10,9 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
 import { resolveAuthorizationContext } from "../auth/permissions.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
-import type {
-  AuthorityBindingType,
+import {
+  LEAVE_GOVERNANCE_CAPABILITY,
+  type AuthorityBindingType,
 } from "./domain.js";
 import {
   applyOrganizationCommand,
@@ -45,6 +46,7 @@ import { PostgresOrganizationRepository, type OrganizationQueryable } from "./re
 import { assertIsoDate, isEffective as isEffectiveOn, jakartaBusinessDate } from "./jakarta-date.js";
 
 const uuid = z.string().uuid();
+const ORGAN_ACCOUNT_LABEL = "Akun Organ Yayasan";
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const draftParams = z.object({ draftId: uuid });
 const itemParams = z.object({ draftId: uuid, itemId: uuid });
@@ -446,9 +448,9 @@ export async function registerOrganizationAdminRoutes(
    * There is no second resolver here: this is the one approvals use.
    */
   const PREVIEW_WORKFLOWS = {
-    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
-    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", preview: false },
-    OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, preview: true },
+    LEAVE_ANNUAL: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    LEAVE_UNPAID: { workflowKey: "LEAVE", requiredCapability: "leave.approve", accountCapability: LEAVE_GOVERNANCE_CAPABILITY, preview: false },
+    OVERTIME: { workflowKey: "OVERTIME", requiredCapability: undefined, accountCapability: undefined, preview: true },
   } as const;
 
   async function resolutionPreview(input: {
@@ -473,6 +475,7 @@ export async function registerOrganizationAdminRoutes(
       effectiveDate: input.effectiveDate,
       workflowKey: plan.workflowKey,
       ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+      ...(plan.accountCapability === undefined ? {} : { accountCapability: plan.accountCapability }),
     };
 
     const warnings: Array<{ code: string; details?: Record<string, unknown> }> = [];
@@ -501,9 +504,12 @@ export async function registerOrganizationAdminRoutes(
       try {
         oversight = await resolver.resolveOversightAbove({
           approverEmployeeId: finalApprover.employeeId,
+          // ORG-013-4: the same seat-anchored lookup the Leave runtime uses.
+          approverPositionKey: finalApprover.positionKey,
           effectiveDate: input.effectiveDate,
           workflowKey: plan.workflowKey,
           ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+          ...(plan.accountCapability === undefined ? {} : { allowAccountRecipient: true }),
         });
       } catch (error) {
         warnings.push({
@@ -514,8 +520,8 @@ export async function registerOrganizationAdminRoutes(
 
     const employeeIds = [...new Set([
       input.employeeId,
-      ...line.authorities.map((item) => item.employeeId),
-      ...(oversight ? [oversight.employeeId] : []),
+      ...line.authorities.flatMap((item) => item.employeeId ? [item.employeeId] : []),
+      ...(oversight?.employeeId ? [oversight.employeeId] : []),
     ])];
     const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
       `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
@@ -523,6 +529,9 @@ export async function registerOrganizationAdminRoutes(
       [employeeIds],
     );
     const byId = new Map(employees.rows.map((item) => [item.id, item]));
+    // ORG-013: an account approver has no employee record; the seat title names it.
+    const nameOfPrincipal = (item: { employeeId: string | null }) =>
+      item.employeeId ? byId.get(item.employeeId)?.fullName ?? "" : ORGAN_ACCOUNT_LABEL;
     const titleOf = (positionKey: string | null) =>
       positionKey ? snapshot.positions.find((item) => item.stableKey === positionKey)?.title ?? null : null;
 
@@ -537,7 +546,8 @@ export async function registerOrganizationAdminRoutes(
         governanceApplied: line.governanceApplied,
         steps: line.authorities.map((item) => ({
           employeeId: item.employeeId,
-          employeeName: byId.get(item.employeeId)?.fullName ?? "",
+          ...(item.accountId ? { accountId: item.accountId } : {}),
+          employeeName: nameOfPrincipal(item),
           positionTitle: titleOf(item.positionKey),
           authorityType: (item.sources ?? [item.source]).join(" + "),
           source: item.incumbentKind,
@@ -545,7 +555,8 @@ export async function registerOrganizationAdminRoutes(
         oversight: oversight
           ? {
               employeeId: oversight.employeeId,
-              employeeName: byId.get(oversight.employeeId)?.fullName ?? "",
+              ...(oversight.accountId ? { accountId: oversight.accountId } : {}),
+              employeeName: nameOfPrincipal(oversight),
               positionTitle: titleOf(oversight.positionKey),
               appliesInMode: "STRUCTURE",
             }
@@ -1760,15 +1771,17 @@ export async function registerOrganizationAdminRoutes(
     const resolver = new OrganizationAuthorityResolver({ loadEffectiveSnapshot: async () => snapshot }, { eligibilityValidator: repository });
     try {
       const result = await resolver.resolveLineAuthorities({ requesterEmployeeId: body.data.employeeId,
-        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey, requiredCapability: "leave.approve" });
-      const ids = [...new Set([body.data.employeeId, ...result.authorities.map((item) => item.employeeId)])];
+        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey, requiredCapability: "leave.approve",
+        ...(body.data.workflowKey === "LEAVE" ? { accountCapability: LEAVE_GOVERNANCE_CAPABILITY } : {}) });
+      const ids = [...new Set([body.data.employeeId, ...result.authorities.flatMap((item) => item.employeeId ? [item.employeeId] : [])])];
       const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [ids]);
       const byId = new Map(employees.rows.map((item) => [item.id, item]));
       return reply.send({ employee: byId.get(body.data.employeeId) ?? { id: body.data.employeeId, fullName: "Unknown employee" },
         effectiveDate: result.effectiveDate, workflowKey: body.data.workflowKey,
         steps: result.authorities.map((item) => ({ authorityType: (item.sources ?? [item.source]).join(" + "), employeeId: item.employeeId,
-          employeeName: byId.get(item.employeeId)?.fullName ?? "Unknown employee",
+          ...(item.accountId ? { accountId: item.accountId } : {}),
+          employeeName: item.employeeId ? byId.get(item.employeeId)?.fullName ?? "Unknown employee" : ORGAN_ACCOUNT_LABEL,
           positionTitle: snapshot.positions.find((position) => position.stableKey === item.positionKey)?.title ?? null,
           source: item.incumbentKind })), oversight: null, warnings: [] });
     } catch (error) {

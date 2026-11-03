@@ -487,5 +487,5 @@ export function registerRoleAdministrationRoutes(
 
 /** Roles whose grant needs organization scope and a stated mandate (§2.4 step 7). */
 const MANDATE_REQUIRED = new Set([
-  "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin",
+  "human_capital_admin", "human_capital_lead", "foundation_board_viewer", "hcis_module_admin", "governance_leave_approver",
 ]);

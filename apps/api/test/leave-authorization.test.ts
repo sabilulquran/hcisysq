@@ -87,6 +87,8 @@ function createDecisionPool(input: {
     if (sql.includes("UPDATE auth_sessions SET last_seen_at")) {
       return { rows: [], rowCount: 1 };
     }
+    // ORG-013: the decision-time e-mail check finds no match for the synthetic requester.
+    if (sql.includes("AS same")) return { rows: [{ same: false }], rowCount: 1 };
     if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e") && !sql.includes("FROM accounts account")) {
       return { rows: [employeeRow(input.actorEmployeeId ?? M)], rowCount: 1 };
     }

@@ -29,6 +29,8 @@ interface ResolutionContext {
   requesterEmployeeId: string;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
+  /** Undefined: account seats fail closed. Null: allowed without a capability (oversight). */
+  accountCapability?: string | null | undefined;
 }
 
 export class OrganizationAuthorityResolver {
@@ -71,9 +73,7 @@ export class OrganizationAuthorityResolver {
     const unitApprover = await this.resolveUnitApproverInContext(context);
     const authorities: ResolvedAuthority[] = [];
     if (directManager) appendAuthority(authorities, directManager);
-    if (unitApprover?.employeeId !== input.requesterEmployeeId) {
-      if (unitApprover) appendAuthority(authorities, unitApprover);
-    }
+    if (unitApprover) appendAuthority(authorities, unitApprover);
     return {
       effectiveDate: context.effectiveDate,
       changeSetId: context.snapshot.changeSet.id,
@@ -103,18 +103,27 @@ export class OrganizationAuthorityResolver {
     const context: ResolutionContext = {
       snapshot,
       effectiveDate,
-      requesterEmployeeId: input.approverEmployeeId,
+      requesterEmployeeId: input.approverEmployeeId ?? "",
       workflowKey: input.workflowKey,
       requiredCapability: input.requiredCapability,
+      ...(input.allowAccountRecipient ? { accountCapability: null } : {}),
     };
-    const positions = this.employeePositions(context, input.approverEmployeeId)
+    // ORG-013-4: an account approver has no employee id, so its snapshotted
+    // position anchors the oversight lookup instead.
+    const candidates = input.approverPositionKey
+      ? context.snapshot.positions.filter((item) => item.stableKey === input.approverPositionKey
+        && item.active && isEffective(item.effectiveFrom, item.effectiveTo, context.effectiveDate))
+      : input.approverEmployeeId
+        ? this.employeePositions(context, input.approverEmployeeId)
+        : [];
+    const positions = candidates
       .filter((position) => this.binding(context, "POSITION", position.stableKey, "OVERSIGHT_PARENT"));
     if (positions.length === 0) return null;
     if (positions.length > 1) {
       throw new OrganizationResolutionError(
         "AUTHORITY_NOT_CONFIGURED",
         "Approver has more than one applicable oversight relationship.",
-        { approverEmployeeId: input.approverEmployeeId },
+        { approverEmployeeId: input.approverEmployeeId, approverPositionKey: input.approverPositionKey ?? null },
       );
     }
     const position = positions[0]!;
@@ -144,6 +153,7 @@ export class OrganizationAuthorityResolver {
       requesterEmployeeId: input.requesterEmployeeId,
       workflowKey: input.workflowKey,
       requiredCapability: input.requiredCapability,
+      accountCapability: input.accountCapability,
     };
   }
 
@@ -235,7 +245,9 @@ export class OrganizationAuthorityResolver {
       path,
       true,
     );
-    return authority.employeeId === context.requesterEmployeeId ? null : authority;
+    return authority.employeeId !== null && authority.employeeId === context.requesterEmployeeId
+      ? null
+      : authority;
   }
 
   private async resolveGovernanceInContext(
@@ -314,12 +326,67 @@ export class OrganizationAuthorityResolver {
         }
         const candidate = candidates[0];
         if (!candidate) continue;
-        if ((position.holderSource ?? "EMPLOYEE") === "ACCOUNT" || candidate.accountId) {
-          throw new OrganizationResolutionError(
-            "INVALID_AUTHORITY_PRINCIPAL",
-            "Account-held organization authority is preserved but not activated for structural routing.",
-            { positionKey, accountId: candidate.accountId ?? null, source },
-          );
+        const accountHeld = (position.holderSource ?? "EMPLOYEE") === "ACCOUNT";
+        if (accountHeld || candidate.accountId) {
+          // ORG-013-1: only an account row in an account-held seat may resolve,
+          // and only for callers that name the account capability.
+          if (!accountHeld || !candidate.accountId || candidate.employeeId
+              || context.accountCapability === undefined || !this.eligibilityValidator.validateAccount) {
+            throw new OrganizationResolutionError(
+              "INVALID_AUTHORITY_PRINCIPAL",
+              "Account-held organization authority is preserved but not activated for structural routing.",
+              { positionKey, accountId: candidate.accountId ?? null, source },
+            );
+          }
+          const account = await this.eligibilityValidator.validateAccount(candidate.accountId, {
+            effectiveDate: context.effectiveDate,
+            requiredCapability: context.accountCapability,
+          });
+          if (account.kind === "INVALID") {
+            throw new OrganizationResolutionError(
+              "INVALID_AUTHORITY_PRINCIPAL",
+              "Account-held position names an account that cannot hold structural authority.",
+              { positionKey, accountId: candidate.accountId, source },
+            );
+          }
+          if (account.kind === "CONFLICT") {
+            throw new OrganizationResolutionError(
+              "AUTHORITY_NOT_CONFIGURED",
+              "Foundation Board account cannot be told apart from an employee.",
+              { positionKey, accountId: candidate.accountId, reason: account.reason, source },
+            );
+          }
+          if (account.kind === "INELIGIBLE") {
+            lastIneligibility = account.reason;
+            continue;
+          }
+          if (account.kind === "ACCOUNT") {
+            return {
+              employeeId: null,
+              accountId: candidate.accountId,
+              source,
+              path,
+              incumbentKind: kind,
+              positionKey,
+            };
+          }
+          const linked = await this.eligibilityValidator.validate(account.employeeId, {
+            effectiveDate: context.effectiveDate,
+            workflowKey: context.workflowKey,
+            requiredCapability: context.requiredCapability,
+          });
+          if (!linked.eligible) {
+            lastIneligibility = linked.reason;
+            continue;
+          }
+          if (!allowSelf) this.assertNotSelf(context, account.employeeId, source);
+          return {
+            employeeId: account.employeeId,
+            source,
+            path,
+            incumbentKind: kind,
+            positionKey,
+          };
         }
         if (!candidate.employeeId) {
           throw new OrganizationResolutionError(
@@ -560,7 +627,10 @@ function appendAuthority(
   authorities: ResolvedAuthority[],
   candidate: ResolvedAuthority,
 ): void {
-  const existing = authorities.find((item) => item.employeeId === candidate.employeeId);
+  // ORG-013-1: dedupe by principal, so two different account approvers never merge.
+  const existing = authorities.find((item) => candidate.employeeId
+    ? item.employeeId === candidate.employeeId
+    : !item.employeeId && item.accountId === candidate.accountId);
   if (!existing) {
     authorities.push({ ...candidate, sources: [candidate.source] });
     return;

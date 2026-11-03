@@ -17,6 +17,8 @@ import {
   COMMITTEE_CATEGORIES,
   COMMITTEE_ROLES,
   committeeInput,
+  CommitteeError,
+  committeeSigner,
   joinDate,
   leaveDate,
   likePattern,
@@ -79,6 +81,33 @@ describe("ORG-012 rules", () => {
     expect(activateInput.safeParse({ version: 1, decree: { mode: "EXTERNAL", number: "12" , date: "2026-11-03" } }).success).toBe(false);
     expect(activateInput.safeParse({ version: 1, decree: { mode: "EXTERNAL", number: "012/SK/2026" } }).success).toBe(false);
     expect(activateInput.safeParse({ version: 1, decree: { mode: "PAPER" } }).success).toBe(false);
+  });
+
+  it("D-09: the SK is signed by the Ketua Yayasan by default or the Direktur, never the Kepala HCM", () => {
+    const parsed = activateInput.parse({ version: 1, decree: { mode: "ISSUE" } });
+    expect(parsed.decree).toEqual({ mode: "ISSUE", signer: "FOUNDATION_CHAIR" });
+    expect(activateInput.parse({ version: 1, decree: { mode: "ISSUE", signer: "DIRECTOR", signerName: " " } }).decree)
+      .toEqual({ mode: "ISSUE", signer: "DIRECTOR", signerName: null });
+    expect(activateInput.safeParse({ version: 1, decree: { mode: "ISSUE", signer: "HCM_HEAD" } }).success).toBe(false);
+    expect(activateInput.safeParse({ version: 1, decree: { mode: "ISSUE", signerName: "x".repeat(121) } }).success).toBe(false);
+
+    const chair = someId;
+    const refused = (run: () => unknown) => {
+      try { run(); } catch (error) { return error as CommitteeError; }
+      throw new Error("expected a refusal");
+    };
+    expect(refused(() => committeeSigner("FOUNDATION_CHAIR", null, chair, "Nama")))
+      .toMatchObject({ statusCode: 409, code: "DOCUMENT_SIGNER_UNAVAILABLE" });
+    expect(refused(() => committeeSigner("DIRECTOR", { employeeId: chair, name: "Ketua Panitia" }, chair, null)))
+      .toMatchObject({ statusCode: 409, code: "DOCUMENT_SIGNER_UNAVAILABLE" });
+    // An Organ Yayasan account has no name in HCIS: HC types it, and it is required.
+    expect(refused(() => committeeSigner("FOUNDATION_CHAIR", { employeeId: null, name: null }, chair, null)))
+      .toMatchObject({ statusCode: 400, code: "INVALID_COMMITTEE" });
+    expect(committeeSigner("FOUNDATION_CHAIR", { employeeId: null, name: null }, chair, "Ketua Sintetis"))
+      .toEqual({ title: "Ketua Yayasan", name: "Ketua Sintetis" });
+    // An employee holder's own name wins over anything typed.
+    expect(committeeSigner("DIRECTOR", { employeeId: "e-direktur", name: "Direktur Sintetis" }, chair, "Nama Lain"))
+      .toEqual({ title: "Direktur", name: "Direktur Sintetis" });
   });
 
   it("D-12: cancelling needs a 10–500 character reason", () => {

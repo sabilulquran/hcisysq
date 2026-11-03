@@ -58,6 +58,14 @@ function DecreePaper({ detail }: { detail: CommitteeDetail }) {
         <p className="mt-1">{detail.decreeSigner?.title ?? ""}</p>
         <p className="mt-14 font-bold underline">{detail.decreeSigner?.name ?? "-"}</p>
       </div>
+      {snapshot?.carbonCopies?.length ? (
+        <div className="mt-6 text-xs">
+          <p>Tembusan:</p>
+          <ol className="list-decimal pl-5">
+            {snapshot.carbonCopies.map((recipient) => <li key={recipient}>{recipient}</li>)}
+          </ol>
+        </div>
+      ) : null}
     </article>
   );
 }

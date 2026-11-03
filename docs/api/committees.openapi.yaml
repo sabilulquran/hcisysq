@@ -356,6 +356,16 @@ paths:
                           required: [mode]
                           properties:
                             mode: { const: ISSUE }
+                            signer:
+                              $ref: '#/components/schemas/DecreeSigner'
+                            signerName:
+                              type: [string, 'null']
+                              minLength: 2
+                              maxLength: 120
+                              description: >-
+                                D-09: the name printed under the signature. Required when the seat is held by an
+                                Organ Yayasan account (no name in HCIS; 400 INVALID_COMMITTEE when missing);
+                                ignored when an employee holds the seat.
                         - type: object
                           required: [mode, number, date]
                           properties:
@@ -640,7 +650,31 @@ components:
                 name: { type: string }
             decreeSnapshot:
               type: [object, 'null']
-              description: Line-up at activation (names, units, roles, sections); never identity numbers, address, pay or contacts
+              description: >-
+                Line-up at activation (names, units, roles, sections) and, since D-09, `carbonCopies`
+                (printed under Tembusan; absent on a decree issued before 2026-11-03); never identity
+                numbers, address, pay or contacts
+              properties:
+                carbonCopies:
+                  type: array
+                  items: { type: string }
+            decreeSignerOptions:
+              type: [array, 'null']
+              description: D-09, admin detail of a DRAFT only (null otherwise; absent on /me)
+              items:
+                type: object
+                required: [signer, title, available, name, nameRequired]
+                properties:
+                  signer: { $ref: '#/components/schemas/DecreeSigner' }
+                  title: { type: string, enum: [Ketua Yayasan, Direktur] }
+                  available: { type: boolean, description: The seat has a holder who is not this committee's chair }
+                  name: { type: [string, 'null'], description: "The holder's name, or when nameRequired a suggestion: the name typed on the latest SK this same account signed (null for a new holder)" }
+                  nameRequired: { type: boolean, description: Held by an Organ Yayasan account; HC types the name }
+    DecreeSigner:
+      type: string
+      enum: [FOUNDATION_CHAIR, DIRECTOR]
+      default: FOUNDATION_CHAIR
+      description: D-09 (owner 2026-11-03) Ketua Yayasan or Direktur; the Kepala HCM is copied, never signs
     Member:
       type: object
       required: [id, employeeId, fullName, unitName, role, section, joinedOn, leftOn]

@@ -64,6 +64,20 @@ export interface DecreeSnapshot {
   startOn: string;
   endOn: string;
   members: Array<{ fullName: string; unitName: string | null; role: CommitteeRole; section: string | null }>;
+  /** D-09: printed under Tembusan; absent on a decree issued before 2026-11-03. */
+  carbonCopies?: string[];
+}
+
+export type CommitteeSigner = "FOUNDATION_CHAIR" | "DIRECTOR";
+
+/** D-09: a signing seat the decree form offers; the API decides availability. */
+export interface DecreeSignerOption {
+  signer: CommitteeSigner;
+  title: string;
+  available: boolean;
+  /** The holder's name, or for an Organ Yayasan account only a suggestion HC confirms. */
+  name: string | null;
+  nameRequired: boolean;
 }
 
 export interface CommitteeDetail extends CommitteeBase {
@@ -74,6 +88,8 @@ export interface CommitteeDetail extends CommitteeBase {
   decreeStatus: "ISSUED" | "REVOKED" | null;
   decreeSigner: { title: string; name: string } | null;
   decreeSnapshot: DecreeSnapshot | null;
+  /** Admin detail of a draft only. */
+  decreeSignerOptions?: DecreeSignerOption[] | null;
   members: CommitteeMember[];
   myMemberIds?: string[];
 }
@@ -140,7 +156,9 @@ export interface CommitteeInput {
   endOn: string;
 }
 
-export type DecreeInput = { mode: "ISSUE" } | { mode: "EXTERNAL"; number: string; date: string };
+export type DecreeInput =
+  | { mode: "ISSUE"; signer: CommitteeSigner; signerName?: string }
+  | { mode: "EXTERNAL"; number: string; date: string };
 
 export interface WriteResult {
   id: string;

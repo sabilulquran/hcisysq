@@ -27,6 +27,18 @@ export const MAX_PERIOD_DAYS = 366;
 export const COMMITTEE_DOCUMENT_CODE = "COMMITTEE_DECREE";
 export const COMMITTEE_NUMBER_CODE = "SKP";
 
+/** D-09 (owner 2026-11-03): the SK panitia is signed by the Ketua Yayasan or the Direktur, chosen
+ * by HC at activation with the Ketua Yayasan as the default (DRAFT). */
+export const COMMITTEE_SIGNERS = ["FOUNDATION_CHAIR", "DIRECTOR"] as const;
+export type CommitteeSigner = (typeof COMMITTEE_SIGNERS)[number];
+export const SIGNER_TITLES = {
+  FOUNDATION_CHAIR: "Ketua Yayasan",
+  DIRECTOR: "Direktur",
+} as const satisfies Record<CommitteeSigner, string>;
+/** D-09: the Kepala HCM is copied, no longer a signer. Stored in the decree snapshot, so a decree
+ * issued before this rule prints without it. */
+export const COMMITTEE_CARBON_COPIES = ["Kepala Human Capital Management"] as const;
+
 export class CommitteeError extends Error {
   constructor(
     readonly statusCode: number,
@@ -92,7 +104,12 @@ export const memberEnd = z.object({
 export const activateInput = z.object({
   version: z.number().int().min(1),
   decree: z.discriminatedUnion("mode", [
-    z.object({ mode: z.literal("ISSUE") }),
+    z.object({
+      mode: z.literal("ISSUE"),
+      signer: z.enum(COMMITTEE_SIGNERS).default("FOUNDATION_CHAIR"),
+      // Only read when the seat holder has no name in HCIS (an Organ Yayasan account, D-09).
+      signerName: optionalText(120, 2),
+    }),
     z.object({ mode: z.literal("EXTERNAL"), number: text().pipe(z.string().min(3).max(100)), date: isoDate }),
   ]),
 });
@@ -144,6 +161,38 @@ export function activationProblems(members: ReadinessMember[]): string[] {
   if (members.length < MIN_MEMBERS_TO_ACTIVATE) problems.push(`Panitia paling sedikit ${MIN_MEMBERS_TO_ACTIVATE} orang.`);
   if (members.some((member) => !member.employeeActive)) problems.push("Ada anggota yang bukan lagi pegawai aktif; akhiri tugasnya dulu.");
   return problems;
+}
+
+export interface SignerHolder {
+  employeeId: string | null;
+  name: string | null;
+}
+
+/**
+ * D-09: who signs, as printed. The seat must have a holder in the published structure and the
+ * holder is never the committee chair. An Organ Yayasan account has no name in HCIS, so HC types
+ * it (`signerName`); an employee holder's own name always wins.
+ */
+export function committeeSigner(
+  choice: CommitteeSigner,
+  holder: SignerHolder | null,
+  chairEmployeeId: string,
+  signerName: string | null | undefined,
+): { title: (typeof SIGNER_TITLES)[CommitteeSigner]; name: string } {
+  const title = SIGNER_TITLES[choice];
+  if (!holder) {
+    throw new CommitteeError(409, "DOCUMENT_SIGNER_UNAVAILABLE",
+      `Jabatan ${title} belum terisi di struktur organisasi. Pilih penandatangan lain atau catat SK di luar HCIS.`);
+  }
+  if (holder.employeeId && holder.employeeId === chairEmployeeId) {
+    throw new CommitteeError(409, "DOCUMENT_SIGNER_UNAVAILABLE",
+      `${title} adalah Ketua panitia ini dan tidak menandatangani SK-nya sendiri. Pilih penandatangan lain.`);
+  }
+  const name = holder.name ?? signerName ?? null;
+  if (!name) {
+    throw new CommitteeError(400, "INVALID_COMMITTEE", `Isi nama ${title} sebagaimana tertulis di SK.`);
+  }
+  return { title, name };
 }
 
 /** D-11: a member added after activation joins today, kept inside the committee period so a

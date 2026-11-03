@@ -162,8 +162,11 @@ async function send<T>(method: "POST" | "PATCH", path: string, payload: unknown,
   }));
 }
 
+/** K-16: `dry_run` while HCIS has no Kirim SQ adapter; the WhatsApp option is then hidden. */
+export type WhatsAppDelivery = "active" | "dry_run";
+
 export const getMyCalendar = (from: string, to: string) =>
-  get<{ from: string; to: string; items: CalendarItem[] }>(`/me/calendar?from=${from}&to=${to}`);
+  get<{ from: string; to: string; whatsappDelivery: WhatsAppDelivery; items: CalendarItem[] }>(`/me/calendar?from=${from}&to=${to}`);
 export const getMyMeetings = (tab: "upcoming" | "past", page = 1) =>
   get<{ items: MeetingSummary[]; pagination: Pagination }>(`/me/meetings?tab=${tab}&page=${page}`);
 export const getMeeting = (id: string) => get<MeetingDetail>(`/me/meetings/${id}`);

@@ -1,5 +1,7 @@
 // CAL-001 §12 meeting form: typeahead participant picker, Rahasia and WhatsApp switches, and an
-// availability panel that shows conflicts (red) and warnings (yellow) before sending. The panel
+// availability panel. The WhatsApp switch shows only while the API reports the Kirim SQ adapter
+// as active (K-16); in dry run the form says plainly that only in-app notifications go out. The
+// availability panel shows conflicts (red) and warnings (yellow) before sending. The panel
 // is a preview; the API checks again, under lock, when the meeting is saved.
 
 import { AlertTriangle, Loader2, Search, X } from "lucide-react";
@@ -70,11 +72,13 @@ function IssueList({ issues, tone }: { issues: AvailabilityIssue[]; tone: "dange
 export function MeetingForm({
   defaultDate,
   editing,
+  whatsappActive,
   onSaved,
   onClose,
 }: {
   defaultDate: string;
   editing: MeetingDetail | null;
+  whatsappActive: boolean;
   onSaved: (id: string, notice: string) => void;
   onClose: () => void;
 }) {
@@ -179,7 +183,7 @@ export function MeetingForm({
     };
     void (editing ? updateMeeting(editing.id, { ...input, expectedVersion: editing.version }) : createMeeting(input, idempotencyKey.current))
       .then((result) => {
-        const missing = result.whatsappWithoutNumber.length;
+        const missing = whatsappActive && form.notifyWhatsApp ? result.whatsappWithoutNumber.length : 0;
         const names = chosen.filter((person) => result.whatsappWithoutNumber.includes(person.id)).map((person) => person.name);
         onSaved(result.id, [
           editing ? "Perubahan rapat disimpan." : "Undangan rapat terkirim.",
@@ -272,7 +276,7 @@ export function MeetingForm({
                     <span className="text-xs text-muted-foreground">
                       {option.unitName ?? "Tanpa unit"}
                       {!option.hasAccount ? " · belum punya akun" : ""}
-                      {!option.hasWhatsApp ? " · tanpa nomor WA" : ""}
+                      {whatsappActive && !option.hasWhatsApp ? " · tanpa nomor WA" : ""}
                     </span>
                   </button>
                 </li>
@@ -304,10 +308,16 @@ export function MeetingForm({
           <input type="checkbox" checked={form.confidential} onChange={(event) => update({ confidential: event.target.checked })} className="mt-1 h-4 w-4" />
           <span><span className="font-semibold">Rahasia</span> — pegawai lain hanya melihat "Sibuk" di kalender, tanpa judul dan lokasi.</span>
         </label>
-        <label className="flex items-start gap-3 text-sm text-brand-heading">
-          <input type="checkbox" checked={form.notifyWhatsApp} onChange={(event) => update({ notifyWhatsApp: event.target.checked })} className="mt-1 h-4 w-4" />
-          <span><span className="font-semibold">Kirim juga lewat WhatsApp</span> — undangan, perubahan, dan pembatalan. Pengingat 30 menit sebelum rapat selalu dikirim.</span>
-        </label>
+        {whatsappActive ? (
+          <label className="flex items-start gap-3 text-sm text-brand-heading">
+            <input type="checkbox" checked={form.notifyWhatsApp} onChange={(event) => update({ notifyWhatsApp: event.target.checked })} className="mt-1 h-4 w-4" />
+            <span><span className="font-semibold">Kirim juga lewat WhatsApp</span> — undangan, perubahan, dan pembatalan. Pengingat 30 menit sebelum rapat selalu dikirim.</span>
+          </label>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Peserta menerima undangan dan pengingat sebagai notifikasi di HCIS. Pemberitahuan WhatsApp belum aktif.
+          </p>
+        )}
       </div>
 
       <section aria-live="polite" className="mt-4">

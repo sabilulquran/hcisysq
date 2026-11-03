@@ -552,6 +552,27 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     expect((await call("GET", `/admin/committees/${next.id}`)).json().decreeSignerOptions[0])
       .toMatchObject({ signer: "FOUNDATION_CHAIR", name: "Ketua Yayasan Sintetis", nameRequired: true });
 
+    // A new Ketua takes the seat: the predecessor's name is never offered.
+    const successor = randomUUID();
+    await client.query(
+      "INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1,NULL,$2,'FOUNDATION_BOARD','active')",
+      [successor, `ketua-baru-${successor}@example.invalid`],
+    );
+    await client.query("UPDATE organization_incumbencies SET account_id = $1 WHERE account_id = $2", [successor, boardAccount]);
+    actAs("hc", HC);
+    expect((await call("GET", `/admin/committees/${next.id}`)).json().decreeSignerOptions[0])
+      .toMatchObject({ signer: "FOUNDATION_CHAIR", available: true, name: null, nameRequired: true });
+
+    // A suspended Organ account holds no seat.
+    await client.query("UPDATE accounts SET status = 'suspended' WHERE id = $1", [successor]);
+    expect((await call("GET", `/admin/committees/${next.id}`)).json().decreeSignerOptions[0])
+      .toMatchObject({ signer: "FOUNDATION_CHAIR", available: false });
+    const suspended = await activate(next.id, { mode: "ISSUE", signerName: "Siapa Saja" });
+    expect(suspended.json().code).toBe("DOCUMENT_SIGNER_UNAVAILABLE");
+    const tooLong = await activate(next.id, { mode: "ISSUE", signer: "DIRECTOR", signerName: "x".repeat(121) });
+    expect(tooLong.statusCode).toBe(400);
+    expect(tooLong.json().message).toContain("Nama penandatangan");
+
     // The earlier SK is a snapshot: still the Kepala HCM, still without Tembusan.
     const old = (await call("GET", `/admin/committees/${earlier.id}`)).json();
     expect(old.decreeSigner).toEqual({ title: "Kepala Human Capital Management", name: "Kepala HCM Lama" });

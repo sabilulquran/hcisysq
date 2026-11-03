@@ -668,7 +668,7 @@ components:
                   signer: { $ref: '#/components/schemas/DecreeSigner' }
                   title: { type: string, enum: [Ketua Yayasan, Direktur] }
                   available: { type: boolean, description: The seat has a holder who is not this committee's chair }
-                  name: { type: [string, 'null'], description: The holder's name, or a suggestion when nameRequired }
+                  name: { type: [string, 'null'], description: "The holder's name, or when nameRequired a suggestion: the name typed on the latest SK this same account signed (null for a new holder)" }
                   nameRequired: { type: boolean, description: Held by an Organ Yayasan account; HC types the name }
     DecreeSigner:
       type: string

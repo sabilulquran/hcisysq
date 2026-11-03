@@ -59,17 +59,17 @@ import {
 type Db = Pick<PoolClient, "query">;
 
 /** D-09: the current holder of each signing seat. */
-async function signerHolder(db: Db, choice: CommitteeSigner): Promise<SignerHolder | null> {
-  const holder = choice === "FOUNDATION_CHAIR"
-    ? await findFoundationChair(db as PoolClient)
-    : await findDirector(db as PoolClient);
-  return holder ? { employeeId: holder.employeeId, name: holder.name } : null;
+async function signerHolder(db: Db, choice: CommitteeSigner): Promise<(SignerHolder & { accountId: string | null }) | null> {
+  if (choice === "FOUNDATION_CHAIR") return findFoundationChair(db as PoolClient);
+  const director = await findDirector(db as PoolClient);
+  return director ? { employeeId: director.employeeId, accountId: null, name: director.name } : null;
 }
 
 /**
  * D-09: what the decree form offers. For a seat held by an Organ Yayasan account (no name in
- * HCIS) the name is only a suggestion: the one on the latest SK panitia that seat signed, else
- * the Ketua Yayasan named in the EMP-012 card settings.
+ * HCIS) the name is only a suggestion, and only one tied to that same account: the name HC typed
+ * on the latest SK panitia it signed (HC-only audit metadata). A new holder starts empty, so a
+ * predecessor's name is never offered.
  */
 async function signerOptions(db: Db, chairEmployeeId: string | null) {
   const options = [];
@@ -78,21 +78,17 @@ async function signerOptions(db: Db, chairEmployeeId: string | null) {
     const holder = await signerHolder(db, signer);
     const selfSigned = Boolean(holder?.employeeId && holder.employeeId === chairEmployeeId);
     let name = holder?.name ?? null;
-    if (holder && !holder.name) {
+    if (holder && !holder.name && holder.accountId) {
       const suggested = await db.query<{ name: string }>(
-        `SELECT name FROM (
-           SELECT signer->>'name' AS name, 0 AS rank, issued_at
-             FROM hr_issued_documents
-            WHERE document_kind = 'COMMITTEE' AND signer->>'title' = $1
-           UNION ALL
-           SELECT signer_name, 1, NULL FROM employee_card_settings
-            WHERE $1 = 'Ketua Yayasan' AND signer_name IS NOT NULL
-              AND lower(regexp_replace(btrim(signer_title), '\\s+', ' ', 'g')) = 'ketua yayasan'
-         ) candidate
-         WHERE name IS NOT NULL
-         ORDER BY rank, issued_at DESC NULLS LAST
-         LIMIT 1`,
-        [title],
+        `SELECT metadata->>'signerName' AS name
+           FROM committee_audit_events
+          WHERE event_type = 'committee.activated'
+            AND metadata->>'signerTitle' = $1
+            AND metadata->>'signerAccountId' = $2
+            AND metadata->>'signerName' IS NOT NULL
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT 1`,
+        [title, holder.accountId],
       );
       name = suggested.rows[0]?.name ?? null;
     }
@@ -862,7 +858,12 @@ export async function registerCommitteeRoutes(
     const params = idParams.safeParse(request.params);
     if (!params.success) return notFound(reply);
     const body = activateInput.safeParse(request.body);
-    if (!body.success) return invalid(reply, "INVALID_COMMITTEE", "Pilih cara SK: terbitkan di HCIS, atau isi nomor dan tanggal SK.");
+    if (!body.success) {
+      const nameIssue = body.error.issues.some((issue) => issue.path.includes("signerName"));
+      return invalid(reply, "INVALID_COMMITTEE", nameIssue
+        ? "Nama penandatangan 2–120 karakter."
+        : "Pilih cara SK: terbitkan di HCIS, atau isi nomor dan tanggal SK.");
+    }
     return inTransaction(reply, 200, async (client) => {
       const current = await lockCommittee(client, params.data.id);
       assertStatus(current.status, "DRAFT", "Hanya kepanitiaan draf yang dapat ditetapkan.");
@@ -889,12 +890,16 @@ export async function registerCommitteeRoutes(
       let issuedDocumentId: string | null = null;
       let decreeNumber: string;
       let signer: ReturnType<typeof committeeSigner> | null = null;
+      let signerAccountId: string | null = null;
       if (body.data.decree.mode === "ISSUE") {
         const chairFacts = await loadEmployeeFacts(client, chair.employeeId);
         // D-09: Ketua Yayasan or Direktur, never the chair. Without an eligible signer this throws
         // before a number is taken, and the rollback leaves the committee in DRAFT.
         const decree = body.data.decree;
-        signer = committeeSigner(decree.signer, await signerHolder(client, decree.signer), chair.employeeId, decree.signerName);
+        const holder = await signerHolder(client, decree.signer);
+        signer = committeeSigner(decree.signer, holder, chair.employeeId, decree.signerName);
+        // Ties a typed name to the account that held the seat, for the next suggestion only.
+        signerAccountId = holder?.accountId ?? null;
         const issued = await issueDocument(client, {
           documentKind: "COMMITTEE",
           documentCode: COMMITTEE_DOCUMENT_CODE,
@@ -951,7 +956,7 @@ export async function registerCommitteeRoutes(
         metadata: {
           name: current.name, decreeMode: body.data.decree.mode === "ISSUE" ? "ISSUED" : "EXTERNAL",
           decreeNumber, memberCount: members.rows.length,
-          ...(signer ? { signerTitle: signer.title, signerName: signer.name } : {}),
+          ...(signer ? { signerTitle: signer.title, signerName: signer.name, signerAccountId } : {}),
         },
       });
       for (const member of members.rows) {

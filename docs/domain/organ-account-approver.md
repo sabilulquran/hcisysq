@@ -132,10 +132,10 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 | Kotak persetujuan `/board` (v1, `DRAFT`) | `apps/web/src/components/board/BoardApprovalsSection.tsx` |
 | Test | `apps/api/test/org013-organ-account-approver.test.ts`, `org013-organ-account-approver.postgres.test.ts` |
 
-Tindak lanjut sebelum rollout cuti ke `STRUCTURE` (`TBD`):
+Tindak lanjut yang sudah ditutup:
 
-- **Kanal SQ Hub.** Lookup `GET /internal/v1/role-administration/accounts` masih menjawab 404 untuk akun `FOUNDATION_BOARD`, sehingga Hub belum bisa memberikan role ini. Membukanya mengubah kontrak AUTH-014 dan perlu perubahan di SQ Hub. Sampai itu selesai, pemberian dan pencabutan role ini hanya lewat break-glass Super Admin, tetap dengan syarat ORG-013-2.
-- **Diagnostik oversight.** Bila akun penerima oversight `CONFLICT` atau tidak eligible, notification intent tidak dibuat. Perilaku ini fail-closed, tetapi belum dicatat di log untuk HC.
+- **Kanal SQ Hub (HCIS).** Lookup `GET /internal/v1/role-administration/accounts` kini menjawab akun `FOUNDATION_BOARD` dengan `principalType`, dan `grantable` hanya bergantung pada status akunnya. `GET /internal/v1/role-administration/catalog` memberi setiap role `targetPrincipalTypes` (`["FOUNDATION_BOARD"]` hanya untuk `governance_leave_approver`) dan `endDateRequired`. Akun `SUPER_ADMIN` tetap dijawab 404. Pemberian tetap ditolak `createRoleAssignment` untuk role lain. Sisi Hub, yaitu menyaring role per tipe target dan mewajibkan tanggal berakhir, dikerjakan di repository SQ Hub. Sampai sisi Hub selesai, Hub yang lama tetap aman karena HCIS menolak kombinasi yang salah dengan `ROLE_TARGET_INVALID`.
+- **Diagnostik oversight.** Bila penerima oversight gagal di-resolve (misalnya akun Ketua `CONFLICT`), riwayat pengajuan mendapat event `leave.oversight.unresolved` yang hanya berisi kode resolver, tanpa id akun atau pesan. Event ini ditulis dalam savepoint tersendiri sehingga tidak dapat menggagalkan keputusan akhir.
 
 Workflow lain yang memakai resolver yang sama (perjalanan dinas, pinjaman, pengaturan kerja, lembur, penilaian kinerja) tidak ikut opt-in. Untuk workflow itu jabatan akun tetap gagal `INVALID_AUTHORITY_PRINCIPAL`.
 

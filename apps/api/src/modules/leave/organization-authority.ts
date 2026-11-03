@@ -351,10 +351,33 @@ export async function enqueueFinalApprovalOversight(
       );
     }
     await db.query("RELEASE SAVEPOINT leave_oversight_notification");
-  } catch {
+  } catch (error) {
     if (savepointCreated) {
       await db.query("ROLLBACK TO SAVEPOINT leave_oversight_notification");
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
+      await recordOversightUnresolved(db, input.requestId, error);
     }
+  }
+}
+
+/**
+ * ORG-013 follow-up: an oversight recipient that cannot resolve (an organ account in CONFLICT, a
+ * vacant seat) leaves no notification, which is correct but used to be silent. The request's
+ * history now says so, with the resolver code only. Its own savepoint keeps even this write from
+ * touching the final decision.
+ */
+async function recordOversightUnresolved(db: PoolClient, requestId: string, error: unknown): Promise<void> {
+  const code = error instanceof OrganizationResolutionError ? error.code : "OVERSIGHT_FAILED";
+  try {
+    await db.query("SAVEPOINT leave_oversight_diagnostic");
+    await db.query(
+      `INSERT INTO leave_request_events (id, leave_request_id, actor_account_id, event_type, payload)
+       VALUES ($1, $2, NULL, 'leave.oversight.unresolved', $3::jsonb)`,
+      [randomUUID(), requestId, JSON.stringify({ code })],
+    );
+    await db.query("RELEASE SAVEPOINT leave_oversight_diagnostic");
+  } catch {
+    await db.query("ROLLBACK TO SAVEPOINT leave_oversight_diagnostic").catch(() => undefined);
+    await db.query("RELEASE SAVEPOINT leave_oversight_diagnostic").catch(() => undefined);
   }
 }

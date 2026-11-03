@@ -9,6 +9,7 @@ import {
 import {
   LEAVE_GOVERNANCE_CAPABILITY,
   OrganizationAuthorityResolver,
+  OrganizationResolutionError,
   type AccountEligibilityResult,
   type OrganizationSnapshot,
 } from "../src/modules/organization/index.js";
@@ -336,5 +337,33 @@ describe("ORG-013 review follow-ups", () => {
       .toBe(false);
     expect(canDelegateRole({ roleKey: "human_capital", permissions: ["leave.approve", "leave.governance.approve"] }, false, "sq_hub"))
       .toBe(false);
+  });
+});
+
+describe("ORG-013 oversight diagnostic", () => {
+  it("records an unresolved oversight on the request history, with the code only", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("{authorityResolution,mode}")) return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+      if (sql.includes("FROM leave_request_approval_steps")) {
+        return { rows: [{ employeeId: null, positionKey: "position-secretary" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const resolveOversightAbove = vi.fn(async () => {
+      throw new OrganizationResolutionError("AUTHORITY_NOT_CONFIGURED", "synthetic", { accountId: chairAccount });
+    });
+    await enqueueFinalApprovalOversight(
+      { query } as unknown as PoolClient,
+      { requestId: "leave-request", workflowKey: "leave.annual", effectiveDate: on },
+      { resolver: { resolveOversightAbove } },
+    );
+    const sqls = query.mock.calls.map(([sql]) => String(sql));
+    expect(sqls).toContain("ROLLBACK TO SAVEPOINT leave_oversight_notification");
+    expect(sqls.some((sql) => sql.includes("INSERT INTO leave_notification_outbox"))).toBe(false);
+    const event = query.mock.calls.find(([sql]) => String(sql).includes("leave.oversight.unresolved"));
+    expect(event?.[1]).toEqual([expect.any(String), "leave-request",
+      JSON.stringify({ code: "AUTHORITY_NOT_CONFIGURED" })]);
+    // Nothing identifying goes into the history: no account id, no message.
+    expect(String(event?.[1]?.[2])).not.toContain(chairAccount);
   });
 });

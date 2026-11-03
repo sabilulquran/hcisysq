@@ -367,7 +367,7 @@ describe("AUTH-014 role administration channel", () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.account).toEqual({ accountId: TARGET, grantable: true, notGrantableReason: null });
+      expect(body.account).toEqual({ accountId: TARGET, principalType: "EMPLOYEE", grantable: true, notGrantableReason: null });
       expect(body.assignments.pagination).toEqual({ page: 1, pageSize: 25, total: 2, pageCount: 1 });
       expect(body.assignments.items.map((item: { revocableViaHub: boolean }) => item.revocableViaHub))
         .toEqual([true, false]);
@@ -413,7 +413,7 @@ describe("AUTH-014 role administration channel", () => {
       }
       // Employment status itself is not exported either; only whether a grant would be refused.
       expect(Object.keys(response.json().account).sort())
-        .toEqual(["accountId", "grantable", "notGrantableReason"]);
+        .toEqual(["accountId", "grantable", "notGrantableReason", "principalType"]);
       await instance.close();
     });
 
@@ -426,7 +426,23 @@ describe("AUTH-014 role administration channel", () => {
         const instance = lookupApp(pool);
         const response = await instance.inject({ method: "GET", url: `${URL}?${WHO}`, headers });
         expect(response.json().account).toEqual({
-          accountId: TARGET, grantable: false, notGrantableReason: reason,
+          accountId: TARGET, principalType: "EMPLOYEE", grantable: false, notGrantableReason: reason,
+        });
+        await instance.close();
+      }
+    });
+
+    it("describes an organ account so the Hub can grant it the governance Leave approver (ORG-013-2)", async () => {
+      for (const [status, grantable, reason] of [["active", true, null], ["suspended", false, "account_inactive"]] as const) {
+        const { pool } = lookupPool({
+          target: { accountId: TARGET, principalType: "FOUNDATION_BOARD", status, employeeStatus: null },
+          total: 0, assignments: [],
+        });
+        const instance = lookupApp(pool);
+        const response = await instance.inject({ method: "GET", url: `${URL}?${WHO}`, headers });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().account).toEqual({
+          accountId: TARGET, principalType: "FOUNDATION_BOARD", grantable, notGrantableReason: reason,
         });
         await instance.close();
       }
@@ -438,7 +454,6 @@ describe("AUTH-014 role administration channel", () => {
       for (const target of [
         null,
         { accountId: TARGET, principalType: "SUPER_ADMIN", status: "active", employeeStatus: null },
-        { accountId: TARGET, principalType: "FOUNDATION_BOARD", status: "active", employeeStatus: null },
       ]) {
         const { pool } = lookupPool({ target });
         const instance = lookupApp(pool);

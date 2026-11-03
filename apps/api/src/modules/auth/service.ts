@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 import { loadEmploymentAccessState } from "./employment-access.js";
-import { resolveAuthorizationContext } from "./permissions.js";
+import { resolveAuthorizationContext, resolveSessionAuthorization } from "./permissions.js";
 
 import {
   decryptSecret,
@@ -99,6 +99,11 @@ export class AuthService {
 
   getAuthorizationContext(principal: AuthPrincipal) {
     return resolveAuthorizationContext(this.pool, principal);
+  }
+
+  /** RPT-001 D-15: what /auth/me and login return; route guards keep using getAuthorizationContext. */
+  getSessionAuthorization(principal: AuthPrincipal) {
+    return resolveSessionAuthorization(this.pool, principal);
   }
 
   constructor(

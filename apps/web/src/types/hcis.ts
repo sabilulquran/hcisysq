@@ -15,5 +15,6 @@ export interface AuthPrincipal {
 export interface AuthSession {
   principal: AuthPrincipal;
   expiresAt: string;
-  authorization?: { organizationPermissions: string[] };
+  /** unitPermissions (RPT-001 D-15): report permissions held through a unit-scoped role. */
+  authorization?: { organizationPermissions: string[]; unitPermissions?: string[] };
 }

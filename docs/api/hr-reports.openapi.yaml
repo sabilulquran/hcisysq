@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: HCIS HR Reports (RPT-001 Package 1)
+  version: 1.0.0
+  description: |
+    HR reports (employee list, leave, overtime, business travel and training recaps), paged on
+    screen and exported as CSV or XLSX, as implemented in apps/api/src/modules/reports/routes.ts.
+    Spec: docs/domain/hr-reports.md.
+    All routes use the session cookie and answer with Cache-Control: no-store. Errors use
+    { code, message }. Reading needs reports.read.organization and exporting additionally
+    reports.export.organization, each from an effective organization- or unit-scoped assignment
+    of an active employee account (D-02); a unit-scoped account sees employees currently in its
+    units only. Authorization precedes input validation. No field holds a national ID, bank
+    account, address, phone, email or money (D-04).
+paths:
+  /admin/reports/hr/access:
+    get:
+      tags: [Reports]
+      operationId: getHrReportAccess
+      summary: The caller's report scope, whether it may export, the report catalog and filter options
+      responses:
+        '200':
+          description: Access and catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportAccess' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/reports/hr/{report}:
+    get:
+      tags: [Reports]
+      operationId: getHrReportPage
+      summary: One page of a report within the caller's scope (ENG-LIST-001)
+      parameters:
+        - $ref: '#/components/parameters/Report'
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - $ref: '#/components/parameters/UnitId'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/EmploymentType'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: q
+          in: query
+          description: Name or employee number; screen only, never accepted by the export
+          schema: { type: string, maxLength: 100 }
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report, title, columns, items, pagination]
+                properties:
+                  report: { $ref: '#/components/schemas/ReportKey' }
+                  title: { type: string }
+                  columns: { type: array, items: { $ref: '#/components/schemas/ReportColumn' } }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      description: rowId plus one value per column key (string, number or null)
+                      additionalProperties: { type: [string, number, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/reports/hr/{report}/export:
+    get:
+      tags: [Reports]
+      operationId: exportHrReport
+      summary: The whole report as CSV or XLSX; audited as reports.hr.exported (D-11, D-12)
+      description: |
+        Counted first, then read 1,000 rows at a time from one read-only snapshot. Above 50,000
+        rows nothing is sent (422). The audit row is written before the file; free-text search
+        is refused (400) so it can never reach the audit.
+      parameters:
+        - $ref: '#/components/parameters/Report'
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [csv, xlsx] }
+        - $ref: '#/components/parameters/UnitId'
+        - $ref: '#/components/parameters/Status'
+        - $ref: '#/components/parameters/EmploymentType'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: The file as an attachment named hcis-laporan-<report>-<date>.<format>
+          content:
+            text/csv: { schema: { type: string, description: UTF-8 with BOM; formula cells prefixed with ' } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: EXPORT_TOO_LARGE — more than 50,000 rows; narrow the unit or period
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  parameters:
+    Report:
+      name: report
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ReportKey' }
+    UnitId:
+      name: unitId
+      in: query
+      description: Must be inside the caller's scope (403 REPORT_SCOPE_FORBIDDEN otherwise)
+      schema: { type: string, format: uuid }
+    Status:
+      name: status
+      in: query
+      description: employees only
+      schema: { type: string, enum: [active, inactive, resigned, all], default: active }
+    EmploymentType:
+      name: employmentType
+      in: query
+      description: employees only; one of the values offered by /admin/reports/hr/access
+      schema: { type: string, minLength: 1, maxLength: 100 }
+    From:
+      name: from
+      in: query
+      description: Required for every report except employees; inclusive; at most 366 days to `to`
+      schema: { type: string, format: date }
+    To:
+      name: to
+      in: query
+      schema: { type: string, format: date }
+  schemas:
+    ReportKey:
+      type: string
+      enum: [employees, leave, overtime, trips, training]
+    ReportColumn:
+      type: object
+      required: [key, label, kind]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        kind: { type: string, enum: [text, number, date] }
+    ReportAccess:
+      type: object
+      required: [scope, canExport, exportScope, reports, filters, limits]
+      properties:
+        scope:
+          type: object
+          properties:
+            type: { type: string, enum: [organization, unit] }
+            units: { type: array, items: { $ref: '#/components/schemas/Unit' } }
+        canExport: { type: boolean }
+        exportScope:
+          type: [object, 'null']
+          properties:
+            type: { type: string, enum: [organization, unit] }
+            unitIds: { type: array, items: { type: string, format: uuid } }
+        reports:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { $ref: '#/components/schemas/ReportKey' }
+              title: { type: string }
+              period: { type: boolean }
+              columns: { type: array, items: { $ref: '#/components/schemas/ReportColumn' } }
+        filters:
+          type: object
+          properties:
+            units: { type: array, items: { $ref: '#/components/schemas/Unit' } }
+            employmentTypes: { type: array, items: { type: string } }
+        limits:
+          type: object
+          properties:
+            maxPeriodDays: { type: integer }
+            exportRowLimit: { type: integer }
+    Unit:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+  responses:
+    Problem:
+      description: INVALID_REPORT_QUERY — filter, page, format or period invalid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: FORBIDDEN (no report role in any scope, or read-only on export) or REPORT_SCOPE_FORBIDDEN
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: REPORT_NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }

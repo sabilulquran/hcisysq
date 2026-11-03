@@ -130,7 +130,7 @@ export async function registerAuthRoutes(
     try {
       const result = await auth.login(parsed.data, requestContext(request));
       reply.header("Set-Cookie", result.setCookie);
-      return reply.send({ ...result.session, authorization: await auth.getAuthorizationContext(result.session.principal) });
+      return reply.send({ ...result.session, authorization: await auth.getSessionAuthorization(result.session.principal) });
     } catch (error) {
       if (error instanceof AuthError) return sendAuthError(reply, error);
       throw error;
@@ -206,7 +206,7 @@ export async function registerAuthRoutes(
       });
     }
 
-    return reply.send({ ...session, authorization: await auth.getAuthorizationContext(session.principal) });
+    return reply.send({ ...session, authorization: await auth.getSessionAuthorization(session.principal) });
   });
 
   // AUTH-013: the SQ Hub applications this session's Akun SQ identity may open.

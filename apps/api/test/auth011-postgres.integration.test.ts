@@ -190,7 +190,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(354);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(357);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(99);
@@ -589,7 +589,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     const before = (await pool.query("SELECT count(*)::int AS count FROM account_role_assignments WHERE account_id=$1", [accountId])).rows;
 
     // Organization-only roles: a unit grant would be stored, shown and grant nothing, so it is refused.
-    for (const roleKey of ["director", "finance_lead", "finance_officer", "finance", "management", "document_corrector"]) {
+    // RPT-001 D-02: finance and management are no longer here; the report routes read unit scope.
+    for (const roleKey of ["director", "finance_lead", "finance_officer", "document_corrector"]) {
       await expect(createRoleAssignment(pool, legacy, accountId,
         { roleId: roleIds.get(roleKey)!, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic" }), roleKey)
         .rejects.toMatchObject({ statusCode: 400, code: "ROLE_SCOPE_NOT_ALLOWED" });
@@ -610,6 +611,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       { roleId: roleIds.get("director")!, scopeType: "organization", reason: "Synthetic SK Direktur" });
     await createRoleAssignment(pool, legacy, accountId,
       { roleId: roleIds.get("unit_manager")!, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic" });
+    for (const roleKey of ["finance", "management"]) {
+      await createRoleAssignment(pool, legacy, accountId,
+        { roleId: roleIds.get(roleKey)!, scopeType: "unit", organizationalUnitId: unitId, reason: "Synthetic RPT-001" });
+    }
 
     // The access screen is told the same policy, so it never offers a scope the API refuses.
     const access = await request("legacy", "GET", "/admin/access");
@@ -619,6 +624,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(offered.get("human_capital")).toEqual(["organization", "unit"]);
     expect(offered.get("unit_manager")).toEqual(["unit"]);
     expect(offered.get("director")).toEqual(["organization"]);
+    expect(offered.get("finance")).toEqual(["organization", "unit"]);
+    expect(offered.get("management")).toEqual(["organization", "unit"]);
     for (const scopes of offered.values()) expect(scopes).not.toContain("own");
   }, 60000);
 

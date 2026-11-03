@@ -34,6 +34,7 @@ tags:
   - name: Performance
   - name: Employee Loans
   - name: Training
+  - name: Reports
 
 paths:
   /internal/v1/staff-identity/verify-employee:
@@ -428,6 +429,12 @@ paths:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1hours'
   /admin/training/employee-options:
     $ref: './training.openapi.yaml#/paths/~1admin~1training~1employee-options'
+  /admin/reports/hr/access:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1access'
+  /admin/reports/hr/{report}:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1{report}'
+  /admin/reports/hr/{report}/export:
+    $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1{report}~1export'
   /me/calendar:
     $ref: './meeting-calendar.openapi.yaml#/paths/~1me~1calendar'
   /me/meetings:
@@ -3658,6 +3665,15 @@ components:
             organizationPermissions:
               type: array
               uniqueItems: true
+              items: { type: string }
+            unitPermissions:
+              type: array
+              uniqueItems: true
+              description: >-
+                RPT-001 D-15, /auth/me and login only. Permissions held through an effective
+                unit-scoped assignment, listed only for permissions whose API honours unit scope
+                (reports.read.organization, reports.export.organization). A UI hint; the report
+                routes resolve the units themselves.
               items: { type: string }
 
     Actor:

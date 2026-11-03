@@ -851,15 +851,23 @@ features:
     legacy_evidence: >-
       Legacy Laravel hcis-ysq: Admin/ReportsController at admin/reports with employeesCsv,
       attendanceMonthly, leaveCsv and payrollCsv.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: high
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/hr-reports.md): employee list and leave,
+      overtime, business travel and training recaps, paged on screen and exported as CSV/XLSX.
+      Pembaca Laporan (finance) reads and Pimpinan (Laporan) (management) also exports, each for
+      the whole organization or one unit. Scope filtered before LIMIT and export; every export
+      audited without personal data; no national ID, bank, address, contact or money columns
+      (D-04 DRAFT). Payroll reports stay out until PAY-003 passes its parallel run.
     planning_note: >-
       Found by the 2026-11-02 legacy parity audit. HCIS already has attendance reports and
       CSV/print (ATT-009, ATT-014) and payroll period views, but no employee-list export and
       no leave report. Exports carry personal data: each needs a permission, scope
       filtering before export, an audit event, and no national ID or bank numbers by default.
     docs:
+      - docs/domain/hr-reports.md
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: HELP-001

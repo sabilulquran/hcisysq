@@ -3917,6 +3917,31 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/reports/routes.ts",
+    "method": "GET",
+    "url": "/admin/reports/hr/access",
+    "permissions": [
+      "reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reports/routes.ts",
+    "method": "GET",
+    "url": "/admin/reports/hr/:report",
+    "permissions": [
+      "reports.read.organization"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reports/routes.ts",
+    "method": "GET",
+    "url": "/admin/reports/hr/:report/export",
+    "permissions": [
+      "reports.read.organization",
+      "reports.export.organization"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/performance/routes.ts",
     "method": "GET",
     "url": "/performance/me",

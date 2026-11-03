@@ -3,6 +3,7 @@
 **Status:** ACCEPTED (Paket 1) — spesifikasi ini mengizinkan implementasi Paket 1. Aturan bisnis yang belum tertulis ditandai `DRAFT` dan memakai default paling masuk akal.
 **Spesifikasi:** PERF-001
 **Tanggal:** 2026-11-02
+**Rilis:** `hcis-3b1c85f4-20261103`, 3 Nov 2026 01:43 UTC (migrasi 0120 + 0121); bukti `docs/development/production-release-verification-2026-11-03-3b1c85f4.md`
 **Terkait:** APR-001, ORG-002, ORG-004, ORG-011, PAY-003, NOTIF-004, AUTH-011, ENG-LIST-001
 **Roadmap:** `docs/product/roadmap.md` (PERF-001), `docs/product/hcis-capability-map.md` §4
 

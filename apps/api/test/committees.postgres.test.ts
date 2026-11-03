@@ -97,7 +97,8 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     return response.json() as { id: string };
   }
 
-  async function activate(id: string, decree: Record<string, unknown> = { mode: "ISSUE" }) {
+  // D-09: the Direktur is the signer that needs no structure; the Ketua Yayasan has its own test.
+  async function activate(id: string, decree: Record<string, unknown> = { mode: "ISSUE", signer: "DIRECTOR" }) {
     actAs("hc", HC);
     return call("POST", `/admin/committees/${id}/activate`, { version: await version(id), decree });
   }
@@ -166,14 +167,19 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     expect(notReady.json().problems).toHaveLength(1);
 
     await addMember(committee.id, "secretary", "SECRETARY");
-    // No Kepala HCM and no Direktur in this schema yet.
-    const unsigned = await activate(committee.id);
-    expect(unsigned.statusCode, unsigned.body).toBe(409);
-    expect(unsigned.json().code).toBe("DOCUMENT_SIGNER_UNAVAILABLE");
+    // No Ketua Yayasan and no Direktur in this schema yet.
+    for (const signer of ["FOUNDATION_CHAIR", "DIRECTOR"]) {
+      const unsigned = await activate(committee.id, { mode: "ISSUE", signer });
+      expect(unsigned.statusCode, unsigned.body).toBe(409);
+      expect(unsigned.json().code).toBe("DOCUMENT_SIGNER_UNAVAILABLE");
+    }
+    // D-09: the Kepala HCM is copied, no longer a signer or a fallback.
+    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    expect((await activate(committee.id)).json().code).toBe("DOCUMENT_SIGNER_UNAVAILABLE");
     expect(await counter()).toBe(before);
     expect((await client.query("SELECT status FROM committees WHERE id = $1", [committee.id])).rows[0].status).toBe("DRAFT");
 
-    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    await insertEmployee("Direktur Sintetis", "Direktur");
     const issued = await activate(committee.id);
     expect(issued.statusCode, issued.body).toBe(200);
     expect(issued.json().decreeNumber).toMatch(/^\d{3}\/SKP\/YSQ\/[IVX]+\/\d{4}$/);
@@ -185,6 +191,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
       [committee.id],
     );
     expect(register.rows[0]).toMatchObject({ document_kind: "COMMITTEE", employee_id: people.chair.employeeId, status: "ISSUED" });
+    expect(register.rows[0].content_snapshot.carbonCopies).toEqual(["Kepala Human Capital Management"]);
     // §5.4: the snapshot carries names, units and roles only.
     expect(Object.keys(register.rows[0].content_snapshot.members[0]).sort()).toEqual(["fullName", "role", "section", "unitName"]);
 
@@ -251,7 +258,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     );
     expect(chairs.rows.map((row) => row.id)).toEqual([outsider.id]);
 
-    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    await insertEmployee("Direktur Sintetis", "Direktur");
     expect((await activate(committee.id)).statusCode).toBe(200);
     // D-17: after activation, the chair a transfer demotes is told.
     const newChair = await addMember(committee.id, "hc", "CHAIR");
@@ -354,7 +361,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
 
   it("ORG-012-D: cancelling a decreed committee revokes its decree and closes every membership", async () => {
     const committee = await staffed();
-    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    await insertEmployee("Direktur Sintetis", "Direktur");
     expect((await activate(committee.id)).statusCode).toBe(200);
     // D-12: the DOC-001 register cannot revoke a committee decree on its own.
     const documentId = (await client.query("SELECT issued_document_id FROM committees WHERE id = $1", [committee.id])).rows[0].issued_document_id;
@@ -390,7 +397,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
   });
 
   it("ORG-012-I: the recap counts active and completed committees of the year only", async () => {
-    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    await insertEmployee("Direktur Sintetis", "Direktur");
     const done = await staffed();
     expect((await activate(done.id)).statusCode).toBe(200);
     actAs("hc", HC);
@@ -444,7 +451,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
       }
       return counts;
     };
-    await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
+    await insertEmployee("Direktur Sintetis", "Direktur");
     const before = await snapshot();
     const committee = await staffed();
     expect((await activate(committee.id)).statusCode).toBe(200);
@@ -453,6 +460,123 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     await call("POST", `/admin/committees/${committee.id}/complete`, { version: await version(committee.id) });
     expect(await snapshot()).toEqual(before);
     expect(tables.rows.length).toBeGreaterThan(5);
+  });
+
+  /** D-09: the Ketua Yayasan seat as production holds it, "Ketua" in Dewan Pengurus held by an
+   * Organ Yayasan account (ORG-013), in a structure published today. */
+  async function seatFoundationChair(holder: { accountId?: string; employeeId?: string }) {
+    const changeSetId = randomUUID();
+    const nodeKey = randomUUID();
+    await client.query(
+      `INSERT INTO organization_change_sets (id, name, effective_on, status, created_by_account_id, validated_at, published_at)
+       VALUES ($1,'Struktur sintetis ORG-012',current_date,'PUBLISHED',$2, now(), now())`,
+      [changeSetId, people.hc.accountId],
+    );
+    await client.query(
+      `INSERT INTO organization_nodes (id, change_set_id, stable_key, name, node_type, effective_from)
+       VALUES ($1,$2,$3,'Dewan Pengurus','BOARD',current_date - 30)`,
+      [randomUUID(), changeSetId, nodeKey],
+    );
+    const positionKey = randomUUID();
+    await client.query(
+      `INSERT INTO organization_positions (id, change_set_id, stable_key, node_key, title, holder_source, effective_from)
+       VALUES ($1,$2,$3,$4,'Ketua',$5,current_date - 30)`,
+      [randomUUID(), changeSetId, positionKey, nodeKey, holder.accountId ? "ACCOUNT" : "EMPLOYEE"],
+    );
+    await client.query(
+      `INSERT INTO organization_incumbencies (id, change_set_id, position_key, employee_id, account_id, kind, effective_from)
+       VALUES ($1,$2,$3,$4,$5,'PRIMARY',current_date - 30)`,
+      [randomUUID(), changeSetId, positionKey, holder.employeeId ?? null, holder.accountId ?? null],
+    );
+  }
+
+  it("D-09: Ketua Yayasan by default, Direktur by choice, Kepala HCM in Tembusan; an earlier SK keeps its signer", async () => {
+    // An SK issued before the rule: signed by the Kepala HCM, no Tembusan in its snapshot.
+    await insertEmployee("Direktur Sintetis", "Direktur");
+    const earlier = await staffed();
+    expect((await activate(earlier.id)).statusCode).toBe(200);
+    await client.query(
+      `UPDATE hr_issued_documents
+          SET signer = '{"title":"Kepala Human Capital Management","name":"Kepala HCM Lama"}'::jsonb,
+              content_snapshot = content_snapshot - 'carbonCopies'
+        WHERE id = (SELECT issued_document_id FROM committees WHERE id = $1)`,
+      [earlier.id],
+    );
+
+    const boardAccount = randomUUID();
+    await client.query(
+      "INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1,NULL,$2,'FOUNDATION_BOARD','active')",
+      [boardAccount, `ketua-${boardAccount}@example.invalid`],
+    );
+    await seatFoundationChair({ accountId: boardAccount });
+
+    const committee = await createCommittee({ name: "Panitia Ramadhan" });
+    await addMember(committee.id, "chair", "CHAIR");
+    await addMember(committee.id, "member", "MEMBER");
+    actAs("hc", HC);
+    const draft = (await call("GET", `/admin/committees/${committee.id}`)).json();
+    expect(draft.decreeSignerOptions).toEqual([
+      { signer: "FOUNDATION_CHAIR", title: "Ketua Yayasan", available: true, name: null, nameRequired: true },
+      { signer: "DIRECTOR", title: "Direktur", available: true, name: "Direktur Sintetis", nameRequired: false },
+    ]);
+
+    // The account has no name in HCIS, so HC types it; without it nothing is numbered.
+    const before = await counter();
+    const nameless = await activate(committee.id, { mode: "ISSUE" });
+    expect(nameless.statusCode, nameless.body).toBe(400);
+    expect(nameless.json().code).toBe("INVALID_COMMITTEE");
+    expect(await counter()).toBe(before);
+
+    const issued = await activate(committee.id, { mode: "ISSUE", signerName: "  Ketua Yayasan Sintetis " });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const detail = (await call("GET", `/admin/committees/${committee.id}`)).json();
+    expect(detail.decreeSigner).toEqual({ title: "Ketua Yayasan", name: "Ketua Yayasan Sintetis" });
+    expect(detail.decreeSnapshot.carbonCopies).toEqual(["Kepala Human Capital Management"]);
+    expect(detail.decreeSignerOptions).toBeNull();
+    const audit = await client.query(
+      "SELECT metadata FROM committee_audit_events WHERE committee_id = $1 AND event_type = 'committee.activated'",
+      [committee.id],
+    );
+    expect(audit.rows[0].metadata).toMatchObject({ signerTitle: "Ketua Yayasan", signerName: "Ketua Yayasan Sintetis" });
+    const docAudit = await client.query(
+      `SELECT metadata FROM hr_document_audit_events WHERE issued_document_id = $1 AND event_type = 'doc.issued'`,
+      [issued.json().issuedDocumentId],
+    );
+    expect(docAudit.rows[0].metadata).toMatchObject({ source: "ORG-012", signerTitle: "Ketua Yayasan" });
+
+    // The next draft is offered the name the seat signed with last time.
+    const next = await createCommittee({ name: "Panitia Ujian Akhir" });
+    await addMember(next.id, "secretary", "CHAIR");
+    await addMember(next.id, "member", "MEMBER");
+    actAs("hc", HC);
+    expect((await call("GET", `/admin/committees/${next.id}`)).json().decreeSignerOptions[0])
+      .toMatchObject({ signer: "FOUNDATION_CHAIR", name: "Ketua Yayasan Sintetis", nameRequired: true });
+
+    // The earlier SK is a snapshot: still the Kepala HCM, still without Tembusan.
+    const old = (await call("GET", `/admin/committees/${earlier.id}`)).json();
+    expect(old.decreeSigner).toEqual({ title: "Kepala Human Capital Management", name: "Kepala HCM Lama" });
+    expect(old.decreeSnapshot.carbonCopies).toBeUndefined();
+  });
+
+  it("D-09: an employee holding the seat signs under their own name and never signs as the committee chair", async () => {
+    await seatFoundationChair({ employeeId: people.chair.employeeId });
+    const committee = await staffed();
+    actAs("hc", HC);
+    const options = (await call("GET", `/admin/committees/${committee.id}`)).json().decreeSignerOptions;
+    expect(options[0]).toMatchObject({ signer: "FOUNDATION_CHAIR", available: false, name: "Pegawai chair", nameRequired: false });
+    const selfSigned = await activate(committee.id, { mode: "ISSUE", signer: "FOUNDATION_CHAIR", signerName: "Nama Lain" });
+    expect(selfSigned.statusCode, selfSigned.body).toBe(409);
+    expect(selfSigned.json().code).toBe("DOCUMENT_SIGNER_UNAVAILABLE");
+
+    // Same seat, a committee chaired by someone else: the employee's own name wins over a typed one.
+    const other = await createCommittee({ name: "Panitia Wisuda Kedua" });
+    await addMember(other.id, "secretary", "CHAIR");
+    await addMember(other.id, "member", "MEMBER");
+    const issued = await activate(other.id, { mode: "ISSUE", signerName: "Nama Lain" });
+    expect(issued.statusCode, issued.body).toBe(200);
+    actAs("hc", HC);
+    expect((await call("GET", `/admin/committees/${other.id}`)).json().decreeSigner)
+      .toEqual({ title: "Ketua Yayasan", name: "Pegawai chair" });
   });
 
   it("history pages the audit trail newest first", async () => {

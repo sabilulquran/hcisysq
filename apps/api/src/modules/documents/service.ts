@@ -209,10 +209,12 @@ export async function issueDocument(
     employee: EmployeeFacts;
     issuedByAccountId: string;
     contentSnapshot: Record<string, unknown>;
+    /** ORG-012 D-09: a signer the caller resolved itself; otherwise the DOC-001 D-05 rule. */
+    signer?: { title: SignerTitle; name: string };
   },
 ): Promise<IssuedDocument> {
   const issuedAt = new Date();
-  const signer = await resolveDocumentSigner(client, input.employee.id);
+  const signer = input.signer ?? await resolveDocumentSigner(client, input.employee.id);
   if (!signer.name) {
     // DOC-001-F: no eligible incumbent means no letter; the HC decision survives.
     throw new DocumentError(

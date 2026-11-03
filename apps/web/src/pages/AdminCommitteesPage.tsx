@@ -44,7 +44,10 @@ import {
   type CommitteeMember,
   type CommitteeRole,
   type CommitteeStatus,
+  type CommitteeSigner,
   type CommitteeSummary,
+  type DecreeInput,
+  type DecreeSignerOption,
   type EmployeeOption,
   type EmployeeParticipation,
   type Pagination,
@@ -269,18 +272,31 @@ function MemberControls({ member, busy, onChange, onEnd }: {
 
 // ------------------------------------------------------------ decree form
 
-function ActivateForm({ busy, onCancel, onSubmit }: {
+export function ActivateForm({ busy, signerOptions, onCancel, onSubmit }: {
   busy: boolean;
+  signerOptions: DecreeSignerOption[];
   onCancel: () => void;
-  onSubmit: (decree: { mode: "ISSUE" } | { mode: "EXTERNAL"; number: string; date: string }) => void;
+  onSubmit: (decree: DecreeInput) => void;
 }) {
+  // D-09: Ketua Yayasan by default; the API decides who can be chosen.
   const [mode, setMode] = useState<"ISSUE" | "EXTERNAL">("ISSUE");
+  const [signer, setSigner] = useState<CommitteeSigner>(
+    () => signerOptions.find((option) => option.available)?.signer ?? "FOUNDATION_CHAIR");
+  const [signerName, setSignerName] = useState(
+    () => signerOptions.find((option) => option.signer === signer)?.name ?? "");
   const [number, setNumber] = useState("");
   const [date, setDate] = useState(todayInJakarta());
+  const chosen = signerOptions.find((option) => option.signer === signer);
+  const noSigner = !signerOptions.some((option) => option.available);
+  const pickSigner = (option: DecreeSignerOption) => {
+    setSigner(option.signer);
+    setSignerName(option.name ?? "");
+  };
   return (
     <form className="rounded-2xl border border-border/70 bg-surface p-4" onSubmit={(event) => {
       event.preventDefault();
-      onSubmit(mode === "ISSUE" ? { mode } : { mode, number: number.trim(), date });
+      if (mode === "EXTERNAL") return onSubmit({ mode, number: number.trim(), date });
+      onSubmit(chosen?.nameRequired ? { mode, signer, signerName: signerName.trim() } : { mode, signer });
     }}>
       <h4 className="text-sm font-bold text-brand-heading">Tetapkan kepanitiaan</h4>
       <p className="mt-1 text-xs text-muted-foreground">Syarat: tepat satu Ketua dan paling sedikit dua anggota aktif. Setelah ditetapkan, anggota mendapat pemberitahuan.</p>
@@ -288,13 +304,37 @@ function ActivateForm({ busy, onCancel, onSubmit }: {
         <legend className="sr-only">Cara SK</legend>
         <label className="flex items-start gap-3 text-sm text-brand-heading">
           <input type="radio" name="decree-mode" checked={mode === "ISSUE"} onChange={() => setMode("ISSUE")} className="mt-1 h-4 w-4" />
-          <span><span className="font-semibold">Terbitkan SK di HCIS</span> — nomor otomatis dari register surat (…/SKP/YSQ/…), ditandatangani Kepala HCM atau Direktur.</span>
+          <span><span className="font-semibold">Terbitkan SK di HCIS</span> — nomor otomatis dari register surat (…/SKP/YSQ/…), ditandatangani Ketua Yayasan atau Direktur, tembusan Kepala HCM.</span>
         </label>
         <label className="flex items-start gap-3 text-sm text-brand-heading">
           <input type="radio" name="decree-mode" checked={mode === "EXTERNAL"} onChange={() => setMode("EXTERNAL")} className="mt-1 h-4 w-4" />
           <span><span className="font-semibold">SK sudah terbit di luar HCIS</span> — misalnya ditandatangani Kepala Sekolah; catat nomor dan tanggalnya.</span>
         </label>
       </fieldset>
+      {mode === "ISSUE" ? (
+        <fieldset className="mt-3 space-y-2 rounded-xl border border-border/70 p-3">
+          <legend className="px-1 text-xs font-semibold text-brand-heading">Penandatangan SK</legend>
+          {signerOptions.map((option) => (
+            <label key={option.signer} className={`flex items-start gap-3 text-sm ${option.available ? "text-brand-heading" : "text-muted-foreground"}`}>
+              <input type="radio" name="decree-signer" disabled={!option.available} checked={signer === option.signer}
+                onChange={() => pickSigner(option)} className="mt-1 h-4 w-4" />
+              <span>
+                <span className="font-semibold">{option.title}</span>
+                {option.available && !option.nameRequired && option.name ? ` — ${option.name}` : ""}
+                {option.available ? "" : " — belum dapat dipilih: jabatannya kosong di struktur, atau ia Ketua panitia ini"}
+              </span>
+            </label>
+          ))}
+          {chosen?.available && chosen.nameRequired ? (
+            <label className={labelClass}>
+              Nama {chosen.title} sebagaimana tertulis di SK
+              <input required minLength={2} maxLength={120} value={signerName}
+                onChange={(event) => setSignerName(event.target.value)} className={inputClass} />
+            </label>
+          ) : null}
+          {noSigner ? <p className="text-xs text-danger-ink">Belum ada penandatangan yang dapat dipilih. Isi jabatannya di struktur organisasi, atau catat SK di luar HCIS.</p> : null}
+        </fieldset>
+      ) : null}
       {mode === "EXTERNAL" ? (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className={labelClass}>
@@ -308,7 +348,7 @@ function ActivateForm({ busy, onCancel, onSubmit }: {
         </div>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="submit" disabled={busy} className={primaryButton}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Tetapkan</button>
+        <button type="submit" disabled={busy || (mode === "ISSUE" && noSigner)} className={primaryButton}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Tetapkan</button>
         <button type="button" onClick={onCancel} className={secondaryButton}>Batal</button>
       </div>
     </form>
@@ -543,7 +583,7 @@ function CommitteesTab({ canManage }: { canManage: boolean }) {
               ) : undefined}
             >
               {panel.kind === "activate" ? (
-                <ActivateForm busy={busy} onCancel={() => setPanel({ kind: "none" })}
+                <ActivateForm busy={busy} signerOptions={detail.decreeSignerOptions ?? []} onCancel={() => setPanel({ kind: "none" })}
                   onSubmit={(decree) => void run(() => activateCommittee(detail.id, { decree, version }),
                     "Kepanitiaan ditetapkan.", "Kepanitiaan tidak dapat ditetapkan.")} />
               ) : null}

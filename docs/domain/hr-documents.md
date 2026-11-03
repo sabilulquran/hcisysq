@@ -50,7 +50,7 @@ Termasuk (Paket 1):
 | D-02 | Nomor surat dialokasikan **hanya pada saat penerbitan**, bukan saat permintaan dibuat, supaya permintaan yang ditolak tidak memakan nomor. | ACCEPTED |
 | D-03 | Nomor surat **tidak dapat didaur ulang**. Surat yang dibatalkan setelah terbit tetap memegang nomornya dan berstatus `REVOKED`. | ACCEPTED |
 | D-04 | Format nomor: `<urut>/<kode-jenis>/YSQ/<bulan-romawi>/<tahun>`, urut per jenis per tahun takwim. | DRAFT |
-| D-05 | Penandatangan surat keterangan: **Kepala Human Capital Management**, fallback **Direktur**, tanpa self-sign — sama persis dengan resolver PAYSLIP-005. | ACCEPTED |
+| D-05 | Penandatangan surat keterangan: **Kepala Human Capital Management**, fallback **Direktur**, tanpa self-sign — sama persis dengan resolver PAYSLIP-005. Pengecualian: SK panitia ORG-012 ditandatangani Ketua Yayasan atau Direktur, dengan Kepala HCM sebagai tembusan (`committees.md` D-09, keputusan owner 2026-11-03). Register dan penomorannya tetap DOC-001. | ACCEPTED |
 | D-06 | Surat keterangan kerja boleh diminta pegawai **aktif**; paklaring hanya untuk pegawai yang hubungan kerjanya sudah berakhir. | DRAFT |
 | D-07 | Permintaan surat keterangan memakai **keputusan satu langkah oleh HC**, bukan rantai approval APR-001. Alasan: surat keterangan tidak mengubah hak atau uang. | DRAFT |
 | D-08 | Pegawai boleh punya **maksimal 3 permintaan terbuka** sekaligus, untuk mencegah spam. | DRAFT |

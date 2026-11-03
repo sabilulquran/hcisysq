@@ -46,7 +46,7 @@ Tidak termasuk:
 | D-06 | **Anggota** adalah Employee berstatus aktif saat ditambahkan. Pegawai yang kemudian keluar tetap tercatat di riwayat. Satu kepanitiaan paling banyak **300 anggota aktif**. | DRAFT |
 | D-07 | **Syarat penetapan** (`DRAFT` → `ACTIVE`): ada tepat satu Ketua, paling sedikit **dua anggota aktif**, dan semua anggota masih pegawai aktif. | DRAFT |
 | D-08 | **SK panitia** ditetapkan dengan salah satu cara: (a) **terbit di HCIS** — satu baris di register surat DOC-001 (`hr_issued_documents`, jenis `COMMITTEE`, kode nomor `SKP`), nomor `<urut>/SKP/YSQ/<bulan-romawi>/<tahun>` dialokasikan saat penetapan, tidak pernah didaur ulang (DOC-001 D-02/D-03), pemilik baris register adalah Ketua; atau (b) **SK di luar HCIS** — HC mencatat nomor (3–100 karakter) dan tanggal SK yang sudah ditandatangani di atas kertas; HCIS tidak mengalokasikan nomor. | DRAFT |
-| D-09 | **Penandatangan SK terbit di HCIS** mengikuti aturan DOC-001 D-05 (`resolveDocumentSigner`): Kepala Human Capital Management, cadangan Direktur, dan tidak pernah Ketua panitia itu sendiri. Tanpa penandatangan yang sah, penetapan ditolak 409 dan kepanitiaan tetap `DRAFT`. | DRAFT |
+| D-09 | **Penandatangan SK terbit di HCIS: Ketua Yayasan atau Direktur. Kepala Human Capital Management menjadi tembusan**, bukan penandatangan atau cadangan. Keputusan owner 2026-11-03: "Ketua Yayasan / Direktur. HCM tembusan aja". Ini pengecualian dari DOC-001 D-05 khusus SK panitia. Mekanisme (DRAFT): (1) **HC memilih** penandatangan saat menetapkan, bawaannya **Ketua Yayasan**. Tidak ada cadangan otomatis, sehingga SK tidak pernah diam-diam ditandatangani pejabat lain. (2) Pemegang jabatan dibaca dari struktur ORG-004 yang terbit dan berlaku hari ini. **Ketua Yayasan** adalah jabatan berjudul "Ketua Yayasan", atau "Ketua" di unit "Dewan Pengurus"/"Pengurus Yayasan", yang dipegang akun Organ Yayasan (`FOUNDATION_BOARD`, aktif, ORG-013) atau pegawai aktif. **Direktur** memakai pencarian DOC-001 (struktur, lalu field jabatan lama). (3) Akun Organ Yayasan tidak punya nama di HCIS, jadi HC **mengetik nama Ketua Yayasan** sebagaimana tertulis di SK (2–120 karakter). Formulir mengisikan usulan dari SK panitia terakhir yang ditandatangani jabatan itu, atau dari nama penanda tangan Kartu Pegawai (EMP-012 D-05) bila jabatannya Ketua Yayasan. Pemegang yang berstatus pegawai selalu memakai namanya sendiri. (4) Penandatangan tidak pernah Ketua panitia itu sendiri. Jabatan yang kosong atau dipegang Ketua panitia ditolak 409 `DOCUMENT_SIGNER_UNAVAILABLE`. Nama yang kosong ditolak 400 `INVALID_COMMITTEE`. Dalam kedua kasus nomor tidak terpakai dan kepanitiaan tetap `DRAFT`. (5) **Tembusan** "Kepala Human Capital Management" disimpan di snapshot SK (`carbonCopies`) dan tercetak di bagian Tembusan. (6) **SK yang sudah terbit tidak berubah.** Penandatangan dan isi SK adalah snapshot saat terbit (DOC-001 D-15). SK yang terbit sebelum aturan ini tetap tercetak dengan penandatangan aslinya (Kepala HCM atau Direktur) dan tanpa Tembusan. | ACCEPTED (owner 2026-11-03); mekanisme `DRAFT` |
 | D-10 | **Perubahan setelah penetapan:** HC boleh menambah anggota, mengubah peran/seksi, dan mengakhiri tugas anggota; mengubah keterangan, penyelenggara, dan **tanggal selesai** (memperpanjang atau memperpendek, tidak sebelum tanggal mulai). Nama, jenis, dan tanggal mulai terkunci karena tertulis di SK. SK **tidak** diterbitkan ulang; perubahan tercatat di riwayat dan tampil di daftar anggota. | DRAFT |
 | D-11 | **Mengakhiri tugas anggota:** di `DRAFT` anggota dihapus dari draf (tidak ada riwayat keanggotaan karena belum ditetapkan, tetapi audit event tetap ditulis); di `ACTIVE` keanggotaan diberi tanggal akhir (hari ini WIB, tidak sebelum tanggal bergabung) dan alasan opsional, lalu tetap tampil sebagai riwayat. Ketua hanya dapat diakhiri setelah peran Ketua dipindahkan ke anggota lain. Tanggal bergabung anggota yang ditambahkan setelah penetapan = hari ini, dibatasi ke dalam periode kepanitiaan (tidak sebelum tanggal mulai, tidak sesudah tanggal selesai), sehingga anggota yang ditambahkan belakangan pada kepanitiaan lampau tetap terhitung di tahunnya. | DRAFT |
 | D-12 | **Selesai dan batal:** `ACTIVE` → `COMPLETED` kapan saja oleh HC; keanggotaan yang masih terbuka ditutup pada minimum(hari ini, tanggal selesai). `CANCELLED` membutuhkan alasan 10–500 karakter; bila SK terbit di HCIS, SK itu ikut **dicabut** (`REVOKED`) dengan alasan yang sama dan nomornya tetap terpakai. Saat selesai atau batal, keanggotaan yang masih terbuka diberi tanggal akhir, termasuk anggota draf yang dibatalkan (tampil di riwayat anggota admin; pegawai tidak pernah melihat draf). Kepanitiaan batal yang pernah ditetapkan tetap terlihat oleh anggotanya dengan label "Dibatalkan" dan **tidak** dihitung di rekap. Pembatalan SK hanya lewat pembatalan kepanitiaan, bukan tombol Batalkan di register DOC (sama seperti surat tugas TRIP-001). | DRAFT |
@@ -92,7 +92,7 @@ Tambah: `employeeId`, `role`, `section?` (D-05/D-06). Ubah: `role`, `section?`. 
 
 ### 5.4 Penetapan
 
-Input: `decree.mode` = `ISSUE` (terbit di HCIS) atau `EXTERNAL` dengan `decree.number` dan `decree.date`; `version`. Untuk `ISSUE`, snapshot isi SK berisi nama, jenis, periode, penyelenggara, dan susunan panitia (nama, unit, peran, seksi) saat penetapan — tidak pernah NIK, alamat, gaji, atau kontak (DOC-001 D-15). Tanpa penandatangan sah: 409 `DOCUMENT_SIGNER_UNAVAILABLE`, nomor tidak terpakai karena transaksi dibatalkan.
+Input: `decree.mode` = `ISSUE` (terbit di HCIS) dengan `decree.signer` = `FOUNDATION_CHAIR` (Ketua Yayasan, bawaan) atau `DIRECTOR`, serta `decree.signerName` bila HCIS tidak mengetahui nama pemegangnya (D-09); atau `EXTERNAL` dengan `decree.number` dan `decree.date`. Keduanya membawa `version`. Untuk `ISSUE`, snapshot isi SK berisi nama, jenis, periode, penyelenggara, susunan panitia (nama, unit, peran, seksi) saat penetapan, dan tembusan. Snapshot tidak pernah memuat NIK, alamat, gaji, atau kontak (DOC-001 D-15). Penandatangan (jabatan dan nama) disimpan di baris register. Tanpa penandatangan sah: 409 `DOCUMENT_SIGNER_UNAVAILABLE`, dan nomor tidak terpakai karena transaksi dibatalkan. Detail admin kepanitiaan `DRAFT` membawa `decreeSignerOptions`: kedua jabatan, apakah dapat dipilih, nama pemegang atau usulan nama, dan apakah nama wajib diketik.
 
 ### 5.5 Kegagalan
 
@@ -107,7 +107,8 @@ Input: `decree.mode` = `ISSUE` (terbit di HCIS) atau `EXTERNAL` dengan `decree.n
 | Pegawai tidak aktif / sudah anggota / batas anggota | 409 `COMMITTEE_EMPLOYEE_NOT_ACTIVE` / `COMMITTEE_DUPLICATE_MEMBER` / `COMMITTEE_MEMBER_LIMIT` |
 | Kepanitiaan yang sudah ditetapkan akan kehilangan Ketua (peran Ketua diubah atau tugasnya diakhiri) | 409 `COMMITTEE_CHAIR_REQUIRED` |
 | Syarat penetapan tidak terpenuhi | 409 `COMMITTEE_NOT_READY` dengan daftar alasan |
-| Tidak ada penandatangan SK | 409 `DOCUMENT_SIGNER_UNAVAILABLE` |
+| Jabatan penandatangan yang dipilih kosong atau dipegang Ketua panitia | 409 `DOCUMENT_SIGNER_UNAVAILABLE` |
+| Nama Ketua Yayasan (pemegang akun Organ) tidak diisi | 400 `INVALID_COMMITTEE` |
 
 ## 6. Permission
 
@@ -122,7 +123,7 @@ Migration `0135_committee_permissions.sql`, berscope organisasi.
 
 ## 7. Audit dan privasi
 
-Tabel `committee_audit_events` (append-only): `committee.created`, `committee.updated` (metadata: field yang berubah, nilai lama/baru), `committee.member.added`, `committee.member.updated` (peran/seksi lama/baru), `committee.member.removed` (draf) / `committee.member.ended` (setelah penetapan), `committee.activated` (cara SK, nomor), `committee.completed`, `committee.cancelled` (alasan), `committee.decree.revoked`. Penerbitan dan pencabutan SK HCIS juga menulis `doc.issued`/`doc.revoked` di log register DOC-001 dengan `source: "ORG-012"`. Metadata hanya berisi nama kegiatan, id dan nama pegawai, peran, seksi, tanggal, dan nomor SK — tidak ada gaji, NIK, atau kontak.
+Tabel `committee_audit_events` (append-only): `committee.created`, `committee.updated` (metadata: field yang berubah, nilai lama/baru), `committee.member.added`, `committee.member.updated` (peran/seksi lama/baru), `committee.member.removed` (draf) / `committee.member.ended` (setelah penetapan), `committee.activated` (cara SK, nomor, serta jabatan dan nama penandatangan untuk SK terbit di HCIS), `committee.completed`, `committee.cancelled` (alasan), `committee.decree.revoked`. Penerbitan dan pencabutan SK HCIS juga menulis `doc.issued`/`doc.revoked` di log register DOC-001 dengan `source: "ORG-012"`; `doc.issued` membawa jabatan dan nama penandatangan. Metadata hanya berisi nama kegiatan, id dan nama pegawai, peran, seksi, tanggal, nomor SK, serta jabatan dan nama penandatangan — tidak ada gaji, NIK, atau kontak.
 
 ## 8. Penyimpanan
 
@@ -148,7 +149,7 @@ Kontrak lengkap: `docs/api/committees.openapi.yaml`.
 | --- | --- | --- |
 | GET | `/admin/committees?status=&category=&year=&q=&page=&pageSize=` | `committees.read` |
 | POST | `/admin/committees` | `committees.manage` |
-| GET | `/admin/committees/{id}` (detail, anggota, SK) | `committees.read` |
+| GET | `/admin/committees/{id}` (detail, anggota, SK, pilihan penandatangan untuk draf) | `committees.read` |
 | GET | `/admin/committees/{id}/history?page=&pageSize=` | `committees.read` |
 | PATCH | `/admin/committees/{id}` | `committees.manage` |
 | POST | `/admin/committees/{id}/members` | `committees.manage` |
@@ -168,7 +169,7 @@ Daftar mengikuti ENG-LIST-001 §3.1 (bawaan 25, maks 100, filter sebelum `LIMIT`
 
 ## 10. Layar
 
-- **Admin → Kepanitiaan** (`/admin/committees`): tab status, filter jenis dan tahun, pencarian nama, daftar berhalaman; panel detail berisi data kegiatan, susunan panitia (tambah lewat typeahead pegawai, ubah peran/seksi, akhiri tugas), SK (nomor, penandatangan, tombol Cetak SK), tombol Tetapkan/Selesaikan/Batalkan, dan riwayat. Tab **Rekap keikutsertaan**: per tahun, pencarian nama, daftar berhalaman, rincian kepanitiaan per pegawai.
+- **Admin → Kepanitiaan** (`/admin/committees`): tab status, filter jenis dan tahun, pencarian nama, daftar berhalaman; panel detail berisi data kegiatan, susunan panitia (tambah lewat typeahead pegawai, ubah peran/seksi, akhiri tugas), SK (nomor, penandatangan, tombol Cetak SK), tombol Tetapkan/Selesaikan/Batalkan, dan riwayat. Formulir Tetapkan memuat pilihan penandatangan (Ketua Yayasan terpilih bila tersedia, atau Direktur) dan kolom nama Ketua Yayasan bila diperlukan (D-09). Jabatan yang tidak dapat dipilih tampil nonaktif beserta alasannya. Bila tidak ada satu pun yang dapat dipilih, tombol Tetapkan untuk SK HCIS nonaktif dan cara SK di luar HCIS tetap tersedia. Cetakan SK memuat bagian Tembusan. Tab **Rekap keikutsertaan**: per tahun, pencarian nama, daftar berhalaman, rincian kepanitiaan per pegawai.
 - **Pegawai → Kepanitiaan Saya** (`/app/committees`): tab Berjalan dan Riwayat; detail dengan susunan panitia dan Cetak SK.
 - **Kalender → Buat undangan rapat**: pilihan "Undang panitia" bila pegawai sedang menjadi anggota kepanitiaan aktif (D-16).
 - Semua layar punya keadaan memuat, kosong, galat, dan terlarang (403), serta tata letak satu kolom di layar ponsel.
@@ -186,12 +187,13 @@ Daftar mengikuti ENG-LIST-001 §3.1 (bawaan 25, maks 100, filter sebelum `LIMIT`
 - ORG-012-I: rekap menghitung hanya kepanitiaan `ACTIVE`/`COMPLETED` yang beririsan dengan tahun yang diminta.
 - ORG-012-J: `meeting-groups` hanya memuat kepanitiaan `ACTIVE` tempat pemanggil menjadi anggota aktif, tanpa dirinya sendiri.
 - ORG-012-K: versi lama ditolak 409 `COMMITTEE_STALE`.
+- ORG-012-L (D-09): SK terbit di HCIS ditandatangani Ketua Yayasan (bawaan) atau Direktur sesuai pilihan HC, tidak pernah Kepala HCM dan tidak pernah Ketua panitia. Kepala HCM tercantum di Tembusan. Ketua Yayasan yang dipegang akun Organ wajib disertai nama dari HC. Jabatan yang kosong tidak memakan nomor. SK yang terbit sebelumnya tetap dengan penandatangan dan isi aslinya (diuji).
 
 ## 12. Asumsi DRAFT yang perlu dikonfirmasi pemilik produk
 
 1. Hanya HC yang mencatat kepanitiaan; unit belum dapat mengusulkan lewat HCIS (D-02).
 2. Daftar jenis kepanitiaan (D-01) dan peran panitia (D-05).
-3. SK panitia memakai register DOC-001 dengan kode `SKP` dan ditandatangani Kepala HCM (cadangan Direktur), atau dicatat sebagai SK di luar HCIS (D-08/D-09). Di banyak sekolah SK panitia ditandatangani Kepala Sekolah; bila itu yang berlaku, cara (b) dipakai sampai aturan penandatangan diputuskan.
+3. **Diputuskan owner 2026-11-03 (D-09):** SK panitia ditandatangani Ketua Yayasan atau Direktur, dengan Kepala HCM sebagai tembusan. Register DOC-001 dengan kode `SKP` tetap dipakai. SK yang ditandatangani Kepala Sekolah tetap dicatat sebagai SK di luar HCIS (D-08 cara b). Mekanisme yang masih DRAFT: HC memilih penandatangan dengan Ketua Yayasan sebagai bawaan, tanpa cadangan otomatis, dan HC mengetik nama Ketua Yayasan karena akun Organ tidak punya nama di HCIS.
 4. Syarat penetapan: satu Ketua dan minimal dua anggota (D-07).
 5. Perubahan susunan setelah penetapan tidak menerbitkan SK baru (D-10).
 6. Anggota melihat susunan panitia lengkap (D-15).

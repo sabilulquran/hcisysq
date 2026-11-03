@@ -4,12 +4,14 @@
 // Kepala Human Capital Management first, Direktur as fallback, and never a
 // self-signed document. DOC-001 reuses it unchanged (`docs/domain/hr-documents.md` D-05).
 // Moved here from modules/payslips/routes.ts; behaviour is identical.
+// ORG-012 D-09 (owner 2026-11-03) signs the SK panitia as Ketua Yayasan or Direktur instead;
+// findFoundationChair and findDirector serve that choice and leave resolveDocumentSigner alone.
 
 import type { Pool, PoolClient } from "pg";
 
 type QueryTarget = Pool | PoolClient;
 
-export type SignerTitle = "Kepala Human Capital Management" | "Direktur";
+export type SignerTitle = "Kepala Human Capital Management" | "Direktur" | "Ketua Yayasan";
 
 export interface SignerCandidate {
   employeeId: string;
@@ -121,6 +123,75 @@ async function findSignerCandidate(
     (await findDynamicSignerCandidate(database, role))
     ?? (await findLegacySignerCandidate(database, role))
   );
+}
+
+/** The Direktur from the published structure, else the legacy position fields. */
+export function findDirector(database: QueryTarget): Promise<SignerCandidate | null> {
+  return findSignerCandidate(database, "director");
+}
+
+/**
+ * The holder of the Ketua Yayasan seat in the published structure: a position titled
+ * "Ketua Yayasan", or "Ketua" in the Dewan Pengurus / Pengurus Yayasan node. Production holds it
+ * with a FOUNDATION_BOARD account (ORG-013), which has no name in HCIS, so `name` is then null
+ * and the caller supplies it. An inactive holder is no holder.
+ */
+export async function findFoundationChair(database: QueryTarget): Promise<FoundationChair | null> {
+  const result = await database.query<FoundationChair>(
+    `WITH latest AS (
+       SELECT id
+         FROM organization_change_sets
+        WHERE status = 'PUBLISHED'
+          AND effective_on <= current_date
+        ORDER BY effective_on DESC, published_at DESC NULLS LAST, created_at DESC, id DESC
+        LIMIT 1
+     )
+     SELECT incumbent.employee_id AS "employeeId", incumbent.account_id AS "accountId",
+            employee.full_name AS name
+       FROM latest
+       JOIN organization_positions position
+         ON position.change_set_id = latest.id
+       JOIN organization_nodes node
+         ON node.change_set_id = position.change_set_id
+        AND node.stable_key = position.node_key
+       JOIN organization_incumbencies incumbent
+         ON incumbent.change_set_id = position.change_set_id
+        AND incumbent.position_key = position.stable_key
+       LEFT JOIN employees employee
+         ON employee.id = incumbent.employee_id
+       LEFT JOIN accounts account
+         ON account.id = incumbent.account_id
+      WHERE (
+          lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'ketua yayasan'
+          OR (
+            lower(regexp_replace(btrim(position.title), '\\s+', ' ', 'g')) = 'ketua'
+            AND lower(regexp_replace(btrim(node.name), '\\s+', ' ', 'g')) IN ('dewan pengurus', 'pengurus yayasan')
+          )
+        )
+        AND position.active = true
+        AND node.active = true
+        AND position.effective_from <= current_date
+        AND (position.effective_to IS NULL OR position.effective_to >= current_date)
+        AND node.effective_from <= current_date
+        AND (node.effective_to IS NULL OR node.effective_to >= current_date)
+        AND incumbent.effective_from <= current_date
+        AND (incumbent.effective_to IS NULL OR incumbent.effective_to >= current_date)
+        AND (
+          (employee.id IS NOT NULL AND employee.status = 'active')
+          OR (account.principal_type = 'FOUNDATION_BOARD' AND account.employee_id IS NULL AND account.status = 'active')
+        )
+      ORDER BY CASE incumbent.kind WHEN 'PRIMARY' THEN 0 ELSE 1 END,
+               incumbent.effective_from DESC,
+               incumbent.id ASC
+      LIMIT 1`,
+  );
+  return result.rows[0] ?? null;
+}
+
+export interface FoundationChair {
+  employeeId: string | null;
+  accountId: string | null;
+  name: string | null;
 }
 
 export async function resolveDocumentSigner(

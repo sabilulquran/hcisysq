@@ -16,6 +16,7 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import type { CommitteePermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { DocumentError, issueDocument, jakartaDate, loadEmployeeFacts, writeDocumentAudit } from "../documents/service.js";
+import { findDirector, findFoundationChair } from "../documents/signer-authority.js";
 import { normalizeWhatsAppNumber } from "../meetings/whatsapp.js";
 import { notifyEmployee } from "../notifications/service.js";
 import {
@@ -25,6 +26,7 @@ import {
   assertOpen,
   assertStatus,
   cancelInput,
+  COMMITTEE_CARBON_COPIES,
   COMMITTEE_CATEGORIES,
   COMMITTEE_DOCUMENT_CODE,
   COMMITTEE_NUMBER_CODE,
@@ -32,6 +34,7 @@ import {
   COMMITTEE_STATUSES,
   CommitteeError,
   committeeEdit,
+  committeeSigner,
   committeeInput,
   CORE_ROLES,
   joinDate,
@@ -43,14 +46,66 @@ import {
   memberEdit,
   memberEnd,
   ROLE_LABELS,
+  SIGNER_TITLES,
   text,
   versionInput,
   yearRange,
   type CommitteeRole,
+  type CommitteeSigner,
   type CommitteeStatus,
+  type SignerHolder,
 } from "./domain.js";
 
 type Db = Pick<PoolClient, "query">;
+
+/** D-09: the current holder of each signing seat. */
+async function signerHolder(db: Db, choice: CommitteeSigner): Promise<SignerHolder | null> {
+  const holder = choice === "FOUNDATION_CHAIR"
+    ? await findFoundationChair(db as PoolClient)
+    : await findDirector(db as PoolClient);
+  return holder ? { employeeId: holder.employeeId, name: holder.name } : null;
+}
+
+/**
+ * D-09: what the decree form offers. For a seat held by an Organ Yayasan account (no name in
+ * HCIS) the name is only a suggestion: the one on the latest SK panitia that seat signed, else
+ * the Ketua Yayasan named in the EMP-012 card settings.
+ */
+async function signerOptions(db: Db, chairEmployeeId: string | null) {
+  const options = [];
+  for (const signer of ["FOUNDATION_CHAIR", "DIRECTOR"] as const) {
+    const title = SIGNER_TITLES[signer];
+    const holder = await signerHolder(db, signer);
+    const selfSigned = Boolean(holder?.employeeId && holder.employeeId === chairEmployeeId);
+    let name = holder?.name ?? null;
+    if (holder && !holder.name) {
+      const suggested = await db.query<{ name: string }>(
+        `SELECT name FROM (
+           SELECT signer->>'name' AS name, 0 AS rank, issued_at
+             FROM hr_issued_documents
+            WHERE document_kind = 'COMMITTEE' AND signer->>'title' = $1
+           UNION ALL
+           SELECT signer_name, 1, NULL FROM employee_card_settings
+            WHERE $1 = 'Ketua Yayasan' AND signer_name IS NOT NULL
+              AND lower(regexp_replace(btrim(signer_title), '\\s+', ' ', 'g')) = 'ketua yayasan'
+         ) candidate
+         WHERE name IS NOT NULL
+         ORDER BY rank, issued_at DESC NULLS LAST
+         LIMIT 1`,
+        [title],
+      );
+      name = suggested.rows[0]?.name ?? null;
+    }
+    options.push({
+      signer,
+      title,
+      available: Boolean(holder) && !selfSigned,
+      name,
+      nameRequired: Boolean(holder) && !holder?.name,
+    });
+  }
+  return options;
+}
 
 // An empty search box sends `q=`; that means "no search", not a too-short query.
 const optionalQuery = z.preprocess(
@@ -526,7 +581,12 @@ export async function registerCommitteeRoutes(
     if (!found.rows[0]) return notFound(reply);
     // D-06: bounded at MAX_ACTIVE_MEMBERS open rows plus their history, so returned whole.
     const members = await loadMembers(params.data.id, true);
-    return send(reply, 200, { ...found.rows[0], members });
+    const chair = (members as Array<{ role: CommitteeRole; leftOn: string | null; employeeId: string }>)
+      .find((member) => member.role === "CHAIR" && !member.leftOn);
+    const decreeSignerOptions = found.rows[0].status === "DRAFT"
+      ? await signerOptions(pool, chair?.employeeId ?? null)
+      : null;
+    return send(reply, 200, { ...found.rows[0], members, decreeSignerOptions });
   });
 
   app.get("/admin/committees/:id/history", async (request, reply) => {
@@ -828,16 +888,20 @@ export async function registerCommitteeRoutes(
       const chair = members.rows.find((member) => member.role === "CHAIR")!;
       let issuedDocumentId: string | null = null;
       let decreeNumber: string;
+      let signer: ReturnType<typeof committeeSigner> | null = null;
       if (body.data.decree.mode === "ISSUE") {
         const chairFacts = await loadEmployeeFacts(client, chair.employeeId);
-        // D-09: without an eligible signer issueDocument throws before a number is taken, and
-        // the rollback leaves the committee in DRAFT.
+        // D-09: Ketua Yayasan or Direktur, never the chair. Without an eligible signer this throws
+        // before a number is taken, and the rollback leaves the committee in DRAFT.
+        const decree = body.data.decree;
+        signer = committeeSigner(decree.signer, await signerHolder(client, decree.signer), chair.employeeId, decree.signerName);
         const issued = await issueDocument(client, {
           documentKind: "COMMITTEE",
           documentCode: COMMITTEE_DOCUMENT_CODE,
           numberCode: COMMITTEE_NUMBER_CODE,
           employee: chairFacts!,
           issuedByAccountId: principal.id,
+          signer,
           // §5.4 / DOC-001 D-15: the committee and its line-up; never NIK, address, pay or contacts.
           contentSnapshot: {
             committeeId: params.data.id,
@@ -849,6 +913,8 @@ export async function registerCommitteeRoutes(
             members: members.rows.map((member) => ({
               fullName: member.fullName, unitName: member.unitName, role: member.role, section: member.section,
             })),
+            // D-09: printed under Tembusan; part of the snapshot, so later rules never reach it.
+            carbonCopies: [...COMMITTEE_CARBON_COPIES],
           },
         });
         issuedDocumentId = issued.id;
@@ -858,7 +924,10 @@ export async function registerCommitteeRoutes(
           issuedDocumentId: issued.id,
           employeeId: chair.employeeId,
           actorAccountId: principal.id,
-          metadata: { source: "ORG-012", committeeId: params.data.id, documentCode: COMMITTEE_DOCUMENT_CODE, documentNumber: decreeNumber },
+          metadata: {
+            source: "ORG-012", committeeId: params.data.id, documentCode: COMMITTEE_DOCUMENT_CODE, documentNumber: decreeNumber,
+            signerTitle: signer.title, signerName: signer.name,
+          },
         });
       } else {
         decreeNumber = body.data.decree.number;
@@ -882,6 +951,7 @@ export async function registerCommitteeRoutes(
         metadata: {
           name: current.name, decreeMode: body.data.decree.mode === "ISSUE" ? "ISSUED" : "EXTERNAL",
           decreeNumber, memberCount: members.rows.length,
+          ...(signer ? { signerTitle: signer.title, signerName: signer.name } : {}),
         },
       });
       for (const member of members.rows) {

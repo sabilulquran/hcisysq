@@ -42,11 +42,11 @@ Kartu dan grafik per aplikasi, dengan angka yang dimiliki aplikasi asal (prinsip
 
 Menampilkan langkah approval milik orang yang login dari setiap aplikasi asal, dan meneruskan keputusannya ke aplikasi itu atas nama orang tersebut (token exchange). Aplikasi asal yang mencatat state, audit, dan notifikasi.
 
-Untuk organ yang juga pegawai (misalnya Ketua yang merangkap Direktur), semua langkah approval miliknya tampil di portal, dan kotak approval HCIS untuk orang itu diganti tautan ke portal (`DRAFT`).
+Untuk organ yang juga pegawai (misalnya Ketua yang merangkap Direktur), targetnya semua langkah approval miliknya tampil di portal, dan kotak approval HCIS untuk orang itu diganti tautan ke portal (`DRAFT`). Keputusan lewat portal membutuhkan jalur token exchange untuk mutasi, yang masih `TBD` (ORG-012-3). Sampai jalur itu ada, keputusan tetap memakai sesi cookie HCIS.
 
 ### 3. Laporan bulanan otomatis
 
-- Setiap aplikasi menetapkan sendiri kapan bulannya **tutup**, yaitu saat data sumbernya sudah disubmit atau disetujui. Contoh (`DRAFT`): HCIS memakai periode payroll bulan itu yang mencapai `APPROVED`. Yang dipakai hanya sebagai penanda bahwa data bulan itu sudah final, angka payroll tetap tidak ditampilkan. Karir SQ, SPMB, dan Aset SQ menetapkan penandanya di spesifikasi masing-masing.
+- Setiap aplikasi menetapkan sendiri kapan bulannya **tutup**, yaitu saat data sumbernya sudah disubmit atau disetujui. Contoh (`DRAFT`): HCIS memakai periode payroll bulan itu yang mencapai `APPROVED`. Penanda ini diekspos hanya sebagai boolean "bulan final", tanpa ID periode atau nominal, sehingga batas payroll ADR-0003 tidak tersentuh. Karir SQ, SPMB, dan Aset SQ menetapkan penandanya di spesifikasi masing-masing.
 - Saat penanda tutup tercapai, aplikasi asal menerbitkan **snapshot ringkasan bulan itu** (angka agregat, versi kontrak, waktu terbit). Snapshot tidak berubah. Bila periode dibuka ulang dan ditutup lagi, terbit revisi baru yang menyebut revisi sebelumnya.
 - Portal menyusun laporan bulanan dari snapshot yang sudah terbit. Bagian dari aplikasi yang belum tutup ditandai "Belum final", bukan diisi angka sementara.
 - Organ mendapat notifikasi saat laporan bulan itu lengkap.
@@ -55,7 +55,7 @@ Untuk organ yang juga pegawai (misalnya Ketua yang merangkap Direktur), semua la
 ### 4. Catatan analisis (Claude API)
 
 - Kotak "Catatan analisis" berisi 3–5 poin dalam bahasa biasa, di dasbor dan di laporan bulanan.
-- Masukan ke Claude hanya **angka agregat yang sudah tampil**. Tidak ada nama, identitas, atau baris per orang. Batas privasinya sama dengan dasbor.
+- Masukan ke Claude hanya **angka agregat yang sudah tampil**. Tidak ada nama, identitas, atau baris per orang. Batas privasinya sama dengan dasbor. Antrean persetujuan hanya dikirim sebagai jumlah dan umur.
 - Setiap poin wajib merujuk angka di grafik. Poin tanpa rujukan dibuang sebelum ditampilkan.
 - Teks diberi label "dibuat AI", disimpan bersama laporan bulanan, dan tidak dihitung ulang diam-diam.
 - Tahap lanjut: organ bisa bertanya tentang dasbor, dan jawabannya tetap hanya dari data agregat.

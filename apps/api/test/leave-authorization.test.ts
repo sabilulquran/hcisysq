@@ -87,7 +87,7 @@ function createDecisionPool(input: {
     if (sql.includes("UPDATE auth_sessions SET last_seen_at")) {
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e")) {
+    if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e") && !sql.includes("FROM accounts account")) {
       return { rows: [employeeRow(input.actorEmployeeId ?? M)], rowCount: 1 };
     }
     if (sql.includes("FROM leave_request_approval_steps s") && sql.includes("FOR UPDATE OF s, r")) {
@@ -143,6 +143,19 @@ function createDecisionPool(input: {
       return { rows: [], rowCount: 1 };
     }
     if (sql.includes("INSERT INTO leave_notification_outbox")) {
+      return { rows: [], rowCount: 1 };
+    }
+    // LEAVE-010: the in-app notification for the next line approver.
+    if (sql.includes("FROM leave_requests request") && sql.includes("JOIN employees requester")) {
+      return {
+        rows: [{ requesterName: "Pemohon Sintetis", policyKey: "annual", startOn: "2099-02-02", endOn: "2099-02-03", workingDays: 2 }],
+        rowCount: 1,
+      };
+    }
+    if (sql.includes("FROM accounts account") && sql.includes("JOIN employees employee")) {
+      return { rows: [{ accountId: "00000000-0000-4000-8000-0000000000aa" }], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO in_app_notifications")) {
       return { rows: [], rowCount: 1 };
     }
     throw new Error(`Unexpected SQL in leave authorization test: ${sql}`);
@@ -237,7 +250,7 @@ describe("leave employee read isolation", () => {
 
 describe("leave approval multi-account authorization", () => {
   it("allows M to approve only M's active Direct Manager step", async () => {
-    const { pool } = createDecisionPool({
+    const { pool, query } = createDecisionPool({
       actorEmployeeId: M,
       requestedStepId: DM_STEP,
       stepApproverEmployeeId: M,
@@ -250,6 +263,10 @@ describe("leave approval multi-account authorization", () => {
       stepStatus: "approved",
       nextPendingStepId: UNIT_STEP,
     });
+    // LEAVE-010-B: the next approver is told in-app, once per step, without the reason.
+    const inApp = query.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO in_app_notifications"));
+    expect(inApp).toHaveLength(1);
+    expect(inApp[0]![1]).toEqual(expect.arrayContaining([`leave.approval.requested.${UNIT_STEP}`, "/app/approvals"]));
   });
 
   it("allows U to approve U's step only after the Direct Manager step is approved", async () => {
@@ -516,5 +533,41 @@ describe("leave approval multi-account authorization", () => {
     const response = await decide(pool, DM_STEP);
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: "STEP_NOT_PENDING" });
+  });
+});
+
+describe("LEAVE-010 requester cancellation under contention", () => {
+  it("answers 409 LEAVE_REQUEST_BUSY instead of waiting while a decision holds the step", async () => {
+    const statements: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      if (sql.includes("FROM auth_sessions s")) return authRows("EMPLOYEE");
+      if (sql.includes("UPDATE auth_sessions SET last_seen_at")) return { rows: [], rowCount: 1 };
+      if (sql.includes("FROM accounts a") && sql.includes("JOIN employees e")) return { rows: [employeeRow(E)], rowCount: 1 };
+      if (["BEGIN", "ROLLBACK"].includes(sql)) return { rows: [], rowCount: 0 };
+      if (sql.includes("FROM leave_requests") && sql.includes("FOR UPDATE NOWAIT")) {
+        return { rows: [{ status: "in_review", lineHandling: "approval", policyKey: "annual" }], rowCount: 1 };
+      }
+      if (sql.includes("FROM leave_request_approval_steps") && sql.includes("FOR UPDATE NOWAIT")) {
+        throw Object.assign(new Error("could not obtain lock on row"), { code: "55P03" });
+      }
+      throw new Error(`Unexpected SQL in cancellation contention test: ${sql}`);
+    });
+    const client = { query, release: vi.fn() };
+    const app = Fastify({ logger: false });
+    await registerEmployeeLeaveRoutes(app, { query, connect: vi.fn(async () => client) } as unknown as Pool, config);
+    const response = await app.inject({
+      method: "POST",
+      url: `/leave/me/requests/${REQUEST}/cancel`,
+      headers: { cookie: "hcis_session=test-token" },
+      payload: {},
+    });
+    await app.close();
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe("LEAVE_REQUEST_BUSY");
+    expect(statements).toContain("ROLLBACK");
+    expect(statements.some((sql) => sql.includes("UPDATE leave_requests"))).toBe(false);
+    // Every lock the cancellation takes is NOWAIT, so it can never hold one while waiting.
+    expect(statements.filter((sql) => /FOR UPDATE(?! NOWAIT)/.test(sql))).toEqual([]);
   });
 });

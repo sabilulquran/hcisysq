@@ -856,6 +856,11 @@
       "reason": "Surat terbit milik satu pegawai; beberapa lembar per tahun."
     },
     {
+      "url": "/documents/me/issued/:id",
+      "list": "single",
+      "reason": "DOC-001 D-20: satu surat keterangan terbit milik pegawai sendiri untuk dicetak."
+    },
+    {
       "url": "/documents/me/requests",
       "list": "bounded",
       "reason": "Permintaan surat milik satu pegawai; dibatasi pemiliknya dan maksimal tiga permintaan terbuka."

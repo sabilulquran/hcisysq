@@ -66,6 +66,7 @@ Pemilik produk 2026-11-02: "sepakat semua kecuali K-06: Ya; K-05 Terlihat." Untu
 | K-13 | Pegawai tanpa akun aktif (HCIS belum live ke staf) **boleh** diundang: waktunya tetap terblokir. Ia tidak menerima notifikasi in-app, tetapi tetap menerima WhatsApp bila nomornya ada. Layar memberi tanda "belum punya akun". | DRAFT |
 | K-14 | WhatsApp undangan, perubahan, dan pembatalan dikirim bila penyelenggara mencentang **"Kirim juga lewat WhatsApp"** (default tercentang). Pengingat WhatsApp selalu dikirim bila nomor ada. Tidak ada preferensi pengingat per pegawai di Paket 1. | DRAFT |
 | K-15 | Pengingat satu kali, **30 menit sebelum mulai** (default legacy), untuk penyelenggara dan peserta yang tidak Berhalangan. | DRAFT |
+| K-16 | Selama API memakai adapter `log` (dry run, §9.2), layar **tidak menampilkan** pilihan "Kirim juga lewat WhatsApp" maupun tanda "tanpa nomor WA", dan form menulis bahwa pemberitahuan WhatsApp belum aktif. Statusnya dibaca dari API (`whatsappDelivery` pada `GET /me/calendar`: `active` hanya bila `WHATSAPP_ADAPTER=kirim`), tidak ditulis keras di frontend. Nilai `notifyWhatsApp` rapat tetap tersimpan (bawaan `true`) sehingga perilaku K-14 berlaku begitu adapter `kirim` dinyalakan. Alasan: temuan HELP-001 2026-11-03 — pilihan yang tampil padahal tidak ada pesan terkirim menyesatkan pegawai. | ACCEPTED (2026-11-03) |
 
 ## 4. Batas
 
@@ -257,7 +258,7 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 
 | Method | Path | Catatan |
 | --- | --- | --- |
-| GET | `/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Rentang maks 42 hari. Item: semua rapat `ACTIVE` yayasan yang beririsan (rapat Rahasia yang bukan milik saya hanya `{id: null, kind: "busy", startAt, endAt}`), rapat batal yang saya ikuti, cuti sendiri (`approved`, `in_review`), perjalanan sendiri (`APPROVED`, `ISSUED`, `IN_REVIEW`), libur/non-kerja. Setiap rapat memuat `involvesMe`. Data dibatasi rentang tanggal; bila lebih dari 500 item, 400 `RANGE_TOO_DENSE` — tidak dipotong diam-diam (pengecualian ENG-LIST-001 yang dicatat di sini). |
+| GET | `/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` | Memuat `whatsappDelivery` (`active` \| `dry_run`, K-16). Rentang maks 42 hari. Item: semua rapat `ACTIVE` yayasan yang beririsan (rapat Rahasia yang bukan milik saya hanya `{id: null, kind: "busy", startAt, endAt}`), rapat batal yang saya ikuti, cuti sendiri (`approved`, `in_review`), perjalanan sendiri (`APPROVED`, `ISSUED`, `IN_REVIEW`), libur/non-kerja. Setiap rapat memuat `involvesMe`. Data dibatasi rentang tanggal; bila lebih dari 500 item, 400 `RANGE_TOO_DENSE` — tidak dipotong diam-diam (pengecualian ENG-LIST-001 yang dicatat di sini). |
 | GET | `/me/meetings?tab=upcoming\|past&page&pageSize` | Rapat yang saya ikuti. ENG-LIST-001: default 25, maks 100, `total`. |
 | GET | `/me/meetings/:id` | Penyelenggara dan peserta saja; lainnya 404. |
 | POST | `/me/meetings/availability` | Pratinjau §6 tanpa menulis: `startAt`, `endAt`, `participantEmployeeIds`, `excludeMeetingId?`. |
@@ -270,8 +271,8 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 ## 12. Layar
 
 - Pegawai: menu **Kalender** — tampilan bulan (grid 6 minggu) dan daftar Akan Datang/Lewat; rapat saya dan rapat orang lain dibedakan warna (pola legacy: rapat saya bisa diketuk, rapat orang lain hanya ringkasan); ketuk tanggal untuk membuat rapat dengan jam awal 08:00–09:00.
-- Form rapat: pemilih peserta typeahead; centang **Rahasia** dan **Kirim juga lewat WhatsApp**; panel ketersediaan yang langsung memperlihatkan peserta yang bentrok (merah) dan peringatan (kuning) sebelum Kirim.
-- Detail rapat: daftar peserta dengan jawaban, tanda berhalangan, tanda "belum punya akun" dan "tanpa nomor WA" (hanya bagi penyelenggara); tombol Hadir/Berhalangan untuk peserta; Ubah/Batalkan untuk penyelenggara.
+- Form rapat: pemilih peserta typeahead; centang **Rahasia** dan **Kirim juga lewat WhatsApp** (yang kedua hanya bila `whatsappDelivery = active`; bila dry run, form menulis "Pemberitahuan WhatsApp belum aktif", K-16); panel ketersediaan yang langsung memperlihatkan peserta yang bentrok (merah) dan peringatan (kuning) sebelum Kirim.
+- Detail rapat: daftar peserta dengan jawaban, tanda berhalangan, tanda "belum punya akun" dan "tanpa nomor WA" (hanya bagi penyelenggara; "tanpa nomor WA" hanya bila WhatsApp aktif, K-16); tombol Hadir/Berhalangan untuk peserta; Ubah/Batalkan untuk penyelenggara.
 - State: loading, kosong ("Belum ada rapat"), 404/forbidden, error bentrok yang menyebut nama dan jam, dan tampilan ponsel (daftar per hari, bukan grid sempit).
 
 ## 13. Acceptance criteria
@@ -288,6 +289,7 @@ Rollback migrasi ditulis sebagai komentar `-- Down:` (drop lima tabel; tidak ada
 - CAL-001-J: setiap transisi menulis `meeting_events`.
 - CAL-001-K: daftar rapat berhalaman sesuai ENG-LIST-001; kalender menolak rentang > 42 hari.
 - CAL-001-L: dengan adapter `log`, setiap undangan WA tercatat `DRY_RUN` tanpa panggilan jaringan; dengan adapter `kirim` (uji dengan server tiruan), pengiriman ulang memakai kunci idempotensi yang sama dan request pengguna tidak menunggu SQ Hub.
+- CAL-001-N: dengan adapter `log`, `GET /me/calendar` menjawab `whatsappDelivery: dry_run` dan form rapat tidak menampilkan pilihan WhatsApp; dengan adapter `kirim`, `active` dan pilihan tampil (K-16).
 - CAL-001-M: pengingat terkirim tepat sekali 30 menit sebelum mulai; tidak terkirim untuk rapat batal, peserta yang dikeluarkan, atau peserta Berhalangan; penjalan yang dijalankan dua kali bersamaan tidak menggandakan pengingat.
 
 ## 14. Paket berikutnya (usulan)

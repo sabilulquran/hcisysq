@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { loadConfig } from "../src/config/env.js";
+import { whatsappDelivery } from "../src/modules/meetings/routes.js";
 import {
   allowedActions,
   assertCancellable,
@@ -367,5 +368,8 @@ describe("CAL-001 WhatsApp", () => {
       KIRIM_CLIENT_ID: "hcis-kirim", KIRIM_CLIENT_SECRET: "s",
     });
     expect(createWhatsAppSender(full)).toBeInstanceOf(KirimWhatsAppSender);
+    // K-16: the screen learns from the API whether WhatsApp really goes out.
+    expect(whatsappDelivery(loadConfig(base))).toBe("dry_run");
+    expect(whatsappDelivery(full)).toBe("active");
   });
 });

@@ -214,6 +214,23 @@ features:
       - docs/api/committees.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
+  - id: ORG-013
+    module: organization
+    name: Foundation organ accounts as structural approvers
+    legacy_evidence: >-
+      None in legacy; owner decision 2026-11-03 (production chart has Ketua and Sekretaris
+      positions held by FOUNDATION_BOARD accounts, holder_source ACCOUNT).
+    target_status: specified
+    priority: later
+    risk: medium
+    planning_note: >-
+      Specified in PR #290 under the ID ORG-012, which the registry had already given to
+      committees since the 2026-11-02 audit; renumbered to ORG-013 on 2026-11-03 with no change
+      to its decisions. Reuses the 0023 governance approver principal; no new route or role.
+    docs:
+      - docs/domain/organ-account-approver.md
+      - docs/product/organ-portal-concept.md
+
   - id: EMP-005
     module: employee
     name: Employment relationship and contracts
@@ -550,6 +567,24 @@ features:
       recorded amendment, not silently rewrite the approved dates or the balance.
     docs:
       - docs/product/legacy-parity-audit-2026-11-02.md
+
+  - id: LEAVE-010
+    module: leave
+    name: Approver in-app notification and requester cancellation of pending leave
+    legacy_evidence: >-
+      Not a legacy port. Found while writing the HELP-001 help articles (2026-11-03): HCIS only wrote
+      an outbox intent for the approver and had no cancel action for the requester.
+    target_status: implemented
+    priority: mvp
+    risk: medium
+    notes: >-
+      Implemented 2026-11-03 (docs/domain/workflows/leave-request.md "LEAVE-010"). The active line
+      approver gets an in-app notification (NOTIF-004) when their step becomes pending; the requester
+      can cancel Cuti Tahunan and planned leave while in_review at any stage, which closes open steps,
+      the HC task and the critical review (migration 0136) and tells the waiting approver. Special leave
+      reports and approved leave stay with HC (DRAFT).
+    docs:
+      - docs/domain/workflows/leave-request.md
 
   - id: LEAVE-009
     module: leave

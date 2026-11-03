@@ -125,6 +125,11 @@ function conflictError(availability: Availability) {
   return new MeetingError(409, "MEETING_CONFLICT", shaped.conflicts.map((issue) => issue.message).join(" "), shaped);
 }
 
+/** CAL-001 K-16: `active` only when the Kirim SQ adapter is configured (env I-10). */
+export function whatsappDelivery(config: Pick<ApiConfig, "WHATSAPP_ADAPTER">): "active" | "dry_run" {
+  return config.WHATSAPP_ADAPTER === "kirim" ? "active" : "dry_run";
+}
+
 function knownError(error: unknown): MeetingError | null {
   if (error instanceof MeetingError) return error;
   if (error instanceof MeetingPolicyError) return new MeetingError(error.statusCode, error.code, error.message);
@@ -391,7 +396,9 @@ export async function registerMeetingRoutes(
           message: "Terlalu banyak kegiatan pada rentang ini. Perkecil rentang tanggal.",
         });
       }
-      return send(reply, 200, { from, to, items });
+      // §9.2 / K-16: the screen offers "Kirim juga lewat WhatsApp" only while the Kirim SQ adapter
+      // is wired; with the dry-run `log` adapter nothing reaches anyone, so the option is hidden.
+      return send(reply, 200, { from, to, whatsappDelivery: whatsappDelivery(config), items });
     });
   });
 

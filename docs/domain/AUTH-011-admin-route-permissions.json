@@ -2190,6 +2190,16 @@
   },
   {
     "file": "apps/api/src/modules/leave/employee-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/requests/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/employee-routes.ts",
     "method": "GET",
     "url": "/leave/approvals",
     "access": "self-service",
@@ -2612,6 +2622,16 @@
     "file": "apps/api/src/modules/documents/routes.ts",
     "method": "GET",
     "url": "/documents/me/issued",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/documents/me/issued/:id",
     "access": "self-service",
     "principals": [
       "EMPLOYEE"

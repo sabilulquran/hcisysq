@@ -26,6 +26,7 @@ function formatTimestamp(value: string) {
 export function MeetingDetailPanel({
   meeting,
   busy,
+  whatsappActive,
   onClose,
   onRespond,
   onEdit,
@@ -33,6 +34,7 @@ export function MeetingDetailPanel({
 }: {
   meeting: MeetingDetail;
   busy: boolean;
+  whatsappActive: boolean;
   onClose: () => void;
   onRespond: (response: "ACCEPTED" | "DECLINED") => void;
   onEdit: () => void;
@@ -128,7 +130,7 @@ export function MeetingDetailPanel({
                   {participant.unavailableReason === "LEAVE" ? " · berhalangan (cuti)" : ""}
                   {participant.unavailableReason === "TRIP" ? " · berhalangan (dinas)" : ""}
                   {participant.hasAccount === false ? " · belum punya akun" : ""}
-                  {participant.hasWhatsApp === false ? " · tanpa nomor WA" : ""}
+                  {whatsappActive && participant.hasWhatsApp === false ? " · tanpa nomor WA" : ""}
                 </p>
                 {participant.responseNote ? <p className="mt-0.5 text-xs text-brand-heading">"{participant.responseNote}"</p> : null}
               </div>

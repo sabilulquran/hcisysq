@@ -79,7 +79,7 @@ Atasan langsung dan Unit Approver yang **benar-benar** dipakai approval cuti har
 |---|---|---|---|---|
 | W-1 | Dialog **Kewenangan** hanya bisa *menambah*. Tidak ada daftar kewenangan yang sudah ada, tidak ada ubah/akhiri/hapus (tidak ada endpoint). Menambah leader kedua untuk kelompok yang sama → `AUTHORITY_BINDING_OVERLAP` → draft **tidak pernah bisa valid**. | Satu salah klik = buang draft dan mulai lagi (lihat D-3). | Daftar kewenangan per unit/jabatan dengan **Ganti** dan **Hapus** di dalam perubahan yang belum terbit. | K |
 | W-2 | Istilah: "Governance approver", "Oversight di atas approver", "Leader kelompok", "Unit approver". | Harus memahami model ORG-004. | Kalimat: "Bila **[Direktur]** mengajukan cuti, yang menyetujui adalah **[Sekretaris Yayasan]**"; "Setelah disetujui, **[Ketua Yayasan]** diberi tahu". | T |
-| W-3 | Jabatan Dewan (Ketua/Sekretaris) dipegang akun Dewan (`holder_source = ACCOUNT`) dan read-only (P-5); resolver menolak akun sebagai approver (fail-closed). | Aturan Direktur → Sekretaris tidak dapat berjalan di `STRUCTURE` sampai keputusan pemetaan akun disetujui. | Ditampilkan jujur: "Belum bisa dipakai untuk persetujuan — menunggu keputusan pemetaan akun Dewan". | T |
+| W-3 | Jabatan Dewan (Ketua/Sekretaris) dipegang akun Dewan (`holder_source = ACCOUNT`) dan read-only (P-5); resolver menolak akun sebagai approver (fail-closed). | Aturan Direktur → Sekretaris tidak dapat berjalan di `STRUCTURE` sampai keputusan pemetaan akun disetujui. | Ditampilkan jujur: "Belum bisa dipakai untuk persetujuan — menunggu keputusan pemetaan akun Dewan". **Diputuskan 2026-11-03: akun Organ boleh menjadi approver, lihat ORG-013 (`organ-account-approver.md`).** | T |
 
 ### 2.5 Melihat dampak dan menerbitkan
 

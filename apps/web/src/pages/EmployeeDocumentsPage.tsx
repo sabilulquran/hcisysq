@@ -1,9 +1,11 @@
 // DOC-001 / DOC-002 employee surface: request a certificate, read issued letters,
-// and acknowledge a warning letter. Spec: docs/domain/hr-documents.md.
+// print or save an issued certificate (D-20), and acknowledge a warning letter.
+// Spec: docs/domain/hr-documents.md.
 
-import { FileText, Loader2, ShieldAlert } from "lucide-react";
+import { FileText, Loader2, Printer, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CertificateLetterPaper, CertificatePrintCopy } from "@/components/documents/CertificateLetterPaper";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -14,7 +16,9 @@ import {
   getMyDisciplinaryLetters,
   getMyDocumentRequests,
   getMyDocumentTypes,
+  getMyIssuedDocument,
   getMyIssuedDocuments,
+  HrDocumentApiError,
   submitDocumentRequest,
   type DisciplinaryLetterSummary,
   type DocumentRequestSummary,
@@ -33,6 +37,7 @@ export function EmployeeDocumentsPage() {
   const [requests, setRequests] = useState<DocumentRequestSummary[]>([]);
   const [issued, setIssued] = useState<IssuedDocumentSummary[]>([]);
   const [letters, setLetters] = useState<DisciplinaryLetterSummary[]>([]);
+  const [opened, setOpened] = useState<IssuedDocumentSummary | null>(null);
   const [documentCode, setDocumentCode] = useState("");
   const [purpose, setPurpose] = useState("");
   const [loading, setLoading] = useState(true);
@@ -92,6 +97,21 @@ export function EmployeeDocumentsPage() {
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Permintaan belum dapat dibatalkan.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openLetter = async (documentId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setOpened(await getMyIssuedDocument(documentId));
+    } catch (cause) {
+      setOpened(null);
+      setError(cause instanceof Error ? cause.message : "Surat tidak dapat dibuka.");
+      // A letter revoked meanwhile: show the list as it is now.
+      if (cause instanceof HrDocumentApiError && cause.code === "DOCUMENT_REVOKED") await load();
     } finally {
       setBusy(false);
     }
@@ -211,12 +231,53 @@ export function EmployeeDocumentsPage() {
                       <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
                         Ditandatangani {document.signer.name ?? "-"} ({document.signer.title})
                       </p>
+                      {document.status === "ISSUED" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void openLetter(document.id)}
+                          className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50"
+                        >
+                          <Printer className="h-4 w-4" aria-hidden="true" /> Lihat &amp; cetak
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="mt-3 text-sm text-muted-foreground">Belum ada surat yang terbit.</p>
               )}
+              {opened ? (
+                <div className="mt-4 border-t border-border/70 pt-4">
+                  <CertificatePrintCopy document={opened} />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-brand-heading">{opened.documentNumber}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground"
+                      >
+                        <Printer className="h-4 w-4" aria-hidden="true" /> Cetak / Simpan PDF
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Tutup surat"
+                        onClick={() => setOpened(null)}
+                        className="inline-flex min-h-11 items-center rounded-xl border border-border px-3 text-sm font-bold text-brand-heading"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Untuk menyimpan berkas, pilih "Simpan sebagai PDF" di dialog cetak.
+                  </p>
+                  <div className="mt-3 overflow-x-auto">
+                    <CertificateLetterPaper document={opened} />
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             {letters.length ? (

@@ -376,7 +376,7 @@ components:
         name: { type: [string, 'null'] }
         reason:
           type: string
-          enum: [MEETING_OVERLAP, IN_TRAINING, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING, NON_WORKING_DAY]
+          enum: [MEETING_OVERLAP, IN_TRAINING, ON_LEAVE, ON_TRIP, LEAVE_PENDING, TRIP_PENDING, NON_WORKING_DAY, ON_FIELD_ASSIGNMENT]
         startAt: { type: string, format: date-time }
         endAt: { type: string, format: date-time }
         startOn: { type: string, format: date }

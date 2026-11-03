@@ -26,6 +26,9 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("announcements")?.stage).toBe("available");
     expect(getEmployeeService("announcements")?.href).toBe("/app/announcements");
     expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");
+    // ATT-015 Package 1: tugas luar, WFH/WFA and schedule change requests.
+    expect(getEmployeeService("work-arrangements")?.href).toBe("/app/attendance/arrangements");
+    expect(getEmployeeService("work-arrangements")?.featureIds).toContain("ATT-015");
     // TRIP-001 Package 1 ships request, approval and the surat tugas.
     expect(getEmployeeService("business-travel")?.stage).toBe("available");
     expect(getEmployeeService("business-travel")?.href).toBe("/app/trips");

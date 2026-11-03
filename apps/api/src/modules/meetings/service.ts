@@ -187,6 +187,15 @@ export async function checkAvailability(
       [ids, start, end],
     );
   const dated = ids.length === 0 ? { leaves: [], trips: [] } : await loadDatedBusy(db, ids, firstDate, lastDate);
+  // ATT-015 D-08: approved tugas luar only warns (read contract: employee, dates, status).
+  const fieldAssignments = ids.length === 0 ? { rows: [] as BusyDates[] } : await db.query<BusyDates>(
+    `SELECT employee_id AS "employeeId", status,
+            to_char(start_on, 'YYYY-MM-DD') AS "startOn", to_char(end_on, 'YYYY-MM-DD') AS "endOn"
+       FROM attendance_work_arrangement_requests
+      WHERE employee_id = ANY($1::uuid[]) AND status = 'APPROVED' AND arrangement_type = 'FIELD_ASSIGNMENT'
+        AND start_on <= $3::date AND end_on >= $2::date`,
+    [ids, firstDate, lastDate],
+  );
   const nonWorking = await loadNonWorkingDates(db, firstDate, lastDate);
   return evaluateAvailability({
     interval: input.interval,
@@ -207,6 +216,7 @@ export async function checkAvailability(
     })),
     leaves: dated.leaves,
     trips: dated.trips,
+    fieldAssignments: fieldAssignments.rows,
     nonWorkingDates: nonWorking.map((day) => day.date),
   });
 }

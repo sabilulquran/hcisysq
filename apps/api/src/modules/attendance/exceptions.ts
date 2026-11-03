@@ -2,12 +2,14 @@ import type { Pool } from "pg";
 
 import { pageOffset, pagination, type PageQuery } from "../../lib/pagination.js";
 import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
+import { ARRANGEMENT_TYPE_LABELS, type ArrangementType } from "./work-arrangements.js";
 
 // ATT-014 §20.2 tab "Pengecualian" (package R2b): approved leave and attendance clarifications or HC
 // corrections that touch the range, read-only. Leave is listed per request overlapping the range;
 // clarifications per work date, every status, so HC also sees what is still waiting.
 // TRIP-001 D-11: approved business trips are listed too, per trip overlapping the range. Read-only:
 // nothing here writes attendance, and a trip never stands in for a punch.
+// ATT-015 §7.4: approved tugas luar, WFH/WFA and applied schedule changes are listed per request.
 
 export type AttendanceExceptionFilter = PageQuery & {
   from: string;
@@ -17,7 +19,7 @@ export type AttendanceExceptionFilter = PageQuery & {
 };
 
 export type AttendanceException = {
-  kind: "leave" | "clarification" | "trip";
+  kind: "leave" | "clarification" | "trip" | "arrangement";
   id: string;
   employeeId: string;
   employeeNumber: string;
@@ -25,7 +27,8 @@ export type AttendanceException = {
   unitName: string | null;
   startOn: string;
   endOn: string;
-  /** Leave: policy key. Clarification: lateness, early_leave, missing_check_in, ... Trip: destination. */
+  /** Leave: policy key. Clarification: lateness, early_leave, missing_check_in, ... Trip: destination.
+   * Arrangement: FIELD_ASSIGNMENT, REMOTE_WORK or SCHEDULE_CHANGE. */
   type: string;
   /** Leave: the policy name from the catalog; null for clarifications (labelled on screen). */
   typeName: string | null;
@@ -68,6 +71,12 @@ export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: At
        FROM business_trip_requests trip
        WHERE trip.status IN ('APPROVED', 'ISSUED', 'COMPLETED')
          AND trip.start_on <= $2::date AND trip.end_on >= $1::date
+       UNION ALL
+       SELECT 'arrangement', arrangement.id, arrangement.employee_id, arrangement.start_on, arrangement.end_on,
+         arrangement.arrangement_type, NULL, NULL, arrangement.status, arrangement.purpose
+       FROM attendance_work_arrangement_requests arrangement
+       WHERE arrangement.status IN ('APPROVED', 'APPLIED')
+         AND arrangement.start_on <= $2::date AND arrangement.end_on >= $1::date
      )
      SELECT items.kind, items.id, scoped.id AS "employeeId", scoped.employee_number AS "employeeNumber",
        scoped.full_name AS "employeeName", scoped.unit_name AS "unitName",
@@ -85,7 +94,9 @@ export async function attendanceExceptions(pool: Pick<Pool, "query">, filter: At
     items: result.rows.map(({ total: rowTotal, ...row }) => {
       void rowTotal;
       const policy = row.kind === "leave" ? LEAVE_POLICY_CATALOG.find((item) => item.key === row.type) : undefined;
-      const typeName = row.kind === "trip" ? "Perjalanan Dinas" : policy?.name ?? (row.kind === "leave" ? row.type : null);
+      const typeName = row.kind === "trip" ? "Perjalanan Dinas"
+        : row.kind === "arrangement" ? ARRANGEMENT_TYPE_LABELS[row.type as ArrangementType] ?? row.type
+        : policy?.name ?? (row.kind === "leave" ? row.type : null);
       return { ...row, typeName };
     }),
   };

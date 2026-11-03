@@ -29,7 +29,7 @@ function formatDate(value: string) { return new Intl.DateTimeFormat("id-ID",{wee
 function mondayOf(value: string) { const day = new Date(value + "T00:00:00Z").getUTCDay(); return shiftDate(value, -((day + 6) % 7)); }
 function formatTime(value: string | null | undefined) { return value ? new Intl.DateTimeFormat("id-ID",{hour:"2-digit",minute:"2-digit",hourCycle:"h23",timeZone:"Asia/Jakarta"}).format(new Date(value)) : "—"; }
 function statusLabel(value: string | undefined) {
-  const labels: Record<string,string> = { scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti / Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Jadwal perlu diperiksa",submitted:"Menunggu",approved:"Disetujui",rejected:"Ditolak",cancelled:"Dibatalkan" };
+  const labels: Record<string,string> = { scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti / Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Jadwal perlu diperiksa",field_assignment:"Tugas luar",remote_work:"WFH/WFA",submitted:"Menunggu",approved:"Disetujui",rejected:"Ditolak",cancelled:"Dibatalkan" };
   return value ? labels[value] ?? value : "Belum dievaluasi";
 }
 function ResultFacts({ result }: { result: WorkforceResult | null }) {

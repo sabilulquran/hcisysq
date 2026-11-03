@@ -572,6 +572,8 @@ export interface AttendanceTodayItem {
   connected: boolean;
   fact: AttendanceTodayFact;
   card: AttendanceTodayCard;
+  /** ATT-015 §7.2: an approved tugas luar or WFH/WFA that explains a missing scan today. */
+  workArrangement?: "field_assignment" | "remote_work" | null;
 }
 
 export async function getAttendanceToday() {

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ArrangementApprovalsSection } from "@/components/arrangements/ArrangementApprovalsSection";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -315,6 +316,7 @@ export function EmployeeApprovalsPage() {
             onPageChange={(next) => { setTripPage(next); void loadTrips(next); }} />
         ) : null}
       </section>
+      <ArrangementApprovalsSection />
       <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex items-center gap-3 border-b border-border/70 px-5 py-4">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-primary-deep">

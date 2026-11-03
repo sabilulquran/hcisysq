@@ -110,6 +110,7 @@ Untuk setiap orang dalam `{penyelenggara} ∪ peserta`:
 | Cuti | `status = 'in_review'`, beririsan | WARN `LEAVE_PENDING` |
 | Perjalanan dinas | `business_trip_requests.status IN ('APPROVED','ISSUED')`, `[start_on, end_on]` beririsan | **BLOCK** `ON_TRIP` |
 | Perjalanan dinas | `status = 'IN_REVIEW'`, beririsan | WARN `TRIP_PENDING` |
+| Tugas luar (ATT-015 D-08) | `attendance_work_arrangement_requests.status = 'APPROVED'`, `arrangement_type = 'FIELD_ASSIGNMENT'`, beririsan | WARN `ON_FIELD_ASSIGNMENT` (rapat itu bisa jadi bagian tugasnya, jadi tidak memblokir) |
 | Kalender kerja | hari mana pun dalam interval adalah libur/non-kerja menurut `leave_calendar_*` | WARN `NON_WORKING_DAY` |
 
 Tanggal penuh dikonversi ke interval `[tanggal 00:00 WIB, tanggal+1 00:00 WIB)`.

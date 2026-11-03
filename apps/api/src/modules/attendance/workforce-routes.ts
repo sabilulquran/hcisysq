@@ -206,7 +206,7 @@ const mobileEvidenceQuerySchema = z.object({
 });
 const attendanceStatusSchema = z.enum([
   "scheduled", "pending", "present", "late", "incomplete", "leave",
-  "absent", "off", "configuration_error",
+  "absent", "off", "configuration_error", "field_assignment", "remote_work",
 ]);
 const reportQuerySchema = z.object({
   type: z.enum(["detail", "period", "unit", "sessions", "scans", "schedule", "overtime"]).default("detail"),
@@ -2816,7 +2816,7 @@ export async function registerAttendanceWorkforceRoutes(
       to: dateSchema,
       status: z.enum([
         "scheduled", "pending", "present", "late", "incomplete", "leave", "absent", "off",
-        "configuration_error", "unscheduled", "not_captured", "not_calculated",
+        "configuration_error", "field_assignment", "remote_work", "unscheduled", "not_captured", "not_calculated",
       ]).optional(),
       changedOnly: z.enum(["true", "false"]).optional(),
       page: z.coerce.number().int().min(1).default(1),

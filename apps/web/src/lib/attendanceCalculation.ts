@@ -27,7 +27,7 @@ export interface AttendanceCalculationRun {
 
 export type AttendanceCalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-  | "unscheduled" | "not_captured" | "not_calculated";
+  | "field_assignment" | "remote_work" | "unscheduled" | "not_captured" | "not_calculated";
 
 export interface AttendanceCalculationRow {
   employeeId: string;

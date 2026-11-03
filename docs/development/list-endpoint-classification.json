@@ -253,6 +253,15 @@
       "package": "PAG-3"
     },
     {
+      "url": "/admin/attendance/arrangements",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/attendance/arrangements/:id",
+      "list": "single",
+      "reason": "Satu pengajuan tugas luar, WFH/WFA, atau ubah jadwal beserta tahap approval dan riwayatnya."
+    },
+    {
       "url": "/admin/attendance/calculation-rows",
       "list": "paged"
     },
@@ -700,6 +709,24 @@
       "url": "/assets/me",
       "list": "bounded",
       "reason": "Aset yang sedang dipegang satu pegawai, dibaca dari Aset SQ ASQ-004: paling banyak 200 butir dengan hitungan lengkap dan penanda truncated (ASSET-001 §4)."
+    },
+    {
+      "url": "/attendance/arrangements/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/attendance/arrangements/me",
+      "list": "paged"
+    },
+    {
+      "url": "/attendance/arrangements/me/:id",
+      "list": "single",
+      "reason": "Satu pengajuan milik pegawai beserta tahap approval dan riwayatnya."
+    },
+    {
+      "url": "/attendance/arrangements/schedule-options",
+      "list": "bounded",
+      "reason": "ATT-015 §11: shift aktif organisasi (data konfigurasi kecil); lebih dari 200 ditolak, tidak dipotong."
     },
     {
       "url": "/attendance/clarifications/me",

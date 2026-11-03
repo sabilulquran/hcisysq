@@ -13,6 +13,7 @@ import { getAttendanceExceptions, type AttendanceExceptions } from "@/lib/attend
 import { clarificationKindLabel, clarificationModeLabel, requestStatusLabel } from "@/lib/attendanceLabels";
 import { getAttendanceReportModel, reportWarningText, type AttendanceReportTable } from "@/lib/attendanceReports";
 import { tripStatusLabel } from "@/lib/trips";
+import { arrangementStatusLabel } from "@/lib/workArrangements";
 import { getAttendanceReportV2 } from "@/lib/workforceAttendance";
 
 // ATT-014 §20.2 (R2b): the read-only tabs Pengecualian, Rekapitulasi and Lembur, and the Kalkulasi
@@ -49,7 +50,7 @@ export function ExceptionsTab({ scope, version }: { scope: AttendanceCalculation
   if (!data) return <p className="p-4 text-sm text-muted-foreground">Memuat…</p>;
   return (
     <div>
-      <p className="p-3 text-xs text-muted-foreground">Cuti dan perjalanan dinas yang sudah disetujui, serta klarifikasi dan koreksi HC pada rentang ini. Hanya baca; perubahan dilakukan di <a className="font-semibold underline" href="/admin/attendance/corrections">Perbaikan Absen</a> atau menu Cuti.</p>
+      <p className="p-3 text-xs text-muted-foreground">Cuti, perjalanan dinas, tugas luar, WFH/WFA, dan ubah jadwal yang sudah disetujui, serta klarifikasi dan koreksi HC pada rentang ini. Hanya baca; perubahan dilakukan di <a className="font-semibold underline" href="/admin/attendance/corrections">Perbaikan Absen</a> atau menu Cuti.</p>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-surface text-xs text-muted-foreground">
@@ -64,14 +65,16 @@ export function ExceptionsTab({ scope, version }: { scope: AttendanceCalculation
                 <td className="p-3">
                   {item.kind === "leave" ? item.typeName
                     : item.kind === "trip" ? `Perjalanan dinas: ${item.type}`
+                    : item.kind === "arrangement" ? item.typeName
                     : `${item.origin === "hc" ? "Koreksi HC" : "Klarifikasi"}: ${clarificationKindLabel(item.type)}`}
                   {item.kind === "clarification" ? <p className="text-xs text-muted-foreground">{clarificationModeLabel(item.mode)}</p> : null}
                 </td>
-                <td className="p-3">{item.kind === "leave" ? "Disetujui" : item.kind === "trip" ? tripStatusLabel(item.status) : requestStatusLabel(item.status)}</td>
+                <td className="p-3">{item.kind === "leave" ? "Disetujui" : item.kind === "trip" ? tripStatusLabel(item.status)
+                  : item.kind === "arrangement" ? arrangementStatusLabel(item.status, item.type) : requestStatusLabel(item.status)}</td>
                 <td className="p-3 text-xs">{item.reason ?? "—"}</td>
               </tr>
             ))}
-            {data.items.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Tidak ada cuti, perjalanan dinas, klarifikasi, atau koreksi pada lingkup ini.</td></tr> : null}
+            {data.items.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Tidak ada cuti, perjalanan dinas, tugas luar, WFH, klarifikasi, atau koreksi pada lingkup ini.</td></tr> : null}
           </tbody>
         </table>
       </div>

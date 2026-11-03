@@ -126,6 +126,15 @@ Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Sel
 
 Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).
 
+### Masa kritis cuti (LEAVE-009)
+
+Tidak ada permission baru (`docs/domain/leave-critical-periods.md` §6, D-07 DRAFT).
+
+| Tindakan | Permission | Pemegang hari ini |
+|---|---|---|
+| Kelola masa kritis (`/admin/leave/critical-periods`) | `leave.configuration.manage` | HC Admin (`human_capital_admin`) |
+| Putus tinjauan masa kritis (`/leave/hc/critical-reviews`) | `leave.validate` + `leave.hc.approve` (organisasi) | HC yang juga memegang mandat persetujuan HC (`special_approver`), sama seperti Cuti Tanpa Gaji |
+
 ### Pinjaman pegawai (LOAN-001)
 
 Migration `0123_employee_loan_permissions.sql`, berscope organisasi (`docs/domain/employee-loans.md` §6, D-13 DRAFT).

@@ -24,6 +24,8 @@ import {
   validatePlannedLeaveRequest,
 } from "./domain/planned-leave-policy.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
+import { criticalPeriodTreatment } from "./domain/critical-period.js";
+import { attachCriticalReview, loadApplicableCriticalPeriods } from "./critical-period-store.js";
 import {
   calculateWorkingDays,
   decodeWorkingWeekdays,
@@ -129,6 +131,7 @@ interface PlannedSummaryRow {
     | "approved"
     | "rejected"
     | null;
+  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | null;
 }
 
 interface HcQueueRow {
@@ -375,7 +378,24 @@ async function buildPreview(
     input.policyKey,
     jakartaToday(),
   );
-  return { calculation, validation, approvalChain, authorityResolution };
+  // LEAVE-009 D-02: Cuti Tanpa Gaji only records the match; the other planned types get a review.
+  const criticalTreatment = criticalPeriodTreatment(input.policyKey);
+  const criticalPeriods = criticalTreatment === "none"
+    ? []
+    : await loadApplicableCriticalPeriods(db, {
+      unitId: employee.unitId,
+      startOn: input.startOn,
+      endOn: input.endOn,
+    });
+  const criticalReviewRequired = criticalTreatment === "review" && criticalPeriods.length > 0;
+  return {
+    calculation,
+    validation,
+    approvalChain,
+    authorityResolution,
+    criticalPeriods,
+    criticalReviewRequired,
+  };
 }
 
 export const hasActivePermission = hasOrganizationPermission;
@@ -519,6 +539,7 @@ function nextAction(item: PlannedSummaryRow) {
   if (item.status === "rejected") return "Pengajuan ditolak";
   if (item.status === "cancelled") return "Pengajuan dibatalkan";
   if (item.currentApproverName) return `Menunggu persetujuan ${item.currentApproverName}`;
+  if (item.criticalReviewStatus === "pending") return "Menunggu tinjauan Human Capital (masa kritis)";
   if (item.hcTaskStatus === "pending") {
     return item.hcTaskKind === "approve"
       ? "Menunggu keputusan Human Capital"
@@ -654,12 +675,15 @@ export async function registerPlannedLeaveRoutes(
             ELSE NULL
           END AS "currentApproverName",
           task.task_kind AS "hcTaskKind",
-          task.status AS "hcTaskStatus"
+          task.status AS "hcTaskStatus",
+          critical_review.status AS "criticalReviewStatus"
         FROM leave_requests request
         LEFT JOIN leave_request_approval_steps active_step
           ON active_step.leave_request_id = request.id AND active_step.status = 'pending'
         LEFT JOIN employees approver ON approver.id = active_step.approver_employee_id
         LEFT JOIN leave_request_hc_tasks task ON task.leave_request_id = request.id
+        LEFT JOIN leave_request_critical_reviews critical_review
+          ON critical_review.leave_request_id = request.id
         WHERE request.employee_id = $1
           AND request.policy_key = ANY($2::text[])
         ORDER BY request.submitted_at DESC`,
@@ -713,6 +737,8 @@ export async function registerPlannedLeaveRoutes(
         unpaid: preview.validation.unpaid,
         approvalChain: preview.approvalChain,
         authorityResolution: preview.authorityResolution,
+        criticalPeriods: preview.criticalPeriods,
+        criticalReviewRequired: preview.criticalReviewRequired,
         nextAction: "Kirim pengajuan untuk memulai persetujuan",
       });
     } catch (error) {
@@ -794,9 +820,17 @@ export async function registerPlannedLeaveRoutes(
                 sources: step.sources,
               })),
               authorityResolution: preview.authorityResolution,
+              ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
             }),
           ],
         );
+        if (preview.criticalReviewRequired) {
+          await attachCriticalReview(client, {
+            requestId,
+            actorAccountId: principal.id,
+            periods: preview.criticalPeriods,
+          });
+        }
 
         const evidence = evidenceInput
           ? await storeEvidence(client, requestId, principal.id, evidenceInput, encryptionKey)
@@ -857,6 +891,7 @@ export async function registerPlannedLeaveRoutes(
           unpaid: preview.validation.unpaid,
           evidence,
           approvalChain: insertedSteps,
+          criticalReviewRequired: preview.criticalReviewRequired,
           nextAction: firstStep
             ? `Menunggu persetujuan ${firstStep.name}`
             : "Menunggu proses berikutnya",

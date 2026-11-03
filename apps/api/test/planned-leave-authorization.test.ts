@@ -347,6 +347,10 @@ function createUnpaidPreviewPool() {
     if (sql.includes("FROM leave_calendar_exceptions")) {
       return { rows: [], rowCount: 0 };
     }
+    // LEAVE-009: unpaid leave only records a matching critical period; none here.
+    if (sql.includes("FROM leave_critical_periods")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FROM organization_change_sets")) {
       return { rows: [], rowCount: 0 };
     }

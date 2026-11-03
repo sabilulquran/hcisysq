@@ -56,6 +56,7 @@ import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
 import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
+import { AdminLeaveCriticalPeriodsPage } from "@/pages/AdminLeaveCriticalPeriodsPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminJobClassificationsPage } from "@/pages/AdminJobClassificationsPage";
 import { AdminPage } from "@/pages/AdminPage";
@@ -103,6 +104,7 @@ import { EmployeeServicesPage } from "@/pages/EmployeeServicesPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
+import { HcCriticalLeavePage } from "@/pages/HcCriticalLeavePage";
 import { HcPlannedLeavePage } from "@/pages/HcPlannedLeavePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -379,6 +381,13 @@ const hcPlannedLeaveRoute = createRoute({
   path: "/app/hc/planned-leave",
   beforeLoad: ({ location }) => requireEmployeeHcPath(location, "/app/hc/planned-leave"),
   component: HcPlannedLeavePage,
+});
+
+const hcCriticalLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/hc/critical-leave",
+  beforeLoad: ({ location }) => requireEmployeeHcPath(location, "/app/hc/critical-leave"),
+  component: HcCriticalLeavePage,
 });
 
 const hcAttendanceResolutionRoute = createRoute({
@@ -695,6 +704,13 @@ const adminLeaveCalendarRoute = createRoute({
   component: AdminLeaveCalendarPage,
 });
 
+const adminLeaveCriticalPeriodsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/leave/critical-periods",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/leave/critical-periods"),
+  component: AdminLeaveCriticalPeriodsPage,
+});
+
 const adminPayrollRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/payroll",
@@ -863,6 +879,7 @@ const routeTree = rootRoute.addChildren([
   employeeComingSoonRoute,
   hcLeaveValidationRoute,
   hcPlannedLeaveRoute,
+  hcCriticalLeaveRoute,
   hcAttendanceResolutionRoute,
   adminRoute,
   adminEmployeesRoute,
@@ -907,6 +924,7 @@ const routeTree = rootRoute.addChildren([
   adminAdmsDeviceDiagnosticsRoute,
   adminLeaveRoute,
   adminLeaveCalendarRoute,
+  adminLeaveCriticalPeriodsRoute,
   adminPayrollRoute,
   adminPayrollReferenceRoute,
   adminPayrollPeriodRoute,

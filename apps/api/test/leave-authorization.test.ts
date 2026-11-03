@@ -22,6 +22,7 @@ const REQUEST = "00000000-0000-4000-8000-000000000100";
 const DM_STEP = "00000000-0000-4000-8000-000000000110";
 const UNIT_STEP = "00000000-0000-4000-8000-000000000120";
 const HC_TASK = "00000000-0000-4000-8000-000000000130";
+const CRITICAL_REVIEW = "00000000-0000-4000-8000-000000000140";
 const ACTOR_ACCOUNT = "00000000-0000-4000-8000-000000000002";
 const OTHER_BOARD_ACCOUNT = "00000000-0000-4000-8000-000000000003";
 
@@ -69,6 +70,7 @@ function createDecisionPool(input: {
   principalType?: "EMPLOYEE" | "SUPER_ADMIN" | "FOUNDATION_BOARD";
   governanceAllowed?: boolean;
   hcHandling?: HcHandling;
+  criticalReview?: boolean;
   steps?: Array<{
     id: string;
     order: number;
@@ -125,6 +127,13 @@ function createDecisionPool(input: {
     }
     if (sql.includes("UPDATE leave_request_approval_steps") && sql.includes("SET status = 'pending'")) {
       return { rows: [{ approverEmployeeId: U, approverAccountId: null }], rowCount: 1 };
+    }
+    // LEAVE-009: a waiting critical-period review is activated before any HC task.
+    if (sql.includes("UPDATE leave_request_critical_reviews") && sql.includes("status = 'waiting'")) {
+      expect(values?.[0]).toBe(REQUEST);
+      return input.criticalReview
+        ? { rows: [{ id: CRITICAL_REVIEW }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
     }
     if (sql.includes("UPDATE leave_request_hc_tasks") && sql.includes("status = 'pending'")) {
       expect(values?.[0]).toBe(REQUEST);
@@ -285,6 +294,35 @@ describe("leave approval multi-account authorization", () => {
       hcHandling: "validate",
       hcTaskStatus: "pending",
     });
+  });
+
+  it("holds final line approval for the LEAVE-009 critical-period review before HC validation", async () => {
+    const { pool, query } = createDecisionPool({
+      actorEmployeeId: U,
+      requestedStepId: UNIT_STEP,
+      stepApproverEmployeeId: U,
+      stepStatus: "pending",
+      hcHandling: "validate",
+      criticalReview: true,
+      steps: [
+        { id: DM_STEP, order: 1, status: "approved" },
+        { id: UNIT_STEP, order: 2, status: "pending" },
+      ],
+    });
+    const response = await decide(pool, UNIT_STEP);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      requestStatus: "in_review",
+      stepStatus: "approved",
+      hcTaskStatus: null,
+      criticalReviewStatus: "pending",
+    });
+    const statements = query.mock.calls.map(([sql]) => String(sql));
+    expect(statements.some((sql) => sql.includes("UPDATE leave_request_hc_tasks"))).toBe(false);
+    expect(query.mock.calls.some(([sql, values]) =>
+      String(sql).includes("INSERT INTO leave_notification_outbox")
+      && values?.[2] === "leave.critical_review.requested"
+      && values?.[4] === "human_capital")).toBe(true);
   });
 
   it("moves final organizational approval to HC actual approval for unpaid leave", async () => {

@@ -126,7 +126,9 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   const attendancePermission = ATTENDANCE_PATH_PERMISSIONS[path];
   if (attendancePermission) return hasPermission(session, attendancePermission);
   if (path === "/admin/attendance") return ATTENDANCE_SUMMARY_PERMISSIONS.some((permission) => hasPermission(session, permission));
-  if (path === "/admin/leave" || path === "/admin/leave/calendar") return hasPermission(session, "leave.configuration.manage");
+  if (path === "/admin/leave" || path === "/admin/leave/calendar" || path === "/admin/leave/critical-periods") {
+    return hasPermission(session, "leave.configuration.manage");
+  }
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   // DOC-001/DOC-002: HC-only; Super Admin legacy compatibility never carries documents.*.
   if (path === "/admin/documents") return hasPermission(session, "documents.read");
@@ -170,7 +172,9 @@ export function canAccessBoard(session: AuthSession | null): boolean {
 
 export function canAccessEmployeeHcPath(session: AuthSession | null, path: string): boolean {
   if (!session || session.principal.principalType !== "EMPLOYEE") return false;
-  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave") {
+  // LEAVE-009: the critical-leave queue opens for HC; deciding also needs leave.hc.approve,
+  // which the page explains when the API refuses it.
+  if (path === "/app/hc/leave" || path === "/app/hc/planned-leave" || path === "/app/hc/critical-leave") {
     return hasPermission(session, "leave.validate");
   }
   if (path === "/app/hc/attendance-resolution") {

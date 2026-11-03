@@ -68,6 +68,7 @@ const managementNavigation = [
 const humanCapitalNavigation = [
   { label: "Validasi Cuti", href: "/app/hc/leave", icon: ShieldCheck, category: "task" },
   { label: "Cuti Terencana", href: "/app/hc/planned-leave", icon: CalendarDays, category: "task" },
+  { label: "Cuti Masa Kritis", href: "/app/hc/critical-leave", icon: CalendarDays, category: "task" },
   { label: "Penyelesaian Kehadiran", href: "/app/hc/attendance-resolution", icon: Clock3, category: "task" },
 ] as const;
 

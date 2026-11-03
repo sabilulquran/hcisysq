@@ -1,0 +1,277 @@
+openapi: 3.1.0
+info:
+  title: HCIS Leave Critical Periods (LEAVE-009)
+  version: 1.0.0
+  description: |
+    Critical periods (masa kritis) managed by Human Capital and the extra HC review they add to
+    leave, as implemented in apps/api/src/modules/leave/critical-period-routes.ts.
+    Spec: docs/domain/leave-critical-periods.md.
+    All routes use the session cookie and answer with Cache-Control: no-store.
+    Errors use { code, message }.
+
+    Related changes in other contracts: the annual-leave preview (leave.openapi.yaml) and the
+    planned-leave preview add `criticalPeriods` and `criticalReviewRequired`; leave summaries add
+    `criticalReviewStatus`; GET /me/calendar (meeting-calendar.openapi.yaml) adds
+    `CalendarCriticalPeriod` items.
+paths:
+  /admin/leave/critical-periods:
+    get:
+      tags: [Leave]
+      operationId: listLeaveCriticalPeriods
+      summary: Critical periods, latest start first
+      description: Requires leave.configuration.manage. ENG-LIST-001 paged.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, inactive, all], default: active }
+        - name: year
+          in: query
+          description: Only periods that touch this calendar year.
+          schema: { type: integer, minimum: 2020, maximum: 2100 }
+      responses:
+        '200':
+          description: One page of critical periods
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CriticalPeriod' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  unitOptions:
+                    type: array
+                    description: Every organizational unit (bounded data) for the scope picker.
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Leave]
+      operationId: createLeaveCriticalPeriod
+      summary: Create a critical period for the whole foundation (unitId null) or one unit
+      description: Requires leave.configuration.manage. Audited as leave.critical_period.created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CriticalPeriodInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CriticalPeriod' }
+        '400':
+          description: >-
+            INVALID_CRITICAL_PERIOD, CRITICAL_PERIOD_DATE_INVALID, CRITICAL_PERIOD_RANGE_INVALID or
+            CRITICAL_PERIOD_TOO_LONG (more than 120 days)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /admin/leave/critical-periods/{id}:
+    patch:
+      tags: [Leave]
+      operationId: updateLeaveCriticalPeriod
+      summary: Edit, deactivate or reactivate a critical period
+      description: |
+        Requires leave.configuration.manage. Never changes requests already submitted
+        (snapshot-on-submit). Audited as leave.critical_period.updated (before/after of the
+        changed fields), .deactivated or .reactivated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                label: { type: string, minLength: 1, maxLength: 120 }
+                description: { type: [string, 'null'], maxLength: 500 }
+                startOn: { type: string, format: date }
+                endOn: { type: string, format: date }
+                unitId: { type: [string, 'null'], format: uuid }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CriticalPeriod' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /leave/hc/critical-reviews:
+    get:
+      tags: [Leave]
+      operationId: listLeaveCriticalReviews
+      summary: Pending critical-period reviews, oldest submission first
+      description: |
+        EMPLOYEE principal holding organization-scoped leave.validate and leave.hc.approve
+        (403 HC_APPROVAL_FORBIDDEN otherwise). ENG-LIST-001 paged.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of pending reviews
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CriticalReviewQueueItem' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /leave/hc/critical-reviews/{reviewId}/decision:
+    post:
+      tags: [Leave]
+      operationId: decideLeaveCriticalReview
+      summary: Approve or reject a pending critical-period review
+      description: |
+        Same permission as the queue. Approve activates the request's waiting HC administrative
+        task when there is one; otherwise the request becomes approved. Reject rejects the request.
+        Nobody decides their own leave (403 SELF_REVIEW_FORBIDDEN); the queue hides it too.
+      parameters:
+        - name: reviewId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '200':
+          description: Decision stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviewId: { type: string, format: uuid }
+                  requestId: { type: string, format: uuid }
+                  reviewStatus: { type: string, enum: [approved, rejected] }
+                  requestStatus: { type: string, enum: [in_review, approved, rejected] }
+                  hcTaskStatus: { type: [string, 'null'], enum: [pending, null] }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '404':
+          description: CRITICAL_REVIEW_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: CRITICAL_REVIEW_NOT_PENDING or HC_TASK_NOT_READY
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Problem' }
+components:
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    CriticalPeriodInput:
+      type: object
+      required: [label, startOn, endOn, unitId]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date, description: On or after startOn; at most 120 days inclusive. }
+        unitId: { type: [string, 'null'], format: uuid, description: Null for the whole foundation. }
+    CriticalPeriod:
+      type: object
+      required: [id, label, startOn, endOn, unitId, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        description: { type: [string, 'null'] }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        unitId: { type: [string, 'null'], format: uuid }
+        unitName: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CriticalPeriodSnapshot:
+      type: object
+      description: A matched period as copied onto the request at submission.
+      required: [id, label, startOn, endOn, scope]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        scope: { type: string, enum: [organization, unit] }
+        unitId: { type: [string, 'null'], format: uuid }
+        unitName: { type: [string, 'null'] }
+    CriticalReviewQueueItem:
+      type: object
+      properties:
+        reviewId: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        requesterEmployeeId: { type: string, format: uuid }
+        requesterName: { type: string }
+        employeeNumber: { type: string }
+        unitName: { type: [string, 'null'] }
+        positionName: { type: [string, 'null'] }
+        policyKey: { type: string }
+        policyName: { type: string }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        workingDays: { type: integer }
+        reason: { type: [string, 'null'] }
+        submittedAt: { type: string, format: date-time }
+        periods: { type: array, items: { $ref: '#/components/schemas/CriticalPeriodSnapshot' } }

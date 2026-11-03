@@ -46,6 +46,7 @@ function chipClass(item: CalendarItem) {
     case "leave": return "bg-cat-leave-soft text-cat-leave";
     case "trip": return "bg-cat-service-soft text-cat-service";
     case "non_working": return "bg-danger-soft text-danger-ink";
+    case "critical_period": return "bg-warning-soft text-warning-ink";
   }
 }
 

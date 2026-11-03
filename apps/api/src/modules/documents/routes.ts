@@ -271,12 +271,15 @@ export async function registerDocumentRoutes(
     return send(reply, 200, { id: params.data.id, status: "CANCELLED" });
   });
 
+  // D-20: the list names each letter but carries none of its content; the letter itself is
+  // served only by the audited endpoint below, and never once revoked.
   app.get("/documents/me/issued", async (request, reply) => {
     const self = await requireSelf(request, reply);
     if (!self) return;
     const result = await pool.query(
       `SELECT id, document_code AS "documentCode", document_number AS "documentNumber",
-              status, issued_at AS "issuedAt", signer, content_snapshot AS "contentSnapshot"
+              status, issued_at AS "issuedAt", signer,
+              jsonb_build_object('documentLabel', content_snapshot->'documentLabel') AS "contentSnapshot"
          FROM hr_issued_documents
         WHERE employee_id = $1 AND document_kind = 'CERTIFICATE'
         ORDER BY issued_at DESC

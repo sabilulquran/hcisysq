@@ -2857,6 +2857,7 @@ paths:
                   issuedAt: { type: string, format: date-time }
                   signer:
                     type: object
+                    required: [title, name]
                     properties:
                       title: { type: string }
                       name: { type: [string, 'null'] }

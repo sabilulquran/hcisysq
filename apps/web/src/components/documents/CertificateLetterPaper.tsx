@@ -2,6 +2,8 @@
 // (§4.1) and the printed signer block (D-05). Wording follows hr-documents.md §13; this
 // component decides nothing about who may see the letter — the API already did.
 
+import { createPortal } from "react-dom";
+
 import type { IssuedDocumentSummary } from "@/lib/hrDocuments";
 
 /** Letter dates are on the Jakarta calendar, like the number (§9). */
@@ -14,6 +16,8 @@ function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+// Employees reach their own letters only while active, so a paklaring (issued after the
+// employment ended, D-06) is rendered here for completeness rather than for the self screen.
 export function CertificateLetterPaper({ document }: { document: IssuedDocumentSummary }) {
   const content = document.contentSnapshot;
   const startedOn = text(content.startedOn);
@@ -56,12 +60,27 @@ export function CertificateLetterPaper({ document }: { document: IssuedDocumentS
   );
 }
 
-/** Print only the letter, on A4, whatever the rest of the page shows. */
-export const certificatePrintStyle = `
+const printStyle = `
+  .certificate-print-root { display: none; }
   @media print {
     @page { size: A4 portrait; margin: 18mm; }
-    body * { visibility: hidden !important; }
-    .certificate-letter-paper, .certificate-letter-paper * { visibility: visible !important; }
-    .certificate-letter-paper { position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important; border: 0 !important; }
+    body > *:not(.certificate-print-root) { display: none !important; }
+    .certificate-print-root { display: block !important; }
+    .certificate-print-root .certificate-letter-paper { border: 0 !important; border-radius: 0 !important; padding: 0 !important; }
   }
 `;
+
+/**
+ * Print only the letter, on A4: a copy is mounted directly under <body> and everything else is
+ * taken out of the printed layout, so no blank pages or offsets come from the screen around it.
+ */
+export function CertificatePrintCopy({ document }: { document: IssuedDocumentSummary }) {
+  if (typeof window === "undefined") return null;
+  return createPortal(
+    <div className="certificate-print-root">
+      <style>{printStyle}</style>
+      <CertificateLetterPaper document={document} />
+    </div>,
+    window.document.body,
+  );
+}

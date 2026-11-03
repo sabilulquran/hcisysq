@@ -5,7 +5,7 @@
 import { FileText, Loader2, Printer, ShieldAlert, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { CertificateLetterPaper, certificatePrintStyle } from "@/components/documents/CertificateLetterPaper";
+import { CertificateLetterPaper, CertificatePrintCopy } from "@/components/documents/CertificateLetterPaper";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -249,7 +249,7 @@ export function EmployeeDocumentsPage() {
               )}
               {opened ? (
                 <div className="mt-4 border-t border-border/70 pt-4">
-                  <style>{certificatePrintStyle}</style>
+                  <CertificatePrintCopy document={opened} />
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-bold text-brand-heading">{opened.documentNumber}</p>
                     <div className="flex flex-wrap gap-2">

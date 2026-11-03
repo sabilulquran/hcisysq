@@ -105,8 +105,12 @@ export function carriesIdentityPermission(role: AssignableRole): boolean {
 export function canDelegateRole(role: AssignableRole, delegated: boolean, channel?: GrantChannel): boolean {
   if (!HCIS_ROLES.includes(role.roleKey) || !role.permissions.length) return false;
   if (carriesIdentityPermission(role)) return false;
-  // ORG-013-2: the governance Leave permission is grantable only inside its own role, so a changed
-  // bundle that slips it into another role is refused like any unknown permission.
+  // ORG-013-2 / ORG-013-E: the governance role carries exactly its one permission. A bundle that
+  // grew is refused, so an organ account can never receive anything else through it.
+  if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY
+      && (role.permissions.length !== 1 || role.permissions[0] !== GOVERNANCE_LEAVE_APPROVE_PERMISSION)) return false;
+  // The governance Leave permission is grantable only inside its own role, so a changed bundle
+  // that slips it into another role is refused like any unknown permission.
   if (!role.permissions.every((key) => HCIS_PERMISSIONS.includes(key)
     || (key === GOVERNANCE_LEAVE_APPROVE_PERMISSION && role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY))) return false;
   // AUTH-014 §2.5: on either channel the authority comes from the channel, not from a permission
@@ -325,9 +329,10 @@ export async function removeRoleAssignment(
       `SELECT account_id AS "accountId", role_id AS "roleId" FROM account_role_assignments WHERE id = $1`, [assignmentId]);
     const assignment = result.rows[0];
     if (!assignment) throw new AuthError(404, "ASSIGNMENT_NOT_FOUND", "Assignment tidak ditemukan.");
-    const target = await lockTargetAccount(db, assignment.accountId);
-    const role = await requireDelegation(db, actor, assignment.accountId, assignment.roleId, context.channel);
-    assertTargetForRole(target, role.roleKey);
+    // Removal only narrows access, so it does not re-check the target type: an assignment that
+    // should never have existed (old data, a seed) must stay removable.
+    await lockTargetAccount(db, assignment.accountId);
+    await requireDelegation(db, actor, assignment.accountId, assignment.roleId, context.channel);
     const removed = await db.query("DELETE FROM account_role_assignments WHERE id = $1 RETURNING id", [assignmentId]);
     if (!removed.rowCount) throw new AuthError(404, "ASSIGNMENT_NOT_FOUND", "Assignment tidak ditemukan.");
     await writeGrantAudit(db, "role.assignment.removed", actor, context, assignmentId, assignment);

@@ -4,7 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createRoleAssignment } from "../src/modules/auth/role-assignment.js";
+import { createRoleAssignment, removeRoleAssignment } from "../src/modules/auth/role-assignment.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
 import { governanceActorIsRequester } from "../src/modules/leave/organization-authority.js";
 import { LEAVE_GOVERNANCE_CAPABILITY, PostgresOrganizationRepository } from "../src/modules/organization/index.js";
@@ -178,6 +178,17 @@ describe.skipIf(!databaseUrl)("ORG-013 organ account approver (PostgreSQL)", () 
       const organ = await account({ principalType: "FOUNDATION_BOARD", email: "organ-lain@example.invalid" });
       await expect(createRoleAssignment(pool, superAdmin, organ, input({ roleId: viewerRoleId })))
         .rejects.toMatchObject({ code: "ROLE_TARGET_INVALID" });
+    });
+  });
+
+  describe("removal", () => {
+    it("removes a governance assignment that should never have existed on an employee account", async () => {
+      const employeeId = await employee("data-lama@example.invalid");
+      const staff = await account({ principalType: "EMPLOYEE", email: "data-lama@example.invalid", employeeId });
+      const assignmentId = randomUUID();
+      await pool.query(`INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,reason)
+        VALUES($1,$2,$3,'organization','Synthetic legacy row')`, [assignmentId, staff, governanceRoleId]);
+      await expect(removeRoleAssignment(pool, superAdmin, assignmentId)).resolves.toBeUndefined();
     });
   });
 

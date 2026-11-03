@@ -504,10 +504,12 @@ export async function registerOrganizationAdminRoutes(
       try {
         oversight = await resolver.resolveOversightAbove({
           approverEmployeeId: finalApprover.employeeId,
-          approverPositionKey: finalApprover.employeeId ? null : finalApprover.positionKey,
+          // ORG-013-4: the same seat-anchored lookup the Leave runtime uses.
+          approverPositionKey: finalApprover.positionKey,
           effectiveDate: input.effectiveDate,
           workflowKey: plan.workflowKey,
           ...(plan.requiredCapability === undefined ? {} : { requiredCapability: plan.requiredCapability }),
+          ...(plan.accountCapability === undefined ? {} : { allowAccountRecipient: true }),
         });
       } catch (error) {
         warnings.push({

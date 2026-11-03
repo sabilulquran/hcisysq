@@ -132,6 +132,11 @@ Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat
 | Kotak persetujuan `/board` (v1, `DRAFT`) | `apps/web/src/components/board/BoardApprovalsSection.tsx` |
 | Test | `apps/api/test/org013-organ-account-approver.test.ts`, `org013-organ-account-approver.postgres.test.ts` |
 
+Tindak lanjut sebelum rollout cuti ke `STRUCTURE` (`TBD`):
+
+- **Kanal SQ Hub.** Lookup `GET /internal/v1/role-administration/accounts` masih menjawab 404 untuk akun `FOUNDATION_BOARD`, sehingga Hub belum bisa memberikan role ini. Membukanya mengubah kontrak AUTH-014 dan perlu perubahan di SQ Hub. Sampai itu selesai, pemberian dan pencabutan role ini hanya lewat break-glass Super Admin, tetap dengan syarat ORG-013-2.
+- **Diagnostik oversight.** Bila akun penerima oversight `CONFLICT` atau tidak eligible, notification intent tidak dibuat. Perilaku ini fail-closed, tetapi belum dicatat di log untuk HC.
+
 Workflow lain yang memakai resolver yang sama (perjalanan dinas, pinjaman, pengaturan kerja, lembur, penilaian kinerja) tidak ikut opt-in. Untuk workflow itu jabatan akun tetap gagal `INVALID_AUTHORITY_PRINCIPAL`.
 
 ## Acceptance criteria

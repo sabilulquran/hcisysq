@@ -230,18 +230,23 @@ async function finalLineOrGovernanceApprover(
   db: PoolClient,
   requestId: string,
 ): Promise<FinalApprover | null> {
-  // ORG-013-4: an account step has no employee id, so its seat comes from the
-  // resolution context snapshotted with the request.
+  // ORG-013-4: the final step's seat comes from the resolution context snapshotted with the
+  // request, for either principal. An employee who holds an account-held seat (a salaried
+  // organ member) has no employee incumbency there, so looking the seat up from the employee
+  // would miss it, or find a staff seat with a different oversight parent.
   const result = await db.query<FinalApprover>(
     `SELECT s.approver_employee_id AS "employeeId",
-            CASE WHEN s.approver_account_id IS NULL THEN NULL ELSE (
+            (
               SELECT authority ->> 'positionKey'
               FROM jsonb_array_elements(
                 COALESCE(r.validation_summary #> '{authorityResolution,authorities}', '[]'::jsonb)
               ) AS authority
-              WHERE authority ->> 'accountId' = s.approver_account_id::text
+              WHERE (s.approver_account_id IS NOT NULL
+                      AND authority ->> 'accountId' = s.approver_account_id::text)
+                 OR (s.approver_employee_id IS NOT NULL
+                      AND authority ->> 'employeeId' = s.approver_employee_id::text)
               LIMIT 1
-            ) END AS "positionKey"
+            ) AS "positionKey"
      FROM leave_request_approval_steps s
      JOIN leave_requests r ON r.id = s.leave_request_id
      WHERE s.leave_request_id = $1
@@ -297,9 +302,13 @@ export async function enqueueFinalApprovalOversight(
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }
+    const stored = await finalLineOrGovernanceApprover(db, input.requestId);
     const finalApprover: FinalApprover | null = input.finalApproverEmployeeId
-      ? { employeeId: input.finalApproverEmployeeId, positionKey: null }
-      : await finalLineOrGovernanceApprover(db, input.requestId);
+      ? {
+          employeeId: input.finalApproverEmployeeId,
+          positionKey: stored?.employeeId === input.finalApproverEmployeeId ? stored.positionKey : null,
+        }
+      : stored;
     if (!finalApprover) {
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
@@ -309,7 +318,7 @@ export async function enqueueFinalApprovalOversight(
     // Oversight is informational: the recipient needs no approval capability.
     const recipient = await resolver.resolveOversightAbove({
       approverEmployeeId: finalApprover.employeeId,
-      approverPositionKey: finalApprover.employeeId ? null : finalApprover.positionKey,
+      approverPositionKey: finalApprover.positionKey,
       effectiveDate: input.effectiveDate,
       workflowKey: input.workflowKey,
       allowAccountRecipient: true,
@@ -332,7 +341,7 @@ export async function enqueueFinalApprovalOversight(
           recipient.employeeId ?? recipient.accountId,
           JSON.stringify({
             finalLineApproverEmployeeId: finalApprover.employeeId,
-            ...(finalApprover.employeeId ? {} : { finalLineApproverPositionKey: finalApprover.positionKey }),
+            ...(finalApprover.positionKey ? { finalLineApproverPositionKey: finalApprover.positionKey } : {}),
             resolutionSource: recipient.source,
             resolutionPath: recipient.path,
             incumbentKind: recipient.incumbentKind,

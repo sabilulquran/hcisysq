@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
+import { canDelegateRole } from "../src/modules/auth/role-assignment.js";
 import {
   enqueueFinalApprovalOversight,
   snapshotLeaveRolloutAuthorities,
@@ -273,5 +274,67 @@ describe("ORG-013 Leave snapshot and oversight", () => {
     const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO leave_notification_outbox"));
     expect(insert?.[1]?.[2]).toBe(chairAccount);
     expect(insert?.[1]?.[4]).toBe("account");
+  });
+});
+
+describe("ORG-013 review follow-ups", () => {
+  it("anchors oversight on the seat when a salaried organ member decides as an employee (ORG-013-4)", async () => {
+    // The Secretary seat is account-held, but its account is an EMPLOYEE account: the step is an
+    // employee step, and the employee has no incumbency row of its own in that seat.
+    const { subject } = resolver(structure(), {
+      [secretaryAccount]: { kind: "EMPLOYEE", employeeId: "employee-salaried-secretary" },
+    });
+    await expect(subject.resolveOversightAbove({
+      approverEmployeeId: "employee-salaried-secretary", approverPositionKey: "position-secretary",
+      effectiveDate: on, workflowKey: "leave.annual", allowAccountRecipient: true,
+    })).resolves.toMatchObject({ accountId: chairAccount, source: "OVERSIGHT_PARENT" });
+
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("{authorityResolution,mode}")) return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+      if (sql.includes("FROM leave_request_approval_steps")) {
+        return { rows: [{ employeeId: "employee-salaried-secretary", positionKey: "position-secretary" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const resolveOversightAbove = vi.fn(async () => null);
+    await enqueueFinalApprovalOversight(
+      { query } as unknown as PoolClient,
+      {
+        requestId: "leave-request", workflowKey: "leave.annual", effectiveDate: on,
+        finalApproverEmployeeId: "employee-salaried-secretary",
+      },
+      { resolver: { resolveOversightAbove } },
+    );
+    expect(resolveOversightAbove).toHaveBeenCalledWith(expect.objectContaining({
+      approverEmployeeId: "employee-salaried-secretary", approverPositionKey: "position-secretary",
+    }));
+  });
+
+  it("never merges two different account approvers", async () => {
+    // A Unit Approver binding on the Chair seat next to the Secretary governance step would be a
+    // second account principal; here two structural line steps land on two accounts.
+    const snapshot = structure({
+      positions: [
+        seat("position-director", "EMPLOYEE", "BLOCK", "position-secretary"),
+        seat("position-secretary", "ACCOUNT"),
+        seat("position-chair", "ACCOUNT"),
+      ],
+      authorityBindings: [
+        { ...binding("leader", "node-root", "GOVERNANCE_APPROVER", "position-secretary"), subjectKind: "NODE" as const, bindingType: "LEADER" as const },
+        { ...binding("unit", "node-root", "GOVERNANCE_APPROVER", "position-chair"), subjectKind: "NODE" as const, bindingType: "UNIT_APPROVER" as const },
+      ],
+    });
+    const { subject } = resolver(snapshot);
+    const line = await subject.resolveLineAuthorities(directorLeave);
+    expect(line.authorities.map((item) => item.accountId)).toEqual([secretaryAccount, chairAccount]);
+  });
+
+  it("refuses the governance role once its bundle carries anything else (ORG-013-E)", () => {
+    expect(canDelegateRole({ roleKey: "governance_leave_approver", permissions: ["leave.governance.approve"] }, false, "sq_hub"))
+      .toBe(true);
+    expect(canDelegateRole({ roleKey: "governance_leave_approver", permissions: ["leave.governance.approve", "board.read"] }, false, "sq_hub"))
+      .toBe(false);
+    expect(canDelegateRole({ roleKey: "human_capital", permissions: ["leave.approve", "leave.governance.approve"] }, false, "sq_hub"))
+      .toBe(false);
   });
 });

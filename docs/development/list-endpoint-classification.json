@@ -377,6 +377,31 @@
       "reason": "Data master lokasi kerja (2 hari ini)."
     },
     {
+      "url": "/admin/committees",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/:id",
+      "list": "single"
+    },
+    {
+      "url": "/admin/committees/:id/history",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/employee-options",
+      "list": "typeahead",
+      "reason": "Pencarian pegawai aktif untuk susunan panitia ORG-012; q minimal 2 huruf, maksimal 20."
+    },
+    {
+      "url": "/admin/committees/participation",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/committees/participation/:employeeId",
+      "list": "paged"
+    },
+    {
       "url": "/admin/decision-documents",
       "list": "paged",
       "reason": "Register PK/SK dengan page/pageSize (maks 100) dan urutan unik signed_on, nomor, id."
@@ -987,6 +1012,19 @@
       "url": "/me/calendar",
       "list": "range",
       "reason": "CAL-001 §11: rentang tanggal maksimal 42 hari; lebih dari 500 item ditolak 400 RANGE_TOO_DENSE, tidak dipotong diam-diam."
+    },
+    {
+      "url": "/me/committees",
+      "list": "paged"
+    },
+    {
+      "url": "/me/committees/:id",
+      "list": "single"
+    },
+    {
+      "url": "/me/committees/meeting-groups",
+      "list": "bounded",
+      "reason": "Paling banyak 20 kepanitiaan aktif milik pemanggil, masing-masing dengan anggota aktif yang dibatasi 300 oleh rute penambah anggota (ORG-012 D-06, D-16)."
     },
     {
       "url": "/me/meetings",

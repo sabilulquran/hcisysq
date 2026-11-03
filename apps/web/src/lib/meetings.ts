@@ -31,7 +31,9 @@ export type CalendarItem =
   | { kind: "busy"; id: null; startAt: string; endAt: string; involvesMe: false }
   | { kind: "leave"; id: string; status: "approved" | "in_review"; startOn: string; endOn: string }
   | { kind: "trip"; id: string; status: "APPROVED" | "ISSUED" | "IN_REVIEW"; destination: string; startOn: string; endOn: string }
-  | { kind: "non_working"; date: string; label: string | null };
+  | { kind: "non_working"; date: string; label: string | null }
+  // LEAVE-009: a masa kritis for the whole foundation (unitName null) or my unit.
+  | { kind: "critical_period"; id: string; label: string; startOn: string; endOn: string; unitName: string | null };
 
 export interface MeetingSummary {
   id: string;
@@ -232,7 +234,8 @@ export function itemDates(item: CalendarItem): string[] {
     ? [jakartaDate(item.startAt), jakartaDate(new Date(Date.parse(item.endAt) - 1))]
     : [item.startOn, item.endOn];
   const dates: string[] = [];
-  for (let date = first; date <= last && dates.length < 43; date = addDays(date, 1)) dates.push(date);
+  // A critical period may last 120 days and start before the visible month, so the guard covers it.
+  for (let date = first; date <= last && dates.length < 125; date = addDays(date, 1)) dates.push(date);
   return dates;
 }
 
@@ -253,6 +256,7 @@ export function itemsByDate(items: readonly CalendarItem[]): Map<string, Calenda
 
 function sortKey(item: CalendarItem): string {
   if (item.kind === "non_working") return "0";
+  if (item.kind === "critical_period") return `0${item.startOn}`;
   if (item.kind === "leave" || item.kind === "trip") return `1${item.startOn}`;
   return `2${item.startAt}`;
 }
@@ -304,5 +308,6 @@ export function calendarItemLabel(item: CalendarItem): string {
     case "leave": return item.status === "approved" ? "Cuti" : "Cuti (diajukan)";
     case "trip": return item.status === "IN_REVIEW" ? `Dinas (diajukan): ${item.destination}` : `Dinas: ${item.destination}`;
     case "non_working": return item.label ?? "Libur";
+    case "critical_period": return `Masa kritis: ${item.label}`;
   }
 }

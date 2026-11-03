@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { AppShell } from "@/layouts/AppShell";
 import {
   getPlannedLeaveSummary,
@@ -314,6 +315,7 @@ export function EmployeePlannedLeavePage() {
               {preview.unpaid ? (
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">Cuti ini dicatat sebagai tidak bergaji untuk kebutuhan downstream. Halaman ini tidak menghitung potongan payroll.</p>
               ) : null}
+              {preview.criticalReviewRequired ? <CriticalPeriodNotice periods={preview.criticalPeriods} /> : null}
               <button type="button" disabled={busy} onClick={() => void handleSubmit()} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-bold text-brand-foreground disabled:opacity-50">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
                 Kirim pengajuan

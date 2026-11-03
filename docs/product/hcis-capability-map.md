@@ -50,7 +50,7 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
 
 - Leave postponement with proposed alternative dates — LEAVE-008 (DISCOVERY). In the legacy app an approver could hold a request and propose other dates, and the employee accepted them. HCIS approvers can only approve or reject today. A postponement must keep the APR-001 snapshot: accepting it records a new request or an explicit amendment, never a silent edit of approved dates or balance.
-- Critical periods for leave — LEAVE-009 (DISCOVERY). Legacy HC could mark periods (for the whole yayasan or one unit) during which any leave also needs HC approval; for schools these are exam weeks, PPDB, report cards and year-end. Whether a critical period only adds HC review or blocks leave is an open business rule; the DRAFT default is to add HC review and never block.
+- Critical periods for leave — LEAVE-009 (IMPLEMENTED 2026-11-03, `docs/domain/leave-critical-periods.md`). HC marks periods (for the whole yayasan or one unit) such as exam weeks, PPDB, report cards and year-end; Cuti Tahunan and planned leave in such a period get an HC review after line approval. DRAFT default kept: review only, never block.
 
 ### 3. Compensation and employee financial services
 

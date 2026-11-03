@@ -152,6 +152,11 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/attendance/devices/opaque/biometrics")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/leave")).toBe(true);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/planned-leave")).toBe(true);
+    // LEAVE-009: the critical-leave queue opens for HC; the API checks leave.hc.approve.
+    expect(canAccessEmployeeHcPath(actor, "/app/hc/critical-leave")).toBe(true);
+    expect(canAccessEmployeeHcPath(session("EMPLOYEE", []), "/app/hc/critical-leave")).toBe(false);
+    expect(canAccessAdminPath(actor, "/admin/leave/critical-periods")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["leave.validate"]), "/admin/leave/critical-periods")).toBe(false);
     expect(canAccessEmployeeHcPath(actor, "/app/hc/attendance-resolution")).toBe(true);
     // Owner decision 2026-10-16: HC admins reach /admin/access but cannot grant or remove roles.
     expect(hcAdmin).not.toContain("access.roles.assign");

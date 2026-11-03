@@ -1073,6 +1073,30 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
+    "method": "GET",
+    "url": "/admin/leave/critical-periods",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
+    "method": "POST",
+    "url": "/admin/leave/critical-periods",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/leave/critical-periods/:id",
+    "permissions": [
+      "leave.configuration.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/organization/admin-routes.ts",
     "method": "POST",
     "url": "/admin/organization/designer/drafts/:draftId/authority-bindings",
@@ -1809,6 +1833,26 @@
     "access": "hc-operational",
     "permissions": [
       "leave.validate"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
+    "method": "GET",
+    "url": "/leave/hc/critical-reviews",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate",
+      "leave.hc.approve"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/leave/critical-period-routes.ts",
+    "method": "POST",
+    "url": "/leave/hc/critical-reviews/:reviewId/decision",
+    "access": "hc-operational",
+    "permissions": [
+      "leave.validate",
+      "leave.hc.approve"
     ]
   },
   {

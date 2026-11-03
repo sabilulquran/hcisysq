@@ -1,3 +1,5 @@
+import type { CriticalPeriodMatch } from "@/lib/leaveCriticalPeriods";
+
 export type AnnualLeavePeriodKey = "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
 
 export interface AnnualLeavePeriodView {
@@ -53,6 +55,8 @@ export interface LeaveRequestSummary {
   submittedAt: string;
   finalDecidedAt: string | null;
   currentApproverName: string | null;
+  /** LEAVE-009: null when the request touched no critical period. */
+  criticalReviewStatus?: "waiting" | "pending" | "approved" | "rejected" | null;
 }
 
 export interface AnnualLeavePreview {
@@ -71,6 +75,8 @@ export interface AnnualLeavePreview {
     name: string;
     sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
   }>;
+  criticalPeriods: CriticalPeriodMatch[];
+  criticalReviewRequired: boolean;
 }
 
 export interface LeaveApprovalInboxItem {

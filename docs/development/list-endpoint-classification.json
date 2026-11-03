@@ -496,6 +496,10 @@
       "package": "PAG-1"
     },
     {
+      "url": "/admin/leave/critical-periods",
+      "list": "paged"
+    },
+    {
       "url": "/admin/leave/employees/:employeeId/preview",
       "list": "single"
     },
@@ -827,6 +831,11 @@
       "list": "debt",
       "reason": "Antrean HC tanpa batas pengaman.",
       "package": "PAG-5"
+    },
+    {
+      "url": "/leave/hc/critical-reviews",
+      "list": "paged",
+      "reason": "LEAVE-009: antrean tinjauan masa kritis, halaman standar."
     },
     {
       "url": "/leave/hc/requests/:requestId/evidence/:evidenceId",

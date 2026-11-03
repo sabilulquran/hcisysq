@@ -1,3 +1,5 @@
+import type { CriticalPeriodMatch } from "@/lib/leaveCriticalPeriods";
+
 export type SupportedPlannedLeaveKey =
   | "employee_marriage"
   | "child_marriage"
@@ -65,6 +67,8 @@ export interface PlannedLeavePreview {
     name: string;
     sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
   }>;
+  criticalPeriods: CriticalPeriodMatch[];
+  criticalReviewRequired: boolean;
   nextAction: string;
 }
 
@@ -171,6 +175,8 @@ export interface PlannedHcQueue {
     validationSummary: {
       calendarDurationDays?: number;
       unpaid?: boolean;
+      /** LEAVE-009 D-02: recorded for Cuti Tanpa Gaji, which HC already decides. */
+      criticalPeriods?: CriticalPeriodMatch[];
     };
     evidenceRequirement: "none" | "required";
     submittedAt: string;

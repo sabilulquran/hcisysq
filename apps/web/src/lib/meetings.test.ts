@@ -48,4 +48,16 @@ describe("CAL-001 calendar helpers", () => {
     expect(calendarItemLabel(busy)).toBe("08:00 Sibuk");
     expect(calendarItemLabel(holiday)).toBe("Hari Guru");
   });
+
+  it("LEAVE-009: spreads a long critical period over the visible month and labels it", () => {
+    const period: CalendarItem = {
+      kind: "critical_period", id: "c", label: "PPDB", startOn: "2026-01-05", endOn: "2026-04-30", unitName: null,
+    };
+    const dates = itemDates(period);
+    expect(dates[0]).toBe("2026-01-05");
+    expect(dates.at(-1)).toBe("2026-04-30");
+    expect(calendarItemLabel(period)).toBe("Masa kritis: PPDB");
+    const holiday: CalendarItem = { kind: "non_working", date: "2026-04-01", label: "Libur" };
+    expect(itemsByDate([period, holiday]).get("2026-04-01")!.map((item) => item.kind)).toEqual(["non_working", "critical_period"]);
+  });
 });

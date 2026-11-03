@@ -190,9 +190,9 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(354);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(357);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
-    expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(12);
+    expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(99);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
@@ -214,6 +214,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       "/leave/hc/tasks/:taskId/administration-decision": { action: "validate_all", note: hcNote },
       "/leave/planned/hc/tasks/:taskId/validation-decision": { action: "validate" },
       "/leave/planned/hc/tasks/:taskId/approval-decision": { decision: "approve" },
+      "/leave/hc/critical-reviews/:reviewId/decision": { decision: "approve" },
       "/attendance/resolutions/hc/:caseId/decision": { action: "manual_review", note: hcNote },
     };
     for (const route of manifest) {

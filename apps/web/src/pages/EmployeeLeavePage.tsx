@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
@@ -380,6 +381,7 @@ export function EmployeeLeavePage() {
                   ))}
                 </div>
               </div>
+              <CriticalPeriodNotice periods={preview.criticalPeriods} />
               <button
                 type="button"
                 disabled={submitting}
@@ -411,6 +413,9 @@ export function EmployeeLeavePage() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.workingDays} hari kerja
                     {item.currentApproverName ? ` · menunggu ${item.currentApproverName}` : ""}
+                    {item.status === "in_review" && item.criticalReviewStatus === "pending"
+                      ? " · menunggu tinjauan Human Capital (masa kritis)"
+                      : ""}
                   </p>
                 </div>
                 <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">

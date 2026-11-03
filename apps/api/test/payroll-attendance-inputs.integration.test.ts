@@ -109,7 +109,12 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     employeeId: string,
     workDate: string,
     checkedIn: boolean,
-    options: { version?: number; dayType?: string | null; holidayScheduledWork?: boolean | null } = {},
+    options: {
+      version?: number;
+      dayType?: string | null;
+      holidayScheduledWork?: boolean | null;
+      status?: string;
+    } = {},
   ) {
     await pool.query(
       `INSERT INTO attendance_result_versions(
@@ -121,7 +126,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
         employeeId,
         workDate,
         options.version ?? 1,
-        checkedIn ? "present" : "absent",
+        options.status ?? (checkedIn ? "present" : "absent"),
         checkedIn ? `${workDate}T01:00:00.000Z` : null,
         randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, ""),
         options.dayType === undefined ? "working_day" : options.dayType,
@@ -268,6 +273,28 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     const { employeeId } = await newEmployment("KONTRAK");
     await attendanceDay(employeeId, "2026-09-01", true, { version: 1 });
     await attendanceDay(employeeId, "2026-09-01", false, { version: 2 });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("earns transport on an approved field assignment without a check-in (ATT-015 D-07)", async () => {
+    const { employmentId, employeeId } = await newEmployment("KONTRAK_HONORER");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "field_assignment" });
+    await attendanceDay(employeeId, "2026-09-02", true, { status: "field_assignment" });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([{ employmentId, days: 2 }]);
+  });
+
+  it("earns no transport on remote work without a check-in", async () => {
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "remote_work" });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("earns no transport on a field assignment that falls on a rest day", async () => {
+    const { employeeId } = await newEmployment("LEPAS");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "field_assignment", dayType: "rest_day" });
     const resolved = await resolveAttendanceInputs(pool, window());
     expect(resolved.attendanceDays).toEqual([]);
   });

@@ -106,12 +106,17 @@ async function resolveOvertime(pool: Pool, window: AttendanceWindow) {
  * does not matter. A rest day or a public holiday earns no transport unless the
  * employee was scheduled to work it; days recorded before ATT-014 added the day
  * type carry NULL and are treated as working days, since that is what they were.
+ *
+ * An approved field assignment without a punch (ATT-015, status
+ * `field_assignment`) also earns transport: the employee travelled for work, just
+ * not to the usual site (ATT-015 D-07, accepted 2026-11-03). Remote work does not;
+ * nobody travelled.
  */
 async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
   const { rows } = await pool.query<{ employmentId: string; days: string }>(
     `WITH latest AS (
        SELECT DISTINCT ON (v.employee_id, v.work_date)
-              v.employee_id, v.work_date, v.first_check_in_at, v.day_type, v.holiday_scheduled_work
+              v.employee_id, v.work_date, v.status, v.first_check_in_at, v.day_type, v.holiday_scheduled_work
        FROM attendance_result_versions v
        WHERE v.work_date BETWEEN $1::date AND $2::date
        ORDER BY v.employee_id, v.work_date, v.version DESC
@@ -120,7 +125,7 @@ async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
      FROM latest
      JOIN employments e ON e.employee_id = latest.employee_id
      CROSS JOIN LATERAL (SELECT latest.work_date AS work_day) day
-     WHERE latest.first_check_in_at IS NOT NULL
+     WHERE (latest.first_check_in_at IS NOT NULL OR latest.status = 'field_assignment')
        AND (
          latest.day_type IS NULL
          OR latest.day_type = 'working_day'

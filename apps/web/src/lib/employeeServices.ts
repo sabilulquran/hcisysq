@@ -151,6 +151,11 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     featureIds: ["NOTIF-004"], stage: "available", category: "information", href: "/app/notifications",
   },
   {
+    key: "employee-card", label: "Kartu Pegawai",
+    description: "Kartu identitas digital dengan QR cek keaslian, dan lapor bila kartu hilang.",
+    featureIds: ["EMP-012"], stage: "available", category: "information", href: "/app/employee-card",
+  },
+  {
     key: "help", label: "Pusat Bantuan",
     description: "Panduan singkat tiap layanan, tanya-jawab, dan kontak Human Capital.",
     featureIds: ["HELP-001"], stage: "available", category: "information", href: "/app/help",

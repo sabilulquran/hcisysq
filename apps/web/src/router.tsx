@@ -68,6 +68,8 @@ import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
 import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
+import { AdminEmployeeCardPrintPage } from "@/pages/AdminEmployeeCardPrintPage";
+import { AdminEmployeeCardsPage } from "@/pages/AdminEmployeeCardsPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
@@ -86,6 +88,8 @@ import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
+import { EmployeeCardPage } from "@/pages/EmployeeCardPage";
+import { PublicCardCheckPage } from "@/pages/PublicCardCheckPage";
 import { EmployeeCalendarPage } from "@/pages/EmployeeCalendarPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
@@ -158,6 +162,16 @@ const activationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/activate",
   component: AccountActivationPage,
+});
+
+// EMP-012 D-11: the check page a printed card's QR opens; public, no session required.
+const publicCardCheckRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cek/$code",
+  component: function PublicCardCheckRouteComponent() {
+    const { code } = publicCardCheckRoute.useParams();
+    return <PublicCardCheckPage code={code} />;
+  },
 });
 
 const appRoute = createRoute({
@@ -244,6 +258,14 @@ const employeeHelpRoute = createRoute({
   path: "/app/help",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeHelpPage,
+});
+
+// EMP-012: every employee session sees its own card.
+const employeeCardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/employee-card",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeCardPage,
 });
 
 const employeeTrainingRoute = createRoute({
@@ -744,6 +766,21 @@ const adminHelpRoute = createRoute({
   component: AdminHelpPage,
 });
 
+const adminEmployeeCardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employee-cards",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employee-cards"),
+  component: AdminEmployeeCardsPage,
+});
+
+// EMP-012 D-12: the standalone CR80 print sheet, without the admin shell.
+const adminEmployeeCardPrintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employee-cards/print",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employee-cards/print"),
+  component: AdminEmployeeCardPrintPage,
+});
+
 const adminTrainingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/training",
@@ -796,6 +833,7 @@ const boardRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   activationRoute,
+  publicCardCheckRoute,
   appRoute,
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
@@ -809,6 +847,7 @@ const routeTree = rootRoute.addChildren([
   employeeLoansRoute,
   employeeTrainingRoute,
   employeeHelpRoute,
+  employeeCardRoute,
   employeeCalendarRoute,
   employeeAnnouncementsRoute,
   employeeLeaveRoute,
@@ -880,6 +919,8 @@ const routeTree = rootRoute.addChildren([
   adminTrainingRoute,
   adminHrReportsRoute,
   adminHelpRoute,
+  adminEmployeeCardsRoute,
+  adminEmployeeCardPrintRoute,
   adminAnnouncementsRoute,
   adminAccessRoute,
   adminServicesRoute,

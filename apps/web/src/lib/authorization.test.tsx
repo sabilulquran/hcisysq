@@ -149,6 +149,13 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "loans.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/loans")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/loans")).toBe(false);
+    // EMP-012: employee_cards.manage only; other HC permissions and Super Admin legacy do not open it.
+    expect(canAccessAdminPath(actor, "/admin/employee-cards")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employee_cards.manage"]), "/admin/employee-cards")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employee_cards.manage"]), "/admin/employee-cards/print")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employee_cards.manage"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employees.manage", "documents.manage"]), "/admin/employee-cards")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/employee-cards/print")).toBe(false);
     // HELP-001: help.manage only; other HC permissions and Super Admin legacy do not open it.
     expect(canAccessAdminPath(actor, "/admin/help")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["help.manage"]), "/admin/help")).toBe(true);

@@ -147,6 +147,16 @@ Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/
 
 Membaca Pusat Bantuan tidak membutuhkan permission: setiap sesi `EMPLOYEE` membaca artikel terbit dan kontak aktif (D-07). Super Admin tidak memperoleh `help.manage` lewat kompatibilitas legacy.
 
+### Kartu Pegawai (EMP-012)
+
+Migration `0133_employee_card_permissions.sql`, berscope organisasi (`docs/domain/employee-id-card.md` §6).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `employee_cards.manage` | HC Admin (`human_capital_admin`) | mengunggah pas foto, menerbitkan, menerbitkan ulang, mencabut, mencetak kartu; mengatur penanda tangan dan masa berlaku; membaca riwayat |
+
+Melihat kartu sendiri dan melaporkannya hilang tidak membutuhkan permission (sesi `EMPLOYEE` yang terhubung ke pegawai). Halaman cek keaslian `/public/employee-cards/*` tanpa sesi dan dibatasi lajunya. Super Admin tidak memperoleh `employee_cards.manage` lewat kompatibilitas legacy.
+
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 
 ## Scope

@@ -59,6 +59,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "loans.read",
     // HELP-001: help.manage opens its own screen even for an account holding nothing else.
     "help.manage",
+    // EMP-012: employee_cards.manage opens its own screen even for an account holding nothing else.
+    "employee_cards.manage",
   ].some((permission) => hasPermission(session, permission));
   // EMP-007 §5.1: a read-only worklist over employee master data, so
   // employees.read.all is enough. It has to come before the rule below, which
@@ -144,6 +146,10 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/reports") return hasReportPermission(session, "reports.read.organization");
   // HELP-001: HC-only; Super Admin legacy compatibility never carries help.manage.
   if (path === "/admin/help") return hasPermission(session, "help.manage");
+  // EMP-012: HC-only; Super Admin legacy compatibility never carries employee_cards.manage.
+  if (path === "/admin/employee-cards" || path === "/admin/employee-cards/print") {
+    return hasPermission(session, "employee_cards.manage");
+  }
   if (path === "/admin/access") return hasPermission(session, "access.manage");
   return false;
 }

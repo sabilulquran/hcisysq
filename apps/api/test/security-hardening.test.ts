@@ -125,6 +125,8 @@ describe("SEC-09 request log URL", () => {
   it("drops query strings except on device ingress", () => {
     expect(logUrl("/admin/employees?q=Budi%20Santoso")).toBe("/admin/employees");
     expect(logUrl("/auth/me")).toBe("/auth/me");
+    expect(logUrl("/public/employee-cards/7Q2M9XPA4K")).toBe("/public/employee-cards/[code]");
+    expect(logUrl("/public/employee-cards/7Q2M9XPA4K/photo?x=1")).toBe("/public/employee-cards/[code]/photo");
     expect(logUrl("/iclock/cdata?SN=ABC&table=ATTLOG")).toBe("/iclock/cdata?SN=ABC&table=ATTLOG");
   });
 });

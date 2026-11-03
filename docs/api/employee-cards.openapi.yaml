@@ -1,0 +1,541 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee ID Cards (EMP-012 Package 1)
+  version: 1.0.0
+  description: |
+    Employee card photos, issuing, reissuing, revoking, printing, the employee's own digital card,
+    and the public check page a printed QR opens, as implemented in
+    apps/api/src/modules/employee-cards/routes.ts. Spec: docs/domain/employee-id-card.md.
+    Every JSON answer carries Cache-Control: no-store; images carry private, no-store. Errors use
+    { code, message }. /me/employee-card* needs an EMPLOYEE session; /admin/employee-cards/* needs
+    employee_cards.manage, checked before any input validation; /public/employee-cards/* needs no
+    session and is limited to 30 requests per minute per client address (429 RATE_LIMITED).
+paths:
+  /me/employee-card:
+    get:
+      tags: [Employee Cards]
+      operationId: getMyEmployeeCard
+      summary: The employee's ACTIVE card, else the most recent one, with today's validity
+      responses:
+        '200':
+          description: Card or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [card, hasSignature]
+                properties:
+                  card:
+                    oneOf:
+                      - $ref: '#/components/schemas/EmployeeCard'
+                      - type: 'null'
+                  hasSignature: { type: boolean }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/employee-card/photo:
+    get:
+      tags: [Employee Cards]
+      operationId: getMyEmployeeCardPhoto
+      summary: The photo frozen on the employee's card
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/employee-card/signature:
+    get:
+      tags: [Employee Cards]
+      operationId: getMyEmployeeCardSignature
+      summary: The signer's signature image printed on the back of every card
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/employee-card/report-lost:
+    post:
+      tags: [Employee Cards]
+      operationId: reportMyEmployeeCardLost
+      summary: The holder reports the ACTIVE card lost; it stops verifying at once (D-10)
+      responses:
+        '200':
+          description: Reported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { const: REPORTED_LOST }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards:
+    get:
+      tags: [Employee Cards]
+      operationId: listEmployeeCards
+      summary: Managed employees with their photo state and latest card (paged, ENG-LIST-001)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: q, in: query, description: Name or NIP, 2–100 characters, schema: { type: string } }
+        - name: filter
+          in: query
+          schema: { type: string, enum: [NO_PHOTO, NO_CARD, ACTIVE, NEEDS_REISSUE] }
+      responses:
+        '200':
+          description: Page of employees
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CardListItem' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/employees/{employeeId}:
+    get:
+      tags: [Employee Cards]
+      operationId: getEmployeeCardDetail
+      summary: Today's employee facts, the current photo and every card edition (bounded, §9.1)
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [employee, photo, cards]
+                properties:
+                  employee:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      employeeNumber: { type: string }
+                      fullName: { type: string }
+                      status: { type: string }
+                      active: { type: boolean }
+                      positionTitle: { type: [string, 'null'] }
+                      unitName: { type: [string, 'null'] }
+                  photo:
+                    oneOf:
+                      - type: object
+                        properties:
+                          id: { type: string, format: uuid }
+                          contentType: { type: string }
+                          byteSize: { type: integer }
+                          uploadedAt: { type: string, format: date-time }
+                      - type: 'null'
+                  cards:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmployeeCard' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/employees/{employeeId}/photo:
+    get:
+      tags: [Employee Cards]
+      operationId: getEmployeePhoto
+      summary: The employee's current photo
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Employee Cards]
+      operationId: uploadEmployeePhoto
+      summary: Replace the current photo (JPEG/PNG, max 2 MB, file signature checked, stored encrypted)
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImageUpload' }
+      responses:
+        '200': { description: Stored }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/employees/{employeeId}/cards:
+    post:
+      tags: [Employee Cards]
+      operationId: issueEmployeeCard
+      summary: Issue the first card (NEW) or a replacement; an ACTIVE card becomes REPLACED in the same transaction
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [NEW, LOST, DAMAGED, DATA_CHANGED, EXPIRED] }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '201':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  cardNumber: { type: string, example: KP-2611-0123 }
+                  edition: { type: integer }
+                  validUntil: { type: string, format: date }
+                  status: { const: ACTIVE }
+                  replacedCardId: { type: [string, 'null'], format: uuid }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: EMPLOYEE_CARD_ALREADY_ACTIVE, EMPLOYEE_CARD_PHOTO_MISSING, EMPLOYEE_CARD_SIGNER_MISSING, EMPLOYEE_CARD_EMPLOYEE_INACTIVE or EMPLOYEE_CARD_INVALID_TRANSITION
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /admin/employee-cards/cards/{cardId}/revoke:
+    post:
+      tags: [Employee Cards]
+      operationId: revokeEmployeeCard
+      summary: Revoke an ACTIVE or REPORTED_LOST card
+      parameters:
+        - $ref: '#/components/parameters/CardId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 300 }
+      responses:
+        '200': { description: Revoked }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/cards/{cardId}/photo:
+    get:
+      tags: [Employee Cards]
+      operationId: getCardPhoto
+      summary: The photo frozen on one card
+      parameters:
+        - $ref: '#/components/parameters/CardId'
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/print:
+    get:
+      tags: [Employee Cards]
+      operationId: getPrintBatch
+      summary: Cards to print, in the order given (bounded, 1–50 distinct ids)
+      parameters:
+        - { name: cardIds, in: query, required: true, description: Comma-separated card ids, schema: { type: string } }
+      responses:
+        '200':
+          description: Printable ACTIVE cards and the ids that are no longer ACTIVE
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmployeeCard' }
+                  unavailableCardIds:
+                    type: array
+                    items: { type: string, format: uuid }
+                  hasSignature: { type: boolean }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Employee Cards]
+      operationId: recordPrinted
+      summary: Record that HC pressed Print for every card in the batch (D-12)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardIds]
+              properties:
+                cardIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string, format: uuid }
+      responses:
+        '200': { description: Recorded }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/settings:
+    get:
+      tags: [Employee Cards]
+      operationId: getCardSettings
+      summary: Signer and validity for new cards
+      responses:
+        '200':
+          description: Settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardSettings' }
+        '403': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Employee Cards]
+      operationId: saveCardSettings
+      summary: Change the signer and validity for cards issued afterwards
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signerTitle, signerName, validityMonths]
+              properties:
+                signerTitle: { type: string, minLength: 1, maxLength: 120 }
+                signerName: { type: string, minLength: 1, maxLength: 120 }
+                validityMonths: { type: integer, minimum: 12, maximum: 60 }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CardSettings' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/settings/signature:
+    get:
+      tags: [Employee Cards]
+      operationId: getCardSignature
+      summary: The signature image
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Employee Cards]
+      operationId: uploadCardSignature
+      summary: Replace the signature image (PNG, max 512 KB)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType, contentBase64]
+              properties:
+                contentType: { const: image/png }
+                contentBase64: { type: string }
+      responses:
+        '200': { description: Stored }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /admin/employee-cards/audit-events:
+    get:
+      tags: [Employee Cards]
+      operationId: listCardAuditEvents
+      summary: Card audit history, newest first (paged)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: employeeId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Page of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        eventType: { type: string }
+                        employeeId: { type: [string, 'null'] }
+                        employeeName: { type: [string, 'null'] }
+                        cardId: { type: [string, 'null'] }
+                        reason: { type: [string, 'null'] }
+                        metadata: { type: object }
+                        occurredAt: { type: string, format: date-time }
+                        actorName: { type: [string, 'null'] }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /public/employee-cards/{code}:
+    get:
+      tags: [Employee Cards]
+      operationId: checkEmployeeCard
+      summary: Public check page data. No session. An invalid card shows no name and no photo (D-11)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Code'
+      responses:
+        '200':
+          description: Valid or not, evaluated now in WIB
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [valid, cardNumber, edition, validUntil, fullName, checkedAt]
+                    properties:
+                      valid: { const: true }
+                      cardNumber: { type: string }
+                      edition: { type: integer }
+                      validUntil: { type: string, format: date }
+                      fullName: { type: string }
+                      positionTitle: { type: [string, 'null'] }
+                      unitName: { type: [string, 'null'] }
+                      checkedAt: { type: string, format: date-time }
+                  - type: object
+                    required: [valid, reason, cardNumber, edition, validUntil, checkedAt]
+                    properties:
+                      valid: { const: false }
+                      reason: { type: string, enum: [REPLACED, REPORTED_LOST, REVOKED, EXPIRED, EMPLOYEE_INACTIVE] }
+                      cardNumber: { type: string }
+                      edition: { type: integer }
+                      validUntil: { type: string, format: date }
+                      invalidSince: { type: [string, 'null'] }
+                      checkedAt: { type: string, format: date-time }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /public/employee-cards/{code}/photo:
+    get:
+      tags: [Employee Cards]
+      operationId: getPublicCardPhoto
+      summary: Photo of a card that verifies now; 404 for any other card
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Code'
+      responses:
+        '200': { $ref: '#/components/responses/Image' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+components:
+  parameters:
+    EmployeeId:
+      name: employeeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Code:
+      name: code
+      in: path
+      required: true
+      description: 10 Crockford base32 characters; case, hyphens and spaces are ignored, O reads as 0, I and L as 1
+      schema: { type: string, maxLength: 40 }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Image:
+      description: JPEG or PNG bytes
+      content:
+        image/jpeg: { schema: { type: string, format: binary } }
+        image/png: { schema: { type: string, format: binary } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    ImageUpload:
+      type: object
+      required: [contentType, contentBase64]
+      properties:
+        contentType: { type: string, enum: [image/jpeg, image/png] }
+        contentBase64: { type: string }
+    CardSettings:
+      type: object
+      properties:
+        signerTitle: { type: string }
+        signerName: { type: [string, 'null'] }
+        validityMonths: { type: integer }
+        hasSignature: { type: boolean }
+        updatedAt: { type: string, format: date-time }
+    EmployeeCard:
+      type: object
+      description: Data frozen when the card was issued (D-13), with today's validity
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        cardNumber: { type: string }
+        edition: { type: integer }
+        verifyCode: { type: string }
+        status: { type: string, enum: [ACTIVE, REPLACED, REPORTED_LOST, REVOKED] }
+        issueReason: { type: string, enum: [NEW, LOST, DAMAGED, DATA_CHANGED, EXPIRED] }
+        issuedAt: { type: string, format: date-time }
+        validUntil: { type: string, format: date }
+        fullName: { type: string }
+        employeeNumber: { type: string }
+        positionTitle: { type: [string, 'null'] }
+        unitName: { type: [string, 'null'] }
+        signerName: { type: string }
+        signerTitle: { type: string }
+        printCount: { type: integer }
+        lastPrintedAt: { type: [string, 'null'], format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+        endReason: { type: [string, 'null'] }
+        invalidReason:
+          type: [string, 'null']
+          enum: [REPLACED, REPORTED_LOST, REVOKED, EXPIRED, EMPLOYEE_INACTIVE, null]
+        dataChanged: { type: boolean }
+    CardListItem:
+      type: object
+      properties:
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        fullName: { type: string }
+        employeeStatus: { type: string }
+        positionTitle: { type: [string, 'null'] }
+        unitName: { type: [string, 'null'] }
+        hasPhoto: { type: boolean }
+        photoUploadedAt: { type: [string, 'null'], format: date-time }
+        card:
+          oneOf:
+            - type: object
+              properties:
+                id: { type: string, format: uuid }
+                cardNumber: { type: string }
+                edition: { type: integer }
+                status: { type: string }
+                validUntil: { type: string, format: date }
+                printCount: { type: integer }
+                invalidReason: { type: [string, 'null'] }
+                dataChanged: { type: boolean }
+            - type: 'null'

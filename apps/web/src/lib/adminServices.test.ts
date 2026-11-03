@@ -42,6 +42,9 @@ describe("admin module catalog", () => {
     // LOAN-001 Package 1: the register, disbursement and repayments; no payroll deduction yet.
     expect(getAdminService("loans")?.stage).toBe("available");
     expect(getAdminService("loans")?.href).toBe("/admin/loans");
+    // EMP-012 Package 1: photos, issuing, printing and replacing employee cards.
+    expect(getAdminService("employee-cards")?.stage).toBe("available");
+    expect(getAdminService("employee-cards")?.href).toBe("/admin/employee-cards");
     // HELP-001 Package 1: articles, contacts and history for Human Capital.
     expect(getAdminService("help-center")?.stage).toBe("available");
     expect(getAdminService("help-center")?.href).toBe("/admin/help");

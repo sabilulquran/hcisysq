@@ -303,6 +303,27 @@ features:
     docs:
       - docs/product/legacy-parity-audit-2026-11-02.md
 
+  - id: EMP-012
+    module: employee
+    name: Employee ID card (printed CR80 and digital) with public QR check page
+    legacy_evidence: >-
+      Cards were designed by hand in Canva (Id Card.pdf, 50 x 85 mm): photo, name, position,
+      a static QR to a third-party link shortener, no NIP, unit, validity or card number.
+    target_status: implemented
+    priority: later
+    risk: high
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/employee-id-card.md), design style B approved
+      by the owner in chat the same day: HC uploads an encrypted pas foto, issues numbered cards
+      (KP-YYMM-NNNN) valid 24 months, reissues lost or damaged cards with history, revokes, and
+      prints a 54 x 85.6 mm sheet; the employee sees the digital card and can report it lost; the
+      QR opens a public check page that reads card and employment status live and shows no name
+      or photo for a card that does not verify. Permission employee_cards.manage. The Kartu
+      Siswa of Keluarga SQ (KEL-IMPL-005) shares the visual family.
+    docs:
+      - docs/domain/employee-id-card.md
+      - docs/api/employee-cards.openapi.yaml
+
   - id: AUTH-010
     module: authorization
     name: Role and permission management

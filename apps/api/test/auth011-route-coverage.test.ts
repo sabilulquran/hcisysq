@@ -56,7 +56,7 @@ const MACHINE_ACTOR_PREFIX = "/internal/v1/role-administration";
 const PUBLIC_ROUTE = (url: string) =>
   url === "/health" || url === "/ready"
   || ["/auth/", "/iclock/"].some((prefix) => url.startsWith(prefix))
-  || (url.startsWith("/internal/v1/") && EXPECTED_PUBLIC_URLS.includes(url));
+  || ((url.startsWith("/internal/v1/") || url.startsWith("/public/")) && EXPECTED_PUBLIC_URLS.includes(url));
 
 // Pinned so a new public route is a deliberate, reviewed change.
 const EXPECTED_PUBLIC_URLS = [
@@ -75,6 +75,9 @@ const EXPECTED_PUBLIC_URLS = [
   "/iclock/file",
   "/internal/v1/organization-directory/snapshot",
   "/internal/v1/staff-identity/verify-employee",
+  // EMP-012 §5.3: the employee card check page opened from a printed QR; rate limited, no session.
+  "/public/employee-cards/:code",
+  "/public/employee-cards/:code/photo",
   "/ready",
 ];
 

@@ -46,6 +46,7 @@ import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-acce
 import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
 import { registerAttendanceResolutionRoutes } from "./modules/leave/attendance-resolution-routes.js";
 import { registerLeaveCalendarAdminRoutes } from "./modules/leave/calendar-admin-routes.js";
+import { registerLeaveCriticalPeriodRoutes } from "./modules/leave/critical-period-routes.js";
 import { registerEmployeeLeaveRoutes } from "./modules/leave/employee-routes.js";
 import { registerPlannedEvidenceRoutes } from "./modules/leave/planned-evidence-routes.js";
 import { registerPlannedLeaveRoutes } from "./modules/leave/planned-leave-routes.js";
@@ -202,6 +203,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAdmsPhysicalParityObservabilityRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
+  await registerLeaveCriticalPeriodRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
   await registerPlannedLeaveRoutes(app, pool, config);
   await registerPlannedEvidenceRoutes(app, pool, config);

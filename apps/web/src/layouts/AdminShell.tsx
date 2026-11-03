@@ -54,6 +54,7 @@ export type AdminNavKey =
   | "attendance-settings"
   | "leave"
   | "leave-calendar"
+  | "leave-critical-periods"
   | "payslips"
   | "payroll"
   | "reports"
@@ -121,6 +122,7 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { key: "leave", label: "Kebijakan Cuti", href: "/admin/leave", icon: CalendarDays },
       { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
+      { key: "leave-critical-periods", label: "Masa Kritis", href: "/admin/leave/critical-periods", icon: CalendarRange },
     ],
   },
   {

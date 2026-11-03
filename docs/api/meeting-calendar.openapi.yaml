@@ -44,6 +44,7 @@ paths:
                         - $ref: '#/components/schemas/CalendarLeave'
                         - $ref: '#/components/schemas/CalendarTrip'
                         - $ref: '#/components/schemas/CalendarNonWorking'
+                        - $ref: '#/components/schemas/CalendarCriticalPeriod'
         '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -522,6 +523,17 @@ components:
         kind: { type: string, const: non_working }
         date: { type: string, format: date }
         label: { type: [string, 'null'] }
+    CalendarCriticalPeriod:
+      type: object
+      description: LEAVE-009 masa kritis for the whole foundation or the viewer's own unit.
+      required: [kind, id, label, startOn, endOn]
+      properties:
+        kind: { type: string, const: critical_period }
+        id: { type: string, format: uuid }
+        label: { type: string }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        unitName: { type: [string, 'null'], description: Null for a foundation-wide period. }
   responses:
     Problem:
       description: Error

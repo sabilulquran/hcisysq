@@ -326,7 +326,7 @@ export async function registerMeetingRoutes(
       const { from, to } = query.data;
       const rangeStart = new Date(jakartaDayInterval(from).startMs).toISOString();
       const rangeEnd = new Date(jakartaDayInterval(to).endMs).toISOString();
-      const [meetings, leaves, trips, nonWorking] = await Promise.all([
+      const [meetings, leaves, trips, nonWorking, criticalPeriods] = await Promise.all([
         // K-05: every active meeting of the foundation, plus cancelled ones I was in. The
         // projection below removes what a non-participant may not see; LIMIT is the density
         // guard, never a silent cut (the request fails instead).
@@ -360,6 +360,20 @@ export async function registerMeetingRoutes(
           [me.id, from, to],
         ),
         loadNonWorkingDates(pool, from, to),
+        // LEAVE-009 D-10: critical periods for the whole foundation or my own unit.
+        pool.query(
+          `SELECT period.id, period.label, to_char(period.starts_on, 'YYYY-MM-DD') AS "startOn",
+                  to_char(period.ends_on, 'YYYY-MM-DD') AS "endOn", unit.name AS "unitName"
+             FROM leave_critical_periods period
+             LEFT JOIN organizational_units unit ON unit.id = period.organizational_unit_id
+            WHERE period.is_active
+              AND period.starts_on <= $3::date AND period.ends_on >= $2::date
+              AND (period.organizational_unit_id IS NULL OR period.organizational_unit_id = (
+                SELECT organizational_unit_id FROM employees WHERE id = $1
+              ))
+            ORDER BY period.starts_on ASC, period.id ASC`,
+          [me.id, from, to],
+        ),
       ]);
       const items = [
         ...meetings.rows.flatMap((row) => {
@@ -369,6 +383,7 @@ export async function registerMeetingRoutes(
         ...leaves.rows.map((row) => ({ kind: "leave" as const, ...row })),
         ...trips.rows.map((row) => ({ kind: "trip" as const, ...row })),
         ...nonWorking.map((day) => ({ kind: "non_working" as const, date: day.date, label: day.label })),
+        ...criticalPeriods.rows.map((row) => ({ kind: "critical_period" as const, ...row })),
       ];
       if (meetings.rows.length > CALENDAR_MAX_ITEMS || items.length > CALENDAR_MAX_ITEMS) {
         return send(reply, 400, {

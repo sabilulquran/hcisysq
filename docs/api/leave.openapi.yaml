@@ -76,6 +76,13 @@ paths:
                   nonWorkingDates: { type: array, items: { type: string, format: date } }
                   approvalChain: { type: array, items: { type: object } }
                   authorityResolution: { type: object }
+                  criticalPeriods:
+                    type: array
+                    description: >-
+                      LEAVE-009 active critical periods for the whole foundation or the employee's unit
+                      that overlap the requested dates. Never blocks; see leave-critical-periods.openapi.yaml.
+                    items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
+                  criticalReviewRequired: { type: boolean }
         '400': { $ref: '#/components/responses/InvalidAnnualLeaveRequest' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }

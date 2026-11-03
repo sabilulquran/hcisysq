@@ -28,6 +28,11 @@ import {
 } from "./domain/approval-chain.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
 import {
+  activateCriticalReviewAfterLineApproval,
+  attachCriticalReview,
+  loadApplicableCriticalPeriods,
+} from "./critical-period-store.js";
+import {
   decideLeaveApprovalStep,
   LeaveWorkflowError,
   type LeaveApprovalStepState,
@@ -112,6 +117,7 @@ interface RequestSummaryRow {
   submittedAt: Date;
   finalDecidedAt: Date | null;
   currentApproverName: string | null;
+  criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | null;
 }
 
 interface InboxRow {
@@ -364,8 +370,20 @@ async function buildAnnualPreview(
     policyChain: "LINE_AND_UNIT",
   });
   const approvalChain = await hydrateApprovalChain(db, authorityResolution.approvalChain);
+  // LEAVE-009: Cuti Tahunan in a critical period gets an HC review after line approval (D-02).
+  const criticalPeriods = await loadApplicableCriticalPeriods(db, {
+    unitId: employee.unitId,
+    startOn: input.startOn,
+    endOn: input.endOn,
+  });
 
-  return { calculation, validation, approvalChain, authorityResolution: authorityResolution.context };
+  return {
+    calculation,
+    validation,
+    approvalChain,
+    authorityResolution: authorityResolution.context,
+    criticalPeriods,
+  };
 }
 
 async function addEvent(
@@ -560,11 +578,13 @@ export async function registerEmployeeLeaveRoutes(
                 AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
                 THEN 'Penyetuju Pengurus Yayasan'
               ELSE NULL
-            END AS "currentApproverName"
+            END AS "currentApproverName",
+            critical_review.status AS "criticalReviewStatus"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
           LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
+          LEFT JOIN leave_request_critical_reviews critical_review ON critical_review.leave_request_id = r.id
           WHERE r.employee_id = $1
           ORDER BY r.submitted_at DESC
           LIMIT 10`,
@@ -632,6 +652,8 @@ export async function registerEmployeeLeaveRoutes(
         nonWorkingDates: preview.calculation.nonWorkingDates,
         approvalChain: preview.approvalChain,
         authorityResolution: preview.authorityResolution,
+        criticalPeriods: preview.criticalPeriods,
+        criticalReviewRequired: preview.criticalPeriods.length > 0,
       });
     } catch (error) {
       return sendKnownError(reply, error);
@@ -702,9 +724,17 @@ export async function registerEmployeeLeaveRoutes(
               sources: step.sources,
             })),
             authorityResolution: preview.authorityResolution,
+            ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
           }),
         ],
       );
+      if (preview.criticalPeriods.length > 0) {
+        await attachCriticalReview(client, {
+          requestId,
+          actorAccountId: principal.id,
+          periods: preview.criticalPeriods,
+        });
+      }
 
       const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
       for (const [index, step] of preview.approvalChain.entries()) {
@@ -756,6 +786,7 @@ export async function registerEmployeeLeaveRoutes(
         periodKey: preview.validation.periodKey,
         annualEntitlementDays: preview.validation.annualEntitlementDays,
         approvalChain: insertedSteps,
+        criticalReviewRequired: preview.criticalPeriods.length > 0,
         idempotentReplay: false,
       });
     } catch (error) {
@@ -783,11 +814,13 @@ export async function registerEmployeeLeaveRoutes(
           r.annual_period_key AS "annualPeriodKey",
           r.submitted_at AS "submittedAt",
           r.final_decided_at AS "finalDecidedAt",
-          approver.full_name AS "currentApproverName"
+          approver.full_name AS "currentApproverName",
+          critical_review.status AS "criticalReviewStatus"
         FROM leave_requests r
         LEFT JOIN leave_request_approval_steps current_step
           ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
         LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
+        LEFT JOIN leave_request_critical_reviews critical_review ON critical_review.leave_request_id = r.id
         WHERE r.employee_id = $1
         ORDER BY r.submitted_at DESC`,
         [employee.id],
@@ -964,7 +997,13 @@ export async function registerEmployeeLeaveRoutes(
 
       let effectiveRequestStatus: LeaveRequestStatus = decision.requestStatus;
       let hcTaskStatus: "pending" | null = null;
-      if (decision.requestStatus === "approved" && current.hcHandling === "validate") {
+      // LEAVE-009 D-05: a critical-period review runs before any HC administrative task.
+      const criticalReviewId = decision.requestStatus === "approved"
+        ? await activateCriticalReviewAfterLineApproval(client, current.requestId)
+        : null;
+      if (criticalReviewId) {
+        effectiveRequestStatus = "in_review";
+      } else if (decision.requestStatus === "approved" && current.hcHandling === "validate") {
         await activateHcTaskAfterLineApproval(client, current.requestId, "validate");
         effectiveRequestStatus = "in_review";
         hcTaskStatus = "pending";
@@ -994,7 +1033,25 @@ export async function registerEmployeeLeaveRoutes(
         hcHandling: current.hcHandling,
       });
 
-      if (decision.requestStatus === "approved" && hcTaskStatus === "pending") {
+      if (criticalReviewId) {
+        await addEvent(client, current.requestId, principal.id, "leave.critical_review.pending", {
+          reviewId: criticalReviewId,
+        });
+        await enqueueNotification(
+          client,
+          current.requestId,
+          "leave.critical_review.requested",
+          "role",
+          "human_capital",
+        );
+        await enqueueNotification(
+          client,
+          current.requestId,
+          "leave.line_approval.completed.employee_notify",
+          "employee",
+          current.requesterEmployeeId,
+        );
+      } else if (decision.requestStatus === "approved" && hcTaskStatus === "pending") {
         await addEvent(
           client,
           current.requestId,
@@ -1065,6 +1122,7 @@ export async function registerEmployeeLeaveRoutes(
         nextPendingStepId: decision.nextPendingStepId,
         hcHandling: current.hcHandling,
         hcTaskStatus,
+        criticalReviewStatus: criticalReviewId ? "pending" : null,
       });
     } catch (error) {
       await client.query("ROLLBACK");

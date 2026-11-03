@@ -549,15 +549,19 @@ features:
       active), Admin/CriticalPeriodController at admin/critical-periods, and
       ApprovalChainBuilder::isCriticalPeriodActive appends the HCM step to a leave chain
       whose start date falls in an active critical period for the employee's unit or for all units.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
-    planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. For schools this covers exam weeks,
-      PPDB, report-card and year-end periods. Whether such a period only adds HC review or
-      blocks leave is a business rule the owner has not decided (DRAFT default - add HC
-      review, never block).
+    notes: >-
+      Implemented 2026-11-03 (docs/domain/leave-critical-periods.md). HC Admin manages periods
+      for the whole foundation or one unit; Cuti Tahunan and planned line-approval leave whose
+      dates overlap an active period are never blocked and get an HC review step after line
+      approval, snapshotted at submission (APR-001). Cuti Tanpa Gaji only records the match;
+      special leave is untouched. Periods also show in the CAL-001 calendar. Owner-facing DRAFT
+      defaults: review only (never block), overlap instead of start date, review after the line.
     docs:
+      - docs/domain/leave-critical-periods.md
+      - docs/api/leave-critical-periods.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: PAY-003

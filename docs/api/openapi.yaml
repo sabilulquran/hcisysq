@@ -293,6 +293,14 @@ paths:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals'
   /leave/approvals/{stepId}/decision:
     $ref: './leave.openapi.yaml#/paths/~1leave~1approvals~1{stepId}~1decision'
+  /admin/leave/critical-periods:
+    $ref: './leave-critical-periods.openapi.yaml#/paths/~1admin~1leave~1critical-periods'
+  /admin/leave/critical-periods/{id}:
+    $ref: './leave-critical-periods.openapi.yaml#/paths/~1admin~1leave~1critical-periods~1{id}'
+  /leave/hc/critical-reviews:
+    $ref: './leave-critical-periods.openapi.yaml#/paths/~1leave~1hc~1critical-reviews'
+  /leave/hc/critical-reviews/{reviewId}/decision:
+    $ref: './leave-critical-periods.openapi.yaml#/paths/~1leave~1hc~1critical-reviews~1{reviewId}~1decision'
 
   /attendance/arrangements/me:
     $ref: './attendance-work-arrangements.openapi.yaml#/paths/~1attendance~1arrangements~1me'

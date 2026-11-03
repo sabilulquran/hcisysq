@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
+import { criticalPeriodRange } from "@/lib/leaveCriticalPeriods";
 import {
   decidePlannedHcApproval,
   decidePlannedHcValidation,
@@ -265,6 +266,14 @@ export function HcPlannedLeavePage() {
                     <p className="mt-2 text-xs leading-5 text-muted-foreground">
                       Pengajuan ini dicatat sebagai tidak bergaji untuk downstream. Tidak ada perhitungan potongan payroll pada langkah ini.
                     </p>
+                    {(item.validationSummary.criticalPeriods ?? []).length > 0 ? (
+                      <p className="mt-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-xs font-semibold text-warning-ink">
+                        Masuk masa kritis:{" "}
+                        {item.validationSummary.criticalPeriods!
+                          .map((period) => `${period.label} (${criticalPeriodRange(period)})`)
+                          .join(", ")}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex gap-2">
                     <button

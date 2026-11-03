@@ -92,7 +92,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
 
 ## Audit
 
-Tidak ada audit event baru. Event approval dan oversight yang sudah ada mencatat principal akun lewat `actor_account_id`. Pemberian dan pencabutan assignment memakai audit role assignment yang ada.
+Satu event riwayat baru: `leave.oversight.unresolved` di `leave_request_events`, berisi kode resolver saja, ditulis bila penerima oversight gagal di-resolve. Saat ini event itu hanya terlihat lewat query database; tampilannya untuk HC berstatus `TBD`. Event approval dan oversight yang sudah ada mencatat principal akun lewat `actor_account_id`. Pemberian dan pencabutan assignment memakai audit role assignment yang ada.
 
 ## Data, migrasi, dan rollback
 

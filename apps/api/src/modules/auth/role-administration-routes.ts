@@ -427,9 +427,12 @@ export function registerRoleAdministrationRoutes(
         principalType: target.principalType,
         // Why a grant would be refused, rather than the employment data behind it. The Hub needs
         // to warn before it posts; it does not need the person's status to do that. An organ
-        // account has no employee record, so only its own status counts.
-        grantable: target.status === "active"
-          && (target.principalType === "FOUNDATION_BOARD" || target.employeeStatus === "active"),
+        // account counts only its own status, and one linked to an employee record is malformed
+        // (createRoleAssignment refuses it), so it is not grantable either. The e-mail match
+        // against active employees is left to the grant itself, which answers ORGAN_ACCOUNT_IS_EMPLOYEE.
+        grantable: target.status === "active" && (target.principalType === "FOUNDATION_BOARD"
+          ? target.employeeStatus === null
+          : target.employeeStatus === "active"),
         notGrantableReason: target.status !== "active" ? "account_inactive"
           : target.principalType === "EMPLOYEE" && target.employeeStatus !== "active" ? "employee_inactive" : null,
       },

@@ -433,9 +433,14 @@ describe("AUTH-014 role administration channel", () => {
     });
 
     it("describes an organ account so the Hub can grant it the governance Leave approver (ORG-013-2)", async () => {
-      for (const [status, grantable, reason] of [["active", true, null], ["suspended", false, "account_inactive"]] as const) {
+      for (const [status, employeeStatus, grantable, reason] of [
+        ["active", null, true, null],
+        ["suspended", null, false, "account_inactive"],
+        // An organ account linked to an employee record is malformed; the grant would refuse it.
+        ["active", "active", false, null],
+      ] as const) {
         const { pool } = lookupPool({
-          target: { accountId: TARGET, principalType: "FOUNDATION_BOARD", status, employeeStatus: null },
+          target: { accountId: TARGET, principalType: "FOUNDATION_BOARD", status, employeeStatus },
           total: 0, assignments: [],
         });
         const instance = lookupApp(pool);

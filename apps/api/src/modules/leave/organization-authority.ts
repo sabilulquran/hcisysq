@@ -368,8 +368,10 @@ export async function enqueueFinalApprovalOversight(
  */
 async function recordOversightUnresolved(db: PoolClient, requestId: string, error: unknown): Promise<void> {
   const code = error instanceof OrganizationResolutionError ? error.code : "OVERSIGHT_FAILED";
+  let created = false;
   try {
     await db.query("SAVEPOINT leave_oversight_diagnostic");
+    created = true;
     await db.query(
       `INSERT INTO leave_request_events (id, leave_request_id, actor_account_id, event_type, payload)
        VALUES ($1, $2, NULL, 'leave.oversight.unresolved', $3::jsonb)`,
@@ -377,7 +379,11 @@ async function recordOversightUnresolved(db: PoolClient, requestId: string, erro
     );
     await db.query("RELEASE SAVEPOINT leave_oversight_diagnostic");
   } catch {
-    await db.query("ROLLBACK TO SAVEPOINT leave_oversight_diagnostic").catch(() => undefined);
-    await db.query("RELEASE SAVEPOINT leave_oversight_diagnostic").catch(() => undefined);
+    // Only roll back a savepoint that exists: ROLLBACK TO an unknown one would abort the caller's
+    // transaction and turn its COMMIT into a silent rollback of the final decision.
+    if (created) {
+      await db.query("ROLLBACK TO SAVEPOINT leave_oversight_diagnostic");
+      await db.query("RELEASE SAVEPOINT leave_oversight_diagnostic");
+    }
   }
 }

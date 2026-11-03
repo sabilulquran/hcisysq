@@ -199,6 +199,48 @@ describe.skipIf(!allowed)("DOC-001/DOC-002 HR documents", () => {
     expect(snapshot.positionTitle).toBe("Guru");
   });
 
+  it("DOC-001-K: the employee opens their own issued letter for printing, audited; others and revoked letters are not served", async () => {
+    await addSigner();
+    const issued = await approveAndIssue(await submitRequest());
+    expect(issued.statusCode, issued.body).toBe(201);
+    const id = issued.json().id as string;
+
+    const letter = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
+    expect(letter.statusCode, letter.body).toBe(200);
+    expect(letter.headers["cache-control"]).toBe("no-store");
+    expect(letter.json()).toMatchObject({
+      id, documentCode: "KETERANGAN_KERJA", status: "ISSUED", documentNumber: issued.json().documentNumber,
+      contentSnapshot: { fullName: "Dokumen Primary", purpose: "Keperluan pengajuan beasiswa anak" },
+    });
+    const audit = await client.query<{ actorAccountId: string; metadata: Record<string, unknown> }>(
+      `SELECT actor_account_id AS "actorAccountId", metadata FROM hr_document_audit_events
+        WHERE event_type = 'doc.opened' AND issued_document_id = $1`,
+      [id],
+    );
+    expect(audit.rows).toEqual([{ actorAccountId: accountId, metadata: { documentCode: "KETERANGAN_KERJA", documentNumber: issued.json().documentNumber } }]);
+
+    // Another employee's letter answers like a missing one, and writes nothing.
+    const otherAccount = randomUUID();
+    await client.query(
+      `INSERT INTO accounts(id, employee_id, email, principal_type, status) VALUES ($1,$2,$3,'EMPLOYEE','active')`,
+      [otherAccount, otherEmployeeId, `doc-${otherAccount}@example.invalid`],
+    );
+    const owner = principal;
+    principal = { id: otherAccount, email: "other@example.invalid", principalType: "EMPLOYEE" };
+    const foreign = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
+    expect(foreign.statusCode).toBe(404);
+    expect(foreign.json().code).toBe("DOCUMENT_NOT_FOUND");
+    expect((await app.inject({ method: "GET", url: "/documents/me/issued/not-a-uuid" })).statusCode).toBe(404);
+    principal = owner;
+
+    await client.query(`UPDATE hr_issued_documents SET status = 'REVOKED', revoked_at = now(), revoke_reason = 'Uji pembatalan surat' WHERE id = $1`, [id]);
+    const revoked = await app.inject({ method: "GET", url: `/documents/me/issued/${id}` });
+    expect(revoked.statusCode).toBe(409);
+    expect(revoked.json().code).toBe("DOCUMENT_REVOKED");
+    const count = await client.query(`SELECT 1 FROM hr_document_audit_events WHERE event_type = 'doc.opened' AND issued_document_id = $1`, [id]);
+    expect(count.rowCount).toBe(1);
+  });
+
   it("DOC-001-F: without an eligible signer the request stays APPROVED", async () => {
     const requestId = await submitRequest();
     const issued = await approveAndIssue(requestId);

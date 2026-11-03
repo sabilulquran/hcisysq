@@ -64,6 +64,7 @@ Termasuk (Paket 1):
 | D-16 | `documents.correct` dibawa role tersendiri `document_corrector`, bukan bundel mana pun. Konsekuensi yang **disengaja**: pemegangnya dapat membatalkan surat peringatan yang tidak dapat ia baca isinya, karena pembatalan adalah tindakan atas register (nomor dan status), bukan atas isi surat. Alasan pembatalan wajib dan tercatat di audit. | ACCEPTED (2026-10-27) |
 | D-18 | Register surat terbit memuat surat peringatan untuk pemegang `documents.read`, tetapi **hanya fakta register**: nomor, tingkat (sudah tersirat di nomor), status, tanggal terbit, serta waktu dan alasan pembatalan. Identitas pegawai, perihal, uraian, dan snapshot isi SP **tidak** ikut, sehingga D-13 tetap berlaku: pemegang `document_corrector` mengenali SP dari nomornya saja. Pemegang `documents.discipline.manage` tetap melihat identitas dan perihal di daftar surat peringatan. | DRAFT (2026-11-02) |
 | D-19 | SP yang sudah ditandai dibaca, atau yang masa berlakunya sudah lewat, **tetap dapat dibatalkan**. Tanda terima dan kedaluwarsa bukan status tersimpan register (§5.2), jadi keduanya tidak mengunci pembatalan; yang mengunci hanya status `REVOKED`. | DRAFT (2026-11-02) |
+| D-20 | Pegawai aktif **dapat membuka, mencetak, dan menyimpan sebagai PDF** surat keterangan miliknya yang berstatus `ISSUED`, dari layar **Dokumen Saya** (tombol **Lihat & cetak**). Akses berdasarkan kepemilikan lewat endpoint self `GET /documents/me/issued/:id`, bukan permission; surat orang lain dijawab 404 seperti surat yang tidak ada, surat `REVOKED` dijawab 409 `DOCUMENT_REVOKED` dan tidak dapat dicetak. Surat dirender dari snapshot (§4.1) dan blok penandatangan tercetak (D-01, D-05); "unduh" berarti **Simpan sebagai PDF** dari dialog cetak peramban, bukan berkas PDF buatan server, sehingga tidak perlu object storage atau pustaka PDF. Setiap pembukaan dicatat sebagai audit `doc.opened` (bacaan dokumen pribadi, pola audit baca PAYSLIP). Surat peringatan tidak ikut: pegawai membacanya di layar (D-12), dan cetak SP tetap urusan HC. Alasan: §2 sudah menjanjikan "unduh/cetak", tetapi layar Paket 1 belum menyediakannya (temuan HELP-001 2026-11-03). Bunyi surat: lihat §13. | ACCEPTED (2026-11-03); bunyi surat DRAFT |
 | D-17 | Setiap migrasi yang menambahkan izin ke sebuah role harus dijalankan **setelah** build yang mengenal kunci izin itu berjalan. `canDelegateRole` menolak role yang membawa izin di luar allowlist-nya, sehingga build lama akan menolak pemberian/pencabutan role tersebut selama jendela antara migrasi dan restart. | ACCEPTED (2026-10-27) |
 
 ## 4. Objek
@@ -140,7 +141,7 @@ Pegawai mengakses surat miliknya sendiri melalui endpoint self, bukan permission
 
 ## 7. Audit
 
-Setiap transisi menghasilkan audit event: `doc.request.submitted`, `doc.request.approved`, `doc.request.rejected`, `doc.request.cancelled`, `doc.issued`, `doc.revoked`, `doc.discipline.issued`, `doc.discipline.acknowledged`, `doc.discipline.revoked`.
+Setiap transisi menghasilkan audit event: `doc.request.submitted`, `doc.request.approved`, `doc.request.rejected`, `doc.request.cancelled`, `doc.issued`, `doc.revoked`, `doc.discipline.issued`, `doc.discipline.acknowledged`, `doc.discipline.revoked`. Pembukaan surat keterangan oleh pegawai untuk dicetak (D-20) bukan transisi, tetapi dicatat sebagai `doc.opened` dengan id surat, pegawai, aktor, serta `documentCode` dan `documentNumber` di metadata.
 
 Audit event memuat id surat, jenis, aktor, dan alasan bila ada. Audit **tidak** memuat isi naratif surat peringatan.
 
@@ -198,6 +199,7 @@ DOC-002:
 - DOC-002-G: pratinjau notifikasi tidak memuat isi naratif.
 - DOC-002-H: atasan tanpa `documents.discipline.manage` tidak melihat SP bawahannya (D-13).
 - DOC-002-I: `human_capital_admin` dapat menerbitkan dan membaca surat peringatan; `documents.correct` hanya dibawa `document_corrector` (D-16).
+- DOC-001-K: pegawai membuka surat keterangan `ISSUED` miliknya untuk dicetak dan setiap pembukaan menulis satu `doc.opened`; surat pegawai lain menjawab 404 tanpa audit; surat `REVOKED` menjawab 409 `DOCUMENT_REVOKED` dan tombol **Lihat & cetak** tidak tampil untuknya (D-20).
 - DOC-001-J: dua pengajuan bersamaan dari satu pegawai tidak dapat menembus batas D-08.
 
 ## 11. Pertanyaan terbuka
@@ -237,3 +239,26 @@ Acceptance:
 - DOC-002-F3: dialog pembatalan tidak mengirim alasan kosong atau kurang dari 10 karakter; API tetap menolaknya dengan `400` bila dikirim langsung.
 - DOC-002-F4: pembatalan menulis satu audit event berisi alasan, dan nomor surat yang dibatalkan tidak pernah dialokasikan ulang ke surat berikutnya.
 - DOC-002-F5: surat yang dibatalkan tampil berstatus **Dibatalkan** beserta tanggal dan alasannya di register, dan sebagai **Dibatalkan** di daftar surat peringatan HC.
+
+## 13. Cetak surat keterangan oleh pegawai (D-20)
+
+Ditambahkan 2026-11-03.
+
+| Unsur | Isi |
+| --- | --- |
+| Aktor | Pegawai aktif dengan akun aktif, atas suratnya sendiri. |
+| Prasyarat | Surat keterangan (`CERTIFICATE`) milik pegawai itu berstatus `ISSUED`. |
+| Layar | `/app/documents`, bagian **Surat yang sudah terbit**: tombol **Lihat & cetak** pada surat yang terbit membuka lembar surat A4 dengan tombol **Cetak / Simpan PDF**. Saat dicetak hanya lembar surat yang ikut. |
+| Input | Tidak ada. |
+| Transisi | Tidak ada; status surat tidak berubah. |
+| Permission | Kepemilikan lewat endpoint self; tidak ada izin baru. |
+| Audit | `doc.opened` setiap kali API menyerahkan surat untuk dicetak (§7). |
+| Kegagalan | Surat orang lain atau tidak ada → 404 `DOCUMENT_NOT_FOUND`; surat dibatalkan → 409 `DOCUMENT_REVOKED`, layar menampilkan pesannya dan memuat ulang daftar; akun/pegawai tidak aktif → 403 `EMPLOYEE_LINK_REQUIRED`. |
+
+Bunyi surat (DRAFT, dapat disesuaikan HC lewat perubahan spesifikasi):
+
+- Kepala: "Yayasan Sabilul Qur'an", judul jenis surat dalam huruf kapital, dan `Nomor: <nomor surat>`.
+- Pembuka: "Yang bertanda tangan di bawah ini menerangkan bahwa:", lalu Nama, NIP, Jabatan, Unit, dan Mulai bekerja dari snapshot.
+- Isi surat keterangan kerja: "adalah benar pegawai Yayasan Sabilul Qur'an yang masih aktif bekerja sampai dengan tanggal surat ini." Isi paklaring: "telah bekerja di Yayasan Sabilul Qur'an sejak <mulai> sampai dengan <berakhir>."
+- Keperluan: "Surat keterangan ini dibuat untuk keperluan: <keperluan pada permintaan>." (dilewati bila kosong).
+- Penutup: "Demikian surat keterangan ini dibuat untuk dipergunakan sebagaimana mestinya.", tanggal terbit (zona Asia/Jakarta), jabatan dan nama penandatangan dari blok penandatangan.

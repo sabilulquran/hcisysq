@@ -286,6 +286,39 @@ export async function registerDocumentRoutes(
     return send(reply, 200, { items: result.rows });
   });
 
+  // D-20: the printable letter of one issued certificate. Ownership, not a permission: the
+  // employee filter makes someone else's letter indistinguishable from a missing one. A revoked
+  // letter is not printable. Each opening is a sensitive read and leaves `doc.opened`.
+  app.get("/documents/me/issued/:id", async (request, reply) => {
+    const self = await requireSelf(request, reply);
+    if (!self) return;
+    const params = idParams.safeParse(request.params);
+    if (!params.success) return send(reply, 404, { code: "DOCUMENT_NOT_FOUND", message: "Surat tidak ditemukan." });
+    const found = await pool.query<{
+      id: string; documentCode: string; documentNumber: string; status: "ISSUED" | "REVOKED";
+      issuedAt: Date; signer: { title: string; name: string | null }; contentSnapshot: Record<string, unknown>;
+    }>(
+      `SELECT id, document_code AS "documentCode", document_number AS "documentNumber",
+              status, issued_at AS "issuedAt", signer, content_snapshot AS "contentSnapshot"
+         FROM hr_issued_documents
+        WHERE id = $1 AND employee_id = $2 AND document_kind = 'CERTIFICATE'`,
+      [params.data.id, self.employeeId],
+    );
+    const document = found.rows[0];
+    if (!document) return send(reply, 404, { code: "DOCUMENT_NOT_FOUND", message: "Surat tidak ditemukan." });
+    if (document.status !== "ISSUED") {
+      return send(reply, 409, { code: "DOCUMENT_REVOKED", message: "Surat ini sudah dibatalkan dan tidak dapat dicetak." });
+    }
+    await writeDocumentAudit(pool, {
+      eventType: "doc.opened",
+      issuedDocumentId: document.id,
+      employeeId: self.employeeId,
+      actorAccountId: self.principal.id,
+      metadata: { documentCode: document.documentCode, documentNumber: document.documentNumber },
+    });
+    return send(reply, 200, document);
+  });
+
   app.get("/documents/me/disciplinary", async (request, reply) => {
     const self = await requireSelf(request, reply);
     if (!self) return;

@@ -96,6 +96,11 @@ export async function getMyIssuedDocuments() {
   return (await get<{ items: IssuedDocumentSummary[] }>("/documents/me/issued")).items;
 }
 
+/** D-20: my own issued certificate, to print or save as PDF. The API audits each opening. */
+export async function getMyIssuedDocument(documentId: string) {
+  return get<IssuedDocumentSummary>(`/documents/me/issued/${documentId}`);
+}
+
 export async function getMyDisciplinaryLetters() {
   return (await get<{ items: DisciplinaryLetterSummary[] }>("/documents/me/disciplinary")).items;
 }

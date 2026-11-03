@@ -104,7 +104,8 @@ Input: `decree.mode` = `ISSUE` (terbit di HCIS) atau `EXTERNAL` dengan `decree.n
 | Versi berbeda | 409 `COMMITTEE_STALE` |
 | Status tidak mengizinkan tindakan | 409 `COMMITTEE_STATE` (atau `COMMITTEE_CLOSED` untuk status final) |
 | Field terkunci setelah penetapan diubah | 409 `COMMITTEE_FIELD_LOCKED` |
-| Pegawai tidak aktif / sudah anggota / Ketua kedua / batas anggota | 409 `COMMITTEE_EMPLOYEE_NOT_ACTIVE` / `COMMITTEE_DUPLICATE_MEMBER` / `COMMITTEE_CHAIR_REQUIRED` / `COMMITTEE_MEMBER_LIMIT` |
+| Pegawai tidak aktif / sudah anggota / batas anggota | 409 `COMMITTEE_EMPLOYEE_NOT_ACTIVE` / `COMMITTEE_DUPLICATE_MEMBER` / `COMMITTEE_MEMBER_LIMIT` |
+| Kepanitiaan yang sudah ditetapkan akan kehilangan Ketua (peran Ketua diubah atau tugasnya diakhiri) | 409 `COMMITTEE_CHAIR_REQUIRED` |
 | Syarat penetapan tidak terpenuhi | 409 `COMMITTEE_NOT_READY` dengan daftar alasan |
 | Tidak ada penandatangan SK | 409 `DOCUMENT_SIGNER_UNAVAILABLE` |
 
@@ -147,7 +148,8 @@ Kontrak lengkap: `docs/api/committees.openapi.yaml`.
 | --- | --- | --- |
 | GET | `/admin/committees?status=&category=&year=&q=&page=&pageSize=` | `committees.read` |
 | POST | `/admin/committees` | `committees.manage` |
-| GET | `/admin/committees/{id}` (detail, anggota, SK, riwayat) | `committees.read` |
+| GET | `/admin/committees/{id}` (detail, anggota, SK) | `committees.read` |
+| GET | `/admin/committees/{id}/history?page=&pageSize=` | `committees.read` |
 | PATCH | `/admin/committees/{id}` | `committees.manage` |
 | POST | `/admin/committees/{id}/members` | `committees.manage` |
 | PATCH | `/admin/committees/{id}/members/{memberId}` | `committees.manage` |
@@ -162,7 +164,7 @@ Kontrak lengkap: `docs/api/committees.openapi.yaml`.
 | GET | `/me/committees/{id}` | anggota |
 | GET | `/me/committees/meeting-groups` | sesi pegawai (D-16) |
 
-Daftar mengikuti ENG-LIST-001 §3.1 (bawaan 25, maks 100, filter sebelum `LIMIT`, `total` dengan filter yang sama). Susunan panitia di detail adalah daftar terbatas (D-06, maks 300 aktif ditambah riwayatnya) dan dikembalikan utuh; riwayat audit di detail dibatasi 200 event terbaru dan tandanya dikembalikan (`historyTruncated`). Pencarian pegawai: typeahead minimal 2 huruf, maks 20 hasil, nama + nomor pegawai + unit. `meeting-groups` paling banyak 20 kepanitiaan aktif milik pegawai itu, masing-masing dengan anggota aktif selain dirinya dalam bentuk opsi peserta CAL-001.
+Daftar mengikuti ENG-LIST-001 §3.1 (bawaan 25, maks 100, filter sebelum `LIMIT`, `total` dengan filter yang sama). Susunan panitia di detail adalah daftar terbatas (D-06, maks 300 aktif ditambah riwayatnya) dan dikembalikan utuh; riwayat audit punya rute berhalaman sendiri, terbaru dulu. Pencarian pegawai: typeahead minimal 2 huruf, maks 20 hasil, nama + nomor pegawai + unit. `meeting-groups` paling banyak 20 kepanitiaan aktif milik pegawai itu, masing-masing dengan anggota aktif selain dirinya dalam bentuk opsi peserta CAL-001.
 
 ## 10. Layar
 

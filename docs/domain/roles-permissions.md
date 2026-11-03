@@ -156,6 +156,17 @@ Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/
 
 Membaca Pusat Bantuan tidak membutuhkan permission: setiap sesi `EMPLOYEE` membaca artikel terbit dan kontak aktif (D-07). Super Admin tidak memperoleh `help.manage` lewat kompatibilitas legacy.
 
+### Kepanitiaan (ORG-012)
+
+Migration `0135_committee_permissions.sql`, berscope organisasi (`docs/domain/committees.md` §6, D-18 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `committees.read` | HC Admin (`human_capital_admin`) | daftar, detail, riwayat, rekap keikutsertaan |
+| `committees.manage` | HC Admin (`human_capital_admin`) | mencatat, mengelola anggota, menetapkan (SK), menyelesaikan, membatalkan; pencarian pegawai |
+
+Kepanitiaan Saya tidak membutuhkan permission: aksesnya keanggotaan. Kepanitiaan tidak memberi kewenangan approval apa pun. Super Admin tidak memperoleh `committees.*` lewat kompatibilitas legacy.
+
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 
 ## Scope

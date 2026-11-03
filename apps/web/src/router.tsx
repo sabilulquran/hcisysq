@@ -69,6 +69,7 @@ import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
 import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
+import { AdminCommitteesPage } from "@/pages/AdminCommitteesPage";
 import { AdminPayrollPage } from "@/pages/AdminPayrollPage";
 import { AdminPayrollReferencePage } from "@/pages/AdminPayrollReferencePage";
 import { AdminPayrollPeriodPage } from "@/pages/AdminPayrollPeriodPage";
@@ -87,6 +88,7 @@ import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
+import { EmployeeCommitteesPage } from "@/pages/EmployeeCommitteesPage";
 import { EmployeeCalendarPage } from "@/pages/EmployeeCalendarPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
@@ -246,6 +248,14 @@ const employeeHelpRoute = createRoute({
   path: "/app/help",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeHelpPage,
+});
+
+// ORG-012: membership is the access rule; the API answers 404 for anything else (D-15).
+const employeeCommitteesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/committees",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeCommitteesPage,
 });
 
 const employeeTrainingRoute = createRoute({
@@ -760,6 +770,13 @@ const adminHelpRoute = createRoute({
   component: AdminHelpPage,
 });
 
+const adminCommitteesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/committees",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/committees"),
+  component: AdminCommitteesPage,
+});
+
 const adminTrainingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/training",
@@ -824,6 +841,7 @@ const routeTree = rootRoute.addChildren([
   employeePerformanceRoute,
   employeeLoansRoute,
   employeeTrainingRoute,
+  employeeCommitteesRoute,
   employeeHelpRoute,
   employeeCalendarRoute,
   employeeAnnouncementsRoute,
@@ -896,6 +914,7 @@ const routeTree = rootRoute.addChildren([
   adminPerformanceRoute,
   adminLoansRoute,
   adminTrainingRoute,
+  adminCommitteesRoute,
   adminHrReportsRoute,
   adminHelpRoute,
   adminAnnouncementsRoute,

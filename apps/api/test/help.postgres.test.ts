@@ -3,6 +3,7 @@
 
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -162,6 +163,89 @@ describe.skipIf(!allowed)("HELP-001 help center", () => {
     });
     expect(edited.statusCode, edited.body).toBe(200);
     expect((await publish(seed.id, 2)).statusCode).toBe(200);
+  });
+
+  it("HELP-001 §8.1: migration 0137 corrects untouched seed drafts in place and keeps them unreviewed", async () => {
+    const corrected = await client.query<{ id: string; version: number; status: string; body: string; revisionBody: string; audits: number }>(
+      `SELECT a.id, a.version, a.status, a.body, r.body AS "revisionBody",
+              (SELECT count(*)::int FROM help_audit_events e
+                WHERE e.article_id = a.id AND e.event_type = 'help.article.seed_corrected'
+                  AND e.metadata->>'migration' = '0137' AND e.reason IS NOT NULL) AS audits
+         FROM help_articles a
+         JOIN help_article_revisions r ON r.article_id = a.id AND r.version = 1
+        WHERE a.id = ANY($1::uuid[])
+        ORDER BY a.id`,
+      [[
+        "99431555-85a0-56fd-9546-d9d6bbc390e7", "ed9cc0bb-554b-5ea9-8368-7706e32b7984", "35baba2c-65ce-5758-8849-8f6989a58638",
+        "928a0c74-0b29-5415-baf3-a60f52b3b086", "54750e5f-aacd-5103-acc2-5986ba954135", "fad4a383-21b6-58e4-9059-35126b44d2dc",
+        "039578d1-10b3-5d5e-8414-2ab0ffd0ed1f",
+      ]],
+    );
+    expect(corrected.rows).toHaveLength(7);
+    for (const row of corrected.rows) {
+      expect(row, row.id).toMatchObject({ version: 1, status: "DRAFT", audits: 1 });
+      expect(row.revisionBody, row.id).toBe(row.body);
+      // None of them still describes the closed gaps.
+      expect(row.body, row.id).not.toMatch(/belum menyediakan tombol|belum ada notifikasi khusus|walaupun pilihannya sudah tampil/);
+    }
+    const bodies = corrected.rows.map((row) => row.body).join(" ");
+    expect(bodies).toContain("Lihat & cetak");
+    expect(bodies).toContain("Batalkan pengajuan");
+    expect(bodies).toContain("formulir rapat tidak menampilkan pilihan WhatsApp");
+  });
+
+  it("HELP-001 §8.1: migration 0137 edits a published untouched seed and never overrides HC", async () => {
+    const sql = (await readFile(new URL("../migrations/0137_help_center_gap_articles.sql", import.meta.url), "utf8"))
+      .replace(/\r\n/g, "\n");
+    const changes = [...sql.matchAll(/\('([0-9a-f-]{36})',\n {3}\$help\$([\s\S]*?)\$help\$,\n {3}\$help\$([\s\S]*?)\$help\$,/g)]
+      .map((match) => ({ id: match[1]!, old: match[2]!, next: match[3]! }));
+    expect(changes).toHaveLength(7);
+    const [published, savedThenPublished, edited, archived] = changes;
+    const hcAccount = accounts.hc!;
+    // Back to the 0130 text, then four states HC can leave an article in.
+    for (const change of changes) {
+      await client.query("UPDATE help_articles SET body = $2 WHERE id = $1", [change.id, change.old]);
+    }
+    await client.query("UPDATE help_articles SET status = 'PUBLISHED', published_at = now() WHERE id = $1", [published!.id]);
+    // HC saved it (title only), then published: HC's article now, whatever the body says.
+    await client.query(
+      `UPDATE help_articles SET status = 'PUBLISHED', published_at = now(), version = 2, title = title || ' (HC)' WHERE id = $1`,
+      [savedThenPublished!.id],
+    );
+    await client.query(
+      `INSERT INTO help_article_revisions(id, article_id, version, kind, topic, title, body, status, actor_account_id)
+       SELECT $2, id, 2, kind, topic, title, body, 'DRAFT', $3 FROM help_articles WHERE id = $1`,
+      [savedThenPublished!.id, randomUUID(), hcAccount],
+    );
+    await client.query("UPDATE help_articles SET body = body || ' Disunting HC.', version = 2 WHERE id = $1", [edited!.id]);
+    await client.query("UPDATE help_articles SET status = 'ARCHIVED', archived_at = now() WHERE id = $1", [archived!.id]);
+    await client.query("DELETE FROM help_audit_events WHERE metadata->>'migration' = '0137'");
+
+    await client.query(sql);
+    const rows = await client.query<{ id: string; version: number; body: string }>(
+      "SELECT id, version, body FROM help_articles WHERE id = ANY($1::uuid[])",
+      [[published!.id, savedThenPublished!.id, edited!.id, archived!.id]],
+    );
+    const byId = new Map(rows.rows.map((row) => [row.id, row]));
+    expect(byId.get(published!.id)).toMatchObject({ version: 2, body: published!.next });
+    const revision = await client.query(
+      "SELECT change_note FROM help_article_revisions WHERE article_id = $1 AND version = 2 AND actor_account_id IS NULL",
+      [published!.id],
+    );
+    expect(revision.rows[0]?.change_note).toMatch(/LEAVE-010|D-20|K-16/);
+    const audits = await client.query<{ article_id: string; event_type: string }>(
+      "SELECT article_id, event_type FROM help_audit_events WHERE metadata->>'migration' = '0137' ORDER BY event_type",
+    );
+    expect(audits.rows.filter((row) => row.event_type === "help.article.edited").map((row) => row.article_id)).toEqual([published!.id]);
+    expect(audits.rows.filter((row) => row.event_type === "help.article.seed_corrected")).toHaveLength(3);
+    expect(byId.get(savedThenPublished!.id)).toMatchObject({ version: 2, body: savedThenPublished!.old });
+    expect(byId.get(edited!.id)!.body).toBe(`${edited!.old} Disunting HC.`);
+    expect(byId.get(archived!.id)!.body).toBe(archived!.old);
+
+    // Re-running finds nothing left to change.
+    await client.query(sql);
+    const again = await client.query("SELECT 1 FROM help_audit_events WHERE metadata->>'migration' = '0137'");
+    expect(again.rowCount).toBe(4);
   });
 
   it("HELP-001-A: a reader sees only published articles, in lists, counts and by id", async () => {

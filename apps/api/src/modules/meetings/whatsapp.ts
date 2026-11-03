@@ -1,14 +1,15 @@
 // WhatsApp port for HCIS (CAL-001 §9.2, SQ Hub ADR-0011). HCIS never talks to a WhatsApp
 // engine: the `kirim` adapter calls Kirim SQ on SQ Hub, the `log` adapter sends nothing and
-// reports a dry run. The adapter is `log` until the HCIS number is paired in Kirim SQ and the
-// operator installs the client credentials (§15).
+// reports a dry run. The `kirim` adapter authenticates with the machine client HCIS already uses
+// for SQ Hub (SQ Hub KIRIM-IMPL-003 §6), so no Kirim credential lives in final.env.
 
 import { createHash } from "node:crypto";
 
-import type { ApiConfig } from "../../config/env.js";
+import { kirimSettings, type ApiConfig } from "../../config/env.js";
 
 export interface WhatsAppMessage {
-  device: string;
+  /** Omitted: Kirim SQ uses the number on the HCIS card. */
+  device?: string | undefined;
   /** E.164, e.g. +6281234567890 */
   to: string;
   text: string;
@@ -65,7 +66,7 @@ export function maskWhatsAppNumber(e164: string): string {
 }
 
 export interface LogEntry {
-  device: string;
+  device: string | undefined;
   to: string;
   ref: string;
   idempotencyKey: string;
@@ -169,7 +170,7 @@ export class KirimWhatsAppSender implements WhatsAppSender {
           "idempotency-key": message.idempotencyKey,
         },
         body: JSON.stringify({
-          device: message.device,
+          ...(message.device ? { device: message.device } : {}),
           jenis: "notifikasi",
           to: message.to,
           text: message.text,
@@ -201,19 +202,32 @@ export class KirimWhatsAppSender implements WhatsAppSender {
 }
 
 export function createWhatsAppSender(
-  config: Pick<ApiConfig, "WHATSAPP_ADAPTER" | "KIRIM_BASE_URL" | "KIRIM_TOKEN_URL" | "KIRIM_CLIENT_ID" | "KIRIM_CLIENT_SECRET" | "KIRIM_AUDIENCE">,
+  config: Pick<
+    ApiConfig,
+    "WHATSAPP_ADAPTER" | "KIRIM_BASE_URL" | "KIRIM_TOKEN_URL" | "KIRIM_CLIENT_ID" | "KIRIM_CLIENT_SECRET" | "KIRIM_AUDIENCE"
+    | "OIDC_ISSUER" | "SQ_HUB_APPLICATION_ACCESS_URL" | "SQ_HUB_MACHINE_CLIENT_ID" | "SQ_HUB_MACHINE_CLIENT_SECRET"
+  >,
   deps: { fetch?: FetchLike; log?: (entry: LogEntry) => void } = {},
 ): WhatsAppSender {
   if (config.WHATSAPP_ADAPTER !== "kirim") return new LogWhatsAppSender(deps.log);
-  // loadConfig refuses `kirim` without these, so the assertions only document that.
+  // loadConfig refuses `kirim` when any of these cannot be resolved, so the assertions only document that.
+  const settings = kirimSettings(config);
   const tokens = new ClientCredentialsTokenProvider(
     {
-      tokenUrl: config.KIRIM_TOKEN_URL!,
-      clientId: config.KIRIM_CLIENT_ID!,
-      clientSecret: config.KIRIM_CLIENT_SECRET!,
+      tokenUrl: settings.tokenUrl!,
+      clientId: settings.clientId!,
+      clientSecret: settings.clientSecret!,
       audience: config.KIRIM_AUDIENCE,
     },
     deps.fetch,
   );
-  return new KirimWhatsAppSender(config.KIRIM_BASE_URL!, tokens, deps.fetch);
+  return new KirimWhatsAppSender(settings.baseUrl!, tokens, deps.fetch);
+}
+
+/**
+ * CAL-001 K-17: null when every recipient may receive real WhatsApp (`WHATSAPP_RECIPIENT_MODE=all`),
+ * otherwise the NIPs (employee numbers) allowed to. An empty set allows nobody.
+ */
+export function whatsappAllowlist(config: Pick<ApiConfig, "WHATSAPP_RECIPIENT_MODE" | "WHATSAPP_ALLOWLIST">): ReadonlySet<string> | null {
+  return config.WHATSAPP_RECIPIENT_MODE === "all" ? null : new Set(config.WHATSAPP_ALLOWLIST);
 }

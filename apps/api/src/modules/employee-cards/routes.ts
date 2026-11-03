@@ -16,7 +16,6 @@ import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js
 import { decryptSecret, encryptSecret } from "../auth/crypto.js";
 import type { EmployeeCardPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
-import { loadEmployeeFacts } from "../documents/service.js";
 import {
   assertIssueReason,
   CARD_FILTERS,
@@ -80,6 +79,11 @@ const settingsBody = z.object({
   signerName: text(1, 120),
   validityMonths: z.number().int().min(12).max(60),
 });
+
+/** D-13: what a card freezes; blank source text counts as missing (the 0132 CHECKs refuse ''). */
+const POSITION_TITLE_SQL = `coalesce(nullif(btrim(position.name), ''), nullif(btrim(employee.structural_position), ''),
+  nullif(btrim(employee.functional_position), ''))`;
+const UNIT_NAME_SQL = `nullif(btrim(unit.name), '')`;
 
 /** D-14: an employee HCIS manages and who still works here. */
 const EMPLOYEE_ACTIVE_SQL = `(employee.status = 'active' AND employee.removed_at IS NULL AND employee.management_scope = 'MANAGED')`;
@@ -161,13 +165,46 @@ function withValidity<T extends { status: CardStatus; validUntil: string }>(card
   return { ...card, invalidReason: invalidReason({ ...card, employeeActive }, today) };
 }
 
+type Facts = { fullName: string; employeeNumber: string; positionTitle: string | null; unitName: string | null };
+
+/** Today's facts for a card, read with the same position and unit rules as the admin list. */
+async function loadCardFacts(db: Db, employeeId: string) {
+  const found = await db.query<Facts & { id: string; status: string }>(
+    `SELECT employee.id, employee.employee_number AS "employeeNumber", employee.full_name AS "fullName", employee.status,
+            ${POSITION_TITLE_SQL} AS "positionTitle", ${UNIT_NAME_SQL} AS "unitName"
+       FROM employees employee
+       LEFT JOIN positions position ON position.id = employee.position_id
+       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
+      WHERE employee.id = $1`,
+    [employeeId],
+  );
+  return found.rows[0] ?? null;
+}
+
+const blankToNull = (value: string | null) => (value && value.trim() ? value.trim() : null);
+
+/** D-13: the facts a card freezes, in the shape the 0132 CHECKs accept; anything else is a clear 409. */
+function frozenFacts(facts: Facts) {
+  const frozen = {
+    fullName: facts.fullName.trim(),
+    employeeNumber: facts.employeeNumber.trim(),
+    positionTitle: blankToNull(facts.positionTitle),
+    unitName: blankToNull(facts.unitName),
+  };
+  if (!frozen.fullName || frozen.fullName.length > 200 || !frozen.employeeNumber || frozen.employeeNumber.length > 60
+    || (frozen.positionTitle?.length ?? 0) > 200 || (frozen.unitName?.length ?? 0) > 200) {
+    throw new EmployeeCardError(
+      409, "EMPLOYEE_CARD_DATA_INVALID",
+      "Nama (maks 200 karakter), NIP (maks 60), jabatan, atau unit pegawai tidak dapat dicetak. Perbaiki data pegawai dulu.",
+    );
+  }
+  return frozen;
+}
+
 /** D-13: whether today's employee facts differ from what the card froze. */
-function dataChanged(
-  card: Pick<CardRow, "fullName" | "employeeNumber" | "positionTitle" | "unitName">,
-  facts: { fullName: string; employeeNumber: string; positionTitle: string | null; unitName: string | null },
-) {
-  return card.fullName !== facts.fullName || card.employeeNumber !== facts.employeeNumber
-    || (card.positionTitle ?? null) !== (facts.positionTitle ?? null) || (card.unitName ?? null) !== (facts.unitName ?? null);
+function dataChanged(card: Pick<CardRow, "fullName" | "employeeNumber" | "positionTitle" | "unitName">, facts: Facts) {
+  return card.fullName !== facts.fullName.trim() || card.employeeNumber !== facts.employeeNumber.trim()
+    || (card.positionTitle ?? null) !== blankToNull(facts.positionTitle) || (card.unitName ?? null) !== blankToNull(facts.unitName);
 }
 
 export async function registerEmployeeCardRoutes(
@@ -316,7 +353,11 @@ export async function registerEmployeeCardRoutes(
   const publicHits = new Map<string, { windowStart: number; count: number }>();
   function publicRateLimited(request: FastifyRequest): boolean {
     const at = Date.now();
-    const address = request.ip || "unknown";
+    // Cloudflare sets CF-Connecting-IP itself. The Mi8 edge proxy also rewrites X-Forwarded-For to
+    // that address, so request.ip (trustProxy) is the client too; a client-written X-Forwarded-For
+    // never reaches the API through the edge.
+    const forwarded = request.headers["cf-connecting-ip"];
+    const address = (typeof forwarded === "string" && forwarded.trim()) || request.ip || "unknown";
     const state = publicHits.get(address);
     if (!state || at - state.windowStart >= PUBLIC_RATE_WINDOW_MS) {
       if (!state && publicHits.size >= PUBLIC_RATE_MAX_KEYS) {
@@ -456,8 +497,12 @@ export async function registerEmployeeCardRoutes(
     if (!(await requirePermission(request, reply, "employee_cards.manage"))) return;
     const query = listQuery.safeParse(request.query);
     if (!query.success) return send(reply, 400, { code: "INVALID_EMPLOYEE_CARD_FILTER", message: "Pencarian atau filter tidak valid." });
-    const values: unknown[] = [wibDate(now())];
+    const values: unknown[] = [];
     const add = (value: unknown) => `$${values.push(value)}`;
+    // Today's WIB date is bound only where a query uses it, so the count query never carries an
+    // unused parameter.
+    let todayRef: string | null = null;
+    const today = () => (todayRef ??= add(wibDate(now())));
     // Population: employees HCIS manages who either work here or still hold an ACTIVE card that
     // HC must revoke.
     const where = [
@@ -470,11 +515,11 @@ export async function registerEmployeeCardRoutes(
       const placeholder = add(pattern);
       where.push(`(employee.full_name ILIKE ${placeholder} OR employee.employee_number ILIKE ${placeholder})`);
     }
-    const valid = `(latest.status = 'ACTIVE' AND latest.valid_until >= $1::date AND ${EMPLOYEE_ACTIVE_SQL})`;
+    const valid = () => `(latest.status = 'ACTIVE' AND latest.valid_until >= ${today()}::date AND ${EMPLOYEE_ACTIVE_SQL})`;
     if (query.data.filter === "NO_PHOTO") where.push("photo.id IS NULL");
     if (query.data.filter === "NO_CARD") where.push("latest.id IS NULL");
-    if (query.data.filter === "ACTIVE") where.push(valid);
-    if (query.data.filter === "NEEDS_REISSUE") where.push(`(latest.id IS NOT NULL AND NOT ${valid})`);
+    if (query.data.filter === "ACTIVE") where.push(valid());
+    if (query.data.filter === "NEEDS_REISSUE") where.push(`(latest.id IS NOT NULL AND NOT ${valid()})`);
     const from = `
       FROM employees employee
       LEFT JOIN positions position ON position.id = employee.position_id
@@ -488,6 +533,7 @@ export async function registerEmployeeCardRoutes(
       ) latest ON true
       WHERE ${where.join(" AND ")}`;
     const filterValues = [...values];
+    const itemToday = today();
     const limit = add(query.data.pageSize);
     const offset = add(pageOffset(query.data));
     // ENG-LIST-001: filters run before LIMIT, and total counts the same filter.
@@ -495,8 +541,8 @@ export async function registerEmployeeCardRoutes(
       pool.query(
         `SELECT employee.id AS "employeeId", employee.employee_number AS "employeeNumber",
                 employee.full_name AS "fullName", employee.status AS "employeeStatus",
-                coalesce(position.name, employee.structural_position, employee.functional_position) AS "positionTitle",
-                unit.name AS "unitName",
+                ${POSITION_TITLE_SQL} AS "positionTitle",
+                ${UNIT_NAME_SQL} AS "unitName",
                 (photo.id IS NOT NULL) AS "hasPhoto", photo.created_at AS "photoUploadedAt",
                 CASE WHEN latest.id IS NULL THEN NULL ELSE json_build_object(
                   'id', latest.id, 'cardNumber', latest.card_number, 'edition', latest.edition,
@@ -504,13 +550,13 @@ export async function registerEmployeeCardRoutes(
                   'printCount', latest.print_count,
                   'invalidReason', CASE
                     WHEN latest.status <> 'ACTIVE' THEN latest.status
-                    WHEN latest.valid_until < $1::date THEN 'EXPIRED'
+                    WHEN latest.valid_until < ${itemToday}::date THEN 'EXPIRED'
                     WHEN NOT ${EMPLOYEE_ACTIVE_SQL} THEN 'EMPLOYEE_INACTIVE'
                     ELSE NULL END,
                   'dataChanged', (latest.full_name <> employee.full_name
                     OR latest.employee_number <> employee.employee_number
-                    OR latest.position_title IS DISTINCT FROM coalesce(position.name, employee.structural_position, employee.functional_position)
-                    OR latest.unit_name IS DISTINCT FROM unit.name)
+                    OR latest.position_title IS DISTINCT FROM ${POSITION_TITLE_SQL}
+                    OR latest.unit_name IS DISTINCT FROM ${UNIT_NAME_SQL})
                 ) END AS card
          ${from}
          ORDER BY employee.full_name, employee.id
@@ -526,7 +572,7 @@ export async function registerEmployeeCardRoutes(
     if (!(await requirePermission(request, reply, "employee_cards.manage"))) return;
     const params = employeeParams.safeParse(request.params);
     if (!params.success) return send(reply, 400, { code: "INVALID_EMPLOYEE_ID", message: "Pegawai tidak valid." });
-    const facts = await loadEmployeeFacts(pool, params.data.employeeId);
+    const facts = await loadCardFacts(pool, params.data.employeeId);
     if (!facts) return send(reply, 404, { code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
     const today = wibDate(now());
     const [photo, cards, active] = await Promise.all([
@@ -627,7 +673,7 @@ export async function registerEmployeeCardRoutes(
       if (!locked.rows[0].active) {
         throw new EmployeeCardError(409, "EMPLOYEE_CARD_EMPLOYEE_INACTIVE", "Kartu hanya dapat diterbitkan untuk pegawai aktif.");
       }
-      const facts = await loadEmployeeFacts(client, params.data.employeeId);
+      const facts = await loadCardFacts(client, params.data.employeeId);
       if (!facts) throw new EmployeeCardError(404, "EMPLOYEE_NOT_FOUND", "Pegawai tidak ditemukan.");
       const photo = await client.query<{ id: string }>(
         `SELECT id FROM employee_card_photos WHERE employee_id = $1 AND replaced_at IS NULL`,
@@ -640,12 +686,14 @@ export async function registerEmployeeCardRoutes(
       if (!current.signerName) {
         throw new EmployeeCardError(409, "EMPLOYEE_CARD_SIGNER_MISSING", "Isi nama penanda tangan di Pengaturan sebelum menerbitkan kartu.");
       }
+      // FOR UPDATE: a revoke or a lost report on the ACTIVE card waits, so its status is never overwritten.
       const previous = await client.query<CardRow>(
-        `SELECT ${CARD_COLUMNS} FROM employee_cards card WHERE card.employee_id = $1 ORDER BY card.edition DESC`,
+        `SELECT ${CARD_COLUMNS} FROM employee_cards card WHERE card.employee_id = $1 ORDER BY card.edition DESC FOR UPDATE`,
         [facts.id],
       );
       const activeCard = previous.rows.find((card) => card.status === "ACTIVE") ?? null;
       assertIssueReason(body.data.reason, activeCard !== null, previous.rows.length > 0);
+      const frozen = frozenFacts(facts);
 
       const issuedAt = now();
       const issuedOn = wibDate(issuedAt);
@@ -653,7 +701,7 @@ export async function registerEmployeeCardRoutes(
         await client.query(
           `UPDATE employee_cards
               SET status = 'REPLACED', ended_at = $2, end_reason = $3, ended_by_account_id = $4, updated_at = now()
-            WHERE id = $1`,
+            WHERE id = $1 AND status = 'ACTIVE'`,
           [activeCard.id, issuedAt, `Diganti: ${body.data.reason}`, principal.id],
         );
         await writeCardAudit(client, {
@@ -684,7 +732,7 @@ export async function registerEmployeeCardRoutes(
          VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
         [
           id, facts.id, card.cardNumber, card.edition, verifyCode, body.data.reason, issuedAt, card.validUntil,
-          photo.rows[0].id, facts.fullName, facts.employeeNumber, facts.positionTitle, facts.unitName,
+          photo.rows[0].id, frozen.fullName, frozen.employeeNumber, frozen.positionTitle, frozen.unitName,
           current.signerName, current.signerTitle, principal.id,
         ],
       );
@@ -743,13 +791,18 @@ export async function registerEmployeeCardRoutes(
       return send(reply, 400, { code: "INVALID_EMPLOYEE_CARD_PRINT", message: `Pilih 1–${MAX_PRINT_BATCH} kartu berbeda untuk dicetak.` });
     }
     const [found, current] = await Promise.all([
+      // Only cards that verify today: printing an expired card, or one of a former employee, is a mistake.
       pool.query<CardRow>(
-        `SELECT ${CARD_COLUMNS} FROM employee_cards card WHERE card.id = ANY($1::uuid[]) AND card.status = 'ACTIVE'`,
-        [query.data.cardIds],
+        `SELECT ${CARD_COLUMNS}
+           FROM employee_cards card
+           JOIN employees employee ON employee.id = card.employee_id
+          WHERE card.id = ANY($1::uuid[]) AND card.status = 'ACTIVE' AND card.valid_until >= $2::date
+            AND ${EMPLOYEE_ACTIVE_SQL}`,
+        [query.data.cardIds, wibDate(now())],
       ),
       settings(pool),
     ]);
-    // Keep the order HC chose; a card that is no longer ACTIVE is reported, never silently dropped.
+    // Keep the order HC chose; a card that does not verify is reported, never silently dropped.
     const byId = new Map(found.rows.map((card) => [card.id, card]));
     return send(reply, 200, {
       items: query.data.cardIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : [])),

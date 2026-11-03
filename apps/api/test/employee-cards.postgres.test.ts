@@ -53,6 +53,9 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
   let permissions: string[];
   let clock: Date;
   const people = {} as Record<"hc" | "aisyah" | "bilal", { employeeId: string; accountId: string }>;
+  // A per-run name prefix keeps list searches to this test's employees, whatever else hcis_pr holds.
+  const tag = `Kartu${randomUUID().slice(0, 6)}`;
+  const nameOf = (key: keyof typeof people) => `${tag} ${key}`;
 
   async function insertEmployee(name: string) {
     const id = randomUUID();
@@ -106,7 +109,7 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     client = await pool.connect();
     await client.query("BEGIN");
     for (const key of ["hc", "aisyah", "bilal"] as const) {
-      const employeeId = await insertEmployee(`Pegawai ${key}`);
+      const employeeId = await insertEmployee(nameOf(key));
       people[key] = { employeeId, accountId: await insertAccount(employeeId) };
     }
     clock = new Date("2026-11-03T03:00:00Z");
@@ -139,6 +142,27 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     expect((await client.query("SELECT count(*)::int AS n FROM employee_cards")).rows[0].n).toBe(0);
   });
 
+  it("D-13: blank positions freeze as missing; data the card cannot hold is a clear 409", async () => {
+    await ready();
+    await client.query("UPDATE employees SET structural_position = '  ', functional_position = 'Guru Tahfizh' WHERE id = $1", [people.aisyah.employeeId]);
+    expect((await issue("aisyah")).statusCode).toBe(201);
+    actAs("aisyah");
+    expect((await call("GET", "/me/employee-card")).json().card).toMatchObject({ positionTitle: "Guru Tahfizh", unitName: null });
+
+    await ready("bilal");
+    await client.query("UPDATE employees SET full_name = $2 WHERE id = $1", [people.bilal.employeeId, "N".repeat(201)]);
+    const tooLong = await issue("bilal");
+    expect(tooLong.statusCode).toBe(409);
+    expect(tooLong.json().code).toBe("EMPLOYEE_CARD_DATA_INVALID");
+  });
+
+  it("prints only cards that verify today", async () => {
+    await ready();
+    const card = (await issue("aisyah")).json();
+    clock = new Date("2028-12-01T03:00:00Z");
+    expect((await call("GET", `/admin/employee-cards/print?cardIds=${card.id}`)).json()).toMatchObject({ items: [], unavailableCardIds: [card.id] });
+  });
+
   it("issues a card with frozen data, number, validity and a check code", async () => {
     await ready();
     const issued = await issue("aisyah");
@@ -151,7 +175,7 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     actAs("aisyah");
     const mine = await call("GET", "/me/employee-card");
     expect(mine.statusCode).toBe(200);
-    expect(mine.json().card).toMatchObject({ cardNumber: card.cardNumber, fullName: "Pegawai aisyah", signerName: "Ketua Sintetis", invalidReason: null });
+    expect(mine.json().card).toMatchObject({ cardNumber: card.cardNumber, fullName: nameOf("aisyah"), signerName: "Ketua Sintetis", invalidReason: null });
     const photo = await call("GET", "/me/employee-card/photo");
     expect(photo.statusCode).toBe(200);
     expect(photo.headers["cache-control"]).toBe("private, no-store");
@@ -186,7 +210,7 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     actAs(null);
     const valid = await call("GET", `/public/employee-cards/${code.toLowerCase().slice(0, 5)}-${code.slice(5)}`);
     expect(valid.statusCode).toBe(200);
-    expect(valid.json()).toMatchObject({ valid: true, fullName: "Pegawai aisyah", edition: 1 });
+    expect(valid.json()).toMatchObject({ valid: true, fullName: nameOf("aisyah"), edition: 1 });
     const publicBody = valid.body;
     for (const forbidden of ["employeeNumber", "employeeId", "KP-" + people.aisyah.employeeId.slice(0, 8), people.aisyah.employeeId, "verifyCode"]) {
       expect(publicBody).not.toContain(forbidden);
@@ -200,7 +224,7 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     actAs(null);
     const lost = await call("GET", `/public/employee-cards/${code}`);
     expect(lost.json()).toMatchObject({ valid: false, reason: "REPORTED_LOST" });
-    expect(lost.body).not.toContain("Pegawai aisyah");
+    expect(lost.body).not.toContain(nameOf("aisyah"));
     expect((await call("GET", `/public/employee-cards/${code}/photo`)).statusCode).toBe(404);
     expect((await call("GET", "/public/employee-cards/0000000000")).statusCode).toBe(404);
   });
@@ -238,13 +262,25 @@ describe.skipIf(!allowed)("EMP-012 employee cards", () => {
     expect(afterRevoke.json()).toMatchObject({ items: [], unavailableCardIds: [bilal.id] });
     expect((await call("POST", "/admin/employee-cards/print", { cardIds: [aisyah.id, bilal.id] })).statusCode).toBe(409);
 
-    const needs = (await call("GET", "/admin/employee-cards?filter=NEEDS_REISSUE&q=Pegawai")).json();
+    const list = (url: string) => call("GET", url);
+    const needs = (await list(`/admin/employee-cards?filter=NEEDS_REISSUE&q=${tag}`)).json();
     expect(needs.items.map((item: { employeeId: string }) => item.employeeId)).toEqual([people.bilal.employeeId]);
     expect(needs.items[0].card).toMatchObject({ status: "REVOKED", invalidReason: "REVOKED" });
-    const active = (await call("GET", "/admin/employee-cards?filter=ACTIVE&q=Pegawai")).json();
+    const active = (await list(`/admin/employee-cards?filter=ACTIVE&q=${tag}`)).json();
     expect(active.items.map((item: { employeeId: string }) => item.employeeId)).toEqual([people.aisyah.employeeId]);
-    const noPhoto = (await call("GET", "/admin/employee-cards?filter=NO_PHOTO&q=Pegawai%20hc")).json();
+    const noPhoto = (await list(`/admin/employee-cards?filter=NO_PHOTO&q=${encodeURIComponent(nameOf("hc"))}`)).json();
     expect(noPhoto.pagination.total).toBe(1);
+    // Every combination binds only the parameters its own query uses (count and items alike).
+    for (const url of ["/admin/employee-cards", "/admin/employee-cards?filter=NO_CARD", `/admin/employee-cards?q=${tag}`,
+      `/admin/employee-cards?filter=ACTIVE`, "/admin/employee-cards?filter=NEEDS_REISSUE&page=2&pageSize=1"]) {
+      const response = await list(url);
+      expect(response.statusCode, `${url}: ${response.body}`).toBe(200);
+      expect(response.json().pagination.total, url).toBeGreaterThanOrEqual(0);
+    }
+    const all = (await list(`/admin/employee-cards?q=${tag}`)).json();
+    expect(all.pagination.total).toBe(3);
+    expect(all.items.find((item: { employeeId: string }) => item.employeeId === people.aisyah.employeeId).card)
+      .toMatchObject({ invalidReason: null, dataChanged: false });
 
     const audit = (await call("GET", `/admin/employee-cards/audit-events?employeeId=${people.bilal.employeeId}`)).json();
     expect(audit.items.map((event: { eventType: string }) => event.eventType)).toEqual([

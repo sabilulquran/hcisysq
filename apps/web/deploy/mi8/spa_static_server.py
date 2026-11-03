@@ -14,6 +14,7 @@ are routed to the API by the Mi8 edge proxy before reaching this server.
 import argparse
 import os
 import posixpath
+import re
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
@@ -27,6 +28,7 @@ SHELL_HEADERS = {
     "Expires": "0",
 }
 ASSET_CACHE = "public, max-age=604800, immutable"
+CHECK_CODE_PATH = re.compile(r"(/cek/)[^\s?/]+")
 
 
 class SpaHandler(SimpleHTTPRequestHandler):
@@ -76,6 +78,10 @@ class SpaHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
         else:
             self._send_file("index.html", SHELL_HEADERS)
+
+    def log_message(self, format, *args):
+        # EMP-012 §7: the code in /cek/<code> opens a card's public check page; keep it out of the log.
+        super().log_message(format, *(CHECK_CODE_PATH.sub(r"\1[code]", arg) if isinstance(arg, str) else arg for arg in args))
 
     def do_GET(self):
         self._dispatch()

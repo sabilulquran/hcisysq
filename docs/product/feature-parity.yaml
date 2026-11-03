@@ -876,14 +876,21 @@ features:
     legacy_evidence: >-
       Legacy Laravel hcis-ysq: HelpController with help/faq, help/guide and help/contact
       (sendSupport form).
-    target_status: discovery
+    target_status: implemented
     priority: before-staff-launch
     risk: low
     planning_note: >-
       Found by the 2026-11-02 legacy parity audit. HCIS is about to be opened to all staff,
       who will need a short guide per service and a known place to ask. Content can start as
       static pages; a contact form must not become a general chat (outside HCIS scope).
+    notes: >-
+      Package 1 implemented 2026-11-03 (docs/domain/help-center.md): FAQ and guides on a fixed
+      topic list, search, HC contacts, HC admin with revisions and audit, permission help.manage.
+      Initial content for every live service ships as DRAFT for HC review. The legacy contact
+      form (sendSupport) is not carried over (D-10).
     docs:
+      - docs/domain/help-center.md
+      - docs/api/help-center.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: MIG-001

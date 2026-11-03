@@ -1,0 +1,568 @@
+openapi: 3.1.0
+info:
+  title: HCIS Help Center (HELP-001 Package 1)
+  version: 1.0.0
+  description: |
+    FAQ and guide articles on a fixed topic list, HC contacts, revisions and audit history, as
+    implemented in apps/api/src/modules/help/routes.ts. Spec: docs/domain/help-center.md.
+    All routes use the session cookie and answer with Cache-Control: no-store. Errors use
+    { code, message }. /help/* needs an EMPLOYEE session and shows only PUBLISHED articles and
+    active contacts; /admin/help/* needs help.manage, checked before any input validation.
+paths:
+  /help/overview:
+    get:
+      tags: [Help Center]
+      operationId: getHelpOverview
+      summary: Published article counts per topic and the active HC contacts (bounded list)
+      responses:
+        '200':
+          description: Overview
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [topics, contacts]
+                properties:
+                  topics:
+                    type: array
+                    description: Always all thirteen topics, in reading order (D-01)
+                    items:
+                      type: object
+                      required: [topic, faqCount, guideCount]
+                      properties:
+                        topic: { $ref: '#/components/schemas/Topic' }
+                        faqCount: { type: integer }
+                        guideCount: { type: integer }
+                  contacts:
+                    type: array
+                    maxItems: 20
+                    items: { $ref: '#/components/schemas/ReaderContact' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /help/articles:
+    get:
+      tags: [Help Center]
+      operationId: listHelpArticles
+      summary: Published articles, filtered and searched (D-06), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/TopicFilter'
+        - $ref: '#/components/parameters/KindFilter'
+      responses:
+        '200':
+          description: One page of published articles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ReaderArticle' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /help/articles/{id}:
+    get:
+      tags: [Help Center]
+      operationId: getHelpArticle
+      summary: One published article; drafts, archived and malformed ids are 404 (HELP-001-A)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Article
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReaderArticle' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/help/articles:
+    get:
+      tags: [Help Center]
+      operationId: listAdminHelpArticles
+      summary: Articles in every status with per-status counts (help.manage), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/TopicFilter'
+        - $ref: '#/components/parameters/KindFilter'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/Status' }
+      responses:
+        '200':
+          description: One page of articles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination, counts]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AdminArticle' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  counts:
+                    type: object
+                    required: [DRAFT, PUBLISHED, ARCHIVED, unreviewedSeed]
+                    properties:
+                      DRAFT: { type: integer }
+                      PUBLISHED: { type: integer }
+                      ARCHIVED: { type: integer }
+                      unreviewedSeed:
+                        type: integer
+                        description: Initial-content drafts HC has not edited yet (D-03)
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Help Center]
+      operationId: createHelpArticle
+      summary: Create a DRAFT article with revision 1 (help.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArticleInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArticleState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/help/articles/{id}:
+    get:
+      tags: [Help Center]
+      operationId: getAdminHelpArticle
+      summary: One article in any status (help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Article
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminArticle' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Help Center]
+      operationId: editHelpArticle
+      summary: Edit a DRAFT or PUBLISHED article; writes the next revision (D-04, help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArticleEdit' }
+      responses:
+        '200':
+          description: Saved; a published article stays published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArticleState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/help/articles/{id}/publish:
+    post:
+      tags: [Help Center]
+      operationId: publishHelpArticle
+      summary: Publish a DRAFT article at the version the caller read (help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArticleState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/help/articles/{id}/archive:
+    post:
+      tags: [Help Center]
+      operationId: archiveHelpArticle
+      summary: Archive ("delete") a DRAFT or PUBLISHED article; it is never hard-deleted (D-02, help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: Archived
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArticleState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/help/articles/{id}/restore:
+    post:
+      tags: [Help Center]
+      operationId: restoreHelpArticle
+      summary: Return an ARCHIVED article to DRAFT (help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Restored as a draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArticleState' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/help/articles/{id}/revisions:
+    get:
+      tags: [Help Center]
+      operationId: listHelpArticleRevisions
+      summary: Every saved version of one article, newest first (help.manage), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of revisions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Revision' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/help/contacts:
+    get:
+      tags: [Help Center]
+      operationId: listHelpContacts
+      summary: All HC contacts, active or not (help.manage, bounded at 20)
+      responses:
+        '200':
+          description: Contacts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit]
+                properties:
+                  items: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/Contact' } }
+                  limit: { type: integer, const: 20 }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Help Center]
+      operationId: createHelpContact
+      summary: Add an HC contact; the 21st is refused with HELP_CONTACT_LIMIT (help.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /admin/help/contacts/{id}:
+    put:
+      tags: [Help Center]
+      operationId: updateHelpContact
+      summary: Replace an HC contact, including active and order (help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactInput' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Help Center]
+      operationId: deleteHelpContact
+      summary: Delete an HC contact; its last content stays in the audit event (help.manage)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  deleted: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /admin/help/audit-events:
+    get:
+      tags: [Help Center]
+      operationId: listHelpAuditEvents
+      summary: Help center audit history, newest first (help.manage), ENG-LIST-001 paged
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AuditEvent' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Search:
+      name: q
+      in: query
+      description: 2–100 characters (empty means no search); up to eight words, each must appear in the title or body (D-06)
+      schema: { type: string, maxLength: 100 }
+    TopicFilter:
+      name: topic
+      in: query
+      schema: { $ref: '#/components/schemas/Topic' }
+    KindFilter:
+      name: kind
+      in: query
+      schema: { $ref: '#/components/schemas/Kind' }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    Topic:
+      type: string
+      description: D-01 DRAFT, in reading order
+      enum: [GENERAL, ATTENDANCE, OVERTIME, LEAVE, PAYSLIP, TRIPS, CALENDAR, TRAINING, LOANS, ASSETS, DOCUMENTS, PERFORMANCE, APPROVALS]
+    Kind: { type: string, enum: [FAQ, GUIDE] }
+    Status: { type: string, enum: [DRAFT, PUBLISHED, ARCHIVED] }
+    Channel: { type: string, enum: [WHATSAPP, PHONE, EMAIL, OFFICE] }
+    ReaderArticle:
+      type: object
+      required: [id, kind, topic, title, body, sortOrder, publishedAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/Kind' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string }
+        body: { type: string, description: Plain text; paragraphs separated by a blank line (D-05) }
+        sortOrder: { type: integer }
+        publishedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminArticle:
+      allOf:
+        - $ref: '#/components/schemas/ReaderArticle'
+        - type: object
+          required: [status, version, origin, createdAt]
+          properties:
+            status: { $ref: '#/components/schemas/Status' }
+            version: { type: integer, minimum: 1 }
+            origin: { type: string, enum: [SEED, HC] }
+            publishedAt: { type: [string, 'null'], format: date-time }
+            archivedAt: { type: [string, 'null'], format: date-time }
+            createdAt: { type: string, format: date-time }
+    ArticleInput:
+      type: object
+      required: [kind, topic, title, body]
+      properties:
+        kind: { $ref: '#/components/schemas/Kind' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string, minLength: 5, maxLength: 200 }
+        body: { type: string, minLength: 20, maxLength: 8000 }
+        sortOrder: { type: integer, minimum: 0, maximum: 9999, default: 100 }
+    ArticleEdit:
+      allOf:
+        - $ref: '#/components/schemas/ArticleInput'
+        - type: object
+          required: [version]
+          properties:
+            version: { type: integer, minimum: 1, description: The version the caller read (D-04) }
+            changeNote: { type: string, maxLength: 300 }
+    ArticleState:
+      type: object
+      required: [id, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/Status' }
+        version: { type: integer }
+    Revision:
+      type: object
+      required: [id, version, kind, topic, title, body, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer }
+        kind: { $ref: '#/components/schemas/Kind' }
+        topic: { $ref: '#/components/schemas/Topic' }
+        title: { type: string }
+        body: { type: string }
+        status: { $ref: '#/components/schemas/Status' }
+        changeNote: { type: [string, 'null'] }
+        actorName: { type: [string, 'null'], description: Null for the initial content (D-03) }
+        createdAt: { type: string, format: date-time }
+    ReaderContact:
+      type: object
+      required: [id, label, channel, value, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        channel: { $ref: '#/components/schemas/Channel' }
+        value: { type: string }
+        note: { type: [string, 'null'] }
+        sortOrder: { type: integer }
+    Contact:
+      allOf:
+        - $ref: '#/components/schemas/ReaderContact'
+        - type: object
+          required: [active, createdAt, updatedAt]
+          properties:
+            active: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    ContactInput:
+      type: object
+      required: [label, channel, value]
+      description: WHATSAPP/PHONE take digits with +, space or -; EMAIL an address; OFFICE free text (D-09)
+      properties:
+        label: { type: string, minLength: 2, maxLength: 100 }
+        channel: { $ref: '#/components/schemas/Channel' }
+        value: { type: string, minLength: 2, maxLength: 200 }
+        note: { type: string, maxLength: 200 }
+        sortOrder: { type: integer, minimum: 0, maximum: 9999, default: 100 }
+        active: { type: boolean, default: true }
+    AuditEvent:
+      type: object
+      required: [id, eventType, occurredAt, metadata]
+      properties:
+        id: { type: string, format: uuid }
+        eventType:
+          type: string
+          enum:
+            - help.article.created
+            - help.article.edited
+            - help.article.published
+            - help.article.archived
+            - help.article.restored
+            - help.contact.created
+            - help.contact.updated
+            - help.contact.deleted
+        articleId: { type: [string, 'null'], format: uuid }
+        contactId: { type: [string, 'null'], format: uuid }
+        reason: { type: [string, 'null'] }
+        metadata: { type: object, description: Article kind/topic/title/version, never the body; contact before/after }
+        actorName: { type: [string, 'null'] }
+        occurredAt: { type: string, format: date-time }
+  responses:
+    Problem:
+      description: Invalid input or filter
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: No session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Not an employee session, or help.manage is missing
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Missing, or not published for a reader
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Stale version, a transition the state does not allow, or the contact limit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }

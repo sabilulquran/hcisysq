@@ -137,6 +137,16 @@ Migration `0123_employee_loan_permissions.sql`, berscope organisasi (`docs/domai
 
 `payroll.loans.manage` (register kasbon PAY-003) dan `loans.*` tidak saling membuka. Super Admin tidak memperoleh `loans.*` lewat kompatibilitas legacy.
 
+### Pusat Bantuan (HELP-001)
+
+Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/help-center.md` §6, D-08 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `help.manage` | HC Admin (`human_capital_admin`) | membuat, mengedit, menerbitkan, mengarsipkan, memulihkan artikel; mengelola kontak HC; membaca revisi dan riwayat |
+
+Membaca Pusat Bantuan tidak membutuhkan permission: setiap sesi `EMPLOYEE` membaca artikel terbit dan kontak aktif (D-07). Super Admin tidak memperoleh `help.manage` lewat kompatibilitas legacy.
+
 Pengurus Yayasan (`foundation_board_viewer`) **tidak** memegang permission payroll apa pun; ORG-003-F dan ORG-010-F melarangnya, dan membukanya membutuhkan ADR tersendiri. Super Admin tidak memperoleh permission payroll lewat kompatibilitas legacy.
 
 ## Scope

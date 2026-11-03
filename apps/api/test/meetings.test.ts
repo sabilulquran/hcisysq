@@ -378,6 +378,7 @@ describe("CAL-001 WhatsApp", () => {
     expect(calls).toEqual(["https://login.example/realms/sq-staff/protocol/openid-connect/token", "http://127.0.0.1:3302/internal/kirim/messages"]);
     // A half-set explicit client never silently falls back to the machine client.
     expect(() => loadConfig({ ...base, ...hub, WHATSAPP_ADAPTER: "kirim", KIRIM_CLIENT_ID: "lain" })).toThrow(/KIRIM_CLIENT_SECRET is required/);
+    expect(() => loadConfig({ ...base, ...hub, WHATSAPP_ADAPTER: "kirim", KIRIM_CLIENT_SECRET: "lain" })).toThrow(/KIRIM_CLIENT_ID is required/);
   });
 
   it("CAL-001 K-17: real WhatsApp is limited to the allowlist until one switch lifts it", () => {

@@ -505,7 +505,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     const network = vi.fn<FetchLike>();
     const meeting = await created({ participantEmployeeIds: [people.alice.employeeId, people.noAccount.employeeId] });
     expect(network).not.toHaveBeenCalled();
-    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: "https://hcis.example" });
+    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: "https://hcis.example", allowlist: null });
     const tick = await runner.tick();
     expect(tick.delivered).toBe(2);
     expect((await deliveries(meeting.id)).map((row) => row.status)).toEqual(["DRY_RUN", "DRY_RUN"]);
@@ -527,7 +527,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
       new ClientCredentialsTokenProvider({ tokenUrl: "https://sso.example/token", clientId: "hcis", clientSecret: "s", audience: "sq-hub-kirim" }, fetchImpl),
       fetchImpl,
     );
-    const runner = new MeetingRunner(savepointPool(client), sender, { device: "hcis", origin: null });
+    const runner = new MeetingRunner(savepointPool(client), sender, { device: "hcis", origin: null, allowlist: null });
     await runner.tick();
     expect(await deliveries(meeting.id)).toEqual([expect.objectContaining({ status: "QUEUED", errorCode: "http_503" })]);
     // The retry is due after a minute; bring it forward.
@@ -575,7 +575,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
 
     // Make every reminder due now; the cancelled meeting's reminders were cancelled already.
     await client.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = ANY($1::uuid[])`, [[meeting.id, cancelled.id]]);
-    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: null });
+    const runner = new MeetingRunner(savepointPool(client), new LogWhatsAppSender(), { device: "hcis", origin: null, allowlist: null });
     const first = await runner.tick();
     expect(first.remindersFired).toBe(2);
     const second = await runner.tick();
@@ -636,7 +636,7 @@ describe.skipIf(!allowed)("CAL-001 meeting calendar (PostgreSQL)", () => {
     const texts: string[] = [];
     const runner = new MeetingRunner(savepointPool(client), {
       name: "log", send: async (message) => { texts.push(message.text); return { id: "x", dryRun: true }; },
-    }, { device: "hcis", origin: null });
+    }, { device: "hcis", origin: null, allowlist: null });
     await runner.tick();
     const outsiderText = texts.find((text) => text.includes("tidak lagi diundang"))!;
     expect(outsiderText).toContain("Rapat kurikulum tahfidz");
@@ -716,7 +716,7 @@ describe.skipIf(!allowed)("CAL-001 races (PostgreSQL, committed and cleaned up)"
     );
     const id = meeting.rows[0]!.id;
     await pool.query(`UPDATE meeting_reminders SET fire_at = now() - interval '1 minute' WHERE meeting_id = $1`, [id]);
-    const runner = () => new MeetingRunner(pool, new LogWhatsAppSender(), { device: "hcis", origin: null });
+    const runner = () => new MeetingRunner(pool, new LogWhatsAppSender(), { device: "hcis", origin: null, allowlist: null });
     const [a, b] = await Promise.all([runner().tick(), runner().tick()]);
     expect(a.remindersFired + b.remindersFired).toBe(2);
     const sent = await pool.query(

@@ -24,9 +24,10 @@ export interface MeetingRunnerOptions {
   device?: string | undefined;
   /**
    * CAL-001 K-17: real WhatsApp only to employees with these NIPs while HCIS is not live to staff;
-   * null lifts it. A `log` sender is not limited: it sends nothing anyway.
+   * null lifts it. Required, so a new runner cannot forget it and send to everyone. A `log`
+   * sender is not limited: it sends nothing anyway.
    */
-  allowlist?: ReadonlySet<string> | null;
+  allowlist: ReadonlySet<string> | null;
   /** `https://hcis…` for the link in a message; null leaves the link out. */
   origin: string | null;
   batchSize?: number;

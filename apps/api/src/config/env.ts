@@ -123,6 +123,10 @@ const envSchema = z
   })
   .superRefine((value, ctx) => {
     if (value.WHATSAPP_ADAPTER === "kirim") {
+      // The explicit client is a pair: a secret without its id is refused, never silently ignored.
+      if (value.KIRIM_CLIENT_SECRET && !value.KIRIM_CLIENT_ID) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["KIRIM_CLIENT_ID"], message: "KIRIM_CLIENT_ID is required when KIRIM_CLIENT_SECRET is set" });
+      }
       const settings = kirimSettings(value);
       for (const [key, present] of [
         ["KIRIM_BASE_URL", settings.baseUrl], ["KIRIM_TOKEN_URL", settings.tokenUrl],
@@ -348,6 +352,7 @@ type KirimSettingsSource = Pick<
 export function kirimSettings(config: KirimSettingsSource) {
   const explicitClient = config.KIRIM_CLIENT_ID && config.KIRIM_CLIENT_SECRET;
   return {
+    // The origin only: SQ Hub serves /internal/kirim at its root, like /internal/v1/application-access.
     baseUrl: config.KIRIM_BASE_URL
       ?? (config.SQ_HUB_APPLICATION_ACCESS_URL ? new URL(config.SQ_HUB_APPLICATION_ACCESS_URL).origin : undefined),
     tokenUrl: config.KIRIM_TOKEN_URL

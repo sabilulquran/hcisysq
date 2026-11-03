@@ -13,13 +13,21 @@ import { enqueueWhatsApp, meetingHref, notifyPeople } from "./service.js";
 import {
   createWhatsAppSender,
   normalizeWhatsAppNumber,
+  whatsappAllowlist,
   WhatsAppRejectedError,
   WhatsAppRetryableError,
   type WhatsAppSender,
 } from "./whatsapp.js";
 
 export interface MeetingRunnerOptions {
-  device: string;
+  /** Omitted: Kirim SQ uses the number on the HCIS card. */
+  device?: string | undefined;
+  /**
+   * CAL-001 K-17: real WhatsApp only to employees with these NIPs while HCIS is not live to staff;
+   * null lifts it. Required, so a new runner cannot forget it and send to everyone. A `log`
+   * sender is not limited: it sends nothing anyway.
+   */
+  allowlist: ReadonlySet<string> | null;
   /** `https://hcis…` for the link in a message; null leaves the link out. */
   origin: string | null;
   batchSize?: number;
@@ -187,10 +195,11 @@ export class MeetingRunner {
   }) {
     const facts = await this.pool.query<{
       title: string; startAt: Date; endAt: Date; location: string | null; status: string; started: boolean;
-      organizerName: string; phone: string | null; attending: boolean;
+      organizerName: string; phone: string | null; employeeNumber: string | null; attending: boolean;
     }>(
       `SELECT meeting.title, meeting.start_at AS "startAt", meeting.end_at AS "endAt", meeting.location, meeting.status,
               meeting.start_at <= now() AS started, organizer.full_name AS "organizerName", recipient.phone,
+              recipient.employee_number AS "employeeNumber",
               EXISTS (SELECT 1 FROM meeting_participants participant
                        WHERE participant.meeting_id = meeting.id AND participant.employee_id = recipient.id
                          AND participant.response <> 'DECLINED') AS attending
@@ -215,6 +224,11 @@ export class MeetingRunner {
     const to = normalizeWhatsAppNumber(meeting.phone);
     if (!to) {
       await this.finish(row.id, "SKIPPED", { errorCode: "no_phone" });
+      return false;
+    }
+    if (this.sender.name === "kirim" && this.options.allowlist
+      && !(meeting.employeeNumber && this.options.allowlist.has(meeting.employeeNumber))) {
+      await this.finish(row.id, "SKIPPED", { errorCode: "not_allowlisted" });
       return false;
     }
     const startMs = meeting.startAt.getTime();
@@ -268,7 +282,12 @@ export function registerMeetingRunner(app: FastifyInstance, pool: Pool, config: 
   const sender = createWhatsAppSender(config, {
     log: (entry) => app.log.info({ whatsapp: entry }, "whatsapp dry run (adapter log)"),
   });
-  const runner = new MeetingRunner(pool, sender, { device: config.KIRIM_DEVICE_HCIS, origin: publicOrigin(config) }, app.log);
+  const runner = new MeetingRunner(
+    pool,
+    sender,
+    { device: config.KIRIM_DEVICE_HCIS, origin: publicOrigin(config), allowlist: whatsappAllowlist(config) },
+    app.log,
+  );
   app.addHook("onReady", async () => runner.start());
   app.addHook("onClose", async () => runner.stop());
   return runner;

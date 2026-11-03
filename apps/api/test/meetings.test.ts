@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { loadConfig } from "../src/config/env.js";
+import { kirimSettings, loadConfig } from "../src/config/env.js";
 import { whatsappDelivery } from "../src/modules/meetings/routes.js";
 import {
   allowedActions,
@@ -33,6 +33,7 @@ import {
   ClientCredentialsTokenProvider,
   createWhatsAppSender,
   KirimWhatsAppSender,
+  whatsappAllowlist,
   LogWhatsAppSender,
   maskWhatsAppNumber,
   normalizeWhatsAppNumber,
@@ -342,6 +343,55 @@ describe("CAL-001 WhatsApp", () => {
     });
   });
 
+  it("kirim adapter leaves the device out when none is configured, so Kirim SQ uses the HCIS card", async () => {
+    const { calls, sender } = kirim([() => Response.json({ id: "msg-2", status: "antre" }, { status: 202 })]);
+    await sender.send({ ...message, device: undefined });
+    const post = calls.find((call) => call.url.endsWith("/internal/kirim/messages"))!;
+    expect(JSON.parse(post.init.body as string)).not.toHaveProperty("device");
+  });
+
+  it("KIRIM-IMPL-003: the kirim adapter uses the SQ Hub machine client, issuer and origin HCIS already has", async () => {
+    const base = { NODE_ENV: "test", DATABASE_URL: "postgres://x@127.0.0.1/db" };
+    const hub = {
+      OIDC_ISSUER: "https://login.example/realms/sq-staff/",
+      SQ_HUB_APPLICATION_ACCESS_URL: "http://127.0.0.1:3302/internal/v1/application-access/check",
+      SQ_HUB_MACHINE_CLIENT_ID: "hcis-api",
+      SQ_HUB_MACHINE_CLIENT_SECRET: "machine-secret",
+    };
+    const config = loadConfig({ ...base, ...hub, WHATSAPP_ADAPTER: "kirim" });
+    expect(kirimSettings(config)).toEqual({
+      baseUrl: "http://127.0.0.1:3302",
+      tokenUrl: "https://login.example/realms/sq-staff/protocol/openid-connect/token",
+      clientId: "hcis-api",
+      clientSecret: "machine-secret",
+    });
+    const calls: string[] = [];
+    const fetchImpl: FetchLike = async (url, init) => {
+      calls.push(url);
+      if (url.endsWith("/token")) {
+        expect(new URLSearchParams(init.body as string).get("client_id")).toBe("hcis-api");
+        return Response.json({ access_token: "t", expires_in: 300 });
+      }
+      return Response.json({ id: "msg-3", status: "antre" }, { status: 202 });
+    };
+    await createWhatsAppSender(config, { fetch: fetchImpl }).send({ ...message, device: undefined });
+    expect(calls).toEqual(["https://login.example/realms/sq-staff/protocol/openid-connect/token", "http://127.0.0.1:3302/internal/kirim/messages"]);
+    // A half-set explicit client never silently falls back to the machine client.
+    expect(() => loadConfig({ ...base, ...hub, WHATSAPP_ADAPTER: "kirim", KIRIM_CLIENT_ID: "lain" })).toThrow(/KIRIM_CLIENT_SECRET is required/);
+    expect(() => loadConfig({ ...base, ...hub, WHATSAPP_ADAPTER: "kirim", KIRIM_CLIENT_SECRET: "lain" })).toThrow(/KIRIM_CLIENT_ID is required/);
+  });
+
+  it("CAL-001 K-17: real WhatsApp is limited to the allowlist until one switch lifts it", () => {
+    const base = { NODE_ENV: "test", DATABASE_URL: "postgres://x@127.0.0.1/db" };
+    const defaults = loadConfig(base);
+    expect(defaults.WHATSAPP_RECIPIENT_MODE).toBe("allowlist");
+    expect(whatsappAllowlist(defaults)).toEqual(new Set());
+    const listed = loadConfig({ ...base, WHATSAPP_ALLOWLIST: "202001011990010001, 202001011990010002 ,202001011990010001" });
+    expect(whatsappAllowlist(listed)).toEqual(new Set(["202001011990010001", "202001011990010002"]));
+    expect(() => loadConfig({ ...base, WHATSAPP_ALLOWLIST: "+62 812 3456 7890" })).toThrow(/NIPs/);
+    expect(whatsappAllowlist(loadConfig({ ...base, WHATSAPP_RECIPIENT_MODE: "all", WHATSAPP_ALLOWLIST: "202001011990010001" }))).toBeNull();
+  });
+
   it("kirim adapter re-authenticates once on 401 and classifies failures", async () => {
     const reauth = kirim([
       () => new Response("", { status: 401 }),
@@ -361,7 +411,7 @@ describe("CAL-001 WhatsApp", () => {
   it("refuses WHATSAPP_ADAPTER=kirim without credentials and defaults to log", () => {
     const base = { NODE_ENV: "test", DATABASE_URL: "postgres://x@127.0.0.1/db" };
     expect(loadConfig(base).WHATSAPP_ADAPTER).toBe("log");
-    expect(loadConfig(base).KIRIM_DEVICE_HCIS).toBe("hcis");
+    expect(loadConfig(base).KIRIM_DEVICE_HCIS).toBeUndefined();
     expect(() => loadConfig({ ...base, WHATSAPP_ADAPTER: "kirim" })).toThrow(/KIRIM_BASE_URL is required/);
     const full = loadConfig({
       ...base, WHATSAPP_ADAPTER: "kirim", KIRIM_BASE_URL: "http://127.0.0.1:3302", KIRIM_TOKEN_URL: "https://sso.example/token",

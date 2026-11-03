@@ -23,7 +23,8 @@ import {
   type VerifyActorAssertion,
 } from "./actor-assertion.js";
 import {
-  allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, removeRoleAssignment,
+  allowedScopes, assertRoleGrantor, canDelegateRole, createRoleAssignment, GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
+  removeRoleAssignment,
 } from "./role-assignment.js";
 import { AuthError, type AuthPrincipal } from "./service.js";
 
@@ -362,12 +363,13 @@ export function registerRoleAdministrationRoutes(
     // 404 and 403 say different things and must not be confused: this one means the person has no
     // HCIS account HCIS may describe here, not that the caller may not look.
     //
-    // A non-EMPLOYEE principal answers 404 too, not 403. This channel grants roles only to
-    // employee accounts, so a FOUNDATION_BOARD or SUPER_ADMIN account is not a target it may
-    // describe — and 403 would turn the route into an oracle for which subjects hold privileged
-    // accounts.
+    // A SUPER_ADMIN principal answers 404 too, not 403: it is not a target this channel may
+    // describe, and 403 would turn the route into an oracle for which subjects hold privileged
+    // accounts. ORG-013-2 adds FOUNDATION_BOARD: the Hub grants an organ member the governance
+    // Leave approver role here, and createRoleAssignment refuses every other role for them.
     const target = account.rows[0];
-    if (account.rowCount !== 1 || !target || target.principalType !== "EMPLOYEE") {
+    if (account.rowCount !== 1 || !target
+        || (target.principalType !== "EMPLOYEE" && target.principalType !== "FOUNDATION_BOARD")) {
       return reply.status(404).send({ code: "ROLE_ADMIN_ACCOUNT_NOT_FOUND" });
     }
 
@@ -420,11 +422,19 @@ export function registerRoleAdministrationRoutes(
     return reply.send({
       account: {
         accountId: target.accountId,
+        // ORG-013-2: which roles apply. An organ account takes only the roles whose
+        // targetPrincipalTypes in /catalog name FOUNDATION_BOARD.
+        principalType: target.principalType,
         // Why a grant would be refused, rather than the employment data behind it. The Hub needs
-        // to warn before it posts; it does not need the person's status to do that.
-        grantable: target.status === "active" && target.employeeStatus === "active",
+        // to warn before it posts; it does not need the person's status to do that. An organ
+        // account counts only its own status, and one linked to an employee record is malformed
+        // (createRoleAssignment refuses it), so it is not grantable either. The e-mail match
+        // against active employees is left to the grant itself, which answers ORGAN_ACCOUNT_IS_EMPLOYEE.
+        grantable: target.status === "active" && (target.principalType === "FOUNDATION_BOARD"
+          ? target.employeeStatus === null
+          : target.employeeStatus === "active"),
         notGrantableReason: target.status !== "active" ? "account_inactive"
-          : target.employeeStatus !== "active" ? "employee_inactive" : null,
+          : target.principalType === "EMPLOYEE" && target.employeeStatus !== "active" ? "employee_inactive" : null,
       },
       assignments: {
         // ENG-LIST-001 §3.1 shape: items beside a pagination object, not spread into the parent.
@@ -441,8 +451,7 @@ export function registerRoleAdministrationRoutes(
           createdAt: row.createdAt.toISOString(),
           // Assignments this channel cannot remove are still shown — the operator needs the whole
           // picture — but flagged, so the Hub does not offer a revoke button that will answer 403.
-          // The other reason DELETE refuses, a non-employee target, cannot occur here: such an
-          // account answers 404 above.
+          // DELETE does not re-check the target type (ORG-013), so this flag is the whole answer.
           revocableViaHub: canDelegateRole(row, false, "sq_hub"),
         })),
         pagination: pagination(query.data, total.rows[0]?.total ?? 0),
@@ -479,6 +488,9 @@ export function registerRoleAdministrationRoutes(
           description: role.description,
           permissions: role.permissions,
           allowedScopes: allowedScopes(role.roleKey),
+          // ORG-013-2: the governance Leave approver goes to an organ account and nothing else does.
+          targetPrincipalTypes: role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY ? ["FOUNDATION_BOARD"] : ["EMPLOYEE"],
+          endDateRequired: role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY,
           mandateRequired: MANDATE_REQUIRED.has(role.roleKey),
         })),
     });

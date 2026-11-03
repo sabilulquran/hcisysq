@@ -164,6 +164,35 @@ describe.skipIf(!allowed)("HELP-001 help center", () => {
     expect((await publish(seed.id, 2)).statusCode).toBe(200);
   });
 
+  it("HELP-001 §8.1: migration 0137 corrects untouched seed drafts in place and keeps them unreviewed", async () => {
+    const corrected = await client.query<{ id: string; version: number; status: string; body: string; revisionBody: string; audits: number }>(
+      `SELECT a.id, a.version, a.status, a.body, r.body AS "revisionBody",
+              (SELECT count(*)::int FROM help_audit_events e
+                WHERE e.article_id = a.id AND e.event_type = 'help.article.seed_corrected'
+                  AND e.metadata->>'migration' = '0137' AND e.reason IS NOT NULL) AS audits
+         FROM help_articles a
+         JOIN help_article_revisions r ON r.article_id = a.id AND r.version = 1
+        WHERE a.id = ANY($1::uuid[])
+        ORDER BY a.id`,
+      [[
+        "99431555-85a0-56fd-9546-d9d6bbc390e7", "ed9cc0bb-554b-5ea9-8368-7706e32b7984", "35baba2c-65ce-5758-8849-8f6989a58638",
+        "928a0c74-0b29-5415-baf3-a60f52b3b086", "54750e5f-aacd-5103-acc2-5986ba954135", "fad4a383-21b6-58e4-9059-35126b44d2dc",
+        "039578d1-10b3-5d5e-8414-2ab0ffd0ed1f",
+      ]],
+    );
+    expect(corrected.rows).toHaveLength(7);
+    for (const row of corrected.rows) {
+      expect(row, row.id).toMatchObject({ version: 1, status: "DRAFT", audits: 1 });
+      expect(row.revisionBody, row.id).toBe(row.body);
+      // None of them still describes the closed gaps.
+      expect(row.body, row.id).not.toMatch(/belum menyediakan tombol|belum ada notifikasi khusus|walaupun pilihannya sudah tampil/);
+    }
+    const bodies = corrected.rows.map((row) => row.body).join(" ");
+    expect(bodies).toContain("Lihat & cetak");
+    expect(bodies).toContain("Batalkan pengajuan");
+    expect(bodies).toContain("formulir rapat tidak menampilkan pilihan WhatsApp");
+  });
+
   it("HELP-001-A: a reader sees only published articles, in lists, counts and by id", async () => {
     const draft = await create({ title: `Draf rahasia ${marker} belum terbit` });
     const live = await create({ title: `Cara melihat saldo cuti ${marker}?` });

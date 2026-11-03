@@ -104,6 +104,16 @@ Isi awal dimasukkan di migration yang sama (D-03), dihasilkan dari `docs/domain/
 
 **Rollback/recovery:** migration hanya menambah tabel dan baris baru; tidak mengubah data yang ada. Turun: `DROP TABLE help_audit_events, help_article_revisions, help_contacts, help_articles;` lalu hapus dua baris `schema_migrations`. Izin: `DELETE FROM role_permissions WHERE permission_key = 'help.manage'; DELETE FROM permissions WHERE permission_key = 'help.manage';`. Rollback aplikasi ke rilis sebelumnya aman tanpa menurunkan database, karena build lama tidak membaca tabel ini (build lama hanya tidak mengenal `help.manage` saat mendelegasikan role `human_capital_admin`, OPS-MI8-REL-001 §4.5).
 
+### 8.1 Koreksi isi awal setelah celah layanan ditutup (2026-11-03)
+
+Tujuh artikel isi awal menjelaskan celah yang sejak 2026-11-03 ditutup: pilihan WhatsApp rapat yang tampil padahal belum aktif (CAL-001 K-16), surat terbit yang tidak bisa dicetak (DOC-001 D-20), dan cuti yang tidak bisa dibatalkan serta penyetuju cuti yang tidak diberi notifikasi (LEAVE-010). Migration `0137_help_center_gap_articles.sql` menyesuaikan artikel itu tanpa pernah menimpa suntingan HC:
+
+- artikel isi awal yang masih draf dan belum disentuh (`origin = SEED`, `version = 1`, belum pernah terbit, isi persis sama dengan 0130) dikoreksi di tempat sebagai isi awal: artikel dan revisi 1 mendapat teks baru, tetap versi 1 sehingga tetap terhitung "draf awal perlu ditinjau" (D-03), dan audit mencatat `help.article.seed_corrected` dengan catatan perubahan;
+- artikel isi awal yang sudah diterbitkan HC tanpa diubah disunting seperti simpan biasa (D-04): versi naik, revisi lengkap dengan catatan perubahan, audit `help.article.edited` tanpa actor;
+- artikel yang sudah diubah atau diarsipkan HC dibiarkan; HC menyesuaikannya di layar admin.
+
+Artikel yang disentuh: FAQ rapat lewat WhatsApp, FAQ salinan surat terbit, panduan Dokumen Kepegawaian, FAQ pembatalan cuti, panduan Cuti & Izin, FAQ notifikasi untuk penyetuju, dan FAQ isi halaman Notifikasi. `help-center-seed.json` tetap potret isi 0130.
+
 ## 9. API
 
 Kontrak: `docs/api/help-center.openapi.yaml`.

@@ -53,7 +53,8 @@ export interface CommitteeMember {
   section: string | null;
   joinedOn: string;
   leftOn: string | null;
-  endReason: string | null;
+  /** HC only (D-15). */
+  endReason?: string | null;
 }
 
 export interface DecreeSnapshot {

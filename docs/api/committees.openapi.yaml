@@ -198,10 +198,11 @@ paths:
                           allOf:
                             - $ref: '#/components/schemas/Member'
                             - type: object
-                              required: [employeeNumber, employeeStatus]
+                              required: [employeeNumber, employeeStatus, endReason]
                               properties:
                                 employeeNumber: { type: string }
                                 employeeStatus: { type: string }
+                                endReason: { type: [string, 'null'], description: HC only (D-15) }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -642,7 +643,7 @@ components:
               description: Line-up at activation (names, units, roles, sections); never identity numbers, address, pay or contacts
     Member:
       type: object
-      required: [id, employeeId, fullName, unitName, role, section, joinedOn, leftOn, endReason]
+      required: [id, employeeId, fullName, unitName, role, section, joinedOn, leftOn]
       properties:
         id: { type: string, format: uuid }
         employeeId: { type: string, format: uuid }
@@ -652,7 +653,6 @@ components:
         section: { type: [string, 'null'] }
         joinedOn: { type: string, format: date }
         leftOn: { type: [string, 'null'], format: date }
-        endReason: { type: [string, 'null'] }
   responses:
     WriteResult:
       description: Write accepted; carries the new version

@@ -183,7 +183,13 @@ async function loadOpenMember(db: Db, committeeId: string, memberId: string): Pr
 }
 
 /** §5.3: a new chair demotes the current one to MEMBER in the same transaction (D-05). */
-async function demoteCurrentChair(db: Db, committeeId: string, exceptMemberId: string | null, actorAccountId: string) {
+async function demoteCurrentChair(
+  db: Db,
+  committee: { id: string; name: string; status: CommitteeStatus },
+  exceptMemberId: string | null,
+  actorAccountId: string,
+) {
+  const committeeId = committee.id;
   const demoted = await db.query<{ id: string; employeeId: string; fullName: string }>(
     `UPDATE committee_members member SET role = 'MEMBER', updated_at = now()
        FROM employees employee
@@ -200,6 +206,17 @@ async function demoteCurrentChair(db: Db, committeeId: string, exceptMemberId: s
       actorAccountId,
       metadata: { memberId: row.id, name: row.fullName, before: { role: "CHAIR" }, after: { role: "MEMBER" }, reason: "chair-transfer" },
     });
+    // D-17: a role change after activation is news for the person whose role changed.
+    if (committee.status === "ACTIVE") {
+      await notifyEmployee(db as PoolClient, row.employeeId, {
+        eventKey: `committee.${committeeId}.member.${row.id}.demoted.${randomUUID()}`,
+        category: "system",
+        title: "Peran kepanitiaan berubah",
+        body: `Peran Ketua pada ${committee.name} dipindahkan; peran Anda sekarang Anggota.`,
+        href: `/app/committees?committee=${committeeId}`,
+        actorAccountId,
+      });
+    }
   }
   return demoted.rows;
 }
@@ -217,8 +234,11 @@ async function assertActiveEmployee(db: Db, employeeId: string) {
   return found.rows[0];
 }
 
-function isUniqueViolation(error: unknown): error is { code: string; constraint?: string } {
-  return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
+/** Only the open-membership index means "already a member"; any other 23505 is a real fault. */
+function isDuplicateMember(error: unknown) {
+  if (typeof error !== "object" || error === null) return false;
+  const { code, constraint } = error as { code?: string; constraint?: string };
+  return code === "23505" && constraint === "committee_members_open_employee_idx";
 }
 
 export async function registerCommitteeRoutes(
@@ -280,7 +300,7 @@ export async function registerCommitteeRoutes(
       return send(reply, error.statusCode, { code: error.code, message: error.message, ...(error.details ?? {}) });
     }
     if (error instanceof DocumentError) return send(reply, error.statusCode, { code: error.code, message: error.message });
-    if (isUniqueViolation(error)) {
+    if (isDuplicateMember(error)) {
       // A concurrent add raced the checks below; the partial unique indexes have the last word.
       return send(reply, 409, { code: "COMMITTEE_DUPLICATE_MEMBER", message: "Pegawai itu sudah menjadi anggota panitia ini." });
     }
@@ -308,13 +328,13 @@ export async function registerCommitteeRoutes(
   const notFound = (reply: FastifyReply) =>
     send(reply, 404, { code: "COMMITTEE_NOT_FOUND", message: "Kepanitiaan tidak ditemukan." });
 
-  async function loadMembers(committeeId: string, withEmployeeNumber: boolean) {
+  /** D-15: HC sees employee numbers, employment status and why someone's duty ended; members do not. */
+  async function loadMembers(committeeId: string, forHc: boolean) {
     const result = await pool.query(
       `SELECT member.id, member.employee_id AS "employeeId", employee.full_name AS "fullName",
-              ${withEmployeeNumber ? `employee.employee_number AS "employeeNumber", employee.status AS "employeeStatus",` : ""}
+              ${forHc ? `employee.employee_number AS "employeeNumber", employee.status AS "employeeStatus", member.end_reason AS "endReason",` : ""}
               unit.name AS "unitName", member.role, member.section,
-              to_char(member.joined_on, 'YYYY-MM-DD') AS "joinedOn", to_char(member.left_on, 'YYYY-MM-DD') AS "leftOn",
-              member.end_reason AS "endReason"
+              to_char(member.joined_on, 'YYYY-MM-DD') AS "joinedOn", to_char(member.left_on, 'YYYY-MM-DD') AS "leftOn"
          FROM committee_members member
          JOIN employees employee ON employee.id = member.employee_id
          LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
@@ -643,9 +663,9 @@ export async function registerCommitteeRoutes(
       if ((open.rows[0]?.total ?? 0) >= MAX_ACTIVE_MEMBERS) {
         throw new CommitteeError(409, "COMMITTEE_MEMBER_LIMIT", `Satu kepanitiaan paling banyak ${MAX_ACTIVE_MEMBERS} anggota aktif.`);
       }
-      if (body.data.role === "CHAIR") await demoteCurrentChair(client, params.data.id, null, principal.id);
+      if (body.data.role === "CHAIR") await demoteCurrentChair(client, { id: params.data.id, ...current }, null, principal.id);
       const memberId = randomUUID();
-      const joinedOn = joinDate(current.status, current.startOn, today());
+      const joinedOn = joinDate(current.status, current.startOn, current.endOn, today());
       await client.query(
         `INSERT INTO committee_members (id, committee_id, employee_id, role, section, joined_on, added_by_account_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
@@ -695,7 +715,7 @@ export async function registerCommitteeRoutes(
           "Kepanitiaan yang sudah ditetapkan harus tetap punya Ketua. Jadikan anggota lain Ketua lebih dulu.");
       }
       if (body.data.role === "CHAIR" && member.role !== "CHAIR") {
-        await demoteCurrentChair(client, params.data.id, member.id, principal.id);
+        await demoteCurrentChair(client, { id: params.data.id, ...current }, member.id, principal.id);
       }
       await client.query("UPDATE committee_members SET role = $2, section = $3, updated_at = now() WHERE id = $1", [
         member.id, body.data.role, section,

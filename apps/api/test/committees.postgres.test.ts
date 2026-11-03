@@ -253,12 +253,19 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
 
     await insertEmployee("Kepala HCM Sintetis", "Kepala Human Capital Management");
     expect((await activate(committee.id)).statusCode).toBe(200);
+    // D-17: after activation, the chair a transfer demotes is told.
+    const newChair = await addMember(committee.id, "hc", "CHAIR");
+    const told = await client.query<{ total: number }>(
+      `SELECT count(*)::int AS total FROM in_app_notifications WHERE recipient_account_id = $1 AND event_key LIKE $2`,
+      [people.outsider.accountId, `committee.${committee.id}.member.${outsider.id}.demoted.%`],
+    );
+    expect(told.rows[0]!.total).toBe(1);
     actAs("hc", HC);
-    const demote = await call("PATCH", `/admin/committees/${committee.id}/members/${outsider.id}`, {
+    const demote = await call("PATCH", `/admin/committees/${committee.id}/members/${newChair.id}`, {
       role: "MEMBER", version: await version(committee.id),
     });
     expect(demote.json().code).toBe("COMMITTEE_CHAIR_REQUIRED");
-    const end = await call("POST", `/admin/committees/${committee.id}/members/${outsider.id}/end`, { version: await version(committee.id) });
+    const end = await call("POST", `/admin/committees/${committee.id}/members/${newChair.id}/end`, { version: await version(committee.id) });
     expect(end.json().code).toBe("COMMITTEE_CHAIR_REQUIRED");
   });
 
@@ -297,6 +304,7 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     expect(detail.members).toHaveLength(3);
     // D-15: no employee numbers of other members.
     expect(detail.members[0].employeeNumber).toBeUndefined();
+    expect(detail.members[0].endReason).toBeUndefined();
     expect(detail.myMemberIds).toEqual([committee.member]);
 
     const groups = (await call("GET", "/me/committees/meeting-groups")).json();
@@ -318,6 +326,30 @@ describe.skipIf(!allowed)("ORG-012 committees", () => {
     expect((await call("GET", "/me/committees?scope=current")).json().items).toEqual([]);
     expect((await call("GET", "/me/committees?scope=history")).json().items).toHaveLength(1);
     expect((await call("GET", "/me/committees/meeting-groups")).json().items).toEqual([]);
+    // D-15: another member never reads why someone's duty ended; HC does.
+    actAs("chair");
+    const seen = (await call("GET", `/me/committees/${committee.id}`)).json();
+    expect(seen.members.find((member: { id: string }) => member.id === committee.member).endReason).toBeUndefined();
+    actAs("hc", ["committees.read"]);
+    const hc = (await call("GET", `/admin/committees/${committee.id}`)).json();
+    expect(hc.members.find((member: { id: string }) => member.id === committee.member).endReason).toBe("Pindah tugas ke unit lain");
+  });
+
+  it("D-04/D-11: a member added late to a past committee joins inside its period and counts in its year", async () => {
+    const past = await createCommittee({ name: "Panitia Ujian Lalu", category: "EXAM", startOn: `${year - 1}-03-01`, endOn: `${year - 1}-03-10` });
+    await addMember(past.id, "chair", "CHAIR");
+    await addMember(past.id, "secretary", "MEMBER");
+    expect((await activate(past.id, { mode: "EXTERNAL", number: "007/SK/UJIAN/III/LALU", date: `${year - 1}-02-25` })).statusCode).toBe(200);
+    await addMember(past.id, "outsider", "MEMBER");
+    const joined = await client.query<{ joinedOn: string }>(
+      `SELECT to_char(joined_on, 'YYYY-MM-DD') AS "joinedOn" FROM committee_members WHERE committee_id = $1 AND employee_id = $2`,
+      [past.id, people.outsider.employeeId],
+    );
+    expect(joined.rows[0]!.joinedOn).toBe(`${year - 1}-03-10`);
+    actAs("hc", HC);
+    expect((await call("POST", `/admin/committees/${past.id}/complete`, { version: await version(past.id) })).statusCode).toBe(200);
+    const recap = (await call("GET", `/admin/committees/participation?year=${year - 1}&q=outsider`)).json();
+    expect(recap.items.map((row: { employeeId: string }) => row.employeeId)).toEqual([people.outsider.employeeId]);
   });
 
   it("ORG-012-D: cancelling a decreed committee revokes its decree and closes every membership", async () => {

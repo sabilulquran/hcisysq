@@ -146,10 +146,11 @@ export function activationProblems(members: ReadinessMember[]): string[] {
   return problems;
 }
 
-/** D-11: a member added after activation joins today, but never before the committee starts. */
-export function joinDate(status: CommitteeStatus, startOn: string, today: string) {
-  if (status === "DRAFT") return startOn;
-  return today > startOn ? today : startOn;
+/** D-11: a member added after activation joins today, kept inside the committee period so a
+ * past committee recorded late still counts in its own year (D-04, D-13). */
+export function joinDate(status: CommitteeStatus, startOn: string, endOn: string, today: string) {
+  if (status === "DRAFT" || today < startOn) return startOn;
+  return today > endOn ? endOn : today;
 }
 
 /** D-11/D-12: an open membership closes today (or at the committee end), never before it began. */

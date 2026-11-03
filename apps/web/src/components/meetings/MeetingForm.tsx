@@ -22,6 +22,9 @@ import {
   type ParticipantOption,
 } from "@/lib/meetings";
 
+/** CAL-001 K-09: the API refuses more; the committee shortcut only warns early. */
+const MAX_MEETING_PARTICIPANTS = 200;
+
 interface Chosen {
   id: string;
   name: string;
@@ -176,9 +179,12 @@ export function MeetingForm({
     const added = group.members.filter((member) => !known.has(member.id));
     setChosen((current) => [...current, ...added]);
     setConflicts([]);
-    setGroupNotice(added.length > 0
-      ? `${added.length} anggota ${group.name} ditambahkan sebagai peserta.`
-      : `Semua anggota ${group.name} sudah ada di daftar peserta.`);
+    const total = known.size + added.length;
+    setGroupNotice(added.length === 0
+      ? `Semua anggota ${group.name} sudah ada di daftar peserta.`
+      : total > MAX_MEETING_PARTICIPANTS
+        ? `${added.length} anggota ${group.name} ditambahkan. Rapat paling banyak ${MAX_MEETING_PARTICIPANTS} peserta; kurangi dulu sebelum mengirim.`
+        : `${added.length} anggota ${group.name} ditambahkan sebagai peserta.`);
   };
 
   const remove = (id: string) => {

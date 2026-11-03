@@ -102,9 +102,11 @@ describe("ORG-012 rules", () => {
   });
 
   it("D-11/D-12: join and leave dates", () => {
-    expect(joinDate("DRAFT", "2026-12-01", "2026-11-03")).toBe("2026-12-01");
-    expect(joinDate("ACTIVE", "2026-12-01", "2026-11-03")).toBe("2026-12-01");
-    expect(joinDate("ACTIVE", "2026-10-01", "2026-11-03")).toBe("2026-11-03");
+    expect(joinDate("DRAFT", "2026-12-01", "2026-12-31", "2026-11-03")).toBe("2026-12-01");
+    expect(joinDate("ACTIVE", "2026-12-01", "2026-12-31", "2026-11-03")).toBe("2026-12-01");
+    expect(joinDate("ACTIVE", "2026-10-01", "2026-12-31", "2026-11-03")).toBe("2026-11-03");
+    // D-04: a past committee recorded late keeps its members inside its own period.
+    expect(joinDate("ACTIVE", "2025-03-01", "2025-03-10", "2026-11-03")).toBe("2025-03-10");
     expect(leaveDate("2026-12-01", "2026-11-03")).toBe("2026-12-01");
     expect(leaveDate("2026-10-01", "2026-11-03")).toBe("2026-11-03");
     expect(leaveDate("2026-10-01", "2026-11-03", "2026-10-20")).toBe("2026-10-20");

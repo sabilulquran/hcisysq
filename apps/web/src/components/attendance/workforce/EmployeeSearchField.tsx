@@ -18,13 +18,14 @@ async function searchEmployeeRegister(q: string): Promise<EmployeeSearchResult[]
 /**
  * ATT-011-1 (L-4): server-side search over all active employees by name or NIP, instead of a
  * dropdown holding only the first page. The default search needs employees.manage; a module
- * with its own permission passes its own typeahead in `search` (TRAIN-001).
+ * with its own permission passes its own typeahead in `search` (TRAIN-001, LOAN-001 borrowers).
  */
-export function EmployeeSearchField({ value, onChange, label = "Pegawai", search = searchEmployeeRegister }: {
+export function EmployeeSearchField({ value, onChange, label = "Pegawai", search = searchEmployeeRegister, emptyText = "Tidak ada pegawai aktif yang cocok." }: {
   value: PickedEmployee | null;
   onChange: (employee: PickedEmployee | null) => void;
   label?: string;
   search?: (q: string) => Promise<EmployeeSearchResult[]>;
+  emptyText?: string;
 }) {
   const inputId = useId();
   const [query, setQuery] = useState("");
@@ -87,7 +88,7 @@ export function EmployeeSearchField({ value, onChange, label = "Pegawai", search
             </li>
           ))}
         </ul>
-      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">Tidak ada pegawai aktif yang cocok.</p> : null}
+      ) : query.trim().length >= 2 && !loading && !error ? <p className="mt-1 font-normal">{emptyText}</p> : null}
     </div>
   );
 }

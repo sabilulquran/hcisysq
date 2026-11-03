@@ -23,6 +23,9 @@ export const HC_ADMIN_PERMISSIONS = [
   "trips.read", "trips.manage",
   // PERF-001: migration 0121 grants both to human_capital_admin.
   "performance.read", "performance.manage",
+  // LOAN-001 D-13: migration 0123 grants loans.read to human_capital_admin. loans.manage stays
+  // with finance_officer, which owns the money.
+  "loans.read",
   // TRAIN-001: migration 0119 grants both to human_capital_admin.
   "training.read", "training.manage",
   // ORG-011: migration 0110 grants both to human_capital_admin.
@@ -51,6 +54,10 @@ export type TripPermission = (typeof TRIP_PERMISSIONS)[number];
 /** PERF-001: HC-only; never granted through legacy Super Admin compatibility. Results are personal data. */
 export const PERFORMANCE_PERMISSIONS = ["performance.read", "performance.manage"] as const;
 export type PerformancePermission = (typeof PERFORMANCE_PERMISSIONS)[number];
+/** LOAN-001: Finance and HC only; never granted through legacy Super Admin compatibility.
+ * Migration 0123 grants both to finance_officer and loans.read to human_capital_admin. */
+export const LOAN_PERMISSIONS = ["loans.read", "loans.manage"] as const;
+export type LoanPermission = (typeof LOAN_PERMISSIONS)[number];
 /** TRAIN-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRAINING_PERMISSIONS = ["training.read", "training.manage"] as const;
 export type TrainingPermission = (typeof TRAINING_PERMISSIONS)[number];

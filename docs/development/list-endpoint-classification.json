@@ -500,6 +500,19 @@
       "list": "single"
     },
     {
+      "url": "/admin/loans",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/loans/:id",
+      "list": "single",
+      "reason": "Satu pinjaman beserta tahap approval, jadwal cicilan (maks. 12), pembayaran, dan riwayatnya."
+    },
+    {
+      "url": "/admin/loans/borrowers",
+      "list": "paged"
+    },
+    {
       "url": "/admin/organization",
       "list": "bounded",
       "reason": "Unit dan jabatan legacy dengan hitungan (17 unit, 47 jabatan)."
@@ -872,6 +885,19 @@
       "list": "debt",
       "reason": "Cuti khusus saya LIMIT 20; riwayat lama tidak terjangkau.",
       "package": "PAG-5"
+    },
+    {
+      "url": "/loans/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/loans/me",
+      "list": "paged"
+    },
+    {
+      "url": "/loans/me/:id",
+      "list": "single",
+      "reason": "Satu pinjaman milik pegawai beserta tahap approval, jadwal cicilan (maks. 12), pembayaran, dan riwayatnya."
     },
     {
       "url": "/me/calendar",

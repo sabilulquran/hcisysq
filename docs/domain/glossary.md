@@ -50,6 +50,11 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Payroll Period | Periode perhitungan dan penerbitan payroll; window input dapat memakai cutoff yang berbeda dari bulan kalender bila kebijakan menetapkan. |
 | Payslip | Dokumen hasil payroll untuk satu pegawai dan satu periode dengan akses sangat terbatas. |
 | Loan | Pinjaman pegawai dengan principal, tenor/cicilan, status, approval, dan rekonsiliasi. |
+| Pinjaman / Kasbon | LOAN-001: pinjaman pegawai tanpa bunga. Pokok (principal) dibayar dalam tenor 3/6/12 cicilan bulanan. "Kasbon" dan "pinjaman" adalah hal yang sama. |
+| Pencairan | LOAN-001: Keuangan menyerahkan uang pinjaman yang sudah disetujui; saat itu jadwal cicilan ditetapkan dan tidak dapat diubah. |
+| Cicilan / Angsuran | LOAN-001: satu baris jadwal per bulan. Pembayaran mengisi cicilan paling awal lebih dulu. |
+| Sisa pinjaman | LOAN-001: pokok dikurangi jumlah pembayaran yang berlaku (tidak dikoreksi). |
+| Pelunasan | LOAN-001: pembayaran sebesar sisa pinjaman; pinjaman menjadi Lunas. |
 | Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
 | Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
 | Performance Review Cycle / Siklus Penilaian | Satu periode penilaian kinerja (bulanan atau tahun ajaran) dengan rubrik yang dibekukan saat siklus dibuka (PERF-001). |

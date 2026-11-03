@@ -618,9 +618,18 @@ features:
     module: loan
     name: Employee loan, installments, and approval
     legacy_evidence: loan with installments and multi-approver exists
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: critical
+    notes: >-
+      Package 1 implemented 2026-11-02 (docs/domain/employee-loans.md): employee request,
+      APR-001 approval (direct manager then unit approver), Finance disbursement with an
+      interest-free schedule, repayments, payoff, payment reversal, balance and history.
+      Automatic payroll deduction is the Package 2 contract with PAY-003 (spec §9); the
+      official slip path PAY-001/PAY-002 is untouched. Legacy loans are archive only (D5).
+    docs:
+      - docs/domain/employee-loans.md
+      - docs/api/employee-loans.openapi.yaml
 
   - id: PERF-001
     module: performance

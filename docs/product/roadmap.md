@@ -210,7 +210,7 @@ Setelah fondasi di atas cukup stabil, roadmap melanjutkan capability yang sudah 
 - TRIP-001 Business travel — Package 1 implemented, `docs/domain/business-travel.md`;
 - ASSET-001 Employee assets;
 - REIMB-001 Reimbursement;
-- LOAN-001 Employee loan;
+- LOAN-001 Employee loan — Package 1 implemented, `docs/domain/employee-loans.md`; payroll deduction is Package 2;
 - DOC-001/DOC-002 HR documents — Package 1 implemented, `docs/domain/hr-documents.md`;
 - NOTIF-001/002/003 external notification, announcements, reminders. NOTIF-002 Package 1 implemented, `docs/domain/announcements-and-reminders.md`.
 

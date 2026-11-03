@@ -36,6 +36,9 @@ describe("admin module catalog", () => {
     // PERF-001 Package 1 ships cycles, validation and the recap; no payroll link yet.
     expect(getAdminService("performance")?.stage).toBe("available");
     expect(getAdminService("performance")?.href).toBe("/admin/performance");
+    // LOAN-001 Package 1: the register, disbursement and repayments; no payroll deduction yet.
+    expect(getAdminService("loans")?.stage).toBe("available");
+    expect(getAdminService("loans")?.href).toBe("/admin/loans");
     // TRAIN-001 Package 1 ships training records; LMS content and evaluation stay later.
     expect(getAdminService("learning")?.stage).toBe("available");
     expect(getAdminService("learning")?.href).toBe("/admin/training");

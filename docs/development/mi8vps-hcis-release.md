@@ -2,17 +2,20 @@
 
 **Status:** ACTIVE — the scripts are dry-run by default. The first `--apply` release
 (`hcis-3b670849-20261016`, main `3b67084`) was cut on 2026-10-16 with owner approval; evidence is in
-`production-release-verification-2026-10-16.md`. Every later `--apply` run still needs explicit owner
-approval and a dated verification note.
+`production-release-verification-2026-10-16.md`. Since the owner decision of 2026-10-27, `--apply`
+runs **without asking the owner first**; the technical gates stay mandatory (dry-run first, database
+backup before migrations, candidate gate, immediate rollback when verification fails, never during
+the 19 UTC hour) and every run is reported afterwards in a dated verification note.
 **Prepared:** 2026-10-15
 **Supersedes for production:** `vps-deployment.md`, `github-vps-production-deployment.md`,
-`.github/workflows/deploy-production.yml` (all old-VPS Docker/GHCR, now retired).
+the old `deploy-production.yml` workflow (all old-VPS Docker/GHCR; retired, and removed from the
+repository on 2026-11-04).
 **Operational runbook of record:** Google Doc "Mi8VPS Platform Runbook". This file is the repository
 specification for the HCIS part of it.
 
 ## 1. Context
 
-The old paid VPS (Docker Compose, GHCR images, `scripts/deploy-vps.sh`) is terminated. HCIS
+The old paid VPS (Docker Compose, GHCR images, the former `scripts/deploy-vps.sh`) is terminated. HCIS
 production runs on Mi8VPS: an Android phone with an Ubuntu chroot at `/data/local/ubuntu26`, no
 Docker and no systemd. Observed read-only on 2026-10-15:
 
@@ -46,8 +49,8 @@ Two consequences drive the design:
 
 | Actor | May do |
 |---|---|
-| Owner | Approves each production release (SHA, window, whether migrations are pending) |
-| Operator (workstation with `ssh mi8vps`/`mi8vps-root`) | Runs `scripts/mi8/release-mi8.sh`; `--apply` only after owner approval |
+| Owner | Receives the report after each production release (SHA, window, migrations, verification). Since 2026-10-27 releases do not wait for owner approval |
+| Operator (workstation with `ssh mi8vps`/`mi8vps-root`) | Runs `scripts/mi8/release-mi8.sh`; dry-run first, then `--apply` once every gate in §3 holds, then reports |
 | GitHub Actions | Builds and checksums the bundle (`build-mi8-release.yml`). No SSH, no secrets, no production access |
 | `sqhcis` (uid 989) | Owns release files; runs API, web, candidates and migrations |
 | root on Mi8 | Installs releases, edits launcher/worker, restarts services, takes database backups |
@@ -57,7 +60,8 @@ Two consequences drive the design:
 - Target is the exact current `origin/main` SHA and PR validation is green for it.
 - The bundle came from `build-mi8-release.yml` for that SHA (or `scripts/mi8/build-release.sh` on
   an arm64/Docker host) and its `RELEASE.json` names the same SHA.
-- Owner approval for the release, including the migration list printed by `preflight`.
+- A clean dry-run (`preflight`) whose migration list has been reviewed by the operator. No owner
+  approval is required (owner decision 2026-10-27); the migration list goes into the report.
 - `sq-core-launch.sh` and `sq-core-worker.sh` reference exactly one HCIS release — the one the
   running `hcis` process uses — on exactly 4 and 2 lines. Anything else is drift: stop.
 - `BIOMETRIC_COLLECTION_ENABLED` in `final.env` is absent or `0`.
@@ -363,7 +367,7 @@ may be deleted by hand once the new release has run for 7 days without rollback.
 | migrate | stop; old release keeps running on the partly migrated schema; decide restore vs fix-forward | depends on migration |
 | candidate | stop candidates; stop | none |
 | cutover | `rollback` | HCIS down until rollback (≤ 2 min) |
-| verify | `rollback` unless the owner accepts | as observed |
+| verify | `rollback` immediately, without waiting for the owner; report afterwards | as observed |
 
 ## 8. Audit and evidence
 
@@ -389,10 +393,9 @@ health results. Never record `final.env` values, tokens, cookies or employee dat
   flow edits the paths.
 - `sq-core-logrotate.sh` moves logs while the process keeps writing to the moved file (see the SPA
   fallback note). Restarting `hcis` during cutover reopens `api.log`, which temporarily hides this.
-- `activate-mobile-attendance.yml` and `uat-account-hygiene.yml` still SSH to the terminated VPS.
-  They fail at SSH rather than reporting success, but need their own Mi8 replacement or retirement.
-- `publish-staging-images.yml` still publishes amd64 GHCR images on every `main` push. Nothing
-  consumes them on Mi8.
+- `activate-mobile-attendance.yml`, `uat-account-hygiene.yml` and `publish-staging-images.yml`
+  (old-VPS SSH and amd64 GHCR publishing) were removed from the repository on 2026-11-04. A Mi8
+  replacement for mobile-attendance activation or UAT account hygiene, if needed, is new work.
 - `migrate` runs before `cutover`, so a migration that grants a new permission key to an existing
   role briefly blocks role assignment for that role in the old build (§4.5). A durable fix would
   derive the role-assignment allowlist from the `permissions` table instead of a compiled constant;

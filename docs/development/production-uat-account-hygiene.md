@@ -1,5 +1,7 @@
 # Production UAT Account Hygiene
 
+> **HISTORICAL (2026-11-04).** The workflow `uat-account-hygiene.yml` and `scripts/uat-account-hygiene.sh` described here targeted the terminated Docker VPS and were removed from the repository in legacy cleanup stage 1. Production now runs on Mi8VPS (`mi8vps-hcis-release.md`); any future UAT account cleanup there is new work with its own dry-run.
+
 **Status:** IMPLEMENTED TOOLING — EXECUTION REQUIRES REVIEWED EXACT IDS  
 **Safety boundary:** no broad delete, no employee deletion, no immutable-history deletion.
 

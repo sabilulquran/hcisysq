@@ -56,7 +56,9 @@ Field utama:
 
 Rekaman wajib memiliki minimal salah satu dari `check_in_at` atau `check_out_at`.
 
-### attendance_daily_audit_events
+### attendance_daily_audit_events (DIHAPUS)
+
+> **Dihapus 2026-11-04** oleh migration `0140_drop_attendance_daily_audit_events.sql` (legacy cleanup tahap 1). Tabel ini tidak pernah terisi di production (0 baris) dan tidak dipakai kode API; perubahan manual kini tercatat sebagai event presensi canonical dan klarifikasi. Uraian di bawah adalah catatan historis.
 
 Riwayat immutable untuk setiap operasi manual:
 

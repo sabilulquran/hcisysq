@@ -1,5 +1,7 @@
 # VPS Development Deployment
 
+> **HISTORICAL (2026-11-04).** `scripts/deploy-vps.sh`, `scripts/verify-vps.sh` and the Docker VPS files mentioned below were removed from the repository. Production runs on Mi8VPS; see `mi8vps-hcis-release.md`.
+
 **Status:** SUPERSEDED DEPLOYMENT BOOTSTRAP  
 **Replacement:** [`vps-deployment.md`](vps-deployment.md)
 

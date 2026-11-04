@@ -28,7 +28,11 @@ describe("ATT-005 Wave 3 web safety", () => {
   });
 
   it("keeps raw ADMS command protocol payloads out of browser admin surfaces", async () => {
-    const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
+    // The commands route renders the maintenance workspace (AdminAdmsDevicePage), which lists
+    // management jobs by status only.
+    const shell = await source("./pages/AdminAdmsDevicePage.tsx");
+    expect(shell).toContain('if (section === "commands") return <AdminAdmsDeviceMaintenancePage />;');
+    const commands = await source("./pages/AdminAdmsDeviceMaintenancePage.tsx");
     const users = await source("./pages/AdminAdmsDeviceUsersPage.tsx");
     const client = await source("./lib/admsAdmin.ts");
     const combined = `${commands}\n${users}\n${client}`;
@@ -37,16 +41,13 @@ describe("ATT-005 Wave 3 web safety", () => {
     expect(combined).not.toContain("resultCommand");
     expect(combined).not.toContain("DATA QUERY USERINFO");
     expect(combined).not.toContain("DATA UPDATE USERINFO");
-    expect(commands).toContain("Payload protokol mentah tidak diekspos ke browser");
   });
 
-  it("supports saved filters on transaction and command workspaces", async () => {
+  it("supports saved filters on the transaction workspace", async () => {
     const transactions = await source("./pages/AdminAdmsDeviceTransactionsPage.tsx");
-    const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
     const filters = await source("./components/attendance/device-admin/SavedFilterBar.tsx");
 
     expect(transactions).toContain('viewKey="transactions"');
-    expect(commands).toContain('viewKey="commands"');
     expect(filters).toContain("listAdmsSavedFilters");
     expect(filters).toContain("saveAdmsFilter");
     expect(filters).toContain("deleteAdmsFilter");

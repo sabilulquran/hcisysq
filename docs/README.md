@@ -60,9 +60,10 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 
 ## Deployment dan repository operations
 
-- `development/vps-deployment.md` — active production runbook untuk exact-SHA GHCR cutover + verification; release image tidak dibangun sebagai langkah normal di VPS.
-- `development/github-org-transfer-readiness.md` — readiness dan post-transfer checklist untuk canonical target `sabilulquran/hcisysq`, termasuk PUBLIC visibility invariant, GHCR ownership boundary, deployment freeze, GitHub App/Actions verification, dan exact-SHA organization package proof.
-- `development/vps-dev-deployment.md` — superseded early VPS bootstrap guide; jangan gunakan build-on-VPS atau feature-branch deployment dari dokumen lama sebagai release procedure.
+- `development/mi8vps-hcis-release.md` — OPS-MI8-REL-001: satu-satunya release flow production (Mi8VPS, bundle linux/arm64, `scripts/mi8/release-mi8.sh`). Sejak keputusan owner 2026-10-27 release berjalan tanpa menunggu persetujuan owner, dengan dry-run, backup sebelum migration, gate kandidat, rollback bila verifikasi gagal, tanpa jam 19 UTC, dan laporan sesudahnya.
+- `development/production-release-verification-*.md` — bukti tiap release production.
+- `operations/permanent-staging-retirement-2026-10-02.md` — staging dihentikan permanen; production-only.
+- Historis (VPS Docker/GHCR lama, sudah dihentikan; workflow dan script-nya dihapus 2026-11-04): `development/vps-deployment.md`, `development/github-vps-production-deployment.md`, `development/github-org-transfer-readiness.md`, `development/vps-dev-deployment.md`. Jangan dipakai sebagai prosedur release.
 
 ## Status dokumen
 

@@ -46,6 +46,9 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("help")?.href).toBe("/app/help");
     expect(getEmployeeService("training")?.stage).toBe("available");
     expect(getEmployeeService("training")?.href).toBe("/app/training");
+    // EMP-003: employees review their data and request changes at /app/my-data.
+    expect(getEmployeeService("profile-change")?.stage).toBe("available");
+    expect(getEmployeeService("profile-change")?.href).toBe("/app/my-data");
   });
 
   it("maps every planned service to a real coming-soon route and feature id", () => {

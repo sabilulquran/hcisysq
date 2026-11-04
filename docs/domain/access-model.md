@@ -19,7 +19,7 @@ This document defines the target access model for HCIS YSQ. Legacy HCIS role nam
 
 - One login page serves all users.
 - No public registration and no role/account-type selector on the login page.
-- Google sign-in is the target primary route; email + password may remain a fallback.
+- Sign-in goes through **Akun SQ** (OIDC, `AUTH_MODE=oidc`), the shared SQ Core login; this is the only route in production. HCIS does not offer Google sign-in, and its email + password + TOTP login exists only in `AUTH_MODE=local` for development and tests (`POST /auth/login` answers `404 LOCAL_AUTH_DISABLED` otherwise).
 - After authentication, the backend determines account type, permissions, scopes, capabilities, and landing area.
 - Account type, organizational structure, role, permission, and scope are separate concepts.
 - Organization structure may help resolve operational authority, but it does not replace backend RBAC.
@@ -251,11 +251,11 @@ Employee status and account status are validated independently.
 
 ## Login behavior
 
-Target flow:
+Flow:
 
 ```text
 /login
-  -> Google or email/password
+  -> Akun SQ (OIDC authorization code; issuer + sub)
   -> identity verified
   -> active account found
   -> load account type + permissions + scopes + structural capabilities

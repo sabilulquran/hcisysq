@@ -4,6 +4,8 @@
 **Specifications:** AUTH-001, AUTH-010, SEC-001  
 **Initial identifier:** `admin@hcis.sabilulquran.or.id`
 
+> **Production note (2026-11-04).** Production runs with `AUTH_MODE=oidc`: every person, admins included, signs in through **Akun SQ** (OIDC), and `POST /auth/login` answers `404 LOCAL_AUTH_DISABLED`. The email + password + TOTP flow below applies only to `AUTH_MODE=local` (local development and tests). The docker-compose VPS procedure is historical: that VPS is terminated. On Mi8VPS the release flow is `docs/development/mi8vps-hcis-release.md` (OPS-MI8-REL-001); a bootstrap there, if ever needed, runs the same CLI from the current release directory with the Mi8 env file, following the Mi8VPS Platform Runbook.
+
 This document defines the smallest real authentication boundary required before HCIS exposes employee import or other privileged administration surfaces.
 
 ## Scope
@@ -58,9 +60,9 @@ AUTH_SESSION_TTL_HOURS=8
 
 Do not rotate `AUTH_ENCRYPTION_KEY` casually. Rotation makes existing encrypted TOTP secrets unreadable unless a controlled re-encryption migration exists.
 
-## VPS bootstrap procedure
+## Historical: old Docker VPS bootstrap procedure
 
-After the migration and API image containing this implementation are running:
+**HISTORICAL.** Kept as a record of how the first Super Admin was created on the terminated Docker VPS. `infra/docker-compose.vps.yml` was removed from the repository on 2026-11-04; do not run this.
 
 ```bash
 cd /var/www/hcis

@@ -1,6 +1,8 @@
 # AI-Assisted Development Workflow
 
-**Status:** ACCEPTED
+**Status:** ACCEPTED (process rules); Codex/GHCR-era sections HISTORICAL
+
+> **HISTORICAL parts (2026-11-04).** The "Codex Local" sections and the GHCR/deployment-target remarks describe the September 2026 workflow. Today implementation and the verification loop are run by coding agents that execute typecheck, lint, test (API suite against a real local PostgreSQL) and build themselves, then open a PR whose CI must be green before merge. GHCR images are not used by production (Mi8VPS, `mi8vps-hcis-release.md`). Production releases and migrations no longer wait for owner approval (owner decision 2026-10-27) but keep their technical gates: dry-run, backup before migrations, candidate gate, rollback when verification fails, no release in the 19 UTC hour, report afterwards; PRs touching auth, permissions, audit, payroll or migrations still need one independent review. Product scope, business rules and credential entry stay with the owner.
 
 ## Goal
 

@@ -1,5 +1,7 @@
 # HCIS Operational Readiness — One-Unit Pilot
 
+> **HISTORICAL (2026-11-04).** This note describes the September 2026 state on the terminated Docker VPS: GHCR exact-SHA images, Codex Local verification and the old deploy/verify scripts (removed from the repository on 2026-11-04). Production now runs on Mi8VPS; releases follow `mi8vps-hcis-release.md` (OPS-MI8-REL-001) and are recorded in `production-release-verification-*.md`. Current readiness gates: `docs/operations/hcis-readiness-gates-2026-10-16.md`.
+
 **Status:** REVIEW-READY REPOSITORY PACKAGE; PILOT NOT AUTHORIZED
 **Updated:** 2026-09-21
 **Specifications:** ORG-004, AUTH-011, ATT-005

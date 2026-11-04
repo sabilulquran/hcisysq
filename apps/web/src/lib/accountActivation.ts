@@ -1,3 +1,4 @@
+import type { InvitationEmailStatus, InvitationHubAccess, InvitationWhatsAppStatus } from "@/lib/adminOrgAccess";
 import type { PrincipalType } from "@/types/hcis";
 
 export class AccountActivationApiError extends Error {
@@ -43,6 +44,26 @@ export async function issueAccountActivation(accountId: string): Promise<{
   expiresAt: string;
 }> {
   const response = await fetch(`/api/admin/access/accounts/${accountId}/activation`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  return readJson(response);
+}
+
+export interface ActivationInvitationResult {
+  invitationId: string;
+  emailStatus: InvitationEmailStatus;
+  whatsappStatus: Exclude<InvitationWhatsAppStatus, "pending">;
+  hubAccess: InvitationHubAccess;
+  maskedEmail: string;
+  maskedPhone: string | null;
+  emailLinkHours: number;
+}
+
+/** AUTH-002-INVITE: SQ Hub prepares the Akun SQ, Keycloak e-mails the link, HCIS sends WhatsApp. */
+export async function sendActivationInvitation(accountId: string): Promise<ActivationInvitationResult> {
+  const response = await fetch(`/api/admin/access/accounts/${accountId}/activation-invitation`, {
     method: "POST",
     credentials: "include",
     headers: { Accept: "application/json" },

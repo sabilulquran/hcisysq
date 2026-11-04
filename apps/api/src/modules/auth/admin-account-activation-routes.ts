@@ -5,8 +5,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { createWhatsAppSender, whatsappAllowlist } from "../meetings/whatsapp.js";
+import { ActivationInvitationError, ActivationInvitationService } from "./activation-invitation.js";
 import { requirePermissionsFromCookie } from "./authorization.js";
+import { publicOrigin } from "./csrf.js";
+import { SqHubStaffActivationClient, staffActivationInviteUrl } from "./sq-hub-staff-activation.js";
 import {
   AccountActivationError,
   AccountActivationService,
@@ -54,6 +58,8 @@ export async function registerAccountActivationAdminRoutes(
     config.NODE_ENV === "production",
   );
   const activation = new AccountActivationService(pool);
+  // AUTH-002-INVITE: only in OIDC mode; local mode keeps the activation link.
+  const invitations = createInvitationService(pool, config);
 
   async function authenticateAdmin(
     request: FastifyRequest,
@@ -134,6 +140,20 @@ export async function registerAccountActivationAdminRoutes(
       });
     }
 
+    if (config.AUTH_MODE === "oidc") {
+      // AUTH-002-INVITE: a local password cannot sign an employee in to Akun SQ-based HCIS.
+      const target = await pool.query<{ principalType: string }>(
+        `SELECT principal_type AS "principalType" FROM accounts WHERE id = $1`,
+        [params.data.accountId],
+      );
+      if (target.rows[0]?.principalType === "EMPLOYEE") {
+        return reply.status(409).send({
+          code: "ACTIVATION_USES_INVITATION",
+          message: "Account pegawai diaktifkan dengan Kirim aktivasi (Akun SQ), bukan link kata sandi lokal.",
+        });
+      }
+    }
+
     try {
       const issued = await activation.issue(params.data.accountId, principal);
       await audit(pool, principal, "account.activation.issued", "account", params.data.accountId, {
@@ -151,4 +171,38 @@ export async function registerAccountActivationAdminRoutes(
       throw error;
     }
   });
+
+  app.post("/admin/access/accounts/:accountId/activation-invitation", async (request, reply) => {
+    const principal = await authenticateAdmin(request, reply, "access.manage");
+    if (!principal) return;
+    reply.header("Cache-Control", "no-store");
+    const params = accountIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ code: "INVALID_ACCOUNT_ID", message: "Account ID tidak valid." });
+    }
+    try {
+      return reply.status(201).send(await invitations.send(params.data.accountId, principal));
+    } catch (error) {
+      if (error instanceof ActivationInvitationError || error instanceof AuthError) {
+        return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+  });
+}
+
+function createInvitationService(pool: Pool, config: ApiConfig): ActivationInvitationService {
+  const whatsapp = {
+    sender: createWhatsAppSender(config),
+    allowlist: whatsappAllowlist(config),
+    device: config.KIRIM_DEVICE_HCIS,
+    origin: publicOrigin(config),
+  };
+  if (config.AUTH_MODE !== "oidc") return new ActivationInvitationService(pool, null, whatsapp, undefined);
+  const oidc = getOidcRuntimeConfig(config);
+  const inviteUrl = staffActivationInviteUrl(config);
+  const inviter = inviteUrl
+    ? new SqHubStaffActivationClient(oidc.issuer, oidc.machineClientId, oidc.machineClientSecret, inviteUrl)
+    : null;
+  return new ActivationInvitationService(pool, inviter, whatsapp, oidc.issuer);
 }

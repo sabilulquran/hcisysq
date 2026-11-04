@@ -10,6 +10,8 @@ import {
   AccountActivationApiError,
   issueAccountActivation,
   prepareBoardAccount,
+  sendActivationInvitation,
+  type ActivationInvitationResult,
 } from "@/lib/accountActivation";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
@@ -83,6 +85,29 @@ function roleScopes(role: AccessRole | undefined): Scope[] {
   return role?.allowedScopes?.length ? role.allowedScopes : ["organization", "unit"];
 }
 
+// AUTH-002-INVITE: what HC sees per channel after "Kirim aktivasi". Contacts arrive masked.
+const EMAIL_RESULT: Record<ActivationInvitationResult["emailStatus"], string> = {
+  sent: "Email Akun SQ terkirim",
+  not_needed: "Akun SQ sudah punya kata sandi, email tidak diperlukan",
+  failed: "Email gagal dikirim",
+};
+const WHATSAPP_RESULT: Record<string, string> = {
+  pending: "WhatsApp sedang diproses",
+  sent: "WhatsApp terkirim",
+  dry_run: "WhatsApp hanya dicatat (mode uji, tidak dikirim sungguhan)",
+  no_phone: "WhatsApp tidak terkirim: nomor HP pegawai kosong atau tidak valid",
+  not_allowlisted: "WhatsApp tidak dikirim: mode uji, NIP belum ada di daftar penerima",
+  failed: "WhatsApp gagal dikirim",
+  skipped: "WhatsApp tidak dikirim karena email gagal",
+};
+
+function invitationSummaryLine(invitation: NonNullable<AccessAdminResponse["accounts"][number]["latestInvitation"]>) {
+  const when = new Date(invitation.sentAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+  if (invitation.completedAt) return `Aktivasi selesai saat login pertama (dikirim ${when}).`;
+  if (invitation.revokedAt) return `Aktivasi yang dikirim ${when} dicabut karena status account diubah.`;
+  return `Aktivasi dikirim ${when}: ${EMAIL_RESULT[invitation.emailStatus]}; ${WHATSAPP_RESULT[invitation.whatsappStatus] ?? invitation.whatsappStatus}.`;
+}
+
 function accountLabel(account: AccessAdminResponse["accounts"][number]) {
   return `${account.employeeName ?? account.email} · ${account.unitName ?? "Tanpa unit"}`;
 }
@@ -123,6 +148,11 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     url: string;
     expiresAt: string;
   } | null>(null);
+  const [invitationResult, setInvitationResult] = useState<{
+    accountName: string;
+    result: ActivationInvitationResult;
+  } | null>(null);
+  const usesInvitation = data.activationMethod === "invitation";
   const [busy, setBusy] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +231,24 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
           ? cause.message
           : "Link aktivasi gagal dibuat.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendInvitation = async (account: AccessAdminResponse["accounts"][number]) => {
+    const name = account.employeeName ?? account.email;
+    if (!window.confirm(`Kirim aktivasi Akun SQ ke email dan WhatsApp ${name}?`)) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setInvitationResult(null);
+    try {
+      const result = await sendActivationInvitation(account.id);
+      setInvitationResult({ accountName: name, result });
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof AccountActivationApiError ? cause.message : "Aktivasi gagal dikirim.");
     } finally {
       setBusy(false);
     }
@@ -336,6 +384,36 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     <>
       {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink">{notice}</div> : null}
+
+      {invitationResult ? (
+        <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4" aria-live="polite">
+          <p className="text-sm font-bold text-brand-heading">Aktivasi untuk {invitationResult.accountName}</p>
+          <ul className="mt-2 space-y-1 text-xs leading-5 text-foreground">
+            <li>
+              {EMAIL_RESULT[invitationResult.result.emailStatus]}
+              {invitationResult.result.emailStatus === "sent"
+                ? ` ke ${invitationResult.result.maskedEmail}. Tautan pembuat kata sandi berlaku ${invitationResult.result.emailLinkHours} jam.`
+                : invitationResult.result.emailStatus === "failed"
+                  ? ". Coba kirim ulang nanti; bila tetap gagal, minta Admin Platform memeriksa Akun SQ-nya."
+                  : "."}
+            </li>
+            <li>
+              {WHATSAPP_RESULT[invitationResult.result.whatsappStatus]}
+              {invitationResult.result.whatsappStatus === "sent" && invitationResult.result.maskedPhone
+                ? ` ke ${invitationResult.result.maskedPhone}.`
+                : "."}
+            </li>
+            {invitationResult.result.hubAccess === "revoked" ? (
+              <li className="font-semibold text-danger-ink">
+                Akses HCIS orang ini di SQ Hub pernah dicabut. Admin Platform perlu memberi akses lagi sebelum ia bisa masuk.
+              </li>
+            ) : null}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Account menjadi Aktif otomatis saat pegawai pertama kali masuk HCIS dengan Akun SQ.
+          </p>
+        </section>
+      ) : null}
 
       {activationLink ? (
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
@@ -503,6 +581,9 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
                   <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">{statusLabel(account.status)}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{account.email}{account.employeeNumber ? ` · ${account.employeeNumber}` : ""}{account.unitName ? ` · ${account.unitName}` : ""}</p>
+                {account.latestInvitation ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{invitationSummaryLine(account.latestInvitation)}</p>
+                ) : null}
               </div>
               {account.principalType !== "SUPER_ADMIN" ? (
                 <div className="flex flex-wrap gap-2">
@@ -516,7 +597,17 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
                       {selectedAccountId === account.id ? "Dipilih untuk role" : "Pilih untuk role"}
                     </button>
                   ) : null}
-                  {account.status === "invited" ? (
+                  {account.status === "invited" && usesInvitation && account.principalType === "EMPLOYEE" ? (
+                    <button
+                      type="button"
+                      onClick={() => void sendInvitation(account)}
+                      disabled={busy}
+                      className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+                    >
+                      {account.latestInvitation && !account.latestInvitation.revokedAt ? "Kirim ulang aktivasi" : "Kirim aktivasi"}
+                    </button>
+                  ) : null}
+                  {account.status === "invited" && !(usesInvitation && account.principalType === "EMPLOYEE") ? (
                     <button
                       type="button"
                       onClick={() => void publishActivationLink(account.id)}

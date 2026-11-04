@@ -40,6 +40,11 @@
 --
 -- Idempotent: rerunning changes nothing further.
 
+-- The function bodies name employees.removed_at (0022). The organization recovery rehearsal
+-- applies the canonical files before the recovered ones, so creation-time body checking would
+-- refuse this file there; bodies are still checked on first call. Scoped to this transaction.
+SET LOCAL check_function_bodies = off;
+
 DO $$
 BEGIN
   IF EXISTS (

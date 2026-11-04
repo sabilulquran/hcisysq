@@ -7,7 +7,7 @@
 // the roles it accepts.
 
 import { AlertTriangle, LoaderCircle, Search } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import type { RoleSeatCheck, RoleSeatChecksResponse, RoleSeatHolderPreview } from "@/lib/adminOrgAccess";
 import {
@@ -170,10 +170,16 @@ function AddLinkForm({
   const [reason, setReason] = useState("");
   // AUTH-015: the grantor sees everyone the link reaches, today and later, before saving.
   const [holders, setHolders] = useState<RoleSeatHolderPreview[] | null>(null);
+  // A late answer for an earlier choice must not show its people under the current one.
+  const latest = useRef("");
   const choose = (positionKey: string, nextRole = roleKey) => {
+    const key = `${nextRole}:${positionKey}`;
+    latest.current = key;
     setChosen(positionKey);
     setHolders(null);
-    void onPreview(nextRole, positionKey).then(setHolders);
+    void onPreview(nextRole, positionKey).then((found) => {
+      if (latest.current === key) setHolders(found);
+    });
   };
 
   const search = (event: FormEvent) => {

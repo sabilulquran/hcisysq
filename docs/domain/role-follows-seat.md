@@ -54,7 +54,7 @@ Lihat ADR-0007 G-1 sampai G-6. Ringkas:
 
 ### 4.3 Pergantian pemegang jabatan
 
-Lewat jalur ORG-004 biasa (draft → validasi → terbit oleh orang kedua). Tidak ada langkah akses tambahan. Penerbitan ditolak bila memberi penerbit sendiri masa memegang jabatan bertaut yang belum ada di struktur yang digantikan (G-5). Publikasi menulis `role.seat_holder.gained`/`lost` (entity = pegawai, payload `roleKey`, `positionKey`, `changeSetId`, `effectiveOn`) untuk setiap perpindahan (G-7).
+Lewat jalur ORG-004 biasa (draft → validasi → terbit oleh orang kedua). Tidak ada langkah akses tambahan. Penerbitan ditolak bila memberi penerbit sendiri masa memegang jabatan bertaut yang belum ada di struktur yang digantikan (G-5). Publikasi menulis `role.seat_holder.gained`/`lost` (entity = pegawai, payload `roleKey`, `positionKey`, `changeSetId`, `effectiveOn`) untuk setiap orang yang masuk atau keluar dari jabatan bertaut karena publikasi itu (G-7; `actor_source` NULL karena bukan kanal pemberian peran). Perubahan tanpa publikasi (incumbency berakhir karena waktu, status akun atau pegawai) tidak menulis baris ini; riwayat lengkapnya direkonstruksi dari struktur terbit dan audit akun.
 
 ### 4.4 Melihat
 

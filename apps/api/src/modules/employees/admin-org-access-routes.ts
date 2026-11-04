@@ -1109,7 +1109,12 @@ export async function registerOrgAccessAdminRoutes(
         committed = true;
         return reply.status(404).send({ code: "ROLE_SEAT_LINK_NOT_FOUND", message: "Peran ini tidak mengikuti jabatan tersebut." });
       }
-      await auditSeatLink(client, principal, "role.seat_link.cleared", { roleKey, positionKey, reason: body.data.reason });
+      // Like set: name who loses the role with this link (today and already published for later).
+      const holders = await loadSeatHoldersFromToday(positionKey);
+      await auditSeatLink(client, principal, "role.seat_link.cleared", {
+        roleKey, positionKey, reason: body.data.reason,
+        holderEmployeeIds: [...new Set(holders.map((holder) => holder.employeeId))],
+      });
       await client.query("COMMIT");
       committed = true;
     } finally {

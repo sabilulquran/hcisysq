@@ -1794,6 +1794,9 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply, "approvals.policy.manage"); if (!principal) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
     const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      // AUTH-015: every check below decides on this change set's content, so nothing may reopen,
+      // edit and re-validate it between the checks and the publish. Edits wait for this lock.
+      await transaction.client.query("SELECT 1 FROM organization_change_sets WHERE id = $1 FOR UPDATE", [params.data.draftId]);
       const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
       if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
       if (snapshot.changeSet.status !== "VALIDATED") {
@@ -1829,7 +1832,20 @@ export async function registerOrganizationAdminRoutes(
         });
         return null;
       }
+      // AUTH-015: a role that follows a seat changes hands with this publication; record each
+      // change in the access audit too, in the same transaction, so role history needs no rebuild.
+      const seatRoleChanges = await transaction.repository.linkedSeatHolderChanges(snapshot.changeSet.id);
       await transaction.draftService.publish(snapshot.changeSet.id, principal.id);
+      for (const change of seatRoleChanges) {
+        await transaction.client.query(
+          `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
+           VALUES ($1, $2, $3, 'employee', $4, $5::jsonb)`,
+          [randomUUID(), principal.id, `role.seat_holder.${change.change}`, change.employeeId, JSON.stringify({
+            roleKey: change.roleKey, positionKey: change.positionKey, changeSetId: snapshot.changeSet.id,
+            effectiveOn: snapshot.changeSet.effectiveOn,
+          })],
+        );
+      }
       await transaction.audit("organization.draft.published", "organization_change_set", snapshot.changeSet.id,
         snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
       return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;

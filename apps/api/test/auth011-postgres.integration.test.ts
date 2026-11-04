@@ -678,7 +678,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       expect.soft(refused.statusCode, name).toBe(403);
     }
     // A role that administers access can never follow a seat; nor can a unit-only role.
-    for (const roleKey of ["human_capital_admin", "unit_manager", "governance_leave_approver", "synthetic_account_delegate"]) {
+    // management and human_capital can also be granted for one unit; through a seat they would widen to the organization.
+    for (const roleKey of ["human_capital_admin", "unit_manager", "governance_leave_approver", "synthetic_account_delegate", "management", "human_capital"]) {
       const refused = await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, roleKey });
       expect.soft(refused.json().code, roleKey).toBe("ROLE_NOT_SEAT_LINKABLE");
     }
@@ -686,6 +687,13 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, reason: " " })).statusCode).toBe(400);
     expect((await pool.query("SELECT 1 FROM access_role_position_links")).rowCount).toBe(0);
 
+    // The grantor sees who the link reaches before saving; a preview writes nothing.
+    const preview = await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, preview: true });
+    expect(preview.statusCode, preview.body).toBe(200);
+    expect(preview.json().holders).toEqual([expect.objectContaining({
+      employeeId: employee.employeeId, kind: "PRIMARY", effectiveFrom: "2026-01-01", effectiveTo: null, accountStatus: "active",
+    })]);
+    expect((await pool.query("SELECT 1 FROM access_role_position_links")).rowCount).toBe(0);
     const set = await request("legacy", "POST", "/admin/access/role-seat-links", link);
     expect(set.statusCode, set.body).toBe(201);
     expect(set.json().check).toMatchObject({
@@ -696,7 +704,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect((await request("legacy", "POST", "/admin/access/role-seat-links", link)).statusCode).toBe(409);
     expect((await pool.query(
       "SELECT payload, actor_source FROM access_audit_events WHERE action = 'role.seat_link.set' ORDER BY occurred_at DESC LIMIT 1",
-    )).rows[0]).toMatchObject({ payload: { roleKey: "finance_officer", positionKey: seatKey }, actor_source: "hcis_break_glass" });
+    )).rows[0]).toMatchObject({
+      payload: { roleKey: "finance_officer", positionKey: seatKey, holderEmployeeIds: [employee.employeeId] },
+      actor_source: "hcis_break_glass",
+    });
 
     // The seat holder now holds exactly the role's permissions, with no assignment row created.
     const finance = (await pool.query<{ key: string }>(
@@ -794,6 +805,21 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     await publish("2026-02-01", target.employeeId!);
     expect(await permissionsOf("employee")).toEqual([]);
     expect(await permissionsOf("target")).toEqual(finance);
+    // Getting a seat back is a gain too, even with a row identical to one published long ago.
+    const regain = await organization.createDraft({ name: "Synthetic AUTH-015 regain", effectiveOn: "2026-02-15", actorAccountId: legacyId });
+    regain.incumbencies = regain.incumbencies.filter((item) => item.positionKey !== seatKey);
+    regain.incumbencies.push({
+      id: randomUUID(), positionKey: seatKey, employeeId: employee.employeeId!, accountId: null, kind: "PRIMARY",
+      isPrimaryStructural: false, effectiveFrom: "2026-01-01", effectiveTo: null, reason: null,
+    });
+    await organization.replaceDraftSnapshot(regain);
+    expect(await organization.publisherGainsLinkedSeat(regain.changeSet.id, employee.principal.id)).toBe(true);
+    expect(await organization.publisherGainsLinkedSeat(regain.changeSet.id, target.principal.id)).toBe(false);
+    expect(await organization.linkedSeatHolderChanges(regain.changeSet.id)).toEqual([
+      { roleKey: "finance_officer", positionKey: seatKey, employeeId: employee.employeeId, change: "gained" },
+      { roleKey: "finance_officer", positionKey: seatKey, employeeId: target.employeeId, change: "lost" },
+    ].sort((left, right) => left.employeeId!.localeCompare(right.employeeId!)));
+    await pool.query("DELETE FROM organization_change_sets WHERE id = $1", [regain.changeSet.id]);
     // An incumbency that has ended confers nothing.
     await publish("2026-03-01", target.employeeId!, "2026-03-31");
     expect(await permissionsOf("target")).toEqual([]);
@@ -825,8 +851,22 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(selfPublish.json().code).toBe("ORGANIZATION_PUBLISH_SELF_ROLE_SEAT");
     expect((await pool.query("SELECT status FROM organization_change_sets WHERE id = $1", [routeDraft.changeSet.id])).rows[0].status)
       .toBe("VALIDATED");
-    await pool.query("DELETE FROM organization_change_sets WHERE id = $1", [routeDraft.changeSet.id]);
+    // Super Admin (no employee, exempt from four eyes) may publish it; the role moving is audited
+    // in the access audit, one row per person gaining or losing it.
+    const published = await request("legacy", "POST", `/admin/organization/designer/drafts/${routeDraft.changeSet.id}/publish`);
+    expect(published.statusCode, published.body).toBe(200);
+    const moved = await pool.query(
+      `SELECT action, entity_id AS "employeeId", payload FROM access_audit_events
+        WHERE action LIKE 'role.seat_holder.%' AND payload->>'changeSetId' = $1 ORDER BY action`,
+      [routeDraft.changeSet.id],
+    );
+    expect(moved.rows).toEqual([
+      { action: "role.seat_holder.gained", employeeId: actors.get("hc")!.employeeId, payload: expect.objectContaining({ roleKey: "finance_officer", positionKey: seatKey }) },
+      { action: "role.seat_holder.lost", employeeId: employee.employeeId, payload: expect.objectContaining({ roleKey: "finance_officer", positionKey: seatKey }) },
+    ]);
+    expect(await permissionsOf("hc")).toEqual(expect.arrayContaining(finance));
     await pool.query("DELETE FROM account_role_assignments WHERE id = $1", [leadGrant]);
+    await publish("2026-06-01", employee.employeeId!);
     expect(await permissionsOf("employee")).toEqual(finance);
 
     // Removing the link is audited and removes the role from the seat holder.

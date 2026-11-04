@@ -29,10 +29,11 @@ Tanggal: `current_date` database, yang di production berzona `Asia/Jakarta` (div
 Lihat ADR-0007 G-1 sampai G-6. Ringkas:
 
 - `access.*` tidak pernah mengalir dari jabatan (ditegakkan saat evaluasi, bukan hanya saat menautkan).
-- Peran yang boleh ditautkan: lolos `canDelegateRole`, tanpa `access.*`, bekerja di scope organisasi, bukan `governance_leave_approver`. Hari ini artinya `human_capital_admin` dan peran pemberi akses **tidak** dapat ditautkan; `unit_manager` (unit saja) juga tidak.
-- Menautkan = memberi peran: break-glass Super Admin, alasan wajib, diaudit. Kanal SQ Hub: `TBD`.
+- Peran yang boleh ditautkan: lolos `canDelegateRole`, tanpa `access.*`, bekerja **hanya** di scope organisasi, bukan `governance_leave_approver`. Hari ini artinya `human_capital_admin` dan peran pemberi akses **tidak** dapat ditautkan; peran yang juga bisa untuk satu unit (`human_capital`, `finance`, `management`, `unit_manager`) juga tidak.
+- Menautkan = memberi peran: break-glass Super Admin, alasan wajib, diaudit beserta daftar pemegang saat itu; sebelum menyimpan layar menampilkan pemegang hari ini dan yang sudah terbit untuk nanti. Kanal SQ Hub: `TBD`.
 - Akun dan pegawai harus aktif. Akun `invited` belum memegang peran dari jabatan.
-- Penerbit struktur tidak dapat mendudukkan dirinya di jabatan bertaut (`403 ORGANIZATION_PUBLISH_SELF_ROLE_SEAT`).
+- Penerbit struktur tidak dapat mendudukkan dirinya di jabatan bertaut, dibanding struktur yang digantikan (`403 ORGANIZATION_PUBLISH_SELF_ROLE_SEAT`); publikasi mengunci change set-nya.
+- Setiap publikasi yang memindahkan peran bertaut menulis `role.seat_holder.gained` / `role.seat_holder.lost` ke audit akses.
 
 ## 4. Workflow
 
@@ -42,9 +43,9 @@ Lihat ADR-0007 G-1 sampai G-6. Ringkas:
 |---|---|
 | Aktor | Super Admin (break-glass). Akun lain: `403 ROLE_GRANT_SUPER_ADMIN_ONLY` sebelum input dibaca. |
 | Prasyarat | Jabatan pernah terbit; peran lolos G-2. |
-| Input | `POST /admin/access/role-seat-links` `{ roleKey, positionKey, reason }` |
+| Input | `POST /admin/access/role-seat-links` `{ roleKey, positionKey, reason, preview? }`. Dengan `preview: true` API menjawab `200 { holders }` (pemegang hari ini dan yang sudah terbit untuk nanti) tanpa menulis apa pun; layar memanggilnya begitu jabatan dipilih dan baru mengaktifkan tombol simpan setelahnya. |
 | Transisi | tidak ada tautan → tautan ada. Pemegang jabatan hari ini (yang akunnya aktif) memegang peran mulai permintaan berikutnya. |
-| Audit | `role.seat_link.set` `{ roleKey, positionKey, reason }`, `actor_source = 'hcis_break_glass'` |
+| Audit | `role.seat_link.set` `{ roleKey, positionKey, reason, holderEmployeeIds }`, `actor_source = 'hcis_break_glass'` |
 | Gagal | `400 INVALID_ROLE_SEAT_LINK` (input), `400 ROLE_NOT_SEAT_LINKABLE`, `404 ORGANIZATION_POSITION_NOT_PUBLISHED`, `409 ROLE_SEAT_LINK_EXISTS` |
 
 ### 4.2 Melepas tautan
@@ -53,7 +54,7 @@ Lihat ADR-0007 G-1 sampai G-6. Ringkas:
 
 ### 4.3 Pergantian pemegang jabatan
 
-Lewat jalur ORG-004 biasa (draft → validasi → terbit oleh orang kedua). Tidak ada langkah akses tambahan. Penerbitan ditolak bila memberi penerbit sendiri incumbency baru pada jabatan bertaut (G-5).
+Lewat jalur ORG-004 biasa (draft → validasi → terbit oleh orang kedua). Tidak ada langkah akses tambahan. Penerbitan ditolak bila memberi penerbit sendiri masa memegang jabatan bertaut yang belum ada di struktur yang digantikan (G-5). Publikasi menulis `role.seat_holder.gained`/`lost` (entity = pegawai, payload `roleKey`, `positionKey`, `changeSetId`, `effectiveOn`) untuk setiap perpindahan (G-7).
 
 ### 4.4 Melihat
 
@@ -91,7 +92,7 @@ Langkah (butuh sesi manusia; agent tidak mengetik kredensial):
 
 | Peran | Jabatan | Pemegang hari ini | Catatan |
 |---|---|---|---|
-| `human_capital_lead` (Kepala HC) | Kepala — Human Capital Management | owner (sudah memegang lewat pemberian langsung) | aman; setelah ditautkan, pemberian langsung boleh dicabut agar ikut jabatan |
+| `human_capital_lead` (Kepala HC) | Kepala — Human Capital Management | owner (sudah memegang lewat pemberian langsung) | **jangan diterapkan dulu**: peran ini memegang izin menyusun dan menerbitkan struktur, sehingga tautannya melingkar (ADR-0007 Consequences). Tetap pemberian langsung. |
 | `finance_lead` | Kepala — Keuangan | Sulthan Zaki (akun `invited`) | berlaku setelah akun aktif |
 | `director` | Direktur — Direksi | Ichwanudin (akun `invited`) | berlaku setelah akun aktif |
 
@@ -102,3 +103,6 @@ Langkah (butuh sesi manusia; agent tidak mengetik kredensial):
 - `DRAFT` Peran dari jabatan selalu scope organisasi; peran unit (`unit_manager`) tidak dapat ditautkan.
 - `DRAFT` Jabatan yang dipegang akun (Organ Yayasan) tidak memberi peran.
 - `DRAFT` Rangkap jabatan memberi gabungan peran; pemisahan tugas PAY-003 tetap di transisi.
+- `DRAFT` Tautan tidak berlaku-bertanggal: `capabilityValid` untuk tanggal lain memakai tautan hari ini.
+- `DRAFT` Baris tautan yang ditulis langsung ke database (di luar route) hanya disaring `access.*` saat evaluasi; aturan G-2 lainnya ditegakkan di route. Penulis database langsung sudah berada di luar setiap kendali aplikasi.
+- `DRAFT` Fungsi SQL tidak memakai `SET search_path`: berjalan dengan hak pemanggil, sehingga tidak ada eskalasi; dibiarkan agar uji per-skema tetap bekerja.

@@ -296,7 +296,7 @@ export async function resolveAuthorizationContext(
   const compatibility = ADMIN_PERMISSIONS.filter((key) => hasLegacySuperAdminCompatibility(principal, key));
   if (principal.principalType !== "EMPLOYEE") return { organizationPermissions: compatibility };
   const result = await db.query<{ permissionKey: string }>(
-    `SELECT role_permission.permission_key AS "permissionKey"
+    `SELECT DISTINCT role_permission.permission_key AS "permissionKey"
      FROM account_role_assignments assignment
      JOIN role_permissions role_permission ON role_permission.role_id = assignment.role_id
      JOIN accounts principal_account ON principal_account.id = assignment.account_id

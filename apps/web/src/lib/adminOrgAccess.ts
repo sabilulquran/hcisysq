@@ -341,6 +341,28 @@ export async function getRoleSeatChecks(): Promise<RoleSeatChecksResponse> {
   return readJson(response);
 }
 
+export interface RoleSeatHolderPreview {
+  employeeId: string;
+  name: string;
+  kind: "PRIMARY" | "ACTING";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  accountStatus: string | null;
+}
+
+/** Super Admin only: who would receive the role through this seat, today or later. Writes nothing. */
+export async function previewRoleSeatLink(
+  input: { roleKey: string; positionKey: string; reason: string },
+): Promise<{ preview: true; holders: RoleSeatHolderPreview[] }> {
+  const response = await fetch("/api/admin/access/role-seat-links", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ ...input, preview: true }),
+  });
+  return readJson(response);
+}
+
 /** Super Admin only: linking a seat grants the role to whoever holds it. */
 export async function addRoleSeatLink(
   input: { roleKey: string; positionKey: string; reason: string },

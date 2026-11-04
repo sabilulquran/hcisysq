@@ -9,7 +9,7 @@
 import { AlertTriangle, LoaderCircle, Search } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import type { RoleSeatCheck, RoleSeatChecksResponse } from "@/lib/adminOrgAccess";
+import type { RoleSeatCheck, RoleSeatChecksResponse, RoleSeatHolderPreview } from "@/lib/adminOrgAccess";
 import {
   notEffectiveSentence,
   roleSeatMismatchSentence,
@@ -26,6 +26,7 @@ export function RoleSeatPanel({
   busy,
   onAdd,
   onRemove,
+  onPreview,
   onSearchPositions,
 }: {
   data: RoleSeatChecksResponse | null;
@@ -36,6 +37,8 @@ export function RoleSeatPanel({
   /** Resolve true when saved, so a form keeps its input after a refusal. */
   onAdd: (roleKey: string, positionKey: string, reason: string) => Promise<boolean>;
   onRemove: (roleKey: string, positionKey: string, reason: string) => Promise<boolean>;
+  /** Who would receive the role through this seat; resolves null when the API refused. */
+  onPreview: (roleKey: string, positionKey: string) => Promise<RoleSeatHolderPreview[] | null>;
   onSearchPositions: (query: string) => Promise<PositionHit[]>;
 }) {
   if (error) {
@@ -62,7 +65,7 @@ export function RoleSeatPanel({
         ))
       )}
       {canManage && data.linkableRoles.length > 0 ? (
-        <AddLinkForm roles={data.linkableRoles} busy={busy} onAdd={onAdd} onSearchPositions={onSearchPositions} />
+        <AddLinkForm roles={data.linkableRoles} busy={busy} onAdd={onAdd} onPreview={onPreview} onSearchPositions={onSearchPositions} />
       ) : null}
     </section>
   );
@@ -150,11 +153,12 @@ function RoleSeatCard({
 }
 
 function AddLinkForm({
-  roles, busy, onAdd, onSearchPositions,
+  roles, busy, onAdd, onPreview, onSearchPositions,
 }: {
   roles: RoleSeatChecksResponse["linkableRoles"];
   busy: boolean;
   onAdd: (roleKey: string, positionKey: string, reason: string) => Promise<boolean>;
+  onPreview: (roleKey: string, positionKey: string) => Promise<RoleSeatHolderPreview[] | null>;
   onSearchPositions: (query: string) => Promise<PositionHit[]>;
 }) {
   const [open, setOpen] = useState(false);
@@ -164,6 +168,13 @@ function AddLinkForm({
   const [searching, setSearching] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  // AUTH-015: the grantor sees everyone the link reaches, today and later, before saving.
+  const [holders, setHolders] = useState<RoleSeatHolderPreview[] | null>(null);
+  const choose = (positionKey: string, nextRole = roleKey) => {
+    setChosen(positionKey);
+    setHolders(null);
+    void onPreview(nextRole, positionKey).then(setHolders);
+  };
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -186,7 +197,7 @@ function AddLinkForm({
     <div className="mt-4 space-y-3 rounded-xl border border-border/70 bg-surface p-4">
       <label className="block text-xs font-semibold">
         Peran
-        <select value={roleKey} onChange={(event) => setRoleKey(event.target.value)}
+        <select value={roleKey} onChange={(event) => { setRoleKey(event.target.value); if (chosen) choose(chosen, event.target.value); }}
           className="mt-1 h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm">
           {roles.map((role) => <option key={role.roleKey} value={role.roleKey}>{role.roleName}</option>)}
         </select>
@@ -208,7 +219,7 @@ function AddLinkForm({
               <li key={item.stableKey}>
                 <label className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1 text-sm hover:bg-muted">
                   <input type="radio" name="role-seat-position" checked={chosen === item.stableKey}
-                    onChange={() => setChosen(item.stableKey)} className="mt-1" />
+                    onChange={() => choose(item.stableKey)} className="mt-1" />
                   <span>
                     <span className="font-semibold">{item.title}</span>
                     <span className="block text-xs text-muted-foreground">{item.unitPath.join(" › ")}</span>
@@ -219,15 +230,33 @@ function AddLinkForm({
           </ul>
         )
       ) : null}
+      {chosen && holders ? (
+        <div className="rounded-xl border border-border/70 bg-surface-raised p-3 text-xs">
+          <p className="font-bold">Peran ini akan berlaku untuk:</p>
+          {holders.length === 0 ? (
+            <p className="mt-1 text-muted-foreground">Belum ada pemegang jabatan hari ini atau yang sudah diterbitkan untuk nanti.</p>
+          ) : (
+            <ul className="mt-1 space-y-0.5">
+              {holders.map((holder) => (
+                <li key={`${holder.employeeId}-${holder.kind}-${holder.effectiveFrom}`}>
+                  &bull; {holder.kind === "ACTING" ? "Plt " : ""}{holder.name}, mulai {holder.effectiveFrom}
+                  {holder.effectiveTo ? ` sampai ${holder.effectiveTo}` : ""}
+                  {holder.accountStatus === "active" ? "" : " (berlaku setelah akunnya aktif)"}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan / dasar penetapan (wajib)"
         aria-label="Alasan tautan" className="h-10 w-full rounded-xl border border-border bg-surface-raised px-3 text-sm" />
       <p className="text-xs text-muted-foreground">
         Menyimpan tautan langsung memberi peran ini kepada pemegang jabatan tersebut, sekarang dan berikutnya.
       </p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !roleKey || !chosen || !reason.trim()}
+        <button type="button" disabled={busy || !roleKey || !chosen || !holders || !reason.trim()}
           onClick={() => void onAdd(roleKey, chosen!, reason.trim()).then((saved) => {
-            if (saved) { setOpen(false); setChosen(null); setReason(""); setResults(null); setQuery(""); }
+            if (saved) { setOpen(false); setChosen(null); setHolders(null); setReason(""); setResults(null); setQuery(""); }
           })}
           className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
           Simpan tautan

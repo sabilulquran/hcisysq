@@ -1469,7 +1469,7 @@ paths:
         ROLE_GRANT_SUPER_ADMIN_ONLY before input is read. The role must pass isSeatLinkableRole (no
         access.* permission, organization scope, not the governance Leave role) and the seat must be a
         position stable key that has appeared in a published change set. Audited as role.seat_link.set
-        with actor_source hcis_break_glass.
+        with actor_source hcis_break_glass and the employee ids holding the seat at that moment.
       requestBody:
         required: true
         content:
@@ -1481,7 +1481,34 @@ paths:
                 roleKey: { type: string }
                 positionKey: { type: string, format: uuid }
                 reason: { type: string, minLength: 1, maxLength: 500 }
+                preview:
+                  type: boolean
+                  description: When true, answer 200 with everyone the link would reach and write nothing.
       responses:
+        '200':
+          description: >
+            Preview only. holders are the primary and acting holders of the seat today and those already
+            published to hold it later (the structure in force and published future change sets).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [preview, roleKey, positionKey, holders]
+                properties:
+                  preview: { type: boolean, enum: [true] }
+                  roleKey: { type: string }
+                  positionKey: { type: string, format: uuid }
+                  holders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        name: { type: string }
+                        kind: { type: string, enum: [PRIMARY, ACTING] }
+                        effectiveFrom: { type: string, format: date }
+                        effectiveTo: { type: [string, 'null'], format: date }
+                        accountStatus: { type: [string, 'null'] }
         '201':
           description: The role's check after the change
           content:

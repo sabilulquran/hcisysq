@@ -126,7 +126,9 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean, channe
  * the seat, so the bar is at least the bar for granting it, plus:
  *   - no `access.*` permission at all — identity, account and role administration never follow a
  *     seat (the permission engine filters them out at evaluation time as well);
- *   - the role must work at organization scope, because a seat confers organization scope only;
+ *   - the role must work at organization scope only: a seat confers organization scope, so a role
+ *     that can also be granted for one unit (human_capital, finance, management) would silently
+ *     widen to the whole organization through a unit head's seat;
  *   - the governance Leave role is for Organ Yayasan accounts, which never hold a seat-derived role.
  * Checked against the role's stored permissions, never a list the caller supplied.
  */
@@ -134,7 +136,8 @@ export function isSeatLinkableRole(role: AssignableRole): boolean {
   if (!canDelegateRole(role, false, "break_glass")) return false;
   if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) return false;
   if (role.permissions.some((key) => key.startsWith("access."))) return false;
-  return allowedScopes(role.roleKey).includes("organization");
+  const scopes = allowedScopes(role.roleKey);
+  return scopes.length === 1 && scopes[0] === "organization";
 }
 
 /**

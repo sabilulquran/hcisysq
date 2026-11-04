@@ -33,7 +33,7 @@ function visibleText(html: string) {
 const render = (value: RoleSeatChecksResponse | null, canManage = false, error: string | null = null) =>
   renderToStaticMarkup(
     <RoleSeatPanel data={value} error={error} canManage={canManage} busy={false}
-      onAdd={async () => true} onRemove={async () => true} onSearchPositions={async () => []} />,
+      onAdd={async () => true} onRemove={async () => true} onPreview={async () => []} onSearchPositions={async () => []} />,
   );
 
 describe("AUTH-015 roles that follow a seat", () => {

@@ -972,7 +972,7 @@ export async function registerOrgAccessAdminRoutes(
 
   async function auditSeatLink(
     client: PoolClient, principal: AuthPrincipal, action: string,
-    payload: { roleKey: string; positionKey: string; reason: string },
+    payload: { roleKey: string; positionKey: string; reason: string; holderEmployeeIds?: string[] },
   ) {
     // Linking a seat grants the role to whoever sits there, so it is recorded like a grant: the
     // channel it came through (AUTH-014 §2.7 actor_source) and the reason.
@@ -987,7 +987,46 @@ export async function registerOrgAccessAdminRoutes(
     roleKey: z.string().trim().min(1).max(100),
     positionKey: z.string().uuid(),
     reason: z.string().trim().min(1).max(500),
+    /** Answer who would receive the role, without writing anything. */
+    preview: z.boolean().optional(),
   });
+
+  /**
+   * AUTH-015: everyone who holds the seat today or is already published to hold it later (in the
+   * structure in force or in a published future change set). A link reaches all of them, so the
+   * grantor sees them before saving and the audit records them.
+   */
+  async function loadSeatHoldersFromToday(positionKey: string) {
+    const result = await pool.query<{
+      employeeId: string; name: string; kind: "PRIMARY" | "ACTING"; effectiveFrom: string;
+      effectiveTo: string | null; accountStatus: string | null;
+    }>(
+      `WITH in_force AS (
+         SELECT id FROM organization_change_sets
+          WHERE status = 'PUBLISHED' AND effective_on <= current_date
+          ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+          LIMIT 1
+       ), sets AS (
+         SELECT id FROM in_force
+         UNION
+         SELECT id FROM organization_change_sets WHERE status = 'PUBLISHED' AND effective_on > current_date
+       )
+       SELECT DISTINCT ON (i.employee_id, i.kind, i.effective_from)
+              i.employee_id AS "employeeId", e.full_name AS name, i.kind,
+              to_char(i.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+              to_char(i.effective_to, 'YYYY-MM-DD') AS "effectiveTo", a.status AS "accountStatus"
+         FROM sets
+         JOIN organization_incumbencies i ON i.change_set_id = sets.id AND i.position_key = $1
+         JOIN organization_positions p ON p.change_set_id = sets.id AND p.stable_key = i.position_key
+         JOIN employees e ON e.id = i.employee_id
+         LEFT JOIN accounts a ON a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+        WHERE p.active AND p.holder_source = 'EMPLOYEE' AND i.kind IN ('PRIMARY', 'ACTING')
+          AND coalesce(i.effective_to, 'infinity'::date) >= current_date
+        ORDER BY i.employee_id, i.kind, i.effective_from`,
+      [positionKey],
+    );
+    return result.rows;
+  }
 
   // AUTH-015 G-3: linking a role to a seat grants the role to whoever holds that seat, now and
   // later, so it is held to the role-granting rule (break-glass in HCIS; the SQ Hub channel is TBD).
@@ -1000,7 +1039,7 @@ export async function registerOrgAccessAdminRoutes(
     if (!body.success) {
       return reply.status(400).send({ code: "INVALID_ROLE_SEAT_LINK", message: "Peran, jabatan, atau alasannya tidak valid." });
     }
-    const { roleKey, positionKey, reason } = body.data;
+    const { roleKey, positionKey, reason, preview } = body.data;
     if (!(await loadSeatLinkableRoles()).some((role) => role.roleKey === roleKey)) {
       return reply.status(400).send({
         code: "ROLE_NOT_SEAT_LINKABLE",
@@ -1014,6 +1053,8 @@ export async function registerOrgAccessAdminRoutes(
         message: "Jabatan itu belum pernah ada di struktur yang diterbitkan.",
       });
     }
+    const holders = await loadSeatHoldersFromToday(positionKey);
+    if (preview) return reply.send({ preview: true, roleKey, positionKey, holders });
 
     const client = await pool.connect();
     let committed = false;
@@ -1030,7 +1071,9 @@ export async function registerOrgAccessAdminRoutes(
         committed = true;
         return reply.status(409).send({ code: "ROLE_SEAT_LINK_EXISTS", message: "Peran ini sudah mengikuti jabatan tersebut." });
       }
-      await auditSeatLink(client, principal, "role.seat_link.set", { roleKey, positionKey, reason });
+      await auditSeatLink(client, principal, "role.seat_link.set", {
+        roleKey, positionKey, reason, holderEmployeeIds: [...new Set(holders.map((holder) => holder.employeeId))],
+      });
       await client.query("COMMIT");
       committed = true;
     } finally {

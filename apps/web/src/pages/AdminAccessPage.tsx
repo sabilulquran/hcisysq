@@ -19,6 +19,7 @@ import {
   getAccessAdmin,
   addRoleSeatLink,
   getRoleSeatChecks,
+  previewRoleSeatLink,
   removeRoleAssignment,
   removeRoleSeatLink,
   updateAccountStatus,
@@ -462,6 +463,14 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
           () => addRoleSeatLink({ roleKey, positionKey, reason }), "Peran kini mengikuti jabatan itu.", "Tautan gagal disimpan.")}
         onRemove={(roleKey, positionKey, reason) => changeSeatLink(
           () => removeRoleSeatLink(roleKey, positionKey, reason), "Tautan peran dan jabatan dilepas.", "Tautan gagal dilepas.")}
+        onPreview={async (roleKey, positionKey) => {
+          try {
+            return (await previewRoleSeatLink({ roleKey, positionKey, reason: "pratinjau" })).holders;
+          } catch (cause) {
+            setError(cause instanceof AdminApiError ? cause.message : "Pemegang jabatan tidak dapat dimuat.");
+            return null;
+          }
+        }}
         onSearchPositions={async (query) => (await searchOrganizationPositions({ q: query || undefined })).items}
       />
 

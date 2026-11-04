@@ -283,7 +283,10 @@ export async function calculatePeriod(
     const policyRows = await client.query<{ id: string; policyKey: string; payload: unknown }>(
       `SELECT id, policy_key AS "policyKey", payload
        FROM payroll_policy_versions
-       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)`,
+       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)
+       -- Held until the results commit, so an in-place correction of a loaded
+       -- version (PAY-003-MIG section 5.4) waits for this run and then sees it.
+       FOR SHARE`,
       [period.payDate],
     );
     const resolved = resolvePolicy(policyRows.rows);

@@ -407,8 +407,9 @@ The command:
 
 - only in mode `OFF` or `SHADOW` (in `AUTHORITATIVE` the correction is a `CATEGORY_CHANGE` action);
 - only for an employment whose sole action is `BASELINE` and which has exactly one term, opened by that action; anything else is reported as skipped (`NO_BASELINE_EMPLOYMENT`, `MULTIPLE_EMPLOYMENTS`, `HAS_REAL_ACTIONS`, `MULTIPLE_TERMS`, `ALREADY_IN_CATEGORY`) and left alone;
+- only between two fixed-term categories or two open-ended ones (`CROSSES_FIXED_TERM` otherwise: the end date and the baseline issues would change too), and only while the employment has no payroll result (`PAYROLL_RESULTS_EXIST`: a stored result does not keep the category it was calculated on);
 - changes the term's `category` and the `category` in the `BASELINE` action's `new_snapshot`; the employment id, dates and placement stay as they are;
-- requires a reason (at least 10 characters) and writes `employment.baseline.reclassified` per employment with `from`, `to`, the reason and the rollout mode;
+- requires a reason (at least 10 characters, no names or NIP) and, with `--apply`, `--actor-account`; writes `employment.baseline.reclassified` per employment with `from`, `to`, the reason and the rollout mode;
 - dry-run by default, counts only, one transaction under the baseline advisory lock.
 
 Rollback: run the correction back to the previous category (the audit event names it), or restore the pre-change backup. First use (2026-11-04): the three `Aktif PKWT` employees, created as `KONTRAK` because production had no import snapshot for them, were corrected to `KONTRAK_HONORER`.

@@ -49,6 +49,7 @@ function parseArgs(argv: string[]) {
     }
     if (employeeIds.length === 0) throw new Error("--reclassify membutuhkan minimal satu --employee.");
     if (!reason) throw new Error("--reclassify membutuhkan --reason.");
+    if (apply && !actorAccountId) throw new Error("--reclassify --apply membutuhkan --actor-account <uuid akun HCIS>.");
   }
   return {
     apply,

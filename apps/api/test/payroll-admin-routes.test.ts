@@ -209,6 +209,15 @@ describe("PAY-003 policy versions", () => {
     expect(writes).toEqual([]);
   });
 
+  it("refuses the initial-load marker in a source typed on the screen", async () => {
+    const { response, writes } = await call("hc", "POST", "/payroll/policies", {
+      payload: { ...VALID_POLICY, source: "Sumber uji [PAY-003-MIG]" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("PAYROLL_INVALID_POLICY");
+    expect(writes).toEqual([]);
+  });
+
   it("refuses to reach back into a period already calculated without a reason", async () => {
     const { response, writes } = await call("hc", "POST", "/payroll/policies", {
       payload: { ...VALID_POLICY, effectiveFrom: "2026-01-01" },

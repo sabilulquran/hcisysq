@@ -197,6 +197,11 @@ describe.skipIf(!allowed)("EMP-005 S2 baseline on PostgreSQL", () => {
       apply: true, employeeIds: [target], category: "KONTRAK", reason: "Synthetic refusal of a real history",
     });
     expect(summary).toMatchObject({ reclassified: 0, skipped: { HAS_REAL_ACTIONS: 1 } });
+    // TETAP (open-ended) to KONTRAK (fixed-term) would need an end date: a real action.
+    const crossing = await reclassifyBaseline(transactionPool, {
+      apply: true, employeeIds: [employeeIds[4]!], category: "TETAP", reason: "Synthetic refusal of a crossing",
+    });
+    expect(crossing).toMatchObject({ reclassified: 0, skipped: { CROSSES_FIXED_TERM: 1 } });
     await expect(
       reclassifyBaseline(transactionPool, { apply: true, employeeIds: [target], category: "KONTRAK", reason: " " }),
     ).rejects.toMatchObject({ code: "EMPLOYMENT_BASELINE_RECLASSIFY_REASON_REQUIRED" });

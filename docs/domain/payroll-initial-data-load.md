@@ -200,7 +200,8 @@ Hanya jumlah, kode, kunci kebijakan, dan `rowId` dari berkas masukan (pengenal b
 Versi kebijakan yang dibuka pemuatan ini dan **belum dipakai hasil perhitungan mana pun** belum pernah membayar siapa pun, jadi kesalahan isinya boleh dikoreksi di tempat tanpa membuka versi baru. Pada tanggal berlaku yang sama tidak mungkin membuka versi kedua (constraint `payroll_policy_versions_no_overlap`), sehingga ini satu-satunya cara memperbaiki nilai yang berlaku sejak tanggal muat.
 
 - Baris kebijakan diberi `correctionReason` (10–500 karakter, misalnya rujukan keputusan owner). Tanpa field itu baris yang berbeda tetap `EXISTS_DIFFERENT`.
-- Syarat: ada versi dengan `policy_key` dan `effective_from` sama, sumbernya bertanda `[PAY-003-MIG]`, dan `payroll_results.policy_version_ids` tidak memuat id-nya. Syarat diperiksa saat rencana dan diulang di bawah row lock saat menulis.
+- Syarat: ada versi dengan `policy_key` dan `effective_from` sama, sumbernya bertanda `[PAY-003-MIG]`, dan `payroll_results.policy_version_ids` tidak memuat id-nya. Penanda itu hanya dapat ditulis CLI: route `POST /payroll/policies` menolak sumber yang memuatnya. Syarat diperiksa saat rencana dan diulang setelah row lock saat menulis; perhitungan membaca versi kebijakan `FOR SHARE`, sehingga koreksi menunggu perhitungan yang sedang berjalan lalu melihat hasilnya.
+- `note` lama dipertahankan bila baris berkas tidak membawa `note`. Alasan koreksi tidak boleh memuat nama atau NIP.
 - Hasilnya `CORRECT`: `payload`, `source`, dan `note` versi itu diganti; id dan tanggalnya tetap. Audit `payroll.policy.version_corrected` menyimpan `policy_key`, `effective_from`, `version_id`, alasan, serta `previous_payload` dan `previous_source`, sehingga koreksi dapat dibaca ulang dan dibatalkan dengan menjalankan koreksi balik.
 - Versi yang sudah dipakai perhitungan, atau yang dibuka lewat layar, hanya dapat diubah dengan versi baru (PAY-003 §10).
 

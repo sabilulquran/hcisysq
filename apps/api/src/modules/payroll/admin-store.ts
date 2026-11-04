@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { MIGRATION_MARKER } from "./admin-schemas.js";
 import { writeAudit } from "./store.js";
 
 export const SETTLED_STATES = [
@@ -158,24 +159,29 @@ export async function correctLoadedPolicyVersion(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const { rows } = await client.query<{ payload: unknown; source: string; inUse: boolean }>(
-      `SELECT v.payload, v.source,
-              EXISTS (SELECT 1 FROM payroll_results r WHERE r.policy_version_ids ? v.id::text) AS "inUse"
+    const { rows } = await client.query<{ payload: unknown; source: string; note: string | null }>(
+      `SELECT v.payload, v.source, v.note
        FROM payroll_policy_versions v
        WHERE v.id = $1 AND v.policy_key = $2 AND v.effective_from = $3::date
        FOR UPDATE OF v`,
       [correction.versionId, correction.policyKey, correction.effectiveFrom],
     );
     const current = rows[0];
-    // Re-checked under the row lock: a calculation may have run since the plan.
-    if (!current || !current.source.includes("[PAY-003-MIG]") || current.inUse) {
+    // Checked after the lock, in a statement of its own: a calculation reads its
+    // versions FOR SHARE, so by now any run that used this version has committed
+    // its results, and a fresh snapshot sees them.
+    const used = await client.query(
+      "SELECT 1 FROM payroll_results r WHERE r.policy_version_ids ? $1::text LIMIT 1",
+      [correction.versionId],
+    );
+    if (!current || !current.source.includes(MIGRATION_MARKER) || (used.rowCount ?? 0) > 0) {
       throw Object.assign(new Error("Versi kebijakan tidak lagi dapat dikoreksi di tempat."), {
         code: "PAYROLL_POLICY_NOT_CORRECTABLE",
       });
     }
     await client.query(
       `UPDATE payroll_policy_versions SET payload = $2::jsonb, source = $3, note = $4 WHERE id = $1`,
-      [correction.versionId, JSON.stringify(correction.payload), correction.source, correction.note ?? null],
+      [correction.versionId, JSON.stringify(correction.payload), correction.source, correction.note ?? current.note],
     );
     await writeAudit(client, {
       actorAccountId,

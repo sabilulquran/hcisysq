@@ -150,7 +150,9 @@ export type BaselineReclassifySkip =
   | "MULTIPLE_EMPLOYMENTS"
   | "HAS_REAL_ACTIONS"
   | "MULTIPLE_TERMS"
-  | "ALREADY_IN_CATEGORY";
+  | "ALREADY_IN_CATEGORY"
+  | "CROSSES_FIXED_TERM"
+  | "PAYROLL_RESULTS_EXIST";
 
 export interface BaselineReclassifySummary {
   dryRun: boolean;
@@ -241,6 +243,17 @@ export async function reclassifyBaseline(
       if (terms.rows.length !== 1 || allTerms.rowCount !== 1) { skip("MULTIPLE_TERMS"); continue; }
       const term = terms.rows[0]!;
       if (term.category === options.category) { skip("ALREADY_IN_CATEGORY"); continue; }
+      // Between fixed-term and open-ended the end date and the baseline issues
+      // would have to be recomputed; that is a real CATEGORY_CHANGE, not a fix.
+      const fixedTerm = DEFAULT_EMPLOYMENT_POLICY.fixedTermCategories;
+      if (fixedTerm.includes(term.category) !== fixedTerm.includes(options.category)) {
+        skip("CROSSES_FIXED_TERM");
+        continue;
+      }
+      // A stored payroll result does not keep the category it was paid on, so
+      // changing it underneath would silently change the basis of that result.
+      const paid = await client.query("SELECT 1 FROM payroll_results WHERE employment_id = $1 LIMIT 1", [employment.id]);
+      if ((paid.rowCount ?? 0) > 0) { skip("PAYROLL_RESULTS_EXIST"); continue; }
 
       summary.reclassified += 1;
       summary.fromCategories[term.category] = (summary.fromCategories[term.category] ?? 0) + 1;

@@ -17,7 +17,7 @@ import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import { resolveAuthorizationContext } from "../auth/permissions.js";
-import { isoDate, loanBody, policyBody, profileBody } from "./admin-schemas.js";
+import { isoDate, loanBody, MIGRATION_MARKER, policyBody, profileBody } from "./admin-schemas.js";
 import {
   correctLoadedPolicyVersion,
   createLoan,
@@ -35,7 +35,7 @@ import { writeAudit } from "./store.js";
 export const INITIAL_LOAD_FORMAT = "PAY-003-MIG/1";
 
 /** Written into every policy source and loan note, so a rollback can find the rows (spec §8). */
-export const MIGRATION_MARKER = "[PAY-003-MIG]";
+export { MIGRATION_MARKER };
 
 export const DEFAULT_LOAN_NOTE = `Saldo kasbon pindahan dari spreadsheet legacy ${MIGRATION_MARKER}`;
 

@@ -23,10 +23,17 @@
 --   CREATE INDEX IF NOT EXISTS attendance_daily_audit_events_employee_idx
 --     ON attendance_daily_audit_events (employee_id, attendance_date DESC, created_at DESC);
 
+-- The drop briefly takes ACCESS EXCLUSIVE locks on employees and accounts (to remove the FK
+-- triggers). Fail fast instead of queueing logins behind a long transaction; the runner wraps this
+-- file in one transaction, so SET LOCAL ends with it.
+SET LOCAL lock_timeout = '5s';
+
 DO $$
 BEGIN
   IF to_regclass('public.attendance_daily_audit_events') IS NOT NULL THEN
-    -- Nested so the row check is only planned when the table exists.
+    -- Lock first so no row can appear between the check and the drop. Nested so the row check is
+    -- only planned when the table exists.
+    LOCK TABLE attendance_daily_audit_events IN ACCESS EXCLUSIVE MODE;
     IF EXISTS (SELECT 1 FROM attendance_daily_audit_events) THEN
       RAISE EXCEPTION 'attendance_daily_audit_events is not empty; refusing to drop it';
     END IF;

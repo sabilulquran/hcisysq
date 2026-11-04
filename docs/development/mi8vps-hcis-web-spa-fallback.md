@@ -106,5 +106,5 @@ No data, database, or configuration secrets are involved.
 
 - Hub (3202) and Aset (3203) use the same `python3 -m http.server`; `https://hub.sabilulquran.or.id/login` also returns 404. They need their own owner-approved change.
 - `sq-core-logrotate.sh` uses `mv` while the process keeps its file descriptor open, so HCIS has kept writing to `api.log.1` (137 MB on 2026-10-15) and rotation never triggers again. Needs copy-truncate or a reopen signal.
-- The next HCIS release must point both the `hcis` and `hcis-web` launcher entries and the worker `service_pid` patterns at the new release path. `deploy-production.yml` still targets the terminated VPS through Docker/GHCR and must be replaced with a Mi8 release flow.
+- The next HCIS release must point both the `hcis` and `hcis-web` launcher entries and the worker `service_pid` patterns at the new release path. The old `deploy-production.yml` (terminated Docker/GHCR VPS) was replaced by the Mi8 release flow `mi8vps-hcis-release.md` and removed from the repository on 2026-11-04.
 - Update the Mi8VPS runbook (Google Doc) after the change is applied.

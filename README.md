@@ -6,18 +6,11 @@ Repository ini adalah **source of truth canonical** untuk dokumentasi dan implem
 
 ## Status
 
-**Active implementation and controlled production delivery.** Production berjalan di Mi8VPS. Release memakai reviewed `main` SHA yang dibangun off-device menjadi bundle linux/arm64 lalu dirilis dengan `scripts/mi8/release-mi8.sh`; lihat [`docs/development/mi8vps-hcis-release.md`](docs/development/mi8vps-hcis-release.md). Jalur Docker/GHCR VPS lama (`deploy-production.yml`, `scripts/deploy-vps.sh`, `scripts/verify-vps.sh`) sudah retired; paragraf GHCR di bawah adalah catatan historis.
+**Active implementation and controlled production delivery.** Production berjalan di Mi8VPS. Release memakai reviewed `main` SHA yang dibangun off-device menjadi bundle linux/arm64 lalu dirilis dengan `scripts/mi8/release-mi8.sh`; lihat [`docs/development/mi8vps-hcis-release.md`](docs/development/mi8vps-hcis-release.md). Sesuai keputusan owner 2026-10-27, release berjalan tanpa menunggu persetujuan owner dengan gate teknis yang tetap wajib (dry-run, backup sebelum migration, gate kandidat, rollback bila verifikasi gagal, tidak pada jam 19 UTC) dan dilaporkan sesudahnya. Login memakai Akun SQ (OIDC). Jalur Docker/GHCR VPS lama, staging, dan workflow-nya sudah retired dan dihapus dari repository pada 2026-11-04.
 
 Repository canonical saat ini adalah `sabilulquran/hcisysq`. Repository historis `imadjinasi/hcisysq` mengalihkan ke repository organisasi tersebut. Transfer repository sudah terjadi; jangan membaca dokumen checkpoint lama sebagai bukti bahwa transfer masih menunggu.
 
-Bukti Codex Local terbaru pada 2026-09-16 mencatat production API/Web berjalan pada exact-SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` dari:
-
-```text
-ghcr.io/sabilulquran/hcisysq-api:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-ghcr.io/sabilulquran/hcisysq-web:sha-9e9098c5bd8579ae9ec36dc1f698c03a064c66ab
-```
-
-`scripts/deploy-vps.sh` masih memiliki default legacy ke namespace personal `ghcr.io/imadjinasi/...`; workflow production memasok override `HCIS_GHCR_API_REPO` dan `HCIS_GHCR_WEB_REPO` ke namespace organisasi. Fakta bahwa default script belum dibersihkan tidak berarti production masih memakai image personal. Perubahan default tersebut sengaja tidak dibundel dalam PR dokumentasi ini dan, bila diperlukan, harus menjadi PR runtime/deployment tersendiri yang direview. Lihat [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md), [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md), dan [`docs/development/github-vps-production-deployment.md`](docs/development/github-vps-production-deployment.md).
+Release yang sedang berjalan di production dibuktikan dari `cwd` proses `hcis`/`hcis-web` di Mi8VPS dan dicatat di `docs/development/production-release-verification-*.md`, bukan dari image GHCR. Catatan VPS lama ada di [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md) dan [`docs/development/github-vps-production-deployment.md`](docs/development/github-vps-production-deployment.md) (historis).
 
 Implementasi HCIS sebelumnya diperlakukan sebagai referensi perilaku dan sumber discovery. Repository UI awal `imadjinasi/hcis-ysq-foundation` sekarang juga diperlakukan sebagai reference/archive; selected UI sudah dikonsolidasikan ke `apps/web`.
 
@@ -106,9 +99,9 @@ Lockfile harus diperbarui dan seluruh gate diverifikasi dari environment lokal/C
 - [`docs/api/openapi.yaml`](docs/api/openapi.yaml) — kontrak HTTP; import employee belum diekspos via HTTP sampai authorization foundation tersedia.
 - [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — baseline keamanan.
 - [`docs/testing/`](docs/testing/) — strategi test dan definition of done.
-- [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md) — active exact-SHA GHCR deployment/verification runbook.
-- [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) — observed repository-transfer state, GHCR/runtime evidence, dan batas cleanup yang masih terpisah.
-- [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — implementation + Codex Local verification workflow.
+- [`docs/development/mi8vps-hcis-release.md`](docs/development/mi8vps-hcis-release.md) — release flow production Mi8VPS (OPS-MI8-REL-001).
+- [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md) — historis: runbook GHCR/Docker VPS lama (retired).
+- [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — workflow implementasi dengan agent; bagian era Codex/GHCR bersifat historis.
 
 ## Catatan keamanan
 

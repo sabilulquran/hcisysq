@@ -29,6 +29,7 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Board Access / Akses Panel Organ Yayasan | Izin membaca `/board` dan governance summary: akun `FOUNDATION_BOARD` aktif, atau akun `EMPLOYEE` aktif dengan role Panel Organ Yayasan (`board.read`) yang efektif. ACCEPTED (ORG-010). |
 | Governance Summary | Ringkasan agregat read-only yang HCIS kirim ke SQ Hub Ringkasan Yayasan (kontrak HUB-IMPL-021 v1). Tanpa data pribadi. ACCEPTED (ORG-010). |
 | Role | Kelompok kewenangan tingkat tinggi, misalnya pegawai atau super admin. |
+| Peran dari jabatan (AUTH-015) | Peran yang dipegang seseorang karena ia memegang (utama atau Plt) jabatan yang ditautkan ke peran itu di struktur terbit hari ini. Pindah otomatis bersama jabatan; tidak pernah membawa permission `access.*`. Lawannya: pemberian langsung. |
 | Permission | Kemampuan spesifik terhadap aksi/resource. Permission lebih presisi daripada role. |
 | Policy | Aturan otorisasi yang menilai actor, aksi, dan resource. |
 | Approval Request | Permintaan bisnis yang membutuhkan satu atau lebih keputusan. |

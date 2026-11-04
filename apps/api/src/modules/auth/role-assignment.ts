@@ -122,6 +122,25 @@ export function canDelegateRole(role: AssignableRole, delegated: boolean, channe
 }
 
 /**
+ * AUTH-015 (ADR-0007 G-1, G-2): may this role follow a seat? A linked role reaches whoever holds
+ * the seat, so the bar is at least the bar for granting it, plus:
+ *   - no `access.*` permission at all — identity, account and role administration never follow a
+ *     seat (the permission engine filters them out at evaluation time as well);
+ *   - the role must work at organization scope only: a seat confers organization scope, so a role
+ *     that can also be granted for one unit (human_capital, finance, management) would silently
+ *     widen to the whole organization through a unit head's seat;
+ *   - the governance Leave role is for Organ Yayasan accounts, which never hold a seat-derived role.
+ * Checked against the role's stored permissions, never a list the caller supplied.
+ */
+export function isSeatLinkableRole(role: AssignableRole): boolean {
+  if (!canDelegateRole(role, false, "break_glass")) return false;
+  if (role.roleKey === GOVERNANCE_LEAVE_APPROVER_ROLE_KEY) return false;
+  if (role.permissions.some((key) => key.startsWith("access."))) return false;
+  const scopes = allowedScopes(role.roleKey);
+  return scopes.length === 1 && scopes[0] === "organization";
+}
+
+/**
  * AUTH-014 §2.5, §3.1 (supersedes the 2026-10-16 rule that only Super Admin may grant).
  *
  * `"break_glass"` keeps the old behaviour exactly: SUPER_ADMIN and nobody else. `"sq_hub"` admits

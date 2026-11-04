@@ -729,7 +729,7 @@ export function AdminPayrollReferencePage() {
 
   return (
     <AdminShell
-      active="payroll"
+      active="payroll-reference"
       title="Data acuan payroll"
       description="Kebijakan berversi, kasbon, dan profil kompensasi yang dipakai setiap perhitungan periode."
     >

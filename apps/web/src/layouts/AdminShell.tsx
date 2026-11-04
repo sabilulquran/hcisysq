@@ -61,6 +61,7 @@ export type AdminNavKey =
   | "leave-critical-periods"
   | "payslips"
   | "payroll"
+  | "payroll-reference"
   | "reports"
   | "access"
   | "services";
@@ -139,6 +140,9 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards },
       { key: "payroll", label: "Payroll", href: "/admin/payroll", icon: Calculator },
+      // AUTH-015: the kasbon register (Staf Keuangan) and payroll reference data had no menu entry;
+      // a loans-only account could reach it only by typing the address. Shown per canAccessAdminPath.
+      { key: "payroll-reference", label: "Kasbon & Acuan Payroll", href: "/admin/payroll/reference", icon: Calculator },
     ],
   },
   {

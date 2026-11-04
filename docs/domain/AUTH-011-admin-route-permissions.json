@@ -2828,8 +2828,17 @@
   },
   {
     "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
-    "method": "PUT",
-    "url": "/admin/access/role-seat-links/:roleKey",
+    "method": "POST",
+    "url": "/admin/access/role-seat-links",
+    "access": "super-admin",
+    "permissions": [
+      "access.roles.assign"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employees/admin-org-access-routes.ts",
+    "method": "DELETE",
+    "url": "/admin/access/role-seat-links/:roleKey/:positionKey",
     "access": "super-admin",
     "permissions": [
       "access.roles.assign"

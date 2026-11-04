@@ -13,7 +13,7 @@
     {
       "url": "/admin/access/role-seat-checks",
       "list": "bounded",
-      "reason": "Satu baris per peran yang mengikuti jabatan (kini hanya Kepala HC); isinya hanya pemegang peran itu dan pemegang satu jabatan."
+      "reason": "AUTH-015: satu baris per peran yang mengikuti jabatan (hanya peran yang punya tautan); isinya jabatan-jabatan tautannya, pemegang tiap jabatan, dan pemegang pemberian langsung peran itu. linkableRoles dibatasi katalog peran HCIS."
     },
     {
       "url": "/admin/announcements",

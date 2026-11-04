@@ -1,156 +1,179 @@
-// ORG-008-9 (owner decision 2026-10-27): does the Kepala HC role sit with whoever holds the Kepala HC
-// seat in the published structure?
+// AUTH-015 (ADR-0007, owner decision 2026-11-04): a role follows the seats it is linked to.
 //
-// The role is granted by hand and the seat changes hands in the structure, so the two can drift
-// apart: a previous seat holder keeps the role, or a new one never receives it. AUTH-011 forbids a
-// position from granting administrative permission, so this only compares and reports. It never
-// grants, revokes or suggests a grant on its own.
+// Whoever holds a linked seat today (primary or Plt) holds the role, evaluated by the permission
+// engine on every request (hcis_seat_permissions, migration 0139). This module only builds what the
+// Akses screen shows about that: per role, its seats, who sits in each and whether the role is in
+// force for them yet, and which direct grants do not follow any seat.
 //
-// An acting holder (Plt) counts as a legitimate seat holder, exactly like the primary holder
-// (owner decision 2026-10-27).
+// It replaces the ORG-008-9 comparison, which only warned because AUTH-011 then forbade deriving
+// administrative permission from a position. The "seated but without the role" warning is gone:
+// a seat holder now has the role. What remains worth warning about is:
+//   - a seat holder for whom the role is not in force (no account, account not active, employee not
+//     active) — the seat is filled but nobody can act on it;
+//   - a direct grant held by someone who sits in none of the role's seats — that grant will not
+//     move when the seat changes hands, which is exactly what the owner wanted to stop relying on.
 //
 // Pure: rows in, report out. The route loads the rows.
 
 import type { OrganizationSnapshot } from "../organization/domain.js";
 import { isEffective } from "../organization/jakarta-date.js";
 
-/** An account whose role assignment is effective today, as the permission engine counts it. */
+/** An account whose direct role assignment is effective today, as the permission engine counts it. */
 export interface RoleSeatHolder {
   accountId: string;
   employeeId: string | null;
   name: string;
 }
 
-/** The EMPLOYEE account of a seat holder, when there is one. */
-export interface RoleSeatAccount {
-  accountId: string;
+/** One row of hcis_seat_role_holders for this role, with the employee's name. */
+export interface SeatHolderRow {
+  positionKey: string;
   employeeId: string;
-  status: string;
+  name: string;
+  kind: "PRIMARY" | "ACTING";
+  accountId: string | null;
+  accountStatus: string | null;
+  employeeActive: boolean;
 }
+
+export interface RoleSeatLinkRow {
+  positionKey: string;
+  reason: string;
+  setAt: string;
+}
+
+export type SeatNotEffectiveReason = "NO_ACCOUNT" | "ACCOUNT_NOT_ACTIVE" | "EMPLOYEE_NOT_ACTIVE";
 
 export interface RoleSeatIncumbent {
   employeeId: string;
   name: string;
   kind: "PRIMARY" | "ACTING";
   accountId: string | null;
-  hasRole: boolean;
+  /** The role is in force for this person right now. */
+  roleEffective: boolean;
+  notEffectiveReason: SeatNotEffectiveReason | null;
+  /** The person also holds a direct grant of the same role. */
+  alsoDirect: boolean;
 }
 
-export type RoleSeatStatus =
-  | "SEAT_NOT_SET"
-  | "NO_PUBLISHED_STRUCTURE"
-  | "SEAT_NOT_IN_STRUCTURE"
-  | "SEAT_VACANT"
-  | "CHECKED";
+export type RoleSeatStatus = "NO_PUBLISHED_STRUCTURE" | "SEAT_NOT_IN_STRUCTURE" | "SEAT_VACANT" | "HELD";
+
+export interface RoleSeat {
+  positionKey: string;
+  title: string | null;
+  unitName: string | null;
+  reason: string;
+  setAt: string;
+  status: RoleSeatStatus;
+  incumbents: RoleSeatIncumbent[];
+}
 
 export type RoleSeatMismatch =
-  | { kind: "HOLDER_NOT_SEATED"; accountId: string; employeeId: string | null; name: string }
+  | { kind: "DIRECT_HOLDER_NOT_SEATED"; accountId: string; employeeId: string | null; name: string }
   | {
-      kind: "SEATED_WITHOUT_ROLE";
+      kind: "SEAT_HOLDER_NOT_EFFECTIVE";
+      positionKey: string;
       employeeId: string;
       name: string;
       incumbentKind: "PRIMARY" | "ACTING";
-      reason: "NO_ACCOUNT" | "ACCOUNT_NOT_ACTIVE" | "NO_ROLE";
+      reason: SeatNotEffectiveReason;
     };
 
 export interface RoleSeatCheck {
   roleKey: string;
+  roleName: string;
   asOf: string;
-  seat: {
-    positionKey: string;
-    title: string | null;
-    unitName: string | null;
-    reason: string;
-    setAt: string;
-  } | null;
-  status: RoleSeatStatus;
+  seats: RoleSeat[];
+  /** Direct grants in force today. */
   holders: RoleSeatHolder[];
-  incumbents: RoleSeatIncumbent[];
   mismatches: RoleSeatMismatch[];
+}
+
+function notEffectiveReason(row: SeatHolderRow): SeatNotEffectiveReason | null {
+  if (!row.accountId) return "NO_ACCOUNT";
+  if (!row.employeeActive) return "EMPLOYEE_NOT_ACTIVE";
+  if (row.accountStatus !== "active") return "ACCOUNT_NOT_ACTIVE";
+  return null;
 }
 
 export function computeRoleSeatCheck(input: {
   roleKey: string;
+  roleName: string;
   asOf: string;
-  link: { positionKey: string; reason: string; setAt: string } | null;
+  links: RoleSeatLinkRow[];
   snapshot: OrganizationSnapshot | null;
+  /** Direct grants of this role in force today. */
   holders: RoleSeatHolder[];
-  /** Employee names for every incumbent of the seat. */
-  employeeNames: ReadonlyMap<string, string>;
-  /** EMPLOYEE accounts of those incumbents. */
-  accounts: RoleSeatAccount[];
+  /** hcis_seat_role_holders rows for this role. */
+  seatHolders: SeatHolderRow[];
 }): RoleSeatCheck {
-  const base = { roleKey: input.roleKey, asOf: input.asOf, holders: input.holders };
-  if (!input.link) {
-    return { ...base, seat: null, status: "SEAT_NOT_SET", incumbents: [], mismatches: [] };
-  }
-  const seatBase = { positionKey: input.link.positionKey, reason: input.link.reason, setAt: input.link.setAt };
-  if (!input.snapshot) {
+  const directEmployeeIds = new Set(input.holders.flatMap((holder) => holder.employeeId ? [holder.employeeId] : []));
+  const seats: RoleSeat[] = input.links.map((link) => {
+    const base = { positionKey: link.positionKey, reason: link.reason, setAt: link.setAt };
+    if (!input.snapshot) {
+      return { ...base, title: null, unitName: null, status: "NO_PUBLISHED_STRUCTURE", incumbents: [] };
+    }
+    const position = input.snapshot.positions.find((item) =>
+      item.stableKey === link.positionKey && item.active
+      && isEffective(item.effectiveFrom, item.effectiveTo, input.asOf));
+    if (!position) {
+      return { ...base, title: null, unitName: null, status: "SEAT_NOT_IN_STRUCTURE", incumbents: [] };
+    }
+    const unitName = input.snapshot.nodes.find((node) => node.stableKey === position.nodeKey)?.name ?? null;
+    const incumbents = input.seatHolders
+      .filter((row) => row.positionKey === link.positionKey)
+      .map((row) => {
+        const reason = notEffectiveReason(row);
+        return {
+          employeeId: row.employeeId,
+          name: row.name,
+          kind: row.kind,
+          accountId: row.accountId,
+          roleEffective: reason === null,
+          notEffectiveReason: reason,
+          alsoDirect: directEmployeeIds.has(row.employeeId),
+        };
+      })
+      .sort((left, right) => left.name.localeCompare(right.name));
     return {
-      ...base, seat: { ...seatBase, title: null, unitName: null },
-      status: "NO_PUBLISHED_STRUCTURE", incumbents: [], mismatches: [],
+      ...base, title: position.title, unitName,
+      status: incumbents.length === 0 ? "SEAT_VACANT" : "HELD", incumbents,
     };
-  }
+  });
 
-  const position = input.snapshot.positions.find((item) =>
-    item.stableKey === input.link!.positionKey
-    && item.active
-    && isEffective(item.effectiveFrom, item.effectiveTo, input.asOf));
-  if (!position) {
-    return {
-      ...base, seat: { ...seatBase, title: null, unitName: null },
-      status: "SEAT_NOT_IN_STRUCTURE", incumbents: [], mismatches: [],
-    };
-  }
-  const unitName = input.snapshot.nodes.find((node) => node.stableKey === position.nodeKey)?.name ?? null;
-  const seat = { ...seatBase, title: position.title, unitName };
-
-  const holderEmployeeIds = new Set(input.holders.flatMap((holder) => holder.employeeId ? [holder.employeeId] : []));
-  // One entry per person: someone recorded twice on the seat (primary and Plt, or overlapping rows)
-  // is one holder, named by the primary record when there is one.
-  const seated = new Map<string, OrganizationSnapshot["incumbencies"][number]>();
-  for (const item of input.snapshot.incumbencies) {
-    if (item.positionKey !== position.stableKey || !item.employeeId
-      || !isEffective(item.effectiveFrom, item.effectiveTo, input.asOf)) continue;
-    const existing = seated.get(item.employeeId);
-    if (!existing || (existing.kind === "ACTING" && item.kind === "PRIMARY")) seated.set(item.employeeId, item);
-  }
-  const incumbents: RoleSeatIncumbent[] = [...seated.values()]
-    .map((item) => {
-      const account = input.accounts.find((candidate) => candidate.employeeId === item.employeeId!);
-      return {
-        employeeId: item.employeeId!,
-        name: input.employeeNames.get(item.employeeId!) ?? "Pegawai tidak dikenal",
-        kind: item.kind,
-        accountId: account?.accountId ?? null,
-        hasRole: holderEmployeeIds.has(item.employeeId!),
-      };
-    });
-
-  const seatedEmployeeIds = new Set(incumbents.map((item) => item.employeeId));
+  const seatedEmployeeIds = new Set(seats.flatMap((seat) => seat.incumbents.map((item) => item.employeeId)));
   const mismatches: RoleSeatMismatch[] = [];
-  for (const holder of input.holders) {
-    if (!holder.employeeId || !seatedEmployeeIds.has(holder.employeeId)) {
-      mismatches.push({ kind: "HOLDER_NOT_SEATED", accountId: holder.accountId, employeeId: holder.employeeId, name: holder.name });
+  // Only meaningful once the role follows at least one seat; without a link a direct grant is the
+  // only way to hold the role and is not a discrepancy.
+  if (seats.length > 0) {
+    for (const holder of input.holders) {
+      if (!holder.employeeId || !seatedEmployeeIds.has(holder.employeeId)) {
+        mismatches.push({
+          kind: "DIRECT_HOLDER_NOT_SEATED", accountId: holder.accountId, employeeId: holder.employeeId, name: holder.name,
+        });
+      }
     }
   }
-  for (const incumbent of incumbents) {
-    if (incumbent.hasRole) continue;
-    const account = input.accounts.find((candidate) => candidate.employeeId === incumbent.employeeId);
-    mismatches.push({
-      kind: "SEATED_WITHOUT_ROLE",
-      employeeId: incumbent.employeeId,
-      name: incumbent.name,
-      incumbentKind: incumbent.kind,
-      reason: !account ? "NO_ACCOUNT" : account.status !== "active" ? "ACCOUNT_NOT_ACTIVE" : "NO_ROLE",
-    });
+  for (const seat of seats) {
+    for (const incumbent of seat.incumbents) {
+      if (incumbent.notEffectiveReason === null) continue;
+      mismatches.push({
+        kind: "SEAT_HOLDER_NOT_EFFECTIVE",
+        positionKey: seat.positionKey,
+        employeeId: incumbent.employeeId,
+        name: incumbent.name,
+        incumbentKind: incumbent.kind,
+        reason: incumbent.notEffectiveReason,
+      });
+    }
   }
 
   return {
-    ...base,
-    seat,
-    status: incumbents.length === 0 ? "SEAT_VACANT" : "CHECKED",
-    incumbents,
+    roleKey: input.roleKey,
+    roleName: input.roleName,
+    asOf: input.asOf,
+    seats,
+    holders: input.holders,
     mismatches,
   };
 }

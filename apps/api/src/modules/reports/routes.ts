@@ -94,7 +94,11 @@ export async function resolveReportScope(
         AND ((assignment.scope_type = 'organization' AND assignment.organizational_unit_id IS NULL)
           OR (assignment.scope_type = 'unit' AND assignment.organizational_unit_id IS NOT NULL))
         AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)`,
+        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
+     UNION ALL
+     -- AUTH-015: a role that follows a seat confers organization scope, like the permission engine.
+     SELECT 'organization', NULL::uuid FROM hcis_seat_permissions(current_date, $1::uuid) seat
+      WHERE seat.permission_key = $2`,
     [principal.id, permission],
   );
   return scopeFromAssignments(result.rows);

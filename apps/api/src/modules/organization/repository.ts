@@ -221,6 +221,108 @@ export class PostgresOrganizationRepository {
     return result.rows[0]?.published === true;
   }
 
+  /**
+   * AUTH-015 G-5 (ADR-0007): publishing structure now moves roles, so a publisher must not seat
+   * themselves into a role-linked seat.
+   *
+   * Compared against the structure this change set replaces on its effective date (the latest
+   * other PUBLISHED change set effective on or before it), not against history: a seat the
+   * publisher held once and lost is a gain when it comes back. For each incumbency of the
+   * publisher's employee on a linked, active, employee-held seat in this change set, the period it
+   * covers from the effective date onwards must already be covered by one incumbency on the same
+   * seat in the replaced structure (any kind: primary and Plt confer the same role). Anything else
+   * — a new seat, a longer or reopened period, a reactivated seat — is a gain.
+   */
+  async publisherGainsLinkedSeat(changeSetId: string, publisherAccountId: string): Promise<boolean> {
+    const result = await this.db.query<{ gains: boolean }>(
+      `WITH change_set AS (
+         SELECT id, effective_on FROM organization_change_sets WHERE id = $1
+       ), replaced AS (
+         SELECT prior.id
+           FROM organization_change_sets prior, change_set
+          WHERE prior.status = 'PUBLISHED' AND prior.id <> change_set.id
+            AND prior.effective_on <= change_set.effective_on
+          ORDER BY prior.effective_on DESC, prior.published_at DESC, prior.created_at DESC, prior.id DESC
+          LIMIT 1
+       ), mine AS (
+         SELECT incumbency.position_key,
+                greatest(incumbency.effective_from, position.effective_from, change_set.effective_on) AS starts,
+                least(coalesce(incumbency.effective_to, 'infinity'::date),
+                      coalesce(position.effective_to, 'infinity'::date)) AS ends
+           FROM change_set
+           JOIN organization_incumbencies incumbency ON incumbency.change_set_id = change_set.id
+           JOIN organization_positions position
+             ON position.change_set_id = change_set.id AND position.stable_key = incumbency.position_key
+           JOIN accounts publisher ON publisher.id = $2 AND publisher.employee_id = incumbency.employee_id
+          WHERE position.active AND position.holder_source = 'EMPLOYEE'
+            AND incumbency.kind IN ('PRIMARY', 'ACTING')
+            AND incumbency.position_key IN (SELECT position_key FROM access_role_position_links)
+       )
+       SELECT EXISTS (
+         SELECT 1 FROM mine
+          WHERE mine.starts <= mine.ends
+            AND NOT EXISTS (
+              SELECT 1
+                FROM replaced
+                JOIN organization_incumbencies prior ON prior.change_set_id = replaced.id
+                JOIN organization_positions prior_position
+                  ON prior_position.change_set_id = replaced.id AND prior_position.stable_key = prior.position_key
+                JOIN accounts publisher ON publisher.id = $2 AND publisher.employee_id = prior.employee_id
+               WHERE prior.position_key = mine.position_key
+                 AND prior_position.active AND prior_position.holder_source = 'EMPLOYEE'
+                 AND prior.kind IN ('PRIMARY', 'ACTING')
+                 AND greatest(prior.effective_from, prior_position.effective_from) <= mine.starts
+                 AND least(coalesce(prior.effective_to, 'infinity'::date),
+                           coalesce(prior_position.effective_to, 'infinity'::date)) >= mine.ends
+            )
+       ) AS gains`,
+      [changeSetId, publisherAccountId],
+    );
+    return result.rows[0]?.gains === true;
+  }
+
+  /**
+   * AUTH-015: who starts or stops holding a role-linked seat because of this change set, compared
+   * with the structure it replaces, from its effective date onwards. Publishing writes one access
+   * audit event per row, so "who held role R" can be answered from the access audit alone.
+   */
+  async linkedSeatHolderChanges(changeSetId: string): Promise<Array<{
+    roleKey: string; positionKey: string; employeeId: string; change: "gained" | "lost";
+  }>> {
+    const result = await this.db.query<{ roleKey: string; positionKey: string; employeeId: string; change: "gained" | "lost" }>(
+      `WITH change_set AS (
+         SELECT id, effective_on FROM organization_change_sets WHERE id = $1
+       ), replaced AS (
+         SELECT prior.id
+           FROM organization_change_sets prior, change_set
+          WHERE prior.status = 'PUBLISHED' AND prior.id <> change_set.id
+            AND prior.effective_on <= change_set.effective_on
+          ORDER BY prior.effective_on DESC, prior.published_at DESC, prior.created_at DESC, prior.id DESC
+          LIMIT 1
+       ), holders AS (
+         SELECT side.name AS side, link.role_key, incumbency.position_key, incumbency.employee_id
+           FROM (SELECT 'new' AS name, id FROM change_set UNION ALL SELECT 'old', id FROM replaced) side
+           CROSS JOIN change_set
+           JOIN organization_incumbencies incumbency ON incumbency.change_set_id = side.id
+           JOIN organization_positions position
+             ON position.change_set_id = side.id AND position.stable_key = incumbency.position_key
+           JOIN access_role_position_links link ON link.position_key = incumbency.position_key
+          WHERE position.active AND position.holder_source = 'EMPLOYEE'
+            AND incumbency.employee_id IS NOT NULL AND incumbency.kind IN ('PRIMARY', 'ACTING')
+            AND coalesce(incumbency.effective_to, 'infinity'::date) >= change_set.effective_on
+            AND coalesce(position.effective_to, 'infinity'::date) >= change_set.effective_on
+       )
+       SELECT role_key AS "roleKey", position_key AS "positionKey", employee_id AS "employeeId",
+              CASE WHEN bool_or(side = 'new') THEN 'gained' ELSE 'lost' END AS change
+         FROM holders
+        GROUP BY role_key, position_key, employee_id
+       HAVING bool_or(side = 'new') <> bool_or(side = 'old')
+        ORDER BY role_key, position_key, employee_id`,
+      [changeSetId],
+    );
+    return result.rows;
+  }
+
   /** ORG-008-4a: record one applied command, in the operator's own order. */
   async appendJournalEntry(input: {
     changeSetId: string;
@@ -652,6 +754,11 @@ export class PostgresOrganizationRepository {
              AND rp.permission_key = $3
              AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
              AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) OR EXISTS (
+           -- AUTH-015: a capability carried by a role that follows a seat this employee holds.
+           SELECT 1 FROM accounts a
+           JOIN hcis_seat_permissions($2::date, a.id) seat ON seat.permission_key = $3
+           WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
          ) END AS "capabilityValid"
        FROM employees e WHERE e.id = $1`,
       [employeeId, context.effectiveDate, context.requiredCapability ?? null],

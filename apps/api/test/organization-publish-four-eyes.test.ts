@@ -54,6 +54,9 @@ function createPool(options: { composers: string[]; principalType?: "EMPLOYEE" |
     if (sql.includes("UNION") && sql.includes("organization_audit_events")) {
       return { rows: options.composers.map((accountId) => ({ accountId })), rowCount: options.composers.length };
     }
+    // AUTH-015: no role follows a seat here, so the self-seat guard and the role audit find nothing.
+    if (sql.includes("access_role_position_links")) return { rows: [], rowCount: 0 };
+    if (sql.includes("FOR UPDATE")) return { rows: [{}], rowCount: 1 };
     if (sql.includes("SET status = 'PUBLISHED'")) return { rows: [], rowCount: 1 };
     if (sql.includes("FROM organization_change_sets")) return { rows: [DRAFT_ROW], rowCount: 1 };
     if (sql.includes("FROM organization_") || sql.includes("FROM employees") || sql.includes("FROM accounts")

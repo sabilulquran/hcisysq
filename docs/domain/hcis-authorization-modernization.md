@@ -72,8 +72,11 @@ Separately grantable, excluded permissions are:
   no authority (ADR-0004), so this does not widen what Kepala HC can approve or publish.
   `HC_LEAD_PERMISSIONS` in `permissions.ts` is the current list of record; migration 0113
   carries the ORG-011 grant.
-  **ORG-008-9 (owner decision 2026-10-27):** the role does not follow the Kepala HC seat
-  automatically, because a position never grants administrative permission. Super Admin
+  **ORG-008-9 (owner decision 2026-10-27), superseded by AUTH-015 (ADR-0007, owner decision
+  2026-11-04):** a role linked to a seat now follows it — the seat holder holds the role, and the
+  warning below is replaced by the "Peran yang mengikuti jabatan" panel
+  (`docs/domain/role-follows-seat.md`). Historical text: the role did not follow the Kepala HC seat
+  automatically, because a position never granted administrative permission. Super Admin
   names the seat once, and the Akses screen warns when today's role holders and today's
   seat holders (primary or Plt) differ, in either direction. Granting stays manual;
   `PUT /admin/access/role-seat-links/:roleKey` is Super Admin only;

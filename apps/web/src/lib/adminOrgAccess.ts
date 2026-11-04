@@ -100,6 +100,16 @@ export interface AccessAccount {
   /** AUTH-002-INVITE: latest "Kirim aktivasi" for this account, without contacts. */
   latestInvitation?: ActivationInvitationSummary | null;
   assignments: RoleAssignment[];
+  /** AUTH-015: roles held because of a seat, not granted directly. `effective` is false while the account is not active. */
+  seatRoles?: Array<{
+    roleKey: string;
+    roleName: string;
+    positionKey: string;
+    positionTitle: string;
+    unitName: string | null;
+    kind: "PRIMARY" | "ACTING";
+    effective: boolean;
+  }>;
 }
 
 export type InvitationEmailStatus = "sent" | "not_needed" | "failed";
@@ -271,35 +281,59 @@ export async function removeRoleAssignment(assignmentId: string): Promise<void> 
   await readJson<void>(response);
 }
 
-/** ORG-008-9: who holds the Kepala HC role against who holds the Kepala HC seat. Read-only. */
-export type RoleSeatStatus =
-  | "SEAT_NOT_SET"
-  | "NO_PUBLISHED_STRUCTURE"
-  | "SEAT_NOT_IN_STRUCTURE"
-  | "SEAT_VACANT"
-  | "CHECKED";
+/**
+ * AUTH-015 (ADR-0007): a role follows the seats it is linked to. Whoever holds a linked seat today
+ * (primary or Plt) holds the role; the API decides that on every request.
+ */
+export type RoleSeatStatus = "NO_PUBLISHED_STRUCTURE" | "SEAT_NOT_IN_STRUCTURE" | "SEAT_VACANT" | "HELD";
+export type SeatNotEffectiveReason = "NO_ACCOUNT" | "ACCOUNT_NOT_ACTIVE" | "EMPLOYEE_NOT_ACTIVE";
+
+export interface RoleSeat {
+  positionKey: string;
+  title: string | null;
+  unitName: string | null;
+  reason: string;
+  setAt: string;
+  status: RoleSeatStatus;
+  incumbents: Array<{
+    employeeId: string;
+    name: string;
+    kind: "PRIMARY" | "ACTING";
+    accountId: string | null;
+    roleEffective: boolean;
+    notEffectiveReason: SeatNotEffectiveReason | null;
+    alsoDirect: boolean;
+  }>;
+}
 
 export type RoleSeatMismatch =
-  | { kind: "HOLDER_NOT_SEATED"; accountId: string; employeeId: string | null; name: string }
+  | { kind: "DIRECT_HOLDER_NOT_SEATED"; accountId: string; employeeId: string | null; name: string }
   | {
-      kind: "SEATED_WITHOUT_ROLE";
+      kind: "SEAT_HOLDER_NOT_EFFECTIVE";
+      positionKey: string;
       employeeId: string;
       name: string;
       incumbentKind: "PRIMARY" | "ACTING";
-      reason: "NO_ACCOUNT" | "ACCOUNT_NOT_ACTIVE" | "NO_ROLE";
+      reason: SeatNotEffectiveReason;
     };
 
 export interface RoleSeatCheck {
   roleKey: string;
+  roleName: string;
   asOf: string;
-  seat: { positionKey: string; title: string | null; unitName: string | null; reason: string; setAt: string } | null;
-  status: RoleSeatStatus;
+  seats: RoleSeat[];
   holders: Array<{ accountId: string; employeeId: string | null; name: string }>;
-  incumbents: Array<{ employeeId: string; name: string; kind: "PRIMARY" | "ACTING"; accountId: string | null; hasRole: boolean }>;
   mismatches: RoleSeatMismatch[];
 }
 
-export async function getRoleSeatChecks(): Promise<{ items: RoleSeatCheck[] }> {
+export interface RoleSeatChecksResponse {
+  asOf: string;
+  items: RoleSeatCheck[];
+  /** Roles the API allows to follow a seat; never one that administers access. */
+  linkableRoles: Array<{ roleKey: string; roleName: string }>;
+}
+
+export async function getRoleSeatChecks(): Promise<RoleSeatChecksResponse> {
   const response = await fetch("/api/admin/access/role-seat-checks", {
     credentials: "include",
     headers: { Accept: "application/json" },
@@ -307,16 +341,55 @@ export async function getRoleSeatChecks(): Promise<{ items: RoleSeatCheck[] }> {
   return readJson(response);
 }
 
-/** Super Admin only. `positionKey: null` clears the seat; nothing is granted or revoked either way. */
-export async function setRoleSeatLink(
-  roleKey: string,
-  input: { positionKey: string | null; reason: string },
-): Promise<RoleSeatCheck> {
-  const response = await fetch(`/api/admin/access/role-seat-links/${roleKey}`, {
-    method: "PUT",
+export interface RoleSeatHolderPreview {
+  employeeId: string;
+  name: string;
+  kind: "PRIMARY" | "ACTING";
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  accountStatus: string | null;
+}
+
+/** Super Admin only: who would receive the role through this seat, today or later. Writes nothing. */
+export async function previewRoleSeatLink(
+  input: { roleKey: string; positionKey: string; reason: string },
+): Promise<{ preview: true; holders: RoleSeatHolderPreview[] }> {
+  const response = await fetch("/api/admin/access/role-seat-links", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ ...input, preview: true }),
+  });
+  return readJson(response);
+}
+
+/** Super Admin only: linking a seat grants the role to whoever holds it. */
+export async function addRoleSeatLink(
+  input: { roleKey: string; positionKey: string; reason: string },
+): Promise<{ roleKey: string; check: RoleSeatCheck | null }> {
+  const response = await fetch("/api/admin/access/role-seat-links", {
+    method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(input),
   });
+  return readJson(response);
+}
+
+/** Super Admin only: the role stops following this seat at the next request. */
+export async function removeRoleSeatLink(
+  roleKey: string,
+  positionKey: string,
+  reason: string,
+): Promise<{ roleKey: string; check: RoleSeatCheck | null }> {
+  const response = await fetch(
+    `/api/admin/access/role-seat-links/${encodeURIComponent(roleKey)}/${encodeURIComponent(positionKey)}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ reason }),
+    },
+  );
   return readJson(response);
 }

@@ -6,6 +6,11 @@
 > machine channel, the separate SUPER_ADMIN account becomes a dormant break-glass, and HCIS
 > gains a module-administrator role that never grants roles and never touches accounts.
 > See `docs/domain/sq-core-administrator-layers.md`.
+> AUTH-015 (ADR-0007, owner decision 2026-11-04): an administrative role may be linked to seats
+> in the published structure; whoever holds a linked seat today (primary or Plt) holds the role,
+> evaluated on every request. `access.*` never follows a seat. This is the explicit, testable,
+> auditable structural binding that "Assignment sources" item 2 below allows. See
+> `docs/domain/role-follows-seat.md`.
 > See [HCIS authorization modernization](hcis-authorization-modernization.md) for
 > domain/platform boundaries, granular permissions and transitional legacy compatibility.
 

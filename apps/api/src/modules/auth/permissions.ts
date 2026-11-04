@@ -261,6 +261,10 @@ export async function hasOrganizationPermission(
         AND assignment.organizational_unit_id IS NULL
         AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
         AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
+    ) OR EXISTS (
+      -- AUTH-015 (ADR-0007): a role linked to a seat this account's employee holds today. The
+      -- function applies the same account and employee guards and never yields access.*.
+      SELECT 1 FROM hcis_seat_permissions(current_date, $1::uuid) seat WHERE seat.permission_key = $2
     ) AS allowed`,
     [accountId, permissionKey],
   );
@@ -297,14 +301,18 @@ export async function resolveAuthorizationContext(
      JOIN role_permissions role_permission ON role_permission.role_id = assignment.role_id
      JOIN accounts principal_account ON principal_account.id = assignment.account_id
      JOIN employees principal_employee ON principal_employee.id = principal_account.employee_id
-     WHERE assignment.account_id = $1
+     WHERE assignment.account_id = $1::uuid
        AND principal_account.principal_type = 'EMPLOYEE'
        AND principal_account.status = 'active' AND principal_employee.status = 'active'
        AND assignment.scope_type = 'organization'
        AND assignment.organizational_unit_id IS NULL
        AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
        AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
-     ORDER BY role_permission.permission_key`, [principal.id],
+     UNION
+     -- AUTH-015 (ADR-0007): roles that follow a seat the employee holds today, evaluated on every
+     -- request so a change of seat holder moves the role with no further step.
+     SELECT seat.permission_key FROM hcis_seat_permissions(current_date, $1::uuid) seat
+     ORDER BY 1`, [principal.id],
   );
   return { organizationPermissions: result.rows.map((row) => row.permissionKey) };
 }

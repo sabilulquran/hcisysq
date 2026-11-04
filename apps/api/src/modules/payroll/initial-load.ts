@@ -19,6 +19,7 @@ import { z } from "zod";
 import { resolveAuthorizationContext } from "../auth/permissions.js";
 import { isoDate, loanBody, policyBody, profileBody } from "./admin-schemas.js";
 import {
+  correctLoadedPolicyVersion,
   createLoan,
   openCompensationProfile,
   openPolicyVersion,
@@ -110,7 +111,13 @@ const label = z.string().trim().min(1).max(200).nullable().optional();
 // references come in as labels the CLI resolves rather than as raw uuids.
 const policyRow = policyBody
   .omit({ backdateReason: true })
-  .extend({ rowId, effectiveFrom: realDate })
+  .extend({
+    rowId,
+    effectiveFrom: realDate,
+    // Corrects, in place, a version this load opened on the same date that no
+    // calculation has used yet (spec §5.4). Without it a changed row is refused.
+    correctionReason: z.string().trim().min(10).max(500).optional(),
+  })
   .strict();
 
 const profileRow = profileBody
@@ -189,7 +196,10 @@ export type ErrorCode =
   | "OWN_RECORD"
   | "EXISTS_DIFFERENT"
   | "LATER_VERSION_EXISTS"
-  | "SETTLED_PERIOD";
+  | "SETTLED_PERIOD"
+  | "CORRECTION_TARGET_MISSING"
+  | "VERSION_NOT_FROM_LOAD"
+  | "VERSION_IN_USE";
 
 export type WarningCode =
   | "TMT_DIFFERS"
@@ -199,7 +209,7 @@ export type WarningCode =
   | "SUPERSEDES_VERSION"
   | "OPEN_LOAN_EXISTS";
 
-export type RowOutcome = "CREATE" | "UNCHANGED" | "ERROR";
+export type RowOutcome = "CREATE" | "CORRECT" | "UNCHANGED" | "ERROR";
 
 type PlannedRow<T> = {
   rowId: string;
@@ -212,6 +222,8 @@ type PlannedRow<T> = {
 export type SectionReport = {
   total: number;
   create: number;
+  /** Policy rows that correct a loaded, unused version in place (spec §5.4). */
+  correct: number;
   unchanged: number;
   error: number;
   errors: Partial<Record<ErrorCode, number>>;
@@ -231,7 +243,15 @@ export type InitialLoadReport = {
   written?: { policies: number; profiles: number; loans: number };
 };
 
-type PolicyWrite = { policyKey: string; effectiveFrom: string; payload: Record<string, unknown>; source: string; note?: string };
+type PolicyWrite = {
+  policyKey: string;
+  effectiveFrom: string;
+  payload: Record<string, unknown>;
+  source: string;
+  note?: string;
+  /** Present when the row corrects an existing version in place. */
+  correction?: { versionId: string; reason: string };
+};
 type ProfileWrite = NewCompensationProfile & { employmentId: string; effectiveFrom: string };
 type LoanWrite = { employeeId: string; grantedOn: string; principal: number; instalment: number | null; note: string };
 
@@ -252,9 +272,10 @@ function finishRow<T>(row: PlannedRow<T>): PlannedRow<T> {
 }
 
 function summarize<T>(rows: Array<PlannedRow<T>>): SectionReport {
-  const report: SectionReport = { total: rows.length, create: 0, unchanged: 0, error: 0, errors: {}, warnings: {}, issues: [] };
+  const report: SectionReport = { total: rows.length, create: 0, correct: 0, unchanged: 0, error: 0, errors: {}, warnings: {}, issues: [] };
   for (const row of rows) {
     if (row.outcome === "CREATE") report.create += 1;
+    else if (row.outcome === "CORRECT") report.correct += 1;
     else if (row.outcome === "UNCHANGED") report.unchanged += 1;
     else report.error += 1;
     for (const code of row.errors) report.errors[code] = (report.errors[code] ?? 0) + 1;
@@ -406,7 +427,16 @@ type EmploymentCandidate = {
   termCategory: string | null;
 };
 
-type ExistingPolicy = { policyKey: string; effectiveFrom: string; effectiveTo: string | null; payload: unknown };
+type ExistingPolicy = {
+  id: string;
+  policyKey: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  payload: unknown;
+  source: string;
+  /** Whether any stored calculation result rests on this version. */
+  inUse: boolean;
+};
 
 type ExistingLoan = { employeeId: string; grantedOn: string; principal: string; instalment: string | null; note: string | null; closedAt: string | null };
 
@@ -453,9 +483,10 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
 
   // ---- policies
   const existingPolicies = await client.query<ExistingPolicy>(
-    `SELECT policy_key AS "policyKey", to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
-            to_char(effective_to, 'YYYY-MM-DD') AS "effectiveTo", payload
-     FROM payroll_policy_versions`,
+    `SELECT v.id, v.policy_key AS "policyKey", to_char(v.effective_from, 'YYYY-MM-DD') AS "effectiveFrom",
+            to_char(v.effective_to, 'YYYY-MM-DD') AS "effectiveTo", v.payload, v.source,
+            EXISTS (SELECT 1 FROM payroll_results r WHERE r.policy_version_ids ? v.id::text) AS "inUse"
+     FROM payroll_policy_versions v`,
   );
   const seenPolicyKeys = new Set<string>();
   /** Resolved payloads by key, for the profile cross-check. */
@@ -504,9 +535,13 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
     // Already loaded exactly as the file says: a re-run is the recovery path after
     // a partial apply, so a version opened since must not turn it into a refusal.
     if (identicalPolicy) row.outcome = "UNCHANGED";
+    let correction: PolicyWrite["correction"];
     for (const existing of identicalPolicy ? [] : samePolicies) {
       if (existing.effectiveFrom === data.effectiveFrom) {
-        row.errors.push("EXISTS_DIFFERENT");
+        if (!data.correctionReason) row.errors.push("EXISTS_DIFFERENT");
+        else if (!existing.source.includes(MIGRATION_MARKER)) row.errors.push("VERSION_NOT_FROM_LOAD");
+        else if (existing.inUse) row.errors.push("VERSION_IN_USE");
+        else correction = { versionId: existing.id, reason: data.correctionReason };
       } else if (existing.effectiveFrom > data.effectiveFrom) {
         row.errors.push("LATER_VERSION_EXISTS");
       } else if (existing.effectiveTo === null) {
@@ -516,14 +551,20 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
       }
     }
 
+    if (data.correctionReason && !identicalPolicy && !samePolicies.some((item) => item.effectiveFrom === data.effectiveFrom)) {
+      row.errors.push("CORRECTION_TARGET_MISSING");
+    }
+    if (correction) row.outcome = "CORRECT";
+
     row.write =
-      row.outcome === "CREATE"
+      row.outcome === "CREATE" || row.outcome === "CORRECT"
         ? {
             policyKey: data.policyKey,
             effectiveFrom: data.effectiveFrom,
             payload,
             source: withMarker(data.source, 500),
             ...(data.note ? { note: data.note } : {}),
+            ...(correction ? { correction } : {}),
           }
         : null;
     row.errors = [...new Set(row.errors)];
@@ -927,7 +968,12 @@ export async function runInitialLoad(
       try {
         for (const row of plan.policies) {
           if (!row.write) continue;
-          await openPolicyVersion(pool, row.write, actorAccountId);
+          const { correction, ...version } = row.write;
+          if (correction) {
+            await correctLoadedPolicyVersion(pool, { ...version, ...correction }, actorAccountId);
+          } else {
+            await openPolicyVersion(pool, version, actorAccountId);
+          }
           written.policies += 1;
         }
         for (const row of plan.profiles) {

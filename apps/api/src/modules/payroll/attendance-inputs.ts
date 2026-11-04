@@ -25,13 +25,18 @@ import { writeAudit } from "./store.js";
 export { ATTENDANCE_INPUT_KEYS };
 
 /**
- * Only these categories have an overtime component (specification section 5.2:
- * a contract worker is paid per attendance and per teaching hour, not overtime).
+ * Only salaried staff have an overtime component: permanent, probation and the
+ * salaried contract (specification section 5.1). An honorarium worker is paid per
+ * attendance and per teaching hour, not overtime (section 5.2).
  */
-const OVERTIME_CATEGORIES = ["TETAP", "PERCOBAAN"];
+const OVERTIME_CATEGORIES = ["TETAP", "PERCOBAAN", "KONTRAK"];
 
-/** Transport belongs to contract workers, and to nobody else. */
-const TRANSPORT_CATEGORIES = ["KONTRAK", "KONTRAK_HONORER", "LEPAS"];
+/**
+ * Transport belongs to honorarium workers, and to nobody else: a salaried
+ * contract is paid like permanent staff and earns no transport (owner decision
+ * 2026-11-04, matching the legacy sheet).
+ */
+const TRANSPORT_CATEGORIES = ["KONTRAK_HONORER", "LEPAS"];
 
 export type AttendanceWindow = {
   periodId: string;

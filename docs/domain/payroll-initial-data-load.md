@@ -48,7 +48,7 @@ Referensi unit dan jabatan di dalam payload ditulis secara simbolik di berkas ma
 | `SALARY_SCALE` | `FORMULA GAJI` kolom A–E (pendidikan × MKG 0–27) | `scale.<SD/SMP/SLTA/D1_D2/D3_D4/S1/S2_S3>` = 28 nominal per MKG, **nilai apa adanya tanpa pembulatan** (§3.4). |
 | `BASIC_MULTIPLIER` | rumus gaji pokok `DATA OLAHAN GAJI` | `units = { unit:Taman Tahfizh: 0.5 }`; `knownUnitRefs` = semua unit HCIS yang dipakai pegawai di berkas; `workPatterns = { HALF_DAY: 0.6, HALF_DAY_II: 0.65 }`. |
 | `TEACHING_HOURS` | `FORMULA GAJI` "Minimal jam/bulan"; rumus kelebihan/kekurangan jam | `monthlyHourLimit` 96, tarif kelebihan dan kekurangan per jam sesuai rumus, `weeksPerMonth` 4. |
-| `PERFORMANCE` | `FORMULA GAJI` "Tunjangan Kinerja", "Nilai Tunjangan", 60/40 | `defaultBase`, `annualShare` 0.6, `monthlyShare` 0.4, `baseByPosition = { structural:Kepala General Affair: <nilai khusus> }`, `unratedBelowOneYear = { annualRate: 0, monthlyRate: 1 }` (PAY-003 §10 butir 3). |
+| `PERFORMANCE` | `FORMULA GAJI` "Tunjangan Kinerja", "Nilai Tunjangan", 60/40 | `defaultBase`, `annualShare` 0.6, `monthlyShare` 0.4, `baseByPosition = { structural:Kepala General Affair: <nilai khusus> }`, `unratedBelowOneYear = { annualRate: 0, monthlyRate: 0 }` (PAY-003 §10 butir 3, keputusan owner 2026-11-04: sama dengan spreadsheet, yang membayar 0 tanpa penilaian). |
 | `FAMILY` | `FORMULA GAJI` Istri/Suami, Anak | `spouseRate`, `childRate`. |
 | `FUNCTIONAL_ALLOWANCE` | `FORMULA GAJI` kolom J:K, "Tunj. rangkap" | `byPosition` = setiap label tabel J:K sebagai `functional:<label>`; `concurrentStructuralFactor` 0.7; `excludedUnits = [unit:Pesantren Tahfizh]`; `positionsWithoutAllowance = []`. |
 | `POSITIONAL_ALLOWANCE` | `FORMULA GAJI` kolom J:K, "Kepala unit + Taman tahfizh" | `byPosition` = setiap label tabel J:K sebagai `structural:<label>`, ditambah `structural:Kepala General Affair` dengan nominal Kepala Unit (§3.3); `unitMultipliers = { unit:Taman Tahfizh: 0.5 }`; `positionsWithoutAllowance = []`. |
@@ -90,7 +90,7 @@ Satu baris berkas per pegawai, dicocokkan lewat **NIP** (`employees.employee_num
 
 Populasi: baris `DATA OLAHAN GAJI` bulan terakhir (status master SDM `Aktif`, yang kolomnya diambil legacy dari master SDM lewat `VLOOKUP`) ditambah pegawai `Aktif PKWT` di `OlahanGajiHonorer`. Baris `Pengurus Yayasan` tidak dimuat: EMP-005 mengecualikan pengurus dari employment, dan payroll v1 tidak membayar mereka. Profil PKWT tetap dibutuhkan karena perhitungan tanpa profil memblokir pegawai (`PROFILE_MISSING`) dan rekening dibaca dari profil.
 
-**Temuan untuk parallel run (di luar perubahan PAY-003-MIG).** Legacy menghitung pegawai berstatus `Aktif` dengan kepegawaian "Pegawai Kontrak" memakai rumus pegawai tetap (gaji pokok dan tunjangan), sedangkan hanya `Aktif PKWT` yang dibayar sebagai honorer. EMP-005 memetakan keduanya ke kategori `KONTRAK`, dan PAY-003 §1.1 memperlakukan `KONTRAK` sebagai PKWT (transport dan honor saja). Tanpa keputusan atas pemetaan itu, pegawai kontrak bergaji pokok akan dihitung sebagai PKWT pada parallel run. Profil mereka tetap dimuat lengkap sehingga perbaikan pemetaan tidak membutuhkan pemuatan ulang.
+**Pegawai kontrak (diselesaikan 2026-11-04).** Legacy menghitung pegawai berstatus `Aktif` dengan kepegawaian "Pegawai Kontrak" memakai rumus pegawai tetap (gaji pokok dan tunjangan), sedangkan hanya `Aktif PKWT` yang dibayar sebagai honorer. Owner memutuskan 2026-11-04 bahwa kontrak memang ada dua jenis: `KONTRAK` kini berarti kontrak bergaji (PAY-003 §5.1) dan `KONTRAK_HONORER` kontrak per kehadiran (§5.2). Baseline EMP-005 memetakan `Aktif PKWT` ke `KONTRAK_HONORER` (EMP-005 §4.2.1); employment yang sudah terlanjur dibuat sebagai `KONTRAK` dikoreksi dengan koreksi kategori baseline (EMP-005 §8.2). Profil semua pegawai kontrak tetap dimuat lengkap, jadi koreksi ini tidak membutuhkan pemuatan ulang.
 
 ### 3.4 Skala gaji tanpa pembulatan
 
@@ -173,6 +173,9 @@ Tidak ada yang ditebak. Setiap baris yang tidak dapat dicocokkan dilaporkan deng
 | `EXISTS_DIFFERENT` | Sudah ada versi/profil/kasbon pindahan dengan kunci yang sama tetapi isinya berbeda. Tidak ditimpa. |
 | `LATER_VERSION_EXISTS` | Sudah ada versi kebijakan atau profil yang berlaku setelah tanggal berkas. |
 | `SETTLED_PERIOD` | Ada periode `CALCULATED` ke atas yang tanggal gajiannya tidak sebelum tanggal berlaku. |
+| `CORRECTION_TARGET_MISSING` | Baris kebijakan membawa `correctionReason`, tetapi tidak ada versi pada tanggal yang sama untuk dikoreksi (§5.4). |
+| `VERSION_NOT_FROM_LOAD` | Versi pada tanggal yang sama tidak dibuka oleh pemuatan awal (tanpa penanda `[PAY-003-MIG]`); koreksi hanya lewat versi baru. |
+| `VERSION_IN_USE` | Versi pada tanggal yang sama sudah dipakai hasil perhitungan; koreksi hanya lewat versi baru. |
 
 Peringatan (baris tetap dapat ditulis): `TMT_DIFFERS`, `OUT_OF_PAYROLL_SCOPE` (kategori employment `MAGANG`/`BELUM_DIKLASIFIKASIKAN`), `UNIT_NOT_IN_POLICY` dan `POSITION_NOT_IN_POLICY` (referensi profil tidak dikenal kebijakan di berkas yang sama; periode akan terblokir `UNIT_NOT_MAPPED`/`POSITION_NOT_MAPPED`), `SUPERSEDES_VERSION` (baris akan menutup versi/profil terbuka yang lebih awal), `OPEN_LOAN_EXISTS` (pegawai sudah punya kasbon terbuka lain yang bukan kasbon pindahan).
 
@@ -182,7 +185,7 @@ Peringatan (baris tetap dapat ditulis): `TMT_DIFFERS`, `OUT_OF_PAYROLL_SCOPE` (k
 
 | Data | Kunci | Ulang dengan isi sama | Isi berbeda |
 |---|---|---|---|
-| Kebijakan | `policy_key` + `effective_from` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT` |
+| Kebijakan | `policy_key` + `effective_from` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT`, atau `CORRECT` bila baris membawa `correctionReason` dan syarat §5.4 terpenuhi |
 | Profil | `employment_id` + `effective_from` | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT` |
 | Kasbon | `employee_id` + penanda `[PAY-003-MIG]` di `note` (satu kasbon pindahan per pegawai) | `UNCHANGED`, dilewati | `EXISTS_DIFFERENT`, termasuk bila hanya tanggal atau catatannya yang berubah |
 
@@ -192,9 +195,20 @@ Payload kebijakan dibandingkan setelah kunci diurutkan; profil dibandingkan per 
 
 Hanya jumlah, kode, kunci kebijakan, dan `rowId` dari berkas masukan (pengenal baris yang ditetapkan operator, bukan NIP). Nama, NIP, nominal, dan nomor rekening tidak pernah dicetak.
 
+### 5.4 Koreksi versi kebijakan hasil muat
+
+Versi kebijakan yang dibuka pemuatan ini dan **belum dipakai hasil perhitungan mana pun** belum pernah membayar siapa pun, jadi kesalahan isinya boleh dikoreksi di tempat tanpa membuka versi baru. Pada tanggal berlaku yang sama tidak mungkin membuka versi kedua (constraint `payroll_policy_versions_no_overlap`), sehingga ini satu-satunya cara memperbaiki nilai yang berlaku sejak tanggal muat.
+
+- Baris kebijakan diberi `correctionReason` (10–500 karakter, misalnya rujukan keputusan owner). Tanpa field itu baris yang berbeda tetap `EXISTS_DIFFERENT`.
+- Syarat: ada versi dengan `policy_key` dan `effective_from` sama, sumbernya bertanda `[PAY-003-MIG]`, dan `payroll_results.policy_version_ids` tidak memuat id-nya. Syarat diperiksa saat rencana dan diulang di bawah row lock saat menulis.
+- Hasilnya `CORRECT`: `payload`, `source`, dan `note` versi itu diganti; id dan tanggalnya tetap. Audit `payroll.policy.version_corrected` menyimpan `policy_key`, `effective_from`, `version_id`, alasan, serta `previous_payload` dan `previous_source`, sehingga koreksi dapat dibaca ulang dan dibatalkan dengan menjalankan koreksi balik.
+- Versi yang sudah dipakai perhitungan, atau yang dibuka lewat layar, hanya dapat diubah dengan versi baru (PAY-003 §10).
+
+Pemakaian pertama (2026-11-04): `PERFORMANCE.unratedBelowOneYear.monthlyRate` 1 → 0 sesuai keputusan owner (PAY-003 §10 butir 3).
+
 ## 6. Audit
 
-Setiap baris yang ditulis menghasilkan audit event yang sama dengan jalur HTTP: `payroll.policy.version_opened`, `payroll.profile.opened` (dengan `employment_id`), `payroll.loan.created`. Sebelum baris pertama CLI menulis `payroll.initial_load.started` (waktu mulai, nama berkas), lalu satu `payroll.initial_load.applied` (waktu mulai dan selesai, jumlah per bagian) atau `payroll.initial_load.failed` (jumlah yang sudah tertulis, SQLSTATE). Galat basis data dicetak hanya sebagai SQLSTATE dan nama constraint, karena detailnya dapat mengutip seluruh baris termasuk rekening. Tidak ada nominal perorangan atau rekening di payload; constraint `payroll_audit_events_payload_has_no_personal_amount` tetap berlaku.
+Setiap baris yang ditulis menghasilkan audit event yang sama dengan jalur HTTP: `payroll.policy.version_opened`, `payroll.profile.opened` (dengan `employment_id`), `payroll.loan.created`; koreksi §5.4 menghasilkan `payroll.policy.version_corrected`. Sebelum baris pertama CLI menulis `payroll.initial_load.started` (waktu mulai, nama berkas), lalu satu `payroll.initial_load.applied` (waktu mulai dan selesai, jumlah per bagian) atau `payroll.initial_load.failed` (jumlah yang sudah tertulis, SQLSTATE). Galat basis data dicetak hanya sebagai SQLSTATE dan nama constraint, karena detailnya dapat mengutip seluruh baris termasuk rekening. Tidak ada nominal perorangan atau rekening di payload; constraint `payroll_audit_events_payload_has_no_personal_amount` tetap berlaku.
 
 ## 7. Perubahan basis data
 
@@ -232,7 +246,7 @@ Pemulihan penuh tetap lewat backup database harian dan backup pra-rilis (OPS-MI8
 
 ## 9. Test
 
-- Integration test PostgreSQL dengan data sintetis: dry-run tidak menulis apa pun; `--apply` menulis kebijakan, profil, kasbon beserta audit event; re-run menghasilkan nol `CREATE`; isi berbeda menghasilkan `EXISTS_DIFFERENT`; NIP tak dikenal, employment tak ada, unit tak dikenal, dan baris tidak valid dilaporkan dan tidak ditulis; periode `CALCULATED` menolak seluruh kebijakan dan profil; profil milik pelaku ditolak; apply ditolak bila ada galat; keluaran tidak memuat NIP, nama, nominal, atau rekening.
+- Integration test PostgreSQL dengan data sintetis: dry-run tidak menulis apa pun; `--apply` menulis kebijakan, profil, kasbon beserta audit event; re-run menghasilkan nol `CREATE`; isi berbeda menghasilkan `EXISTS_DIFFERENT`; koreksi §5.4 hanya dengan alasan, mempertahankan id versi, mencatat payload sebelumnya, dan ditolak untuk versi tanpa penanda muat atau tanpa versi sasaran; NIP tak dikenal, employment tak ada, unit tak dikenal, dan baris tidak valid dilaporkan dan tidak ditulis; periode `CALCULATED` menolak seluruh kebijakan dan profil; profil milik pelaku ditolak; apply ditolak bila ada galat; keluaran tidak memuat NIP, nama, nominal, atau rekening.
 - Unit test: uuid v5 deterministik dan sesuai RFC 4122; penyelesaian simbol; `SALARY_SCALE` pecahan diterima dan `BASIC` dibulatkan ke atas.
 
 ## 10. Keputusan `DRAFT`

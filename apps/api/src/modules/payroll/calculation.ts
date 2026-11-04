@@ -39,20 +39,22 @@ const SERVICE_END_UNRESOLVED: PayrollBlocker = {
 };
 
 /**
- * EMP-005 categories mapped onto the three the engine knows. MAGANG and
+ * EMP-005 categories mapped onto the pay bases the engine knows. MAGANG and
  * BELUM_DIKLASIFIKASIKAN are outside the v1 scope (specification section 1.1),
  * so they are left out of the population rather than blocking the period: there
  * would be no way to clear such a blocker from inside payroll.
  *
- * LEPAS is treated as a contract worker (`DRAFT`, agent default 2026-10-27):
- * daily workers are paid per attendance and per teaching hour exactly as PKWT is.
+ * Contract staff come in two kinds (owner decision 2026-11-04): KONTRAK is paid a
+ * salary like permanent staff, KONTRAK_HONORER per attendance and per teaching
+ * hour. LEPAS is treated as an honorarium worker (`DRAFT`, agent default
+ * 2026-10-27): daily workers are paid per attendance and per teaching hour.
  */
 const CATEGORY_BY_TERM: Readonly<Record<string, EmploymentCategory>> = {
   TETAP: "PERMANENT",
   PERCOBAAN: "PROBATION",
-  KONTRAK: "CONTRACT",
-  KONTRAK_HONORER: "CONTRACT",
-  LEPAS: "CONTRACT",
+  KONTRAK: "SALARIED_CONTRACT",
+  KONTRAK_HONORER: "HONORARIUM",
+  LEPAS: "HONORARIUM",
 };
 
 const PAYROLL_TERM_CATEGORIES = Object.keys(CATEGORY_BY_TERM);

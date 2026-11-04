@@ -67,8 +67,10 @@ describe("D-02 status kepegawaian mapping", () => {
   it.each([
     ["Pegawai Tetap", "Aktif", "TETAP"],
     ["Pegawai Kontrak", "Aktif", "KONTRAK"],
-    [null, "Aktif PKWT", "KONTRAK"],
-    ["Pegawai Kontrak", "Aktif PKWT", "KONTRAK"],
+    // Owner 2026-11-04: "Aktif PKWT" is the honorarium contract (per attendance).
+    [null, "Aktif PKWT", "KONTRAK_HONORER"],
+    ["Pegawai Kontrak", "Aktif PKWT", "KONTRAK_HONORER"],
+    ["Pegawai Kontrak Honorer", "Aktif PKWT", "KONTRAK_HONORER"],
     ["Calon Pegawai Tetap", "Aktif", "PERCOBAAN"],
     ["Tenaga Pengabdian", "Aktif", "MAGANG"],
     ["Pegawai Lepas", "Aktif", "LEPAS"],
@@ -114,7 +116,7 @@ describe("Baseline plan (EMP-005-E, EMP-005-K)", () => {
     const plan = baseline(
       planBaseline(source({ employmentStatusText: null, sourceClassification: { ...source().sourceClassification!, statusActive: "Aktif PKWT", employmentStatus: null } }), CUTOFF, policy, newId),
     );
-    expect(plan.term).toMatchObject({ category: "KONTRAK", effectiveTo: null });
+    expect(plan.term).toMatchObject({ category: "KONTRAK_HONORER", effectiveTo: null });
     expect(plan.issues).toContain("BASELINE_CONTRACT_END_UNKNOWN");
   });
 

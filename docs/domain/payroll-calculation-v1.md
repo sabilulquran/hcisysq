@@ -12,10 +12,14 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 
 ### 1.1 Termasuk v1
 
-- Pegawai dengan employment aktif kategori tetap, masa percobaan, dan kontrak honorer/PKWT (EMP-005).
-- Pemetaan kategori EMP-005 (`DRAFT`, default agent 2026-10-27): `TETAP` → pegawai tetap; `PERCOBAAN` → masa percobaan; `KONTRAK`, `KONTRAK_HONORER`, dan `LEPAS` → PKWT/honorer, karena pekerja lepas dibayar per kehadiran dan per jam mengajar seperti PKWT. `MAGANG` dan `BELUM_DIKLASIFIKASIKAN` **di luar populasi payroll v1**: keduanya tidak dihitung dan tidak menghasilkan blocker, karena blocker atas kategori yang memang di luar cakupan tidak dapat diselesaikan dari dalam modul payroll.
-- Komponen pegawai tetap/percobaan: gaji pokok, kelebihan/kekurangan jam, tunjangan kinerja, tunjangan pasangan, tunjangan anak, tunjangan fungsional, tunjangan jabatan, tunjangan kualifikasi khusus, tunjangan BPJS Kesehatan, lembur, rapel, penyesuaian gaji.
-- Komponen PKWT/honorer: transport per kehadiran, honor per jam mengajar, pemasukan lain.
+- Pegawai dengan employment aktif kategori tetap, masa percobaan, kontrak bergaji, dan kontrak honorer/PKWT (EMP-005).
+- Pemetaan kategori EMP-005 ke dasar bayar. Pegawai kontrak ada **dua jenis** (keputusan owner 2026-11-04): kontrak bergaji penuh yang dibayar seperti pegawai tetap, dan kontrak honorer yang dibayar per kehadiran (transport) dan per jam mengajar.
+  - `TETAP` → pegawai tetap; `PERCOBAAN` → masa percobaan; `KONTRAK` → **kontrak bergaji**, dihitung dengan rumus §5.1 seperti pegawai tetap (gaji pokok, tunjangan, lembur, BPJS, faktor masa kerja awal), tanpa transport. Ini mayoritas pegawai kontrak; spreadsheet legacy menghitung mereka di `DATA OLAHAN GAJI` bersama pegawai tetap.
+  - `KONTRAK_HONORER` → **PKWT/honorer** (§5.2): transport per kehadiran dan honor per jam mengajar. Di master SDM legacy mereka berstatus `Aktif PKWT` dan dibayar lewat `Gaji Honorer` (3 orang pada Oktober 2026).
+  - `LEPAS` → PKWT/honorer (`DRAFT`, default agent 2026-10-27), karena pekerja lepas dibayar per kehadiran dan per jam mengajar seperti PKWT.
+  - `MAGANG` dan `BELUM_DIKLASIFIKASIKAN` **di luar populasi payroll v1**: keduanya tidak dihitung dan tidak menghasilkan blocker, karena blocker atas kategori yang memang di luar cakupan tidak dapat diselesaikan dari dalam modul payroll.
+- Komponen pegawai tetap/percobaan/kontrak bergaji: gaji pokok, kelebihan/kekurangan jam, tunjangan kinerja, tunjangan pasangan, tunjangan anak, tunjangan fungsional, tunjangan jabatan, tunjangan kualifikasi khusus, tunjangan BPJS Kesehatan, lembur, rapel, penyesuaian gaji.
+- Komponen PKWT/honorer (`KONTRAK_HONORER`, `LEPAS`): transport per kehadiran, honor per jam mengajar, pemasukan lain.
 - Potongan: kasbon, iuran BPJS Kesehatan, iuran anggota keluarga tambahan, pendidikan anak, kekurangan jam, penyesuaian.
 - Insentif Pj. Media untuk pegawai aktif (input periode).
 - Netto 80% selama 2 bulan pertama masa kerja; prorata sebagai penyesuaian berwenang.
@@ -133,8 +137,8 @@ Kasbon adalah pinjaman per pegawai: tanggal, pokok, dan potongan per periode (te
 
 | Input | Sumber v1 | Catatan |
 |---|---|---|
-| Jam lembur | Lembur disetujui ATT-010 (`approved_minutes`) dalam jendela cutoff periode, hanya untuk pegawai tetap dan masa percobaan | Menggantikan input manual. Jendela cutoff §10 butir 1 (23–22). Menjalankan resolver mengganti **seluruh** isi kedua kunci berasal-kehadiran: baris yang tidak lagi didukung kehadiran dihapus, sehingga lembur yang dibatalkan berhenti dibayar. |
-| Kehadiran PKWT (transport) | Hasil kehadiran ATT dalam jendela cutoff | Definisi "hadir": §10 butir 4. |
+| Jam lembur | Lembur disetujui ATT-010 (`approved_minutes`) dalam jendela cutoff periode, hanya untuk pegawai tetap, masa percobaan, dan kontrak bergaji (`KONTRAK`) | Menggantikan input manual. Jendela cutoff §10 butir 1 (23–22). Menjalankan resolver mengganti **seluruh** isi kedua kunci berasal-kehadiran: baris yang tidak lagi didukung kehadiran dihapus, sehingga lembur yang dibatalkan berhenti dibayar. |
+| Kehadiran PKWT (transport) | Hasil kehadiran ATT dalam jendela cutoff, hanya untuk `KONTRAK_HONORER` dan `LEPAS` | Definisi "hadir": §10 butir 4. Kontrak bergaji tidak mendapat transport (legacy tidak membayarnya). |
 | Jam mengajar PKWT | Input HC per periode | |
 | Potongan pendidikan anak | Impor/entri HC per periode (rincian SPP, katering/laundry, PPDB, buku, kegiatan) | Integrasi langsung sistem SPP di luar v1. |
 | Insentif Pj. Media | Rekap periode: jumlah konten disetujui × tarif penugasan | Modul laporan konten di luar v1. |
@@ -162,7 +166,7 @@ Semua uang dalam **rupiah bulat** (integer); tidak ada satuan di bawah rupiah da
 
 Mode ini mengikuti `ROUNDUP`/`ROUND` spreadsheet legacy agar parallel run dapat dibandingkan baris per baris.
 
-### 5.1 Pegawai tetap / masa percobaan
+### 5.1 Pegawai tetap / masa percobaan / kontrak bergaji
 
 ```text
 MKG          = tahun penuh dari TMT s.d. tanggal gajian (0 bila TMT > tanggal gajian)
@@ -202,7 +206,7 @@ Prorata adalah **faktor pada periode**, bukan komponen `ADJUST_DEDUCT`, sehingga
 
 Tunjangan BPJS ditampilkan sebagai pendapatan sekaligus potongan agar sama dengan slip legacy; efek bersihnya nol bagi pegawai dan seluruh iuran menjadi biaya yayasan.
 
-### 5.2 PKWT / honorer
+### 5.2 PKWT / honorer (`KONTRAK_HONORER`, `LEPAS`)
 
 ```text
 TRANSPORT   = kehadiran × kebijakan.transport_per_kehadiran
@@ -365,7 +369,7 @@ Butir berikut sebelumnya terbuka. Agar implementasi dapat berjalan, setiap butir
 |---|---|---|---|
 | 1 | Jendela cutoff lembur dan kehadiran PKWT | Tanggal **23 bulan sebelumnya s.d. 22 bulan periode** (Asia/Jakarta, inklusif), sama dengan cutoff Pj. Media legacy. Disimpan sebagai `cutoff_start_day`/`cutoff_end_day` per periode, dapat diubah per periode oleh HC dengan alasan. | Audit legacy §Pj. Media langkah 3 (23–22); satu jendela untuk semua input menghindari dua kalender. |
 | 2 | Komponen bertanda tunjangan tetap (dasar BPJS) | `PERF` (tunjangan kinerja) **ya**; `SPECIAL_QUAL` **ya**; `TEACH_OVER` (kelebihan jam) **tidak**. | Tunjangan kinerja dan kualifikasi khusus dibayar rutin tanpa bergantung kehadiran → tunjangan tetap. Kelebihan jam berubah tiap bulan mengikuti beban mengajar → tunjangan tidak tetap (Perpres 82/2018 Pasal 30). |
-| 3 | Default kinerja masa kerja < 1 tahun | `%tahunan = 0`, `%bulanan` diisi penilai; bila belum ada penilaian pada periode itu, `%bulanan = 100%`. Penetapan persentase dilakukan atasan langsung dan disahkan Kepala HCM lewat profil kompensasi berlaku-efektif. | Pegawai baru belum punya siklus penilaian tahunan; default 100% bulanan mencegah pemotongan tanpa dasar penilaian. |
+| 3 | Default kinerja masa kerja < 1 tahun | `%tahunan = 0`, `%bulanan` diisi penilai; bila belum ada penilaian pada periode itu, `%bulanan = 0` — tunjangan kinerja tidak dibayar sampai ada penilaian (**keputusan owner 2026-11-04**, mengganti default agent 100%). Penetapan persentase dilakukan atasan langsung dan disahkan Kepala HCM lewat profil kompensasi berlaku-efektif. Disimpan di kebijakan `PERFORMANCE.unratedBelowOneYear`. | Sama dengan spreadsheet legacy, yang membayar 0 kepada pegawai di bawah setahun tanpa penilaian; default 100% sebelumnya akan membayar porsi bulanan kepada mereka. |
 | 4 | Definisi "hadir" untuk transport PKWT | Hari kerja dengan **check-in tercatat** pada versi hasil kehadiran terbaru dalam jendela cutoff, satu hari dihitung satu kali, tanpa memperhitungkan keterlambatan. Hari cuti/izin/libur tidak menghasilkan transport, kecuali hari libur yang memang dijadwalkan kerja (`holiday_scheduled_work`). Hari yang tercatat sebelum ATT-014 menambahkan jenis hari dianggap hari kerja. Hari tugas luar ATT-015 yang `APPROVED` tanpa check-in (`field_assignment`) juga menghasilkan transport; WFH/WFA (`remote_work`) tanpa check-in tidak (ATT-015 D-07, ACCEPTED owner 2026-11-03). | Transport mengganti ongkos perjalanan; dasarnya pegawai berangkat untuk bekerja (ke lokasi kerja atau ke tempat tugas luar), bukan kelengkapan jam. |
 | 5 | Tarif dan verifikator Pj. Media | Tarif per konten disimpan pada penugasan Pj. Media (`ADDITIONAL` placement) berlaku-efektif; nilai awal Rp30.000, Rp40.000 untuk penugasan yang ditetapkan tertulis. Rekap periode diverifikasi **Kepala HCM** sebelum menjadi input. | Legacy memilih tarif manual tanpa aturan (temuan audit); mengikat tarif ke penugasan menghilangkan pilihan per bulan. |
 | 6 | Ambang peringatan selisih antar periode | Peringatan bila selisih mutlak komponen > **10%** dan > **Rp50.000** dibanding periode sebelumnya. Pegawai baru/keluar dilaporkan satu baris dengan nominal utuh **tanpa memandang ambang**, dan input manual > **Rp1.000.000** adalah pemicu tersendiri. Ambang disimpan sebagai kebijakan; nilai yang tidak masuk akal (negatif, bukan angka) jatuh ke default. Pembanding adalah periode sebelumnya yang sudah `APPROVED` ke atas. | Dua syarat sekaligus menekan peringatan palsu pada komponen kecil; pegawai baru/keluar adalah fakta yang harus dilihat peninjau apa pun nominalnya. |
@@ -373,4 +377,4 @@ Butir berikut sebelumnya terbuka. Agar implementasi dapat berjalan, setiap butir
 | 8 | Slip revisi setelah publikasi | Slip terbit tidak diubah. Reopen yang disetujui Direktur menghasilkan **slip revisi** dengan `revision_of` menunjuk slip sebelumnya; slip lama ditandai `superseded_by_id` dan tetap dapat dibaca pegawai. Tepat satu slip berlaku per pegawai per bulan, dijaga unique index parsial. | PAYSLIP-001 melarang mutasi slip terbit; lineage menjaga jejak audit. |
 | 9 | Verifikasi naskah BPJS dan tabel TER | Nilai statutori (5%, +1% per anggota tambahan, batas atas Rp12.000.000, batas bawah UMK, tabel TER A/B/C) disimpan sebagai **baris kebijakan berversi dengan kolom sumber dan tanggal berlaku**, bukan konstanta kode. Verifikasi naskah resmi dilakukan saat pengisian data kebijakan, bukan saat implementasi engine. | Menghindari engine menunggu verifikasi dokumen; perubahan peraturan cukup menambah versi kebijakan. |
 
-Perubahan atas default di atas dilakukan dengan menambah versi kebijakan (bukan menimpa), sehingga periode lama tetap dapat dihitung ulang secara sah.
+Perubahan atas default di atas dilakukan dengan menambah versi kebijakan (bukan menimpa), sehingga periode lama tetap dapat dihitung ulang secara sah. Satu pengecualian sempit: versi yang dibuka pemuatan awal PAY-003-MIG dan **belum dipakai hasil perhitungan mana pun** boleh dikoreksi di tempat oleh CLI pemuatan awal dengan alasan tertulis, karena versi itu belum pernah membayar siapa pun (PAY-003-MIG §5.4; audit `payroll.policy.version_corrected` menyimpan payload sebelumnya).

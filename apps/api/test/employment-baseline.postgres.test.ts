@@ -2,13 +2,13 @@
 // dry-run/apply/idempotency/exclusions, and the 0058 permission bundle.
 // Loopback CI database only; everything runs inside one rolled-back transaction.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { normalizeEmployeeImportRow } from "../src/modules/employees/domain/employee-import.js";
 import { PostgresEmployeeImportStore } from "../src/modules/employees/infrastructure/postgres-employee-import-store.js";
-import { runEmploymentBaseline } from "../src/modules/employment/application/baseline-service.js";
+import { reclassifyBaseline, runEmploymentBaseline } from "../src/modules/employment/application/baseline-service.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const allowed = (() => {
@@ -110,7 +110,7 @@ describe.skipIf(!allowed)("EMP-005 S2 baseline on PostgreSQL", () => {
     );
     expect(employments.rows).toEqual([
       { employeeNumber: "EMPS2-0001", startedOn: "2019-07-15", endedOn: null, endPrecision: null, category: "TETAP" },
-      { employeeNumber: "EMPS2-0002", startedOn: "2025-01-02", endedOn: null, endPrecision: null, category: "KONTRAK" },
+      { employeeNumber: "EMPS2-0002", startedOn: "2025-01-02", endedOn: null, endPrecision: null, category: "KONTRAK_HONORER" },
       { employeeNumber: "EMPS2-0005", startedOn: "2021-07-01", endedOn: "2024-06-30", endPrecision: "MONTH", category: "KONTRAK" },
     ]);
     const placements = await client.query<{ effectiveFrom: string; basis: string }>(
@@ -148,6 +148,58 @@ describe.skipIf(!allowed)("EMP-005 S2 baseline on PostgreSQL", () => {
     const after = await client.query<{ id: string }>("SELECT id FROM employments WHERE employee_id = $1", [first]);
     expect(after.rows).toHaveLength(1);
     expect(after.rows[0]?.id).not.toBe(before.rows[0]?.id);
+  });
+
+  it("reclassifies a baseline term in place, keeping the employment id, with an audit event", async () => {
+    await runEmploymentBaseline(transactionPool, { apply: true, cutoff: "2026-11-01", employeeIds });
+    const salaried = employeeIds[4]!; // EMPS2-0005, Pegawai Kontrak → KONTRAK
+    const before = await client.query<{ id: string }>("SELECT id FROM employments WHERE employee_id = $1", [salaried]);
+
+    const dry = await reclassifyBaseline(transactionPool, {
+      apply: false, employeeIds: [salaried], category: "KONTRAK_HONORER", reason: "Owner 2026-11-04: honorer per kehadiran",
+    });
+    expect(dry).toMatchObject({ dryRun: true, reclassified: 1, fromCategories: { KONTRAK: 1 } });
+    const unchanged = await client.query<{ category: string }>(
+      "SELECT t.category FROM employment_terms t JOIN employments e ON e.id = t.employment_id WHERE e.employee_id = $1", [salaried],
+    );
+    expect(unchanged.rows[0]?.category).toBe("KONTRAK");
+
+    const applied = await reclassifyBaseline(transactionPool, {
+      apply: true, employeeIds: [salaried, employeeIds[1]!], category: "KONTRAK_HONORER", reason: "Owner 2026-11-04: honorer per kehadiran",
+    });
+    expect(applied).toMatchObject({ dryRun: false, reclassified: 1, skipped: { ALREADY_IN_CATEGORY: 1 } });
+    const after = await client.query<{ id: string; category: string; snapshotCategory: string }>(
+      `SELECT e.id, t.category, a.new_snapshot->>'category' AS "snapshotCategory"
+       FROM employments e JOIN employment_terms t ON t.employment_id = e.id
+       JOIN employment_actions a ON a.id = t.opened_by_action_id
+       WHERE e.employee_id = $1`,
+      [salaried],
+    );
+    expect(after.rows).toEqual([{ id: before.rows[0]!.id, category: "KONTRAK_HONORER", snapshotCategory: "KONTRAK_HONORER" }]);
+    const audit = await client.query<{ payload: Record<string, unknown> }>(
+      "SELECT payload FROM employment_audit_events WHERE action = 'employment.baseline.reclassified' AND employee_id = $1", [salaried],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]!.payload).toMatchObject({ from: "KONTRAK", to: "KONTRAK_HONORER", employmentId: before.rows[0]!.id });
+    expect(JSON.stringify(audit.rows)).not.toMatch(/Sintetis|EMPS2/);
+  });
+
+  it("does not reclassify an employment that has real actions, or without a reason", async () => {
+    await runEmploymentBaseline(transactionPool, { apply: true, cutoff: "2026-11-01", employeeIds });
+    const target = employeeIds[0]!;
+    const employment = await client.query<{ id: string }>("SELECT id FROM employments WHERE employee_id = $1", [target]);
+    await client.query(
+      `INSERT INTO employment_actions (id, employee_id, employment_id, action_type, effective_on, new_snapshot)
+       VALUES ($1, $2, $3, 'PLACEMENT', DATE '2026-11-02', '{}'::jsonb)`,
+      [randomUUID(), target, employment.rows[0]!.id],
+    );
+    const summary = await reclassifyBaseline(transactionPool, {
+      apply: true, employeeIds: [target], category: "KONTRAK", reason: "Synthetic refusal of a real history",
+    });
+    expect(summary).toMatchObject({ reclassified: 0, skipped: { HAS_REAL_ACTIONS: 1 } });
+    await expect(
+      reclassifyBaseline(transactionPool, { apply: true, employeeIds: [target], category: "KONTRAK", reason: " " }),
+    ).rejects.toMatchObject({ code: "EMPLOYMENT_BASELINE_RECLASSIFY_REASON_REQUIRED" });
   });
 
   it("refuses to run while the rollout mode is AUTHORITATIVE", async () => {

@@ -121,8 +121,12 @@ export function mapCategory(
   const pkwt = key(statusActive) === "aktif pkwt";
   if (mapped === "EXCLUDE_FOUNDATION_BOARD") return { category: "BELUM_DIKLASIFIKASIKAN", issue: null, excludeFoundationBoard: true };
   if (pkwt) {
-    // D-02: "Aktif PKWT" → Pegawai Kontrak, unless the category column says otherwise.
-    if (!employmentStatus || mapped === "KONTRAK") return { category: "KONTRAK", issue: null, excludeFoundationBoard: false };
+    // D-02 as revised by the owner on 2026-11-04: "Aktif PKWT" marks the contract
+    // worker paid per attendance and per teaching hour, i.e. Pegawai Kontrak
+    // Honorer. A plain "Aktif" Pegawai Kontrak is the salaried contract (KONTRAK).
+    if (!employmentStatus || mapped === "KONTRAK" || mapped === "KONTRAK_HONORER") {
+      return { category: "KONTRAK_HONORER", issue: null, excludeFoundationBoard: false };
+    }
     return { category: "BELUM_DIKLASIFIKASIKAN", issue: "BASELINE_CATEGORY_CONFLICT_PKWT", excludeFoundationBoard: false };
   }
   if (mapped === "IS_STATUS") return { category: "BELUM_DIKLASIFIKASIKAN", issue: "BASELINE_CATEGORY_IS_STATUS", excludeFoundationBoard: false };

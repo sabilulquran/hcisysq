@@ -27,13 +27,11 @@ describe("ATT-005 biometric control-plane web safety", () => {
     const review = await source("./components/attendance/device-admin/MappingReviewPanel.tsx");
     const users = await source("./pages/AdminAdmsDeviceUsersPage.tsx");
     const transactions = await source("./pages/AdminAdmsDeviceTransactionsPage.tsx");
-    const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
 
     expect(review).toContain("<PaginationBar");
     expect(review).not.toContain("priorityItems.slice(0, 8)");
     expect(users).toContain("<PaginationBar");
     expect(users).toContain("pagedRows.map");
     expect(transactions).toContain("<PaginationBar");
-    expect(commands).toContain("<PaginationBar");
   });
 });

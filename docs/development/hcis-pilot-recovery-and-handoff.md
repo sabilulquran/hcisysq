@@ -1,5 +1,7 @@
 # HCIS Pilot Recovery, Device Boundary, and Codex Local Handoff
 
+> **HISTORICAL (2026-11-04).** Written for the terminated Docker VPS (GHCR images, `docker compose`, the removed `deploy-vps.sh`/`verify-vps.sh`) and a Codex Local handoff. Do not execute its commands. Production runs on Mi8VPS; see `mi8vps-hcis-release.md` (OPS-MI8-REL-001) and the Mi8VPS Platform Runbook.
+
 **Status:** READY FOR HANDOFF; EXECUTION PENDING  
 **Updated:** 2026-09-16  
 **Baseline main/runtime SHA discussed:** `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab`

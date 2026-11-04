@@ -9,7 +9,7 @@ HCIS is built through vertical slices rather than by creating every screen first
 
 Detailed MVP scope is defined in `docs/product/mvp.md`. Final MVP evidence is frozen in `docs/product/mvp-release-checkpoint.md`. Those documents are historical verification checkpoints; current deployment/pilot readiness is tracked separately in `docs/development/hcis-operational-readiness.md`.
 
-Current production evidence is also separate from the historical MVP checkpoint. Codex Local verification reported on 2026-09-16 records API/Web running exact-SHA `9e9098c5bd8579ae9ec36dc1f698c03a064c66ab` from `ghcr.io/sabilulquran/hcisysq-api` and `ghcr.io/sabilulquran/hcisysq-web`. This does not itself close pilot-readiness gates.
+Current production evidence is also separate from the historical MVP checkpoint. Production runs on Mi8VPS as a release directory built from a reviewed `main` SHA (OPS-MI8-REL-001, `docs/development/mi8vps-hcis-release.md`); each release is recorded in `docs/development/production-release-verification-*.md`. The 2026-09-16 GHCR image evidence (`ghcr.io/sabilulquran/hcisysq-*`) belongs to the retired Docker VPS and is historical. Release evidence does not itself close pilot-readiness gates.
 
 ## Verified MVP foundation
 

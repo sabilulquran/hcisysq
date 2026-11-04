@@ -1820,6 +1820,15 @@ export async function registerOrganizationAdminRoutes(
         });
         return null;
       }
+      // AUTH-015 G-5: a role that follows a seat moves with the structure, so publishing must not
+      // be a way to grant oneself a role. Super Admin has no employee and never matches.
+      if (await transaction.repository.publisherGainsLinkedSeat(snapshot.changeSet.id, principal.id)) {
+        await reply.status(403).send({
+          code: "ORGANIZATION_PUBLISH_SELF_ROLE_SEAT",
+          message: "This change set seats you in a position that carries a role; another holder of the publish permission must publish it.",
+        });
+        return null;
+      }
       await transaction.draftService.publish(snapshot.changeSet.id, principal.id);
       await transaction.audit("organization.draft.published", "organization_change_set", snapshot.changeSet.id,
         snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });

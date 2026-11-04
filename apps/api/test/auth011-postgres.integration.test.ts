@@ -191,7 +191,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
     expect(manifest.filter((route) => route.access === undefined)).toHaveLength(406);
-    expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(3);
+    expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(119);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
@@ -630,75 +630,215 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     for (const scopes of offered.values()) expect(scopes).not.toContain("own");
   }, 60000);
 
-  it("ORG-008-9: compares Kepala HC role holders with the Kepala HC seat, and only Super Admin sets the seat", async () => {
-    // Before a seat is chosen there is nothing to compare, and the check says so.
-    const before = await request("admin", "GET", "/admin/access/role-seat-checks");
-    expect(before.statusCode, before.body).toBe(200);
-    expect(before.json().items).toMatchObject([{ roleKey: HC_LEAD_ROLE_KEY, status: "SEAT_NOT_SET", mismatches: [] }]);
-
-    // A published structure whose Kepala HC seat is held by the "employee" actor.
+  it("AUTH-015: a role follows its seat; only Super Admin links; access.* never follows; a loans-only seat sees no pay", async () => {
     const organization = new PostgresOrganizationRepository(pool);
-    const draft = await organization.createDraft({
-      name: "Synthetic ORG-008-9", effectiveOn: "2026-01-01", actorAccountId: actors.get("legacy")!.principal.id,
-    });
+    const legacyId = actors.get("legacy")!.principal.id;
+    const employee = actors.get("employee")!;
+    const target = actors.get("target")!;
     const seatKey = randomUUID();
     const nodeKey = randomUUID();
-    const seatHolder = actors.get("employee")!.employeeId!;
-    draft.nodes.push({
-      id: randomUUID(), stableKey: nodeKey, name: "Synthetic Human Capital", nodeType: "UNIT", parentNodeKey: null,
-      active: true, effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null,
-    });
-    draft.positions.push({
-      id: randomUUID(), stableKey: seatKey, nodeKey, title: "Synthetic Kepala HC", parentPositionKey: null,
-      singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT", active: true, effectiveFrom: "2026-01-01",
-      effectiveTo: null, visualRankOffset: 0, holderSource: "EMPLOYEE",
-    });
-    draft.incumbencies.push({
-      id: randomUUID(), positionKey: seatKey, employeeId: seatHolder, accountId: null, kind: "PRIMARY",
-      isPrimaryStructural: false, effectiveFrom: "2026-01-01", effectiveTo: null, reason: null,
-    });
-    await organization.replaceDraftSnapshot(draft);
-    await pool.query(
-      `UPDATE organization_change_sets SET status = 'PUBLISHED', validated_at = now(), published_at = now(),
-         validation_report = '{"valid": true, "issues": []}'::jsonb WHERE id = $1`,
-      [draft.changeSet.id],
-    );
 
-    const link = { positionKey: seatKey, reason: "Synthetic SK Kepala HC" };
-    // Choosing the seat is part of granting the role: everyone but Super Admin is refused first.
-    for (const name of ["admin", "hc", "delegate", "employee"]) {
-      const refused = await request(name, "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`, link);
+    // Publish a structure on a fixed past date: seat "Synthetic Staf Keuangan" held by `employee`.
+    async function publish(effectiveOn: string, holderEmployeeId: string, effectiveTo: string | null = null) {
+      const draft = await organization.createDraft({ name: `Synthetic AUTH-015 ${effectiveOn}`, effectiveOn, actorAccountId: legacyId });
+      if (!draft.nodes.some((node) => node.stableKey === nodeKey)) {
+        draft.nodes.push({
+          id: randomUUID(), stableKey: nodeKey, name: "Synthetic Keuangan", nodeType: "UNIT", parentNodeKey: null,
+          active: true, effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null,
+        });
+        draft.positions.push({
+          id: randomUUID(), stableKey: seatKey, nodeKey, title: "Synthetic Staf Keuangan", parentPositionKey: null,
+          singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT", active: true, effectiveFrom: "2026-01-01",
+          effectiveTo: null, visualRankOffset: 0, holderSource: "EMPLOYEE",
+        });
+      }
+      draft.incumbencies = draft.incumbencies.filter((item) => item.positionKey !== seatKey);
+      draft.incumbencies.push({
+        id: randomUUID(), positionKey: seatKey, employeeId: holderEmployeeId, accountId: null, kind: "PRIMARY",
+        isPrimaryStructural: false, effectiveFrom: effectiveOn, effectiveTo, reason: null,
+      });
+      await organization.replaceDraftSnapshot(draft);
+      await pool.query(
+        `UPDATE organization_change_sets SET status = 'PUBLISHED', validated_at = now(), published_at = now(),
+           validation_report = '{"valid": true, "issues": []}'::jsonb WHERE id = $1`,
+        [draft.changeSet.id],
+      );
+      return draft.changeSet.id;
+    }
+    const permissionsOf = async (name: string) =>
+      (await auth.getAuthorizationContext(actors.get(name)!.principal)).organizationPermissions;
+
+    await publish("2026-01-01", employee.employeeId!);
+    expect(await permissionsOf("employee")).not.toContain("payroll.loans.manage");
+
+    // Linking grants the role to whoever sits there, so everyone but Super Admin is refused first.
+    const link = { roleKey: "finance_officer", positionKey: seatKey, reason: "Synthetic owner decision" };
+    for (const name of ["admin", "hc", "delegate", "governance", "employee"]) {
+      const refused = await request(name, "POST", "/admin/access/role-seat-links", link);
       expect.soft(refused.statusCode, name).toBe(403);
     }
-    expect((await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`,
-      { positionKey: randomUUID(), reason: "Synthetic" })).statusCode).toBe(404);
-
-    const set = await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`, link);
-    expect(set.statusCode, set.body).toBe(200);
-    const check = set.json();
-    expect(check).toMatchObject({ status: "CHECKED", seat: { positionKey: seatKey, title: "Synthetic Kepala HC" } });
-    // The seat holder has an account but not the role; nothing was granted to make them match.
-    expect(check.mismatches).toContainEqual(expect.objectContaining({
-      kind: "SEATED_WITHOUT_ROLE", employeeId: seatHolder, incumbentKind: "PRIMARY", reason: "NO_ROLE",
-    }));
-    for (const holder of check.holders as Array<{ accountId: string }>) {
-      expect(check.mismatches).toContainEqual(expect.objectContaining({ kind: "HOLDER_NOT_SEATED", accountId: holder.accountId }));
+    // A role that administers access can never follow a seat; nor can a unit-only role.
+    for (const roleKey of ["human_capital_admin", "unit_manager", "governance_leave_approver", "synthetic_account_delegate"]) {
+      const refused = await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, roleKey });
+      expect.soft(refused.json().code, roleKey).toBe("ROLE_NOT_SEAT_LINKABLE");
     }
-    expect((await pool.query(
-      `SELECT count(*)::int AS count FROM account_role_assignments ara
-       JOIN accounts a ON a.id = ara.account_id JOIN roles r ON r.id = ara.role_id
-       WHERE a.employee_id = $1 AND r.role_key = $2`, [seatHolder, HC_LEAD_ROLE_KEY],
-    )).rows[0].count).toBe(0);
-    expect((await pool.query(
-      "SELECT payload FROM access_audit_events WHERE action = 'role.seat_link.set' ORDER BY occurred_at DESC LIMIT 1",
-    )).rows[0].payload).toMatchObject({ roleKey: HC_LEAD_ROLE_KEY, positionKey: seatKey });
+    expect((await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, positionKey: randomUUID() })).statusCode).toBe(404);
+    expect((await request("legacy", "POST", "/admin/access/role-seat-links", { ...link, reason: " " })).statusCode).toBe(400);
+    expect((await pool.query("SELECT 1 FROM access_role_position_links")).rowCount).toBe(0);
 
-    // Clearing goes back to "no seat chosen" and is audited too.
-    const cleared = await request("legacy", "PUT", `/admin/access/role-seat-links/${HC_LEAD_ROLE_KEY}`,
-      { positionKey: null, reason: "Synthetic reset" });
-    expect(cleared.json()).toMatchObject({ status: "SEAT_NOT_SET" });
+    const set = await request("legacy", "POST", "/admin/access/role-seat-links", link);
+    expect(set.statusCode, set.body).toBe(201);
+    expect(set.json().check).toMatchObject({
+      roleKey: "finance_officer",
+      seats: [{ positionKey: seatKey, title: "Synthetic Staf Keuangan", status: "HELD",
+        incumbents: [{ employeeId: employee.employeeId, roleEffective: true }] }],
+    });
+    expect((await request("legacy", "POST", "/admin/access/role-seat-links", link)).statusCode).toBe(409);
+    expect((await pool.query(
+      "SELECT payload, actor_source FROM access_audit_events WHERE action = 'role.seat_link.set' ORDER BY occurred_at DESC LIMIT 1",
+    )).rows[0]).toMatchObject({ payload: { roleKey: "finance_officer", positionKey: seatKey }, actor_source: "hcis_break_glass" });
+
+    // The seat holder now holds exactly the role's permissions, with no assignment row created.
+    const finance = (await pool.query<{ key: string }>(
+      `SELECT rp.permission_key AS key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
+        WHERE r.role_key = 'finance_officer' ORDER BY 1`,
+    )).rows.map((row) => row.key);
+    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage"]);
+    expect(await permissionsOf("employee")).toEqual(finance);
+    expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(true);
+    expect((await pool.query(
+      "SELECT 1 FROM account_role_assignments WHERE account_id = $1", [employee.principal.id],
+    )).rowCount).toBe(0);
+
+    // The Akses screen shows the role apart from direct grants, with the seat it comes from.
+    const listed = await request("admin", "GET", `/admin/access?q=${encodeURIComponent("employee@example.invalid")}`);
+    expect(listed.statusCode, listed.body).toBe(200);
+    const row = (listed.json().accounts as Array<{ id: string; assignments: unknown[]; seatRoles: unknown[] }>)
+      .find((item) => item.id === employee.principal.id)!;
+    expect(row.assignments).toEqual([]);
+    expect(row.seatRoles).toEqual([expect.objectContaining({
+      roleKey: "finance_officer", positionKey: seatKey, positionTitle: "Synthetic Staf Keuangan",
+      unitName: "Synthetic Keuangan", kind: "PRIMARY", effective: true,
+    })]);
+    const checks = await request("admin", "GET", "/admin/access/role-seat-checks");
+    expect(checks.json().linkableRoles.map((role: { roleKey: string }) => role.roleKey))
+      .toEqual(expect.arrayContaining(["finance_officer", "director", "human_capital_lead"]));
+    expect(checks.json().linkableRoles.map((role: { roleKey: string }) => role.roleKey))
+      .not.toContain("human_capital_admin");
+
+    // "Tidak bisa lihat gaji utuh": a loans-only account reaches the kasbon registers and nothing
+    // that carries pay. Each guard runs before the period or employment is looked up.
+    const anyId = randomUUID();
+    for (const [method, url] of [
+      ["GET", "/payroll/periods"],
+      ["GET", `/payroll/periods/${anyId}`],
+      ["GET", `/payroll/periods/${anyId}/inputs`],
+      ["GET", `/payroll/periods/${anyId}/results`],
+      ["GET", `/payroll/periods/${anyId}/report`],
+      ["GET", `/payroll/periods/${anyId}/transfers`],
+      ["GET", `/payroll/periods/${anyId}/variance`],
+      ["GET", `/payroll/employments/${anyId}/compensation-profiles`],
+      ["GET", "/payroll/policies"],
+      ["GET", "/admin/payslip-imports"],
+      ["GET", `/admin/payslip-imports/${anyId}`],
+      ["GET", "/admin/employees"],
+      ["GET", `/admin/employees/${employee.employeeId}`],
+    ] as const) {
+      const response = await request("employee", method, url);
+      expect.soft(response.statusCode, `${method} ${url}`).toBe(403);
+    }
+    for (const url of ["/payroll/loans", "/admin/loans", "/payroll/employments?q=Synthetic"]) {
+      const response = await request("employee", "GET", url);
+      expect.soft(response.statusCode, url).toBe(200);
+    }
+    // The kasbon picker names people and counts profiles; it carries no amount.
+    const picker = await request("employee", "GET", "/payroll/employments?q=Synthetic");
+    for (const item of picker.json().employments as Array<Record<string, unknown>>) {
+      expect(Object.keys(item).sort()).toEqual(
+        ["employeeId", "employeeNumber", "employmentId", "endedOn", "fullName", "profileCount", "startedOn"],
+      );
+    }
+
+    // The role is in force only for an active account and employee, like a direct grant.
+    await pool.query("UPDATE accounts SET status = 'invited' WHERE id = $1", [employee.principal.id]);
+    expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(false);
+    await pool.query("UPDATE accounts SET status = 'active' WHERE id = $1", [employee.principal.id]);
+    await pool.query("UPDATE employees SET status = 'inactive' WHERE id = $1", [employee.employeeId]);
+    expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(false);
+    await pool.query("UPDATE employees SET status = 'active' WHERE id = $1", [employee.employeeId]);
+
+    // access.* never follows a seat, even if a link to such a role exists in the table.
+    await pool.query(
+      "INSERT INTO access_role_position_links (role_key, position_key, reason) VALUES ('human_capital_admin', $1, 'Synthetic bypass')",
+      [seatKey],
+    );
+    const withAdmin = await permissionsOf("employee");
+    expect(withAdmin).toContain("employees.manage");
+    expect(withAdmin.filter((key) => key.startsWith("access."))).toEqual([]);
+    expect(await hasOrganizationPermission(pool, employee.principal.id, "access.manage")).toBe(false);
+    await pool.query("DELETE FROM access_role_position_links WHERE role_key = 'human_capital_admin'");
+
+    // A publisher cannot seat themselves into a role-linked seat; carrying it over unchanged is fine.
+    const selfDraft = await organization.createDraft({ name: "Synthetic AUTH-015 self", effectiveOn: "2026-03-01", actorAccountId: legacyId });
+    selfDraft.incumbencies.push({
+      id: randomUUID(), positionKey: seatKey, employeeId: actors.get("hc")!.employeeId!, accountId: null, kind: "ACTING",
+      isPrimaryStructural: false, effectiveFrom: "2026-03-01", effectiveTo: null, reason: "Synthetic",
+    });
+    await organization.replaceDraftSnapshot(selfDraft);
+    expect(await organization.publisherGainsLinkedSeat(selfDraft.changeSet.id, actors.get("hc")!.principal.id)).toBe(true);
+    expect(await organization.publisherGainsLinkedSeat(selfDraft.changeSet.id, employee.principal.id)).toBe(false);
+    expect(await organization.publisherGainsLinkedSeat(selfDraft.changeSet.id, legacyId)).toBe(false);
+    await pool.query("DELETE FROM organization_change_sets WHERE id = $1", [selfDraft.changeSet.id]);
+
+    // The seat changes hands: the role moves with it at the next request, with no further step.
+    await publish("2026-02-01", target.employeeId!);
+    expect(await permissionsOf("employee")).toEqual([]);
+    expect(await permissionsOf("target")).toEqual(finance);
+    // An incumbency that has ended confers nothing.
+    await publish("2026-03-01", target.employeeId!, "2026-03-31");
+    expect(await permissionsOf("target")).toEqual([]);
+    await publish("2026-04-01", employee.employeeId!);
+
+    // Through the route: a holder of the publish permission who did not compose the change set is
+    // still refused when it seats them in a role-linked seat.
+    const leadRoleId = (await pool.query("SELECT id FROM roles WHERE role_key = $1", [HC_LEAD_ROLE_KEY])).rows[0].id;
+    const leadGrant = randomUUID();
+    await pool.query(
+      `INSERT INTO account_role_assignments(id, account_id, role_id, scope_type, reason)
+       VALUES ($1, $2, $3, 'organization', 'Synthetic publisher')`,
+      [leadGrant, actors.get("hc")!.principal.id, leadRoleId],
+    );
+    const routeDraft = await organization.createDraft({ name: "Synthetic AUTH-015 route", effectiveOn: "2026-05-01", actorAccountId: legacyId });
+    routeDraft.incumbencies = routeDraft.incumbencies.filter((item) => item.positionKey !== seatKey);
+    routeDraft.incumbencies.push({
+      id: randomUUID(), positionKey: seatKey, employeeId: actors.get("hc")!.employeeId!, accountId: null, kind: "PRIMARY",
+      isPrimaryStructural: false, effectiveFrom: "2026-05-01", effectiveTo: null, reason: null,
+    });
+    await organization.replaceDraftSnapshot(routeDraft);
+    await pool.query(
+      `UPDATE organization_change_sets SET status = 'VALIDATED', validated_at = now(),
+         validation_report = '{"valid": true, "issues": []}'::jsonb WHERE id = $1`,
+      [routeDraft.changeSet.id],
+    );
+    const selfPublish = await request("hc", "POST", `/admin/organization/designer/drafts/${routeDraft.changeSet.id}/publish`);
+    expect(selfPublish.statusCode, selfPublish.body).toBe(403);
+    expect(selfPublish.json().code).toBe("ORGANIZATION_PUBLISH_SELF_ROLE_SEAT");
+    expect((await pool.query("SELECT status FROM organization_change_sets WHERE id = $1", [routeDraft.changeSet.id])).rows[0].status)
+      .toBe("VALIDATED");
+    await pool.query("DELETE FROM organization_change_sets WHERE id = $1", [routeDraft.changeSet.id]);
+    await pool.query("DELETE FROM account_role_assignments WHERE id = $1", [leadGrant]);
+    expect(await permissionsOf("employee")).toEqual(finance);
+
+    // Removing the link is audited and removes the role from the seat holder.
+    expect((await request("admin", "DELETE", `/admin/access/role-seat-links/finance_officer/${seatKey}`, { reason: "x" })).statusCode).toBe(403);
+    expect((await request("legacy", "DELETE", `/admin/access/role-seat-links/finance_officer/${seatKey}`, {})).statusCode).toBe(400);
+    const cleared = await request("legacy", "DELETE", `/admin/access/role-seat-links/finance_officer/${seatKey}`, { reason: "Synthetic reset" });
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(cleared.json()).toEqual({ roleKey: "finance_officer", check: null });
+    expect((await request("legacy", "DELETE", `/admin/access/role-seat-links/finance_officer/${seatKey}`, { reason: "again" })).statusCode).toBe(404);
     expect((await pool.query("SELECT 1 FROM access_audit_events WHERE action = 'role.seat_link.cleared'")).rowCount).toBe(1);
-  }, 60000);
+    expect(await permissionsOf("employee")).toEqual([]);
+  }, 120000);
 
   it("ORG-008-10: counts as composers the creator and every editor, never the checker", async () => {
     const organization = new PostgresOrganizationRepository(pool);

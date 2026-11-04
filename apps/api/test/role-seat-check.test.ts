@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { computeRoleSeatCheck, type RoleSeatHolder } from "../src/modules/auth/role-seat-check.js";
+import {
+  computeRoleSeatCheck,
+  type RoleSeatHolder,
+  type SeatHolderRow,
+} from "../src/modules/auth/role-seat-check.js";
 import type { OrganizationSnapshot } from "../src/modules/organization/domain.js";
 
 /**
- * ORG-008-9: the Kepala HC role and the Kepala HC seat are compared, never synchronised. AUTH-011
- * forbids a position from granting administrative permission, so the check only reports.
+ * AUTH-015 (ADR-0007): a role follows its seats. The check reports, per role, who sits in each
+ * linked seat and whether the role is in force for them, and which direct grants follow no seat.
+ * The permission engine itself is exercised against PostgreSQL in auth011-postgres.integration.
  */
 
-const AS_OF = "2026-10-27";
-const SEAT = "position-kepala-hc";
-const LINK = { positionKey: SEAT, reason: "SK Ketua Yayasan 12/2026", setAt: "2026-10-27T01:00:00.000Z" };
+const AS_OF = "2026-11-04";
+const SEAT = "position-staf-keuangan";
+const OTHER_SEAT = "position-kasir";
+const LINK = { positionKey: SEAT, reason: "Keputusan owner 2026-11-04", setAt: "2026-11-04T01:00:00.000Z" };
 
-function snapshot(incumbencies: Array<{ employeeId: string; kind: "PRIMARY" | "ACTING"; effectiveTo?: string | null }>): OrganizationSnapshot {
+function snapshot(positions: Array<{ key: string; title: string; active?: boolean }> = [{ key: SEAT, title: "Staf Keuangan" }]): OrganizationSnapshot {
   return {
     changeSet: {
       id: "published", name: "Struktur", effectiveOn: "2026-10-01", status: "PUBLISHED",
@@ -21,102 +27,100 @@ function snapshot(incumbencies: Array<{ employeeId: string; kind: "PRIMARY" | "A
       validatedAt: "2026-09-20T00:00:00Z", publishedAt: "2026-09-20T00:00:00Z", revision: 0,
     },
     nodes: [{
-      id: "node", stableKey: "node-hc", name: "Human Capital", nodeType: "UNIT", parentNodeKey: null,
+      id: "node", stableKey: "node-keuangan", name: "Keuangan", nodeType: "UNIT", parentNodeKey: null,
       active: true, effectiveFrom: "2026-10-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null,
     }],
     jobProfiles: [],
-    positions: [{
-      id: "position", stableKey: SEAT, nodeKey: "node-hc", title: "Kepala Human Capital",
-      parentPositionKey: null, singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT", active: true,
+    positions: positions.map((item, index) => ({
+      id: `position-${index}`, stableKey: item.key, nodeKey: "node-keuangan", title: item.title,
+      parentPositionKey: null, singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT", active: item.active ?? true,
       effectiveFrom: "2026-10-01", effectiveTo: null, visualRankOffset: 0, holderSource: "EMPLOYEE",
-    }],
-    memberships: [],
-    incumbencies: incumbencies.map((item, index) => ({
-      id: `incumbency-${index}`, positionKey: SEAT, employeeId: item.employeeId, accountId: null,
-      kind: item.kind, isPrimaryStructural: false, effectiveFrom: "2026-10-01",
-      effectiveTo: item.effectiveTo ?? null, reason: null,
     })),
+    memberships: [],
+    incumbencies: [],
     authorityBindings: [],
     reportingOverrides: [],
   } as OrganizationSnapshot;
 }
 
-const names = new Map([["emp-siti", "Siti"], ["emp-budi", "Budi"], ["emp-rina", "Rina"]]);
 const holder = (employeeId: string, name: string): RoleSeatHolder => ({ accountId: `acct-${employeeId}`, employeeId, name });
-const account = (employeeId: string, status = "active") => ({ accountId: `acct-${employeeId}`, employeeId, status });
+const seated = (employeeId: string, name: string, overrides: Partial<SeatHolderRow> = {}): SeatHolderRow => ({
+  positionKey: SEAT, employeeId, name, kind: "PRIMARY", accountId: `acct-${employeeId}`,
+  accountStatus: "active", employeeActive: true, ...overrides,
+});
 
 function check(overrides: Partial<Parameters<typeof computeRoleSeatCheck>[0]> = {}) {
   return computeRoleSeatCheck({
-    roleKey: "human_capital_lead", asOf: AS_OF, link: LINK,
-    snapshot: snapshot([{ employeeId: "emp-siti", kind: "PRIMARY" }]),
-    holders: [holder("emp-siti", "Siti")],
-    employeeNames: names,
-    accounts: [account("emp-siti")],
+    roleKey: "finance_officer", roleName: "Staf Keuangan (Kasbon)", asOf: AS_OF, links: [LINK],
+    snapshot: snapshot(),
+    holders: [],
+    seatHolders: [seated("emp-panji", "Panji")],
     ...overrides,
   });
 }
 
-describe("ORG-008-9 the Kepala HC role against the Kepala HC seat", () => {
-  it("reports nothing when the seat holder is the one holding the role", () => {
+describe("AUTH-015 a role follows its seats", () => {
+  it("shows the seat holder as holding the role, with nothing to warn about", () => {
     const result = check();
-    expect(result.status).toBe("CHECKED");
-    expect(result.seat).toMatchObject({ title: "Kepala Human Capital", unitName: "Human Capital" });
+    expect(result.seats).toMatchObject([{
+      positionKey: SEAT, title: "Staf Keuangan", unitName: "Keuangan", status: "HELD",
+      incumbents: [{ employeeId: "emp-panji", kind: "PRIMARY", roleEffective: true, notEffectiveReason: null, alsoDirect: false }],
+    }]);
     expect(result.mismatches).toEqual([]);
   });
 
-  it("warns when the role stayed with the previous seat holder", () => {
+  it("says why the role is not in force yet for a seat holder", () => {
     const result = check({
-      snapshot: snapshot([{ employeeId: "emp-budi", kind: "PRIMARY" }]),
-      holders: [holder("emp-siti", "Siti")],
-      accounts: [account("emp-budi")],
+      seatHolders: [
+        seated("emp-panji", "Panji", { accountStatus: "invited" }),
+        seated("emp-rina", "Rina", { accountId: null, accountStatus: null }),
+        seated("emp-budi", "Budi", { employeeActive: false, kind: "ACTING" }),
+      ],
     });
-    expect(result.mismatches).toEqual([
-      { kind: "HOLDER_NOT_SEATED", accountId: "acct-emp-siti", employeeId: "emp-siti", name: "Siti" },
-      { kind: "SEATED_WITHOUT_ROLE", employeeId: "emp-budi", name: "Budi", incumbentKind: "PRIMARY", reason: "NO_ROLE" },
+    expect(result.seats[0]!.incumbents.map((item) => [item.name, item.roleEffective, item.notEffectiveReason])).toEqual([
+      ["Budi", false, "EMPLOYEE_NOT_ACTIVE"],
+      ["Panji", false, "ACCOUNT_NOT_ACTIVE"],
+      ["Rina", false, "NO_ACCOUNT"],
     ]);
+    expect(result.mismatches).toContainEqual(expect.objectContaining({
+      kind: "SEAT_HOLDER_NOT_EFFECTIVE", employeeId: "emp-panji", reason: "ACCOUNT_NOT_ACTIVE", positionKey: SEAT,
+    }));
+    expect(result.mismatches).toContainEqual(expect.objectContaining({
+      kind: "SEAT_HOLDER_NOT_EFFECTIVE", employeeId: "emp-budi", incumbentKind: "ACTING", reason: "EMPLOYEE_NOT_ACTIVE",
+    }));
   });
 
-  it("counts an acting holder (Plt) as a legitimate seat holder (owner decision 2026-10-27)", () => {
+  it("flags a direct grant held by someone in none of the role's seats, and marks a seated one", () => {
+    const result = check({ holders: [holder("emp-siti", "Siti"), holder("emp-panji", "Panji")] });
+    expect(result.mismatches).toEqual([
+      { kind: "DIRECT_HOLDER_NOT_SEATED", accountId: "acct-emp-siti", employeeId: "emp-siti", name: "Siti" },
+    ]);
+    expect(result.seats[0]!.incumbents[0]!.alsoDirect).toBe(true);
+  });
+
+  it("handles several seats for one role and reports each seat on its own", () => {
     const result = check({
-      snapshot: snapshot([{ employeeId: "emp-rina", kind: "ACTING" }]),
+      links: [LINK, { ...LINK, positionKey: OTHER_SEAT }],
+      snapshot: snapshot([{ key: SEAT, title: "Staf Keuangan" }, { key: OTHER_SEAT, title: "Kasir" }]),
       holders: [holder("emp-rina", "Rina")],
-      accounts: [account("emp-rina")],
+      seatHolders: [seated("emp-panji", "Panji"), seated("emp-rina", "Rina", { positionKey: OTHER_SEAT })],
     });
-    expect(result.status).toBe("CHECKED");
+    expect(result.seats.map((seat) => [seat.title, seat.status, seat.incumbents.map((item) => item.name)])).toEqual([
+      ["Staf Keuangan", "HELD", ["Panji"]],
+      ["Kasir", "HELD", ["Rina"]],
+    ]);
+    // Rina's direct grant is covered by a seat of the same role.
     expect(result.mismatches).toEqual([]);
   });
 
-  it("says why a seat holder cannot hold the role yet", () => {
-    const noAccount = check({ holders: [], accounts: [] });
-    expect(noAccount.mismatches).toMatchObject([{ kind: "SEATED_WITHOUT_ROLE", reason: "NO_ACCOUNT" }]);
-    const suspended = check({ holders: [], accounts: [account("emp-siti", "suspended")] });
-    expect(suspended.mismatches).toMatchObject([{ kind: "SEATED_WITHOUT_ROLE", reason: "ACCOUNT_NOT_ACTIVE" }]);
+  it("reports a vacant seat, a seat gone from the structure, and a missing structure", () => {
+    expect(check({ seatHolders: [] }).seats[0]!.status).toBe("SEAT_VACANT");
+    expect(check({ snapshot: snapshot([{ key: SEAT, title: "Staf Keuangan", active: false }]) }).seats[0])
+      .toMatchObject({ status: "SEAT_NOT_IN_STRUCTURE", title: null, incumbents: [] });
+    expect(check({ snapshot: null }).seats[0]).toMatchObject({ status: "NO_PUBLISHED_STRUCTURE", incumbents: [] });
   });
 
-  it("lists a person once when the seat records them twice", () => {
-    const result = check({
-      snapshot: snapshot([{ employeeId: "emp-budi", kind: "ACTING" }, { employeeId: "emp-budi", kind: "PRIMARY" }]),
-      holders: [],
-      accounts: [account("emp-budi")],
-    });
-    expect(result.incumbents).toMatchObject([{ employeeId: "emp-budi", kind: "PRIMARY" }]);
-    expect(result.mismatches).toHaveLength(1);
-  });
-
-  it("ignores an incumbency that has already ended", () => {
-    const result = check({
-      snapshot: snapshot([{ employeeId: "emp-siti", kind: "PRIMARY", effectiveTo: "2026-10-26" }]),
-    });
-    expect(result.status).toBe("SEAT_VACANT");
-    expect(result.mismatches).toEqual([
-      { kind: "HOLDER_NOT_SEATED", accountId: "acct-emp-siti", employeeId: "emp-siti", name: "Siti" },
-    ]);
-  });
-
-  it("does not compare without a seat or a structure, and says which is missing", () => {
-    expect(check({ link: null })).toMatchObject({ status: "SEAT_NOT_SET", seat: null, mismatches: [] });
-    expect(check({ snapshot: null })).toMatchObject({ status: "NO_PUBLISHED_STRUCTURE", mismatches: [] });
-    expect(check({ link: { ...LINK, positionKey: "position-gone" } }))
-      .toMatchObject({ status: "SEAT_NOT_IN_STRUCTURE", mismatches: [] });
+  it("does not call a direct grant a discrepancy while the role follows no seat", () => {
+    expect(check({ links: [], holders: [holder("emp-siti", "Siti")] }).mismatches).toEqual([]);
   });
 });

@@ -221,6 +221,38 @@ export class PostgresOrganizationRepository {
     return result.rows[0]?.published === true;
   }
 
+  /**
+   * AUTH-015 G-5 (ADR-0007): publishing structure now moves roles, so a publisher must not seat
+   * themselves into a role-linked seat. True when this change set gives the publisher's own
+   * employee an incumbency on a linked seat that no published change set has carried before —
+   * a new seat, a new kind (Plt to primary) or new dates. Unchanged carry-over is not a gain.
+   */
+  async publisherGainsLinkedSeat(changeSetId: string, publisherAccountId: string): Promise<boolean> {
+    const result = await this.db.query<{ gains: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+           FROM organization_incumbencies incumbency
+           JOIN accounts publisher ON publisher.id = $2 AND publisher.employee_id = incumbency.employee_id
+          WHERE incumbency.change_set_id = $1
+            AND incumbency.position_key IN (SELECT position_key FROM access_role_position_links)
+            AND NOT EXISTS (
+              SELECT 1
+                FROM organization_incumbencies prior
+                JOIN organization_change_sets prior_set
+                  ON prior_set.id = prior.change_set_id AND prior_set.status = 'PUBLISHED'
+               WHERE prior.change_set_id <> $1
+                 AND prior.position_key = incumbency.position_key
+                 AND prior.employee_id = incumbency.employee_id
+                 AND prior.kind = incumbency.kind
+                 AND prior.effective_from = incumbency.effective_from
+                 AND prior.effective_to IS NOT DISTINCT FROM incumbency.effective_to
+            )
+       ) AS gains`,
+      [changeSetId, publisherAccountId],
+    );
+    return result.rows[0]?.gains === true;
+  }
+
   /** ORG-008-4a: record one applied command, in the operator's own order. */
   async appendJournalEntry(input: {
     changeSetId: string;
@@ -652,6 +684,11 @@ export class PostgresOrganizationRepository {
              AND rp.permission_key = $3
              AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
              AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) OR EXISTS (
+           -- AUTH-015: a capability carried by a role that follows a seat this employee holds.
+           SELECT 1 FROM accounts a
+           JOIN hcis_seat_permissions($2::date, a.id) seat ON seat.permission_key = $3
+           WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
          ) END AS "capabilityValid"
        FROM employees e WHERE e.id = $1`,
       [employeeId, context.effectiveDate, context.requiredCapability ?? null],

@@ -1426,58 +1426,113 @@ paths:
     get:
       tags: [Access]
       operationId: listRoleSeatChecks
-      summary: Compare role holders with the holders of the seat the role follows (ORG-008-9)
+      summary: Roles that follow a seat, who holds each seat, and whether the role is in force (AUTH-015)
       description: >
-        For each role that follows a structural seat (today only human_capital_lead, Kepala HC), compares
-        the accounts whose assignment is effective today with the primary and acting holders (Plt) of
-        that seat in the structure effective today. Read-only: a position never grants administrative
-        permission (AUTH-011), so nothing is granted, revoked or suggested.
+        AUTH-015 (ADR-0007). For each role with at least one seat link: its seats in the structure
+        effective today, the primary and acting holders of each and whether the role is in force for
+        them (it is not while the holder has no account, the account is not active, or the employee is
+        not active), and the direct grants held by someone in none of the role's seats. Seat holders come
+        from the same database function the permission engine uses. linkableRoles lists the roles the
+        API accepts for a link; a role carrying any access.* permission is never among them.
       responses:
         '200':
-          description: One check per seat-linked role
+          description: One check per linked role
           content:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [asOf, items, linkableRoles]
                 properties:
+                  asOf: { type: string, format: date }
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/RoleSeatCheck' }
+                  linkableRoles:
+                    type: array
+                    items:
+                      type: object
+                      required: [roleKey, roleName]
+                      properties:
+                        roleKey: { type: string }
+                        roleName: { type: string }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /admin/access/role-seat-links/{roleKey}:
-    put:
+  /admin/access/role-seat-links:
+    post:
       tags: [Access]
-      operationId: setRoleSeatLink
-      summary: Choose or clear the seat a role follows (ORG-008-9, Super Admin only)
+      operationId: addRoleSeatLink
+      summary: Make a role follow a seat (AUTH-015, Super Admin only)
       description: >
-        Super Admin only, like granting the role; every other actor gets 403 ROLE_GRANT_SUPER_ADMIN_ONLY
-        before input is read. The seat must be a position stable key that has appeared in a published
-        change set. positionKey null clears it. Audited as role.seat_link.set or role.seat_link.cleared.
-      parameters:
-        - { name: roleKey, in: path, required: true, schema: { type: string, enum: [human_capital_lead] } }
+        Linking grants the role to whoever holds the seat, now and later, so it is held to the role
+        granting rule: Super Admin (break-glass) only; every other actor gets 403
+        ROLE_GRANT_SUPER_ADMIN_ONLY before input is read. The role must pass isSeatLinkableRole (no
+        access.* permission, organization scope, not the governance Leave role) and the seat must be a
+        position stable key that has appeared in a published change set. Audited as role.seat_link.set
+        with actor_source hcis_break_glass.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [positionKey, reason]
+              required: [roleKey, positionKey, reason]
               properties:
-                positionKey: { type: [string, 'null'], format: uuid }
+                roleKey: { type: string }
+                positionKey: { type: string, format: uuid }
                 reason: { type: string, minLength: 1, maxLength: 500 }
       responses:
-        '200':
-          description: The check after the change
+        '201':
+          description: The role's check after the change
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/RoleSeatCheck' }
-        '400': { description: INVALID_ROLE_SEAT_LINK }
+              schema:
+                type: object
+                required: [roleKey, check]
+                properties:
+                  roleKey: { type: string }
+                  check: { oneOf: [{ $ref: '#/components/schemas/RoleSeatCheck' }, { type: 'null' }] }
+        '400': { description: INVALID_ROLE_SEAT_LINK or ROLE_NOT_SEAT_LINKABLE }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: ROLE_GRANT_SUPER_ADMIN_ONLY }
         '404': { description: ORGANIZATION_POSITION_NOT_PUBLISHED }
+        '409': { description: ROLE_SEAT_LINK_EXISTS }
+
+  /admin/access/role-seat-links/{roleKey}/{positionKey}:
+    delete:
+      tags: [Access]
+      operationId: removeRoleSeatLink
+      summary: Stop a role following a seat (AUTH-015, Super Admin only)
+      description: >
+        The seat holders lose the role at their next request; direct grants are untouched. Audited as
+        role.seat_link.cleared with the reason.
+      parameters:
+        - { name: roleKey, in: path, required: true, schema: { type: string } }
+        - { name: positionKey, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: The role's check after the change; null when the role follows no seat any more
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roleKey, check]
+                properties:
+                  roleKey: { type: string }
+                  check: { oneOf: [{ $ref: '#/components/schemas/RoleSeatCheck' }, { type: 'null' }] }
+        '400': { description: INVALID_ROLE_SEAT_LINK }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { description: ROLE_GRANT_SUPER_ADMIN_ONLY }
+        '404': { description: ROLE_SEAT_LINK_NOT_FOUND }
 
   /admin/organization/capabilities:
     get:
@@ -2466,7 +2521,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OrganizationDraft' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403':
+          description: >
+            Forbidden without approvals.policy.manage, or ORGANIZATION_PUBLISH_SELF_ROLE_SEAT (AUTH-015
+            G-5) when the change set gives the caller's own employee an incumbency on a role-linked seat
+            that no published change set carried before; another publisher must publish it.
         '409':
           description: >
             ORGANIZATION_DRAFT_NOT_VALIDATED when the draft has not passed validation, or
@@ -2770,6 +2829,10 @@ paths:
                                 completedAt: { type: [string, 'null'], format: date-time }
                                 revokedAt: { type: [string, 'null'], format: date-time }
                         assignments: { type: array, items: { type: object } }
+                        seatRoles:
+                          description: AUTH-015 roles held through a seat (roleKey, roleName, positionKey, positionTitle, unitName, kind, effective); not revocable from the account row
+                          type: array
+                          items: { type: object }
                   activationMethod:
                     type: string
                     enum: [link, invitation]
@@ -3591,24 +3654,42 @@ components:
     RoleSeatCheck:
       type: object
       description: >
-        ORG-008-9. status is SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE or SEAT_VACANT when
-        nothing (or nobody) could be compared, otherwise CHECKED. mismatches lists role holders who do not
-        hold the seat (HOLDER_NOT_SEATED) and seat holders without the role (SEATED_WITHOUT_ROLE, reason
-        NO_ACCOUNT, ACCOUNT_NOT_ACTIVE or NO_ROLE). An acting holder counts like the primary holder.
-      required: [roleKey, asOf, seat, status, holders, incumbents, mismatches]
+        AUTH-015. One role and the seats it follows. seats[].status is HELD, SEAT_VACANT,
+        SEAT_NOT_IN_STRUCTURE or NO_PUBLISHED_STRUCTURE. mismatches lists direct grants held by someone
+        in none of the role's seats (DIRECT_HOLDER_NOT_SEATED) and seat holders for whom the role is not
+        in force (SEAT_HOLDER_NOT_EFFECTIVE, reason NO_ACCOUNT, ACCOUNT_NOT_ACTIVE or EMPLOYEE_NOT_ACTIVE).
+        An acting holder (Plt) holds the role like the primary holder.
+      required: [roleKey, roleName, asOf, seats, holders, mismatches]
       properties:
         roleKey: { type: string }
+        roleName: { type: string }
         asOf: { type: string, format: date }
-        seat:
-          type: [object, 'null']
-          properties:
-            positionKey: { type: string, format: uuid }
-            title: { type: [string, 'null'] }
-            unitName: { type: [string, 'null'] }
-            reason: { type: string }
-            setAt: { type: string, format: date-time }
-        status: { type: string, enum: [SEAT_NOT_SET, NO_PUBLISHED_STRUCTURE, SEAT_NOT_IN_STRUCTURE, SEAT_VACANT, CHECKED] }
+        seats:
+          type: array
+          items:
+            type: object
+            required: [positionKey, title, unitName, reason, setAt, status, incumbents]
+            properties:
+              positionKey: { type: string, format: uuid }
+              title: { type: [string, 'null'] }
+              unitName: { type: [string, 'null'] }
+              reason: { type: string }
+              setAt: { type: string, format: date-time }
+              status: { type: string, enum: [HELD, SEAT_VACANT, SEAT_NOT_IN_STRUCTURE, NO_PUBLISHED_STRUCTURE] }
+              incumbents:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    employeeId: { type: string, format: uuid }
+                    name: { type: string }
+                    kind: { type: string, enum: [PRIMARY, ACTING] }
+                    accountId: { type: [string, 'null'], format: uuid }
+                    roleEffective: { type: boolean }
+                    notEffectiveReason: { type: [string, 'null'], enum: [NO_ACCOUNT, ACCOUNT_NOT_ACTIVE, EMPLOYEE_NOT_ACTIVE, null] }
+                    alsoDirect: { type: boolean }
         holders:
+          description: Direct grants of the role in force today
           type: array
           items:
             type: object
@@ -3616,27 +3697,18 @@ components:
               accountId: { type: string, format: uuid }
               employeeId: { type: [string, 'null'], format: uuid }
               name: { type: string }
-        incumbents:
-          type: array
-          items:
-            type: object
-            properties:
-              employeeId: { type: string, format: uuid }
-              name: { type: string }
-              kind: { type: string, enum: [PRIMARY, ACTING] }
-              accountId: { type: [string, 'null'], format: uuid }
-              hasRole: { type: boolean }
         mismatches:
           type: array
           items:
             type: object
             properties:
-              kind: { type: string, enum: [HOLDER_NOT_SEATED, SEATED_WITHOUT_ROLE] }
+              kind: { type: string, enum: [DIRECT_HOLDER_NOT_SEATED, SEAT_HOLDER_NOT_EFFECTIVE] }
               accountId: { type: string, format: uuid }
+              positionKey: { type: string, format: uuid }
               employeeId: { type: [string, 'null'], format: uuid }
               name: { type: string }
               incumbentKind: { type: string, enum: [PRIMARY, ACTING] }
-              reason: { type: string, enum: [NO_ACCOUNT, ACCOUNT_NOT_ACTIVE, NO_ROLE] }
+              reason: { type: string, enum: [NO_ACCOUNT, ACCOUNT_NOT_ACTIVE, EMPLOYEE_NOT_ACTIVE] }
 
     OrganizationReplayReport:
       type: object

@@ -1,44 +1,43 @@
-// ORG-008-9: sentences for the Kepala HC role/seat comparison on the Akses screen.
+// AUTH-015: sentences for "peran mengikuti jabatan" on the Akses screen.
 
-import type { RoleSeatCheck, RoleSeatMismatch } from "@/lib/adminOrgAccess";
-
-const ROLE_LABELS: Record<string, string> = { human_capital_lead: "Kepala HC" };
-
-export function roleSeatLabel(roleKey: string) {
-  return ROLE_LABELS[roleKey] ?? roleKey;
-}
+import type { RoleSeat, RoleSeatCheck, RoleSeatMismatch, SeatNotEffectiveReason } from "@/lib/adminOrgAccess";
 
 /** The seat as an operator names it: title and the unit it sits in. */
-export function roleSeatName(check: RoleSeatCheck): string | null {
-  if (!check.seat?.title) return null;
-  return check.seat.unitName ? `${check.seat.title} (${check.seat.unitName})` : check.seat.title;
+export function roleSeatName(seat: Pick<RoleSeat, "title" | "unitName">): string | null {
+  if (!seat.title) return null;
+  return seat.unitName ? `${seat.title} (${seat.unitName})` : seat.title;
 }
 
-/** Why the comparison could not run, or null when it did. */
-export function roleSeatStatusSentence(check: RoleSeatCheck): string | null {
-  const role = roleSeatLabel(check.roleKey);
-  switch (check.status) {
-    case "SEAT_NOT_SET":
-      return `Jabatan acuan ${role} belum ditetapkan, jadi pemegang peran ${role} belum bisa dibandingkan dengan struktur.`;
+/** Why a linked seat confers the role on nobody right now, or null when someone holds it. */
+export function roleSeatStatusSentence(seat: RoleSeat): string | null {
+  switch (seat.status) {
     case "NO_PUBLISHED_STRUCTURE":
-      return "Belum ada struktur organisasi yang diterbitkan untuk hari ini, jadi pemegang jabatan belum bisa diperiksa.";
+      return "Belum ada struktur organisasi yang diterbitkan untuk hari ini, jadi peran ini belum dipegang siapa pun lewat jabatan.";
     case "SEAT_NOT_IN_STRUCTURE":
-      return "Jabatan acuan tidak ada atau tidak aktif di struktur yang berlaku hari ini. Tetapkan ulang jabatan acuannya.";
+      return "Jabatan ini tidak ada atau tidak aktif di struktur yang berlaku hari ini, jadi tidak memberi peran kepada siapa pun.";
     case "SEAT_VACANT":
-      return `Jabatan ${roleSeatName(check) ?? "acuan"} sedang kosong di struktur yang berlaku hari ini.`;
+      return "Jabatan ini sedang kosong, jadi peran ini tidak dipegang siapa pun lewat jabatan ini.";
     default:
       return null;
   }
 }
 
+const NOT_EFFECTIVE: Record<SeatNotEffectiveReason, string> = {
+  NO_ACCOUNT: "belum punya akun HCIS",
+  ACCOUNT_NOT_ACTIVE: "akun HCIS-nya belum aktif",
+  EMPLOYEE_NOT_ACTIVE: "status kepegawaiannya tidak aktif",
+};
+
+export function notEffectiveSentence(reason: SeatNotEffectiveReason): string {
+  return NOT_EFFECTIVE[reason];
+}
+
 export function roleSeatMismatchSentence(check: RoleSeatCheck, mismatch: RoleSeatMismatch): string {
-  const role = roleSeatLabel(check.roleKey);
-  const seat = roleSeatName(check) ?? `jabatan ${role}`;
-  if (mismatch.kind === "HOLDER_NOT_SEATED") {
-    return `${mismatch.name} memegang peran ${role}, tetapi bukan pemegang ${seat} di struktur yang berlaku.`;
+  if (mismatch.kind === "DIRECT_HOLDER_NOT_SEATED") {
+    return `${mismatch.name} memegang peran ${check.roleName} lewat pemberian langsung, bukan lewat jabatan; peran itu tidak akan pindah otomatis bila jabatannya berganti pemegang.`;
   }
-  const holder = mismatch.incumbentKind === "ACTING" ? `Plt ${seat}` : `pemegang ${seat}`;
-  if (mismatch.reason === "NO_ACCOUNT") return `${mismatch.name} adalah ${holder}, tetapi belum punya akun HCIS.`;
-  if (mismatch.reason === "ACCOUNT_NOT_ACTIVE") return `${mismatch.name} adalah ${holder}, tetapi akun HCIS-nya belum aktif.`;
-  return `${mismatch.name} adalah ${holder}, tetapi belum memegang peran ${role}.`;
+  const seat = check.seats.find((item) => item.positionKey === mismatch.positionKey);
+  const seatName = (seat && roleSeatName(seat)) ?? "jabatan ini";
+  const holder = mismatch.incumbentKind === "ACTING" ? `Plt ${seatName}` : `pemegang ${seatName}`;
+  return `${mismatch.name} adalah ${holder}, tetapi peran ${check.roleName} belum berlaku karena ${NOT_EFFECTIVE[mismatch.reason]}.`;
 }

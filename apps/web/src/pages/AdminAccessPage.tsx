@@ -17,13 +17,14 @@ import { AdminApiError } from "@/lib/adminEmployees";
 import {
   createRoleAssignment,
   getAccessAdmin,
+  addRoleSeatLink,
   getRoleSeatChecks,
   removeRoleAssignment,
-  setRoleSeatLink,
+  removeRoleSeatLink,
   updateAccountStatus,
   type AccessAdminResponse,
   type AccessRole,
-  type RoleSeatCheck,
+  type RoleSeatChecksResponse,
 } from "@/lib/adminOrgAccess";
 import { RoleSeatPanel } from "@/components/access/RoleSeatPanel";
 import { searchOrganizationPositions } from "@/lib/organizationReadModel";
@@ -157,16 +158,16 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [seatChecks, setSeatChecks] = useState<RoleSeatCheck[] | null>(null);
+  const [seatChecks, setSeatChecks] = useState<RoleSeatChecksResponse | null>(null);
   const [seatError, setSeatError] = useState<string | null>(null);
 
-  // ORG-008-9: refreshed with every role change, so a grant or removal shows its effect at once.
+  // AUTH-015: refreshed with every role change, so a grant or removal shows its effect at once.
   const reloadSeatChecks = async () => {
     try {
-      setSeatChecks((await getRoleSeatChecks()).items);
+      setSeatChecks(await getRoleSeatChecks());
       setSeatError(null);
     } catch (cause) {
-      setSeatError(cause instanceof AdminApiError ? cause.message : "Pemeriksaan peran Kepala HC tidak dapat dimuat.");
+      setSeatError(cause instanceof AdminApiError ? cause.message : "Peran yang mengikuti jabatan tidak dapat dimuat.");
     }
   };
 
@@ -351,17 +352,18 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     }
   };
 
-  const setSeat = async (roleKey: string, positionKey: string | null, seatReason: string) => {
+  // AUTH-015: a link grants the role to the seat holder, so the account list is reloaded too.
+  const changeSeatLink = async (action: () => Promise<unknown>, done: string, failed: string) => {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const check = await setRoleSeatLink(roleKey, { positionKey, reason: seatReason });
-      setSeatChecks((current) => (current ?? []).map((item) => item.roleKey === roleKey ? check : item));
-      setNotice(positionKey ? "Jabatan acuan disimpan." : "Jabatan acuan dilepas.");
+      await action();
+      setNotice(done);
+      await reload();
       return true;
     } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Jabatan acuan gagal disimpan.");
+      setError(cause instanceof AdminApiError ? cause.message : failed);
       return false;
     } finally {
       setBusy(false);
@@ -452,11 +454,14 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
       </section>
 
       <RoleSeatPanel
-        checks={seatChecks}
+        data={seatChecks}
         error={seatError}
-        canSetSeat={canManageRoles}
+        canManage={canManageRoles}
         busy={busy}
-        onSetSeat={setSeat}
+        onAdd={(roleKey, positionKey, reason) => changeSeatLink(
+          () => addRoleSeatLink({ roleKey, positionKey, reason }), "Peran kini mengikuti jabatan itu.", "Tautan gagal disimpan.")}
+        onRemove={(roleKey, positionKey, reason) => changeSeatLink(
+          () => removeRoleSeatLink(roleKey, positionKey, reason), "Tautan peran dan jabatan dilepas.", "Tautan gagal dilepas.")}
         onSearchPositions={async (query) => (await searchOrganizationPositions({ q: query || undefined })).items}
       />
 
@@ -647,6 +652,18 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             ) : (
               <p className="mt-4 text-xs text-muted-foreground">Tidak ada role tambahan.</p>
             )}
+            {/* AUTH-015: roles held through a seat, apart from direct grants and not revocable here. */}
+            {account.seatRoles?.length ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {account.seatRoles.map((seatRole) => (
+                  <div key={`${seatRole.roleKey}-${seatRole.positionKey}`} className="rounded-xl border border-dashed border-border px-3 py-2 text-xs">
+                    <span className="font-bold">{seatRole.roleName}</span>
+                    <span className="text-muted-foreground"> · dari jabatan {seatRole.kind === "ACTING" ? "Plt " : ""}{seatRole.positionTitle}{seatRole.unitName ? ` (${seatRole.unitName})` : ""}</span>
+                    {seatRole.effective ? null : <span className="text-warning-ink"> · belum berlaku sampai akun aktif</span>}
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             {/* EMP-005 D-15: only a former employee account can be opened again for a while. */}
             {canGrantReactivation && account.principalType === "EMPLOYEE" && account.status !== "suspended" ? (

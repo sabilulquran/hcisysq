@@ -2756,7 +2756,24 @@ paths:
                         employeeStatus: { type: [string, 'null'] }
                         unitName: { type: [string, 'null'] }
                         createdAt: { type: string, format: date-time }
+                        latestInvitation:
+                          description: AUTH-002-INVITE latest activation send for the account, without contacts.
+                          oneOf:
+                            - type: 'null'
+                            - type: object
+                              required: [sentAt, emailStatus, whatsappStatus, hubAccess, completedAt, revokedAt]
+                              properties:
+                                sentAt: { type: string, format: date-time }
+                                emailStatus: { type: string, enum: [sent, not_needed, failed] }
+                                whatsappStatus: { type: string, enum: [pending, sent, dry_run, no_phone, not_allowlisted, failed, skipped] }
+                                hubAccess: { type: string, enum: [granted, already_active, revoked] }
+                                completedAt: { type: [string, 'null'], format: date-time }
+                                revokedAt: { type: [string, 'null'], format: date-time }
                         assignments: { type: array, items: { type: object } }
+                  activationMethod:
+                    type: string
+                    enum: [link, invitation]
+                    description: AUTH-002-INVITE. `invitation` in OIDC mode (Kirim aktivasi), `link` in local mode.
                   pagination: { $ref: '#/components/schemas/Pagination' }
                   roles:
                     type: array
@@ -2781,6 +2798,43 @@ paths:
         '400': { description: 'INVALID_QUERY: search, flag or page out of range' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /admin/access/accounts/{accountId}/activation-invitation:
+    post:
+      tags: [Employees]
+      operationId: sendAccountActivationInvitation
+      summary: Send an employee's Akun SQ activation by e-mail (Keycloak) and WhatsApp (AUTH-002-INVITE)
+      description: >
+        OIDC mode only, EMPLOYEE accounts in status invited. Requires access.manage and the account
+        management target rules. HCIS asks SQ Hub (HUB-IMPL-024) to prepare the Akun SQ; Keycloak e-mails
+        the password link; HCIS maps the returned identity and sends a WhatsApp notice without secrets
+        (WHATSAPP_RECIPIENT_MODE applies). The account becomes active on its first Akun SQ sign-in.
+        Rate limit (DRAFT): 10 minutes between sends, 5 per 24 hours.
+      parameters:
+        - { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: Sent; per-channel results with masked contacts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invitationId, emailStatus, whatsappStatus, hubAccess, maskedEmail, maskedPhone, emailLinkHours]
+                properties:
+                  invitationId: { type: string, format: uuid }
+                  emailStatus: { type: string, enum: [sent, not_needed, failed] }
+                  whatsappStatus: { type: string, enum: [sent, dry_run, no_phone, not_allowlisted, failed, skipped] }
+                  hubAccess: { type: string, enum: [granted, already_active, revoked] }
+                  maskedEmail: { type: string }
+                  maskedPhone: { type: [string, 'null'] }
+                  emailLinkHours: { type: integer }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: 'Precondition failed or SQ Hub refused (code says which: ACCOUNT_NOT_INVITED, EMPLOYEE_EMAIL_MISSING, STAFF_IDENTITY_DISABLED, ...)' }
+        '429': { description: ACTIVATION_INVITE_RATE_LIMITED }
+        '502': { description: SQ Hub answered for another realm or employee }
+        '503': { description: SQ_HUB_UNAVAILABLE }
   /admin/employee-imports:
     get:
       tags: [Employees]

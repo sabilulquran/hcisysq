@@ -97,10 +97,27 @@ export interface AccessAccount {
   employeeStatus: "active" | "inactive" | "resigned" | null;
   unitName: string | null;
   createdAt: string;
+  /** AUTH-002-INVITE: latest "Kirim aktivasi" for this account, without contacts. */
+  latestInvitation?: ActivationInvitationSummary | null;
   assignments: RoleAssignment[];
 }
 
+export type InvitationEmailStatus = "sent" | "not_needed" | "failed";
+export type InvitationWhatsAppStatus = "pending" | "sent" | "dry_run" | "no_phone" | "not_allowlisted" | "failed" | "skipped";
+export type InvitationHubAccess = "granted" | "already_active" | "revoked";
+
+export interface ActivationInvitationSummary {
+  sentAt: string;
+  emailStatus: InvitationEmailStatus;
+  whatsappStatus: InvitationWhatsAppStatus;
+  hubAccess: InvitationHubAccess;
+  completedAt: string | null;
+  revokedAt: string | null;
+}
+
 export interface AccessAdminResponse {
+  /** AUTH-002-INVITE: `invitation` when HCIS signs in with Akun SQ, `link` in local mode. */
+  activationMethod?: "link" | "invitation";
   /** One page of accounts with their role assignments (ENG-LIST-001). */
   accounts: AccessAccount[];
   pagination: { page: number; pageSize: number; total: number; pageCount: number };

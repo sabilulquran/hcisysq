@@ -91,3 +91,48 @@ describe("AUTH-011 §Scope per peran: the role form offers only the scopes that 
     expect(render(superAdmin)).not.toContain("· organization");
   });
 });
+
+// AUTH-002-INVITE: in Akun SQ mode an invited employee gets "Kirim aktivasi" instead of a local link.
+describe("AUTH-002-INVITE activation controls", () => {
+  const hc = session("EMPLOYEE", ["access.manage"]);
+  const invited = { ...data.accounts[0]!, status: "invited" as const, assignments: [] };
+
+  it("offers Kirim aktivasi and no local link in invitation mode", () => {
+    const html = renderToStaticMarkup(
+      <AdminAccessWorkspace session={hc} data={{ ...data, activationMethod: "invitation", accounts: [invited] }} onDataChange={() => undefined} />,
+    );
+    expect(html).toContain(">Kirim aktivasi</button>");
+    expect(html).not.toContain("Buat link aktivasi");
+  });
+
+  it("keeps the activation link in local mode", () => {
+    const html = renderToStaticMarkup(
+      <AdminAccessWorkspace session={hc} data={{ ...data, activationMethod: "link", accounts: [invited] }} onDataChange={() => undefined} />,
+    );
+    expect(html).toContain("Buat link aktivasi");
+    expect(html).not.toContain("Kirim aktivasi");
+  });
+
+  it("shows the latest send per channel without contacts and offers a resend", () => {
+    const html = renderToStaticMarkup(
+      <AdminAccessWorkspace
+        session={hc}
+        data={{
+          ...data,
+          activationMethod: "invitation",
+          accounts: [{
+            ...invited,
+            latestInvitation: {
+              sentAt: "2026-11-04T03:00:00Z", emailStatus: "sent", whatsappStatus: "no_phone",
+              hubAccess: "granted", completedAt: null, revokedAt: null,
+            },
+          }],
+        }}
+        onDataChange={() => undefined}
+      />,
+    );
+    expect(html).toContain("Kirim ulang aktivasi");
+    expect(html).toContain("Email Akun SQ terkirim");
+    expect(html).toContain("nomor HP pegawai kosong");
+  });
+});

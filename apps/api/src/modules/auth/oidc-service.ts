@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
+import { activateInvitedAccountOnSignIn } from "./activation-invitation.js";
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import { OidcProvider, type OidcIdentity } from "./oidc-provider.js";
 import { safeReturnTo } from "./return-to.js";
@@ -123,7 +124,11 @@ export class OidcLoginService {
         "Identitas SQ belum dipetakan ke akun HCIS.",
       );
     }
-    if (account.status !== "active") {
+    // AUTH-002-INVITE §5: an `invited` account with an open activation invitation for this exact
+    // identity is activated below, after SQ Hub allows HCIS access; any other non-active state stops here.
+    const activatesByInvitation = account.status === "invited"
+      && await this.hasOpenInvitation(account.id, identity);
+    if (account.status !== "active" && !activatesByInvitation) {
       await this.audit("auth.oidc.account.inactive", context, account.id, account.email);
       throw new AuthError(403, "ACCOUNT_INACTIVE", "Akun HCIS tidak aktif.");
     }
@@ -154,6 +159,20 @@ export class OidcLoginService {
         account.email,
       );
       throw new AuthError(403, "HCIS_ACCESS_DENIED", "Akses ke HCIS tidak diberikan.");
+    }
+
+    if (activatesByInvitation) {
+      const activated = await activateInvitedAccountOnSignIn(this.pool, {
+        accountId: account.id,
+        issuer: identity.issuer,
+        subject: identity.subject,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      });
+      if (!activated) {
+        await this.audit("auth.oidc.account.inactive", context, account.id, account.email);
+        throw new AuthError(403, "ACCOUNT_INACTIVE", "Akun HCIS tidak aktif.");
+      }
     }
 
     const result = await this.auth.createSessionForAccountId(
@@ -200,6 +219,17 @@ export class OidcLoginService {
 
     if (result.rows.length !== 1) return null;
     return result.rows[0] ?? null;
+  }
+
+  private async hasOpenInvitation(accountId: string, identity: OidcIdentity): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1 FROM account_activation_invitations
+        WHERE account_id = $1 AND identity_issuer = $2 AND identity_subject = $3
+          AND completed_at IS NULL AND revoked_at IS NULL
+        LIMIT 1`,
+      [accountId, identity.issuer, identity.subject],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   hashState(state: string): string {

@@ -13,6 +13,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
+import { revokeOpenInvitations } from "../auth/activation-invitation.js";
 import {
   AUTH_COOKIE_NAME,
   AuthError,
@@ -592,6 +593,34 @@ export async function registerOrgAccessAdminRoutes(
       [accounts.rows.map((row) => row.id)],
     );
 
+    // AUTH-002-INVITE: the latest activation send per account on this page, without contacts.
+    const invitations = await pool.query<{
+      accountId: string;
+      createdAt: Date;
+      emailStatus: string;
+      whatsappStatus: string;
+      hubAccess: string;
+      completedAt: Date | null;
+      revokedAt: Date | null;
+    }>(
+      `SELECT DISTINCT ON (account_id)
+              account_id AS "accountId", created_at AS "createdAt", email_status AS "emailStatus",
+              whatsapp_status AS "whatsappStatus", hub_access AS "hubAccess",
+              completed_at AS "completedAt", revoked_at AS "revokedAt"
+         FROM account_activation_invitations
+        WHERE account_id = ANY($1::uuid[])
+        ORDER BY account_id, created_at DESC`,
+      [accounts.rows.map((row) => row.id)],
+    );
+    const latestInvitation = new Map(invitations.rows.map((row) => [row.accountId, {
+      sentAt: row.createdAt.toISOString(),
+      emailStatus: row.emailStatus,
+      whatsappStatus: row.whatsappStatus,
+      hubAccess: row.hubAccess,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+    }]));
+
     const canDelegate = await hasEffectiveOrganizationPermission(pool, principal, "access.roles.delegate");
     const counts = summaryCounts.rows[0] ?? { accounts: 0, active: 0, invited: 0 };
     reply.header("Cache-Control", "no-store");
@@ -599,6 +628,7 @@ export async function registerOrgAccessAdminRoutes(
       accounts: accounts.rows.map((row) => ({
         ...row,
         createdAt: row.createdAt.toISOString(),
+        latestInvitation: latestInvitation.get(row.id) ?? null,
         assignments: assignments.rows
           .filter((assignment) => assignment.accountId === row.id)
           .map((assignment) => ({
@@ -607,6 +637,8 @@ export async function registerOrgAccessAdminRoutes(
           })),
       })),
       pagination: pagination(query.data, accountCount.rows[0]?.total ?? 0),
+      // AUTH-002-INVITE: OIDC production activates employees by invitation; local mode by link.
+      activationMethod: config.AUTH_MODE === "oidc" ? "invitation" : "link",
       // AUTH-011 §Scope per peran: the screen offers only the scopes that make the role work.
       roles: roles.rows
         .filter((role) => canDelegateRole(role, canDelegate))
@@ -755,11 +787,16 @@ export async function registerOrgAccessAdminRoutes(
           [row.id],
         );
       }
+      // AUTH-002-INVITE: a suspended or deactivated account must not be activated by a later sign-in.
+      const invitationsRevoked = body.data.status === "suspended" || body.data.status === "inactive"
+        ? await revokeOpenInvitations(client, row.id)
+        : 0;
       await audit(client, principal, "account.status.updated", "account", row.id, {
         status: body.data.status,
         ...(readiness?.ready ? { authenticationMethod: readiness.method } : {}),
         sessionsRevoked: body.data.status !== "active",
         activationTokensRevoked: body.data.status !== "active",
+        ...(invitationsRevoked ? { activationInvitationsRevoked: invitationsRevoked } : {}),
       });
       await client.query("COMMIT");
       committed = true;

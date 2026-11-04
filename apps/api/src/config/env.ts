@@ -35,6 +35,11 @@ const envSchema = z
     ),
     SQ_HUB_MACHINE_CLIENT_ID: z.string().trim().min(1).optional(),
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
+    // AUTH-002-INVITE: optional; by default SQ Hub origin of SQ_HUB_APPLICATION_ACCESS_URL + /internal/v1/staff-activation/invite.
+    SQ_HUB_STAFF_ACTIVATION_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().optional(),
+    ),
     ORG_DIRECTORY_EXPORT_ENABLED: z.enum(["0", "1"]).default("0"),
     ORG_DIRECTORY_TOKEN_ISSUER: z.preprocess(
       (value) => value === "" ? undefined : value,

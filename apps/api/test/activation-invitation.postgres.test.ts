@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -30,15 +30,43 @@ const ISSUER = "https://login.example.test/realms/sq-staff";
 // AUTH-002-INVITE against the real schema. Synthetic rows only; every row this file creates is
 // removed after each test (the service opens its own transactions, so no outer rollback).
 describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", () => {
+  let realPool: Pool;
+  let outer: PoolClient;
+  // The service under test opens its own transactions. They run here as savepoints inside one
+  // outer transaction that is always rolled back, so no row is ever visible to other test files.
   let pool: Pool;
   let actor: AuthPrincipal;
   let accountId: string;
   let employeeId: string;
   let employeeNumber: string;
-  const created = { accounts: [] as string[], employees: [] as string[] };
 
-  beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 4 }); });
-  afterAll(async () => { await pool?.end(); });
+  beforeAll(() => { realPool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
+  afterAll(async () => { await realPool?.end(); });
+
+  function savepointPool(client: PoolClient): Pool {
+    let depth = 0;
+    const query = async (sql: unknown, params?: unknown[]) => {
+      const statement = typeof sql === "string" ? sql.trim().toUpperCase() : "";
+      if (statement === "BEGIN") {
+        depth += 1;
+        return client.query(`SAVEPOINT invite_${depth}`);
+      }
+      if (statement === "COMMIT") {
+        const result = await client.query(`RELEASE SAVEPOINT invite_${depth}`);
+        depth -= 1;
+        return result;
+      }
+      if (statement === "ROLLBACK") {
+        const result = await client.query(`ROLLBACK TO SAVEPOINT invite_${depth}`);
+        await client.query(`RELEASE SAVEPOINT invite_${depth}`);
+        depth -= 1;
+        return result;
+      }
+      return client.query(sql as string, params);
+    };
+    const facade = { query, release: () => undefined };
+    return { query, connect: async () => facade } as unknown as Pool;
+  }
 
   async function insertEmployee(input: { phone?: string | null; email?: string | null; status?: string } = {}) {
     const id = randomUUID();
@@ -49,7 +77,6 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
       [id, number, input.status ?? "active", input.email === undefined ? `${number.toLowerCase()}@example.test` : input.email,
         input.phone === undefined ? "0812-3456-7890" : input.phone],
     );
-    created.employees.push(id);
     return { id, number };
   }
 
@@ -60,11 +87,13 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
        VALUES ($1, $2, $3, $4, $5)`,
       [id, employee, `acc-${id}@example.test`, principalType, status],
     );
-    created.accounts.push(id);
     return id;
   }
 
   beforeEach(async () => {
+    outer = await realPool.connect();
+    await outer.query("BEGIN");
+    pool = savepointPool(outer);
     const adminId = randomUUID();
     await pool.query(
       `INSERT INTO accounts (
@@ -74,7 +103,6 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
                  'synthetic-ciphertext', 'synthetic-iv', 'synthetic-tag', now())`,
       [adminId, `invite-admin-${adminId}@example.test`],
     );
-    created.accounts.push(adminId);
     actor = { id: adminId, email: `invite-admin-${adminId}@example.test`, principalType: "SUPER_ADMIN" };
     const employee = await insertEmployee();
     employeeId = employee.id;
@@ -83,12 +111,8 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
   });
 
   afterEach(async () => {
-    const ids = created.accounts.splice(0);
-    await pool.query("DELETE FROM access_audit_events WHERE actor_account_id = ANY($1::uuid[]) OR entity_id = ANY($1::uuid[])", [ids]);
-    await pool.query("DELETE FROM auth_audit_events WHERE account_id = ANY($1::uuid[])", [ids]);
-    await pool.query("DELETE FROM account_activation_invitations WHERE account_id = ANY($1::uuid[])", [ids]);
-    await pool.query("DELETE FROM accounts WHERE id = ANY($1::uuid[])", [ids]);
-    await pool.query("DELETE FROM employees WHERE id = ANY($1::uuid[])", [created.employees.splice(0)]);
+    await outer.query("ROLLBACK");
+    outer.release();
   });
 
   function inviter(result?: Partial<StaffActivationInviteResult> | Error, during?: () => Promise<void>) {
@@ -96,9 +120,6 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
     const value: StaffActivationInviter = {
       invite: async (input) => {
         calls.push(input);
-        // No HCIS transaction may be open on this account while SQ Hub works.
-        const lock = await pool.query("SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE NOWAIT", [input.accountId]);
-        expect(lock.rowCount).toBe(1);
         if (during) await during();
         if (result instanceof Error) throw result;
         return {

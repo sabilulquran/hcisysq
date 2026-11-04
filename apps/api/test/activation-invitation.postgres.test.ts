@@ -6,7 +6,7 @@ import {
   activateInvitedAccountOnSignIn,
   ActivationInvitationService,
   invitationMessage,
-  revokeOpenInvitations,
+  closeOpenInvitations,
   type InvitationWhatsApp,
 } from "../src/modules/auth/activation-invitation.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
@@ -91,11 +91,15 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
     await pool.query("DELETE FROM employees WHERE id = ANY($1::uuid[])", [created.employees.splice(0)]);
   });
 
-  function inviter(result?: Partial<StaffActivationInviteResult> | Error) {
+  function inviter(result?: Partial<StaffActivationInviteResult> | Error, during?: () => Promise<void>) {
     const calls: Array<{ employeeNumber: string; accountId: string }> = [];
     const value: StaffActivationInviter = {
       invite: async (input) => {
         calls.push(input);
+        // No HCIS transaction may be open on this account while SQ Hub works.
+        const lock = await pool.query("SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE NOWAIT", [input.accountId]);
+        expect(lock.rowCount).toBe(1);
+        if (during) await during();
         if (result instanceof Error) throw result;
         return {
           identity: { issuer: ISSUER, subject: `kc-${input.accountId}` },
@@ -240,10 +244,10 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
     await service.send(accountId, actor);
     await pool.query(
       `INSERT INTO account_activation_invitations
-         (id, account_id, identity_issuer, identity_subject, email_status, whatsapp_status, hub_access, created_at)
-       SELECT gen_random_uuid(), $1, $2, $3, 'sent', 'sent', 'granted', now() - interval '20 minutes'
+         (id, account_id, state, created_at)
+       SELECT gen_random_uuid(), $1, 'failed', now() - interval '20 minutes'
          FROM generate_series(1, 3)`,
-      [accountId, ISSUER, `kc-${accountId}`],
+      [accountId],
     );
     await pool.query("UPDATE account_activation_invitations SET created_at = now() - interval '11 minutes' WHERE account_id = $1 AND created_at > now() - interval '1 minute'", [accountId]);
     await expect(service.send(accountId, actor)).rejects.toMatchObject({ code: "ACTIVATION_INVITE_RATE_LIMITED" });
@@ -254,13 +258,25 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
       pool, inviter({ identity: { issuer: "https://evil.example.test/realms/x", subject: "s" } }).value, whatsapp().config, ISSUER,
     );
     await expect(wrongIssuer.send(accountId, actor)).rejects.toMatchObject({ code: "SQ_HUB_ISSUER_MISMATCH" });
+    // A failed attempt that reached SQ Hub still counts for the resend limit.
+    await expect(wrongIssuer.send(accountId, actor)).rejects.toMatchObject({ code: "ACTIVATION_INVITE_RATE_LIMITED" });
+    await pool.query("UPDATE account_activation_invitations SET created_at = now() - interval '11 minutes' WHERE account_id = $1", [accountId]);
     const wrongEmployee = new ActivationInvitationService(
       pool, inviter({ employeeId: `hcis:employee:${randomUUID()}` }).value, whatsapp().config, ISSUER,
     );
     await expect(wrongEmployee.send(accountId, actor)).rejects.toMatchObject({ code: "SQ_HUB_EMPLOYEE_MISMATCH" });
     expect(await account()).toMatchObject({ identityIssuer: null, identitySubject: null });
-    expect((await pool.query("SELECT 1 FROM account_activation_invitations WHERE account_id = $1", [accountId])).rowCount).toBe(0);
-    expect(await audits("account.activation.invitation.failed")).toHaveLength(2);
+    const attempts = await pool.query<{ state: string; failureCode: string }>(
+      `SELECT state, failure_code AS "failureCode" FROM account_activation_invitations WHERE account_id = $1 ORDER BY failure_code`,
+      [accountId],
+    );
+    expect(attempts.rows).toEqual([
+      { state: "failed", failureCode: "SQ_HUB_EMPLOYEE_MISMATCH" },
+      { state: "failed", failureCode: "SQ_HUB_ISSUER_MISMATCH" },
+    ]);
+    expect((await audits("account.activation.invitation.failed")).map((payload) => payload.code).sort()).toEqual([
+      "ACTIVATION_INVITE_RATE_LIMITED", "SQ_HUB_EMPLOYEE_MISMATCH", "SQ_HUB_ISSUER_MISMATCH",
+    ]);
   });
 
   it("refuses an identity already mapped to another account", async () => {
@@ -277,6 +293,7 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
       pool, inviter(new StaffActivationRejectedError(409, "STAFF_IDENTITY_DISABLED")).value, whatsapp().config, ISSUER,
     );
     await expect(refused.send(accountId, actor)).rejects.toMatchObject({ code: "STAFF_IDENTITY_DISABLED", statusCode: 409 });
+    await pool.query("UPDATE account_activation_invitations SET created_at = now() - interval '11 minutes' WHERE account_id = $1", [accountId]);
     const down = new ActivationInvitationService(
       pool, inviter(new StaffActivationUnavailableError("network")).value, whatsapp().config, ISSUER,
     );
@@ -303,13 +320,46 @@ describe.skipIf(!allowed)("AUTH-002-INVITE activation invitation (PostgreSQL)", 
   it("does not activate after the invitation is revoked or the employee left", async () => {
     await new ActivationInvitationService(pool, inviter().value, whatsapp().config, ISSUER).send(accountId, actor);
     const context = { ipAddress: null, userAgent: null };
-    expect(await revokeOpenInvitations(pool, accountId)).toBe(1);
+    expect(await closeOpenInvitations(pool, accountId, "suspended")).toBe(1);
     expect(await activateInvitedAccountOnSignIn(pool, { accountId, issuer: ISSUER, subject: `kc-${accountId}`, ...context })).toBe(false);
 
     await pool.query("UPDATE account_activation_invitations SET revoked_at = NULL WHERE account_id = $1", [accountId]);
+    await pool.query("UPDATE account_activation_invitations SET created_at = now() - interval '15 days' WHERE account_id = $1", [accountId]);
+    expect(await activateInvitedAccountOnSignIn(pool, { accountId, issuer: ISSUER, subject: `kc-${accountId}`, ...context })).toBe(false);
+    await pool.query("UPDATE account_activation_invitations SET created_at = now() WHERE account_id = $1", [accountId]);
     await pool.query("UPDATE employees SET status = 'resigned' WHERE id = $1", [employeeId]);
     expect(await activateInvitedAccountOnSignIn(pool, { accountId, issuer: ISSUER, subject: `kc-${accountId}`, ...context })).toBe(false);
     expect((await account()).status).toBe("invited");
+  });
+
+  it("skips WhatsApp when HCIS access is revoked at SQ Hub", async () => {
+    const wa = whatsapp();
+    const result = await new ActivationInvitationService(
+      pool, inviter({ applicationAccess: "revoked" }).value, wa.config, ISSUER,
+    ).send(accountId, actor);
+    expect(result).toMatchObject({ hubAccess: "revoked", whatsappStatus: "skipped" });
+    expect(wa.sent).toEqual([]);
+  });
+
+  it("re-checks the account after SQ Hub answers", async () => {
+    const wa = whatsapp();
+    const hub = inviter(undefined, async () => {
+      await pool.query("UPDATE accounts SET status = 'suspended' WHERE id = $1", [accountId]);
+    });
+    await expect(new ActivationInvitationService(pool, hub.value, wa.config, ISSUER).send(accountId, actor))
+      .rejects.toMatchObject({ code: "ACCOUNT_NOT_INVITED" });
+    expect(await account()).toMatchObject({ status: "suspended", identityIssuer: null });
+    expect(wa.sent).toEqual([]);
+  });
+
+  it("closes open invitations on a status change", async () => {
+    await new ActivationInvitationService(pool, inviter().value, whatsapp().config, ISSUER).send(accountId, actor);
+    expect(await closeOpenInvitations(pool, accountId, "active")).toBe(1);
+    const row = (await pool.query<{ completed: boolean; revoked: boolean }>(
+      `SELECT completed_at IS NOT NULL AS completed, revoked_at IS NOT NULL AS revoked
+         FROM account_activation_invitations WHERE account_id = $1`, [accountId],
+    )).rows[0];
+    expect(row).toEqual({ completed: true, revoked: false });
   });
 });
 

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
-import { activateInvitedAccountOnSignIn } from "./activation-invitation.js";
+import { activateInvitedAccountOnSignIn, INVITATION_VALID_DAYS } from "./activation-invitation.js";
 import { ApplicationAccessError, SqHubApplicationAccessClient } from "./application-access.js";
 import { OidcProvider, type OidcIdentity } from "./oidc-provider.js";
 import { safeReturnTo } from "./return-to.js";
@@ -225,9 +225,10 @@ export class OidcLoginService {
     const result = await this.pool.query(
       `SELECT 1 FROM account_activation_invitations
         WHERE account_id = $1 AND identity_issuer = $2 AND identity_subject = $3
-          AND completed_at IS NULL AND revoked_at IS NULL
+          AND state = 'issued' AND completed_at IS NULL AND revoked_at IS NULL
+          AND created_at > now() - make_interval(days => $4)
         LIMIT 1`,
-      [accountId, identity.issuer, identity.subject],
+      [accountId, identity.issuer, identity.subject, INVITATION_VALID_DAYS],
     );
     return (result.rowCount ?? 0) > 0;
   }

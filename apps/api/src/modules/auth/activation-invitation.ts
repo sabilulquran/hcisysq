@@ -9,14 +9,12 @@ import type { Pool, PoolClient } from "pg";
 import {
   maskWhatsAppNumber,
   normalizeWhatsAppNumber,
-  WhatsAppRejectedError,
-  WhatsAppRetryableError,
   type WhatsAppSender,
 } from "../meetings/whatsapp.js";
 import { maskActivationEmail } from "./account-activation.js";
 import { OidcIdentityMappingError, OidcIdentityMappingService } from "./oidc-identity-mapping.js";
 import { assertAccountManagementTarget } from "./role-assignment.js";
-import type { AuthPrincipal } from "./service.js";
+import { AuthError, type AuthPrincipal } from "./service.js";
 import {
   StaffActivationRejectedError,
   StaffActivationUnavailableError,
@@ -28,6 +26,8 @@ export const INVITATION_COOLDOWN_MINUTES = 10;
 export const INVITATION_DAILY_LIMIT = 5;
 /** Keycloak execute-actions e-mail lifespan set by SQ Hub (HUB-IMPL-013): 43,200 s. */
 export const INVITATION_EMAIL_LINK_HOURS = 12;
+/** DRAFT (AUTH-002-INVITE): a first sign-in activates the account only within 14 days of the send. */
+export const INVITATION_VALID_DAYS = 14;
 
 export type InvitationEmailStatus = "sent" | "not_needed" | "failed";
 export type InvitationWhatsAppStatus =
@@ -85,6 +85,8 @@ const HUB_REFUSAL_MESSAGES: Record<string, string> = {
   DUPLICATE_USERNAME: "NIP ini sudah dipakai Akun SQ lain. Minta Admin Platform memeriksanya di SQ Hub.",
   DUPLICATE_EMAIL: "Email pegawai ini sudah dipakai Akun SQ lain. Periksa email pegawai atau minta Admin Platform memeriksanya.",
   STAFF_IDENTITY_DISABLED: "Akun SQ pegawai ini dinonaktifkan di SQ Hub. Admin Platform perlu mengaktifkannya kembali.",
+  ORGAN_IDENTITY_LINK_REQUIRES_ADMIN:
+    "Email pegawai ini dipakai Akun SQ Organ Yayasan. Menghubungkannya ke data pegawai dilakukan Admin Platform di SQ Hub.",
 };
 
 function refusal(code: string, message: string, statusCode = 409) {
@@ -122,6 +124,35 @@ export function invitationMessage(input: {
   ].join("\n");
 }
 
+function assertInvitable(account: AccountRow) {
+  if (account.principalType !== "EMPLOYEE") {
+    throw refusal(
+      "ACTIVATION_INVITE_EMPLOYEE_ONLY",
+      "Kirim aktivasi hanya untuk account pegawai. Account Organ Yayasan memakai alur pemetaan Akun SQ.",
+    );
+  }
+  if (account.status !== "invited") {
+    throw refusal("ACCOUNT_NOT_INVITED", "Aktivasi hanya dapat dikirim untuk account yang masih berstatus Disiapkan.");
+  }
+  if (!account.employeeId || account.employeeStatus !== "active") {
+    throw refusal("EMPLOYEE_NOT_ACTIVE", "Aktivasi hanya untuk pegawai yang masih aktif.");
+  }
+  if (!account.employeeNumber) {
+    throw refusal("EMPLOYEE_NUMBER_MISSING", "NIP pegawai belum terisi. Akun SQ memakai NIP sebagai nama pengguna.");
+  }
+  if (!account.email) {
+    throw refusal(
+      "EMPLOYEE_EMAIL_MISSING",
+      "Email pegawai belum terisi. Akun SQ membutuhkan email untuk membuat kata sandi; lengkapi email pegawai lalu kirim lagi.",
+    );
+  }
+}
+
+function failureCode(error: unknown): string {
+  if (error instanceof ActivationInvitationError || error instanceof AuthError) return error.code;
+  return "INTERNAL_ERROR";
+}
+
 export class ActivationInvitationService {
   constructor(
     private readonly pool: Pool,
@@ -138,51 +169,37 @@ export class ActivationInvitationService {
       );
     }
 
-    const client = await this.pool.connect();
-    let committed = false;
-    let account: AccountRow | undefined;
-    let invitation: { id: string; whatsappStatus: InvitationWhatsAppStatus; emailStatus: InvitationEmailStatus; hubAccess: InvitationHubAccess };
-    let maskedEmail: string;
+    // Phase 1: check and record the attempt. Committed before SQ Hub is called, so no transaction
+    // or row lock is held across the network call (SQ Hub calls back into HCIS-ID-001), and every
+    // attempt that reaches SQ Hub counts for the rate limit even when a later step fails.
+    let account: AccountRow;
+    let attemptId: string;
     try {
-      await client.query("BEGIN");
-      account = (await client.query<AccountRow>(
-        `SELECT a.id, a.principal_type AS "principalType", a.status,
-                e.id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
-                e.email, e.phone, e.status AS "employeeStatus"
-           FROM accounts a
-           LEFT JOIN employees e ON e.id = a.employee_id
-          WHERE a.id = $1
-          FOR UPDATE OF a`,
-        [accountId],
-      )).rows[0];
-      if (!account) throw refusal("ACCOUNT_NOT_FOUND", "Account tidak ditemukan.", 404);
-      await assertAccountManagementTarget(client, actor, account.id);
-      if (account.principalType !== "EMPLOYEE") {
-        throw refusal(
-          "ACTIVATION_INVITE_EMPLOYEE_ONLY",
-          "Kirim aktivasi hanya untuk account pegawai. Account Organ Yayasan memakai alur pemetaan Akun SQ.",
+      ({ account, attemptId } = await this.withTransaction(async (client) => {
+        const row = await this.lockAccount(client, accountId);
+        await assertAccountManagementTarget(client, actor, row.id);
+        assertInvitable(row);
+        await this.assertRateLimit(client, row.id);
+        const id = randomUUID();
+        await client.query(
+          `INSERT INTO account_activation_invitations (id, account_id, issued_by_account_id, state)
+           VALUES ($1, $2, $3, 'pending')`,
+          [id, row.id, actor.id],
         );
-      }
-      if (account.status !== "invited") {
-        throw refusal("ACCOUNT_NOT_INVITED", "Aktivasi hanya dapat dikirim untuk account yang masih berstatus Disiapkan.");
-      }
-      if (!account.employeeId || account.employeeStatus !== "active") {
-        throw refusal("EMPLOYEE_NOT_ACTIVE", "Aktivasi hanya untuk pegawai yang masih aktif.");
-      }
-      if (!account.employeeNumber) {
-        throw refusal("EMPLOYEE_NUMBER_MISSING", "NIP pegawai belum terisi. Akun SQ memakai NIP sebagai nama pengguna.");
-      }
-      if (!account.email) {
-        throw refusal(
-          "EMPLOYEE_EMAIL_MISSING",
-          "Email pegawai belum terisi. Akun SQ membutuhkan email untuk membuat kata sandi; lengkapi email pegawai lalu kirim lagi.",
-        );
-      }
-      await this.assertRateLimit(client, account.id);
+        return { account: row, attemptId: id };
+      }));
+    } catch (error) {
+      if (error instanceof ActivationInvitationError && error.code === "ACCOUNT_NOT_FOUND") throw error;
+      await this.auditFailure(actor, accountId, failureCode(error));
+      throw error;
+    }
 
+    let invitation: { emailStatus: InvitationEmailStatus; whatsappStatus: InvitationWhatsAppStatus; hubAccess: InvitationHubAccess };
+    try {
+      // Phase 2: SQ Hub prepares the Akun SQ (HUB-IMPL-024), with no HCIS transaction open.
       let hub;
       try {
-        hub = await this.inviter.invite({ employeeNumber: account.employeeNumber, accountId: account.id });
+        hub = await this.inviter.invite({ employeeNumber: account.employeeNumber!, accountId: account.id });
       } catch (error) {
         if (error instanceof StaffActivationRejectedError) {
           throw refusal(
@@ -205,61 +222,67 @@ export class ActivationInvitationService {
         throw refusal("SQ_HUB_EMPLOYEE_MISMATCH", "Jawaban SQ Hub untuk pegawai lain. Aktivasi dibatalkan.", 502);
       }
 
-      try {
-        await new OidcIdentityMappingService(client).map({
-          accountId: account.id,
-          issuer: hub.identity.issuer,
-          subject: hub.identity.subject,
-          apply: true,
-          replace: false,
-        });
-      } catch (error) {
-        if (error instanceof OidcIdentityMappingError) {
-          throw refusal(
-            error.code === "IDENTITY_ALREADY_ASSIGNED" ? "AKUN_SQ_ALREADY_MAPPED" : "ACCOUNT_MAPPED_TO_OTHER_AKUN_SQ",
-            error.code === "IDENTITY_ALREADY_ASSIGNED"
-              ? "Akun SQ pegawai ini sudah terhubung ke account HCIS lain."
-              : "Account ini sudah terhubung ke Akun SQ lain. Pemetaan perlu diperiksa operator.",
-          );
+      // Phase 3: re-check the account under lock (it may have changed meanwhile), map, finalize.
+      invitation = await this.withTransaction(async (client) => {
+        const current = await this.lockAccount(client, account.id);
+        assertInvitable(current);
+        if (current.employeeId !== account.employeeId || current.employeeNumber !== account.employeeNumber) {
+          throw refusal("EMPLOYEE_CHANGED", "Data pegawai berubah saat aktivasi dikirim. Muat ulang lalu kirim lagi.");
         }
-        throw error;
-      }
+        try {
+          await new OidcIdentityMappingService(client).map({
+            accountId: current.id,
+            issuer: hub.identity.issuer,
+            subject: hub.identity.subject,
+            apply: true,
+            replace: false,
+          });
+        } catch (error) {
+          if (error instanceof OidcIdentityMappingError) {
+            throw refusal(
+              error.code === "IDENTITY_ALREADY_ASSIGNED" ? "AKUN_SQ_ALREADY_MAPPED" : "ACCOUNT_MAPPED_TO_OTHER_AKUN_SQ",
+              error.code === "IDENTITY_ALREADY_ASSIGNED"
+                ? "Akun SQ pegawai ini sudah terhubung ke account HCIS lain."
+                : "Account ini sudah terhubung ke Akun SQ lain. Pemetaan perlu diperiksa operator.",
+            );
+          }
+          throw error;
+        }
 
-      const emailStatus: InvitationEmailStatus = hub.credentialInitialization === "sent"
-        ? "sent"
-        : hub.credentialInitialization === "already_complete" ? "not_needed" : "failed";
-      const whatsappStatus = this.initialWhatsAppStatus(emailStatus, account);
-      const id = randomUUID();
-      await client.query(
-        `INSERT INTO account_activation_invitations (
-           id, account_id, issued_by_account_id, identity_issuer, identity_subject,
-           email_status, whatsapp_status, hub_access
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, account.id, actor.id, hub.identity.issuer, hub.identity.subject, emailStatus, whatsappStatus, hub.applicationAccess],
-      );
-      await client.query(
-        `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
-         VALUES ($1, $2, 'account.activation.invitation.issued', 'account', $3, $4::jsonb)`,
-        [randomUUID(), actor.id, account.id, JSON.stringify({ invitationId: id, emailStatus, whatsappStatus, hubAccess: hub.applicationAccess })],
-      );
-      await client.query("COMMIT");
-      committed = true;
-      invitation = { id, whatsappStatus, emailStatus, hubAccess: hub.applicationAccess };
-      maskedEmail = maskActivationEmail(account.email);
+        const emailStatus: InvitationEmailStatus = hub.credentialInitialization === "sent"
+          ? "sent"
+          : hub.credentialInitialization === "already_complete" ? "not_needed" : "failed";
+        const whatsappStatus = this.initialWhatsAppStatus(emailStatus, hub.applicationAccess, current);
+        await client.query(
+          `UPDATE account_activation_invitations
+              SET state = 'issued', identity_issuer = $2, identity_subject = $3,
+                  email_status = $4, whatsapp_status = $5, hub_access = $6
+            WHERE id = $1`,
+          [attemptId, hub.identity.issuer, hub.identity.subject, emailStatus, whatsappStatus, hub.applicationAccess],
+        );
+        await client.query(
+          `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
+           VALUES ($1, $2, 'account.activation.invitation.issued', 'account', $3, $4::jsonb)`,
+          [randomUUID(), actor.id, current.id, JSON.stringify({ invitationId: attemptId, emailStatus, whatsappStatus, hubAccess: hub.applicationAccess })],
+        );
+        account = current;
+        return { emailStatus, whatsappStatus, hubAccess: hub.applicationAccess };
+      });
     } catch (error) {
-      if (!committed) await client.query("ROLLBACK").catch(() => undefined);
-      if (error instanceof ActivationInvitationError && account && error.code !== "ACCOUNT_NOT_FOUND") {
-        await this.auditFailure(actor, account.id, error.code);
-      }
+      const code = failureCode(error);
+      await this.pool.query(
+        `UPDATE account_activation_invitations SET state = 'failed', failure_code = $2 WHERE id = $1 AND state = 'pending'`,
+        [attemptId, code],
+      ).catch(() => undefined);
+      await this.auditFailure(actor, account.id, code);
       throw error;
-    } finally {
-      client.release();
     }
 
+    const maskedEmail = maskActivationEmail(account.email!);
     const phone = normalizeWhatsAppNumber(account.phone);
     let finalWhatsApp = invitation.whatsappStatus;
     if (finalWhatsApp === "pending") {
-      finalWhatsApp = await this.sendWhatsApp(invitation.id, phone!, {
+      finalWhatsApp = await this.sendWhatsApp(attemptId, phone!, {
         fullName: account.fullName ?? "Bapak/Ibu",
         employeeNumber: account.employeeNumber!,
         maskedEmail,
@@ -270,17 +293,17 @@ export class ActivationInvitationService {
         `UPDATE account_activation_invitations
             SET whatsapp_status = $2, whatsapp_updated_at = now()
           WHERE id = $1`,
-        [invitation.id, finalWhatsApp],
+        [attemptId, finalWhatsApp],
       );
       await this.pool.query(
         `INSERT INTO access_audit_events (id, actor_account_id, action, entity_type, entity_id, payload)
          VALUES ($1, $2, 'account.activation.invitation.whatsapp', 'account', $3, $4::jsonb)`,
-        [randomUUID(), actor.id, account.id, JSON.stringify({ invitationId: invitation.id, whatsappStatus: finalWhatsApp })],
+        [randomUUID(), actor.id, account.id, JSON.stringify({ invitationId: attemptId, whatsappStatus: finalWhatsApp })],
       );
     }
 
     return {
-      invitationId: invitation.id,
+      invitationId: attemptId,
       emailStatus: invitation.emailStatus,
       whatsappStatus: finalWhatsApp as InvitationResult["whatsappStatus"],
       hubAccess: invitation.hubAccess,
@@ -290,9 +313,44 @@ export class ActivationInvitationService {
     };
   }
 
-  private initialWhatsAppStatus(emailStatus: InvitationEmailStatus, account: AccountRow): InvitationWhatsAppStatus {
-    // Without the Keycloak e-mail the notice would point at nothing.
-    if (emailStatus === "failed") return "skipped";
+  private async withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await work(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async lockAccount(client: PoolClient, accountId: string): Promise<AccountRow> {
+    const row = (await client.query<AccountRow>(
+      `SELECT a.id, a.principal_type AS "principalType", a.status,
+              e.id AS "employeeId", e.employee_number AS "employeeNumber", e.full_name AS "fullName",
+              e.email, e.phone, e.status AS "employeeStatus"
+         FROM accounts a
+         LEFT JOIN employees e ON e.id = a.employee_id
+        WHERE a.id = $1
+        FOR UPDATE OF a`,
+      [accountId],
+    )).rows[0];
+    if (!row) throw refusal("ACCOUNT_NOT_FOUND", "Account tidak ditemukan.", 404);
+    return row;
+  }
+
+  private initialWhatsAppStatus(
+    emailStatus: InvitationEmailStatus,
+    hubAccess: InvitationHubAccess,
+    account: AccountRow,
+  ): InvitationWhatsAppStatus {
+    // Without the Keycloak e-mail, or with HCIS access revoked at SQ Hub, the notice would point at
+    // something the employee cannot use.
+    if (emailStatus === "failed" || hubAccess === "revoked") return "skipped";
     if (!normalizeWhatsAppNumber(account.phone)) return "no_phone";
     if (
       this.whatsapp.sender.name === "kirim"
@@ -319,10 +377,9 @@ export class ActivationInvitationService {
         idempotencyKey: `hcis-activation-invitation:${invitationId}`,
       });
       return result.dryRun ? "dry_run" : "sent";
-    } catch (error) {
-      // Rejected (4xx) and temporary failures alike: HC sees "failed" and may send again later.
-      if (error instanceof WhatsAppRejectedError || error instanceof WhatsAppRetryableError) return "failed";
-      throw error;
+    } catch {
+      // Rejected, temporary or unexpected: HC sees "failed" and may send again after the cooldown.
+      return "failed";
     }
   }
 
@@ -385,11 +442,13 @@ export async function activateInvitedAccountOnSignIn(
              WHERE i.account_id = a.id
                AND i.identity_issuer = $2
                AND i.identity_subject = $3
+               AND i.state = 'issued'
                AND i.completed_at IS NULL
                AND i.revoked_at IS NULL
+               AND i.created_at > now() - make_interval(days => $4)
           )
         RETURNING a.id, a.email`,
-      [input.accountId, input.issuer, input.subject],
+      [input.accountId, input.issuer, input.subject, INVITATION_VALID_DAYS],
     );
     const row = activated.rows[0];
     if (!row) {
@@ -417,13 +476,21 @@ export async function activateInvitedAccountOnSignIn(
   }
 }
 
-/** Status change to suspended/inactive: an open invitation must not activate the account later. */
-export async function revokeOpenInvitations(db: Pick<PoolClient, "query">, accountId: string): Promise<number> {
+/**
+ * AUTH-002-INVITE: any status change closes open invitations, so a later sign-in can never
+ * activate an account HC moved away from `invited` (completed when HC activated it by hand).
+ */
+export async function closeOpenInvitations(
+  db: Pick<PoolClient, "query">,
+  accountId: string,
+  newStatus: "invited" | "active" | "suspended" | "inactive",
+): Promise<number> {
   const result = await db.query(
     `UPDATE account_activation_invitations
-        SET revoked_at = now()
+        SET completed_at = CASE WHEN $2 = 'active' THEN now() ELSE NULL END,
+            revoked_at = CASE WHEN $2 = 'active' THEN NULL ELSE now() END
       WHERE account_id = $1 AND completed_at IS NULL AND revoked_at IS NULL`,
-    [accountId],
+    [accountId, newStatus],
   );
   return result.rowCount ?? 0;
 }

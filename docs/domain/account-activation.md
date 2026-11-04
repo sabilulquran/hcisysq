@@ -117,11 +117,11 @@ Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lo
 
 ### Alur dan transisi
 
-1. HCIS mengunci account, memeriksa prasyarat dan batas kirim ulang.
+1. HCIS mengunci account, memeriksa prasyarat dan batas kirim ulang, lalu mencatat percobaan (`pending`) dan commit. Tidak ada transaksi atau kunci yang ditahan selama SQ Hub bekerja.
 2. HCIS memanggil SQ Hub `POST /internal/v1/staff-activation/invite` dengan machine client HCIS: `{ employeeNumber, requestedBy: { accountId } }`. SQ Hub memverifikasi employee ke HCIS, membuat atau memakai kembali Akun SQ (username = NIP), mengirim email Keycloak bila kata sandi belum dibuat, dan memberi akses aplikasi `hcis` bila belum ada catatan akses.
-3. HCIS menolak jawaban yang issuer-nya bukan `OIDC_ISSUER` atau employee id-nya bukan employee account ini. Lalu HCIS memetakan `issuer + sub` ke account (aturan `map-oidc-identity`: identitas yang sudah dipakai account lain ditolak, pemetaan berbeda tidak ditimpa) dan mencatat undangan di `account_activation_invitations`. Status account **tetap `invited`**.
-4. Setelah commit, HCIS mengirim WhatsApp lewat Kirim SQ bila email terkirim atau kata sandi sudah ada. `WHATSAPP_RECIPIENT_MODE=allowlist` tetap berlaku: NIP di luar `WHATSAPP_ALLOWLIST` tidak dikirimi (`not_allowlisted`). Adapter `log` hanya mencatat (`dry_run`).
-5. Saat pegawai pertama kali masuk HCIS dengan Akun SQ yang dipetakan, dan akses aplikasi `hcis` di SQ Hub diizinkan, account `invited` dengan undangan yang belum selesai/dicabut untuk identitas yang sama otomatis menjadi `active` (employee harus masih `active`). Undangan ditandai selesai.
+3. HCIS menolak jawaban yang issuer-nya bukan `OIDC_ISSUER` atau employee id-nya bukan employee account ini. Lalu, dalam transaksi baru, HCIS mengunci dan memeriksa ulang account (masih `invited`, employee masih sama dan aktif), memetakan `issuer + sub` ke account (aturan `map-oidc-identity`: identitas yang sudah dipakai account lain ditolak, pemetaan berbeda tidak ditimpa) dan menandai percobaan `issued` di `account_activation_invitations`. Kegagalan menandainya `failed` dengan kodenya. Status account **tetap `invited`**.
+4. Setelah commit, HCIS mengirim WhatsApp lewat Kirim SQ bila email terkirim atau kata sandi sudah ada, dan akses `hcis` di SQ Hub tidak dicabut. `WHATSAPP_RECIPIENT_MODE=allowlist` tetap berlaku: NIP di luar `WHATSAPP_ALLOWLIST` tidak dikirimi (`not_allowlisted`). Adapter `log` hanya mencatat (`dry_run`).
+5. Saat pegawai pertama kali masuk HCIS dengan Akun SQ yang dipetakan, dan akses aplikasi `hcis` di SQ Hub diizinkan, account `invited` dengan undangan `issued` yang belum selesai/dicabut untuk identitas yang sama dan dikirim **dalam 14 hari terakhir** (`DRAFT`) otomatis menjadi `active` (employee harus masih `active`). Undangan ditandai selesai. Lewat 14 hari, HC mengirim ulang.
 
 ### Hasil per kanal (ditampilkan ke HC, kontak tersamar)
 
@@ -133,19 +133,21 @@ Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lo
 | WhatsApp | `sent` / `dry_run` | Diterima Kirim SQ / adapter `log` |
 | WhatsApp | `no_phone` | Nomor HP employee kosong atau bukan nomor Indonesia yang valid |
 | WhatsApp | `not_allowlisted` | Mode uji: NIP tidak ada di `WHATSAPP_ALLOWLIST` |
-| WhatsApp | `failed` / `skipped` | Kirim SQ menolak/gagal / tidak dikirim karena email gagal |
+| WhatsApp | `failed` / `skipped` | Kirim SQ menolak/gagal / tidak dikirim karena email gagal atau akses `hcis` dicabut |
 
 Akses `hcis` di SQ Hub: `granted`, `already_active`, atau `revoked`. Bila `revoked`, SQ Hub **tidak** memberi akses ulang (pencabutan adalah keputusan Admin Platform), dan HC diberi tahu.
 
 ### Batas dan kegagalan
 
-- Batas kirim (`DRAFT`): minimal 10 menit antar pengiriman untuk satu account dan maksimal 5 pengiriman per 24 jam → `429 ACTIVATION_INVITE_RATE_LIMITED`.
+- Batas kirim (`DRAFT`): minimal 10 menit antar pengiriman untuk satu account dan maksimal 5 pengiriman per 24 jam → `429 ACTIVATION_INVITE_RATE_LIMITED`. Setiap percobaan yang sampai ke SQ Hub dihitung, termasuk yang gagal sesudahnya, karena email Keycloak mungkin sudah terkirim.
 - Email employee kosong → `409 EMPLOYEE_EMAIL_MISSING` sebelum SQ Hub dipanggil; tidak ada WhatsApp karena Akun SQ belum dapat dibuat (`DRAFT`, lihat keputusan desain).
 - Tidak di mode OIDC → `409 ACTIVATION_INVITE_UNAVAILABLE`. Bukan `EMPLOYEE` → `409 ACTIVATION_INVITE_EMPLOYEE_ONLY`. Bukan `invited` → `409 ACCOUNT_NOT_INVITED`. Employee tidak aktif → `409 EMPLOYEE_NOT_ACTIVE`.
 - Penolakan SQ Hub diteruskan sebagai `409` dengan kode yang menjelaskan (`AKUN_SQ_CONFLICT`, `AKUN_SQ_DISABLED`, `HCIS_EMPLOYEE_NOT_FOUND`, …); SQ Hub tidak tersedia → `503 SQ_HUB_UNAVAILABLE`. Tidak ada pemetaan, undangan, atau WhatsApp bila langkah SQ Hub gagal.
 - Pemetaan yang bentrok (`IDENTITY_ALREADY_ASSIGNED`, `REPLACE_REQUIRED`) → `409`, tanpa WhatsApp.
 - Link email Keycloak yang lebih lama tetap berlaku sampai 12 jamnya habis (perilaku Keycloak); batas kirim membatasi jumlahnya.
-- Mengubah status account ke `suspended` atau `inactive` mencabut undangan yang belum selesai, sehingga login berikutnya tidak mengaktifkan account.
+- Setiap perubahan status account oleh administrator menutup undangan yang belum selesai (`active` → selesai, status lain → dicabut), sehingga login berikutnya tidak mengaktifkan account yang sudah diputuskan lain.
+- Akun SQ Organ Yayasan dengan email yang sama tidak dihubungkan lewat jalur ini (`409 ORGAN_IDENTITY_LINK_REQUIRES_ADMIN`); Admin Platform melakukannya di SQ Hub.
+- Batas yang diterima (`DRAFT`): email tujuan adalah email pegawai di HCIS. Administrator yang dapat mengubah kontak pegawai sekaligus mengirim aktivasi dapat mengarahkan email Keycloak. Mitigasi: pesan WhatsApp menyebut alamat tersamar, dan setiap pengiriman diaudit di HCIS dan SQ Hub.
 - Link aktivasi lokal (`POST /admin/access/accounts/:accountId/activation`) untuk account `EMPLOYEE` di mode OIDC ditolak `409 ACTIVATION_USES_INVITATION`, karena kata sandi lokal tidak dipakai untuk masuk.
 
 ### Audit dan privasi

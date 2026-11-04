@@ -13,7 +13,7 @@ import type { ApiConfig } from "../../config/env.js";
 import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "./management-scope.js";
 import { pageOffset, pageQuerySchema, pagination } from "../../lib/pagination.js";
 import { requirePermissionsFromCookie } from "../auth/authorization.js";
-import { revokeOpenInvitations } from "../auth/activation-invitation.js";
+import { closeOpenInvitations } from "../auth/activation-invitation.js";
 import {
   AUTH_COOKIE_NAME,
   AuthError,
@@ -608,7 +608,7 @@ export async function registerOrgAccessAdminRoutes(
               whatsapp_status AS "whatsappStatus", hub_access AS "hubAccess",
               completed_at AS "completedAt", revoked_at AS "revokedAt"
          FROM account_activation_invitations
-        WHERE account_id = ANY($1::uuid[])
+        WHERE account_id = ANY($1::uuid[]) AND state = 'issued'
         ORDER BY account_id, created_at DESC`,
       [accounts.rows.map((row) => row.id)],
     );
@@ -741,12 +741,13 @@ export async function registerOrgAccessAdminRoutes(
       const account = await client.query<{
         id: string;
         principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
+        status: "invited" | "active" | "suspended" | "inactive";
         hasPassword: boolean;
         identityIssuer: string | null;
         identitySubject: string | null;
         employeeStatus: "active" | "inactive" | "resigned" | null;
       }>(
-        `SELECT a.id, a.principal_type AS "principalType", a.password_hash IS NOT NULL AS "hasPassword",
+        `SELECT a.id, a.principal_type AS "principalType", a.status, a.password_hash IS NOT NULL AS "hasPassword",
                 a.identity_issuer AS "identityIssuer", a.identity_subject AS "identitySubject",
                 e.status AS "employeeStatus"
          FROM accounts a LEFT JOIN employees e ON e.id = a.employee_id
@@ -787,16 +788,16 @@ export async function registerOrgAccessAdminRoutes(
           [row.id],
         );
       }
-      // AUTH-002-INVITE: a suspended or deactivated account must not be activated by a later sign-in.
-      const invitationsRevoked = body.data.status === "suspended" || body.data.status === "inactive"
-        ? await revokeOpenInvitations(client, row.id)
+      // AUTH-002-INVITE: after any status change, a later sign-in can no longer activate by invitation.
+      const invitationsClosed = row.status !== body.data.status
+        ? await closeOpenInvitations(client, row.id, body.data.status)
         : 0;
       await audit(client, principal, "account.status.updated", "account", row.id, {
         status: body.data.status,
         ...(readiness?.ready ? { authenticationMethod: readiness.method } : {}),
         sessionsRevoked: body.data.status !== "active",
         activationTokensRevoked: body.data.status !== "active",
-        ...(invitationsRevoked ? { activationInvitationsRevoked: invitationsRevoked } : {}),
+        ...(invitationsClosed ? { activationInvitationsClosed: invitationsClosed } : {}),
       });
       await client.query("COMMIT");
       committed = true;

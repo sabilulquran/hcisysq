@@ -59,7 +59,7 @@ describe("OIDC sign-in activates an invited account by invitation", () => {
     const result = await service.complete(callback(), context, bound);
     expect(result.session.principal.id).toBe(invitedAccount.id);
     const update = clientQuery.mock.calls.find(([sql]) => String(sql).includes("UPDATE accounts a"));
-    expect(update?.[1]).toEqual([invitedAccount.id, identity.issuer, identity.subject]);
+    expect(update?.[1]).toEqual([invitedAccount.id, identity.issuer, identity.subject, 14]);
     expect(clientQuery.mock.calls.some(([sql]) => String(sql).includes("auth.activation.invitation_completed"))).toBe(true);
     expect(auth.createSessionForAccountId).toHaveBeenCalledOnce();
   });

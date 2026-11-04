@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { MIGRATION_MARKER } from "./admin-schemas.js";
 import { writeAudit } from "./store.js";
 
 export const SETTLED_STATES = [
@@ -127,6 +128,75 @@ export async function openPolicyVersion(
 
     await client.query("COMMIT");
     return rows[0]!;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Corrects a policy version in place (PAY-003-MIG spec §5.4). Only for a version
+ * the initial load opened and that no calculation result rests on yet: such a
+ * version has never paid anyone, so replacing its payload rewrites no history.
+ * Everything else changes by opening a new version. The previous payload is kept
+ * in the audit event, so the correction can be read back and undone.
+ */
+export async function correctLoadedPolicyVersion(
+  pool: Pool,
+  correction: {
+    versionId: string;
+    policyKey: string;
+    effectiveFrom: string;
+    payload: unknown;
+    source: string;
+    note?: string | null | undefined;
+    reason: string;
+  },
+  actorAccountId: string,
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ payload: unknown; source: string; note: string | null }>(
+      `SELECT v.payload, v.source, v.note
+       FROM payroll_policy_versions v
+       WHERE v.id = $1 AND v.policy_key = $2 AND v.effective_from = $3::date
+       FOR UPDATE OF v`,
+      [correction.versionId, correction.policyKey, correction.effectiveFrom],
+    );
+    const current = rows[0];
+    // Checked after the lock, in a statement of its own: a calculation reads its
+    // versions FOR SHARE, so by now any run that used this version has committed
+    // its results, and a fresh snapshot sees them.
+    const used = await client.query(
+      "SELECT 1 FROM payroll_results r WHERE r.policy_version_ids ? $1::text LIMIT 1",
+      [correction.versionId],
+    );
+    if (!current || !current.source.includes(MIGRATION_MARKER) || (used.rowCount ?? 0) > 0) {
+      throw Object.assign(new Error("Versi kebijakan tidak lagi dapat dikoreksi di tempat."), {
+        code: "PAYROLL_POLICY_NOT_CORRECTABLE",
+      });
+    }
+    await client.query(
+      `UPDATE payroll_policy_versions SET payload = $2::jsonb, source = $3, note = $4 WHERE id = $1`,
+      [correction.versionId, JSON.stringify(correction.payload), correction.source, correction.note ?? current.note],
+    );
+    await writeAudit(client, {
+      actorAccountId,
+      action: "payroll.policy.version_corrected",
+      periodId: null,
+      payload: {
+        policy_key: correction.policyKey,
+        effective_from: correction.effectiveFrom,
+        version_id: correction.versionId,
+        reason: correction.reason,
+        previous_payload: current.payload,
+        previous_source: current.source,
+      },
+    });
+    await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

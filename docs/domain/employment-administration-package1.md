@@ -137,8 +137,8 @@ Owner's intended list (2026-10-16):
 | Code | Label | End date required (D-03) | Basis document (D-08) |
 |---|---|---|---|
 | `TETAP` | Guru/Pegawai Tetap | No | SK Pengangkatan |
-| `KONTRAK` | Pegawai Kontrak | Yes | Perjanjian Kerja |
-| `KONTRAK_HONORER` | Pegawai Kontrak Honorer | Yes (honorer staff are on a contract) | Perjanjian Kerja |
+| `KONTRAK` | Pegawai Kontrak (bergaji: paid a salary like permanent staff, PAY-003 §5.1) | Yes | Perjanjian Kerja |
+| `KONTRAK_HONORER` | Pegawai Kontrak Honorer (paid per attendance and per teaching hour, PAY-003 §5.2) | Yes (honorer staff are on a contract) | Perjanjian Kerja |
 | `MAGANG` | Magang | Yes | Perjanjian Kerja (TBD: or a separate internship agreement) |
 | `PERCOBAAN` | Masa Percobaan | Yes | Perjanjian Kerja (TBD) |
 | `LEPAS` | Pegawai Lepas (kontrak lepas) | Yes | Perjanjian Kerja |
@@ -157,13 +157,13 @@ Values currently found in the active sheet `Master Data SDM YSQ` (column values 
 | STATUS KEPEGAWAIAN | Pengurus Yayasan | **Excluded** — not an employment status; no employment created; issue `BASELINE_EXCLUDED_FOUNDATION_BOARD`; record marked "di luar pengelolaan HCIS" (§8.7). Board access stays with `FOUNDATION_BOARD` accounts. Owner 2026-10-17 (SQ Hub ADR-0009): a **salaried** Pengurus paid through HCIS payroll is an Employee with a real category chosen by HC; they count in "Pegawai aktif" (owner decision ORG-010 D2, 2026-10-17). |
 | STATUS KEPEGAWAIAN | Tidak Aktif (stray) | Not a category. SHADOW review issue `BASELINE_CATEGORY_IS_STATUS`; category `BELUM_DIKLASIFIKASIKAN`; status taken from STATUS AKTIF. |
 | STATUS AKTIF | Aktif | employment effective |
-| STATUS AKTIF | Aktif PKWT | employment effective; category `KONTRAK` (owner confirmed). If STATUS KEPEGAWAIAN is blank or Pegawai Kontrak → `KONTRAK`. If STATUS KEPEGAWAIAN states another category (e.g. Pegawai Tetap) → SHADOW review issue `BASELINE_CATEGORY_CONFLICT_PKWT`, category `BELUM_DIKLASIFIKASIKAN` (never guessed). |
+| STATUS AKTIF | Aktif PKWT | employment effective; category `KONTRAK_HONORER` (owner decision 2026-11-04, replacing `KONTRAK` of 2026-10-16: "Aktif PKWT" marks the contract staff paid per attendance and per teaching hour, the legacy `Gaji Honorer` sheet; a plain "Aktif" Pegawai Kontrak is the salaried `KONTRAK`). If STATUS KEPEGAWAIAN is blank, Pegawai Kontrak or Pegawai Kontrak Honorer → `KONTRAK_HONORER`. If STATUS KEPEGAWAIAN states another category (e.g. Pegawai Tetap) → SHADOW review issue `BASELINE_CATEGORY_CONFLICT_PKWT`, category `BELUM_DIKLASIFIKASIKAN` (never guessed). |
 | STATUS AKTIF | Aktif BUMY | **Excluded** — no employment created; issue `BASELINE_EXCLUDED_BUMY`; record marked "di luar pengelolaan HCIS" (§8.7) |
 | STATUS AKTIF | Tidak Aktif | employment ended (see §8.2) |
 | JENIS KEPEGAWAIAN | Tenaga Pendidik / Tenaga Kependidikan | `staff_type` `PENDIDIK` / `KEPENDIDIKAN` |
 | JENIS KEPEGAWAIAN | "#", "-", blank (stray) | `staff_type` null; SHADOW review issue `BASELINE_STAFF_TYPE_MISSING` |
 
-Jenis kepegawaian (`staff_type`) vocabulary is confirmed as exactly **Tenaga Pendidik** and **Tenaga Kependidikan**. Pegawai Kontrak Honorer remains a contract category with a mandatory end date (D-03); it has no separate source value today and is assigned by HC through actions or the SHADOW review.
+Jenis kepegawaian (`staff_type`) vocabulary is confirmed as exactly **Tenaga Pendidik** and **Tenaga Kependidikan**. Pegawai Kontrak Honorer remains a contract category with a mandatory end date (D-03); its source value is STATUS AKTIF `Aktif PKWT` (owner 2026-11-04). Where the baseline ran without that source value (no import snapshot), HC corrects the category with an action in AUTHORITATIVE, or before that with the baseline category correction (§8.2).
 
 Note: today's EMP-004 import normalizes every `Aktif …` value (including `Aktif BUMY` and `Aktif PKWT`) to `employees.status = active`, so the distinction survives only in `employee_import_source_snapshots.source_data`. Baseline must read the latest source snapshot for STATUS AKTIF, not only `employees.status`.
 
@@ -402,6 +402,17 @@ The command:
 - writes `employment.baseline.created` audit per employee and one summary audit event per run;
 - requires mode `OFF` or `SHADOW`; refuses in `AUTHORITATIVE`;
 - **never** deactivates accounts: baseline employments that are already ended do not trigger the D-15 automatic deactivation (their account state is whatever access administration set before). Only a `TERMINATION` action recorded in `AUTHORITATIVE` does.
+
+**Baseline category correction** (`--reclassify <CATEGORY> --reason "<why>" --employee <uuid> … [--actor-account <uuid>] [--apply]`, added 2026-11-04). `--rerun` purges an employment and creates one with a new id, which the database refuses once other records point at it (payroll compensation profiles, `ON DELETE RESTRICT`). A baseline that put an employee in the wrong category is therefore corrected in place:
+
+- only in mode `OFF` or `SHADOW` (in `AUTHORITATIVE` the correction is a `CATEGORY_CHANGE` action);
+- only for an employment whose sole action is `BASELINE` and which has exactly one term, opened by that action; anything else is reported as skipped (`NO_BASELINE_EMPLOYMENT`, `MULTIPLE_EMPLOYMENTS`, `HAS_REAL_ACTIONS`, `MULTIPLE_TERMS`, `ALREADY_IN_CATEGORY`) and left alone;
+- only between two fixed-term categories or two open-ended ones (`CROSSES_FIXED_TERM` otherwise: the end date and the baseline issues would change too), and only while the employment has no payroll result (`PAYROLL_RESULTS_EXIST`: a stored result does not keep the category it was calculated on);
+- changes the term's `category` and the `category` in the `BASELINE` action's `new_snapshot`; the employment id, dates and placement stay as they are;
+- requires a reason (at least 10 characters, no names or NIP) and, with `--apply`, `--actor-account`; writes `employment.baseline.reclassified` per employment with `from`, `to`, the reason and the rollout mode;
+- dry-run by default, counts only, one transaction under the baseline advisory lock.
+
+Rollback: run the correction back to the previous category (the audit event names it), or restore the pre-change backup. First use (2026-11-04): the three `Aktif PKWT` employees, created as `KONTRAK` because production had no import snapshot for them, were corrected to `KONTRAK_HONORER`.
 
 ### 8.3 Data-quality review before AUTHORITATIVE
 
@@ -642,7 +653,7 @@ EMP-005:
 - EMP-005-I (D-15): A recorded `TERMINATION` deactivates the linked EMPLOYEE account(s) and revokes sessions/activation tokens from the day after `ended_on`; login and session checks deny the account even if the daily job has not run; baseline and reversal never reactivate or deactivate accounts.
 - EMP-005-J (D-15): Temporary reactivation requires reason and expiry within the maximum, cannot target one's own account, is grantable only by HC Admin (max 30 days), grants only own payslips, own attendance history, and own leave history, ends automatically at expiry (enforced at login/session time), and every grant/revoke/expiry is audited. Positive and negative auth tests are mandatory.
 - EMP-005-L (§8.7): BUMY and Pengurus Yayasan records are never deleted; once marked "di luar pengelolaan HCIS" they are read-only, hidden from active lists/counts/workflow eligibility/ORG-006, keep their history, and every mark/unmark is audited.
-- EMP-005-K (D-02): Baseline excludes `Aktif BUMY` and `Pengurus Yayasan` records (no employment; FOUNDATION_BOARD accounts untouched), maps the §4.2.1 values (Calon Pegawai Tetap → Masa Percobaan, Tenaga Pengabdian → Magang, Aktif PKWT → Pegawai Kontrak, Pegawai Lepas → Lepas), and sends conflicts and stray values to the SHADOW review list as `BELUM_DIKLASIFIKASIKAN`.
+- EMP-005-K (D-02): Baseline excludes `Aktif BUMY` and `Pengurus Yayasan` records (no employment; FOUNDATION_BOARD accounts untouched), maps the §4.2.1 values (Calon Pegawai Tetap → Masa Percobaan, Tenaga Pengabdian → Magang, Aktif PKWT → Pegawai Kontrak Honorer (owner 2026-11-04), Pegawai Lepas → Lepas), and sends conflicts and stray values to the SHADOW review list as `BELUM_DIKLASIFIKASIKAN`.
 
 EMP-006:
 
@@ -671,7 +682,7 @@ Status: **Accepted** = owner accepted (as proposed or as amended). All 19 decisi
 | ID | Decision | Status | Outcome |
 |---|---|---|---|
 | D-01 | Package 1 scope. | Accepted | Package 1 records the employment journey: hire, status/contract, placement, transfer/promotion/demotion, termination. Two separate document kinds: PK (contract hire, extension) and SK (permanent appointment, transfer, promotion, demotion, termination). Education/family/statutory/grade/compensation deferred. |
-| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted | Categories: Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan, Pegawai Lepas. Mapping: Calon Pegawai Tetap → Masa Percobaan; Tenaga Pengabdian → Magang; Aktif PKWT → Pegawai Kontrak; Pengurus Yayasan → not employment (FOUNDATION_BOARD); Aktif BUMY → excluded; stray values → SHADOW review. Jenis: Tenaga Pendidik / Tenaga Kependidikan (§4.2.1). Pegawai Lepas = kontrak lepas with end date. Existing BUMY/Pengurus Yayasan records kept and marked outside HCIS management (§8.7). |
+| D-02 | Status kepegawaian / jenis kepegawaian vocabulary and mapping. | Accepted | Categories: Pegawai Tetap, Pegawai Kontrak, Pegawai Kontrak Honorer, Magang, Masa Percobaan, Pegawai Lepas. Mapping: Calon Pegawai Tetap → Masa Percobaan; Tenaga Pengabdian → Magang; Aktif PKWT → Pegawai Kontrak Honorer (revised by the owner 2026-11-04: contract staff are of two kinds, salaried `KONTRAK` and per-attendance `KONTRAK_HONORER`; was Pegawai Kontrak); Pengurus Yayasan → not employment (FOUNDATION_BOARD); Aktif BUMY → excluded; stray values → SHADOW review. Jenis: Tenaga Pendidik / Tenaga Kependidikan (§4.2.1). Pegawai Lepas = kontrak lepas with end date. Existing BUMY/Pengurus Yayasan records kept and marked outside HCIS management (§8.7). |
 | D-03 | Categories requiring an end date. | Accepted | Kontrak, Kontrak Honorer (honorer staff are on a contract), Magang, Percobaan, Lepas (kontrak lepas): required. Tetap: not required. |
 | D-04 | Contract length/probation rules: block or warn. | Accepted | Warnings only, no blocking; HC acknowledges before saving. |
 | D-05 | Masa kerja on extension and rehire. | Accepted (amended) | Masa kerja continues while the contract is extended continuously under the same NIP; a new NIP means a new masa kerja start. |

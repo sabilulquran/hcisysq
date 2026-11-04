@@ -50,7 +50,13 @@ export type ComponentCategory = "EARNING" | "DEDUCTION" | "EMPLOYER_COST";
 
 export type EducationLevel = "SD" | "SMP" | "SLTA" | "D1_D2" | "D3_D4" | "S1" | "S2_S3";
 
-export type EmploymentCategory = "PERMANENT" | "PROBATION" | "CONTRACT";
+/**
+ * The pay basis an employment is calculated on (specification section 1.1).
+ * SALARIED_CONTRACT is a fixed-term contract paid a salary exactly like permanent
+ * staff; HONORARIUM is the contract worker paid per attendance and per teaching
+ * hour (owner decision 2026-11-04).
+ */
+export type EmploymentCategory = "PERMANENT" | "PROBATION" | "SALARIED_CONTRACT" | "HONORARIUM";
 
 export type BpjsSegment = "PPU_YAYASAN" | "PBI" | "MANDIRI" | "BELUM_TERDAFTAR";
 
@@ -813,7 +819,7 @@ function finalize(args: {
 
 /** Calculates one employee's payroll for one period. */
 export function calculateEmployeePayroll(input: EmployeePayrollInput): EmployeePayrollResult {
-  return input.profile.category === "CONTRACT" ? computeContract(input) : computePermanent(input);
+  return input.profile.category === "HONORARIUM" ? computeContract(input) : computePermanent(input);
 }
 
 export type PeriodTotals = {

@@ -437,7 +437,7 @@ describe("PAY-003 blockers", () => {
 });
 
 describe("PAY-003 contract employees", () => {
-  const contract = { category: "CONTRACT" as const, education: null };
+  const contract = { category: "HONORARIUM" as const, education: null };
 
   it("pays transport per attendance and a fee per teaching hour", () => {
     const result = run(contract, { contractAttendanceDays: 20, contractTeachingHours: 30 });

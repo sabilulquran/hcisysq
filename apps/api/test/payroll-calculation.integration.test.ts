@@ -211,6 +211,27 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
     expect(lines.rows.map((row) => row.componentCode)).toEqual(["BASIC"]);
   });
 
+  it("pays a salaried contract like permanent staff, ignoring any transport days", async () => {
+    // Owner decision 2026-11-04: KONTRAK is the full-salary contract; only
+    // KONTRAK_HONORER is paid per attendance and per teaching hour.
+    const { employmentId } = await newEmployment({ category: "KONTRAK" });
+    await pool.query(
+      `INSERT INTO payroll_period_inputs(id, period_id, employment_id, input_key, value, origin)
+       VALUES ($1, $2, $3, 'CONTRACT_ATTENDANCE_DAYS', 20, 'MANUAL')`,
+      [randomUUID(), periodId, employmentId],
+    );
+    await calculatePeriod(pool, period(), actorAccountId, 0);
+    const { rows } = await pool.query<{ gross: string }>("SELECT gross FROM payroll_results WHERE period_id = $1", [periodId]);
+    expect(rows[0]!.gross).toBe("3000000");
+    const lines = await pool.query<{ componentCode: string }>(
+      `SELECT l.component_code AS "componentCode"
+       FROM payroll_result_lines l JOIN payroll_results r ON r.id = l.result_id
+       WHERE r.period_id = $1`,
+      [periodId],
+    );
+    expect(lines.rows.map((row) => row.componentCode)).toEqual(["BASIC"]);
+  });
+
   it("leaves interns and unclassified rows out of the population entirely", async () => {
     await newEmployment({ category: "MAGANG" });
     await newEmployment({ category: "BELUM_DIKLASIFIKASIKAN" });

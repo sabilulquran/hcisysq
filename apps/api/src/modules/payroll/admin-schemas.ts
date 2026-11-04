@@ -6,6 +6,13 @@ import { z } from "zod";
 
 import { POLICY_KEYS } from "./policy.js";
 
+/**
+ * Marks rows the PAY-003-MIG initial load wrote. Only the CLI may write it: a
+ * policy version carrying it can be corrected in place while unused
+ * (PAY-003-MIG section 5.4), so the HTTP route refuses a source that contains it.
+ */
+export const MIGRATION_MARKER = "[PAY-003-MIG]";
+
 export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus berformat YYYY-MM-DD");
 
 export const policyBody = z.object({

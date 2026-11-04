@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie } from "../auth/service.js";
-import { loanBody, policyBody, profileBody } from "./admin-schemas.js";
+import { loanBody, MIGRATION_MARKER, policyBody, profileBody } from "./admin-schemas.js";
 import {
   createLoan,
   listCompensationProfiles,
@@ -115,6 +115,12 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
       return send(reply, 400, {
         code: "PAYROLL_INVALID_POLICY",
         message: body.error.issues[0]?.message ?? "Kebijakan tidak valid.",
+      });
+    }
+    if (body.data.source.includes(MIGRATION_MARKER)) {
+      return send(reply, 400, {
+        code: "PAYROLL_INVALID_POLICY",
+        message: `Sumber kebijakan tidak boleh memuat penanda ${MIGRATION_MARKER}; penanda itu khusus pemuatan awal.`,
       });
     }
     const payloadCheck = validatePolicyPayload(body.data.policyKey, body.data.payload);

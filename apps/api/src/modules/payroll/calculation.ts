@@ -39,20 +39,22 @@ const SERVICE_END_UNRESOLVED: PayrollBlocker = {
 };
 
 /**
- * EMP-005 categories mapped onto the three the engine knows. MAGANG and
+ * EMP-005 categories mapped onto the pay bases the engine knows. MAGANG and
  * BELUM_DIKLASIFIKASIKAN are outside the v1 scope (specification section 1.1),
  * so they are left out of the population rather than blocking the period: there
  * would be no way to clear such a blocker from inside payroll.
  *
- * LEPAS is treated as a contract worker (`DRAFT`, agent default 2026-10-27):
- * daily workers are paid per attendance and per teaching hour exactly as PKWT is.
+ * Contract staff come in two kinds (owner decision 2026-11-04): KONTRAK is paid a
+ * salary like permanent staff, KONTRAK_HONORER per attendance and per teaching
+ * hour. LEPAS is treated as an honorarium worker (`DRAFT`, agent default
+ * 2026-10-27): daily workers are paid per attendance and per teaching hour.
  */
 const CATEGORY_BY_TERM: Readonly<Record<string, EmploymentCategory>> = {
   TETAP: "PERMANENT",
   PERCOBAAN: "PROBATION",
-  KONTRAK: "CONTRACT",
-  KONTRAK_HONORER: "CONTRACT",
-  LEPAS: "CONTRACT",
+  KONTRAK: "SALARIED_CONTRACT",
+  KONTRAK_HONORER: "HONORARIUM",
+  LEPAS: "HONORARIUM",
 };
 
 const PAYROLL_TERM_CATEGORIES = Object.keys(CATEGORY_BY_TERM);
@@ -281,7 +283,10 @@ export async function calculatePeriod(
     const policyRows = await client.query<{ id: string; policyKey: string; payload: unknown }>(
       `SELECT id, policy_key AS "policyKey", payload
        FROM payroll_policy_versions
-       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)`,
+       WHERE effective_from <= $1::date AND (effective_to IS NULL OR effective_to >= $1::date)
+       -- Held until the results commit, so an in-place correction of a loaded
+       -- version (PAY-003-MIG section 5.4) waits for this run and then sees it.
+       FOR SHARE`,
       [period.payDate],
     );
     const resolved = resolvePolicy(policyRows.rows);

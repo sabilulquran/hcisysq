@@ -495,6 +495,85 @@ describe.skipIf(!allowed)("PAY-003-MIG initial load against PostgreSQL", () => {
     expect(report.loans.errors).toEqual({ EXISTS_DIFFERENT: 1 });
   });
 
+  it("corrects a loaded, unused version in place only with a reason, and audits the previous payload", async () => {
+    await runInitialLoad(pool, { file: cleanFile(), apply: true, actorAccountId, sourceName: "uji.json" });
+    const before = await pool.query<{ id: string }>(
+      "SELECT id FROM payroll_policy_versions WHERE policy_key = 'VARIANCE_THRESHOLD' AND effective_from = $1::date",
+      [EFFECTIVE],
+    );
+    const corrected = parseInitialLoadFile({
+      format: "PAY-003-MIG/1",
+      policies: [
+        {
+          ...varianceRow,
+          payload: { ...varianceRow.payload, relative: 0.2 },
+          correctionReason: "Keputusan owner uji: koreksi nilai sintetis",
+        },
+      ],
+      profiles: [],
+      loans: [],
+    });
+    const dry = await runInitialLoad(pool, { file: corrected, apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(dry.policies.byKey.VARIANCE_THRESHOLD).toBe("CORRECT");
+    expect(dry.policies.correct).toBe(1);
+
+    const applied = await runInitialLoad(pool, { file: corrected, apply: true, actorAccountId, sourceName: "uji.json" });
+    expect(applied.written).toEqual({ policies: 1, profiles: 0, loans: 0 });
+    const after = await pool.query<{ id: string; relative: number; count: number }>(
+      `SELECT id, (payload->>'relative')::float AS relative, count(*) OVER ()::int AS count
+       FROM payroll_policy_versions WHERE policy_key = 'VARIANCE_THRESHOLD' AND effective_from >= $1::date`,
+      [EFFECTIVE],
+    );
+    // Same row, same id: nothing new opened, no second version on the same day.
+    expect(after.rows).toEqual([{ id: before.rows[0]!.id, relative: 0.2, count: 1 }]);
+    const audit = await pool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM payroll_audit_events
+       WHERE action = 'payroll.policy.version_corrected' AND actor_account_id = $1 AND occurred_at >= $2::timestamptz`,
+      [actorAccountId, applied.startedAt],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]!.payload).toMatchObject({
+      policy_key: "VARIANCE_THRESHOLD",
+      version_id: before.rows[0]!.id,
+      previous_payload: expect.objectContaining({ relative: varianceRow.payload.relative }),
+    });
+
+    // A re-run of the corrected file recognises the row as already loaded.
+    const again = await runInitialLoad(pool, { file: corrected, apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(again.policies.byKey.VARIANCE_THRESHOLD).toBe("UNCHANGED");
+  });
+
+  it("refuses a correction with nothing to correct, or of a version the load did not open", async () => {
+    const missing = parseInitialLoadFile({
+      format: "PAY-003-MIG/1",
+      policies: [{ ...varianceRow, correctionReason: "Keputusan owner uji: koreksi nilai sintetis" }],
+      profiles: [],
+      loans: [],
+    });
+    const report = await runInitialLoad(pool, { file: missing, apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(report.policies.byKey.VARIANCE_THRESHOLD).toBe("CORRECTION_TARGET_MISSING");
+
+    await openPolicyVersion(
+      pool,
+      { policyKey: "VARIANCE_THRESHOLD", effectiveFrom: EFFECTIVE, payload: varianceRow.payload, source: "uji manual" },
+      actorAccountId,
+    );
+    const foreign = parseInitialLoadFile({
+      format: "PAY-003-MIG/1",
+      policies: [
+        {
+          ...varianceRow,
+          payload: { ...varianceRow.payload, relative: 0.2 },
+          correctionReason: "Keputusan owner uji: koreksi nilai sintetis",
+        },
+      ],
+      profiles: [],
+      loans: [],
+    });
+    const refused = await runInitialLoad(pool, { file: foreign, apply: false, actorAccountId, sourceName: "uji.json" });
+    expect(refused.policies.byKey.VARIANCE_THRESHOLD).toBe("VERSION_NOT_FROM_LOAD");
+  });
+
   it("keeps an identical row UNCHANGED after a later version was opened, so a re-run still recovers", async () => {
     await runInitialLoad(pool, { file: cleanFile(), apply: true, actorAccountId, sourceName: "uji.json" });
     await openPolicyVersion(

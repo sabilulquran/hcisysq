@@ -230,6 +230,20 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     expect(resolved.overtime).toEqual([]);
   });
 
+  it("gives a salaried contract overtime, like permanent staff (owner decision 2026-11-04)", async () => {
+    const { employmentId, employeeId } = await newEmployment("KONTRAK");
+    await approvedOvertime(employeeId, "2026-09-10", 120);
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.overtime).toEqual([{ employmentId, hours: 2 }]);
+  });
+
+  it("gives a salaried contract no transport days", async () => {
+    const { employeeId } = await newEmployment("KONTRAK");
+    await attendanceDay(employeeId, "2026-09-01", true);
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
   it("leaves out an employment whose end date nobody has resolved", async () => {
     const { employeeId } = await newEmployment("TETAP", { endBasis: "UNKNOWN", endedOn: null });
     await approvedOvertime(employeeId, "2026-09-10", 120);
@@ -289,7 +303,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
   });
 
   it("reads the latest version of a day, not the first", async () => {
-    const { employeeId } = await newEmployment("KONTRAK");
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
     await attendanceDay(employeeId, "2026-09-01", true, { version: 1 });
     await attendanceDay(employeeId, "2026-09-01", false, { version: 2 });
     const resolved = await resolveAttendanceInputs(pool, window());
@@ -334,7 +348,7 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
   });
 
   it("earns transport on a field assignment on a holiday the employee was scheduled to work", async () => {
-    const { employmentId, employeeId } = await newEmployment("KONTRAK");
+    const { employmentId, employeeId } = await newEmployment("KONTRAK_HONORER");
     const request = await workArrangement(employeeId, "2026-09-01", "FIELD_ASSIGNMENT", "APPROVED");
     await attendanceDay(employeeId, "2026-09-01", false, {
       status: "field_assignment",

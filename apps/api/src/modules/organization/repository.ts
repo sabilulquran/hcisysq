@@ -113,6 +113,12 @@ function mapChangeSet(row: ChangeSetRow): OrganizationChangeSet {
   };
 }
 
+/** A change set as listed: who created it and when it last changed (ORG-008 open changes). */
+export interface OrganizationChangeSetListItem extends OrganizationChangeSet {
+  createdByName: string | null;
+  updatedAt: string | null;
+}
+
 export interface CreateOrganizationDraftInput {
   name: string;
   effectiveOn: string;
@@ -173,22 +179,30 @@ export class PostgresOrganizationRepository {
     return result.rows.map(mapChangeSet);
   }
 
-  /** One page of change sets, newest effective date first, with the filtered total (ENG-LIST-001). */
+  /**
+   * ORG-008-3b: one page of change sets, newest created first, with the filtered total (ENG-LIST-001).
+   * ORG-008 follow-up (open changes): each row also names who created it and when it last changed,
+   * so HC can tell a stale change set from a live one before discarding it. The name is the employee's, or the account email when the account has none.
+   */
   async pageChangeSets(
     statuses: readonly OrganizationChangeSet["status"][] | undefined,
     page: { limit: number; offset: number },
-  ): Promise<{ items: OrganizationChangeSet[]; total: number }> {
+  ): Promise<{ items: OrganizationChangeSetListItem[]; total: number }> {
     const filter = statuses && statuses.length > 0 ? [...statuses] : null;
     const [rows, count] = await Promise.all([
-      this.db.query<ChangeSetRow>(
+      this.db.query<ChangeSetRow & { createdByName: string | null; updatedAt: Date | null }>(
         `
-          SELECT id, name, effective_on AS "effectiveOn", status,
-            base_change_set_id AS "baseChangeSetId", validation_report AS "validationReport",
-            created_by_account_id AS "createdByAccountId", created_at AS "createdAt",
-            validated_at AS "validatedAt", published_at AS "publishedAt", revision
-          FROM organization_change_sets
-          WHERE $1::text[] IS NULL OR status = ANY($1::text[])
-          ORDER BY effective_on DESC, created_at DESC, id DESC
+          SELECT change_set.id, change_set.name, change_set.effective_on AS "effectiveOn", change_set.status,
+            change_set.base_change_set_id AS "baseChangeSetId", change_set.validation_report AS "validationReport",
+            change_set.created_by_account_id AS "createdByAccountId", change_set.created_at AS "createdAt",
+            change_set.validated_at AS "validatedAt", change_set.published_at AS "publishedAt", change_set.revision,
+            change_set.updated_at AS "updatedAt",
+            COALESCE(creator_employee.full_name, creator.email) AS "createdByName"
+          FROM organization_change_sets change_set
+          LEFT JOIN accounts creator ON creator.id = change_set.created_by_account_id
+          LEFT JOIN employees creator_employee ON creator_employee.id = creator.employee_id
+          WHERE $1::text[] IS NULL OR change_set.status = ANY($1::text[])
+          ORDER BY change_set.created_at DESC, change_set.id DESC
           LIMIT $2 OFFSET $3
         `,
         [filter, page.limit, page.offset],
@@ -198,7 +212,14 @@ export class PostgresOrganizationRepository {
         [filter],
       ),
     ]);
-    return { items: rows.rows.map(mapChangeSet), total: count.rows[0]?.total ?? 0 };
+    return {
+      items: rows.rows.map(({ createdByName, updatedAt, ...row }) => ({
+        ...mapChangeSet(row),
+        createdByName: createdByName ?? null,
+        updatedAt: updatedAt ? updatedAt.toISOString() : null,
+      })),
+      total: count.rows[0]?.total ?? 0,
+    };
   }
 
   /**

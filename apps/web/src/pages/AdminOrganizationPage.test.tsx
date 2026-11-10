@@ -73,6 +73,7 @@ function render(input: {
   classifications?: JobClassification[] | null;
   classificationsTruncated?: boolean;
   classificationsFailed?: boolean;
+  showOpenChanges?: boolean;
 }) {
   return renderToStaticMarkup(
     <OrganizationDesignerWorkspace
@@ -91,6 +92,7 @@ function render(input: {
       onDraftIdChange={() => undefined}
       onReload={() => Promise.resolve()}
       onRetryEmployees={() => undefined}
+      showOpenChanges={input.showOpenChanges ?? false}
     />,
   );
 }
@@ -287,5 +289,21 @@ describe("ORG-011 seat classification in the designer", () => {
   it("names the day a classification stops applying", () => {
     expect(classificationOptions([closing], null, family)[0]?.label)
       .toBe("Guru Lama (Fungsional, berakhir 2026-12-31)");
+  });
+});
+
+describe("ORG-008 follow-up: membuang perubahan yang menghalangi (O-7)", () => {
+  it("offers Buang perubahan for the change open in the designer", () => {
+    expect(visibleText(render({ actor: hcAdmin }))).toContain("Buang perubahan");
+  });
+
+  it("does not offer Buang perubahan when no change is open", () => {
+    const current = view({ draft: null, mode: "CURRENT" });
+    expect(visibleText(render({ actor: hcAdmin, data: current }))).not.toContain("Buang perubahan");
+  });
+
+  it("lists open changes only on the Perubahan tab", () => {
+    expect(visibleText(render({ actor: hcAdmin, showOpenChanges: true }))).toContain("Perubahan terbuka");
+    expect(visibleText(render({ actor: hcAdmin }))).not.toContain("Perubahan terbuka");
   });
 });

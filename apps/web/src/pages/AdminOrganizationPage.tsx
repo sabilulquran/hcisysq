@@ -41,10 +41,13 @@ import {
   createOrganizationDraft,
   createOrganizationNode,
   createOrganizationPosition,
+  discardOrganizationDraft,
   getOrganizationDesignerView,
   getOrganizationImpact,
   getOrganizationRollout,
+  listOpenOrganizationChanges,
   listOrganizationEmployees,
+  OrganizationDraftAlreadyOpenError,
   previewOrganizationResolution,
   publishOrganizationDraft,
   replaceOrganizationIncumbencies,
@@ -57,6 +60,7 @@ import {
   type OrganizationEmployeeOption,
   type OrganizationImpactPreview,
   type OrganizationNode,
+  type OrganizationOpenChange,
   type OrganizationPosition,
   type OrganizationResolutionPreview,
   type OrganizationRolloutConfiguration,
@@ -87,6 +91,11 @@ import {
   type OrganizationAdvancedBindingType,
 } from "@/components/organization/OrganizationAdvancedAuthority";
 import { OrganizationChangeList } from "@/components/organization/OrganizationChangeList";
+import {
+  OrganizationDiscardDialog,
+  OrganizationOpenChangeConflict,
+  OrganizationOpenChangeList,
+} from "@/components/organization/OrganizationOpenChanges";
 import { OrganizationUnitLink } from "@/components/organization/OrganizationUnitLink";
 import { OrganizationWorkLocation, type WorkLocationOption } from "@/components/organization/OrganizationWorkLocation";
 import { listAttendanceWorkLocations } from "@/lib/workforceAttendance";
@@ -446,6 +455,7 @@ export function OrganizationDesignerWorkspace({
   onDraftIdChange,
   onReload,
   onRetryEmployees,
+  showOpenChanges = false,
 }: {
   session: AuthSession | null;
   view: OrganizationDesignerView | null;
@@ -466,6 +476,8 @@ export function OrganizationDesignerWorkspace({
   onDraftIdChange: (value: string | null) => void;
   onReload: () => Promise<void>;
   onRetryEmployees: () => void;
+  /** ORG-008 follow-up: the Perubahan tab lists every open change set (O-7) with Buka / Buang. */
+  showOpenChanges?: boolean;
 }) {
   const [selection, setSelection] = useState<OrganizationSelection>(null);
   const [action, setAction] = useState<EditorAction | null>(null);
@@ -492,6 +504,16 @@ export function OrganizationDesignerWorkspace({
   const [unitStaff, setUnitStaff] = useState<OrganizationUnitHcStaff | null>(null);
   const [unitStaffLoading, setUnitStaffLoading] = useState(false);
   const [unitStaffError, setUnitStaffError] = useState<string | null>(null);
+  // ORG-008 follow-up (O-7): what blocks a new change set, and discarding it with a reason.
+  const [openConflict, setOpenConflict] = useState<OrganizationOpenChange | null>(null);
+  const [conflictResolved, setConflictResolved] = useState<string | null>(null);
+  const [discardTarget, setDiscardTarget] = useState<{ change: OrganizationOpenChange; fromConflict: boolean } | null>(null);
+  const [discardError, setDiscardError] = useState<string | null>(null);
+  const [openChanges, setOpenChanges] = useState<OrganizationOpenChange[]>([]);
+  const [openChangesTotal, setOpenChangesTotal] = useState(0);
+  const [openChangesPage, setOpenChangesPage] = useState(1);
+  const [openChangesLoading, setOpenChangesLoading] = useState(true);
+  const [openChangesError, setOpenChangesError] = useState<string | null>(null);
 
   const data = view;
   const today = jakartaToday();
@@ -570,6 +592,87 @@ export function OrganizationDesignerWorkspace({
 
   const draftId = data?.draft?.id ?? null;
   const revision = data?.draft?.revision;
+
+  const openChangesRequest = useRef(0);
+  const loadOpenChanges = (page: number) => {
+    const ticket = ++openChangesRequest.current;
+    setOpenChangesLoading(true);
+    setOpenChangesError(null);
+    void listOpenOrganizationChanges(page)
+      .then((result) => {
+        if (ticket !== openChangesRequest.current) return;
+        setOpenChanges(result.items);
+        setOpenChangesTotal(result.pagination.total);
+      })
+      .catch((cause: unknown) => {
+        if (ticket !== openChangesRequest.current) return;
+        setOpenChangesError(errorMessage(cause, "Daftar perubahan terbuka tidak dapat dimuat."));
+      })
+      .finally(() => { if (ticket === openChangesRequest.current) setOpenChangesLoading(false); });
+  };
+
+  useEffect(() => {
+    if (showOpenChanges && canCompose) loadOpenChanges(openChangesPage);
+  // The open change's own row follows its status and last update, so reload when it changes too.
+  }, [showOpenChanges, canCompose, openChangesPage, draftId, data?.draft?.status, revision]);
+
+  const openExistingChange = (change: OrganizationOpenChange) => {
+    setAction(null);
+    setOpenConflict(null);
+    setConflictResolved(null);
+    setSelection(null);
+    setValidation(null);
+    setImpact(null);
+    setError(null);
+    onDraftIdChange(change.id);
+    onEffectiveDateChange(change.effectiveOn);
+    setNotice(`Perubahan "${change.name}" dibuka.`);
+  };
+
+  const askDiscard = (change: OrganizationOpenChange, fromConflict = false) => {
+    setDiscardError(null);
+    setDiscardTarget({ change, fromConflict });
+  };
+
+  const closeDraftDialog = () => {
+    setAction(null);
+    setOpenConflict(null);
+    setConflictResolved(null);
+  };
+
+  const runDiscard = async (reason: string) => {
+    if (!discardTarget) return;
+    const { change, fromConflict } = discardTarget;
+    setSaving(true);
+    setDiscardError(null);
+    try {
+      await discardOrganizationDraft(change.id, reason);
+      setDiscardTarget(null);
+      if (change.id === draftId) {
+        setSelection(null);
+        setValidation(null);
+        setImpact(null);
+        onDraftIdChange(null);
+      }
+      if (fromConflict) {
+        setOpenConflict(null);
+        setConflictResolved(`"${change.name}" sudah dibuang. Tekan "Mulai perubahan" untuk mencoba lagi.`);
+      }
+      setError(null);
+      setNotice(`Perubahan "${change.name}" dibuang. Riwayat dan alasannya tetap tersimpan.`);
+      if (showOpenChanges) {
+        if (openChangesPage === 1) loadOpenChanges(1); else setOpenChangesPage(1);
+      }
+    } catch (cause) {
+      setDiscardError(errorMessage(cause, "Perubahan tidak dapat dibuang."));
+      // Someone else already discarded or published it: the row is stale, so refresh the list.
+      const gone = cause instanceof AdminApiError
+        && (cause.code === "ORGANIZATION_DRAFT_NOT_DISCARDABLE" || cause.code === "ORGANIZATION_DRAFT_NOT_FOUND");
+      if (gone && showOpenChanges) loadOpenChanges(openChangesPage);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Newest step first, one page at a time (ENG-LIST-001); a new step always lands on page 1.
   const journalRequest = useRef(0);
@@ -800,6 +903,8 @@ export function OrganizationDesignerWorkspace({
     const form = new FormData(event.currentTarget);
     setSaving(true);
     setError(null);
+    setOpenConflict(null);
+    setConflictResolved(null);
     void createOrganizationDraft({ name: String(form.get("name")), effectiveOn: String(form.get("effectiveOn")) })
       .then((draft) => {
         onDraftIdChange(draft.id);
@@ -807,7 +912,11 @@ export function OrganizationDesignerWorkspace({
         setAction(null);
         setNotice("Perubahan struktur siap disusun.");
       })
-      .catch((cause: unknown) => setError(errorMessage(cause, "Perubahan struktur tidak dapat dibuat.")))
+      .catch((cause: unknown) => {
+        // O-7: name the open change set and offer to open or discard it, instead of a generic failure.
+        if (cause instanceof OrganizationDraftAlreadyOpenError) { setOpenConflict(cause.openChange); return; }
+        setError(errorMessage(cause, "Perubahan struktur tidak dapat dibuat."));
+      })
       .finally(() => setSaving(false));
   };
 
@@ -1016,6 +1125,22 @@ export function OrganizationDesignerWorkspace({
         </div>
       ) : null}
 
+      {showOpenChanges ? (
+        <OrganizationOpenChangeList
+          items={openChanges}
+          total={openChangesTotal}
+          page={openChangesPage}
+          loading={openChangesLoading}
+          error={openChangesError}
+          busy={saving}
+          currentDraftId={draftId}
+          onOpen={openExistingChange}
+          onDiscard={(change) => askDiscard(change)}
+          onPageChange={setOpenChangesPage}
+          onRetry={() => loadOpenChanges(openChangesPage)}
+        />
+      ) : null}
+
       <section className={cn("overflow-hidden rounded-3xl border bg-surface-raised shadow-[var(--shadow-soft)]", canEdit ? "border-warning-line ring-4 ring-warning-soft/60" : "border-border/70")}>
         <div className={cn("flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-end lg:justify-between", canEdit ? "border-warning-line bg-warning-soft/60" : "border-border/70")}>
           <div className="flex flex-wrap items-center gap-3">
@@ -1045,6 +1170,7 @@ export function OrganizationDesignerWorkspace({
             ) : (
               <>
                 <button type="button" onClick={() => { onDraftIdChange(null); setSelection(null); }} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted"><X className="h-4 w-4" /> Tutup perubahan</button>
+                {data?.draft ? <button type="button" disabled={saving} onClick={() => askDiscard(data.draft!)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-danger-line bg-surface-raised px-3 text-xs font-bold text-danger-ink hover:bg-danger-soft disabled:opacity-60"><Trash2 className="h-4 w-4" /> Buang perubahan</button> : null}
                 {canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-warning-line bg-surface-raised px-3 text-xs font-bold text-warning-ink hover:bg-warning-soft disabled:opacity-60"><ShieldCheck className="h-4 w-4" /> Periksa</button> : null}
                 <button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-4 w-4" /> Lihat dampak</button>
                 {canPublish && data?.publishBlockedForSelf ? (
@@ -1196,7 +1322,17 @@ export function OrganizationDesignerWorkspace({
         </div>
       </Modal> : null}
 
-      {action?.type === "draft" ? <Modal title="Mulai perubahan struktur" description="Perubahan disusun terpisah. Struktur yang sudah terbit dan riwayatnya tidak pernah ditimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama perubahan"><input name="name" required defaultValue={`Perubahan struktur ${effectiveDate}`} className={inputClass} /></Field><Field label="Berlaku mulai" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Mulai perubahan" /></form></Modal> : null}
+      {action?.type === "draft" ? <Modal title="Mulai perubahan struktur" description="Perubahan disusun terpisah. Struktur yang sudah terbit dan riwayatnya tidak pernah ditimpa." onClose={closeDraftDialog}><form onSubmit={handleDraft} className="space-y-4">{openConflict ? <OrganizationOpenChangeConflict change={openConflict} busy={saving} onOpen={() => openExistingChange(openConflict)} onDiscard={() => askDiscard(openConflict, true)} /> : null}{conflictResolved ? <div role="status" className="flex items-start gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>{conflictResolved}</span></div> : null}<Field label="Nama perubahan"><input name="name" required defaultValue={`Perubahan struktur ${effectiveDate}`} className={inputClass} /></Field><Field label="Berlaku mulai" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={closeDraftDialog} label="Mulai perubahan" /></form></Modal> : null}
+
+      {discardTarget ? (
+        <OrganizationDiscardDialog
+          change={discardTarget.change}
+          saving={saving}
+          error={discardError}
+          onCancel={() => { setDiscardTarget(null); setDiscardError(null); }}
+          onConfirm={(reason) => void runDiscard(reason)}
+        />
+      ) : null}
 
       {action?.type === "seedFromLegacy" ? <Modal
         title="Mulai dari data yang sudah ada"
@@ -1897,6 +2033,7 @@ export function AdminOrganizationPage() {
           onDraftIdChange={setDraftId}
           onReload={reload}
           onRetryEmployees={loadEmployees}
+          showOpenChanges={tab === "perubahan"}
         />
       ) : null}
 

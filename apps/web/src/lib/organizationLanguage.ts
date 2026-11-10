@@ -193,6 +193,11 @@ const API_MESSAGES: Record<string, string> = {
     "Atasan belum bisa ditentukan untuk pegawai ini. Periksa pemimpin unit dan jabatan kosongnya.",
   INVALID_EFFECTIVE_DATE: "Tanggal berlaku tidak dapat dibaca. Pilih tanggal lagi.",
   INVALID_ORGANIZATION_DRAFT: "Nama perubahan dan tanggal berlaku wajib diisi.",
+  ORGANIZATION_DRAFT_ALREADY_OPEN:
+    "Masih ada perubahan struktur lain yang terbuka. Lanjutkan atau buang perubahan itu dulu.",
+  ORGANIZATION_DRAFT_NOT_DISCARDABLE:
+    "Perubahan ini sudah diterbitkan atau sudah dibuang, jadi tidak bisa dibuang lagi.",
+  INVALID_DRAFT_DISCARD: "Alasan membuang perubahan wajib diisi (paling banyak 500 karakter).",
   FORBIDDEN: "Anda tidak punya izin untuk tindakan ini.",
   UNAUTHENTICATED: "Sesi Anda sudah berakhir. Masuk kembali untuk melanjutkan.",
 };

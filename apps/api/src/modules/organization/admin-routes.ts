@@ -990,12 +990,15 @@ export async function registerOrganizationAdminRoutes(
 
   app.get("/admin/organization/designer/drafts", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
+    // ORG-008 follow-up: OPEN is every change set O-7 counts as open (DRAFT and VALIDATED), so the
+    // screen can list exactly what blocks "Mulai perubahan" and offer to discard it.
     const query = pageQuerySchema.extend({
-      status: z.enum(["DRAFT", "VALIDATED", "PUBLISHED", "DISCARDED"]).optional(),
+      status: z.enum(["DRAFT", "VALIDATED", "PUBLISHED", "DISCARDED", "OPEN"]).optional(),
     }).safeParse(request.query);
     if (!query.success) return invalid(reply, "INVALID_DRAFT_FILTER", "Invalid change status filter or page.");
+    const status = query.data.status;
     const page = await repository.pageChangeSets(
-      query.data.status ? [query.data.status] : undefined,
+      status === "OPEN" ? ["DRAFT", "VALIDATED"] : status ? [status] : undefined,
       { limit: query.data.pageSize, offset: pageOffset(query.data) },
     );
     return reply.send({ items: page.items, pagination: pagination(query.data, page.total) });

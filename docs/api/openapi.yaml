@@ -1919,11 +1919,15 @@ paths:
     get:
       tags: [Organization]
       operationId: listOrganizationDrafts
-      summary: Page through organization change sets, newest effective date first (ORG-008-3b, ENG-LIST-001)
+      summary: Page through organization change sets, newest created first (ORG-008-3b, ENG-LIST-001)
+      description: >
+        Requires organization.manage. status=OPEN lists every change set that blocks a new one under
+        decision O-7 (DRAFT and VALIDATED), so the screen can offer to open or discard it. Each item
+        names its creator and its last update.
       parameters:
         - name: status
           in: query
-          schema: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED, DISCARDED] }
+          schema: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED, DISCARDED, OPEN] }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/PageSize' }
       responses:
@@ -1937,7 +1941,17 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: '#/components/schemas/OrganizationDraft' }
+                    items:
+                      allOf:
+                        - { $ref: '#/components/schemas/OrganizationDraft' }
+                        - type: object
+                          required: [createdByName, updatedAt]
+                          properties:
+                            createdByName:
+                              type: string
+                              nullable: true
+                              description: Creator's employee name, or the account email when it has none
+                            updatedAt: { type: string, format: date-time, nullable: true }
                   pagination: { $ref: '#/components/schemas/Pagination' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }

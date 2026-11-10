@@ -159,6 +159,32 @@ describe("ORG-008-3b change sets can be found again", () => {
     expect(response.json().items).toEqual([expect.objectContaining({ status: "DISCARDED" })]);
   });
 
+  it("lists only what blocks a new change set when asked for OPEN, naming who created it", async () => {
+    const { response, query } = await call(
+      {
+        changeSets: [
+          changeSetRow({ id: "draft", status: "DRAFT", createdByName: "Admin Sintetis", updatedAt: new Date("2026-08-27T03:00:00.000Z") }),
+          changeSetRow({ id: "validated" }),
+          changeSetRow({ id: "published", status: "PUBLISHED", publishedAt: new Date("2026-08-27T00:00:00.000Z") }),
+          changeSetRow({ id: "discarded", status: "DISCARDED" }),
+        ],
+      },
+      "GET",
+      "/admin/organization/designer/drafts?status=OPEN&page=1&pageSize=25",
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(["draft", "validated"]);
+    expect(response.json().items[0]).toMatchObject({
+      createdByName: "Admin Sintetis",
+      updatedAt: "2026-08-27T03:00:00.000Z",
+    });
+    expect(response.json().items[1]).toMatchObject({ createdByName: null, updatedAt: null });
+    const listing = query.mock.calls.find(([sql]) => String(sql).includes("LIMIT $2 OFFSET $3"));
+    expect(listing?.[1]).toEqual([["DRAFT", "VALIDATED"], 25, 0]);
+    expect(String(listing?.[0])).toContain("ORDER BY change_set.created_at DESC");
+  });
+
   it("rejects a status filter it does not know", async () => {
     const { response } = await call({}, "GET", "/admin/organization/designer/drafts?status=WHATEVER");
     expect(response.statusCode).toBe(400);

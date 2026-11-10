@@ -226,7 +226,7 @@ export function OrganizationDiscardDialog({
             <span className="mt-1 block text-[11px] text-muted-foreground">Wajib diisi. Tersimpan di catatan audit.</span>
           </label>
           <div className="flex justify-end gap-2 border-t border-border/70 pt-4">
-            <button type="button" onClick={onCancel} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted">Batal</button>
+            <button type="button" disabled={saving} onClick={onCancel} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-60">Batal</button>
             <button type="submit" disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-danger-ink px-4 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60">
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
               {saving ? "Membuang..." : "Buang perubahan"}

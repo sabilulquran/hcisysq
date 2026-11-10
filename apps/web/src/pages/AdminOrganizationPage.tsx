@@ -613,7 +613,8 @@ export function OrganizationDesignerWorkspace({
 
   useEffect(() => {
     if (showOpenChanges && canCompose) loadOpenChanges(openChangesPage);
-  }, [showOpenChanges, canCompose, openChangesPage, draftId]);
+  // The open change's own row follows its status and last update, so reload when it changes too.
+  }, [showOpenChanges, canCompose, openChangesPage, draftId, data?.draft?.status, revision]);
 
   const openExistingChange = (change: OrganizationOpenChange) => {
     setAction(null);
@@ -664,6 +665,10 @@ export function OrganizationDesignerWorkspace({
       }
     } catch (cause) {
       setDiscardError(errorMessage(cause, "Perubahan tidak dapat dibuang."));
+      // Someone else already discarded or published it: the row is stale, so refresh the list.
+      const gone = cause instanceof AdminApiError
+        && (cause.code === "ORGANIZATION_DRAFT_NOT_DISCARDABLE" || cause.code === "ORGANIZATION_DRAFT_NOT_FOUND");
+      if (gone && showOpenChanges) loadOpenChanges(openChangesPage);
     } finally {
       setSaving(false);
     }

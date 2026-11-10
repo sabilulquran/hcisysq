@@ -215,6 +215,36 @@ export interface OrganizationRolloutConfiguration {
   updatedAt?: string;
 }
 
+/** ORG-008 follow-up: a change set that is still open (DRAFT/VALIDATED), as the list names it. */
+export interface OrganizationOpenChange {
+  id: string;
+  name: string;
+  effectiveOn: string;
+  status: OrganizationDraftStatus;
+  createdByName?: string | null;
+  createdAt?: string;
+  updatedAt?: string | null;
+}
+
+export interface OrganizationOpenChangePage {
+  /** Newest created first (ENG-LIST-001). */
+  items: OrganizationOpenChange[];
+  pagination: { page: number; pageSize: number; total: number; pageCount: number };
+}
+
+export const ORGANIZATION_OPEN_CHANGES_PAGE_SIZE = 25;
+
+/**
+ * O-7: "Mulai perubahan" was refused because another change set is still open. The reply names it,
+ * so the screen can offer to open it or discard it instead of a generic failure.
+ */
+export class OrganizationDraftAlreadyOpenError extends AdminApiError {
+  constructor(message: string, public readonly openChange: OrganizationOpenChange) {
+    super(409, "ORGANIZATION_DRAFT_ALREADY_OPEN", message);
+    this.name = "OrganizationDraftAlreadyOpenError";
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (response.ok) {
     if (response.status === 204) return undefined as T;
@@ -222,8 +252,23 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { code?: string; message?: string }
+    | { code?: string; message?: string; details?: Record<string, unknown> }
     | null;
+  const details = body?.details;
+  if (
+    body?.code === "ORGANIZATION_DRAFT_ALREADY_OPEN"
+    && details
+    && typeof details.changeSetId === "string"
+    && typeof details.name === "string"
+    && typeof details.effectiveOn === "string"
+  ) {
+    throw new OrganizationDraftAlreadyOpenError(body.message ?? "Another organization change is still open.", {
+      id: details.changeSetId,
+      name: details.name,
+      effectiveOn: details.effectiveOn,
+      status: (typeof details.status === "string" ? details.status : "DRAFT") as OrganizationDraftStatus,
+    });
+  }
   throw new AdminApiError(
     response.status,
     body?.code ?? "REQUEST_FAILED",
@@ -267,6 +312,21 @@ export function createOrganizationDraft(input: {
   return request<OrganizationDraft>("/drafts", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+/** ORG-008 follow-up: every change set that blocks a new one (O-7), newest first. */
+export function listOpenOrganizationChanges(page = 1): Promise<OrganizationOpenChangePage> {
+  return request<OrganizationOpenChangePage>(
+    `/drafts?status=OPEN&page=${page}&pageSize=${ORGANIZATION_OPEN_CHANGES_PAGE_SIZE}`,
+  );
+}
+
+/** Discarding keeps the rows and the audit trail; the reason is recorded in the audit event. */
+export function discardOrganizationDraft(draftId: string, reason: string): Promise<OrganizationDraft> {
+  return request<OrganizationDraft>(`/drafts/${draftId}/discard`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }
 

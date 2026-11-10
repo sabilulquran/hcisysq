@@ -221,7 +221,12 @@ Dengan data atasan lama (yang berlaku hari ini): Yusuf → Hasan   ✓ sama
 
 **Daftar perubahan**: `Nama | Berlaku mulai | Status | Jumlah perubahan | Disusun oleh | Terakhir diubah`. Status: Sedang disusun / Siap diterbitkan / Terjadwal / Berlaku / Dibuang. Riwayat terbit tidak bisa dihapus.
 
-**Mulai perubahan**: nama + berlaku mulai (≥ hari ini). Isi awal = struktur yang berlaku pada tanggal itu (perilaku sekarang). Bila sudah ada perubahan yang sedang disusun, tampil "Lanjutkan perubahan yang ada" (O-7).
+**Mulai perubahan**: nama + berlaku mulai (≥ hari ini). Isi awal = struktur yang berlaku pada tanggal itu (perilaku sekarang). Bila sudah ada perubahan yang terbuka (API `409 ORGANIZATION_DRAFT_ALREADY_OPEN`), dialog **tidak** menampilkan pesan umum, tetapi menyebut perubahan itu — nama, berlaku mulai, status — dengan dua tombol (O-7, ORG-008 lanjutan 2026-11-10):
+
+- **Buka perubahan itu** — menutup dialog dan memuat perubahan itu di designer.
+- **Buang perubahan itu** — dialog konfirmasi dengan **alasan wajib**; setelah berhasil dialog Mulai perubahan tetap terbuka dengan keterangan "… sudah dibuang. Tekan Mulai perubahan untuk mencoba lagi." Bila masih ada perubahan terbuka lain, percobaan berikutnya menyebut perubahan berikutnya.
+
+**Perubahan terbuka** (tab Perubahan, ORG-008 lanjutan): daftar setiap change set `DRAFT`/`VALIDATED` — `Nama | Berlaku mulai | Status | Disusun oleh | Terakhir diubah` — terbaru dibuat di atas, paging server 25 per halaman (ENG-LIST-001), dari `GET /drafts?status=OPEN`. Aksi per baris: **Buka** (tidak tampil untuk perubahan yang sedang dibuka; diganti tanda "Sedang dibuka") dan **Buang** (konfirmasi + alasan wajib). Keadaan kosong: "Tidak ada perubahan yang terbuka. Perubahan baru bisa dimulai." Gagal memuat: pesan + **Coba lagi**, bukan daftar kosong. Hanya pemegang `organization.manage` yang melihatnya (sama dengan izin daftar dan buang di API).
 
 **Ruang kerja perubahan** — bagan + panel samping editable + daftar "Yang berubah" di sisi kanan (bahasa manusia, bisa dibatalkan per baris selama belum terbit):
 
@@ -273,7 +278,7 @@ Aturan lain yang terkena: Direktur (lembur tidak berlaku) — jabatan tetap akti
 - Masalah ditulis sebagai kalimat dengan nama item dan tombol **Buka** (§7); **Terbitkan** nonaktif selama ada masalah.
 - **Kembali ubah** pada status Siap diterbitkan mengembalikan ke Sedang disusun (perlu periksa ulang).
 - Bila struktur dasar sudah berubah sejak perubahan ini dibuat (ada terbitan lain): "Struktur sudah diubah oleh 'Koreksi Oktober' (terbit 20 Okt). [Perbarui perubahan ini dari struktur terbaru]" — **Terbitkan** ditolak sampai diperbarui (§5.2).
-- **Buang perubahan** (konfirmasi, alasan opsional): status Dibuang, tetap tercatat di riwayat dan audit.
+- **Buang perubahan** (tombol di kepala ruang kerja untuk perubahan yang sedang dibuka, dan di daftar Perubahan terbuka; konfirmasi, **alasan wajib di layar**, maks. 500 karakter): status Dibuang, tetap tercatat di riwayat dan audit; alasan masuk ke payload audit `organization.draft.discarded`. API tetap menerima tanpa alasan (klien lama), tetapi layar selalu mengirimnya. Struktur terbit tidak berubah; change set yang sudah terbit ditolak `409 ORGANIZATION_DRAFT_NOT_DISCARDABLE`.
 - Setelah terbit: "Struktur terbit, berlaku 1 Jan 2027. Persetujuan masih memakai data atasan lama." Tidak ada `window.confirm`; konfirmasi memakai dialog dengan ringkasan dampak.
 - **Siapa menekan Terbitkan (ORG-008-8, layar):** HC Admin melihat semua tombol penyusunan, termasuk pejabat, Plt, kewenangan, atasan khusus, dan "Mulai dari data yang sudah ada". Sebagai ganti tombol Terbitkan, ia melihat "Diterbitkan oleh Kepala HC", dan setelah perubahan lulus pemeriksaan: "Siap diterbitkan — menunggu Kepala HC". Tombol Terbitkan hanya tampil bagi pemegang `approvals.policy.manage` (role Kepala HC). Ini perubahan sisi layar untuk keputusan O-1; aturan sisi API ada di baris ORG-008-8 §9.
 
@@ -306,7 +311,7 @@ Read model menghitung per pegawai secara batch (satu snapshot dimuat sekali). Ba
 
 ### 5.2 Siklus perubahan (draft)
 
-- `GET /admin/organization/designer/drafts?status` — daftar perubahan.
+- `GET /admin/organization/designer/drafts?status` — daftar perubahan (`organization.manage`, paging `page`/`pageSize`, terbaru dibuat di atas). `status=OPEN` = `DRAFT` + `VALIDATED`, yaitu tepat yang menghalangi perubahan baru (O-7). Setiap item menambahkan `createdByName` (nama pegawai pembuat, atau email akun bila akun itu tidak terhubung ke pegawai) dan `updatedAt` (ORG-008 lanjutan 2026-11-10).
 - `POST /drafts/:id/reopen` — `VALIDATED → DRAFT`, menghapus laporan validasi; audit `organization.draft.reopened`.
 - `POST /drafts/:id/discard` — status baru `DISCARDED` (migration: perluas CHECK status); catatan tetap ada; audit `organization.draft.discarded`.
 - **Penjaga dasar usang (FINAL, dirilis di ORG-008-3a tanpa migration):** `publish` menolak `409 ORGANIZATION_DRAFT_BASE_STALE` bila ada change set lain `X` dengan `X.status = 'PUBLISHED'`, `X.id` bukan dasar draft ini, `X.published_at` lebih baru dari `created_at` draft, dan `X.effective_on` ≤ `effective_on` draft. Perbandingan memakai `≤` dan bukan `<` karena pada tanggal berlaku yang sama kunci urutan kedua `published_at DESC` tetap memenangkan terbitan yang belakangan, sehingga isi `X` tetap tertimpa. Dasar draft sendiri tidak pernah dihitung sebagai konflik, berapa pun `published_at`-nya. **Sejak ORG-008-4c**, batas waktunya adalah `published_at` dari dasar yang dibawa draft (bukan `created_at` draft), karena setelah draft dibangun ulang dari struktur terbaru isinya sama barunya dengan dasar itu; bila draft tidak punya dasar sama sekali, `created_at` tetap dipakai. Respons menyertakan `details` berisi nama, tanggal berlaku, dan waktu terbit `X` (tanpa data pegawai). Penolakan tidak mengubah snapshot terbit mana pun.
@@ -417,7 +422,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 **Sisa pekerjaan ORG-008 (2026-10-27):**
 - **Peringatan restrukturisasi (O-8):** saat jabatan yang dipakai aturan lembur ATT-011 dinonaktifkan atau dipindah di perubahan, layar memperingatkan. Ini menunggu aturan lembur ATT-011 menyimpan kunci jabatan; API pencarian jabatan (`GET /positions/search`) sudah tersedia.
 - **Alur jabatan utama (`SET_PRIMARY_STRUCTURAL_POSITION`, §5.3): selesai di ORG-008-11.** Data production diperiksa secara read-only dan agregat saja (2026-10-27): ada 1 pegawai yang memegang dua jabatan, dan jabatan utamanya sudah ditandai dengan benar. Perintah ini hanya memindahkan tanda jabatan utama di dalam change set, sehingga penggantinya ikut tanggal berlaku dan pemeriksa kedua. Tombol "Jadikan jabatan utama" tampil pada jabatan lain milik pejabat itu. Mengganti pejabat di jabatan utama tetap ditolak sampai tanda dipindah, karena itu satu-satunya jangkar atasan bagi orang tersebut.
-- **Catatan operasional:** production memuat 10 change set yang masih terbuka (DRAFT/VALIDATED). Aturan O-7 menolak membuat change set baru selama masih ada yang terbuka. HC perlu meninjau daftar Perubahan lalu menerbitkan atau membuang yang lama. Tidak ada yang dibuang otomatis.
+- **Catatan operasional:** production memuat 10 change set yang masih terbuka (DRAFT/VALIDATED) dari 21–27 Agu 2026, semuanya sudah digantikan struktur yang terbit 2026-08-27. Aturan O-7 menolak membuat change set baru selama masih ada yang terbuka. Sejak ORG-008 lanjutan (2026-11-10) HC membuangnya sendiri lewat tab Perubahan → Perubahan terbuka → Buang (alasan wajib). Tidak ada yang dibuang otomatis atau oleh agent.
 
 Area dengan review tambahan (AGENTS.md §8): ORG-008-3 (migration + publish), ORG-008-4 (authority/permission), ORG-008-6 (migration + notifikasi), ORG-008-8 (permission).
 

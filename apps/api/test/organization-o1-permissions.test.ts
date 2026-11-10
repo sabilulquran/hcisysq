@@ -100,6 +100,9 @@ const COMPOSE: Array<[string, string, string, unknown]> = [
     { type: "APPOINT_ACTING", positionKey: KEY, employeeId: EMPLOYEE, effectiveFrom: "2027-01-01", effectiveTo: "2027-06-30", reason: "Sintetis" }],
   ["usulan dari data lama", "POST", "/admin/organization/designer/drafts/from-legacy",
     { name: "Usulan sintetis", effectiveOn: "2027-01-01" }],
+  // ORG-008 follow-up: the open-change list and discarding a stale change set (O-1: HC admin discards).
+  ["lihat perubahan terbuka", "GET", "/admin/organization/designer/drafts?status=OPEN", undefined],
+  ["buang perubahan", "POST", `${drafts}/discard`, { reason: "Perubahan lama sintetis" }],
 ];
 
 /** What takes effect: only the second pair of eyes. */

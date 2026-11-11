@@ -406,6 +406,29 @@ function normalizedField(value: unknown, kind: ProfileFieldKind): string | numbe
   return number;
 }
 
+/**
+ * The PPh21 exclusion a loaded profile writes: what the file says, or, when the
+ * file is silent, what the profile in force on that date already says.
+ */
+export function pph21ExclusionFor(
+  data: { effectiveFrom: string; pph21ReportExcluded?: boolean | undefined; pph21ReportExclusionReason?: string | null | undefined },
+  existing: ReadonlyArray<Pick<CompensationProfileRow, "employmentId" | "effectiveFrom" | "pph21ReportExcluded" | "pph21ReportExclusionReason">>,
+  employmentId: string,
+): { pph21ReportExcluded: boolean; pph21ReportExclusionReason: string | null } {
+  if (data.pph21ReportExcluded !== undefined) {
+    return {
+      pph21ReportExcluded: data.pph21ReportExcluded,
+      pph21ReportExclusionReason: data.pph21ReportExcluded ? (data.pph21ReportExclusionReason ?? null) : null,
+    };
+  }
+  const inForce = existing
+    .filter((item) => item.employmentId === employmentId && item.effectiveFrom <= data.effectiveFrom)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  return inForce?.pph21ReportExcluded
+    ? { pph21ReportExcluded: true, pph21ReportExclusionReason: inForce.pph21ReportExclusionReason }
+    : { pph21ReportExcluded: false, pph21ReportExclusionReason: null };
+}
+
 export function profileMatches(existing: CompensationProfileRow, desired: NewCompensationProfile): boolean {
   return PROFILE_FIELDS.every(
     ({ key, kind }) => normalizedField(existing[key], kind) === normalizedField(desired[key], kind),
@@ -709,8 +732,10 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
       bpjsExtraFamilyOverrideReason: data.bpjsExtraFamilyOverrideReason ?? null,
       bpjsDecisionReference: data.bpjsDecisionReference ?? null,
       ptkpStatus: data.ptkpStatus ?? null,
-      pph21ReportExcluded: data.pph21ReportExcluded ?? false,
-      pph21ReportExclusionReason: data.pph21ReportExcluded ? (data.pph21ReportExclusionReason ?? null) : null,
+      // A file that says nothing about the PPh21 exclusion carries the one in
+      // force on that date rather than resetting it to "reported": legacy has no
+      // such column, and a load must not quietly undo an exclusion HC set.
+      ...pph21ExclusionFor(data, existingProfiles.rows, employment.employmentId),
       pjMediaRatePerContent: data.pjMediaRatePerContent ?? null,
       bankName: data.bankName ?? null,
       bankAccountNumber: data.bankAccountNumber ?? null,

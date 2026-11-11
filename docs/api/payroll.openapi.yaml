@@ -425,19 +425,25 @@ paths:
       operationId: getPayrollPph21Report
       summary: Read the PPh21 TER report for the period's masa pajak
       description: >-
-        PAY-003 sections 5.3 and 7. One row per employee of the latest calculation
-        run: gross actually paid (every EARNING line except BPJS_KES_ALLOW, through
-        the pay factor and rounded up like the payable), the TER category mapped
+        PAY-003 sections 5.3 and 7.2. One row per person (two employments of one
+        person in the period are added up before the bracket lookup) from the
+        latest calculation run: gross actually paid (every EARNING line except
+        BPJS_KES_ALLOW, through the pay factor and rounded up like the payable),
+        the TER category mapped
         from the PTKP status, the rate of the first bracket whose upper bound
         reaches the gross, and PPh21 = floor(gross x rate). Results with a blocker
         are not reported. Flags: PTKP_MISSING (no or unmapped status, tax null),
-        EXCLUDED (profile exclusion with its reason, out of the totals),
-        ANNUAL_CALCULATION_REQUIRED (December, or an employment ending inside the
-        period; the TER figure is shown but is not final, the annual Pasal 17
-        calculation is outside v1). Requires payroll.reports.read.organization or
-        one of the permissions that run a period; unlike the payroll report it is
-        available to everyone only once the period is approved (DRAFT), because it
-        is built from final results. No NIK or NPWP. Every read and every export is
+        PTKP_CONFLICT (two employments with different statuses, tax null),
+        EXCLUDED (profile exclusion with its reason, out of the totals, listed
+        last), ANNUAL_CALCULATION_REQUIRED (December, or service ending inside the
+        period with no employment continuing past it; the TER figure is shown but
+        is not final), NON_PERMANENT_TERMS (KONTRAK_HONORER or LEPAS on the pay
+        date; still monthly TER under 21-100-01 pending the process owner's
+        decision). The masa pajak is the period month. Requires
+        payroll.reports.read.organization, payroll.calculate or
+        payroll.inputs.manage; payroll.periods.manage alone is refused. Available
+        only once the period is approved (DRAFT), because it is built from final
+        results. No NIK or NPWP. Every read and every export is
         recorded as sensitive access (scope pph21_report / pph21_report_csv). With
         format=csv it returns a UTF-8 CSV with a byte order mark and CRLF line
         endings named pph21-ter-YYYY-MM.csv, still no-store.
@@ -464,7 +470,8 @@ paths:
                 type: string
                 description: >-
                   Columns NIP, Nama, Status PTKP, Kategori TER, Penghasilan bruto,
-                  Tarif, PPh21, Kode objek, Catatan.
+                  Tarif, PPh21, Kode objek, Dilaporkan (Y/N), Catatan. Excluded
+                  people last.
         '400': { $ref: '#/components/responses/PayrollBadRequest' }
         '401': { $ref: '#/components/responses/PayrollUnauthenticated' }
         '403': { $ref: '#/components/responses/PayrollForbidden' }
@@ -856,7 +863,7 @@ components:
             source: { type: string, description: Legal reference stored in the PPH21_TER payload. }
         totals:
           type: object
-          required: [employeeCount, gross, tax, excludedCount, ptkpMissingCount, annualCalculationCount, skippedBlockedCount]
+          required: [employeeCount, gross, tax, excludedCount, ptkpMissingCount, annualCalculationCount, nonPermanentCount, skippedBlockedCount]
           properties:
             employeeCount: { type: integer, description: 'Rows reported, that is every row not excluded.' }
             gross: { type: string }
@@ -864,26 +871,31 @@ components:
             excludedCount: { type: integer }
             ptkpMissingCount: { type: integer }
             annualCalculationCount: { type: integer }
-            skippedBlockedCount: { type: integer, description: 'Results with a blocker, not paid and not reported.' }
+            nonPermanentCount: { type: integer }
+            skippedBlockedCount: { type: integer, description: 'Employment results with a blocker, not paid and not reported.' }
         rows:
           type: array
           items: { $ref: '#/components/schemas/PayrollPph21Row' }
 
     PayrollPph21Row:
       type: object
-      required: [employmentId, employeeNumber, fullName, ptkpStatus, terCategory, gross, rate, tax, flags, exclusionReason, note]
+      required: [employeeId, employmentIds, employeeNumber, fullName, ptkpStatus, terCategory, gross, rate, tax, flags, exclusionReason, note]
       properties:
-        employmentId: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employmentIds:
+          type: array
+          description: The paid employments whose gross is combined on this row.
+          items: { type: string, format: uuid }
         employeeNumber: { type: string }
         fullName: { type: string }
-        ptkpStatus: { type: [string, 'null'] }
+        ptkpStatus: { type: [string, 'null'], description: 'Joined with " / " when the employments disagree.' }
         terCategory: { type: [string, 'null'], enum: [A, B, C, null] }
         gross: { type: string }
         rate: { type: [number, 'null'], minimum: 0, maximum: 1 }
         tax: { type: [string, 'null'] }
         flags:
           type: array
-          items: { type: string, enum: [PTKP_MISSING, EXCLUDED, ANNUAL_CALCULATION_REQUIRED] }
+          items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS] }
         exclusionReason: { type: [string, 'null'] }
         note: { type: string, description: 'The flags in words, identical to the CSV note column.' }
 

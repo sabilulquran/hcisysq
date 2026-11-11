@@ -29,6 +29,8 @@ describe("PAY-003 PPh21 report vocabulary", () => {
     expect(payrollPph21FlagLabel("PTKP_MISSING")).toBe("PTKP belum terpetakan");
     expect(payrollPph21FlagLabel("EXCLUDED")).toBe("Dikecualikan");
     expect(payrollPph21FlagLabel("ANNUAL_CALCULATION_REQUIRED")).toContain("bukan angka final");
+    expect(payrollPph21FlagLabel("PTKP_CONFLICT")).toContain("berbeda");
+    expect(payrollPph21FlagLabel("NON_PERMANENT_TERMS")).toContain("Honorer/lepas");
   });
 
   it("explains the expected refusals instead of raising an alarm", () => {

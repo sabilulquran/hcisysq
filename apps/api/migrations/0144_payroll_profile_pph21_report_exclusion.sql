@@ -31,9 +31,18 @@ ALTER TABLE payroll_compensation_profiles
 ALTER TABLE payroll_compensation_profiles
   DROP CONSTRAINT IF EXISTS payroll_compensation_profiles_pph21_exclusion_needs_reason;
 
+-- NOT VALID first, then VALIDATE, as 0112 does: a plain ADD CONSTRAINT CHECK scans the
+-- table under ACCESS EXCLUSIVE, while VALIDATE scans under SHARE UPDATE EXCLUSIVE. Every
+-- existing row is false/NULL here, so the scan cannot fail. The constraint is dropped by
+-- name first, unqualified, so each schema the recovery rehearsal applies this file to
+-- handles its own table.
 ALTER TABLE payroll_compensation_profiles
   ADD CONSTRAINT payroll_compensation_profiles_pph21_exclusion_needs_reason
-    CHECK (NOT pph21_report_excluded OR length(trim(coalesce(pph21_report_exclusion_reason, ''))) > 0);
+    CHECK (NOT pph21_report_excluded OR length(trim(coalesce(pph21_report_exclusion_reason, ''))) > 0)
+    NOT VALID;
+
+ALTER TABLE payroll_compensation_profiles
+  VALIDATE CONSTRAINT payroll_compensation_profiles_pph21_exclusion_needs_reason;
 
 COMMENT ON COLUMN payroll_compensation_profiles.pph21_report_excluded IS
   'PAY-003 section 5.3: true keeps this employment out of the PPh21 TER report while the profile applies.';

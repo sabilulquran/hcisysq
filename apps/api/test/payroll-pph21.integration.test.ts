@@ -47,8 +47,18 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
     legalEntityKey = randomUUID();
   });
 
-  async function newEmployee(options: { endedOn?: string | null; ptkpStatus?: string | null } = {}) {
-    const employeeId = randomUUID();
+  async function newEmployee(
+    options: {
+      endedOn?: string | null;
+      startedOn?: string;
+      ptkpStatus?: string | null;
+      employeeId?: string;
+      termCategory?: string;
+    } = {},
+  ) {
+    const existingEmployee = options.employeeId !== undefined;
+    const employeeId = options.employeeId ?? randomUUID();
+    const startedOn = options.startedOn ?? "2016-07-01";
     const employmentId = randomUUID();
     const actionId = randomUUID();
     const employeeNumber = `EMP-PPH-${employeeId.slice(0, 8)}`;
@@ -57,15 +67,17 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Pegawai PPh21', 'active')",
-        [employeeId, employeeNumber],
-      );
+      if (!existingEmployee) {
+        await client.query(
+          "INSERT INTO employees(id, employee_number, full_name, status) VALUES ($1, $2, 'Pegawai PPh21', 'active')",
+          [employeeId, employeeNumber],
+        );
+      }
       await client.query(
         `INSERT INTO employments(
            id, employee_id, legal_entity_key, started_on, start_basis, ended_on, end_basis,
            end_precision, end_reason, source, opened_by_action_id)
-         VALUES ($1, $2, $3, DATE '2016-07-01', 'RECORDED', $4::date, $5, $6, $7, 'ACTION', $8)`,
+         VALUES ($1, $2, $3, $9::date, 'RECORDED', $4::date, $5, $6, $7, 'ACTION', $8)`,
         [
           employmentId,
           employeeId,
@@ -75,13 +87,21 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
           endedOn === null ? null : "DAY",
           endedOn === null ? null : "RESIGN",
           actionId,
+          startedOn,
         ],
       );
       await client.query(
         `INSERT INTO employment_actions(id, employee_id, employment_id, action_type, effective_on)
-         VALUES ($1, $2, $3, 'BASELINE', DATE '2016-07-01')`,
-        [actionId, employeeId, employmentId],
+         VALUES ($1, $2, $3, 'BASELINE', $4::date)`,
+        [actionId, employeeId, employmentId, startedOn],
       );
+      if (options.termCategory) {
+        await client.query(
+          `INSERT INTO employment_terms(id, employment_id, sequence, category, effective_from, opened_by_action_id)
+           VALUES ($1, $2, 1, $3, $4::date, $5)`,
+          [randomUUID(), employmentId, options.termCategory, startedOn, actionId],
+        );
+      }
       await client.query("COMMIT");
     } finally {
       client.release();
@@ -90,10 +110,10 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
     const profileId = randomUUID();
     await pool.query(
       `INSERT INTO payroll_compensation_profiles(id, employment_id, effective_from, education, ptkp_status)
-       VALUES ($1, $2, DATE '2016-07-01', 'S1', $3)`,
-      [profileId, employmentId, options.ptkpStatus === undefined ? "TK/0" : options.ptkpStatus],
+       VALUES ($1, $2, $4::date, 'S1', $3)`,
+      [profileId, employmentId, options.ptkpStatus === undefined ? "TK/0" : options.ptkpStatus, startedOn],
     );
-    return { employmentId, profileId, employeeNumber };
+    return { employeeId, employmentId, profileId, employeeNumber };
   }
 
   async function newPeriod(month: string) {
@@ -238,6 +258,42 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
       const rows = await loadPph21SourceRows(pool, periodId);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ serviceEndDate: "2026-09-15", earnings: [{ code: "BASIC", amount: 1_500_000 }] });
+    });
+
+    it("names the person, the term on the pay date, and whether service continues past the period", async () => {
+      const periodId = await newPeriod("2026-09-01");
+      // One person moving from one employment to the next mid-month: the
+      // database forbids overlapping employments with one employer, so this is
+      // how two employments of one person meet in a period.
+      const first = await newEmployee({ endedOn: "2026-09-15", termCategory: "KONTRAK_HONORER" });
+      const second = await newEmployee({ employeeId: first.employeeId, startedOn: "2026-09-16", termCategory: "TETAP" });
+      const leaver = await newEmployee({ endedOn: "2026-09-20" });
+      for (const employee of [first, second, leaver]) {
+        await writeResult(periodId, employee.employmentId, {
+          profileId: employee.profileId,
+          lines: [{ code: "BASIC", category: "EARNING", amount: 1_000_000 }],
+        });
+      }
+
+      const rows = await loadPph21SourceRows(pool, periodId);
+      const byEmployment = new Map(rows.map((row) => [row.employmentId, row]));
+      expect(byEmployment.get(first.employmentId)).toMatchObject({
+        employeeId: first.employeeId,
+        termCategory: "KONTRAK_HONORER",
+        serviceEndDate: "2026-09-15",
+        hasContinuingEmployment: true,
+      });
+      expect(byEmployment.get(second.employmentId)).toMatchObject({
+        employeeId: first.employeeId,
+        termCategory: "TETAP",
+        hasContinuingEmployment: true,
+      });
+      expect(byEmployment.get(leaver.employmentId)).toMatchObject({
+        serviceEndDate: "2026-09-20",
+        hasContinuingEmployment: false,
+        // No term row: the report says nothing about terms rather than guessing.
+        termCategory: null,
+      });
     });
 
     it("answers a period without results with no rows", async () => {

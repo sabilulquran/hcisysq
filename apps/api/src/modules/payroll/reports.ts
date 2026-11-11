@@ -346,10 +346,15 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
 
 /**
  * The rows the PPh21 TER report is built from (specification section 5.3): the
- * latest result of each employee, its earning lines, and the PTKP status and
+ * latest result of each employment, its earning lines, and the PTKP status and
  * reporting exclusion of the profile the result was calculated from. Reading the
  * profile of the calculation, like the unit above, keeps a past masa pajak
  * reading as it was paid; a correction to either goes through a recalculation.
+ *
+ * Each row also names the person (so two employments are taxed as one gross),
+ * the term category on the pay date, and whether the person keeps an employment
+ * with the same employer past the period (so ending one of two is not a final
+ * masa pajak).
  */
 export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise<Pph21SourceRow[]> {
   const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings"> & {
@@ -357,6 +362,7 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise
     earnings: Array<{ code: string; amount: string | number }>;
   }>(
     `SELECT latest.employment_id AS "employmentId",
+            emp.id AS "employeeId",
             emp.employee_number AS "employeeNumber",
             emp.full_name AS "fullName",
             profile.ptkp_status AS "ptkpStatus",
@@ -365,6 +371,22 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise
             latest.pay_factor::text AS "payFactor",
             jsonb_array_length(latest.blockers)::int AS "blockerCount",
             to_char(e.ended_on, 'YYYY-MM-DD') AS "serviceEndDate",
+            EXISTS (
+              SELECT 1 FROM employments other
+              WHERE other.employee_id = e.employee_id
+                AND other.voided_by_action_id IS NULL
+                AND coalesce(other.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                    = coalesce(e.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                AND (other.ended_on IS NULL OR other.ended_on > period.period_end)
+            ) AS "hasContinuingEmployment",
+            (
+              SELECT t.category FROM employment_terms t
+              WHERE t.employment_id = e.id
+                AND t.voided_by_action_id IS NULL
+                AND (t.effective_from IS NULL OR t.effective_from <= period.pay_date)
+                AND (t.effective_to IS NULL OR t.effective_to >= period.pay_date)
+              ORDER BY t.sequence DESC LIMIT 1
+            ) AS "termCategory",
             coalesce((
               SELECT jsonb_agg(jsonb_build_object('code', l.component_code, 'amount', l.amount::text))
               FROM payroll_result_lines l
@@ -375,7 +397,7 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise
      JOIN employees emp ON emp.id = e.employee_id
      JOIN payroll_periods period ON period.id = latest.period_id
      ${RESULT_PROFILE}
-     ORDER BY emp.employee_number`,
+     ORDER BY emp.employee_number, latest.employment_id`,
     [periodId],
   );
   return rows.map((row) => ({
@@ -429,6 +451,7 @@ const PPH21_HEADER = [
   "Tarif",
   "PPh21",
   "Kode objek",
+  "Dilaporkan",
   "Catatan",
 ];
 
@@ -447,8 +470,17 @@ export function pph21RowNote(row: Pph21Row): string {
   if (row.flags.includes("PTKP_MISSING")) {
     notes.push("Status PTKP kosong atau tidak terpetakan di kebijakan; PPh21 belum dapat dihitung");
   }
+  if (row.flags.includes("PTKP_CONFLICT")) {
+    notes.push("Status PTKP berbeda antar-employment pegawai ini; PPh21 belum dapat dihitung");
+  }
   if (row.flags.includes("ANNUAL_CALCULATION_REQUIRED")) {
     notes.push("Masa pajak terakhir: PPh21 final memakai perhitungan tahunan Pasal 17 (di luar v1); angka TER ini bukan angka final");
+  }
+  if (row.flags.includes("NON_PERMANENT_TERMS")) {
+    notes.push("Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap");
+  }
+  if (row.employmentIds.length > 1) {
+    notes.push(`Bruto gabungan ${row.employmentIds.length} employment`);
   }
   return notes.join("; ");
 }
@@ -472,6 +504,7 @@ export function pph21ReportToCsv(report: Pph21Report): string {
         row.rate === null ? "" : formatTerRate(row.rate),
         row.tax === null ? "" : String(row.tax),
         report.objectCode,
+        row.flags.includes("EXCLUDED") ? "N" : "Y",
         pph21RowNote(row),
       ]
         .map((cell) => quoteCsvCell(cell))

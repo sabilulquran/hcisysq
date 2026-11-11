@@ -15,6 +15,7 @@ import {
   type Pph21SourceRow,
 } from "../src/modules/payroll/pph21.js";
 import { parsePph21TerPolicy, validatePolicyPayload, type Pph21TerPolicy } from "../src/modules/payroll/policy.js";
+import { pph21ExclusionFor } from "../src/modules/payroll/initial-load.js";
 import { formatTerRate, pph21ReportToCsv, pph21RowNote } from "../src/modules/payroll/reports.js";
 
 /** Round synthetic numbers, obviously not a statutory table. */
@@ -44,10 +45,13 @@ function policy(): Pph21TerPolicy {
 
 const SEPTEMBER = { periodMonth: "2026-09-01", periodStart: "2026-09-01", periodEnd: "2026-09-30" };
 
+/** One employment; a different employee number is a different person unless employeeId says otherwise. */
 function source(overrides: Partial<Pph21SourceRow> = {}): Pph21SourceRow {
+  const employeeNumber = overrides.employeeNumber ?? "2016001";
   return {
-    employmentId: "60000000-0000-4000-8000-000000000001",
-    employeeNumber: "2016001",
+    employmentId: `employment-${employeeNumber}`,
+    employeeId: `person-${employeeNumber}`,
+    employeeNumber,
     fullName: "Pegawai Uji",
     ptkpStatus: "TK/0",
     excluded: false,
@@ -55,6 +59,8 @@ function source(overrides: Partial<Pph21SourceRow> = {}): Pph21SourceRow {
     payFactor: 1,
     blockerCount: 0,
     serviceEndDate: null,
+    hasContinuingEmployment: false,
+    termCategory: "TETAP",
     earnings: [{ code: "BASIC", amount: 3_000_000 }],
     ...overrides,
   };
@@ -189,18 +195,24 @@ describe("PAY-003 PPh21 gross actually paid", () => {
 
 describe("PAY-003 PPh21 final masa pajak", () => {
   it("marks December, whose PPh21 is settled by the annual calculation", () => {
-    expect(needsAnnualCalculation({ periodMonth: "2026-12-01", periodStart: "2026-12-01", periodEnd: "2026-12-31" }, null)).toBe(true);
+    const december = { periodMonth: "2026-12-01", periodStart: "2026-12-01", periodEnd: "2026-12-31" };
+    expect(needsAnnualCalculation(december, [null], false)).toBe(true);
+    expect(needsAnnualCalculation(december, [null], true)).toBe(true);
   });
 
-  it("marks an employment that ends inside the period, on either edge", () => {
-    expect(needsAnnualCalculation(SEPTEMBER, "2026-09-01")).toBe(true);
-    expect(needsAnnualCalculation(SEPTEMBER, "2026-09-30")).toBe(true);
+  it("marks service that ends inside the period, on either edge", () => {
+    expect(needsAnnualCalculation(SEPTEMBER, ["2026-09-01"], false)).toBe(true);
+    expect(needsAnnualCalculation(SEPTEMBER, ["2026-09-30"], false)).toBe(true);
+  });
+
+  it("does not mark an employment that ends while another continues past the period", () => {
+    expect(needsAnnualCalculation(SEPTEMBER, ["2026-09-15", null], true)).toBe(false);
   });
 
   it("leaves an employment that ends later, or ended before, unmarked", () => {
-    expect(needsAnnualCalculation(SEPTEMBER, "2026-10-01")).toBe(false);
-    expect(needsAnnualCalculation(SEPTEMBER, "2026-08-31")).toBe(false);
-    expect(needsAnnualCalculation(SEPTEMBER, null)).toBe(false);
+    expect(needsAnnualCalculation(SEPTEMBER, ["2026-10-01"], false)).toBe(false);
+    expect(needsAnnualCalculation(SEPTEMBER, ["2026-08-31"], false)).toBe(false);
+    expect(needsAnnualCalculation(SEPTEMBER, [null], false)).toBe(false);
   });
 });
 
@@ -227,8 +239,115 @@ describe("PAY-003 PPh21 report", () => {
       excludedCount: 0,
       ptkpMissingCount: 0,
       annualCalculationCount: 0,
+      nonPermanentCount: 0,
       skippedBlockedCount: 0,
     });
+  });
+
+  it("taxes one person with two employments in the period on their combined gross", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        // Each alone stays in the zero bracket of category A (up to 1.000.000);
+        // together they cross it, which is the point of adding them up first.
+        source({
+          employmentId: "first",
+          employeeId: "same-person",
+          serviceEndDate: "2026-09-15",
+          hasContinuingEmployment: true,
+          earnings: [{ code: "BASIC", amount: 600_000 }],
+        }),
+        source({
+          employmentId: "second",
+          employeeId: "same-person",
+          hasContinuingEmployment: true,
+          earnings: [{ code: "BASIC", amount: 700_000 }],
+        }),
+      ],
+    });
+    expect(report.rows).toHaveLength(1);
+    expect(report.rows[0]).toMatchObject({
+      employeeId: "same-person",
+      employmentIds: ["first", "second"],
+      gross: 1_300_000,
+      rate: 0.01,
+      tax: 13_000,
+      // The first employment ended, but the person still works here.
+      flags: [],
+    });
+    expect(report.totals).toMatchObject({ employeeCount: 1, gross: 1_300_000, tax: 13_000, annualCalculationCount: 0 });
+    expect(pph21RowNote(report.rows[0]!)).toContain("Bruto gabungan 2 employment");
+  });
+
+  it("leaves a blocked employment out of the combined gross but keeps the paid one", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        source({ employmentId: "first", employeeId: "p", blockerCount: 1, earnings: [{ code: "BASIC", amount: 9_000_000 }] }),
+        source({ employmentId: "second", employeeId: "p", earnings: [{ code: "BASIC", amount: 2_000_000 }] }),
+      ],
+    });
+    expect(report.rows[0]).toMatchObject({ employmentIds: ["second"], gross: 2_000_000 });
+    expect(report.totals.skippedBlockedCount).toBe(1);
+  });
+
+  it("refuses to pick between two different PTKP statuses of one person", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        source({ employmentId: "first", employeeId: "p", ptkpStatus: "TK/0" }),
+        source({ employmentId: "second", employeeId: "p", ptkpStatus: "K/1" }),
+      ],
+    });
+    expect(report.rows[0]).toMatchObject({ flags: ["PTKP_CONFLICT"], tax: null, ptkpStatus: "TK/0 / K/1" });
+    expect(report.totals.ptkpMissingCount).toBe(1);
+  });
+
+  it("flags honorer and lepas terms without changing the rule applied", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        source({ employeeNumber: "1", termCategory: "KONTRAK_HONORER" }),
+        source({ employeeNumber: "2", termCategory: "LEPAS" }),
+        source({ employeeNumber: "3", termCategory: "KONTRAK" }),
+        source({ employeeNumber: "4", termCategory: null }),
+      ],
+    });
+    expect(report.rows.map((row) => row.flags)).toEqual([["NON_PERMANENT_TERMS"], ["NON_PERMANENT_TERMS"], [], []]);
+    // Still taxed with monthly TER under 21-100-01 until the owner decides otherwise.
+    expect(report.rows[0]).toMatchObject({ rate: 0.01, tax: 30_000 });
+    expect(report.totals.nonPermanentCount).toBe(2);
+    expect(pph21RowNote(report.rows[0]!)).toContain("21-100-01");
+  });
+
+  it("puts excluded people after everyone reported", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        source({ employeeNumber: "1", excluded: true, exclusionReason: "Uji" }),
+        source({ employeeNumber: "2" }),
+        source({ employeeNumber: "3" }),
+      ],
+    });
+    expect(report.rows.map((row) => row.employeeNumber)).toEqual(["2", "3", "1"]);
+  });
+
+  it("excludes the person when any of their profiles says so", () => {
+    const report = buildPph21Report({
+      period: SEPTEMBER,
+      policy: policy(),
+      rows: [
+        source({ employmentId: "first", employeeId: "p" }),
+        source({ employmentId: "second", employeeId: "p", excluded: true, exclusionReason: "Uji" }),
+      ],
+    });
+    expect(report.rows[0]).toMatchObject({ flags: ["EXCLUDED"], exclusionReason: "Uji", gross: 6_000_000 });
+    expect(report.totals.employeeCount).toBe(0);
   });
 
   it("flags a missing or unmapped PTKP status and leaves its tax empty", () => {
@@ -308,23 +427,27 @@ describe("PAY-003 PPh21 CSV", () => {
   it("names the columns the tax sheet needs, and no NIK or NPWP", () => {
     const header = csv.slice(1).split("\r\n")[0]!;
     expect(header).toBe(
-      '"NIP","Nama","Status PTKP","Kategori TER","Penghasilan bruto","Tarif","PPh21","Kode objek","Catatan"',
+      '"NIP","Nama","Status PTKP","Kategori TER","Penghasilan bruto","Tarif","PPh21","Kode objek","Dilaporkan","Catatan"',
     );
     expect(csv).not.toMatch(/NIK|NPWP/);
   });
 
   it("keeps a leading zero and a diacritic intact", () => {
-    expect(csv).toContain(`"'0016001","Siti Ḥalīmah","TK/0","A","3000000","1%","30000","21-100-01",""`);
+    expect(csv).toContain(`"'0016001","Siti Ḥalīmah","TK/0","A","3000000","1%","30000","21-100-01","Y",""`);
   });
 
   it("explains an empty tax in the note column", () => {
-    expect(csv).toContain('"2016002","Pegawai Uji","","","3000000","","","21-100-01","Status PTKP kosong');
+    expect(csv).toContain('"2016002","Pegawai Uji","","","3000000","","","21-100-01","Y","Status PTKP kosong');
   });
 
   it("neutralises a formula typed into a name", () => {
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).not.toContain(`"=HYPERLINK`);
-    expect(csv).toContain(`"Dikecualikan dari pelaporan: Uji"`);
+    expect(csv).toContain(`"21-100-01","N","Dikecualikan dari pelaporan: Uji"`);
+  });
+
+  it("lists the excluded person last", () => {
+    expect(csv.trimEnd().split("\r\n").at(-1)).toContain('"N"');
   });
 
   it("writes a rate the way an Indonesian spreadsheet reads it", () => {
@@ -335,7 +458,8 @@ describe("PAY-003 PPh21 CSV", () => {
 
   it("says why a final masa pajak is not final", () => {
     const note = pph21RowNote({
-      employmentId: "x",
+      employeeId: "x",
+      employmentIds: ["x"],
       employeeNumber: "1",
       fullName: "x",
       ptkpStatus: "TK/0",
@@ -347,5 +471,35 @@ describe("PAY-003 PPh21 CSV", () => {
       exclusionReason: null,
     });
     expect(note).toContain("Pasal 17");
+  });
+});
+
+describe("PAY-003 PPh21 exclusion on an initial load", () => {
+  const inForce = [
+    {
+      employmentId: "e1",
+      effectiveFrom: "2026-01-01",
+      pph21ReportExcluded: true,
+      pph21ReportExclusionReason: "Dilaporkan pemberi kerja lain",
+    },
+  ];
+
+  it("carries the exclusion in force when the file says nothing about it", () => {
+    expect(pph21ExclusionFor({ effectiveFrom: "2026-10-01" }, inForce, "e1")).toEqual({
+      pph21ReportExcluded: true,
+      pph21ReportExclusionReason: "Dilaporkan pemberi kerja lain",
+    });
+  });
+
+  it("follows the file when it says, and drops the reason when reported again", () => {
+    expect(pph21ExclusionFor({ effectiveFrom: "2026-10-01", pph21ReportExcluded: false }, inForce, "e1")).toEqual({
+      pph21ReportExcluded: false,
+      pph21ReportExclusionReason: null,
+    });
+  });
+
+  it("defaults to reported with no profile in force, or only a later one", () => {
+    expect(pph21ExclusionFor({ effectiveFrom: "2025-12-01" }, inForce, "e1").pph21ReportExcluded).toBe(false);
+    expect(pph21ExclusionFor({ effectiveFrom: "2026-10-01" }, inForce, "other").pph21ReportExcluded).toBe(false);
   });
 });

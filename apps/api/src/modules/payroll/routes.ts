@@ -150,6 +150,13 @@ const NON_NEGATIVE_INPUTS: readonly string[] = [
 /** Report readers see a period's figures only from this state onwards (section 6). */
 const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
 
+/** Who may read the PPh21 report (specification section 7.2, AUTH-011 manifest). */
+const PPH21_READER_PERMISSIONS: readonly string[] = [
+  "payroll.reports.read.organization",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
+
 const RUNNER_PERMISSIONS: readonly string[] = [
   "payroll.periods.manage",
   "payroll.calculate",
@@ -746,13 +753,11 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
   });
 
   app.get("/payroll/periods/:periodId/pph21", async (request, reply) => {
-    // The same readers as the payroll report: payroll.reports.read.organization,
-    // and the people running the period. No permission of its own, because it
-    // is a view of the same final figures (specification section 7).
-    const actor = await requireAnyPermission(request, reply, [
-      "payroll.reports.read.organization",
-      ...RUNNER_PERMISSIONS,
-    ]);
+    // Report readers, and the two runner permissions whose holders already see
+    // per-person figures while calculating. payroll.periods.manage alone is not
+    // enough: the module administrator role holds it to run the lifecycle, and
+    // that is no licence to read each person's gross and tax (section 7.2).
+    const actor = await requireAnyPermission(request, reply, PPH21_READER_PERMISSIONS);
     if (!actor) return;
 
     const params = periodParams.safeParse(request.params);

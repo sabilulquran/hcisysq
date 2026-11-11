@@ -21,12 +21,26 @@ const config = {
 const PERIOD_ID = "50000000-0000-4000-8000-000000000001";
 const URL = `/payroll/periods/${PERIOD_ID}/pph21`;
 
-type Persona = "employee" | "hc" | "calculator" | "director" | "finance" | "approver_only" | "super_admin" | "board";
+type Persona =
+  | "employee"
+  | "hc"
+  | "calculator"
+  | "inputs_only"
+  | "module_admin"
+  | "director"
+  | "finance"
+  | "approver_only"
+  | "super_admin"
+  | "board";
 
 const PERMISSIONS: Record<Persona, string[]> = {
   employee: ["payslips.read.own"],
   hc: ["payroll.policies.manage", "payroll.profiles.manage", "payroll.periods.manage", "payroll.inputs.manage", "payroll.calculate", "payroll.submit"],
   calculator: ["payroll.calculate"],
+  inputs_only: ["payroll.inputs.manage"],
+  // hcis_module_admin runs the lifecycle with payroll.periods.manage; that alone
+  // must not open per-person gross and tax (specification section 7.2).
+  module_admin: ["payroll.periods.manage", "payroll.policies.manage", "payroll.profiles.manage"],
   director: ["payroll.approve", "payroll.reopen.approve", "payroll.reports.read.organization"],
   finance: ["payroll.payments.confirm", "payroll.reports.read.organization", "payroll.transfers.read.organization"],
   // Section 7: deciding on a period is not a licence to read its figures.
@@ -49,6 +63,7 @@ const POLICY = {
 const SOURCE_ROWS = [
   {
     employmentId: "60000000-0000-4000-8000-000000000001",
+    employeeId: "70000000-0000-4000-8000-000000000011",
     employeeNumber: "0016001",
     fullName: "Pegawai Uji",
     ptkpStatus: "TK/0",
@@ -57,10 +72,13 @@ const SOURCE_ROWS = [
     payFactor: "1.0000",
     blockerCount: 0,
     serviceEndDate: null,
+    hasContinuingEmployment: false,
+    termCategory: "TETAP",
     earnings: [{ code: "BASIC", amount: "3000000" }, { code: "BPJS_KES_ALLOW", amount: "150000" }],
   },
   {
     employmentId: "60000000-0000-4000-8000-000000000002",
+    employeeId: "70000000-0000-4000-8000-000000000012",
     employeeNumber: "2016002",
     fullName: "Pegawai Dua",
     ptkpStatus: null,
@@ -69,6 +87,8 @@ const SOURCE_ROWS = [
     payFactor: "0.8000",
     blockerCount: 0,
     serviceEndDate: null,
+    hasContinuingEmployment: false,
+    termCategory: "KONTRAK_HONORER",
     earnings: [{ code: "BASIC", amount: "2000000" }],
   },
 ];
@@ -174,15 +194,15 @@ describe("PAY-003 PPh21 report authorization", () => {
     }
   }, 20_000);
 
-  it("is read by the people running the period, including payroll.calculate alone", async () => {
-    for (const persona of ["hc", "calculator"] as const) {
+  it("is read by payroll.calculate or payroll.inputs.manage holders", async () => {
+    for (const persona of ["hc", "calculator", "inputs_only"] as const) {
       const { response } = await call(persona, URL);
       expect(response.statusCode, persona).toBe(200);
     }
   });
 
-  it("is closed to approvers without the report permission, the board, Super Admin and employees", async () => {
-    for (const persona of ["approver_only", "board", "super_admin", "employee"] as const) {
+  it("is closed to payroll.periods.manage without a reading permission, approvers, the board, Super Admin and employees", async () => {
+    for (const persona of ["module_admin", "approver_only", "board", "super_admin", "employee"] as const) {
       const { response, sql } = await call(persona, URL);
       expect(response.statusCode, persona).toBe(403);
       expect(response.json().code).toBe("PAYROLL_FORBIDDEN");
@@ -251,10 +271,17 @@ describe("PAY-003 PPh21 report content", () => {
     expect(report.rows.map((row: { gross: string; tax: string | null; flags: string[] }) => [row.gross, row.tax, row.flags]))
       .toEqual([
         ["3000000", "30000", []],
-        ["1600000", null, ["PTKP_MISSING"]],
+        ["1600000", null, ["PTKP_MISSING", "NON_PERMANENT_TERMS"]],
       ]);
     expect(report.rows[1].note).toContain("Status PTKP");
-    expect(report.totals).toMatchObject({ employeeCount: 2, gross: "4600000", tax: "30000", ptkpMissingCount: 1 });
+    expect(report.totals).toMatchObject({
+      employeeCount: 2,
+      gross: "4600000",
+      tax: "30000",
+      ptkpMissingCount: 1,
+      nonPermanentCount: 1,
+    });
+    expect(report.rows[0].employeeId).toBe("70000000-0000-4000-8000-000000000011");
     expect(JSON.stringify(report)).not.toMatch(/bankAccount|nik|npwp/i);
   });
 
@@ -278,7 +305,7 @@ describe("PAY-003 PPh21 report content", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.body.startsWith("﻿")).toBe(true);
     expect(response.body).toContain("\r\n");
-    expect(response.body).toContain(`"'0016001","Pegawai Uji","TK/0","A","3000000","1%","30000","21-100-01",""`);
+    expect(response.body).toContain(`"'0016001","Pegawai Uji","TK/0","A","3000000","1%","30000","21-100-01","Y",""`);
     expect(audits).toEqual([{ action: "payroll.report.read", payload: { scope: "pph21_report_csv", row_count: 2 } }]);
   });
 });

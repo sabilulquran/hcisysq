@@ -99,7 +99,7 @@ Bentuk payload diperiksa CLI dan route (`validatePolicyPayload`): `objectCode` h
 
 Akun pelaku memerlukan `payroll.policies.manage`. Bila periode yang tanggal gajiannya pada atau setelah tanggal berlaku sudah `CALCULATED` ke atas, CLI menolak baris itu (`SETTLED_PERIOD`, §2); untuk laporan PPh21 periode yang sudah disahkan, versi dengan tanggal berlaku mundur dibuka lewat layar data acuan / `POST /payroll/policies` dengan `backdateReason` yang menyebut verifikasi tabel. Laporan membaca versi yang berlaku pada tanggal gajian masing-masing periode, dan perubahan peraturan cukup menambah versi baru.
 
-**Status PTKP dan pengecualian.** Laporan memetakan `ptkpStatus` profil (§3.3) ke kategori lewat `ptkpCategory`. Profil tanpa status atau dengan status yang tidak terpetakan tampil di laporan sebagai `PTKP_MISSING`. Pengecualian pelaporan per orang dimuat lewat field profil `pph21ReportExcluded` (boolean, default `false`) dan `pph21ReportExclusionReason` (wajib bila dikecualikan; tanpa alasan baris ditolak `INVALID`). Pemuatan awal tidak mengisi pengecualian apa pun (`DRAFT`): legacy tidak menyimpannya sebagai atribut, sehingga HC menetapkannya lewat layar profil dengan alasan.
+**Status PTKP dan pengecualian.** Laporan memetakan `ptkpStatus` profil (§3.3) ke kategori lewat `ptkpCategory`. Profil tanpa status atau dengan status yang tidak terpetakan tampil di laporan sebagai `PTKP_MISSING`. Pengecualian pelaporan per orang dimuat lewat field profil `pph21ReportExcluded` (boolean, default `false`) dan `pph21ReportExclusionReason` (wajib bila dikecualikan; tanpa alasan baris ditolak `INVALID`). Legacy tidak menyimpan pengecualian sebagai atribut, sehingga HC menetapkannya lewat layar profil dengan alasan (`DRAFT`). Baris berkas yang tidak menyebut `pph21ReportExcluded` **membawa** pengecualian profil yang berlaku pada tanggal itu, sehingga pemuatan ulang tidak diam-diam membatalkan pengecualian yang sudah ditetapkan HC.
 
 ### 3.3 Profil kompensasi (`payroll_compensation_profiles`)
 
@@ -119,7 +119,7 @@ Satu baris berkas per pegawai, dicocokkan lewat **NIP** (`employees.employee_num
 | `specialQualificationTarget` | `FORMULA GAJI` kolom N:Q "GAJI BARU" | Hanya bila kolom NIP berisi NIP yang cocok; baris berisi nama, bukan NIP, dilaporkan di berkas persiapan dan tidak dimuat. |
 | `bpjsSegment`, `bpjsActiveFrom` | `BPJS KESEHATAN` | Nomor diawali "00" (aturan tunjangan BPJS legacy) → `PPU_YAYASAN`, aktif sejak tanggal berlaku data (`DRAFT`). Selain itu `BELUM_TERDAFTAR` tanpa tanggal (`DRAFT`; spreadsheet tidak membedakan PBI dan mandiri, dan keduanya tidak menghasilkan iuran). |
 | `ptkpStatus` | `Status PTKP` | Teks apa adanya, maksimal 16 karakter. Dipetakan ke kategori TER oleh laporan PPh21 (§3.2). |
-| `pph21ReportExcluded`, `pph21ReportExclusionReason` | — | Tidak diisi pada pemuatan awal (`false`, tanpa alasan); §3.2. |
+| `pph21ReportExcluded`, `pph21ReportExclusionReason` | — | Biasanya tidak disebut: nilai profil yang berlaku dibawa (tanpa profil: `false`, tanpa alasan); §3.2. |
 | `bankName` | — | `DRAFT`: "BSI", bank daftar transfer legacy. |
 | `bankAccountNumber` | `No. Rekening BANK` | Teks apa adanya. |
 | `bankAccountName` | `NAMA` | `DRAFT`: nama pegawai di master SDM. Legacy memperbaiki nama pemilik rekening di berkas laporan terpisah; HC memverifikasi sebelum periode diajukan. |

@@ -143,11 +143,20 @@ export interface PayrollTransferRow {
   paymentConfirmedAt: string | null;
 }
 
-export type PayrollPph21Flag = "PTKP_MISSING" | "EXCLUDED" | "ANNUAL_CALCULATION_REQUIRED";
+export type PayrollPph21Flag =
+  | "PTKP_MISSING"
+  | "PTKP_CONFLICT"
+  | "EXCLUDED"
+  | "ANNUAL_CALCULATION_REQUIRED"
+  | "NON_PERMANENT_TERMS";
 
-/** One employee on the PPh21 TER report. Figures and flags are the server's. */
+/**
+ * One person on the PPh21 TER report: two employments in the period are one row
+ * on their combined gross. Figures and flags are the server's.
+ */
 export interface PayrollPph21Row {
-  employmentId: string;
+  employeeId: string;
+  employmentIds: string[];
   employeeNumber: string;
   fullName: string;
   ptkpStatus: string | null;
@@ -173,6 +182,7 @@ export interface PayrollPph21Report {
     excludedCount: number;
     ptkpMissingCount: number;
     annualCalculationCount: number;
+    nonPermanentCount: number;
     skippedBlockedCount: number;
   };
   rows: PayrollPph21Row[];
@@ -340,8 +350,10 @@ export function payrollPph21CsvUrl(periodId: string) {
 
 const PPH21_FLAG_LABELS: Record<PayrollPph21Flag, string> = {
   PTKP_MISSING: "PTKP belum terpetakan",
+  PTKP_CONFLICT: "PTKP berbeda antar-employment",
   EXCLUDED: "Dikecualikan",
   ANNUAL_CALCULATION_REQUIRED: "Masa pajak terakhir — bukan angka final",
+  NON_PERMANENT_TERMS: "Honorer/lepas — aturan menunggu konfirmasi",
 };
 
 export function payrollPph21FlagLabel(flag: PayrollPph21Flag): string {

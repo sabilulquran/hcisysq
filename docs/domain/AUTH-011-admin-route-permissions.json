@@ -3159,7 +3159,6 @@
     "url": "/payroll/periods/:periodId/pph21",
     "permissions": [
       "payroll.reports.read.organization",
-      "payroll.periods.manage",
       "payroll.calculate",
       "payroll.inputs.manage"
     ]

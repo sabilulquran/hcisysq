@@ -124,15 +124,25 @@ function Pph21ReportBody({ report }: { report: PayrollPph21Report }) {
         </div>
       </dl>
 
-      {totals.ptkpMissingCount > 0 || totals.annualCalculationCount > 0 || totals.excludedCount > 0 || totals.skippedBlockedCount > 0 ? (
+      {totals.ptkpMissingCount > 0 ||
+      totals.annualCalculationCount > 0 ||
+      totals.nonPermanentCount > 0 ||
+      totals.excludedCount > 0 ||
+      totals.skippedBlockedCount > 0 ? (
         <ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
           {totals.ptkpMissingCount > 0 ? (
-            <li>{totals.ptkpMissingCount} pegawai tanpa status PTKP terpetakan; PPh21 mereka belum masuk total.</li>
+            <li>{totals.ptkpMissingCount} pegawai tanpa satu status PTKP terpetakan; PPh21 mereka belum masuk total.</li>
           ) : null}
           {totals.annualCalculationCount > 0 ? (
             <li>
               {totals.annualCalculationCount} pegawai berada di masa pajak terakhir; PPh21 finalnya memakai perhitungan
               tahunan Pasal 17 yang belum ada di HCIS, jadi angka TER-nya bukan angka final.
+            </li>
+          ) : null}
+          {totals.nonPermanentCount > 0 ? (
+            <li>
+              {totals.nonPermanentCount} pegawai kontrak honorer/lepas dilaporkan dengan TER bulanan 21-100-01; aturan
+              pegawai tidak tetap masih menunggu konfirmasi pemilik proses.
             </li>
           ) : null}
           {totals.excludedCount > 0 ? (
@@ -162,7 +172,7 @@ function Pph21ReportBody({ report }: { report: PayrollPph21Report }) {
             </thead>
             <tbody className="divide-y">
               {report.rows.map((row) => (
-                <tr key={row.employmentId}>
+                <tr key={row.employeeId}>
                   <td className="px-4 py-2">
                     {row.fullName}
                     <span className="block font-mono text-xs text-muted-foreground">{row.employeeNumber}</span>

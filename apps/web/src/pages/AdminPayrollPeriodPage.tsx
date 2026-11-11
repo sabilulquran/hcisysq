@@ -63,10 +63,13 @@ const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
   LARGE_MANUAL_INPUT: "Input manual besar",
 };
 
-/** The permissions the PPh21 report route accepts (AUTH-011 manifest). */
+/**
+ * The permissions the PPh21 report route accepts (AUTH-011 manifest). Not
+ * payroll.periods.manage alone: running the lifecycle does not open per-person
+ * gross and tax (PAY-003 section 7.2).
+ */
 const PPH21_READER_PERMISSIONS = [
   "payroll.reports.read.organization",
-  "payroll.periods.manage",
   "payroll.calculate",
   "payroll.inputs.manage",
 ];

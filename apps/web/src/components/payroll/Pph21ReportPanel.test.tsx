@@ -21,11 +21,13 @@ function report(overrides: Partial<PayrollPph21Report> = {}): PayrollPph21Report
       excludedCount: 0,
       ptkpMissingCount: 1,
       annualCalculationCount: 0,
+      nonPermanentCount: 0,
       skippedBlockedCount: 0,
     },
     rows: [
       {
-        employmentId: "e1",
+        employeeId: "p1",
+        employmentIds: ["e1"],
         employeeNumber: "2016001",
         fullName: "Siti Aminah",
         ptkpStatus: "TK/0",
@@ -38,7 +40,8 @@ function report(overrides: Partial<PayrollPph21Report> = {}): PayrollPph21Report
         note: "",
       },
       {
-        employmentId: "e2",
+        employeeId: "p2",
+        employmentIds: ["e2"],
         employeeNumber: "2016002",
         fullName: "Budi Santoso",
         ptkpStatus: null,
@@ -95,7 +98,7 @@ describe("PAY-003 Laporan PPh21 panel", () => {
     expect(html).toContain("Siti Aminah");
     expect(html).toContain("1%");
     expect(html).toContain("PTKP belum terpetakan");
-    expect(html).toContain("1 pegawai tanpa status PTKP");
+    expect(html).toContain("1 pegawai tanpa satu status PTKP");
     expect(html).toContain("Tabel uji sintetis");
     expect(html).toContain(`/api/payroll/periods/${PERIOD_ID}/pph21?format=csv`);
   });
@@ -111,6 +114,19 @@ describe("PAY-003 Laporan PPh21 panel", () => {
     });
     expect(html).toContain("bukan angka final");
     expect(html).toContain("Pasal 17");
+  });
+
+  it("says how many honorer or lepas people await the owner's rule", () => {
+    const base = report();
+    const html = render({
+      kind: "ready",
+      report: report({
+        totals: { ...base.totals, nonPermanentCount: 1 },
+        rows: base.rows.map((row, index) => (index === 0 ? { ...row, flags: ["NON_PERMANENT_TERMS"] } : row)),
+      }),
+    });
+    expect(html).toContain("1 pegawai kontrak honorer/lepas");
+    expect(html).toContain("Honorer/lepas");
   });
 
   it("answers an empty period plainly, with nothing to download", () => {

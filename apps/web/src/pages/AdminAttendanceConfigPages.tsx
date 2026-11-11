@@ -1,33 +1,19 @@
 import { AlertTriangle, CheckCircle2, Pencil, Plus, Save, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 
-import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
-import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { AttendanceAdvancedNotice, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import {
   backdateAttendanceSchedule,
   createAttendanceSchedule,
-  createAttendanceScheduleAssignment,
   createAttendanceWorkLocation,
   listAttendanceScheduleAssignments,
   listAttendanceSchedules,
   listAttendanceWorkLocations,
   updateAttendanceSchedule,
-  updateAttendanceScheduleAssignment,
   updateAttendanceWorkLocation,
   type AttendanceScheduleAssignmentItem, shiftHoursText,
   type ShiftBlock,
 } from "@/lib/workforceAttendance";
-
-async function loadActiveEmployees() {
-  const first = await listEmployees({ page: 1, pageSize: 100, status: "active" });
-  if (first.pagination.pageCount <= 1) return first.items;
-  const rest = await Promise.all(
-    Array.from({ length: first.pagination.pageCount - 1 }, (_, index) =>
-      listEmployees({ page: index + 2, pageSize: 100, status: "active" }),
-    ),
-  );
-  return [first, ...rest].flatMap((item) => item.items);
-}
 
 function Notice({ error, notice }: { error: string | null; notice: string | null }) {
   return (
@@ -288,46 +274,31 @@ function maskDays(mask: number) {
   return weekdayLabels.filter((_, index) => (mask & (1 << index)) !== 0).join(", ");
 }
 
+// ATT-011-8: the old pattern screen is a read-only "Tampilan lanjutan". Schedules are changed in Kalender
+// (Atur/Ganti/Salin jadwal); the pattern endpoints stay for compatibility only.
 export function AdminAttendanceAssignmentsPage() {
-  const [employees, setEmployees] = useState<AdminEmployeeListItem[]>([]);
-  const [schedules, setSchedules] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
-  const [items, setItems] = useState<AttendanceScheduleAssignmentItem[]>([]);
-  const [employeeId, setEmployeeId] = useState("");
-  const [scheduleId, setScheduleId] = useState("");
-  const [weekdays, setWeekdays] = useState<number[]>([1,2,3,4,5]);
-  const [effectiveFrom, setEffectiveFrom] = useState(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date()));
-  const [effectiveTo, setEffectiveTo] = useState("");
-  const [endDates, setEndDates] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const [items, setItems] = useState<AttendanceScheduleAssignmentItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
-    const [employeeResult, scheduleResult, assignmentResult] = await Promise.all([loadActiveEmployees(), listAttendanceSchedules(), listAttendanceScheduleAssignments()]);
-    setEmployees(employeeResult); setSchedules(scheduleResult.items); setItems(assignmentResult.items);
-    setEmployeeId((current) => current || employeeResult[0]?.id || "");
-    setScheduleId((current) => current || scheduleResult.items.find((item) => item.active)?.id || "");
-  };
-  useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Pola jadwal tidak dapat dimuat.")); }, []);
-  const run = async (action: () => Promise<unknown>, message: string) => { setBusy(true); setError(null); setNotice(null); try { await action(); await load(); setNotice(message); } catch (cause) { setError(cause instanceof Error ? cause.message : "Pola jadwal gagal disimpan."); } finally { setBusy(false); } };
+  useEffect(() => {
+    void listAttendanceScheduleAssignments()
+      .then((result) => setItems(result.items))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Pola jadwal tidak dapat dimuat."));
+  }, []);
 
   return (
-    <AttendanceWorkforceShell tab="patterns" title="Pola jadwal" description="Pegawai mengikuti satu shift pada hari-hari yang dipilih, mulai tanggal tertentu.">
-      <Notice error={error} notice={notice} />
-      <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="font-bold text-brand-heading">Pola jadwal baru</h2>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <select className="h-11 rounded-xl border px-3 text-sm" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>{employees.map((item) => <option key={item.id} value={item.id}>{item.fullName} · {item.employeeNumber}</option>)}</select>
-          <select className="h-11 rounded-xl border px-3 text-sm" value={scheduleId} onChange={(e) => setScheduleId(e.target.value)}>{schedules.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">{weekdayLabels.map((label,index) => { const day=index+1; const active=weekdays.includes(day); return <button type="button" key={label} onClick={() => setWeekdays((current) => active ? current.filter((value) => value !== day) : [...current, day].sort())} className={"h-9 rounded-xl border px-3 text-xs font-bold " + (active ? "border-brand-primary bg-brand-primary-pale text-brand-primary-deep" : "border-border")}>{label}</button>; })}</div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-muted-foreground">Berlaku mulai<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></label><label className="text-xs font-semibold text-muted-foreground">Berakhir (opsional)<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" value={effectiveTo} onChange={(e) => setEffectiveTo(e.target.value)} /></label></div>
-        <button disabled={busy || !employeeId || !scheduleId || weekdays.length === 0} className="mt-3 inline-flex h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50" onClick={() => void run(() => createAttendanceScheduleAssignment({ employeeId, scheduleTemplateId: scheduleId, weekdays, effectiveFrom, effectiveTo: effectiveTo || null }), "Pola jadwal ditambahkan.")}><Plus className="h-4 w-4" /> Tambah pola jadwal</button>
-      </section>
-
-      <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
-        <div className="border-b p-4"><h2 className="font-bold text-brand-heading">Riwayat pola jadwal</h2><p className="mt-1 text-xs text-muted-foreground">Pola yang tumpang tindih membuat hari itu berstatus "Jadwal bermasalah". Akhiri pola lama sebelum memulai pola baru pada tanggal yang sama.</p></div>
-        <div className="overflow-x-auto"><table className="min-w-[1000px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Unit</th><th className="p-3">Shift</th><th className="p-3">Hari</th><th className="p-3">Periode</th><th className="p-3">Akhiri</th></tr></thead><tbody className="divide-y">
-          {items.map((item) => <tr key={item.id}><td className="p-3"><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{item.employeeNumber}</p></td><td className="p-3">{item.unitName ?? "—"}</td><td className="p-3">{item.scheduleName}</td><td className="p-3">{maskDays(item.weekdayMask)}</td><td className="p-3">{item.effectiveFrom} → {item.effectiveTo ?? "seterusnya"}</td><td className="p-3">{item.effectiveTo ? <span className="text-xs text-muted-foreground">Selesai</span> : <div className="flex gap-2"><input className="h-9 rounded-lg border px-2 text-xs" type="date" value={endDates[item.id] ?? ""} onChange={(e) => setEndDates({ ...endDates, [item.id]: e.target.value })} /><button disabled={!endDates[item.id]} className="rounded-lg border px-3 text-xs font-bold disabled:opacity-50" onClick={() => void run(() => updateAttendanceScheduleAssignment(item.id, endDates[item.id] || null), "Pola jadwal diakhiri.")}>Akhiri</button></div>}</td></tr>)}
-        </tbody></table></div>
+    <AttendanceWorkforceShell tab="patterns" title="Pola jadwal (lama)" description="Tampilan lanjutan, baca saja: pola jadwal per pegawai seperti yang tersimpan. Jadwal diubah di Kalender.">
+      <AttendanceAdvancedNotice />
+      <Notice error={error} notice={null} />
+      <section className="overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
+        <div className="border-b p-4"><h2 className="font-bold text-brand-heading">Riwayat pola jadwal</h2><p className="mt-1 text-xs text-muted-foreground">Pola yang tumpang tindih membuat hari itu berstatus "Jadwal bermasalah". Perbaiki lewat Atur jadwal di Kalender; perubahan dari Kalender menutup pola lama dengan sendirinya.</p></div>
+        {items === null && !error ? <p className="p-5 text-sm text-muted-foreground">Memuat…</p> : null}
+        {items && items.length === 0 ? <p className="p-5 text-sm text-muted-foreground">Belum ada pola jadwal.</p> : null}
+        {items && items.length ? (
+          <div className="overflow-x-auto"><table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Pegawai</th><th className="p-3">Unit</th><th className="p-3">Shift</th><th className="p-3">Hari</th><th className="p-3">Periode</th></tr></thead><tbody className="divide-y">
+            {items.map((item) => <tr key={item.id}><td className="p-3"><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{item.employeeNumber}</p></td><td className="p-3">{item.unitName ?? "—"}</td><td className="p-3">{item.scheduleName}</td><td className="p-3">{maskDays(item.weekdayMask)}</td><td className="p-3">{item.effectiveFrom} → {item.effectiveTo ?? "seterusnya"}</td></tr>)}
+          </tbody></table></div>
+        ) : null}
       </section>
     </AttendanceWorkforceShell>
   );

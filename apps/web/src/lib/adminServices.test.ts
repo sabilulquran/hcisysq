@@ -18,7 +18,7 @@ describe("admin module catalog", () => {
     expect(getAdminService("mobile-attendance")?.href).toBe("/admin/attendance/reports?tab=transactions&source=mobile");
     expect(getAdminService("mobile-attendance")?.details ?? []).not.toContain("Face recognition");
     expect(getAdminService("schedules")?.stage).toBe("available");
-    expect(getAdminService("schedules")?.href).toBe("/admin/attendance/schedules");
+    expect(getAdminService("schedules")?.href).toBe("/admin/attendance/schedules/calendar");
     expect(getAdminService("shift-exchange")?.stage).toBe("available");
     expect(getAdminService("shift-exchange")?.href).toBe("/admin/attendance/schedules/swaps");
     expect(getAdminService("adms")?.stage).toBe("available");

@@ -75,7 +75,8 @@ export const adminServices: AdminServiceDefinition[] = [
     featureIds: ["ATT-003"],
     stage: "available",
     category: "attendance",
-    href: "/admin/attendance/schedules",
+    // ATT-011-8: Kalender is the Jadwal screen; the old pattern screen is a read-only advanced view.
+    href: "/admin/attendance/schedules/calendar",
   },
   {
     key: "mobile-attendance",

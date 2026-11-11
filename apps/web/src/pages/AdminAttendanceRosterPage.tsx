@@ -1,16 +1,17 @@
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Plus, Send } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { AttendanceAdvancedNotice, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import {
-  copyPreviousAttendanceRoster,
-  createAttendanceRoster,
   getAttendanceRosterWeek,
   publishAttendanceRoster,
-  removeAttendanceRosterEntry,
-  updateAttendanceRosterEntries,
   type AttendanceRosterWorkspace,
 } from "@/lib/workforceAttendance";
+
+// ATT-011-8: the old weekly roster screen is a read-only "Tampilan lanjutan". New drafts cannot be made
+// or edited here any more; schedules change through Kalender. The one action left is applying a draft
+// that already exists (made on this screen before), because a draft blocks schedule changes and shift
+// swaps for its week (ATT-011-4, ATT-008). DRAFT.
 
 const dayNames = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 
@@ -61,34 +62,14 @@ export function AdminAttendanceRosterPage() {
   const run = async (key: string, operation: () => Promise<unknown>, message: string) => {
     setBusy(key); setError(null); setNotice(null);
     try { await operation(); await load(); setNotice(message); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Perubahan jadwal gagal disimpan."); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Draf gagal diterapkan."); }
     finally { setBusy(null); }
   };
-
-  const changeCell = async (employeeId: string, workDate: string, value: string) => {
-    if (!draft) return;
-    const key = employeeId + ":" + workDate;
-    if (value === "inherit") {
-      if (!entryMap.has(key)) return;
-      await run(key, () => removeAttendanceRosterEntry(draft.id, employeeId, workDate), "Tanggal ini kembali mengikuti pola jadwal.");
-      return;
-    }
-    const isOff = value === "off";
-    await run(
-      key,
-      () => updateAttendanceRosterEntries(draft.id, [{
-        employeeId,
-        workDate,
-        scheduleTemplateId: isOff ? null : value.replace("schedule:", ""),
-        isOff,
-        note: null,
-      }]),
-      "Perubahan disimpan. Terapkan agar berlaku.",
-    );
-  };
+  const scheduleName = (id: string | null) => data?.schedules.find((item) => item.id === id)?.name ?? "Shift";
 
   return (
-    <AttendanceWorkforceShell tab="dates" title="Jadwal per tanggal" description="Ganti shift atau liburkan pegawai pada tanggal tertentu dalam satu minggu, lalu terapkan. Tanggal yang tidak diubah mengikuti pola jadwal.">
+    <AttendanceWorkforceShell tab="dates" title="Jadwal per tanggal (lama)" description="Tampilan lanjutan, baca saja: jadwal per tanggal yang diterapkan lewat layar lama atau tukar shift, per minggu.">
+      <AttendanceAdvancedNotice />
       {error ? <div className="mb-4 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4" /> {error}</div> : null}
       {notice ? <div className="mb-4 flex gap-3 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4" /> {notice}</div> : null}
 
@@ -97,23 +78,16 @@ export function AdminAttendanceRosterPage() {
           <div>
             <h2 className="font-bold text-brand-heading">Minggu {weekStart}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {draft ? "Ada perubahan yang belum diterapkan. Perubahan baru berlaku setelah Anda menekan Terapkan." : published ? "Jadwal minggu ini sudah diterapkan. Tekan Ubah jadwal minggu ini untuk mengubahnya." : "Belum ada perubahan untuk minggu ini; semua pegawai mengikuti pola jadwal."}
+              {draft ? "Ada draf lama yang belum diterapkan pada minggu ini." : published ? "Jadwal per tanggal minggu ini sudah diterapkan." : "Tidak ada jadwal per tanggal untuk minggu ini; semua pegawai mengikuti pola jadwal."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="h-10 rounded-xl border px-3" onClick={() => setWeekStart(shiftDate(weekStart, -7))}><ChevronLeft className="h-4 w-4" /></button>
             <input className="h-10 rounded-xl border px-3 text-sm" type="date" value={weekStart} onChange={(e) => setWeekStart(mondayOf(new Date(e.target.value + "T12:00:00")))} />
             <button type="button" className="h-10 rounded-xl border px-3" onClick={() => setWeekStart(shiftDate(weekStart, 7))}><ChevronRight className="h-4 w-4" /></button>
-            {!draft ? (
-              <button type="button" disabled={busy !== null} onClick={() => void run("create", () => createAttendanceRoster(weekStart), "Silakan ubah jadwal, lalu tekan Terapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4" /> Ubah jadwal minggu ini</button>
-            ) : (
-              <>
-                <button type="button" disabled={busy !== null} onClick={() => void run("copy", () => copyPreviousAttendanceRoster(draft.id), "Jadwal minggu lalu disalin. Periksa, lalu tekan Terapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-bold disabled:opacity-50">{busy === "copy" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Salin minggu lalu</button>
-                <button type="button" disabled={busy !== null} onClick={() => void run("publish", () => publishAttendanceRoster(draft.id), "Jadwal minggu ini diterapkan.")} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Terapkan</button>
-              </>
-            )}
           </div>
         </header>
+        {draft ? <LeftoverDraftNotice busy={busy === "publish"} disabled={busy !== null} onApply={() => void run("publish", () => publishAttendanceRoster(draft.id), "Draf lama diterapkan. Atur/Ganti jadwal dan tukar shift untuk minggu ini bisa dipakai lagi.")} /> : null}
 
         <div className="overflow-x-auto">
           <table className="min-w-[1160px] w-full table-fixed text-left text-sm">
@@ -133,23 +107,16 @@ export function AdminAttendanceRosterPage() {
                   </td>
                   {dates.map((workDate) => {
                     const entry = entryMap.get(employee.id + ":" + workDate);
-                    const value = !entry ? "inherit" : entry.isOff ? "off" : "schedule:" + entry.scheduleTemplateId;
-                    const key = employee.id + ":" + workDate;
                     return (
-                      <td key={workDate} className="p-2 align-top">
-                        <select
-                          className="h-10 w-full rounded-lg border border-border bg-surface-raised px-2 text-xs disabled:bg-surface disabled:text-muted-foreground"
-                          value={value}
-                          disabled={!draft || busy !== null}
-                          onChange={(event) => void changeCell(employee.id, workDate, event.target.value)}
-                        >
-                          <option value="inherit">Ikuti pola jadwal</option>
-                          <option value="off">Libur</option>
-                          {data?.schedules.filter((item) => item.active).map((schedule) => <option key={schedule.id} value={"schedule:" + schedule.id}>{schedule.name}</option>)}
-                        </select>
-                        <div className="mt-1 text-[10px]">
-                          {busy === key ? <span className="text-brand-primary-deep">Menyimpan…</span> : draft ? <span className="font-semibold text-warning-ink">Belum diterapkan</span> : published ? <span className="text-success-ink">Berlaku</span> : <span className="text-muted-foreground">Pola jadwal</span>}
-                        </div>
+                      <td key={workDate} className="p-2 align-top text-xs">
+                        <span className={entry ? "font-semibold text-brand-heading" : "text-muted-foreground"}>
+                          {!entry ? "Ikuti pola jadwal" : entry.isOff ? "Libur" : scheduleName(entry.scheduleTemplateId)}
+                        </span>
+                        {entry ? (
+                          <div className="mt-1 text-[10px]">
+                            {draft ? <span className="font-semibold text-warning-ink">Draf, belum diterapkan</span> : <span className="text-success-ink">Berlaku</span>}
+                          </div>
+                        ) : null}
                       </td>
                     );
                   })}
@@ -161,5 +128,19 @@ export function AdminAttendanceRosterPage() {
         </div>
       </section>
     </AttendanceWorkforceShell>
+  );
+}
+
+/** ATT-011-8 (DRAFT): the only action left on this screen — apply a draft made here before the retirement. */
+export function LeftoverDraftNotice({ busy, disabled, onApply }: { busy: boolean; disabled: boolean; onApply: () => void }) {
+  return (
+    <div role="status" className="flex flex-wrap items-start gap-3 border-b border-warning-line bg-warning-soft p-4 text-sm text-warning-ink">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="min-w-[16rem] flex-1">
+        <span className="font-bold">Ada draf lama yang belum diterapkan.</span>{" "}
+        Draf ini dibuat di layar lama dan tidak bisa diubah lagi. Selama ada, Atur/Ganti jadwal di Kalender dan persetujuan tukar shift untuk minggu ini ditolak. Terapkan draf ini untuk menyelesaikannya, lalu ubah jadwal lewat Kalender bila perlu.
+      </p>
+      <button type="button" disabled={disabled} onClick={onApply} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Terapkan draf</button>
+    </div>
   );
 }

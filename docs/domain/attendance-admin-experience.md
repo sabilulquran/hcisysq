@@ -43,8 +43,9 @@ Sejak ATT-011-1 (2026-10-23), workspace Human Capital adalah menu **Waktu & Keha
 |---|---|---|
 | Ringkasan | `/admin/attendance` | salah satu permission kehadiran; tiap kartu hanya tampil bila datanya bisa dimuat |
 | Shift | `/admin/attendance/shifts` | `attendance.schedule.manage` |
-| Jadwal → Pola jadwal | `/admin/attendance/schedules` | `attendance.schedule.manage` |
-| Jadwal → Jadwal per tanggal | `/admin/attendance/schedules/dates` | `attendance.schedule.manage` |
+| Jadwal → Kalender (ATT-011-5) | `/admin/attendance/schedules/calendar` | `attendance.schedule.manage` (ubah) atau `attendance.reports.read` (lihat) |
+| Jadwal → Kalender → Tampilan lanjutan: Pola jadwal (lama), baca saja (ATT-011-8) | `/admin/attendance/schedules` | `attendance.schedule.manage` |
+| Jadwal → Kalender → Tampilan lanjutan: Jadwal per tanggal (lama), baca saja; satu-satunya aksi "Terapkan draf" untuk draf lama (ATT-011-8) | `/admin/attendance/schedules/dates` | `attendance.schedule.manage` |
 | Jadwal → Tukar shift | `/admin/attendance/schedules/swaps` | `attendance.shift_swap.manage` |
 | Kehadiran → Pantauan Hari Ini | `/admin/attendance/daily` | `attendance.reports.read` |
 | Kehadiran → Perbaikan Absen (ATT-011-3R) | `/admin/attendance/corrections` | `attendance.clarification.manage` (memutuskan pengajuan) atau `attendance.records.manage` (input koreksi) |

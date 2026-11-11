@@ -362,6 +362,12 @@ paths:
       tags: [Attendance]
       operationId: createAttendanceRosterDraft
       x-required-permission: attendance.schedule.manage
+      deprecated: true
+      description: >-
+        ATT-011-8: manual draft rosters are retired from the UI (Jadwal per tanggal is a read-only
+        "Tampilan lanjutan"); schedules change through schedule change sets (Kalender). Kept for
+        compatibility only; no HCIS screen calls it. Shift swaps (ATT-008) publish roster versions
+        server-side and do not use it.
       responses:
         '201': { description: Weekly DRAFT roster created }
 
@@ -370,6 +376,12 @@ paths:
       tags: [Attendance]
       operationId: replaceAttendanceRosterEntries
       x-required-permission: attendance.schedule.manage
+      deprecated: true
+      description: >-
+        ATT-011-8: manual draft rosters are retired from the UI (Jadwal per tanggal is a read-only
+        "Tampilan lanjutan"); schedules change through schedule change sets (Kalender). Kept for
+        compatibility only; no HCIS screen calls it. Shift swaps (ATT-008) publish roster versions
+        server-side and do not use it.
       parameters:
         - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -381,6 +393,10 @@ paths:
       tags: [Attendance]
       operationId: publishAttendanceRoster
       x-required-permission: attendance.schedule.manage
+      description: >-
+        ATT-011-8: the only draft-roster action left in the UI is "Terapkan draf" on the read-only
+        Jadwal per tanggal view, to apply a draft made before the retirement (a draft blocks schedule
+        changes and shift swap approval for its week). Not deprecated until no draft can exist.
       parameters:
         - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -810,6 +826,12 @@ paths:
       tags: [Attendance]
       operationId: removeAttendanceRosterOverride
       x-required-permission: attendance.schedule.manage
+      deprecated: true
+      description: >-
+        ATT-011-8: manual draft rosters are retired from the UI (Jadwal per tanggal is a read-only
+        "Tampilan lanjutan"); schedules change through schedule change sets (Kalender). Kept for
+        compatibility only; no HCIS screen calls it. Shift swaps (ATT-008) publish roster versions
+        server-side and do not use it.
       parameters:
         - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -822,6 +844,12 @@ paths:
       tags: [Attendance]
       operationId: copyPreviousAttendanceRoster
       x-required-permission: attendance.schedule.manage
+      deprecated: true
+      description: >-
+        ATT-011-8: manual draft rosters are retired from the UI (Jadwal per tanggal is a read-only
+        "Tampilan lanjutan"); schedules change through schedule change sets (Kalender). Kept for
+        compatibility only; no HCIS screen calls it. Shift swaps (ATT-008) publish roster versions
+        server-side and do not use it.
       parameters:
         - { name: rosterId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:

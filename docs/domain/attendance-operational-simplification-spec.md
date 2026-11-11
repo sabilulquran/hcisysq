@@ -66,7 +66,7 @@ Waktu & Kehadiran
 
 - Menu hanya tampil bila user mempunyai permission untuk **memuat datanya** (memperbaiki K-8).
 - Route lama (`/admin/attendance/workforce/*`, `/admin/attendance`) dialihkan ke route baru selama minimal satu rilis; tidak ada link mati.
-- "Assignment" dan "Roster mingguan" lama tetap ada sebagai **Pengaturan → Tampilan lanjutan (read-only)** sampai UAT ATT-011-5 lulus, lalu dihapus dari navigasi (bukan dari database).
+- "Assignment" dan "Roster mingguan" lama tetap ada sebagai **Tampilan lanjutan (read-only)** sampai UAT ATT-011-5 lulus, lalu dihapus dari navigasi (bukan dari database). Sejak ATT-011-8 keduanya tidak ada di tab mana pun dan hanya ditautkan dari **Jadwal → Kalender** (bukan dari Pengaturan, agar dekat dengan layar penggantinya); lihat §10.11.
 
 ### Kamus istilah UI (wajib)
 
@@ -185,6 +185,8 @@ Ketiganya menghasilkan satu **Perubahan Jadwal** (backend: *schedule change set*
 **Salin jadwal:** Dari minggu [..] → ke minggu [..] / ulangi N minggu; unit/pegawai; sumber = jadwal yang **berlaku** pada minggu sumber (pola + penggantian), bukan hanya roster yang dipublish (memperbaiki J-5).
 
 **Riwayat perubahan:** daftar Perubahan Jadwal: `Waktu | Oleh | Ringkasan | Pegawai | Rentang | Keterangan`. Klik → detail item. Tidak ada "hapus"; untuk membatalkan, buat Perubahan Jadwal baru (tombol "Kembalikan seperti sebelumnya" mengisi wizard dengan nilai sebelum perubahan; tetap melalui Lihat dampak).
+
+**Tampilan lanjutan (ATT-011-8):** di bawah kalender ada tautan baca saja ke **Pola jadwal (lama)** dan **Jadwal per tanggal (lama)**, hanya bagi pemegang `attendance.schedule.manage`. Keduanya tidak lagi bisa membuat atau mengubah pola maupun draf; perubahan jadwal hanya lewat Atur/Ganti/Salin jadwal.
 
 **Tukar shift (ATT-008):** HC melihat antrean "Menunggu keputusan HC" sebagai badge di Jadwal; keputusan tetap memakai alur ATT-008. Istilah "Requester/Counterpart" diganti "Pengaju/Rekan tukar".
 
@@ -534,11 +536,11 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 | **ATT-011-6a** Lembur: aturan & layar HC | §7.5 jumlahkan menit approved; `day_type` + penanda libur-dijadwalkan pada result (§5.6); fakta scan di daftar; layar pemantauan HC §7.4 (siapa yang memutuskan belum berubah); audit `access_audit_events`. | `GET /admin/attendance/overtime` menambah `dayType`, `scanOutsideScheduleMinutes`; result read menambah `dayType`. OpenAPI diperbarui. | Kolom nullable `day_type`, `holiday_scheduled_work` pada `attendance_result_versions` (versi lama `NULL` = tidak diketahui; tidak di-backfill diam-diam; hitung ulang menghasilkan versi baru). Rollback: rilis lama mengabaikan kolom; engine lama kembali ke "terbaru saja" — dicatat di release note. | Dua lembur approved dijumlahkan; lembur pada Libur tetap Libur + menit; libur-dijadwalkan → hari kerja biasa + `public_holiday`; fakta scan tidak mengisi menit; total > 24 jam → 422; layar HC menampilkan semua lembur (D-11 hanya membatasi notifikasi); result lama tidak berubah tanpa hitung ulang. |
 | **ATT-011-6b** Lembur: atasan & persetujuan dua pihak | §7.1-7.8 (tidak lagi diblokir; D-5a..D-11 dijawab). Ekstrak resolver approval cuti ke modul bersama tanpa mengubah perilaku cuti. Lembur Tim, perintah lembur, persetujuan pegawai, notifikasi HC, alihkan approver, pembatalan administratif, alur `hc_legacy`, jendela 7 hari (D-9), peringatan PP 35/2021 (D-5b), aturan jabatan tidak berhak lembur + seed Direktur (D-10), notifikasi HC per unit (D-11). | Baru: `GET /attendance/overtime/team`, `POST /attendance/overtime/orders` (batch, satu record per pegawai), `POST /attendance/overtime/{id}/supervisor-decision`, `POST /attendance/overtime/{id}/employee-decision`, `POST /admin/attendance/overtime/{id}/reassign`, `POST /admin/attendance/overtime/{id}/void`, `GET/PUT /admin/attendance/overtime-policy` (ambang peringatan), `GET/POST /admin/attendance/overtime-eligibility-rules`, `POST /admin/attendance/overtime-eligibility-rules/{id}/end`; respons create/decision menambah `warnings[]`. Berubah: `POST /attendance/overtime` membuat snapshot atasan; `POST /admin/attendance/overtime` masuk alur A; `POST /admin/attendance/overtime/{id}/decision` hanya untuk `hc_legacy` (409 untuk request baru). OpenAPI. | Kolom `initiated_by`, `ordered_by_employee_id` pada `attendance_overtime_requests`; tabel langkah persetujuan lembur (atau tabel approval step bersama bila sudah generik) dengan principal snapshot + rollout mode. Tabel `attendance_overtime_policy_versions` (ambang, effective-dated) dan `attendance_overtime_eligibility_rules` (seed Direktur). Data lama: `initiated_by = 'hc_legacy'`. Rollback: rilis lama mengabaikan kolom/tabel dan kembali ke HC memutuskan semua serta **tidak** menegakkan aturan Direktur/jendela 7 hari; request yang sedang menunggu atasan/pegawai tetap `submitted` sehingga dapat diputuskan HC — **risiko perilaku yang harus diberitahukan ke owner sebelum rollback**. | Otorisasi: atasan hanya untuk bawahan hasil resolver (403 lainnya); pegawai tidak bisa menyetujui pengajuannya sendiri; hanya pegawai tujuan yang bisa setuju/tolak perintah; HC biasa 403 untuk keputusan request baru; unit HC → atasan di HC menyetujui; snapshot tetap setelah struktur berubah; LEGACY vs STRUCTURE; vacancy/acting; resolver gagal → 422 tanpa record; double decision 409; reassign tercatat; notifikasi HC setelah commit hanya ke HC ber-scope unit pegawai (fallback organisasi); D-9 di luar 7 hari → 422; D-10 Direktur → 422 di pengajuan, perintah, atas nama HC, dan 409 saat persetujuan bila aturan baru berlaku; Direktur tidak tampil di laporan lembur; Direktur tetap bisa menyetujui bawahan; aturan berbasis position/role, tidak ada employee id; D-5b peringatan muncul tanpa memblokir dan tercatat pada audit persetujuan; 403 Aturan lembur tanpa `attendance.policy.manage`; regresi seluruh test cuti lulus. Review tambahan: auth/permission. |
 | **ATT-011-7** Pegawai | §8. | Jadwal ke depan memakai `GET /attendance/me/schedule?from&to` yang sudah ada (≤ 31 hari); `POST /attendance/clarifications` mendapat batas server-side yang sekarang belum ada: tanggal depan ditolak dan tanggal lampau maks D-7 hari (`422 CLARIFICATION_DATE_OUT_OF_RANGE`). | Tidak ada. | Pegawai hanya melihat jadwal sendiri; batas tanggal klarifikasi; cancel klarifikasi; notifikasi keputusan; mobile. |
-| **ATT-011-8** Pensiun UI lama | Hapus Assignment/Roster lama dari navigasi setelah UAT P5 diterima owner; endpoint lama tetap (dipakai ATT-008 dan kompatibilitas) tetapi pembuatan draft manual dinonaktifkan di UI. | Endpoint draft roster: deprecate di OpenAPI. | Tidak ada. | Route test; ATT-008 tetap lulus. |
+| **ATT-011-8** Pensiun UI lama (selesai, §10.11) | Hapus Assignment/Roster lama dari navigasi setelah UAT P5 diterima owner; endpoint lama tetap (dipakai ATT-008 dan kompatibilitas) tetapi pembuatan draft manual dinonaktifkan di UI. | Endpoint draft roster: deprecate di OpenAPI. | Tidak ada. | Route test; ATT-008 tetap lulus. |
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket: **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (lihat §10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (lihat §10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (lihat §10.3). **ATT-011-6a** diimplementasikan 2026-10-27 (lihat §10.4); paket lain belum dimulai. **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
+Status paket (diperbarui 2026-11-11): **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (§10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (§10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (§10.3). **ATT-011-6a** diimplementasikan 2026-10-27 (§10.4). **ATT-011-4a**, **4b**, **4c** diimplementasikan (§10.5–10.7). **ATT-011-5** diimplementasikan (§10.8). **ATT-011-6b-1** dan **6b-2** diimplementasikan (§10.9–10.10); **ATT-011-6b-3** (peringatan PP 35/2021 dan aturan jabatan tidak berhak lembur) sedang dikerjakan. **ATT-011-8** diimplementasikan 2026-11-11 (§10.11). **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -718,7 +720,7 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - D-1: pemegang `attendance.reports.read` melihat kalender dan riwayat tanpa tombol ubah. D-8: di layar < 768px
   kalender menjadi daftar kartu per pegawai (7 hari pertama), Atur/Salin jadwal disembunyikan dengan pesan
   "Gunakan layar lebih besar untuk perubahan massal"; Ganti jadwal tetap tersedia.
-- Pola jadwal dan Jadwal per tanggal lama tetap ada sampai UAT ATT-011-8 memutuskan pensiunnya. `TBD`: detail
+- Pola jadwal dan Jadwal per tanggal lama tetap ada sampai UAT ATT-011-8 memutuskan pensiunnya (dipensiunkan, lihat §10.11). `TBD`: detail
   item per perubahan di Riwayat (API sudah ada), tanda "diganti 3 Okt oleh Siti" pada sel (API memberi
   `changeSetId`), dan sub-unit pada filter unit.
 
@@ -757,6 +759,34 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   pegawai" dikirim ke atasan langsung pegawai.
 - `TBD`: menu Lembur Tim tampil untuk semua pegawai (halaman kosong bila bukan atasan); disembunyikan setelah
   ada endpoint ringan "apakah atasan".
+### 10.11 Catatan implementasi ATT-011-8 (2026-11-11)
+
+- **UAT ATT-011-5:** penerimaan owner atas UAT Kalender belum tercatat. Mengikuti aturan owner 2026-10-27
+  ("ambil default paling masuk akal, tandai DRAFT, jalan terus"), default yang diambil adalah **lanjut**:
+  UI lama dipensiunkan sekarang. `DRAFT` — bila UAT menemukan kekurangan Kalender, tab lama dapat dikembalikan
+  dengan mengembalikan PR ini (tidak ada data atau migration yang berubah).
+- **Navigasi:** tab Jadwal tinggal **Kalender** dan **Tukar shift**. "Pola jadwal" (`/admin/attendance/schedules`)
+  dan "Jadwal per tanggal" (`/admin/attendance/schedules/dates`) menjadi **Tampilan lanjutan, baca saja**,
+  ditautkan di bawah Kalender bagi pemegang `attendance.schedule.manage`; tidak muncul di bar tab. Saat salah
+  satunya dibuka, bar tab menandai Kalender sebagai tab aktif. URL lama tetap berfungsi (bookmark), izin route
+  tidak berubah. Menu "Jadwal" di sidebar, katalog modul ("Jadwal & Shift"), dan tombol "Buka di Jadwal" pada
+  panel hari kini membuka Kalender. Redirect pra-ATT-011 `/admin/attendance/workforce/assignments` dan
+  `/admin/attendance/workforce/roster` kini menuju Kalender.
+- **Pola jadwal (lama):** hanya tabel riwayat pola; form "Pola jadwal baru" dan tombol "Akhiri" dihapus.
+  Daftarnya tetap utang ENG-LIST-001 `PAG-1` (tidak berubah di paket ini). Pembuatan pola dari Laporan →
+  "Belum terjadwal" (Pasang ke shift/Pasang jadwal, ATT-014) tidak termasuk paket ini dan tetap berjalan.
+- **Jadwal per tanggal (lama):** tidak bisa lagi membuat draf ("Ubah jadwal minggu ini"), mengubah sel,
+  menyalin minggu lalu, atau menghapus override; sel ditampilkan sebagai teks. **DRAFT:** satu aksi tersisa,
+  **Terapkan draf**, hanya muncul bila minggu itu masih punya draf lama, karena draf memblokir Atur/Ganti
+  jadwal (`ROSTER_DRAFT_EXISTS`) dan persetujuan tukar shift (`SHIFT_SWAP_ROSTER_DRAFT_EXISTS`) pada minggu
+  itu dan tidak ada endpoint untuk membuang draf.
+- **API:** tidak ada endpoint yang dihapus. `POST /admin/attendance/rosters`,
+  `PUT …/rosters/{rosterId}/entries`, `DELETE …/entries/{employeeId}/{workDate}` dan
+  `POST …/rosters/{rosterId}/copy-previous` ditandai `deprecated` di OpenAPI; `POST …/publish` tetap (dipakai
+  Terapkan draf). Tukar shift ATT-008 menerbitkan versi roster di server dan tidak memakai endpoint ini.
+- **Test:** route/navigasi (tab Jadwal, Tampilan lanjutan per izin, tab aktif, redirect lama, izin route),
+  layar lama tidak lagi memanggil endpoint tulis; test ATT-008 tetap lulus. Tidak ada migration.
+
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

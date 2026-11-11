@@ -1005,8 +1005,9 @@ shift. Aksi per kelompok (hanya `attendance.schedule.manage`):
 - **Buat shift baru**: membuka Shift → tambah, lalu kembali ke kelompok ini. Jam masuk/pulang **wajib
   diisi HC**; HCIS tidak pernah mengusulkan jam dari data scan (I-4).
 
-Per pegawai juga tersedia tombol **Pasang jadwal**, yang membuka Jadwal → Pola jadwal dengan pegawai
-terpilih sudah terisi.
+Per pegawai juga tersedia tombol **Pasang jadwal**, yang membuka dialog Pasang ke shift yang sama untuk
+pegawai itu saja. (Layar Jadwal → Pola jadwal sudah baca saja sejak ATT-011-8; dialog ini tetap membuat
+pola jadwal lewat `POST /admin/attendance/schedule-assignments`.)
 
 **B. Scan yang belum bisa dikaitkan ke pegawai.**
 Satu baris per mesin + PIN: jumlah scan dalam rentang, tanggal scan pertama–terakhir, dan statusnya:

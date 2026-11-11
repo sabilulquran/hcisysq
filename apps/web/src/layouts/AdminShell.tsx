@@ -118,7 +118,7 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { key: "attendance", label: "Ringkasan", href: "/admin/attendance", icon: LayoutDashboard, attendanceSection: "summary" },
       { key: "attendance-shifts", label: "Shift", href: "/admin/attendance/shifts", icon: Clock3, attendanceSection: "shifts" },
-      { key: "attendance-schedules", label: "Jadwal", href: "/admin/attendance/schedules", icon: CalendarRange, attendanceSection: "schedules" },
+      { key: "attendance-schedules", label: "Jadwal", href: "/admin/attendance/schedules/calendar", icon: CalendarRange, attendanceSection: "schedules" },
       { key: "attendance-records", label: "Kehadiran", href: "/admin/attendance/daily", icon: ClipboardCheck, attendanceSection: "records" },
       { key: "attendance-overtime", label: "Lembur", href: "/admin/attendance/overtime", icon: TimerReset, attendanceSection: "overtime" },
       { key: "attendance-adms", label: "Mesin Fingerprint", href: "/admin/attendance/adms", icon: Fingerprint, attendanceSection: "devices" },

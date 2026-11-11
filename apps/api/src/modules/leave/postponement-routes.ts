@@ -121,6 +121,14 @@ function mapKnownError(error: unknown): { statusCode: number; code: string; mess
     return { statusCode: 409, code: error.code, message: error.message };
   }
   const pgCode = (error as { code?: unknown }).code;
+  // A decision on the same request in flight: the transaction was rolled back, a retry sees the result.
+  if (pgCode === "40P01" || pgCode === "55P03") {
+    return {
+      statusCode: 409,
+      code: "LEAVE_REQUEST_BUSY",
+      message: "Pengajuan ini sedang diproses. Muat ulang halaman, lalu coba lagi.",
+    };
+  }
   if (pgCode === "23514" && /overlaps/.test(String((error as { message?: unknown }).message))) {
     return {
       statusCode: 409,
@@ -181,6 +189,31 @@ async function evidenceCount(db: Pool | PoolClient, requestId: string) {
   return result.rows[0]?.count ?? 0;
 }
 
+/**
+ * D-05: the proposed dates must not overlap another active leave of the requester (the trigger
+ * of migration 0012 would refuse the replacement anyway, after the original stopped holding).
+ */
+async function assertNoOtherActiveLeave(
+  db: Pool | PoolClient,
+  input: { employeeId: string; excludeRequestId: string; startOn: string; endOn: string },
+) {
+  const overlap = await db.query(
+    `SELECT 1 FROM leave_requests
+      WHERE employee_id = $1 AND id <> $2
+        AND status IN ('in_review', 'approved')
+        AND start_on <= $4::date AND end_on >= $3::date
+      LIMIT 1`,
+    [input.employeeId, input.excludeRequestId, input.startOn, input.endOn],
+  );
+  if (overlap.rowCount) {
+    throw new EmployeeLeaveError(
+      409,
+      "LEAVE_REQUEST_OVERLAP",
+      "Tanggal usulan bertabrakan dengan cuti lain pegawai yang masih aktif.",
+    );
+  }
+}
+
 /** D-04/D-05/D-06: the proposal must be a request the employee could have submitted. */
 async function evaluateProposal(
   db: Pool | PoolClient,
@@ -195,6 +228,12 @@ async function evaluateProposal(
     today: jakartaToday(),
   });
   const requester = await loadRequesterContext(db, step.requesterEmployeeId);
+  await assertNoOtherActiveLeave(db, {
+    employeeId: step.requesterEmployeeId,
+    excludeRequestId: step.requestId,
+    startOn: dates.startOn,
+    endOn: dates.endOn,
+  });
   if (step.policyKey === "annual") {
     const preview = await buildAnnualPreview(db, requester, dates, step.submittedOn, step.requestId);
     return {
@@ -280,7 +319,11 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         r.policy_key AS "policyKey",
         r.start_on::text AS "startOn",
         r.end_on::text AS "endOn",
-        (r.submitted_at AT TIME ZONE 'Asia/Jakarta')::date::text AS "submittedOn"
+        -- D-06: a replacement keeps the notice date of the request it replaced.
+        coalesce(
+          r.validation_summary ->> 'noticeReferenceOn',
+          (r.submitted_at AT TIME ZONE 'Asia/Jakarta')::date::text
+        ) AS "submittedOn"
       FROM leave_request_approval_steps s
       JOIN leave_requests r ON r.id = s.leave_request_id
       WHERE s.id = $1
@@ -453,7 +496,10 @@ export async function registerLeavePostponementRoutes(app: FastifyInstance, pool
         r.status AS "requestStatus",
         r.policy_key AS "policyKey",
         r.reason,
-        (r.submitted_at AT TIME ZONE 'Asia/Jakarta')::date::text AS "submittedOn",
+        coalesce(
+          r.validation_summary ->> 'noticeReferenceOn',
+          (r.submitted_at AT TIME ZONE 'Asia/Jakarta')::date::text
+        ) AS "submittedOn",
         p.proposed_start_on::text AS "proposedStartOn",
         p.proposed_end_on::text AS "proposedEndOn",
         p.proposed_by_account_id AS "proposedByAccountId",

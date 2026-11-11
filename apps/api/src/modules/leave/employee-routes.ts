@@ -351,8 +351,10 @@ async function hydrateApprovalChain(
 
 /**
  * `submittedOn` is the notice reference date: today for a new request, the original submission
- * date for a LEAVE-008 replacement (D-06). `excludeRequestId` leaves the request being postponed
- * out of the quota while its approver checks a proposal (D-05).
+ * date for a LEAVE-008 replacement (D-06). Approvers are always resolved on today's date
+ * (`authorityDate`), so a replacement gets the chain in force when it is accepted (D-07).
+ * `excludeRequestId` leaves the request being postponed out of the quota while its approver
+ * checks a proposal (D-05).
  */
 export async function buildAnnualPreview(
   db: Pool | PoolClient,
@@ -360,6 +362,7 @@ export async function buildAnnualPreview(
   input: { startOn: string; endOn: string },
   submittedOn: string,
   excludeRequestId: string | null = null,
+  authorityDate: string = jakartaToday(),
 ) {
   if (!employee.startedOn) {
     throw new EmployeeLeaveError(
@@ -384,7 +387,7 @@ export async function buildAnnualPreview(
   const authorityResolution = await resolveLeaveAuthorities(db, {
     workflowKey: "leave.annual",
     requesterEmployeeId: employee.id,
-    effectiveDate: submittedOn,
+    effectiveDate: authorityDate,
     legacy: {
       directManagerEmployeeId: employee.directManagerEmployeeId,
       unitApproverEmployeeId: employee.unitApproverEmployeeId,

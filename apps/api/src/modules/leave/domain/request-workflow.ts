@@ -129,11 +129,6 @@ export function decideLeaveApprovalStep(input: {
 }
 
 /**
- * LEAVE-010: the requester may withdraw line-approval leave (Cuti Tahunan, planned leave) for
- * as long as it awaits any decision. Approved leave is post-approval cancellation, which stays
- * with HC; special leave reports are withdrawn through HC.
- */
-/**
  * LEAVE-008: the owner of the active line step may propose other dates instead of deciding.
  * Same state rules as a decision; the caller has already checked step ownership.
  */
@@ -197,6 +192,11 @@ export function assertPostponementStillAhead(proposedStartOn: string, today: str
   }
 }
 
+/**
+ * LEAVE-010: the requester may withdraw line-approval leave (Cuti Tahunan, planned leave) for
+ * as long as it awaits any decision. Approved leave is post-approval cancellation, which stays
+ * with HC; special leave reports are withdrawn through HC.
+ */
 export function canCancelLeaveRequest(request: { status: LeaveRequestStatus; lineHandling: LeaveLineHandling }) {
   return request.status === "in_review" && request.lineHandling === "approval";
 }

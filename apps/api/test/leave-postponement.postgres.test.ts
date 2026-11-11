@@ -451,6 +451,44 @@ describe.skipIf(!allowed)("LEAVE-008 leave postponement with proposed alternativ
     expect(final.json().requestStatus).toBe("approved");
   });
 
+  it("LEAVE-008-E/D-06/D-07: the chain in force at acceptance decides; notice stays with the first submission", async () => {
+    const request = await submitAnnual();
+    const first = (await postpone("manager", request.approvalChain[0]!.id)).json();
+    // The organisation changes before the employee answers: the other employee becomes manager.
+    await client.query("UPDATE employees SET direct_manager_employee_id = $2 WHERE id = $1",
+      [people.requester.employeeId, people.other.employeeId]);
+    const accepted = await call("requester", "POST", `/leave/me/postponements/${first.proposalId}/accept`, { idempotencyKey: randomUUID() });
+    expect(accepted.statusCode, accepted.body).toBe(201);
+    expect(accepted.json().approvalChain.map((step: { name: string }) => step.name)).toEqual(["Pegawai other", "Pegawai unitApprover"]);
+
+    // Postponed a second time: the notice date is still the original submission day.
+    const replacementId = accepted.json().replacementRequestId as string;
+    const original = await client.query<{ day: string }>(
+      `SELECT (submitted_at AT TIME ZONE 'Asia/Jakarta')::date::text AS day FROM leave_requests WHERE id = $1`, [request.id],
+    );
+    await client.query("UPDATE leave_requests SET submitted_at = submitted_at + interval '30 days' WHERE id = $1", [replacementId]);
+    const second = await postpone("other", accepted.json().approvalChain[0].id, { startOn: "2099-02-16", endOn: "2099-02-17" });
+    expect(second.statusCode, second.body).toBe(200);
+    const again = await call("requester", "POST", `/leave/me/postponements/${second.json().proposalId}/accept`, { idempotencyKey: randomUUID() });
+    expect(again.statusCode, again.body).toBe(201);
+    const summary = await client.query<{ summary: { noticeReferenceOn: string; replacesRequestId: string } }>(
+      `SELECT validation_summary AS summary FROM leave_requests WHERE id = $1`, [again.json().replacementRequestId],
+    );
+    expect(summary.rows[0]!.summary).toMatchObject({ noticeReferenceOn: original.rows[0]!.day, replacesRequestId: replacementId });
+  });
+
+  it("LEAVE-008-C: a proposal that overlaps another active leave of the requester is refused", async () => {
+    const request = await submitAnnual();
+    await submitAnnual({ startOn: "2099-02-10", endOn: "2099-02-10" });
+    const overlap = await postpone("manager", request.approvalChain[0]!.id, { startOn: "2099-02-09", endOn: "2099-02-10" });
+    expect(overlap.statusCode).toBe(409);
+    expect(overlap.json().code).toBe("LEAVE_REQUEST_OVERLAP");
+    expect(await requestRow(request.id)).toMatchObject({ status: "in_review" });
+    // Overlapping the request's own dates is fine: it no longer holds them once postponed.
+    const shifted = await postpone("manager", request.approvalChain[0]!.id, { startOn: "2099-02-03", endOn: "2099-02-03" });
+    expect(shifted.statusCode, shifted.body).toBe(200);
+  });
+
   it("LEAVE-008-F: acceptance revalidates; a quota used meanwhile refuses it and the proposal stays open", async () => {
     const request = await submitAnnual();
     const [first] = request.approvalChain;

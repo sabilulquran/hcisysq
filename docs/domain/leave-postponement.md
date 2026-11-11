@@ -44,11 +44,12 @@ Termasuk:
 | D-03 | Berlaku untuk Cuti Tahunan dan semua cuti terencana dengan persetujuan lini (Pernikahan, Menikahkan Anak, Khitanan Anak, Haji, Cuti Tanpa Gaji). | DRAFT |
 | D-04 | Usulan wajib berisi **tanggal mulai dan tanggal selesai** (legacy boleh salah satu) dan **catatan** 5–1000 karakter. Tanggal usulan harus berbeda dari tanggal pengajuan asal, dan tanggal mulai harus **setelah hari ini** (Asia/Jakarta). | DRAFT |
 | D-05 | Usulan divalidasi dengan aturan jenis cutinya **saat diusulkan** dan **diulang saat diterima**: kalender kerja, hari kerja > 0, kelayakan dan kuota periode Cuti Tahunan (tanpa menghitung pengajuan asal), aturan jenis cuti terencana, dan resolusi rantai persetujuan. Penyetuju tidak dapat mengusulkan tanggal yang tidak mungkin diajukan pegawai. | DRAFT |
-| D-06 | Batas pemberitahuan minimum (H-7 Cuti Tahunan dan batas jenis cuti terencana) dihitung dari **tanggal pengajuan asal dikirim**, bukan dari tanggal usulan atau tanggal diterima. Pegawai sudah memberi tahu tepat waktu; keterlambatan karena usulan tidak boleh membuatnya gagal. Tanggal acuan itu dicatat di `validation_summary.noticeReferenceOn` pengganti. | DRAFT |
-| D-07 | Pengajuan pengganti menjalani **seluruh rantai persetujuan dari awal**, diresolusi saat diterima (APR-001: penerimaan adalah pengiriman). Tidak ada tahap yang dianggap sudah disetujui, termasuk tahap pengusul; APR-001 tidak mengenal auto-approval. Masa kritis LEAVE-009 dicocokkan ulang untuk tanggal baru. | DRAFT |
+| D-06 | Batas pemberitahuan minimum (H-7 Cuti Tahunan dan batas jenis cuti terencana) dihitung dari **tanggal pengajuan asal dikirim**, bukan dari tanggal usulan atau tanggal diterima. Pegawai sudah memberi tahu tepat waktu; keterlambatan karena usulan tidak boleh membuatnya gagal. Tanggal acuan itu dicatat di `validation_summary.noticeReferenceOn` pengganti, dan tetap dipakai bila pengganti itu sendiri ditangguhkan lagi. | DRAFT |
+| D-07 | Pengajuan pengganti menjalani **seluruh rantai persetujuan dari awal**, diresolusi pada **tanggal diterima** (APR-001: penerimaan adalah pengiriman), sehingga perubahan atasan atau struktur sejak pengajuan asal ikut berlaku. Tidak ada tahap yang dianggap sudah disetujui, termasuk tahap pengusul; APR-001 tidak mengenal auto-approval. Masa kritis LEAVE-009 dicocokkan ulang untuk tanggal baru. | DRAFT |
 | D-08 | Selama usulan menunggu respons, pengajuan asal berstatus `postponement_proposed` dan **tidak menahan kuota** maupun penjaga tumpang tindih (keduanya hanya menghitung `in_review`/`approved`), sama seperti legacy. Bila kuota terpakai pengajuan lain sebelum pegawai menerima, penerimaan ditolak dengan alasannya dan pegawai dapat menolak usulan. | DRAFT |
 | D-09 | Menolak usulan menutup pengajuan asal sebagai `cancelled` (pegawai yang mengakhiri, seperti `cancelPendingRequest` legacy) dengan event `leave.postponement.declined`. Tidak kembali ke penyetuju. | DRAFT |
 | D-10 | Alasan cuti pengajuan asal disalin ke pengganti. Dokumen pendukung cuti terencana disalin (ciphertext yang sama, baris baru) supaya pegawai tidak mengunggah ulang. | DRAFT |
+| D-12 | Pesan validasi pratinjau dan usulan dikirim apa adanya ke penyetuju, termasuk sisa kuota periode pemohon bila usulan melampauinya. Penyetuju lini memang menilai ketersediaan pegawainya; tidak ada angka lain dari profil pegawai yang dibuka. | DRAFT |
 | D-11 | Catatan penyetuju dan alasan cuti tidak masuk ke isi notifikasi; notifikasi hanya menyebut nama, jenis cuti, dan tanggal. Catatan tampil di layar pegawai pemilik pengajuan. | Mengikuti LEAVE-004 "Audit and privacy" |
 
 ## 4. Actor
@@ -108,7 +109,7 @@ Input: `startOn`, `endOn` (ISO), dan untuk `postpone` juga `note` (5–1000 kara
 Langkah (`postpone`), dalam satu transaksi:
 
 1. Kunci tahap dan pengajuan (`FOR UPDATE OF step, request`, sama dengan keputusan).
-2. Periksa kepemilikan dan state (di atas), D-04, lalu validasi D-05/D-06 terhadap konteks pemohon. Kuota Cuti Tahunan dihitung tanpa pengajuan asal.
+2. Periksa kepemilikan dan state (di atas), D-04, lalu validasi D-05/D-06 terhadap konteks pemohon. Kuota Cuti Tahunan dihitung tanpa pengajuan asal. Tanggal usulan tidak boleh beririsan dengan cuti lain pemohon yang `in_review`/`approved` (selain pengajuan asal).
 3. Simpan usulan `proposed` (tanggal, hari kerja, catatan, pengusul).
 4. Ubah tahap, bagian terbuka, dan pengajuan sesuai §5.2 dan §5.1.
 5. Event `leave.postponement.proposed` pada pengajuan asal.
@@ -125,7 +126,7 @@ Precondition: pengajuan asal milik pegawai sesi; usulan `proposed`; pengajuan `p
 Langkah, dalam satu transaksi:
 
 1. Kunci baris pegawai (seperti pengajuan cuti biasa, menyerialkan kuota), lalu usulan dan pengajuan asal.
-2. Bila usulan sudah `accepted`: jawab ulang dengan pengganti yang sama (`idempotentReplay = true`), tanpa efek baru.
+2. Bila usulan sudah `accepted`: jawab ulang dengan pengganti yang sama (`idempotentReplay = true`), tanpa efek baru, apa pun kunci idempotensi yang dikirim (usulan itu sendiri sudah menjadi kunci).
 3. Buat pengajuan pengganti lewat jalur pengiriman jenis cutinya (validasi penuh D-05/D-06, snapshot rantai baru D-07, masa kritis, tugas HC untuk cuti terencana, salinan dokumen D-10), dengan `replaces_request_id` dan `idempotency_key` dari input.
 4. Usulan → `accepted` (`responded_at`, `replacement_request_id`); pengajuan asal → `postponed`.
 5. Event `leave.postponement.accepted` pada pengajuan asal; event pengiriman biasa (`leave.request.submitted` / `leave.planned.submitted`, payload memuat `replacesRequestId`) pada pengganti.
@@ -179,6 +180,9 @@ Catatan penyetuju disimpan di tahap (`decision_note`) dan usulan, tidak di paylo
 | Tanggal sama dengan asal / mulai tidak setelah hari ini | 409 `POSTPONEMENT_DATES_UNCHANGED` / `POSTPONEMENT_DATE_PASSED` |
 | Aturan cuti gagal (kuota, periode, kalender, rantai) | 409 dengan kode validasi jenis cutinya, mis. `PERIOD_LIMIT_EXCEEDED`, `CROSS_PERIOD_REQUEST_UNSUPPORTED`, `EVIDENCE_REQUIRED`, `LEAVE_CALENDAR_NOT_CONFIGURED`, `APPROVER_ACCOUNT_NOT_READY` |
 | Pemohon tidak lagi aktif | 409 `REQUESTER_NOT_ACTIVE` |
+| Tanggal usulan beririsan dengan cuti lain pemohon yang masih aktif | 409 `LEAVE_REQUEST_OVERLAP` |
+| Keputusan lain atas pengajuan yang sama sedang berjalan (kunci bertabrakan) | 409 `LEAVE_REQUEST_BUSY`; transaksi dibatalkan, ulangi setelah memuat ulang |
+| Kunci idempotensi sudah dipakai pengajuan lain | 409 `IDEMPOTENCY_KEY_REUSED` |
 | Usulan tidak ada atau bukan milik pegawai | 404 `POSTPONEMENT_NOT_FOUND` |
 | Usulan sudah dijawab dengan cara lain / pengajuan tidak menunggu respons | 409 `POSTPONEMENT_NOT_OPEN` |
 | Diterima saat tanggal mulai usulan sudah tiba | 409 `POSTPONEMENT_DATE_PASSED` (pegawai menolak, lalu mengajukan baru) |

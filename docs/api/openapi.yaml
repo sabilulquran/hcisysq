@@ -557,6 +557,40 @@ paths:
     $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}'
   /public/employee-cards/{code}/photo:
     $ref: './employee-cards.openapi.yaml#/paths/~1public~1employee-cards~1{code}~1photo'
+  /letters/me/options:
+    $ref: './letters.openapi.yaml#/paths/~1letters~1me~1options'
+  /letters/me/numbers:
+    $ref: './letters.openapi.yaml#/paths/~1letters~1me~1numbers'
+  /letters/me/numbers/{id}:
+    $ref: './letters.openapi.yaml#/paths/~1letters~1me~1numbers~1{id}'
+  /letters/me/numbers/{id}/void:
+    $ref: './letters.openapi.yaml#/paths/~1letters~1me~1numbers~1{id}~1void'
+  /admin/letters/register:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1register'
+  /admin/letters/register/export:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1register~1export'
+  /admin/letters/numbers/{id}:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1numbers~1{id}'
+  /admin/letters/numbers/{id}/void:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1numbers~1{id}~1void'
+  /admin/letters/types:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1types'
+  /admin/letters/types/{code}:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1types~1{code}'
+  /admin/letters/issuers:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1issuers'
+  /admin/letters/issuer-targets:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1issuer-targets'
+  /admin/letters/issuers/{id}:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1issuers~1{id}'
+  /admin/letters/grants:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1grants'
+  /admin/letters/employee-options:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1employee-options'
+  /admin/letters/grants/{id}/revoke:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1grants~1{id}~1revoke'
+  /admin/letters/counters:
+    $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1counters'
   /admin/committees:
     $ref: './committees.openapi.yaml#/paths/~1admin~1committees'
   /admin/committees/employee-options:

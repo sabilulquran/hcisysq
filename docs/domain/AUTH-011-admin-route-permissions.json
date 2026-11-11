@@ -4921,5 +4921,191 @@
     "permissions": [
       "employment.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/letters/me/options",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/letters/me/numbers",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/letters/me/numbers",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "PATCH",
+    "url": "/letters/me/numbers/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/letters/me/numbers/:id/void",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/register",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/register/export",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/letters/numbers/:id",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/numbers/:id/void",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/types",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/types",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/letters/types/:code",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/issuers",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/issuer-targets",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/issuers",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "PATCH",
+    "url": "/admin/letters/issuers/:id",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/grants",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/employee-options",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/grants",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/grants/:id/revoke",
+    "permissions": [
+      "documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "GET",
+    "url": "/admin/letters/counters",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/letter-routes.ts",
+    "method": "POST",
+    "url": "/admin/letters/counters",
+    "permissions": [
+      "documents.manage"
+    ]
   }
 ]

@@ -1,13 +1,22 @@
 // EMP-005 S2B-b §13.9: the admin list's own "Di luar pengelolaan HCIS" filter,
 // the grey badge, and the read-only detail. Static render; synthetic data.
 
+import type { ChangeEvent, ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { outsideHcisBadgeLabel, type AdminEmployeeListItem } from "@/lib/adminEmployees";
+import { listEmployees, outsideHcisBadgeLabel, type AdminEmployeeListItem, type EmployeeManagementScopeFilter } from "@/lib/adminEmployees";
 import { ISSUE_LABEL } from "@/lib/employment";
 import { OutsideHcisReadOnlyMaster } from "@/pages/AdminEmployeeDetailPage";
-import { EmployeeListEmpty, EmployeeListRow, ManagementScopeFilter } from "@/pages/AdminEmployeesPage";
+import {
+  EmployeeListEmpty,
+  EmployeeListRow,
+  INITIAL_EMPLOYEE_LIST_FILTERS,
+  ManagementScopeFilter,
+  employeeListRequest,
+  withFilter,
+  type EmployeeListFilters,
+} from "@/pages/AdminEmployeesPage";
 
 function item(overrides: Partial<AdminEmployeeListItem> = {}): AdminEmployeeListItem {
   return {
@@ -110,5 +119,40 @@ describe("EMP-005 S2B §13.9 Daftar pegawai — Di luar pengelolaan HCIS", () =>
   it("labels the consistency-report line for accounts still linked to a marked record", () => {
     expect(ISSUE_LABEL.ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD)
       .toBe("Akun pegawai masih terhubung ke data di luar pengelolaan HCIS");
+  });
+});
+
+describe("EMP-005 S2B §13.9 the filter reaches the API", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("choosing Di luar pengelolaan HCIS calls listEmployees with scope=OUTSIDE_HCIS from page 1", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({}), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    // The page keeps all filters in one value; start on page 3 of the managed list.
+    let filters: EmployeeListFilters = { ...INITIAL_EMPLOYEE_LIST_FILTERS, page: 3 };
+    const control = ManagementScopeFilter({
+      value: filters.scope,
+      onChange: (next) => { filters = withFilter(filters, "scope", next); },
+    }) as ReactElement<{ onChange: (event: ChangeEvent<HTMLSelectElement>) => void }>;
+    control.props.onChange({ target: { value: "OUTSIDE_HCIS" } } as ChangeEvent<HTMLSelectElement>);
+
+    expect(filters).toMatchObject({ scope: "OUTSIDE_HCIS", page: 1 });
+    await listEmployees(employeeListRequest(filters));
+    const url = String((fetchMock.mock.calls[0] as unknown[])[0]);
+    expect(url).toContain("/api/admin/employees?");
+    expect(new URL(url, "http://localhost").searchParams.get("scope")).toBe("OUTSIDE_HCIS");
+    expect(new URL(url, "http://localhost").searchParams.get("page")).toBe("1");
+  });
+
+  it("asks for the managed population by default, and every filter change goes back to page 1", () => {
+    expect(employeeListRequest(INITIAL_EMPLOYEE_LIST_FILTERS)).toMatchObject({ scope: "MANAGED", page: 1, pageSize: 25 });
+    const onPage2 = { ...INITIAL_EMPLOYEE_LIST_FILTERS, page: 2 };
+    for (const scope of ["MANAGED", "OUTSIDE_HCIS", "ALL"] as EmployeeManagementScopeFilter[]) {
+      expect(employeeListRequest(withFilter(onPage2, "scope", scope))).toMatchObject({ scope, page: 1 });
+    }
+    expect(withFilter(onPage2, "status", "active")).toMatchObject({ status: "active", page: 1, scope: "MANAGED" });
   });
 });

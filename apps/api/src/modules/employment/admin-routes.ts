@@ -194,7 +194,7 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
     if (!mode) return;
 
     const date = query.data.date ?? jakartaToday();
-    const [structure, sources, histories, identities, linkedToOutside] = await Promise.all([
+    const [structure, sources, histories, identities, linkedToOutside, approverOutside] = await Promise.all([
       // Comparing structure and placements only says something once the
       // history is the authoritative record; in SHADOW every seat would be
       // reported, which BASELINE_NOT_LOADED already explains.
@@ -215,8 +215,20 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
             AND a.principal_type = 'EMPLOYEE'
             AND a.status IN ('invited', 'active')`,
       ),
+      // EMP-005 S2B §8.7: active managed employees whose line approver is marked. Listed on the
+      // employee whose routing it breaks, since that is the record HC opens to fix it.
+      pool.query<{ employeeId: string }>(
+        `SELECT e.id AS "employeeId"
+           FROM employees e
+           LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
+           LEFT JOIN organizational_units unit ON unit.id = e.organizational_unit_id
+           LEFT JOIN employees approver ON approver.id = unit.leave_approver_employee_id
+          WHERE e.status = 'active' AND e.removed_at IS NULL AND e.management_scope = 'MANAGED'
+            AND (manager.management_scope = 'OUTSIDE_HCIS' OR approver.management_scope = 'OUTSIDE_HCIS')`,
+      ),
     ]);
     const outsideWithAccount = new Set(linkedToOutside.rows.map((row) => row.employeeId));
+    const approverIsOutside = new Set(approverOutside.rows.map((row) => row.employeeId));
     const identityById = new Map(identities.rows.map((row) => [row.id, row]));
     const seatWithoutPlacement = new Set(structure.withoutPlacement);
     const placementWithoutSeat = new Set(structure.withoutSeat);
@@ -232,6 +244,7 @@ export async function registerEmploymentAdminRoutes(app: FastifyInstance, pool: 
         if (placementWithoutSeat.has(source.employeeId)) finding.codes.push("PLACEMENT_WITHOUT_STRUCTURE_SEAT");
       }
       if (outsideWithAccount.has(source.employeeId)) finding.codes.push("ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD");
+      if (approverIsOutside.has(source.employeeId)) finding.codes.push("APPROVER_OUTSIDE_HCIS");
       return finding;
     });
 

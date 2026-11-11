@@ -180,6 +180,7 @@ Catatan penyetuju disimpan di tahap (`decision_note`) dan usulan, tidak di paylo
 | Tanggal sama dengan asal / mulai tidak setelah hari ini | 409 `POSTPONEMENT_DATES_UNCHANGED` / `POSTPONEMENT_DATE_PASSED` |
 | Aturan cuti gagal (kuota, periode, kalender, rantai) | 409 dengan kode validasi jenis cutinya, mis. `PERIOD_LIMIT_EXCEEDED`, `CROSS_PERIOD_REQUEST_UNSUPPORTED`, `EVIDENCE_REQUIRED`, `LEAVE_CALENDAR_NOT_CONFIGURED`, `APPROVER_ACCOUNT_NOT_READY` |
 | Pemohon tidak lagi aktif | 409 `REQUESTER_NOT_ACTIVE` |
+| Data pemohon ditandai di luar pengelolaan HCIS (EMP-005 §8.7): usulan, pratinjau usulan, dan penerimaan ditolak karena penerimaan mengajukan cuti baru; penyetuju tetap dapat menyetujui atau menolak pengajuan asal, dan pegawai tetap dapat menolak usulan | 409 `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY` |
 | Tanggal usulan beririsan dengan cuti lain pemohon yang masih aktif | 409 `LEAVE_REQUEST_OVERLAP` |
 | Keputusan lain atas pengajuan yang sama sedang berjalan (kunci bertabrakan) | 409 `LEAVE_REQUEST_BUSY`; transaksi dibatalkan, ulangi setelah memuat ulang |
 | Kunci idempotensi sudah dipakai pengajuan lain | 409 `IDEMPOTENCY_KEY_REUSED` |

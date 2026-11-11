@@ -106,16 +106,52 @@ export function EmployeeListEmpty({ scope }: { scope: EmployeeManagementScopeFil
   );
 }
 
+/**
+ * Every filter of the list in one value. The list reloads whenever it changes,
+ * so no filter can be left out of the reload — the way the scope filter once
+ * was, when changing it did nothing until another filter or the page moved.
+ */
+export interface EmployeeListFilters {
+  page: number;
+  query: string;
+  status: EmployeeStatus | "";
+  unitId: string;
+  positionId: string;
+  /** EMP-005 S2B §8.7: marked records are hidden unless HC asks for them. */
+  scope: EmployeeManagementScopeFilter;
+}
+
+export const INITIAL_EMPLOYEE_LIST_FILTERS: EmployeeListFilters = {
+  page: 1, query: "", status: "", unitId: "", positionId: "", scope: "MANAGED",
+};
+
+/** A filter changed: apply it and go back to the first page. */
+export function withFilter<K extends Exclude<keyof EmployeeListFilters, "page">>(
+  filters: EmployeeListFilters,
+  key: K,
+  value: EmployeeListFilters[K],
+): EmployeeListFilters {
+  return { ...filters, [key]: value, page: 1 };
+}
+
+/** What the list asks the API for. */
+export function employeeListRequest(filters: EmployeeListFilters): Parameters<typeof listEmployees>[0] {
+  return {
+    page: filters.page,
+    pageSize: 25,
+    q: filters.query,
+    status: filters.status,
+    unitId: filters.unitId,
+    positionId: filters.positionId,
+    scope: filters.scope,
+  };
+}
+
 export function AdminEmployeesPage() {
   const [data, setData] = useState<AdminEmployeeListResponse | null>(null);
   const [draftQuery, setDraftQuery] = useState("");
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<EmployeeStatus | "">("");
-  const [unitId, setUnitId] = useState("");
-  const [positionId, setPositionId] = useState("");
-  // EMP-005 S2B §8.7: marked records are hidden unless HC asks for them.
-  const [scope, setScope] = useState<EmployeeManagementScopeFilter>("MANAGED");
-  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<EmployeeListFilters>(INITIAL_EMPLOYEE_LIST_FILTERS);
+  const { page, status, unitId, positionId, scope } = filters;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,7 +159,7 @@ export function AdminEmployeesPage() {
     let mounted = true;
     setLoading(true);
     setError(null);
-    void listEmployees({ page, pageSize: 25, q: query, status, unitId, positionId, scope })
+    void listEmployees(employeeListRequest(filters))
       .then((result) => {
         if (mounted) setData(result);
       })
@@ -141,19 +177,15 @@ export function AdminEmployeesPage() {
     return () => {
       mounted = false;
     };
-    // scope belongs here: without it the "Di luar pengelolaan HCIS" filter changed
-    // nothing until another filter or the page moved.
-  }, [page, positionId, query, scope, status, unitId]);
+  }, [filters]);
 
-  const changeScope = (next: EmployeeManagementScopeFilter) => {
-    setScope(next);
-    setPage(1);
-  };
+  const changeScope = (next: EmployeeManagementScopeFilter) => setFilters((current) => withFilter(current, "scope", next));
+  const setPage = (next: (current: number) => number) =>
+    setFilters((current) => ({ ...current, page: next(current.page) }));
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
-    setPage(1);
-    setQuery(draftQuery.trim());
+    setFilters((current) => withFilter(current, "query", draftQuery.trim()));
   };
 
   const summary = data?.summary ?? { total: 0, active: 0, inactive: 0, resigned: 0, outsideHcis: 0 };
@@ -207,10 +239,7 @@ export function AdminEmployeesPage() {
 
           <select
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as EmployeeStatus | "");
-              setPage(1);
-            }}
+            onChange={(event) => setFilters((current) => withFilter(current, "status", event.target.value as EmployeeStatus | ""))}
             className="h-10 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
           >
             <option value="">Semua status</option>
@@ -223,10 +252,7 @@ export function AdminEmployeesPage() {
 
           <select
             value={unitId}
-            onChange={(event) => {
-              setUnitId(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => setFilters((current) => withFilter(current, "unitId", event.target.value))}
             className="h-10 min-w-0 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
           >
             <option value="">Semua unit</option>
@@ -237,10 +263,7 @@ export function AdminEmployeesPage() {
 
           <select
             value={positionId}
-            onChange={(event) => {
-              setPositionId(event.target.value);
-              setPage(1);
-            }}
+            onChange={(event) => setFilters((current) => withFilter(current, "positionId", event.target.value))}
             className="h-10 min-w-0 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
           >
             <option value="">Semua jabatan</option>

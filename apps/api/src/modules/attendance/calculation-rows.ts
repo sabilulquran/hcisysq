@@ -209,7 +209,9 @@ export async function attendanceCalculationRows(
   now = new Date(),
 ) {
   const today = jakartaWorkDate(now);
-  const { covered, uncovered } = await calculationPairs(pool, scope);
+  // EMP-005 S2B §8.7: a record outside HCIS management is no longer calculated, but the results it
+  // already has stay readable here and in the reports built on these rows.
+  const { covered, uncovered } = await calculationPairs(pool, scope, { includeOutsideHcisHistory: true });
   const employeeIds = [...new Set([...covered, ...uncovered].map((pair) => pair.employeeId))];
   const [employees, results] = await Promise.all([
     employeeIds.length === 0

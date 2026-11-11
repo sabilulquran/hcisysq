@@ -218,7 +218,7 @@ export async function loadEmployeeContext(
  * EMP-005 S2B §8.7: a record marked "di luar pengelolaan HCIS" files no new leave. Its earlier
  * requests stay readable and are not touched; only a new preview or submission is refused.
  */
-async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
+export async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
   if (await isOutsideHcis(db, employeeId)) {
     throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
   }

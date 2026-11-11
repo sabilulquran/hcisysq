@@ -77,16 +77,27 @@ export function validateCalculationRange(from: string, to: string, now = new Dat
  * covered when a machine PIN mapping is valid on that date, or a mobile/manual event or an approved
  * clarification exists for it. Uncovered pairs are never written; they read as "Tidak tercatat".
  */
-export async function calculationPairs(pool: Pick<Pool, "query">, scope: CalculationScope) {
+export async function calculationPairs(
+  pool: Pick<Pool, "query">,
+  scope: CalculationScope,
+  options: {
+    /**
+     * Read models only (HC detail rows, attendance reports): also return the pairs of a record
+     * outside HCIS management for dates that already have a stored result, so its history stays
+     * readable. A calculation run never sets this, so nothing new is ever calculated for it.
+     */
+    includeOutsideHcisHistory?: boolean;
+  } = {},
+) {
   const result = await pool.query<{ employeeId: string; workDate: string; covered: boolean }>(
     `WITH scoped AS (
-       SELECT employee.id, employee.started_on, employee.ended_on, employee.status
+       SELECT employee.id, employee.started_on, employee.ended_on, employee.status, employee.management_scope
        FROM employees employee
        WHERE ($1::uuid IS NULL OR employee.id = $1)
          AND ($2::uuid IS NULL OR employee.organizational_unit_id = $2)
          AND (employee.status = 'active' OR employee.ended_on >= $3::date)
          AND (employee.started_on IS NULL OR employee.started_on <= $4::date)
-         AND employee.management_scope = 'MANAGED'
+         AND (employee.management_scope = 'MANAGED' OR $5::boolean)
      ), pairs AS (
        SELECT scoped.id AS employee_id, day::date AS work_date,
               (day::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS day_start
@@ -95,6 +106,13 @@ export async function calculationPairs(pool: Pick<Pool, "query">, scope: Calcula
        WHERE (scoped.started_on IS NULL OR scoped.started_on <= day::date)
          AND (scoped.ended_on IS NULL OR scoped.ended_on >= day::date)
          AND (scoped.status = 'active' OR scoped.ended_on IS NOT NULL)
+         AND (
+           scoped.management_scope = 'MANAGED'
+           OR EXISTS (
+             SELECT 1 FROM attendance_result_versions stored
+             WHERE stored.employee_id = scoped.id AND stored.work_date = day::date
+           )
+         )
      )
      SELECT pairs.employee_id AS "employeeId", pairs.work_date::text AS "workDate",
        (
@@ -120,7 +138,7 @@ export async function calculationPairs(pool: Pick<Pool, "query">, scope: Calcula
        ) AS covered
      FROM pairs
      ORDER BY pairs.work_date, pairs.employee_id`,
-    [scope.employeeId ?? null, scope.unitId ?? null, scope.from, scope.to],
+    [scope.employeeId ?? null, scope.unitId ?? null, scope.from, scope.to, options.includeOutsideHcisHistory === true],
   );
   const covered: CalculationPair[] = [];
   const uncovered: CalculationPair[] = [];

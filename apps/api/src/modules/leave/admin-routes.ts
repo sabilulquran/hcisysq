@@ -129,19 +129,22 @@ export async function registerLeaveAdminRoutes(
     const principal = await authenticateAdmin(request, reply, "leave.configuration.manage");
     if (!principal) return;
 
+    // EMP-005 S2B §8.7: a record outside HCIS management is not part of the leave population and is
+    // never a working approver, so a marked unit approver or line manager reads as not configured —
+    // which is what routing will do with it (APPROVER_NOT_ACTIVE).
     const [units, employees] = await Promise.all([
       pool.query<LeaveUnitRow>(
         `
           SELECT
             u.id,
             u.name,
-            count(e.id) FILTER (WHERE e.status = 'active')::int AS "activeEmployeeCount",
-            u.leave_approver_employee_id AS "approverEmployeeId",
-            approver.full_name AS "approverName"
+            count(e.id) FILTER (WHERE e.status = 'active' AND e.management_scope = 'MANAGED')::int AS "activeEmployeeCount",
+            CASE WHEN approver.management_scope = 'MANAGED' THEN u.leave_approver_employee_id END AS "approverEmployeeId",
+            CASE WHEN approver.management_scope = 'MANAGED' THEN approver.full_name END AS "approverName"
           FROM organizational_units u
           LEFT JOIN employees e ON e.organizational_unit_id = u.id
           LEFT JOIN employees approver ON approver.id = u.leave_approver_employee_id
-          GROUP BY u.id, u.name, u.leave_approver_employee_id, approver.full_name
+          GROUP BY u.id, u.name, u.leave_approver_employee_id, approver.full_name, approver.management_scope
           ORDER BY u.name ASC
         `,
       ),
@@ -155,14 +158,14 @@ export async function registerLeaveAdminRoutes(
             u.id AS "unitId",
             u.name AS "unitName",
             p.name AS "positionName",
-            e.direct_manager_employee_id AS "directManagerEmployeeId",
-            manager.full_name AS "directManagerName",
+            CASE WHEN manager.management_scope = 'MANAGED' THEN e.direct_manager_employee_id END AS "directManagerEmployeeId",
+            CASE WHEN manager.management_scope = 'MANAGED' THEN manager.full_name END AS "directManagerName",
             e.leave_entitlement_group AS "leaveEntitlementGroup"
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
           LEFT JOIN positions p ON p.id = e.position_id
           LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
-          WHERE e.status = 'active'
+          WHERE e.status = 'active' AND e.management_scope = 'MANAGED'
           ORDER BY e.full_name ASC
         `,
       ),

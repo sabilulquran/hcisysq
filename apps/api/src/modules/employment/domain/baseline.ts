@@ -298,7 +298,10 @@ export type ConsistencyIssueCode =
   | "PLACEMENT_WITHOUT_STRUCTURE_SEAT"
   // EMP-005 S2B §8.7: an EMPLOYEE account (invited or active) still linked to a record marked
   // "di luar pengelolaan HCIS". Reported for HC/access review; never changed automatically.
-  | "ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD";
+  | "ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD"
+  // EMP-005 S2B §8.7: an active managed employee whose direct manager, or whose unit's leave
+  // approver, is marked. Routing treats that approver as inactive; HC needs to replace it.
+  | "APPROVER_OUTSIDE_HCIS";
 
 export interface ConsistencyFinding {
   employeeId: string;

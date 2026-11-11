@@ -309,7 +309,8 @@ async function currentSameUnitEmployees(
   const result = await db.query<{ id: string; unitId: string | null }>(
     `SELECT id, organizational_unit_id AS "unitId"
      FROM employees
-     WHERE id = ANY($1::uuid[]) AND status = 'active'`,
+     -- EMP-005 S2B §8.7: a record outside HCIS management is not scheduled, so it swaps nothing.
+     WHERE id = ANY($1::uuid[]) AND status = 'active' AND management_scope = 'MANAGED'`,
     [[leftEmployeeId, rightEmployeeId]],
   );
   if (result.rows.length !== 2) {
@@ -484,7 +485,7 @@ export async function registerAttendanceShiftSwapRoutes(
           AND account.principal_type = 'EMPLOYEE'
           AND account.status = 'active'
          LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-         WHERE employee.status = 'active'
+         WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED'
            AND employee.organizational_unit_id = $1
            AND employee.id <> $2
          ORDER BY employee.full_name`,
@@ -601,7 +602,7 @@ export async function registerAttendanceShiftSwapRoutes(
             AND account.principal_type = 'EMPLOYEE'
             AND account.status = 'active'
            LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-           WHERE employee.id = $1 AND employee.status = 'active'
+           WHERE employee.id = $1 AND employee.status = 'active' AND employee.management_scope = 'MANAGED'
            LIMIT 1`,
           [body.data.counterpartEmployeeId],
         );

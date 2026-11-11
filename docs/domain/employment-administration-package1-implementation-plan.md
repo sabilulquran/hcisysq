@@ -100,16 +100,24 @@ record today):
   field, so the contract and the version of an unchanged snapshot stay the
   same.
 - **Attendance:** the calculation run (`calculationPairs`), the daily read
-  model and the today monitor (`activeEmployees`), the roster employee list
-  and the schedule-change calendar and unit-wide changes leave a marked record
-  out; one named explicitly in a schedule change is set aside with a
-  non-blocking issue, like an inactive employee. Results already written are
-  neither recalculated nor deleted.
+  model and the today monitor (`activeEmployees`), the roster employee list,
+  the unscheduled list, shift-swap candidates and counterparts, and the
+  schedule-change calendar and unit-wide changes leave a marked record out;
+  one named explicitly in a schedule change is set aside with a non-blocking
+  issue, like an inactive employee. HC cannot record overtime or a manual
+  correction for a marked person (`EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`). Results
+  already written are neither recalculated nor deleted, and stay readable: the
+  HC calculation rows and `/admin/attendance/reports/:model` read a marked
+  person's days that already have a stored result (`calculationPairs` with
+  `includeOutsideHcisHistory`), while a calculation run never does.
 - **Leave:** a marked employee is refused a new Cuti Tahunan, planned leave or
   special leave at preview and at submit with `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`
   (409); a replay of a submission that went through before the mark still
   answers with the stored request, and every earlier request stays readable.
-  Cancelling and adding evidence to an existing request are unchanged.
+  LEAVE-008 postponement is refused on both sides for a marked requester: the
+  approver cannot propose (or preview) other dates, and the requester cannot
+  accept a proposal, since accepting files a replacement request. Cancelling,
+  declining and adding evidence to an existing request are unchanged.
 - **Approval routing:** a marked employee is never resolved as an approver.
   The ORG-004 eligibility check reads a marked incumbent as
   `EMPLOYEE_NOT_ACTIVE`, so the walk applies the position's vacancy policy as
@@ -118,13 +126,24 @@ record today):
   read a marked approver as not active (`APPROVER_NOT_ACTIVE`,
   `OVERTIME_APPROVER_UNRESOLVED`, `RATER_NOT_ACTIVE`, special leave's
   line-notification warning). A marked employee cannot be configured as a unit
-  leave approver or chosen as a replacement overtime approver. Stored approval
-  snapshots and pending steps are not rewritten.
+  leave approver, chosen as a replacement overtime approver, offered in the
+  direct-manager picker, or picked as an HR document signer. Leave
+  configuration (`/admin/leave/configuration`) shows a marked unit approver or
+  line manager as not configured and leaves marked employees out of its list
+  and counts; Board approval readiness counts a manager or unit approver only
+  while it is active and managed. Stored approval snapshots are not rewritten.
 - **Consistency report:** `ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD` lists a
-  marked record whose `EMPLOYEE` account is `invited` or `active`. Report only;
-  nothing changes the account.
+  marked record whose `EMPLOYEE` account is `invited` or `active`;
+  `APPROVER_OUTSIDE_HCIS` lists an active managed employee whose direct manager
+  or unit leave approver is marked, so HC can replace that approver. Report
+  only; nothing changes an account or a reporting line. The report is served
+  only while the rollout mode is `SHADOW` or `AUTHORITATIVE` (in `OFF` it
+  answers `EMPLOYMENT_HISTORY_DISABLED`), so until SHADOW starts HC sees these
+  lines nowhere; the leave-configuration screen and Board readiness above are
+  the signals available in `OFF`.
 - **Admin screen:** the list's "Cakupan pengelolaan" filter now reloads the
-  list when changed (the scope was missing from the effect's dependencies),
+  list when changed (the scope was missing from the effect's dependencies; all
+  filters now live in one value the reload depends on),
   the "Di luar pengelolaan HCIS" tile opens the filter, marked rows carry the
   grey badge "Di luar pengelolaan HCIS — BUMY" / "— Pengurus Yayasan", and the
   detail shows contact and line manager as text with every edit control
@@ -138,11 +157,19 @@ Not changed by S2B-b, deliberately:
   counts a marked record. Marking a Pengurus Yayasan record therefore does not
   by itself make that person's board account an eligible governance approver;
   that is an authorization change and is left to a reviewed follow-up.
-- Requests in flows other than leave (work arrangements, trips, loans,
-  overtime, mobile clock-in) are not refused for a marked requester. The
-  consistency-report line is how HC finds and deactivates such an account.
+- Employee-initiated requests in flows other than leave (work arrangements,
+  trips, loans, overtime, mobile clock-in) are not refused for a marked
+  requester. The consistency-report line is how HC finds and deactivates such
+  an account.
 - Chart publication (`validateStructuralIncumbent`) still accepts a marked
   incumbent, so marking never blocks publishing a structure.
+- The payroll population (PAY-003 profiles, periods, calculation and payslip
+  publication) is unchanged; payroll decides its own population and a marked
+  record is not filtered out there by S2B-b.
+- Pending approval steps already assigned to an approver who is marked later
+  are left with that approver (snapshot-on-submit, APR-001). HC finds them
+  through `APPROVER_OUTSIDE_HCIS` and the approval inbox; reassigning them is
+  not automatic.
 
 **Spec:** EMP-005-L, §8.7, §13.9.
 **Review:** touches EMP-001 employee master and every consumer of the active-employee population — extra review.

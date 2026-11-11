@@ -151,7 +151,7 @@ export function EmployeeMobileAttendancePage() {
       const result = await clockMobileAttendance(attempt);
       const locationLabels: Record<string, string> = {
         inside: "di dalam area", outside: "di luar area; perlu ditinjau",
-        uncertain_accuracy: "akurasi GPS perlu ditinjau", unassigned_location: "lokasi belum terhubung ke jadwal; perlu ditinjau",
+        uncertain_accuracy: "akurasi GPS perlu ditinjau", unassigned_location: "lokasi kerja belum ditetapkan di shift maupun unit; perlu ditinjau",
       };
       setNotice(result.duplicate ? "Pengiriman ini sudah tercatat; tidak dibuat presensi kedua."
         : (action === "check_in" ? "Clock in" : "Clock out") + " tersimpan — " + (locationLabels[result.geofenceStatus] ?? "bukti diterima") + ".");
@@ -222,7 +222,9 @@ export function EmployeeMobileAttendancePage() {
               <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
                 Evaluasi jadwal: {statusLabel(snapshot.mobileReadiness.scheduleState)}
                 {snapshot.mobileReadiness.scheduleReason ? ` · ${snapshot.mobileReadiness.scheduleReason}` : ""}
-                {" · "}Lokasi jadwal: {snapshot.mobileReadiness.hasWorkLocation ? "terhubung" : "belum terhubung"}.
+                {" · "}Lokasi kerja: {snapshot.mobileReadiness.hasWorkLocation
+                  ? (snapshot.mobileReadiness.workLocationSource === "unit" ? "terhubung (dari unit)" : "terhubung")
+                  : "belum terhubung"}.
                 Jadwal/lokasi tidak mematikan tombol capture, tetapi menentukan hasil evaluasi dan geofence.
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">

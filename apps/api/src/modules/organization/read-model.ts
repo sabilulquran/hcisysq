@@ -209,6 +209,28 @@ export function resolveWorkLocation(
   return null;
 }
 
+/** The employee's primary unit membership effective on `asOf` (D-5-3 starts here), or undefined. */
+function primaryMembership(snapshot: OrganizationSnapshot, employeeId: string, asOf: string) {
+  return snapshot.memberships.find(
+    (item) => item.employeeId === employeeId && item.isPrimary
+      && isEffective(item.effectiveFrom, item.effectiveTo, asOf),
+  );
+}
+
+/**
+ * ORG-005-3: the employee's work location through their primary unit (D-5-3), the same rule the
+ * read model shows. Null when they are in no unit or nothing up the branch names a location.
+ */
+export function resolveEmployeeWorkLocation(
+  snapshot: OrganizationSnapshot,
+  employeeId: string,
+  asOf: string,
+  locationNames: ReadonlyMap<string, string>,
+): OrganizationPersonRow["workLocation"] {
+  const membership = primaryMembership(snapshot, employeeId, asOf);
+  return membership ? resolveWorkLocation(snapshot, membership.nodeKey, asOf, locationNames) : null;
+}
+
 function unitPath(snapshot: OrganizationSnapshot, nodeKey: string, asOf: string): string[] {
   const names: string[] = [];
   const seen = new Set<string>();
@@ -260,10 +282,7 @@ export async function buildOrganizationPeopleView(input: BuildPeopleViewInput): 
   );
 
   for (const employee of employees) {
-    const membership = snapshot.memberships.find(
-      (item) => item.employeeId === employee.id && item.isPrimary
-        && isEffective(item.effectiveFrom, item.effectiveTo, asOf),
-    );
+    const membership = primaryMembership(snapshot, employee.id, asOf);
     const ownIncumbency = snapshot.incumbencies.find(
       (item) => item.employeeId === employee.id && item.kind === "PRIMARY"
         && isEffective(item.effectiveFrom, item.effectiveTo, asOf),

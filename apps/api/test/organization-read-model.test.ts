@@ -10,6 +10,7 @@ import {
   computeOrganizationReadiness,
   explainPerson,
   RequestScopedEligibilityValidator,
+  resolveEmployeeWorkLocation,
   resolveWorkLocation,
   type OrganizationPersonEmployee,
 } from "../src/modules/organization/read-model.js";
@@ -365,5 +366,30 @@ describe("ORG-005-1 review: a switched-off unit passes no location down", () => 
         effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null },
     ] } as unknown as Parameters<typeof resolveWorkLocation>[0];
     expect(resolveWorkLocation(snapshot, "child", "2026-10-27", new Map())).toBeNull();
+  });
+});
+
+describe("ORG-005-3: an employee's location comes from their primary unit", () => {
+  const nodes = [
+    { id: "a", stableKey: "school", name: "SDIT", nodeType: "UNIT", parentNodeKey: null, active: true,
+      effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, workLocationId: "loc-sdit" },
+    { id: "b", stableKey: "grade", name: "Kelas 1", nodeType: "UNIT", parentNodeKey: "school", active: true,
+      effectiveFrom: "2026-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null },
+  ];
+  const membership = (extra: Record<string, unknown>) => ({
+    id: "m", employeeId: "emp-1", nodeKey: "grade", jobProfileKey: null, isPrimary: true,
+    effectiveFrom: "2026-01-01", effectiveTo: null, ...extra,
+  });
+  const snapshotWith = (memberships: unknown[]) =>
+    ({ nodes, memberships } as unknown as Parameters<typeof resolveEmployeeWorkLocation>[0]);
+
+  it("inherits through the primary membership effective on the date", () => {
+    expect(resolveEmployeeWorkLocation(snapshotWith([membership({})]), "emp-1", "2026-10-27", new Map()))
+      .toEqual({ id: "loc-sdit", name: "", inheritedFromNodeKey: "school" });
+  });
+
+  it("ignores secondary and ended memberships", () => {
+    expect(resolveEmployeeWorkLocation(snapshotWith([membership({ isPrimary: false })]), "emp-1", "2026-10-27", new Map())).toBeNull();
+    expect(resolveEmployeeWorkLocation(snapshotWith([membership({ effectiveTo: "2026-06-30" })]), "emp-1", "2026-10-27", new Map())).toBeNull();
   });
 });

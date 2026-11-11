@@ -2229,6 +2229,48 @@
     "permissions": []
   },
   {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/approvals/:stepId/postponement/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/approvals/:stepId/postpone",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/postponements/:proposalId/accept",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/postponements/:proposalId/decline",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
     "file": "apps/api/src/modules/leave/planned-evidence-routes.ts",
     "method": "POST",
     "url": "/leave/planned/me/requests/:requestId/evidence",

@@ -33,6 +33,7 @@ import {
   loadApplicableCriticalPeriods,
 } from "./critical-period-store.js";
 import { notifyApprovalCancelled, notifyApprovalRequested } from "./approver-notifications.js";
+import { postponementColumns, postponementJoin, type PostponementView } from "./postponement-store.js";
 import {
   assertLeaveRequestCancellable,
   decideLeaveApprovalStep,
@@ -75,7 +76,7 @@ const decisionSchema = z.object({
 
 type HcHandling = "notify" | "validate" | "approve" | "none";
 
-interface EmployeeContextRow {
+export interface EmployeeContextRow {
   id: string;
   employeeNumber: string;
   fullName: string;
@@ -127,6 +128,10 @@ interface RequestSummaryRow {
   currentApproverName: string | null;
   criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
   canCancel: boolean;
+  /** LEAVE-008 */
+  postponement: PostponementView | null;
+  replacesRequestId: string | null;
+  canRespondToPostponement: boolean;
 }
 
 interface InboxRow {
@@ -143,7 +148,7 @@ interface InboxRow {
   sources: string[];
 }
 
-class EmployeeLeaveError extends Error {
+export class EmployeeLeaveError extends Error {
   constructor(
     readonly statusCode: number,
     readonly code: string,
@@ -154,7 +159,7 @@ class EmployeeLeaveError extends Error {
   }
 }
 
-function jakartaToday(): string {
+export function jakartaToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
     year: "numeric",
@@ -167,7 +172,7 @@ function yearOf(date: string): number {
   return Number(date.slice(0, 4));
 }
 
-async function loadEmployeeContext(
+export async function loadEmployeeContext(
   db: Pool | PoolClient,
   accountId: string,
   lock = false,
@@ -212,6 +217,7 @@ async function loadAnnualUsage(
   db: Pool | PoolClient,
   employeeId: string,
   year: number,
+  excludeRequestId: string | null = null,
 ): Promise<Partial<Record<AnnualLeavePeriodKey, number>>> {
   const result = await db.query<{ key: AnnualLeavePeriodKey; days: number }>(
     `SELECT
@@ -224,8 +230,9 @@ async function loadAnnualUsage(
       AND start_on >= make_date($2, 1, 1)
       AND start_on < make_date($2 + 1, 1, 1)
       AND annual_period_key IS NOT NULL
+      AND ($3::uuid IS NULL OR id <> $3::uuid)
     GROUP BY annual_period_key`,
-    [employeeId, year],
+    [employeeId, year, excludeRequestId],
   );
 
   return Object.fromEntries(result.rows.map((row) => [row.key, row.days])) as Partial<
@@ -342,11 +349,17 @@ async function hydrateApprovalChain(
   });
 }
 
-async function buildAnnualPreview(
+/**
+ * `submittedOn` is the notice reference date: today for a new request, the original submission
+ * date for a LEAVE-008 replacement (D-06). `excludeRequestId` leaves the request being postponed
+ * out of the quota while its approver checks a proposal (D-05).
+ */
+export async function buildAnnualPreview(
   db: Pool | PoolClient,
   employee: EmployeeContextRow,
   input: { startOn: string; endOn: string },
   submittedOn: string,
+  excludeRequestId: string | null = null,
 ) {
   if (!employee.startedOn) {
     throw new EmployeeLeaveError(
@@ -358,7 +371,7 @@ async function buildAnnualPreview(
 
   const calendar = await loadWorkingCalendar(db, input.startOn, input.endOn);
   const calculation = calculateWorkingDays(input.startOn, input.endOn, calendar);
-  const usedDaysByPeriod = await loadAnnualUsage(db, employee.id, yearOf(input.startOn));
+  const usedDaysByPeriod = await loadAnnualUsage(db, employee.id, yearOf(input.startOn), excludeRequestId);
   const validation = validateAnnualLeaveRequest({
     entitlementGroup: employee.leaveEntitlementGroup,
     employmentStartedOn: employee.startedOn,
@@ -396,7 +409,7 @@ async function buildAnnualPreview(
   };
 }
 
-async function addEvent(
+export async function addEvent(
   db: PoolClient,
   requestId: string,
   actorAccountId: string | null,
@@ -411,7 +424,7 @@ async function addEvent(
   );
 }
 
-async function enqueueNotification(
+export async function enqueueNotification(
   db: PoolClient,
   requestId: string,
   eventType: string,
@@ -448,6 +461,167 @@ async function activateHcTaskAfterLineApproval(
     );
   }
   return result.rows[0].id;
+}
+
+/** ORG-013: a FOUNDATION_BOARD account decides a governance step only with this capability. */
+export async function assertGovernanceApprovalCapability(
+  db: Pool | PoolClient,
+  accountId: string,
+): Promise<void> {
+  const capability = await db.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM account_role_assignments ara
+       JOIN role_permissions rp ON rp.role_id = ara.role_id
+       WHERE ara.account_id = $1
+         AND rp.permission_key = 'leave.governance.approve'
+         AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+         AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         AND ara.scope_type = 'organization'
+     ) AS allowed`,
+    [accountId, jakartaToday()],
+  );
+  if (!capability.rows[0]?.allowed) {
+    throw new EmployeeLeaveError(
+      403,
+      "APPROVAL_FORBIDDEN",
+      "Capability governance approval tidak tersedia.",
+    );
+  }
+}
+
+export interface LeaveReplacementLink {
+  replacesRequestId: string;
+  postponementProposalId: string;
+}
+
+/**
+ * Validates and stores one Cuti Tahunan request with its approval snapshot (APR-001), critical
+ * review (LEAVE-009), audit event and first-approver notification. Shared by the submit route
+ * and by LEAVE-008 acceptance, which passes the original request as `replacement`.
+ * The caller owns the transaction and has locked the employee row.
+ */
+export async function insertAnnualRequest(
+  client: PoolClient,
+  input: {
+    employee: EmployeeContextRow;
+    actorAccountId: string;
+    startOn: string;
+    endOn: string;
+    reason: string | null;
+    idempotencyKey: string;
+    noticeReferenceOn: string;
+    replacement?: LeaveReplacementLink | null;
+  },
+) {
+  const replacement = input.replacement ?? null;
+  const preview = await buildAnnualPreview(
+    client,
+    input.employee,
+    { startOn: input.startOn, endOn: input.endOn },
+    input.noticeReferenceOn,
+  );
+  const requestId = randomUUID();
+  const annualPolicy = getLeavePolicy("annual");
+  await client.query(
+    `INSERT INTO leave_requests (
+      id, employee_id, policy_key, status, start_on, end_on, working_days,
+      reason, annual_period_key, annual_entitlement_days,
+      annual_period_limit_days, annual_available_before, hc_handling,
+      idempotency_key, validation_summary, replaces_request_id
+    ) VALUES (
+      $1, $2, 'annual', 'in_review', $3::date, $4::date, $5,
+      $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14
+    )`,
+    [
+      requestId,
+      input.employee.id,
+      input.startOn,
+      input.endOn,
+      preview.validation.requestedWorkingDays,
+      input.reason,
+      preview.validation.periodKey,
+      preview.validation.annualEntitlementDays,
+      preview.validation.periodLimitDays,
+      preview.validation.availableDaysBeforeRequest,
+      annualPolicy.hcHandling,
+      input.idempotencyKey,
+      JSON.stringify({
+        approvalSnapshot: preview.approvalChain.map((step) => ({
+          principalType: step.principalType ?? "EMPLOYEE",
+          employeeId: step.employeeId,
+          accountId: step.accountId ?? null,
+          sources: step.sources,
+        })),
+        authorityResolution: preview.authorityResolution,
+        ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
+        ...(replacement
+          ? {
+            noticeReferenceOn: input.noticeReferenceOn,
+            replacesRequestId: replacement.replacesRequestId,
+            postponementProposalId: replacement.postponementProposalId,
+          }
+          : {}),
+      }),
+      replacement?.replacesRequestId ?? null,
+    ],
+  );
+  if (preview.criticalPeriods.length > 0) {
+    await attachCriticalReview(client, {
+      requestId,
+      actorAccountId: input.actorAccountId,
+      periods: preview.criticalPeriods,
+    });
+  }
+
+  const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
+  for (const [index, step] of preview.approvalChain.entries()) {
+    const stepId = randomUUID();
+    await client.query(
+      `INSERT INTO leave_request_approval_steps (
+        id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
+      ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
+      [
+        stepId,
+        requestId,
+        index + 1,
+        step.employeeId,
+        step.accountId ?? null,
+        step.sources,
+        index === 0 ? "pending" : "waiting",
+      ],
+    );
+    insertedSteps.push({
+      id: stepId,
+      employeeId: step.employeeId,
+      accountId: step.accountId ?? null,
+      name: step.name,
+    });
+  }
+
+  await addEvent(client, requestId, input.actorAccountId, "leave.request.submitted", {
+    policyKey: "annual",
+    workingDays: preview.validation.requestedWorkingDays,
+    periodKey: preview.validation.periodKey,
+    authorityResolution: preview.authorityResolution,
+    ...(replacement ? { ...replacement } : {}),
+  });
+  const firstStep = insertedSteps[0];
+  if (firstStep) {
+    await enqueueNotification(
+      client,
+      requestId,
+      "leave.approval.requested",
+      firstStep.accountId ? "account" : "employee",
+      firstStep.accountId ?? firstStep.employeeId!,
+    );
+    await notifyApprovalRequested(client, {
+      requestId,
+      stepId: firstStep.id,
+      approverEmployeeId: firstStep.employeeId,
+      approverAccountId: firstStep.accountId,
+    });
+  }
+  return { requestId, preview, insertedSteps };
 }
 
 function mapKnownError(error: unknown): EmployeeLeaveError | null {
@@ -527,32 +701,6 @@ export async function registerEmployeeLeaveRoutes(
       throw error;
     }
   }
-  async function assertGovernanceApprovalCapability(
-    db: Pool | PoolClient,
-    accountId: string,
-  ): Promise<void> {
-    const capability = await db.query<{ allowed: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1 FROM account_role_assignments ara
-         JOIN role_permissions rp ON rp.role_id = ara.role_id
-         WHERE ara.account_id = $1
-           AND rp.permission_key = 'leave.governance.approve'
-           AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
-           AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
-           AND ara.scope_type = 'organization'
-       ) AS allowed`,
-      [accountId, jakartaToday()],
-    );
-    if (!capability.rows[0]?.allowed) {
-      throw new EmployeeLeaveError(
-        403,
-        "APPROVAL_FORBIDDEN",
-        "Capability governance approval tidak tersedia.",
-      );
-    }
-  }
-
-
   app.get("/leave/me/summary", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
@@ -590,12 +738,14 @@ export async function registerEmployeeLeaveRoutes(
               ELSE NULL
             END AS "currentApproverName",
             critical_review.status AS "criticalReviewStatus",
-            (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel"
+            (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel",
+            ${postponementColumns("r")}
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
           LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
           LEFT JOIN leave_request_critical_reviews critical_review ON critical_review.leave_request_id = r.id
+          ${postponementJoin("r")}
           WHERE r.employee_id = $1
           ORDER BY r.submitted_at DESC
           LIMIT 10`,
@@ -701,99 +851,15 @@ export async function registerEmployeeLeaveRoutes(
         });
       }
 
-      const preview = await buildAnnualPreview(client, employee, parsed.data, jakartaToday());
-      const requestId = randomUUID();
-      const annualPolicy = getLeavePolicy("annual");
-      await client.query(
-        `INSERT INTO leave_requests (
-          id, employee_id, policy_key, status, start_on, end_on, working_days,
-          reason, annual_period_key, annual_entitlement_days,
-          annual_period_limit_days, annual_available_before, hc_handling,
-          idempotency_key, validation_summary
-        ) VALUES (
-          $1, $2, 'annual', 'in_review', $3::date, $4::date, $5,
-          $6, $7, $8, $9, $10, $11, $12, $13::jsonb
-        )`,
-        [
-          requestId,
-          employee.id,
-          parsed.data.startOn,
-          parsed.data.endOn,
-          preview.validation.requestedWorkingDays,
-          parsed.data.reason ?? null,
-          preview.validation.periodKey,
-          preview.validation.annualEntitlementDays,
-          preview.validation.periodLimitDays,
-          preview.validation.availableDaysBeforeRequest,
-          annualPolicy.hcHandling,
-          parsed.data.idempotencyKey,
-          JSON.stringify({
-            approvalSnapshot: preview.approvalChain.map((step) => ({
-              principalType: step.principalType ?? "EMPLOYEE",
-              employeeId: step.employeeId,
-              accountId: step.accountId ?? null,
-              sources: step.sources,
-            })),
-            authorityResolution: preview.authorityResolution,
-            ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
-          }),
-        ],
-      );
-      if (preview.criticalPeriods.length > 0) {
-        await attachCriticalReview(client, {
-          requestId,
-          actorAccountId: principal.id,
-          periods: preview.criticalPeriods,
-        });
-      }
-
-      const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
-      for (const [index, step] of preview.approvalChain.entries()) {
-        const stepId = randomUUID();
-        await client.query(
-          `INSERT INTO leave_request_approval_steps (
-            id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
-          ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
-          [
-            stepId,
-            requestId,
-            index + 1,
-            step.employeeId,
-            step.accountId ?? null,
-            step.sources,
-            index === 0 ? "pending" : "waiting",
-          ],
-        );
-        insertedSteps.push({
-          id: stepId,
-          employeeId: step.employeeId,
-          accountId: step.accountId ?? null,
-          name: step.name,
-        });
-      }
-
-      await addEvent(client, requestId, principal.id, "leave.request.submitted", {
-        policyKey: "annual",
-        workingDays: preview.validation.requestedWorkingDays,
-        periodKey: preview.validation.periodKey,
-        authorityResolution: preview.authorityResolution,
+      const { requestId, preview, insertedSteps } = await insertAnnualRequest(client, {
+        employee,
+        actorAccountId: principal.id,
+        startOn: parsed.data.startOn,
+        endOn: parsed.data.endOn,
+        reason: parsed.data.reason ?? null,
+        idempotencyKey: parsed.data.idempotencyKey,
+        noticeReferenceOn: jakartaToday(),
       });
-      const firstStep = insertedSteps[0];
-      if (firstStep) {
-        await enqueueNotification(
-          client,
-          requestId,
-          "leave.approval.requested",
-          firstStep.accountId ? "account" : "employee",
-          firstStep.accountId ?? firstStep.employeeId!,
-        );
-        await notifyApprovalRequested(client, {
-          requestId,
-          stepId: firstStep.id,
-          approverEmployeeId: firstStep.employeeId,
-          approverAccountId: firstStep.accountId,
-        });
-      }
 
       await client.query("COMMIT");
       return reply.status(201).send({
@@ -833,12 +899,14 @@ export async function registerEmployeeLeaveRoutes(
           r.final_decided_at AS "finalDecidedAt",
           approver.full_name AS "currentApproverName",
           critical_review.status AS "criticalReviewStatus",
-          (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel"
+          (r.status = 'in_review' AND r.line_handling = 'approval') AS "canCancel",
+          ${postponementColumns("r")}
         FROM leave_requests r
         LEFT JOIN leave_request_approval_steps current_step
           ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
         LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
         LEFT JOIN leave_request_critical_reviews critical_review ON critical_review.leave_request_id = r.id
+        ${postponementJoin("r")}
         WHERE r.employee_id = $1
         ORDER BY r.submitted_at DESC`,
         [employee.id],

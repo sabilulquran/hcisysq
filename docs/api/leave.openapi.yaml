@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: HCIS Annual Leave and Leave Approvals (LEAVE-001, LEAVE-002, APR-001)
+  title: HCIS Annual Leave and Leave Approvals (LEAVE-001, LEAVE-002, LEAVE-008, APR-001)
   version: 1.0.0
   description: |
     Employee annual-leave self-service and the approver inbox, as implemented in
@@ -9,6 +9,8 @@ info:
     /approvals/tasks/{taskId}/decision, which were never implemented.
     All routes use the session cookie and answer with Cache-Control: no-store.
     Errors use { code, message }.
+    LEAVE-008 postponement (docs/domain/leave-postponement.md) is implemented in
+    apps/api/src/modules/leave/postponement-routes.ts and described here.
     Planned leave (/leave/planned/*), special leave (/leave/special/*), Human Capital
     queues (/leave/hc/*) and leave configuration (/admin/leave/*) are implemented but not
     yet described here; their guards are listed in docs/domain/AUTH-011-admin-route-permissions.json.
@@ -274,6 +276,176 @@ paths:
         '404': { $ref: '#/components/responses/Problem' }
         '409': { $ref: '#/components/responses/PolicyConflict' }
 
+  /leave/approvals/{stepId}/postponement/preview:
+    post:
+      tags: [Approvals]
+      summary: Check proposed alternative dates for one owned pending line step (LEAVE-008); nothing is stored
+      description: >
+        Same ownership as a decision (EMPLOYEE approver of the step, or the snapshotted FOUNDATION_BOARD
+        account with leave.governance.approve). Validates the dates with the leave type's rules for the
+        requester (quota without the request itself, calendar, notice from the original submission date,
+        approval chain) and returns the working days and the LEAVE-009 critical periods they touch.
+      parameters:
+        - { name: stepId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostponementDates' }
+      responses:
+        '200':
+          description: Proposal is valid
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostponementPreview' }
+        '400': { description: 'INVALID_LEAVE_POSTPONEMENT' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'APPROVAL_STEP_NOT_FOUND' }
+        '409': { $ref: '#/components/responses/PostponementConflict' }
+
+  /leave/approvals/{stepId}/postpone:
+    post:
+      tags: [Approvals]
+      summary: Propose alternative dates instead of approving or rejecting (LEAVE-008)
+      description: >
+        Locks the step and the request like a decision. The step becomes postponed (with the note),
+        later waiting steps, the waiting HC task and the waiting critical review become cancelled, and
+        the request becomes postponement_proposed, which holds no quota. Event leave.postponement.proposed;
+        the requester gets an outbox intent and an in-app notification without the reason or the note.
+      parameters:
+        - { name: stepId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/PostponementDates'
+                - type: object
+                  required: [note]
+                  properties:
+                    note: { type: string, minLength: 5, maxLength: 1000 }
+      responses:
+        '200':
+          description: Proposal stored; the request awaits the requester
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, requestStatus, stepStatus, proposalId, proposedStartOn, proposedEndOn, proposedWorkingDays]
+                properties:
+                  requestId: { type: string, format: uuid }
+                  requestStatus: { const: postponement_proposed }
+                  stepStatus: { const: postponed }
+                  proposalId: { type: string, format: uuid }
+                  proposedStartOn: { type: string, format: date }
+                  proposedEndOn: { type: string, format: date }
+                  proposedWorkingDays: { type: integer, minimum: 1 }
+                  criticalReviewRequired: { type: boolean }
+        '400': { description: 'INVALID_LEAVE_POSTPONEMENT: dates malformed or note shorter than 5 / longer than 1000 characters' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'APPROVAL_STEP_NOT_FOUND' }
+        '409': { $ref: '#/components/responses/PostponementConflict' }
+
+  /leave/me/postponements/{proposalId}/accept:
+    post:
+      tags: [Leave]
+      summary: Accept the proposed dates; submits a replacement request (LEAVE-008)
+      description: >
+        Ownership of the original request, EMPLOYEE only. Revalidates the dates and submits a replacement
+        through the normal path of its leave type (fresh APR-001 snapshot from the first step, critical
+        periods, HC task and copied evidence for planned leave), linked by replacesRequestId. The original
+        becomes postponed. Idempotent: a second accept of the same proposal answers 200 with the same
+        replacement and idempotentReplay true.
+      parameters:
+        - { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Already accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposalId, status, requestId, replacementRequestId, idempotentReplay]
+                properties:
+                  proposalId: { type: string, format: uuid }
+                  status: { const: accepted }
+                  requestId: { type: string, format: uuid }
+                  replacementRequestId: { type: string, format: uuid }
+                  idempotentReplay: { const: true }
+        '201':
+          description: Replacement submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposalId, status, requestId, replacementRequestId, replacementStatus, approvalChain, idempotentReplay]
+                properties:
+                  proposalId: { type: string, format: uuid }
+                  status: { const: accepted }
+                  requestId: { type: string, format: uuid }
+                  replacementRequestId: { type: string, format: uuid }
+                  replacementStatus: { const: in_review }
+                  approvalChain:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                  criticalReviewRequired: { type: boolean }
+                  idempotentReplay: { const: false }
+        '400': { description: 'INVALID_LEAVE_POSTPONEMENT: idempotencyKey missing or not a UUID' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'POSTPONEMENT_NOT_FOUND: no such proposal on my requests' }
+        '409': { $ref: '#/components/responses/PostponementConflict' }
+
+  /leave/me/postponements/{proposalId}/decline:
+    post:
+      tags: [Leave]
+      summary: Decline the proposed dates; the original request ends cancelled (LEAVE-008)
+      parameters:
+        - { name: proposalId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200':
+          description: Declined (or already declined, with idempotentReplay true)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposalId, status, requestId, requestStatus, idempotentReplay]
+                properties:
+                  proposalId: { type: string, format: uuid }
+                  status: { const: declined }
+                  requestId: { type: string, format: uuid }
+                  requestStatus: { $ref: '#/components/schemas/LeaveRequestStatus' }
+                  idempotentReplay: { type: boolean }
+        '400': { description: 'INVALID_LEAVE_POSTPONEMENT: reason longer than 500 characters' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'POSTPONEMENT_NOT_FOUND' }
+        '409': { $ref: '#/components/responses/PostponementConflict' }
+
 components:
   schemas:
     Problem:
@@ -284,7 +456,10 @@ components:
         message: { type: string }
     LeaveRequestStatus:
       type: string
-      enum: [in_review, approved, rejected, cancelled]
+      enum: [in_review, approved, rejected, cancelled, postponement_proposed, postponed]
+      description: >-
+        LEAVE-008: postponement_proposed awaits the requester's answer to proposed dates and holds no
+        quota; postponed is final and points to its replacement through postponement.replacementRequestId.
     AnnualLeaveRequestInput:
       type: object
       required: [startOn, endOn]
@@ -307,6 +482,49 @@ components:
         finalDecidedAt: { type: [string, 'null'], format: date-time }
         currentApproverName: { type: [string, 'null'] }
         canCancel: { type: boolean, description: 'LEAVE-010: the requester may still withdraw it' }
+        postponement:
+          oneOf:
+            - $ref: '#/components/schemas/Postponement'
+            - type: 'null'
+          description: LEAVE-008 latest proposal on this request
+        replacesRequestId: { type: [string, 'null'], format: uuid, description: 'LEAVE-008: this request replaces a postponed one' }
+        canRespondToPostponement: { type: boolean, description: 'LEAVE-008: the requester may accept or decline the proposal' }
+    PostponementDates:
+      type: object
+      required: [startOn, endOn]
+      properties:
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+    PostponementPreview:
+      type: object
+      properties:
+        stepId: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        policyKey: { type: string }
+        currentStartOn: { type: string, format: date }
+        currentEndOn: { type: string, format: date }
+        proposedStartOn: { type: string, format: date }
+        proposedEndOn: { type: string, format: date }
+        workingDays: { type: integer, minimum: 1 }
+        workingDates: { type: array, items: { type: string, format: date } }
+        nonWorkingDates: { type: array, items: { type: string, format: date } }
+        criticalPeriods:
+          type: array
+          items: { $ref: './leave-critical-periods.openapi.yaml#/components/schemas/CriticalPeriodSnapshot' }
+        criticalReviewRequired: { type: boolean }
+    Postponement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [proposed, accepted, declined] }
+        proposedStartOn: { type: string, format: date }
+        proposedEndOn: { type: string, format: date }
+        proposedWorkingDays: { type: integer }
+        note: { type: string, description: Approver note, shown to the requester only }
+        proposedByName: { type: string }
+        proposedAt: { type: string, format: date-time }
+        respondedAt: { type: [string, 'null'], format: date-time }
+        replacementRequestId: { type: [string, 'null'], format: uuid }
   responses:
     Problem:
       description: Error
@@ -325,6 +543,15 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     InvalidAnnualLeaveRequest:
       description: INVALID_ANNUAL_LEAVE_REQUEST (dates or reason malformed)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PostponementConflict:
+      description: >-
+        REQUEST_NOT_REVIEWABLE, STEP_NOT_PENDING, POSTPONEMENT_NOT_SUPPORTED, POSTPONEMENT_DATES_UNCHANGED,
+        POSTPONEMENT_DATE_PASSED, POSTPONEMENT_NOT_OPEN, REQUESTER_NOT_ACTIVE, IDEMPOTENCY_KEY_REUSED,
+        LEAVE_REQUEST_OVERLAP, or a leave-policy/approval-configuration code (e.g. PERIOD_LIMIT_EXCEEDED,
+        LEAVE_CALENDAR_NOT_CONFIGURED, APPROVER_ACCOUNT_NOT_READY)
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Problem' }

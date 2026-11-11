@@ -27,6 +27,7 @@ import { getLeavePolicy } from "./domain/policy-catalog.js";
 import { criticalPeriodTreatment } from "./domain/critical-period.js";
 import { notifyApprovalRequested } from "./approver-notifications.js";
 import { attachCriticalReview, loadApplicableCriticalPeriods } from "./critical-period-store.js";
+import { postponementColumns, postponementJoin, type PostponementView } from "./postponement-store.js";
 import {
   calculateWorkingDays,
   decodeWorkingWeekdays,
@@ -71,7 +72,7 @@ const hcApprovalDecisionSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
-interface EmployeeContextRow {
+export interface EmployeeContextRow {
   id: string;
   employeeNumber: string;
   fullName: string;
@@ -114,7 +115,7 @@ interface EvidenceRow {
 interface PlannedSummaryRow {
   id: string;
   policyKey: SupportedPlannedLeaveKey;
-  status: "in_review" | "approved" | "rejected" | "cancelled";
+  status: "in_review" | "approved" | "rejected" | "cancelled" | "postponement_proposed" | "postponed";
   startOn: string;
   endOn: string;
   workingDays: number;
@@ -134,6 +135,10 @@ interface PlannedSummaryRow {
     | null;
   criticalReviewStatus: "waiting" | "pending" | "approved" | "rejected" | "cancelled" | null;
   canCancel: boolean;
+  /** LEAVE-008 */
+  postponement: PostponementView | null;
+  replacesRequestId: string | null;
+  canRespondToPostponement: boolean;
 }
 
 interface HcQueueRow {
@@ -163,7 +168,7 @@ interface HcQueueRow {
   }> | null;
 }
 
-class PlannedLeaveRouteError extends Error {
+export class PlannedLeaveRouteError extends Error {
   constructor(
     readonly statusCode: number,
     readonly code: string,
@@ -358,16 +363,21 @@ async function priorApprovedHajjCount(db: Pool | PoolClient, employeeId: string)
   return result.rows[0]?.count ?? 0;
 }
 
-async function buildPreview(
+/**
+ * `submittedOn` is the notice reference date: today for a new request, the original submission
+ * date for a LEAVE-008 replacement (D-06).
+ */
+export async function buildPlannedPreview(
   db: Pool | PoolClient,
   employee: EmployeeContextRow,
   input: z.infer<typeof previewSchema>,
+  submittedOn: string = jakartaToday(),
 ) {
   const calendar = await loadWorkingCalendar(db, input.startOn, input.endOn);
   const calculation = calculateWorkingDays(input.startOn, input.endOn, calendar);
   const validation = validatePlannedLeaveRequest({
     policyKey: input.policyKey,
-    submittedOn: jakartaToday(),
+    submittedOn,
     startOn: input.startOn,
     endOn: input.endOn,
     workingDays: calculation.workingDays,
@@ -538,6 +548,8 @@ function sendEvidence(reply: FastifyReply, evidence: EvidenceRow, encryptionKey:
 }
 
 function nextAction(item: PlannedSummaryRow) {
+  if (item.status === "postponement_proposed") return "Penyetuju mengusulkan tanggal lain. Terima atau tolak usulannya.";
+  if (item.status === "postponed") return "Ditangguhkan, diganti pengajuan baru";
   if (item.status === "approved") return "Selesai";
   if (item.status === "rejected") return "Pengajuan ditolak";
   if (item.status === "cancelled") return "Pengajuan dibatalkan";
@@ -550,6 +562,179 @@ function nextAction(item: PlannedSummaryRow) {
   }
   if (item.hcTaskStatus === "needs_correction") return "Dokumen perlu dilengkapi";
   return "Menunggu proses berikutnya";
+}
+
+export type PlannedEvidenceSource =
+  | { kind: "upload"; input: z.infer<typeof evidenceSchema> }
+  /** LEAVE-008 D-10: the replacement carries copies of the original request's documents. */
+  | { kind: "copy"; fromRequestId: string };
+
+/**
+ * Validates and stores one planned-leave request with its approval snapshot (APR-001), HC task,
+ * critical review (LEAVE-009), evidence, audit event and first-approver notification. Shared by
+ * the submit route and by LEAVE-008 acceptance, which passes the original request as
+ * `replacement`. The caller owns the transaction and has locked the employee row.
+ */
+export async function insertPlannedRequest(
+  client: PoolClient,
+  input: {
+    employee: EmployeeContextRow;
+    actorAccountId: string;
+    policyKey: SupportedPlannedLeaveKey;
+    startOn: string;
+    endOn: string;
+    reason: string | null;
+    idempotencyKey: string;
+    noticeReferenceOn: string;
+    evidence: PlannedEvidenceSource | null;
+    encryptionKey: string;
+    replacement?: { replacesRequestId: string; postponementProposalId: string } | null;
+  },
+) {
+  const replacement = input.replacement ?? null;
+  let hasEvidence = input.evidence?.kind === "upload";
+  if (input.evidence?.kind === "copy") {
+    const count = await client.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM leave_request_evidence WHERE leave_request_id = $1`,
+      [input.evidence.fromRequestId],
+    );
+    hasEvidence = (count.rows[0]?.count ?? 0) > 0;
+  }
+  const preview = await buildPlannedPreview(
+    client,
+    input.employee,
+    { policyKey: input.policyKey, startOn: input.startOn, endOn: input.endOn, hasEvidence },
+    input.noticeReferenceOn,
+  );
+  const requestId = randomUUID();
+  const policy = getLeavePolicy(input.policyKey);
+  await client.query(
+    `INSERT INTO leave_requests (
+      id, employee_id, policy_key, status, start_on, end_on, working_days,
+      reason, hc_handling, idempotency_key, line_handling,
+      evidence_requirement, emergency_notice, validation_summary,
+      administration_status, replaces_request_id
+    ) VALUES (
+      $1, $2, $3, 'in_review', $4::date, $5::date, $6,
+      $7, $8, $9, 'approval', $10, false, $11::jsonb,
+      'not_applicable', $12
+    )`,
+    [
+      requestId,
+      input.employee.id,
+      input.policyKey,
+      input.startOn,
+      input.endOn,
+      preview.calculation.workingDays,
+      input.reason,
+      preview.validation.hcHandling,
+      input.idempotencyKey,
+      preview.validation.evidenceRequirement,
+      JSON.stringify({
+        policyKey: input.policyKey,
+        workingDays: preview.calculation.workingDays,
+        workingDates: preview.calculation.workingDates,
+        calendarDurationDays: preview.validation.calendarDurationDays,
+        minimumNoticeDays: preview.validation.minimumNoticeDays,
+        noticeDays: preview.validation.noticeDays,
+        unpaid: preview.validation.unpaid,
+        approvalSnapshot: preview.approvalChain.map((step) => ({
+          principalType: step.principalType ?? "EMPLOYEE",
+          employeeId: step.employeeId,
+          accountId: step.accountId ?? null,
+          sources: step.sources,
+        })),
+        authorityResolution: preview.authorityResolution,
+        ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
+        ...(replacement
+          ? {
+            noticeReferenceOn: input.noticeReferenceOn,
+            replacesRequestId: replacement.replacesRequestId,
+            postponementProposalId: replacement.postponementProposalId,
+          }
+          : {}),
+      }),
+      replacement?.replacesRequestId ?? null,
+    ],
+  );
+  if (preview.criticalReviewRequired) {
+    await attachCriticalReview(client, {
+      requestId,
+      actorAccountId: input.actorAccountId,
+      periods: preview.criticalPeriods,
+    });
+  }
+
+  let evidence: { id: string; fileName: string; contentType: string; byteSize: number } | null = null;
+  if (input.evidence?.kind === "upload") {
+    evidence = await storeEvidence(client, requestId, input.actorAccountId, input.evidence.input, input.encryptionKey);
+  } else if (input.evidence?.kind === "copy") {
+    await client.query(
+      `INSERT INTO leave_request_evidence (
+        id, leave_request_id, category, original_filename, content_type, byte_size,
+        ciphertext, iv, auth_tag, uploaded_by_account_id
+      )
+      SELECT gen_random_uuid(), $2, category, original_filename, content_type, byte_size,
+             ciphertext, iv, auth_tag, uploaded_by_account_id
+        FROM leave_request_evidence
+       WHERE leave_request_id = $1
+       ORDER BY created_at ASC`,
+      [input.evidence.fromRequestId, requestId],
+    );
+  }
+
+  const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
+  for (const [index, step] of preview.approvalChain.entries()) {
+    const stepId = randomUUID();
+    await client.query(
+      `INSERT INTO leave_request_approval_steps (
+        id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
+      ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
+      [
+        stepId,
+        requestId,
+        index + 1,
+        step.employeeId,
+        step.accountId ?? null,
+        step.sources,
+        index === 0 ? "pending" : "waiting",
+      ],
+    );
+    insertedSteps.push({ id: stepId, employeeId: step.employeeId, accountId: step.accountId ?? null, name: step.name });
+  }
+
+  await client.query(
+    `INSERT INTO leave_request_hc_tasks (
+      id, leave_request_id, task_kind, status, assigned_role_key
+    ) VALUES ($1, $2, $3, 'waiting', 'human_capital')`,
+    [randomUUID(), requestId, preview.validation.hcHandling],
+  );
+
+  await addEvent(client, requestId, input.actorAccountId, "leave.planned.submitted", {
+    policyKey: input.policyKey,
+    workingDays: preview.calculation.workingDays,
+    calendarDurationDays: preview.validation.calendarDurationDays,
+    unpaid: preview.validation.unpaid,
+    authorityResolution: preview.authorityResolution,
+    ...(replacement ? { ...replacement } : {}),
+  });
+  const firstStep = insertedSteps[0];
+  if (firstStep) {
+    await enqueueNotification(
+      client,
+      requestId,
+      "leave.approval.requested",
+      firstStep.accountId ? "account" : "employee",
+      firstStep.accountId ?? firstStep.employeeId!,
+    );
+    await notifyApprovalRequested(client, {
+      requestId,
+      stepId: firstStep.id,
+      approverEmployeeId: firstStep.employeeId,
+      approverAccountId: firstStep.accountId,
+    });
+  }
+  return { requestId, policy, preview, evidence, insertedSteps };
 }
 
 function mapKnownError(error: unknown): PlannedLeaveRouteError | null {
@@ -680,7 +865,8 @@ export async function registerPlannedLeaveRoutes(
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus",
           critical_review.status AS "criticalReviewStatus",
-          (request.status = 'in_review' AND request.line_handling = 'approval') AS "canCancel"
+          (request.status = 'in_review' AND request.line_handling = 'approval') AS "canCancel",
+          ${postponementColumns("request")}
         FROM leave_requests request
         LEFT JOIN leave_request_approval_steps active_step
           ON active_step.leave_request_id = request.id AND active_step.status = 'pending'
@@ -688,6 +874,7 @@ export async function registerPlannedLeaveRoutes(
         LEFT JOIN leave_request_hc_tasks task ON task.leave_request_id = request.id
         LEFT JOIN leave_request_critical_reviews critical_review
           ON critical_review.leave_request_id = request.id
+        ${postponementJoin("request")}
         WHERE request.employee_id = $1
           AND request.policy_key = ANY($2::text[])
         ORDER BY request.submitted_at DESC`,
@@ -728,7 +915,7 @@ export async function registerPlannedLeaveRoutes(
     }
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
-      const preview = await buildPreview(pool, employee, parsed.data);
+      const preview = await buildPlannedPreview(pool, employee, parsed.data);
       reply.header("Cache-Control", "no-store");
       return reply.send({
         policy: getLeavePolicy(parsed.data.policyKey),
@@ -778,118 +965,19 @@ export async function registerPlannedLeaveRoutes(
           return reply.send({ ...existing.rows[0], idempotentReplay: true });
         }
 
-        const evidenceInput = parsed.data.evidence ?? null;
-        const preview = await buildPreview(client, employee, {
+        const { requestId, policy, preview, evidence, insertedSteps } = await insertPlannedRequest(client, {
+          employee,
+          actorAccountId: principal.id,
           policyKey: parsed.data.policyKey,
           startOn: parsed.data.startOn,
           endOn: parsed.data.endOn,
-          hasEvidence: evidenceInput !== null,
-        });
-        const requestId = randomUUID();
-        const policy = getLeavePolicy(parsed.data.policyKey);
-        await client.query(
-          `INSERT INTO leave_requests (
-            id, employee_id, policy_key, status, start_on, end_on, working_days,
-            reason, hc_handling, idempotency_key, line_handling,
-            evidence_requirement, emergency_notice, validation_summary,
-            administration_status
-          ) VALUES (
-            $1, $2, $3, 'in_review', $4::date, $5::date, $6,
-            $7, $8, $9, 'approval', $10, false, $11::jsonb,
-            'not_applicable'
-          )`,
-          [
-            requestId,
-            employee.id,
-            parsed.data.policyKey,
-            parsed.data.startOn,
-            parsed.data.endOn,
-            preview.calculation.workingDays,
-            parsed.data.reason ?? null,
-            preview.validation.hcHandling,
-            parsed.data.idempotencyKey,
-            preview.validation.evidenceRequirement,
-            JSON.stringify({
-              policyKey: parsed.data.policyKey,
-              workingDays: preview.calculation.workingDays,
-              workingDates: preview.calculation.workingDates,
-              calendarDurationDays: preview.validation.calendarDurationDays,
-              minimumNoticeDays: preview.validation.minimumNoticeDays,
-              noticeDays: preview.validation.noticeDays,
-              unpaid: preview.validation.unpaid,
-              approvalSnapshot: preview.approvalChain.map((step) => ({
-                principalType: step.principalType ?? "EMPLOYEE",
-                employeeId: step.employeeId,
-                accountId: step.accountId ?? null,
-                sources: step.sources,
-              })),
-              authorityResolution: preview.authorityResolution,
-              ...(preview.criticalPeriods.length > 0 ? { criticalPeriods: preview.criticalPeriods } : {}),
-            }),
-          ],
-        );
-        if (preview.criticalReviewRequired) {
-          await attachCriticalReview(client, {
-            requestId,
-            actorAccountId: principal.id,
-            periods: preview.criticalPeriods,
-          });
-        }
-
-        const evidence = evidenceInput
-          ? await storeEvidence(client, requestId, principal.id, evidenceInput, encryptionKey)
-          : null;
-
-        const insertedSteps: Array<{ id: string; employeeId: string | null; accountId: string | null; name: string }> = [];
-        for (const [index, step] of preview.approvalChain.entries()) {
-          const stepId = randomUUID();
-          await client.query(
-            `INSERT INTO leave_request_approval_steps (
-              id, leave_request_id, step_order, approver_employee_id, approver_account_id, sources, status
-            ) VALUES ($1, $2, $3, $4, $5, $6::text[], $7)`,
-            [
-              stepId,
-              requestId,
-              index + 1,
-              step.employeeId,
-              step.accountId ?? null,
-              step.sources,
-              index === 0 ? "pending" : "waiting",
-            ],
-          );
-          insertedSteps.push({ id: stepId, employeeId: step.employeeId, accountId: step.accountId ?? null, name: step.name });
-        }
-
-        await client.query(
-          `INSERT INTO leave_request_hc_tasks (
-            id, leave_request_id, task_kind, status, assigned_role_key
-          ) VALUES ($1, $2, $3, 'waiting', 'human_capital')`,
-          [randomUUID(), requestId, preview.validation.hcHandling],
-        );
-
-        await addEvent(client, requestId, principal.id, "leave.planned.submitted", {
-          policyKey: parsed.data.policyKey,
-          workingDays: preview.calculation.workingDays,
-          calendarDurationDays: preview.validation.calendarDurationDays,
-          unpaid: preview.validation.unpaid,
-          authorityResolution: preview.authorityResolution,
+          reason: parsed.data.reason ?? null,
+          idempotencyKey: parsed.data.idempotencyKey,
+          noticeReferenceOn: jakartaToday(),
+          evidence: parsed.data.evidence ? { kind: "upload", input: parsed.data.evidence } : null,
+          encryptionKey,
         });
         const firstStep = insertedSteps[0];
-        if (firstStep) {
-          await enqueueNotification(
-            client,
-            requestId,
-            "leave.approval.requested",
-            firstStep.accountId ? "account" : "employee",
-            firstStep.accountId ?? firstStep.employeeId!,
-          );
-          await notifyApprovalRequested(client, {
-            requestId,
-            stepId: firstStep.id,
-            approverEmployeeId: firstStep.employeeId,
-            approverAccountId: firstStep.accountId,
-          });
-        }
         await client.query("COMMIT");
         return reply.status(201).send({
           id: requestId,

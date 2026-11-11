@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Inbox, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
 import {
   decideLeaveApproval,
   EmployeeLeaveApiError,
@@ -28,6 +29,7 @@ export function BoardApprovalsSection() {
   const [hidden, setHidden] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -78,6 +80,11 @@ export function BoardApprovalsSection() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       ) : null}
+      {notice ? (
+        <div className="m-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink" role="status">
+          {notice}
+        </div>
+      ) : null}
       {items === null ? (
         <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat pengajuan...
@@ -99,7 +106,21 @@ export function BoardApprovalsSection() {
                   <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.reason}</p>
                 ) : null}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                <ProposeAlternativeDates
+                  stepId={item.stepId}
+                  disabled={acting === item.stepId}
+                  onDone={(outcome) => {
+                    if (outcome.ok) {
+                      setError(null);
+                      setNotice(outcome.message);
+                    } else {
+                      setNotice(null);
+                      setError(outcome.message);
+                    }
+                    void load();
+                  }}
+                />
                 <button
                   type="button"
                   disabled={acting === item.stepId}

@@ -49,7 +49,7 @@ ATT-007 must not be inferred from raw punches alone. Schedule, holiday, toleranc
 
 Approved leave/permission may feed attendance/payroll as a resolved fact. Submission alone must not silently rewrite attendance truth.
 
-- Leave postponement with proposed alternative dates — LEAVE-008 (DISCOVERY). In the legacy app an approver could hold a request and propose other dates, and the employee accepted them. HCIS approvers can only approve or reject today. A postponement must keep the APR-001 snapshot: accepting it records a new request or an explicit amendment, never a silent edit of approved dates or balance.
+- Leave postponement with proposed alternative dates — LEAVE-008 (IMPLEMENTED 2026-11-11, `docs/domain/leave-postponement.md`). A line approver can answer "not those dates, these instead" with a note; the employee accepts or declines in their leave history. Accepting submits a new replacement request that goes through the whole approval chain again; the original keeps its dates as history. DRAFT defaults: notice counted from the original submission date, HC does not propose.
 - Approver in-app notification and requester cancellation of pending leave — LEAVE-010 (IMPLEMENTED 2026-11-03, `docs/domain/workflows/leave-request.md`). The active line approver is notified in HCIS when their step opens; the employee can cancel Cuti Tahunan and planned leave until it is decided.
 - Critical periods for leave — LEAVE-009 (IMPLEMENTED 2026-11-03, `docs/domain/leave-critical-periods.md`). HC marks periods (for the whole yayasan or one unit) such as exam weeks, PPDB, report cards and year-end; Cuti Tahunan and planned leave in such a period get an HC review after line approval. DRAFT default kept: review only, never block.
 

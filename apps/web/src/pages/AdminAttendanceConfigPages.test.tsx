@@ -16,6 +16,8 @@ describe("ORG-005-3 Shift without a location", () => {
   it("counts only active shifts without a location, and only while HP attendance is on", () => {
     expect(unlocatedShifts(shifts, true).map((item) => item.id)).toEqual(["a"]);
     expect(unlocatedShifts(shifts, false)).toEqual([]);
+    // A switched-off location is ignored by the clock-in, so the shift counts as without one.
+    expect(unlocatedShifts(shifts, true, new Set(["loc-1"])).map((item) => item.id)).toEqual(["a", "b"]);
   });
 
   it("shows the count and offers to set a location, or to add one when none exists", () => {

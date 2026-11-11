@@ -26,7 +26,7 @@ Ini bukan multi-tenancy, dan lokasi bukan legal entity (ORG-007): satu entity bi
 | D-5-5 | Mengelola daftar lokasi tetap memakai izin `attendance.schedule.manage` (ATT-003). Menautkan unit ke lokasi adalah penyusunan struktur, jadi memakai `organization.manage`. | Tidak ada izin baru. Pembagian ini sama dengan yang berlaku hari ini. |
 | D-5-6 | Koordinat dan radius tetap wajib di v1. | Mesin absensi dan geofence membutuhkannya. Lokasi tanpa titik ditunda (TBD). |
 | D-5-7 | Lokasi yang masih ditautkan ke unit di struktur yang berlaku, atau ke mesin aktif, tidak bisa dinonaktifkan. Respons 409 menyebut pemakainya. | Sama dengan aturan "nonaktif ditolak selama masih dipakai" di ORG-008-4b. |
-| D-5-8 | **Absen HP dicek terhadap lokasi shift; bila shift tidak menyebut lokasi, terhadap lokasi pegawai (D-5-3)** pada struktur yang berlaku di tanggal kerja. Lokasi shift selalu menang. Lokasi nonaktif tidak pernah dipakai. Aturan ini berlaku juga pada hari tanpa shift (libur/tanpa jadwal), karena yang dicek adalah tempat, bukan jam. | Satu sekolah satu lokasi: HC cukup menautkan unit sekolah sekali di Struktur, tidak perlu mengisi lokasi di setiap shift. Shift tetap bisa menimpa untuk kasus khusus (mis. shift jaga di gedung lain). |
+| D-5-8 | **Absen HP dicek terhadap lokasi shift; bila shift tidak menyebut lokasi aktif, terhadap lokasi pegawai (D-5-3)** pada struktur yang berlaku di tanggal kerja. Lokasi shift yang aktif selalu menang. Lokasi nonaktif tidak pernah dipakai (lokasi shift yang dinonaktifkan jatuh ke lokasi unit). Aturan ini berlaku juga pada hari tanpa shift (libur/tanpa jadwal), karena yang dicek adalah tempat, bukan jam; tetapi **tidak** pada hari berstatus "Jadwal bermasalah", yang tetap masuk antrean tinjau. | Satu sekolah satu lokasi: HC cukup menautkan unit sekolah sekali di Struktur, tidak perlu mengisi lokasi di setiap shift. Shift tetap bisa menimpa untuk kasus khusus (mis. shift jaga di gedung lain). |
 
 Di luar v1 (TBD): beberapa lokasi untuk satu unit, penugasan sementara ke lokasi lain, pemesanan ruang, lokasi per legal entity (ORG-007), dan `employment_placements.work_location_key` (kolomnya tetap dicadangkan, tidak diisi).
 
@@ -58,11 +58,12 @@ Di luar v1 (TBD): beberapa lokasi untuk satu unit, penugasan sementara ke lokasi
 
 **4.3a Absen HP memakai lokasi unit** (ORG-005-3, D-5-8)
 - **Actor:** pegawai yang absen dari HP (`POST /attendance/mobile/clock`).
-- **Urutan:** (1) lokasi versi shift hari itu; (2) bila kosong, lokasi unit utama pegawai pada struktur terbit yang berlaku di tanggal kerja, diwarisi dari unit induk terdekat (resolver read model ORG-005-1 yang sama, tidak ada resolver kedua); (3) bila tetap tidak ada, `unassigned_location` dan masuk antrean tinjau seperti sebelumnya.
+- **Urutan:** (1) lokasi versi shift hari itu, bila aktif; (2) bila kosong atau nonaktif, dan hari itu tidak berstatus "Jadwal bermasalah", lokasi unit utama pegawai pada struktur terbit yang berlaku di tanggal kerja, diwarisi dari unit induk terdekat (resolver read model ORG-005-1 yang sama, tidak ada resolver kedua); (3) bila tetap tidak ada, `unassigned_location` dan masuk antrean tinjau seperti sebelumnya.
 - **Jejak:** respons mengembalikan `workLocationId` dan `workLocationSource` (`shift`/`unit`/`null`); `attendance_events.safe_metadata` menyimpan `workLocationSource`; `attendance_mobile_evidence.work_location_id` berisi lokasi yang benar-benar dipakai. Tidak ada migration.
 - **Biaya:** satu pemuatan snapshot struktur per absen, hanya bila shift tidak menyebut lokasi.
-- **Kesiapan di HP:** `GET /attendance/me/workforce` → `mobileReadiness.hasWorkLocation` ikut aturan yang sama dan menambah `workLocationSource`; layar HP menulis "terhubung (dari unit)".
-- **Kegagalan:** struktur belum terbit, pegawai tanpa keanggotaan utama, unit nonaktif, atau lokasi nonaktif/tanpa titik → dianggap tidak ada lokasi (langkah 3), tidak pernah menebak.
+- **Kesiapan di HP:** `GET /attendance/me/workforce` → `mobileReadiness.hasWorkLocation` ikut aturan yang sama dan menambah `workLocationSource`; layar HP menulis "terhubung (dari unit)". Struktur hanya dimuat bila absen HP aktif.
+- **Kegagalan:** struktur belum terbit, pegawai tanpa keanggotaan utama, unit nonaktif, atau lokasi unit tanpa titik → dianggap tidak ada lokasi (langkah 3), tidak pernah menebak. Lokasi unit yang nonaktif biasanya tidak terjadi karena D-5-7 menolak menonaktifkan lokasi yang masih dipakai unit; resolver tetap mengabaikannya.
+- **Layar Shift** menganggap shift dengan lokasi nonaktif sama dengan shift tanpa lokasi (dicoret, diberi tanda).
 - **Di luar paket ini:** laporan dan filter lokasi pada Laporan (ATT-014) masih memakai lokasi shift saja. `DRAFT`.
 
 **4.4 Menonaktifkan lokasi**

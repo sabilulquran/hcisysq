@@ -56,10 +56,11 @@ paths:
                   type: string
                   description: Base64-encoded JPEG captured by the shipped camera UI; server validates JPEG signature and size.
       description: >-
-        ORG-005-3 (DRAFT D-5-8): the clock-in is checked against the work location of the day's shift
-        version; when the shift names none, against the work location of the employee's primary unit in
-        the structure effective on the work date (inherited from the nearest ancestor unit, ORG-005-1).
-        A switched-off location is never used. With neither, `geofenceStatus` is `unassigned_location`
+        ORG-005-3 (DRAFT D-5-8): the clock-in is checked against the active work location of the day's
+        shift version; when the shift names none (or a switched-off one), against the work location of the
+        employee's primary unit in the structure effective on the work date (inherited from the nearest
+        ancestor unit, ORG-005-1) — except on a day whose schedule is `configuration_error`, which keeps
+        needing review. A switched-off location is never used. With neither, `geofenceStatus` is `unassigned_location`
         and the evidence needs review. The source used is returned as `workLocationSource` and kept in
         the event's `safe_metadata`.
       responses:

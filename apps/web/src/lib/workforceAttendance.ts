@@ -198,9 +198,16 @@ export async function decideAttendanceClarification(
 /** ORG-005-3: what checks against a location — active shifts by name, units of today's structure that name it, machines. */
 export type WorkLocationUsage = { shifts: Array<{ id: string; name: string }>; unitCount: number; deviceCount: number };
 
-/** ORG-005-3: active shifts that name no location — only a concern while HP attendance is on. */
-export function unlocatedShifts<T extends { active: boolean; workLocationId: string | null }>(items: T[], mobileOn: boolean): T[] {
-  return mobileOn ? items.filter((item) => item.active && !item.workLocationId) : [];
+/**
+ * ORG-005-3: active shifts that name no usable location (none, or a switched-off one, which the clock-in
+ * ignores) — only a concern while HP attendance is on.
+ */
+export function unlocatedShifts<T extends { active: boolean; workLocationId: string | null }>(
+  items: T[], mobileOn: boolean, inactiveLocationIds: ReadonlySet<string> = new Set(),
+): T[] {
+  return mobileOn
+    ? items.filter((item) => item.active && (!item.workLocationId || inactiveLocationIds.has(item.workLocationId)))
+    : [];
 }
 
 export async function listAttendanceWorkLocations() {

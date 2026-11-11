@@ -246,8 +246,8 @@ export function AdminAttendanceSchedulesPage() {
     setItems(scheduleResult.items); setLocations(locationResult.items); setMobileOn(Boolean(scheduleResult.mobileAttendanceEnabled));
   };
   // ORG-005-3: an active shift without a location is worth a warning only while HP attendance is on.
-  const unlocated = unlocatedShifts(items, mobileOn);
   const activeLocations = locations.filter((item) => item.active);
+  const unlocated = unlocatedShifts(items, mobileOn, new Set(locations.filter((item) => !item.active).map((item) => item.id)));
   const startLocating = (item: ScheduleItem) => {
     setEditing(item.id); setEditForm(scheduleEditForm(item));
     window.setTimeout(() => document.getElementById(`shift-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
@@ -327,12 +327,13 @@ export function AdminAttendanceSchedulesPage() {
             </tr>
           ) : (
             <Fragment key={item.id}>
-            <tr id={`shift-${item.id}`}><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? (unlocated.includes(item) ? (
+            <tr id={`shift-${item.id}`}><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{unlocated.includes(item) ? (
               <span className="grid gap-1">
-                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="h-3 w-3" /> {NO_LOCATION_WARNING}</span>
+                {item.workLocationName ? <span className="text-muted-foreground line-through">{item.workLocationName}</span> : null}
+                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="h-3 w-3" /> {item.workLocationName ? "Lokasi nonaktif — absen HP tidak memakainya" : NO_LOCATION_WARNING}</span>
                 {activeLocations.length ? <button type="button" className="w-fit text-xs font-bold text-brand-primary-deep" onClick={() => startLocating(item)}>Atur lokasi</button> : null}
               </span>
-            ) : "—")}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
+            ) : (item.workLocationName ?? "—")}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
             {backdating?.id === item.id ? (
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">

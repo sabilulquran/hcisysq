@@ -647,7 +647,10 @@ export async function registerAttendanceWorkforceRoutes(
            LIMIT 20`,
           [employee.id],
         ),
-        resolveGeofenceLocation(pool, employee.id, workDate, schedule),
+        // Only worth a structure load while HP attendance is on.
+        config.MOBILE_ATTENDANCE_ENABLED === "1"
+          ? resolveGeofenceLocation(pool, employee.id, workDate, schedule)
+          : Promise.resolve({ location: schedule.workLocation, source: schedule.workLocation ? "shift" as const : null }),
       ]);
       const enabledByConfig = config.MOBILE_ATTENDANCE_ENABLED === "1";
       const mediaReady = restrictedMediaReady(config);

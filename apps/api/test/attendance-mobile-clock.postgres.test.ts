@@ -224,6 +224,30 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
     });
   });
 
+  it("ORG-005-3: a switched-off shift location falls back to the unit's", async () => {
+    const unitLocationId = await addLocation(-6.9, 108.6);
+    await placeEmployeeUnder(unitLocationId);
+    await client.query("UPDATE attendance_work_locations SET active = false WHERE id = $1", [scheduleLocationId]);
+    const response = await clock(-6.9, 108.6);
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.json()).toMatchObject({ geofenceStatus: "inside", workLocationId: unitLocationId, workLocationSource: "unit" });
+  });
+
+  it("ORG-005-3: a misconfigured schedule day never takes the unit location", async () => {
+    await client.query("UPDATE attendance_schedule_versions SET work_location_id = NULL WHERE work_location_id = $1", [scheduleLocationId]);
+    const second = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_schedule_assignments(id,employee_id,schedule_template_id,weekday_mask,effective_from,created_by_account_id)
+       SELECT $1, employee_id, schedule_template_id, 127, '2001-01-01', created_by_account_id
+       FROM attendance_schedule_assignments WHERE employee_id = $2 LIMIT 1`,
+      [second, employeeId],
+    );
+    await placeEmployeeUnder(await addLocation(-6.9, 108.6));
+    const response = await clock(-6.9, 108.6);
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.json()).toMatchObject({ geofenceStatus: "unassigned_location", reviewState: "needs_review", workLocationSource: null });
+  });
+
   it("ORG-005-3: a switched-off unit location, or no unit at all, leaves the clock-in unassigned", async () => {
     await client.query("UPDATE attendance_schedule_versions SET work_location_id = NULL WHERE work_location_id = $1", [scheduleLocationId]);
     const none = await clock(-6.9, 108.6);

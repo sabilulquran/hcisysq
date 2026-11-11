@@ -6,9 +6,10 @@ import type { ResolvedSchedule } from "./engine.js";
 
 // ORG-005-3 (DRAFT D-5-8): which place a mobile clock-in is checked against.
 //
-// 1. The work location of the day's shift version always wins ("shift").
+// 1. The work location of the day's shift version, when it is active, always wins ("shift").
 // 2. Otherwise the work location of the employee's primary unit in the structure effective on the
-//    work date, inherited from the nearest ancestor unit (ORG-005-1, D-5-3) ("unit").
+//    work date, inherited from the nearest ancestor unit (ORG-005-1, D-5-3) ("unit"). Not on a day
+//    whose schedule is misconfigured: that day keeps needing review, as before.
 // 3. Otherwise nothing: the clock-in is recorded as `unassigned_location` and needs review.
 //
 // The unit rule is the read model's own resolver; nothing is guessed from unit names. A location
@@ -31,12 +32,19 @@ export async function resolveGeofenceLocation(
   db: Db,
   employeeId: string,
   workDate: string,
-  schedule: Pick<ResolvedSchedule, "workLocation">,
+  schedule: Pick<ResolvedSchedule, "workLocation" | "state">,
 ): Promise<GeofenceLocationResolution> {
-  if (schedule.workLocation) {
-    return { location: schedule.workLocation, source: "shift", inheritedFromNodeKey: null };
-  }
   const none: GeofenceLocationResolution = { location: null, source: null, inheritedFromNodeKey: null };
+  if (schedule.workLocation) {
+    const shiftLocation = await db.query<{ active: boolean }>(
+      "SELECT active FROM attendance_work_locations WHERE id = $1",
+      [schedule.workLocation.id],
+    );
+    if (shiftLocation.rows[0]?.active) {
+      return { location: schedule.workLocation, source: "shift", inheritedFromNodeKey: null };
+    }
+  }
+  if (schedule.state === "configuration_error") return none;
   // One snapshot load per call; only reached when the shift names no location.
   const snapshot = await new PostgresOrganizationRepository(db).loadEffectiveSnapshot(workDate);
   if (!snapshot) return none;

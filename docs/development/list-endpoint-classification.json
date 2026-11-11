@@ -1297,6 +1297,11 @@
       "url": "/admin/letters/counters",
       "list": "single",
       "reason": "Satu penghitung untuk penerbit, jenis, dan periode."
+    },
+    {
+      "url": "/me/reminders/preferences",
+      "list": "bounded",
+      "reason": "NOTIF-003 §6: katalog aturan pengingat di kode (sembilan aturan) dengan preferensi WhatsApp akun itu."
     }
   ]
 }

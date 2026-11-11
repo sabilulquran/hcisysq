@@ -591,6 +591,10 @@ paths:
     $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1grants~1{id}~1revoke'
   /admin/letters/counters:
     $ref: './letters.openapi.yaml#/paths/~1admin~1letters~1counters'
+  /me/reminders/preferences:
+    $ref: './reminders.openapi.yaml#/paths/~1me~1reminders~1preferences'
+  /me/reminders/preferences/{ruleKey}:
+    $ref: './reminders.openapi.yaml#/paths/~1me~1reminders~1preferences~1{ruleKey}'
   /admin/committees:
     $ref: './committees.openapi.yaml#/paths/~1admin~1committees'
   /admin/committees/employee-options:

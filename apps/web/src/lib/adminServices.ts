@@ -255,14 +255,15 @@ export const adminServices: AdminServiceDefinition[] = [
     key: "communications",
     label: "Pengumuman & Notifikasi",
     description: "Kelola pengumuman, reminder, dan delivery notifikasi.",
-    featureIds: ["NOTIF-002", "NOTIF-004"],
+    featureIds: ["NOTIF-002", "NOTIF-003", "NOTIF-004"],
     stage: "available",
     category: "employee-services",
     href: "/admin/announcements",
     details: [
       "Pengumuman organisasi dengan sasaran unit",
-      "Notifikasi in-app sudah berjalan",
-      "Pengingat terjadwal (NOTIF-003) dan email/WhatsApp (NOTIF-001) belum",
+      "Notifikasi in-app dan WhatsApp lewat Kirim SQ",
+      "Pengingat terjadwal 06.00–21.00 WIB: persetujuan, antrean HC, kontrak, sertifikat, kinerja, payroll",
+      "Email tidak dipakai HCIS (NOTIF-001 D-10)",
     ],
   },
   {

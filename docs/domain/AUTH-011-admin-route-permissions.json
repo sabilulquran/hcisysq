@@ -5107,5 +5107,25 @@
     "permissions": [
       "documents.manage"
     ]
+  },
+  {
+    "file": "apps/api/src/modules/reminders/routes.ts",
+    "method": "GET",
+    "url": "/me/reminders/preferences",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reminders/routes.ts",
+    "method": "PUT",
+    "url": "/me/reminders/preferences/:ruleKey",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
   }
 ]

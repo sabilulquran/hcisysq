@@ -1,6 +1,7 @@
 import { BellRing, CheckCheck, Circle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ReminderPreferences } from "@/components/notifications/ReminderPreferences";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -150,8 +151,11 @@ export function EmployeeNotificationsPage() {
           )}
         </section>
 
+        <ReminderPreferences />
+
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          Pengingat jadwal, email, WhatsApp, browser push, dan pengumuman masih terpisah dari pusat notifikasi ini dan belum diaktifkan oleh rilis ini.
+          Pengingat terjadwal masuk ke sini dan dapat juga dikirim lewat WhatsApp. Email dan browser push tidak dipakai HCIS;
+          pengumuman ada di menu Pengumuman.
         </p>
       </section>
     </AppShell>

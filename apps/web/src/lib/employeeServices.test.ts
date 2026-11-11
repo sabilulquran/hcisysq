@@ -20,7 +20,9 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
     expect(getEmployeeService("notifications")?.stage).toBe("available");
     expect(getEmployeeService("notifications")?.href).toBe("/app/notifications");
-    expect(getEmployeeService("reminders")?.stage).toBe("discovery");
+    // NOTIF-003 Package 1: reminders arrive in Notifikasi, where WhatsApp is set per rule.
+    expect(getEmployeeService("reminders")?.stage).toBe("available");
+    expect(getEmployeeService("reminders")?.href).toBe("/app/notifications");
     expect(getEmployeeService("documents")?.stage).toBe("available");
     expect(getEmployeeService("documents")?.href).toBe("/app/documents");
     // DOC-003: every employee sees the service; taking a number needs an HC grant (API-checked).

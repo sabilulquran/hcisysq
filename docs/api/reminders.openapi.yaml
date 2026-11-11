@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: HCIS Reminder Preferences (NOTIF-003 Package 1)
+  version: 1.0.0
+  description: |
+    An employee's reminder preferences, as implemented in apps/api/src/modules/reminders/routes.ts.
+    Spec: docs/domain/reminders.md §6. Session cookie; Cache-Control: no-store; errors use
+    { code, message }. Ownership, not permission: an active EMPLOYEE account linked to an active
+    employee reads and writes only its own rows. Reminders themselves are produced by the in-process
+    engine (no HTTP surface) and arrive as in-app notifications (/notifications/me) and, when
+    enabled, WhatsApp through Kirim SQ.
+paths:
+  /me/reminders/preferences:
+    get:
+      tags: [Reminders]
+      operationId: myReminderPreferences
+      summary: Every reminder rule with this account's effective WhatsApp setting (bounded catalog)
+      responses:
+        '200':
+          description: The rule catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Preference' } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /me/reminders/preferences/{ruleKey}:
+    put:
+      tags: [Reminders]
+      operationId: setMyReminderPreference
+      summary: Turn WhatsApp on or off for one rule; in-app reminders cannot be turned off (D-08); audited when it changes
+      parameters:
+        - { name: ruleKey, in: path, required: true, schema: { type: string, examples: ['approval.pending_digest'] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [whatsapp]
+              properties:
+                whatsapp: { type: boolean }
+      responses:
+        '200':
+          description: The whole catalog after the change
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Preference' } }
+        '400': { description: INVALID_REMINDER_PREFERENCE, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { description: EMPLOYEE_LINK_REQUIRED, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '404': { description: REMINDER_RULE_NOT_FOUND, content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Preference:
+      type: object
+      required: [ruleKey, label, description, inApp, whatsapp, whatsappDefault]
+      properties:
+        ruleKey: { type: string }
+        label: { type: string }
+        description: { type: string }
+        inApp: { type: boolean, const: true }
+        whatsapp: { type: boolean, description: Effective value (stored preference, else the rule default) }
+        whatsappDefault: { type: boolean }
+  responses:
+    Problem:
+      description: UNAUTHENTICATED or EMPLOYEE_LINK_REQUIRED
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }

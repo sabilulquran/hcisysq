@@ -172,8 +172,8 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   },
   {
     key: "reminders", label: "Pengingat",
-    description: "Pengingat terjadwal berbasis agenda, shift, dan workflow.",
-    featureIds: ["NOTIF-003"], stage: "discovery", category: "information", href: "/app/services/reminders",
+    description: "Pengingat terjadwal untuk persetujuan, tenggat, kontrak, dan sertifikat; atur WhatsApp di Notifikasi.",
+    featureIds: ["NOTIF-003"], stage: "available", category: "information", href: "/app/notifications",
   },
 ];
 

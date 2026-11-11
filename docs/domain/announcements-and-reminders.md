@@ -1,6 +1,6 @@
 # Pengumuman dan Pengingat
 
-**Status:** ACCEPTED (Paket 1: pengumuman) — spesifikasi ini mengizinkan implementasi NOTIF-002. NOTIF-003 (pengingat terjadwal) tetap DISCOVERY di dokumen ini dan tidak boleh diimplementasikan sebelum §8 diputuskan. Keputusan bisnis yang belum tertulis ditandai `DRAFT`.
+**Status:** ACCEPTED (Paket 1: pengumuman) — spesifikasi ini mengizinkan implementasi NOTIF-002. NOTIF-003 (pengingat terjadwal) diputuskan dan diimplementasikan di `reminders.md` (2026-11-11); §8 di bawah tinggal sebagai catatan pertanyaan awalnya. Keputusan bisnis yang belum tertulis ditandai `DRAFT`.
 **Spesifikasi:** NOTIF-002 (pengumuman), NOTIF-003 (pengingat)
 **Tanggal:** 2026-10-27
 **Terkait:** NOTIF-001, NOTIF-004, ORG-004, ORG-005, AUTH-011
@@ -123,4 +123,4 @@ Yang harus diputuskan sebelum implementasi:
 
 Untuk pengingat rapat, kelima pertanyaan dijawab oleh CAL-001 (`meeting-calendar.md` §9.3): penjalan di dalam proses API, satu baris per rapat/pegawai/aturan, H-30 menit, peserta yang tidak berhalangan, in-app dan WhatsApp lewat Kirim SQ. Aturan pengingat lain tetap perlu jawaban sendiri.
 
-Sampai kelimanya dijawab, NOTIF-003 tetap `discovery` di katalog layanan dan tidak boleh diiklankan sebagai tersedia.
+Kelima pertanyaan dijawab untuk semua aturan di `reminders.md` (NOTIF-003 Paket 1, 2026-11-11): penjalan di proses API di balik saklar CAL-001, idempotensi per aturan/kejadian/penerima, katalog aturan dan ambangnya, penerima per aturan, kanal in-app dan WhatsApp.

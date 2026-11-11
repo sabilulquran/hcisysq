@@ -1,6 +1,6 @@
 # NOTIF-004 — In-App Notification Center
 
-**Status:** IMPLEMENTED — DEPLOYED. Migration `0049_in_app_notifications.sql` is applied in production and notifications are being written (read-only check 2026-10-22, running release `hcis-9b8f49a7-20261019`). External adapters (NOTIF-001) and reminders (NOTIF-003) remain separate.
+**Status:** IMPLEMENTED — DEPLOYED. Migration `0049_in_app_notifications.sql` is applied in production and notifications are being written (read-only check 2026-10-22, running release `hcis-9b8f49a7-20261019`). Reminders (NOTIF-003) write into this inbox; the WhatsApp adapter and the NOTIF-001 closure are in `reminders.md` §8.
 **Decision date:** 2026-09-21
 **Related:** NOTIF-001, NOTIF-003, ATT-007, ATT-008, PAY-002
 
@@ -41,11 +41,13 @@ No delete endpoint is exposed in v1. Retention remains a separate policy decisio
 
 ## Product status
 
-NOTIF-001 remains partially implemented because external delivery adapters (email/WhatsApp) are not included. NOTIF-003 reminder scheduling remains discovery.
+NOTIF-001 is closed by `reminders.md` §8: in-app (this inbox) and WhatsApp (Kirim SQ) adapters; email is not built (D-10). NOTIF-003 reminders are implemented (`reminders.md`) and arrive here, category `system`.
+
+Since migration 0145 a notification link may point into the admin shell (`/admin/...`) as well as `/app/...`, because HC reminders open admin worklists. The destination still re-checks authorization.
 
 The employee service catalog splits:
 - Notifikasi — available (NOTIF-004 / in-app part of NOTIF-001)
-- Pengingat — discovery (NOTIF-003)
+- Pengingat — available (NOTIF-003), settings under Notifikasi
 
 ## Acceptance
 

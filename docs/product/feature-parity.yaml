@@ -806,7 +806,7 @@ features:
       concurrency, edit and void (voided numbers stay visible, never reused), a starting
       number to continue a manual book, a joined register with the letters HCIS issues
       itself (their DOC-001 numbers unchanged, D-10), ENG-LIST-001 paging, CSV export and
-      audit. Migration 0141, no new permission key (documents.read / documents.manage).
+      audit. Migration 0144, no new permission key (documents.read / documents.manage).
       Not included: letter files, approval before numbering, legacy CSV import.
     docs:
       - docs/domain/outgoing-letter-register.md

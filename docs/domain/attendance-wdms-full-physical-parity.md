@@ -113,3 +113,7 @@ Repository completion requires migrations, typecheck, lint, tests, build and com
 `MERGE → one deploy → verifier → controlled canary ledger → browser UAT → final parity ledger with no not_verified rows`.
 
 Until that final ledger exists, ATT-005 remains `implementing`.
+
+## Status 2026-11-11
+
+Repository and production deployment are complete. The ledger records 7 physical rows `verified` from production evidence and 2 `excluded_by_product_contract`; 22 physical rows and 6 HCIS-only export rows remain open. Each open row is mapped to a site item, owner decision, or export UAT step in `docs/operations/adms-physical-verification-checklist.md`. ATT-005 stays `implementing` under the closure rule above.

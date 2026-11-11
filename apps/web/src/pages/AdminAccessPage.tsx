@@ -264,6 +264,16 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
     setNotice(null);
     try {
       const account = await prepareBoardAccount(boardEmail.trim());
+      if (usesInvitation) {
+        // AUTH-002: with Akun SQ an Organ Yayasan account is activated by mapping its Akun SQ
+        // identity, never by a local password link.
+        setBoardEmail("");
+        setNotice(
+          "Account Organ Yayasan disiapkan. Aktivasinya lewat Akun SQ: identitas Akun SQ dipetakan oleh Admin Platform, lalu status diubah menjadi Aktif.",
+        );
+        await reload();
+        return;
+      }
       const activation = await issueAccountActivation(account.id);
       setActivationLink({
         accountId: account.id,
@@ -493,7 +503,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             disabled={busy || !boardEmail.trim()}
             className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
           >
-            Siapkan account & link aktivasi
+            {usesInvitation ? "Siapkan account" : "Siapkan account & link aktivasi"}
           </button>
         </form>
       </section>
@@ -621,7 +631,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
                       {account.latestInvitation && !account.latestInvitation.revokedAt ? "Kirim ulang aktivasi" : "Kirim aktivasi"}
                     </button>
                   ) : null}
-                  {account.status === "invited" && !(usesInvitation && account.principalType === "EMPLOYEE") ? (
+                  {account.status === "invited" && !usesInvitation ? (
                     <button
                       type="button"
                       onClick={() => void publishActivationLink(account.id)}

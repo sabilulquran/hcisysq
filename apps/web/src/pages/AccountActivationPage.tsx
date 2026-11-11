@@ -27,6 +27,7 @@ export function AccountActivationPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [usesAkunSq, setUsesAkunSq] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -56,6 +57,10 @@ export function AccountActivationPage() {
       })
       .catch((cause: unknown) => {
         if (!mounted) return;
+        if (cause instanceof AccountActivationApiError && cause.code === "ACTIVATION_USES_AKUN_SQ") {
+          setUsesAkunSq(true);
+          return;
+        }
         setError(
           cause instanceof AccountActivationApiError
             ? cause.message
@@ -121,6 +126,8 @@ export function AccountActivationPage() {
         <div className="rounded-2xl border border-border/70 bg-surface p-5 text-sm text-muted-foreground">
           Memeriksa link aktivasi...
         </div>
+      ) : usesAkunSq ? (
+        <AkunSqActivationNotice />
       ) : success ? (
         <div className="rounded-2xl border border-success-line bg-success-soft p-5">
           <CheckCircle2 className="h-6 w-6 text-success-ink" aria-hidden="true" />
@@ -209,5 +216,30 @@ export function AccountActivationPage() {
         </div>
       )}
     </AuthLayout>
+  );
+}
+
+/**
+ * AUTH-002: in Akun SQ mode a local activation link is never honoured. The visitor is sent
+ * to Akun SQ instead: the activation e-mail from Akun SQ sets the password, and a forgotten
+ * password is recovered with "Lupa kata sandi?" on the Akun SQ sign-in page.
+ */
+export function AkunSqActivationNotice() {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-surface p-5">
+      <KeyRound className="h-6 w-6 text-brand-primary-deep" aria-hidden="true" />
+      <h3 className="mt-3 text-base font-bold text-brand-heading">Aktivasi memakai Akun SQ</h3>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        HCIS tidak lagi memakai link aktivasi ini. Buka email dari Akun SQ untuk membuat kata sandi, lalu masuk dari
+        halaman login. Bila lupa kata sandi, pilih <span className="font-semibold">Lupa kata sandi?</span> di halaman
+        Akun SQ. Bila email aktivasi tidak datang, hubungi Human Capital.
+      </p>
+      <a
+        href="/login"
+        className="mt-4 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground"
+      >
+        Masuk dengan Akun SQ
+      </a>
+    </div>
   );
 }

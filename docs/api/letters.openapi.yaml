@@ -99,7 +99,7 @@ paths:
         '400': { $ref: '#/components/responses/Problem' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { description: 'LETTER_GRANT_REQUIRED or EMPLOYEE_LINK_REQUIRED', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
-        '409': { description: 'LETTER_ISSUER_INACTIVE or LETTER_TYPE_INACTIVE; no number is used', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
+        '409': { description: 'LETTER_ISSUER_INACTIVE, LETTER_TYPE_INACTIVE or LETTER_NUMBER_CONFLICT (the next number repeats an older one; HC raises the starting number); no number is used', content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
   /letters/me/numbers/{id}:
     patch:
       tags: [Letters]
@@ -256,7 +256,7 @@ paths:
     patch:
       tags: [Letters]
       operationId: updateLetterType
-      summary: Change label, reset period, order or active flag (documents.manage)
+      summary: Change label, order or active flag, or the reset period while the type has no number (documents.manage)
       parameters:
         - { name: code, in: path, required: true, schema: { type: string } }
       requestBody:
@@ -276,6 +276,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/Problem' }
+        '409': { description: LETTER_TYPE_IN_USE (reset period of a type that already has numbers), content: { application/json: { schema: { $ref: '#/components/schemas/Problem' } } } }
   /admin/letters/issuers:
     get:
       tags: [Letters]
@@ -285,6 +286,7 @@ paths:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/Search'
+        - { name: code, in: query, description: Exact issuer code, schema: { type: string } }
         - { name: active, in: query, schema: { type: string, enum: ['true', 'false'] } }
       responses:
         '200':

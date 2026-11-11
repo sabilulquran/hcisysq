@@ -224,8 +224,16 @@ export const createLetterType = (input: { code: string; label: string; resetPeri
 export const updateLetterType = (code: string, input: { label?: string; resetPeriod?: ResetPeriod; active?: boolean }) =>
   write<{ code: string }>(`/admin/letters/types/${code}`, "PATCH", input);
 
-export const getLetterIssuers = (filter: { page: number; pageSize: number; q?: string }) =>
-  get<Paged<IssuerRow>>(`/admin/letters/issuers?${query({ page: filter.page, pageSize: filter.pageSize, q: filter.q?.trim() })}`);
+export const getLetterIssuers = (filter: { page: number; pageSize: number; q?: string; code?: string }) =>
+  get<Paged<IssuerRow>>(`/admin/letters/issuers?${query({
+    page: filter.page, pageSize: filter.pageSize, q: filter.q?.trim(), code: filter.code?.trim().toUpperCase(),
+  })}`);
+
+/** Resolves an issuer typed by its exact code; null when there is none. */
+export async function findIssuerByCode(code: string) {
+  const result = await getLetterIssuers({ page: 1, pageSize: 1, code });
+  return result.items[0] ?? null;
+}
 export const searchIssuerTargets = async (kind: "UNIT" | "COMMITTEE", q: string) =>
   (await get<{ items: TargetOption[] }>(`/admin/letters/issuer-targets?${query({ kind, q: q.trim() })}`)).items;
 export const createLetterIssuer = (input: {

@@ -64,7 +64,8 @@ export function EmployeeLettersPage() {
     }
   };
 
-  const load = async () => {
+  /** `keepError`: reload after a refused action without wiping the reason it was refused. */
+  const load = async ({ keepError = false }: { keepError?: boolean } = {}) => {
     setLoading(true);
     try {
       const [summary, options] = await Promise.allSettled([getEmployeeLeaveSummary(), getMyLetterOptions()]);
@@ -77,7 +78,7 @@ export function EmployeeLettersPage() {
         issuerId: current.issuerId || options.value.issuers.find((issuer) => issuer.available)?.id || "",
         typeCode: current.typeCode || options.value.types[0]?.code || "",
       }));
-      setError(null);
+      if (!keepError) setError(null);
       await loadList(1);
     } catch (cause) {
       if (cause instanceof LetterApiError && cause.status === 403) setForbidden(true);
@@ -105,7 +106,7 @@ export function EmployeeLettersPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Nomor surat belum dapat diambil.");
       // A grant revoked or an issuer closed meanwhile: show the options as they are now.
-      if (cause instanceof LetterApiError && (cause.status === 403 || cause.status === 409)) await load();
+      if (cause instanceof LetterApiError && (cause.status === 403 || cause.status === 409)) await load({ keepError: true });
     } finally {
       setBusy(false);
     }

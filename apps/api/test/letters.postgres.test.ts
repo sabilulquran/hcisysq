@@ -24,6 +24,9 @@ const config = { NODE_ENV: "test", AUTH_ENCRYPTION_KEY: "11".repeat(32), AUTH_SE
 const today = jakartaDate(new Date());
 const year = today.slice(0, 4);
 const month = today.slice(0, 7);
+const CRLF = "\r\n";
+/** The export starts with a UTF-8 byte-order mark (U+FEFF). */
+const stripBom = (body: string) => (body.charCodeAt(0) === 0xfeff ? body.slice(1) : body);
 
 /** The routes own their transactions; BEGIN/COMMIT/ROLLBACK become savepoints of the test's. */
 function savepointPool(client: PoolClient): Pool {
@@ -281,7 +284,7 @@ describe.skipIf(!allowed)("DOC-003 outgoing letter register", () => {
     const response = await call("GET", `/admin/letters/register/export?source=BOOK&issuerCode=${issuerCode}`);
     expect(response.statusCode, response.body).toBe(200);
     expect(response.headers["content-type"]).toContain("text/csv");
-    const lines = response.body.replace(/^﻿/, "").trim().split("\r\n");
+    const lines = stripBom(response.body).trim().split(CRLF);
     expect(lines).toHaveLength(3);
     expect(response.body).toContain(`"'=HYPERLINK(""x"")"`);
     expect(response.body).toContain(`"'+62 Wali"`);
@@ -352,6 +355,63 @@ describe.skipIf(!allowed)("DOC-003 outgoing letter register", () => {
     expect(duplicate.json().code).toBe("LETTER_GRANT_EXISTS");
     const grants = await call("GET", `/admin/letters/grants?issuerCode=${issuerCode}&active=false`);
     expect(grants.json().pagination.total).toBe(1);
+  });
+
+  it("review fixes: empty HCIS view, locked reset period, removed employee, character lengths, real changes only", async () => {
+    await grant("clerk");
+    expect((await take("clerk")).statusCode).toBe(201);
+    actAs("hc", HC);
+    // An HCIS-only view filtered by a book issuer or type is empty, not an error.
+    const empty = await call("GET", `/admin/letters/register?source=HCIS&typeCode=UND`);
+    expect(empty.statusCode, empty.body).toBe(200);
+    expect(empty.json()).toMatchObject({ items: [], pagination: { total: 0 } });
+    const emptyExport = await call("GET", `/admin/letters/register/export?source=HCIS&issuerCode=${issuerCode}`);
+    expect(emptyExport.statusCode, emptyExport.body).toBe(200);
+    expect(stripBom(emptyExport.body).trim().split(CRLF)).toHaveLength(1);
+
+    // D-04: a type with numbers keeps its reset period; one without numbers may change it.
+    const locked = await call("PATCH", "/admin/letters/types/UND", { resetPeriod: "MONTHLY" });
+    expect(locked.json().code).toBe("LETTER_TYPE_IN_USE");
+    expect((await call("PATCH", "/admin/letters/types/UND", { label: "Undangan Rapat" })).statusCode).toBe(200);
+    await client.query("INSERT INTO letter_types (code, label) VALUES ('BARU', 'Belum Dipakai')");
+    expect((await call("PATCH", "/admin/letters/types/BARU", { resetPeriod: "MONTHLY" })).statusCode).toBe(200);
+    expect((await call("PATCH", "/admin/letters/types/BARU", {})).statusCode).toBe(400);
+    expect((await call("PATCH", `/admin/letters/issuers/${issuerId}`, {})).statusCode).toBe(400);
+
+    // A collision with an older number is a 409, and nothing is taken.
+    await client.query(
+      `INSERT INTO letter_numbers (id, issuer_id, type_code, period_key, sequence, letter_number, letter_date, subject, recipient,
+         requested_by_employee_id, requested_by_account_id)
+       VALUES ($1,$2,'UND','1999',2,$3,$4::date,'Nomor lama','Arsip',$5,$6)`,
+      [randomUUID(), issuerId, (await take("clerk")).json().letterNumber.replace(".002/", ".003/"), today,
+        people.clerk.employeeId, people.clerk.accountId],
+    );
+    const collision = await take("clerk");
+    expect(collision.statusCode, collision.body).toBe(409);
+    expect(collision.json().code).toBe("LETTER_NUMBER_CONFLICT");
+
+    // Lengths count characters, as the database does: two emoji are two characters, not four.
+    expect((await take("clerk", { subject: "😀😀" })).statusCode).toBe(400);
+
+    // Only changed fields are audited; an unchanged edit writes nothing.
+    const mine = (await take("clerk", { typeCode: "PEM" })).json() as { id: string; subject: string };
+    const before = await audit("letter.updated");
+    actAs("clerk");
+    expect((await call("PATCH", `/letters/me/numbers/${mine.id}`, { subject: mine.subject, version: 1 })).json().version).toBe(1);
+    expect(await audit("letter.updated")).toBe(before);
+    expect((await call("PATCH", `/letters/me/numbers/${mine.id}`, { recipient: "Kepala sekolah", subject: mine.subject, version: 1 })).statusCode).toBe(200);
+    const fields = await client.query<{ metadata: { fields: string[] } }>(
+      "SELECT metadata FROM letter_audit_events WHERE event_type = 'letter.updated' AND letter_number_id = $1", [mine.id],
+    );
+    expect(fields.rows.map((row) => row.metadata.fields)).toEqual([["recipient"]]);
+
+    // A removed employee takes no number even with a grant (D-07).
+    await client.query("UPDATE employees SET removed_at = now(), removal_reason = 'Data ganda' WHERE id = $1", [people.clerk.employeeId]);
+    expect((await take("clerk")).json().code).toBe("EMPLOYEE_LINK_REQUIRED");
+
+    // Exact code lookup works for any issuer code.
+    actAs("hc", HC_READ);
+    expect((await call("GET", `/admin/letters/issuers?code=${issuerCode}`)).json().items.map((row: { id: string }) => row.id)).toEqual([issuerId]);
   });
 
   it("settings need documents.manage; documents.read only reads", async () => {

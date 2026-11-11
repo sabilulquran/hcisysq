@@ -41,7 +41,7 @@ Tidak termasuk:
 | D-01 | Buku nomor surat keluar umum berada di HCIS, modul `documents`. | DRAFT |
 | D-02 | Format nomor mengikuti legacy: `<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`, urut minimal 3 digit (`UND.007/SDIT/XI/2026`). | DRAFT |
 | D-03 | Urutan dihitung **per penerbit, per jenis, per periode**. Legacy menghitung per jenis per tahun lintas penerbit; HCIS memisahkan per penerbit karena setiap unit memegang buku agendanya sendiri dan celah per unit harus dapat diperiksa. | DRAFT |
-| D-04 | Periode reset diatur per jenis: `YEARLY` (bawaan, reset 1 Januari) atau `MONTHLY` (reset tanggal 1). Tanggal, bulan, dan tahun diturunkan dari zona **Asia/Jakarta**. | DRAFT |
+| D-04 | Periode reset diatur per jenis: `YEARLY` (bawaan, reset 1 Januari) atau `MONTHLY` (reset tanggal 1). Tanggal, bulan, dan tahun diturunkan dari zona **Asia/Jakarta**. Periode reset jenis yang **sudah punya nomor tidak dapat diubah** (`409 LETTER_TYPE_IN_USE`), karena format nomor hanya memuat bulan dan tahun sehingga penghitung periode baru akan mengulang nomor lama; perlu periode lain berarti jenis baru. Bila tetap terjadi tabrakan dengan nomor lama, pengambilan ditolak `409 LETTER_NUMBER_CONFLICT` dan HC menaikkan nomor awal (§5.5). | DRAFT |
 | D-05 | Alokasi tanpa celah: penghitung dinaikkan dan baris register disisipkan dalam **satu transaksi**. Bila penyisipan gagal, transaksi dibatalkan dan nomor kembali; dua pengambilan bersamaan saling menunggu pada kunci baris penghitung. | ACCEPTED |
 | D-06 | Tanggal surat = tanggal pengambilan nomor (Jakarta). Tidak ada nomor mundur tanggal di Paket 1, supaya urutan dan tanggal di buku selalu searah. | DRAFT |
 | D-07 | Hanya pegawai aktif yang punya **hak ambil nomor** (grant) untuk sebuah penerbit yang dapat mengambil nomor atas nama penerbit itu. Grant diberikan HC dengan alasan, dapat dicabut, dan tercatat. | ACCEPTED (bukti legacy) |
@@ -49,7 +49,7 @@ Tidak termasuk:
 | D-09 | Pembatalan oleh pengambil nomor sendiri (selama nomornya miliknya) atau oleh pemegang `documents.manage`. | DRAFT |
 | D-10 | Surat yang diterbitkan HCIS (surat keterangan, SP, surat tugas, SK panitia) **tetap memakai penghitung DOC-001** dan formatnya sendiri; nomor lamanya tidak diubah. Register gabungan menampilkan keduanya. Format DOC-001 diawali angka dan format DOC-003 diawali kode jenis berhuruf, jadi kedua ruang nomor tidak dapat bertabrakan. | DRAFT |
 | D-11 | Izin memakai kosakata DOC yang sudah ada: `documents.read` membaca register gabungan dan mengekspornya; `documents.manage` mengatur jenis, penerbit, hak ambil nomor, nomor awal, dan membatalkan nomor siapa pun. Tidak ada kunci izin baru, sehingga tidak ada jendela izin saat rilis (`mi8vps-hcis-release.md` §4.5). | DRAFT |
-| D-12 | Baris surat peringatan di register gabungan hanya membawa fakta register (nomor, jenis, status, tanggal), sama dengan DOC-002 D-18. Baris surat terbitan HCIS tidak membawa nama pegawai. | ACCEPTED (turunan D-18) |
+| D-12 | Baris surat terbitan HCIS di register gabungan hanya membawa fakta register: nomor, jenis, status, tanggal, serta waktu dan alasan pembatalan — sama dengan DOC-002 D-18. Tidak ada nama pegawai, penanda tangan, tujuan, maupun isi surat. | ACCEPTED (turunan D-18) |
 | D-13 | Pemegang grant melihat buku penerbit yang grant-nya ia pegang, ditambah nomor yang pernah ia ambil sendiri walau grant-nya sudah dicabut. | DRAFT |
 | D-14 | Penerbit jenis panitia (`COMMITTEE`) hanya dapat menerbitkan nomor selama panitia ORG-012-nya berstatus `ACTIVE`. | DRAFT (bukti legacy: "an active committee could also issue numbered letters") |
 | D-15 | Kode jenis dan kode penerbit tidak dapat diubah setelah dibuat; label dapat diubah. Jenis dan penerbit dinonaktifkan, tidak dihapus. | ACCEPTED |
@@ -98,7 +98,7 @@ Pengambil nomor sendiri atau pemegang `documents.manage` (D-09). Alasan 10–500
 
 ### 5.4 Register gabungan dan ekspor
 
-`GET /admin/letters/register` (`documents.read`), ENG-LIST-001 §3.1: `page`, `pageSize` (25, maks 100), `total`; filter `source` (`ALL` bawaan, `BOOK`, `HCIS`), `issuerId`, `typeCode`, `status` (`ACTIVE` = terpakai, `VOIDED` = batal), `year`, `q` (2–100 karakter: nomor, perihal, tujuan). Semua filter berjalan di SQL sebelum `LIMIT`; urutan stabil: tanggal terbaru, lalu nomor. Baris surat terbitan HCIS (D-10, D-12) ber-`source = HCIS`, penerbit "HCIS", perihal = nama jenis surat, tanpa nama pegawai dan tanpa tujuan; filter `issuerId`/`typeCode` hanya berlaku untuk baris buku dan menyembunyikan baris HCIS.
+`GET /admin/letters/register` (`documents.read`), ENG-LIST-001 §3.1: `page`, `pageSize` (25, maks 100), `total`; filter `source` (`ALL` bawaan, `BOOK`, `HCIS`), `issuerCode`, `typeCode`, `status` (`ACTIVE` = terpakai, `VOIDED` = batal), `year`, `q` (2–100 karakter: nomor, perihal, tujuan). Semua filter berjalan di SQL sebelum `LIMIT`; urutan stabil: tanggal terbaru, lalu waktu pengambilan/penerbitan terbaru, lalu id. Baris surat terbitan HCIS (D-10, D-12) ber-`source = HCIS`, penerbit "HCIS", perihal = nama jenis surat, tanpa nama pegawai dan tanpa tujuan; filter `issuerCode`/`typeCode` hanya berlaku untuk baris buku dan menyembunyikan baris HCIS (sehingga `source=HCIS` dengan filter itu menghasilkan daftar kosong).
 
 `GET /admin/letters/register/export` memakai filter yang sama tanpa halaman dan menghasilkan CSV lengkap (ENG-LIST-001-H). Bila hasil melebihi 20.000 baris, ekspor ditolak `422 LETTER_EXPORT_TOO_LARGE` dengan pesan "persempit filter". Sel teks dinetralkan dari formula (SEC-13). Audit `letter.register.exported` dengan filter dan jumlah baris.
 
@@ -106,10 +106,12 @@ Pemegang grant membaca bukunya lewat `GET /letters/me/numbers` (D-13), juga berh
 
 ### 5.5 Pengaturan (HC)
 
-- Jenis surat: tambah (`code` `^[A-Z][A-Z0-9-]{0,9}$`, `label`, `resetPeriod`), ubah label/periode/aktif. Mengubah periode reset berlaku untuk nomor berikutnya; nomor lama tidak berubah.
+- Jenis surat: tambah (`code` `^[A-Z][A-Z0-9-]{0,9}$`, `label`, `resetPeriod`), ubah label/aktif, dan ubah periode reset **selama jenis itu belum punya nomor** (D-04).
 - Penerbit: tambah (`code` `^[A-Z0-9][A-Z0-9-]{0,15}$`, `name`, `kind`, `organizationalUnitId` untuk `UNIT`, `committeeId` untuk `COMMITTEE`), ubah nama/aktif.
 - Hak ambil nomor: beri ke pegawai aktif (pencarian typeahead) dengan alasan 5–500 karakter; cabut dengan alasan. Satu grant aktif per pegawai per penerbit (`409 LETTER_GRANT_EXISTS`).
 - Nomor awal: untuk penerbit + jenis + periode, set "nomor terakhir yang sudah terpakai di buku manual". Hanya boleh lebih besar dari penghitung sekarang (D-17, `409 LETTER_COUNTER_NOT_RAISED`). Nomor berikutnya = nilai itu + 1. Audit `letter.counter.raised` dengan nilai lama dan baru.
+
+Panjang teks dihitung dalam karakter, sama dengan constraint basis data. Permintaan ubah tanpa isi ditolak `400`.
 
 Audit pengaturan: `letter.type.created`, `letter.type.updated`, `letter.issuer.created`, `letter.issuer.updated`, `letter.grant.created`, `letter.grant.revoked`, `letter.counter.raised`.
 

@@ -31,26 +31,31 @@ import {
 } from "./letters.js";
 
 const uuid = z.string().uuid();
-const optionalText = (max: number) => z.string().trim().max(max).optional().transform((value) => value || undefined);
+/** Length in characters (code points), as the CHECK constraints count it, not UTF-16 units. */
+const text = (min: number, max: number) => z.string().trim()
+  .refine((value) => { const length = [...value].length; return length >= min && length <= max; }, {
+    message: `Panjang ${min}–${max} karakter.`,
+  });
+const optionalText = (max: number) => text(0, max).optional().transform((value) => value || undefined);
 const search = z.string().trim().min(2).max(100).optional();
 
 const allocateBody = z.object({
   issuerId: uuid,
   typeCode: z.string().trim().regex(LETTER_TYPE_CODE),
-  subject: z.string().trim().min(3).max(300),
-  recipient: z.string().trim().min(2).max(300),
+  subject: text(3, 300),
+  recipient: text(2, 300),
   notes: optionalText(1000),
 });
 const editBody = z.object({
-  subject: z.string().trim().min(3).max(300).optional(),
-  recipient: z.string().trim().min(2).max(300).optional(),
+  subject: text(3, 300).optional(),
+  recipient: text(2, 300).optional(),
   // null clears the note.
-  notes: z.union([z.string().trim().max(1000), z.null()]).optional(),
+  notes: z.union([text(0, 1000), z.null()]).optional(),
   version: z.number().int().min(1),
 }).refine((value) => value.subject !== undefined || value.recipient !== undefined || value.notes !== undefined, {
   message: "Tidak ada perubahan.",
 });
-const voidBody = z.object({ reason: z.string().trim().min(10).max(500) });
+const voidBody = z.object({ reason: text(10, 500) });
 const idParams = z.object({ id: uuid });
 const codeParams = z.object({ code: z.string().regex(LETTER_TYPE_CODE) });
 
@@ -72,29 +77,31 @@ const registerQuery = pageQuerySchema.merge(registerFilter);
 
 const typeBody = z.object({
   code: z.string().trim().regex(LETTER_TYPE_CODE),
-  label: z.string().trim().min(2).max(120),
+  label: text(2, 120),
   resetPeriod: z.enum(LETTER_RESET_PERIODS).default("YEARLY"),
   sortOrder: z.number().int().min(0).max(9999).optional(),
 });
 const typePatch = z.object({
-  label: z.string().trim().min(2).max(120).optional(),
+  label: text(2, 120).optional(),
   resetPeriod: z.enum(LETTER_RESET_PERIODS).optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().min(0).max(9999).optional(),
-});
+}).refine((value) => Object.values(value).some((field) => field !== undefined), { message: "Tidak ada perubahan." });
 
 const issuerBody = z.object({
   code: z.string().trim().regex(LETTER_ISSUER_CODE),
-  name: z.string().trim().min(2).max(200),
+  name: text(2, 200),
   kind: z.enum(LETTER_ISSUER_KINDS),
   organizationalUnitId: uuid.optional(),
   committeeId: uuid.optional(),
 });
 const issuerPatch = z.object({
-  name: z.string().trim().min(2).max(200).optional(),
+  name: text(2, 200).optional(),
   active: z.boolean().optional(),
-});
+}).refine((value) => value.name !== undefined || value.active !== undefined, { message: "Tidak ada perubahan." });
 const issuersQuery = pageQuerySchema.extend({
+  // Exact code, for forms that name an issuer by its code (one-character codes included).
+  code: z.string().trim().toUpperCase().regex(LETTER_ISSUER_CODE).optional(),
   q: search,
   active: z.enum(["true", "false"]).optional(),
 });
@@ -103,9 +110,9 @@ const targetQuery = z.object({ kind: z.enum(["UNIT", "COMMITTEE"]), q: z.string(
 const grantBody = z.object({
   employeeId: uuid,
   issuerId: uuid,
-  reason: z.string().trim().min(5).max(500),
+  reason: text(5, 500),
 });
-const grantRevokeBody = z.object({ reason: z.string().trim().min(5).max(500) });
+const grantRevokeBody = z.object({ reason: text(5, 500) });
 const grantsQuery = pageQuerySchema.extend({
   issuerCode: z.string().trim().toUpperCase().regex(LETTER_ISSUER_CODE).optional(),
   active: z.enum(["true", "false"]).default("true"),
@@ -182,6 +189,7 @@ function registerRows(filter: RegisterFilter) {
   if (includeBook) {
     parts.push(`
       SELECT 'BOOK'::text AS source, n.id, n.letter_number AS "letterNumber", n.letter_date AS sort_date,
+             n.created_at AS sort_at,
              to_char(n.letter_date, 'YYYY-MM-DD') AS "letterDate", issuer.code AS "issuerCode",
              issuer.name AS "issuerName", n.type_code AS "typeCode", type.label AS "typeLabel",
              n.subject, n.recipient, CASE WHEN n.status = 'VOIDED' THEN 'VOIDED' ELSE 'ACTIVE' END AS status,
@@ -193,7 +201,7 @@ function registerRows(filter: RegisterFilter) {
   if (includeHcis) {
     parts.push(`
       SELECT 'HCIS'::text AS source, d.id, d.document_number AS "letterNumber",
-             (d.issued_at AT TIME ZONE 'Asia/Jakarta')::date AS sort_date,
+             (d.issued_at AT TIME ZONE 'Asia/Jakarta')::date AS sort_date, d.issued_at AS sort_at,
              to_char(d.issued_at AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS "letterDate",
              NULL::text AS "issuerCode", 'HCIS'::text AS "issuerName", d.number_code AS "typeCode",
              CASE d.document_kind
@@ -215,8 +223,8 @@ function registerRows(filter: RegisterFilter) {
         LEFT JOIN hr_document_types document_type ON document_type.code = d.document_code
       ${where(hcis)}`);
   }
-  const sql = parts.length ? parts.join(" UNION ALL ") : `SELECT NULL::text AS source WHERE false`;
-  return { sql, values };
+  if (!parts.length) return null;
+  return { sql: parts.join(" UNION ALL "), values };
 }
 
 export async function registerLetterRoutes(
@@ -263,7 +271,7 @@ export async function registerLetterRoutes(
          FROM accounts account
          JOIN employees employee ON employee.id = account.employee_id
         WHERE account.id = $1 AND account.principal_type = 'EMPLOYEE' AND account.status = 'active'
-          AND employee.status = 'active'
+          AND employee.status = 'active' AND employee.removed_at IS NULL
         LIMIT 1`,
       [principal.id],
     );
@@ -301,8 +309,10 @@ export async function registerLetterRoutes(
     client: PoolClient,
     input: { id: string; actorAccountId: string; ownerEmployeeId: string | null; body: z.infer<typeof editBody> },
   ): Promise<[number, unknown]> {
-    const current = await client.query<{ status: string; version: number; owner: string; issuerId: string }>(
-      `SELECT status, version, requested_by_employee_id AS owner, issuer_id AS "issuerId"
+    const current = await client.query<{
+      status: string; version: number; owner: string; issuerId: string; subject: string; recipient: string; notes: string | null;
+    }>(
+      `SELECT status, version, requested_by_employee_id AS owner, issuer_id AS "issuerId", subject, recipient, notes
          FROM letter_numbers WHERE id = $1 FOR UPDATE`,
       [input.id],
     );
@@ -314,15 +324,18 @@ export async function registerLetterRoutes(
     if (row.version !== input.body.version) {
       throw new LetterError(409, "LETTER_VERSION_CONFLICT", "Nomor surat sudah diubah orang lain. Muat ulang lalu coba lagi.");
     }
-    const changed = (["subject", "recipient", "notes"] as const).filter((field) => input.body[field] !== undefined);
+    const next = {
+      subject: input.body.subject ?? row.subject,
+      recipient: input.body.recipient ?? row.recipient,
+      notes: input.body.notes === undefined ? row.notes : (input.body.notes || null),
+    };
+    const changed = (["subject", "recipient", "notes"] as const).filter((field) => next[field] !== row[field]);
+    if (!changed.length) return [200, await loadNumber(client, input.id)];
     await client.query(
       `UPDATE letter_numbers
-          SET subject = coalesce($2, subject), recipient = coalesce($3, recipient),
-              notes = CASE WHEN $4::boolean THEN $5 ELSE notes END,
-              version = version + 1, updated_at = now()
+          SET subject = $2, recipient = $3, notes = $4, version = version + 1, updated_at = now()
         WHERE id = $1`,
-      [input.id, input.body.subject ?? null, input.body.recipient ?? null, input.body.notes !== undefined,
-        input.body.notes || null],
+      [input.id, next.subject, next.recipient, next.notes],
     );
     await writeLetterAudit(client, {
       eventType: "letter.updated", letterNumberId: input.id, issuerId: row.issuerId,
@@ -443,6 +456,7 @@ export async function registerLetterRoutes(
         [body.data.typeCode],
       );
       if (!type.rows[0]?.active) throw new LetterError(409, "LETTER_TYPE_INACTIVE", "Jenis surat ini tidak tersedia.");
+      // A collision with an older number (backstop for D-04) aborts the transaction; transact rolls it back.
       const allocated = await allocateLetterNumber(client, {
         issuer: { id: found.id, code: found.code },
         type: type.rows[0],
@@ -451,6 +465,10 @@ export async function registerLetterRoutes(
         notes: body.data.notes ?? null,
         employeeId: self.employeeId,
         accountId: self.principal.id,
+      }).catch(async (error: unknown) => {
+        if (!isUniqueViolation(error)) throw error;
+        throw new LetterError(409, "LETTER_NUMBER_CONFLICT",
+          "Nomor berikutnya bertabrakan dengan nomor lama. Minta Human Capital menaikkan nomor awal untuk jenis dan periode ini.");
       });
       await writeLetterAudit(client, {
         eventType: "letter.allocated", letterNumberId: allocated.id, issuerId: found.id,
@@ -489,13 +507,16 @@ export async function registerLetterRoutes(
     if (!(await requirePermission(request, reply, "documents.read"))) return;
     const query = registerQuery.safeParse(request.query);
     if (!query.success) return invalid(reply, "Filter tidak valid.");
-    const { sql, values } = registerRows(query.data);
+    const rows = registerRows(query.data);
+    // An HCIS-only view filtered by a book issuer or type has nothing to show.
+    if (!rows) return send(reply, 200, { items: [], pagination: pagination(query.data, 0) });
+    const { sql, values } = rows;
     const [items, count] = await Promise.all([
       pool.query(
         `SELECT source, id, "letterNumber", "letterDate", "issuerCode", "issuerName", "typeCode", "typeLabel",
                 subject, recipient, status, "voidedAt", "voidReason", "requestedByName", version
            FROM (${sql}) rows
-          ORDER BY sort_date DESC, "letterNumber" DESC, id DESC
+          ORDER BY sort_date DESC, sort_at DESC, id DESC
           LIMIT ${query.data.pageSize} OFFSET ${pageOffset(query.data)}`,
         values,
       ),
@@ -509,7 +530,9 @@ export async function registerLetterRoutes(
     if (!access) return;
     const query = registerFilter.safeParse(request.query);
     if (!query.success) return invalid(reply, "Filter tidak valid.");
-    const { sql, values } = registerRows(query.data);
+    const selected = registerRows(query.data);
+    const sql = selected?.sql ?? "SELECT NULL::text AS source, NULL::text AS \"letterNumber\", NULL::text AS \"letterDate\", NULL::text AS \"issuerName\", NULL::text AS \"typeLabel\", NULL::text AS subject, NULL::text AS recipient, NULL::text AS status, NULL::text AS \"voidReason\", NULL::text AS \"requestedByName\", NULL::date AS sort_date, NULL::timestamptz AS sort_at, NULL::uuid AS id WHERE false";
+    const values = selected?.values ?? [];
     const count = await pool.query<{ total: number }>(`SELECT count(*)::int AS total FROM (${sql}) rows`, values);
     const total = count.rows[0]?.total ?? 0;
     // ENG-LIST-001-H: complete or explicitly refused, never silently cut.
@@ -523,7 +546,7 @@ export async function registerLetterRoutes(
       `SELECT source, "letterNumber", "letterDate", "issuerName", "typeLabel", subject, recipient, status,
               "voidReason", "requestedByName"
          FROM (${sql}) rows
-        ORDER BY sort_date DESC, "letterNumber" DESC, id DESC`,
+        ORDER BY sort_date DESC, sort_at DESC, id DESC`,
       values,
     );
     await writeLetterAudit(pool, {
@@ -540,7 +563,8 @@ export async function registerLetterRoutes(
     }
     reply.header("Content-Type", "text/csv; charset=utf-8");
     reply.header("Content-Disposition", `attachment; filename="buku-nomor-surat-${letterToday()}.csv"`);
-    return send(reply, 200, `﻿${lines.join("\r\n")}\r\n`);
+    // A byte-order mark so spreadsheet programs read the file as UTF-8.
+    return send(reply, 200, `${String.fromCharCode(0xfeff)}${lines.join("\r\n")}\r\n`);
   });
 
   app.patch("/admin/letters/numbers/:id", async (request, reply) => {
@@ -608,6 +632,19 @@ export async function registerLetterRoutes(
     const body = typePatch.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply);
     return transact(reply, async (client) => {
+      if (body.data.resetPeriod) {
+        const current = await client.query<{ resetPeriod: string; used: boolean }>(
+          `SELECT reset_period AS "resetPeriod",
+                  EXISTS (SELECT 1 FROM letter_numbers n WHERE n.type_code = type.code) AS used
+             FROM letter_types type WHERE code = $1 FOR UPDATE`,
+          [params.data.code],
+        );
+        const row = current.rows[0];
+        if (row && row.used && row.resetPeriod !== body.data.resetPeriod) {
+          throw new LetterError(409, "LETTER_TYPE_IN_USE",
+            "Periode reset tidak dapat diubah karena jenis ini sudah punya nomor. Buat jenis baru bila perlu periode lain.");
+        }
+      }
       const result = await client.query(
         `UPDATE letter_types
             SET label = coalesce($2, label), reset_period = coalesce($3, reset_period),
@@ -631,6 +668,7 @@ export async function registerLetterRoutes(
     if (!query.success) return invalid(reply, "Filter tidak valid.");
     const values: unknown[] = [];
     const clauses: string[] = [];
+    if (query.data.code) { values.push(query.data.code); clauses.push(`issuer.code = $${values.length}`); }
     if (query.data.active) { values.push(query.data.active === "true"); clauses.push(`issuer.active = $${values.length}`); }
     if (query.data.q) {
       values.push(letterLikePattern(query.data.q));

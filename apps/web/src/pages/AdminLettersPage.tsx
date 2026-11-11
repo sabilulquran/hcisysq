@@ -18,6 +18,7 @@ import {
   createLetterGrant,
   createLetterIssuer,
   createLetterType,
+  findIssuerByCode,
   formatLetterDate,
   getLetterGrants,
   getLetterIssuers,
@@ -348,8 +349,7 @@ function SettingsTab({ types, reloadTypes, canManage, onError, onNotice }: {
   const needsTarget = issuerForm.kind === "UNIT" || issuerForm.kind === "COMMITTEE";
 
   const raiseCounter = async () => {
-    const lookup = await getLetterIssuers({ page: 1, pageSize: 100, q: counterForm.issuerCode });
-    const issuer = lookup.items.find((item) => item.code === counterForm.issuerCode.trim().toUpperCase());
+    const issuer = await findIssuerByCode(counterForm.issuerCode);
     if (!issuer) throw new Error("Kode penerbit tidak ditemukan.");
     const result = await raiseLetterCounter({
       issuerId: issuer.id, typeCode: counterForm.typeCode, periodKey: counterForm.periodKey.trim(),
@@ -369,10 +369,12 @@ function SettingsTab({ types, reloadTypes, canManage, onError, onNotice }: {
                 <span className="block text-xs text-muted-foreground">{RESET_PERIOD_LABEL[type.resetPeriod]}{type.active ? "" : " · nonaktif"}</span></span>
               {canManage ? (
                 <span className="flex gap-2">
-                  <button type="button" className={button} disabled={busy}
-                    onClick={() => void run(() => updateLetterType(type.code, { resetPeriod: type.resetPeriod === "YEARLY" ? "MONTHLY" : "YEARLY" }), `Periode ${type.code} diubah.`).then(reloadTypes)}>
-                    {type.resetPeriod === "YEARLY" ? "Jadikan bulanan" : "Jadikan tahunan"}
-                  </button>
+                  {type.used ? null : (
+                    <button type="button" className={button} disabled={busy}
+                      onClick={() => void run(() => updateLetterType(type.code, { resetPeriod: type.resetPeriod === "YEARLY" ? "MONTHLY" : "YEARLY" }), `Periode ${type.code} diubah.`).then(reloadTypes)}>
+                      {type.resetPeriod === "YEARLY" ? "Jadikan bulanan" : "Jadikan tahunan"}
+                    </button>
+                  )}
                   <button type="button" className={button} disabled={busy}
                     onClick={() => void run(() => updateLetterType(type.code, { active: !type.active }), `Jenis ${type.code} ${type.active ? "dinonaktifkan" : "diaktifkan"}.`).then(reloadTypes)}>
                     {type.active ? "Nonaktifkan" : "Aktifkan"}
@@ -556,8 +558,7 @@ function GrantsTab({ canManage, onError, onNotice }: { canManage: boolean } & Fe
     setBusy(true);
     onError(null);
     try {
-      const lookup = await getLetterIssuers({ page: 1, pageSize: 100, q: issuerCode });
-      const issuer = lookup.items.find((item) => item.code === issuerCode.trim().toUpperCase());
+      const issuer = await findIssuerByCode(issuerCode);
       if (!issuer) throw new Error("Kode penerbit tidak ditemukan.");
       await createLetterGrant({ employeeId: chosen!.id, issuerId: issuer.id, reason: reason.trim() });
       onNotice(`${chosen!.fullName} dapat mengambil nomor untuk ${issuer.code}.`);

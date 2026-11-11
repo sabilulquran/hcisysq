@@ -161,4 +161,35 @@ describe.skipIf(!allowed)("ATT-011-4a shift timeline (PostgreSQL)", () => {
     const refused = await call("PATCH", `/admin/attendance/schedules/${scheduleId}`, { startTime: "07:00", effectiveFrom });
     expect(refused.json().code).toBe("SCHEDULE_FUTURE_VERSION_IN_USE");
   });
+
+  it("ORG-005-3: lists which shifts and how many units of today's structure use each location", async () => {
+    const locationId = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_work_locations (id, name, latitude, longitude, radius_meters, created_by_account_id)
+       VALUES ($1, 'Synthetic Taman Tahfizh', -6.7, 108.55, 120, $2)`,
+      [locationId, actor.id],
+    );
+    await client.query("UPDATE attendance_schedule_versions SET work_location_id = $1 WHERE schedule_template_id = $2", [locationId, scheduleId]);
+    const changeSetId = randomUUID();
+    await client.query(
+      `INSERT INTO organization_change_sets (id, name, effective_on, status, created_by_account_id, validated_at, published_at)
+       VALUES ($1, 'Struktur sintetis ORG-005-3', $2::date, 'PUBLISHED', $3, now(), now())`,
+      [changeSetId, today, actor.id],
+    );
+    await client.query(
+      `INSERT INTO organization_nodes (id, change_set_id, stable_key, name, node_type, effective_from, work_location_id)
+       VALUES ($1, $2, $3, 'Unit sintetis', 'UNIT', $4::date, $5)`,
+      [randomUUID(), changeSetId, randomUUID(), today, locationId],
+    );
+
+    const listed = await call("GET", "/admin/attendance/work-locations");
+    expect(listed.statusCode, listed.body).toBe(200);
+    expect(listed.json().mobileAttendanceEnabled).toBe(false);
+    const item = listed.json().items.find((row: { id: string }) => row.id === locationId);
+    expect(item.usage).toEqual({ shifts: [{ id: scheduleId, name: "Synthetic Timeline Shift" }], unitCount: 1, deviceCount: 0 });
+
+    const shifts = await call("GET", "/admin/attendance/schedules");
+    expect(shifts.json().mobileAttendanceEnabled).toBe(false);
+    expect(shifts.json().items.find((row: { id: string }) => row.id === scheduleId).workLocationId).toBe(locationId);
+  });
 });

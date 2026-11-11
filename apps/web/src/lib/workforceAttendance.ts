@@ -71,6 +71,8 @@ export interface WorkforceSnapshot {
     scheduleReason: string | null;
     hasWorkLocation: boolean;
     workLocationId: string | null;
+    /** ORG-005-3: where the location comes from — the shift, or the employee's unit when the shift names none. */
+    workLocationSource?: "shift" | "unit" | null;
   };
   schedule: ResolvedSchedule;
   result: WorkforceResult | null;
@@ -135,6 +137,9 @@ export async function clockMobileAttendance(input: {
     geofenceStatus: string;
     reviewState: string;
     distanceMeters: number | null;
+    /** ORG-005-3: the location checked and where it came from (absent on an idempotent replay). */
+    workLocationId?: string | null;
+    workLocationSource?: "shift" | "unit" | null;
     result: WorkforceResult | null;
   }>(await fetch("/api/attendance/mobile/clock", {
     method: "POST",
@@ -190,8 +195,20 @@ export async function decideAttendanceClarification(
   }));
 }
 
+/** ORG-005-3: what checks against a location — active shifts by name, units of today's structure that name it, machines. */
+export type WorkLocationUsage = { shifts: Array<{ id: string; name: string }>; unitCount: number; deviceCount: number };
+
+/** ORG-005-3: active shifts that name no location — only a concern while HP attendance is on. */
+export function unlocatedShifts<T extends { active: boolean; workLocationId: string | null }>(items: T[], mobileOn: boolean): T[] {
+  return mobileOn ? items.filter((item) => item.active && !item.workLocationId) : [];
+}
+
 export async function listAttendanceWorkLocations() {
-  return readJson<{ items: Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean }> }>(
+  return readJson<{
+    items: Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean; usage?: WorkLocationUsage }>;
+    /** ORG-005-3: whether HP attendance is switched on for this server. */
+    mobileAttendanceEnabled?: boolean;
+  }>(
     await fetch("/api/admin/attendance/work-locations", { credentials: "include", headers: { Accept: "application/json" } }),
   );
 }
@@ -219,7 +236,10 @@ export async function listAttendanceSchedules() {
     pendingVersion?: { version: number; effectiveFrom: string; startTime: string; endTime: string; lateGraceMinutes: number; earlyLeaveToleranceMinutes: number } | null;
     /** Employees with a schedule pattern on this shift today or later. */
     employeeCount?: number;
-  }> }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
+  }>;
+    /** ORG-005-3: whether HP attendance is switched on for this server. */
+    mobileAttendanceEnabled?: boolean;
+  }>(await fetch("/api/admin/attendance/schedules", { credentials: "include", headers: { Accept: "application/json" } }));
 }
 
 export interface ShiftBlock { startTime: string; endTime: string; /** ATT-013 "Hitungan hari". */ workdayWeight?: number }

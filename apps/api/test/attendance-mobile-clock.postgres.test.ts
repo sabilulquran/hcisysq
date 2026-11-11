@@ -22,6 +22,8 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
   let app: ReturnType<typeof Fastify>;
   let cookie: string;
   let employeeId: string;
+  let accountId: string;
+  let scheduleLocationId: string;
 
   beforeAll(() => { pool = new Pool({ connectionString: databaseUrl!, max: 1 }); });
   afterAll(async () => { await pool?.end(); });
@@ -51,7 +53,7 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
       query,
       connect: async () => ({ query, release: () => undefined }),
     } as unknown as Pool;
-    const accountId = randomUUID();
+    accountId = randomUUID();
     employeeId = randomUUID();
     await client.query(
       "INSERT INTO employees(id,employee_number,full_name,status) VALUES($1,$2,'Synthetic Mobile Test','active')",
@@ -62,6 +64,7 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
       [accountId, employeeId, `mobile-${accountId}@example.invalid`],
     );
     const locationId = randomUUID();
+    scheduleLocationId = locationId;
     const scheduleId = randomUUID();
     await client.query(
       `INSERT INTO attendance_work_locations(id,name,latitude,longitude,radius_meters,created_by_account_id)
@@ -133,5 +136,106 @@ describe.skipIf(!allowed)("ATT-006 real PostgreSQL mobile clock", () => {
     const photo = await app.inject({ method: "GET", url: `/attendance/mobile/evidence/${response.json().evidenceId}/photo`, headers: { cookie } });
     expect(photo.statusCode, photo.body).toBe(200);
     expect(photo.headers["cache-control"]).toBe("no-store");
+  });
+
+  const photoBase64 = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0xff, 0xd9]).toString("base64");
+
+  /** A published structure: a school unit naming `locationId`, and a sub-unit (no location) the employee is in. */
+  async function placeEmployeeUnder(locationId: string) {
+    const changeSetId = randomUUID();
+    const schoolKey = randomUUID();
+    const classKey = randomUUID();
+    await client.query(
+      `INSERT INTO organization_change_sets (id, name, effective_on, status, created_by_account_id, validated_at, published_at)
+       VALUES ($1,'Struktur sintetis ORG-005-3','2098-12-01'::date,'PUBLISHED',$2, now(), now())`,
+      [changeSetId, accountId],
+    );
+    await client.query(
+      `INSERT INTO organization_nodes (id, change_set_id, stable_key, name, node_type, effective_from, work_location_id)
+       VALUES ($1,$2,$3,'Sekolah sintetis','UNIT','2098-12-01'::date,$4)`,
+      [randomUUID(), changeSetId, schoolKey, locationId],
+    );
+    await client.query(
+      `INSERT INTO organization_nodes (id, change_set_id, stable_key, name, node_type, parent_node_key, effective_from)
+       VALUES ($1,$2,$3,'Kelas sintetis','UNIT',$4,'2098-12-01'::date)`,
+      [randomUUID(), changeSetId, classKey, schoolKey],
+    );
+    await client.query(
+      `INSERT INTO organization_memberships (id, change_set_id, employee_id, node_key, is_primary, effective_from)
+       VALUES ($1,$2,$3,$4,true,'2098-12-01'::date)`,
+      [randomUUID(), changeSetId, employeeId, classKey],
+    );
+  }
+
+  async function addLocation(latitude: number, longitude: number) {
+    const id = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_work_locations(id,name,latitude,longitude,radius_meters,created_by_account_id)
+       VALUES($1,'Synthetic Unit Location',$2,$3,200,$4)`,
+      [id, latitude, longitude, accountId],
+    );
+    return id;
+  }
+
+  async function clock(latitude: number, longitude: number) {
+    return app.inject({
+      method: "POST", url: "/attendance/mobile/clock",
+      headers: { cookie, "idempotency-key": randomUUID() },
+      payload: { action: "check_in", latitude, longitude, accuracyMeters: 10, photoBase64 },
+    });
+  }
+
+  it("ORG-005-3: checks against the unit's inherited location when the shift names none", async () => {
+    await client.query("UPDATE attendance_schedule_versions SET work_location_id = NULL WHERE work_location_id = $1", [scheduleLocationId]);
+    const unitLocationId = await addLocation(-6.9, 108.6);
+    await placeEmployeeUnder(unitLocationId);
+
+    const snapshot = await app.inject({ method: "GET", url: "/attendance/me/workforce", headers: { cookie } });
+    expect(snapshot.statusCode, snapshot.body).toBe(200);
+    expect(snapshot.json().mobileReadiness).toMatchObject({
+      hasWorkLocation: true, workLocationId: unitLocationId, workLocationSource: "unit",
+    });
+
+    const response = await clock(-6.9, 108.6);
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.json()).toMatchObject({
+      geofenceStatus: "inside", reviewState: "accepted", workLocationId: unitLocationId, workLocationSource: "unit",
+    });
+    const stored = await client.query(
+      `SELECT evidence.work_location_id AS "workLocationId", event.safe_metadata AS metadata
+       FROM attendance_mobile_evidence evidence JOIN attendance_events event ON event.id = evidence.event_id
+       WHERE evidence.id = $1`,
+      [response.json().evidenceId],
+    );
+    expect(stored.rows[0].workLocationId).toBe(unitLocationId);
+    expect(stored.rows[0].metadata).toMatchObject({ workLocationSource: "unit" });
+
+    const far = await clock(-6.7, 108.55);
+    expect(far.json()).toMatchObject({ geofenceStatus: "outside", reviewState: "needs_review", workLocationSource: "unit" });
+  });
+
+  it("ORG-005-3: the shift's own location always wins over the unit's", async () => {
+    const unitLocationId = await addLocation(-6.9, 108.6);
+    await placeEmployeeUnder(unitLocationId);
+    const atUnit = await clock(-6.9, 108.6);
+    expect(atUnit.statusCode, atUnit.body).toBe(201);
+    expect(atUnit.json()).toMatchObject({
+      geofenceStatus: "outside", workLocationId: scheduleLocationId, workLocationSource: "shift",
+    });
+  });
+
+  it("ORG-005-3: a switched-off unit location, or no unit at all, leaves the clock-in unassigned", async () => {
+    await client.query("UPDATE attendance_schedule_versions SET work_location_id = NULL WHERE work_location_id = $1", [scheduleLocationId]);
+    const none = await clock(-6.9, 108.6);
+    expect(none.statusCode, none.body).toBe(201);
+    expect(none.json()).toMatchObject({
+      geofenceStatus: "unassigned_location", reviewState: "needs_review", workLocationId: null, workLocationSource: null,
+    });
+
+    const unitLocationId = await addLocation(-6.9, 108.6);
+    await placeEmployeeUnder(unitLocationId);
+    await client.query("UPDATE attendance_work_locations SET active = false WHERE id = $1", [unitLocationId]);
+    const inactive = await clock(-6.9, 108.6);
+    expect(inactive.json()).toMatchObject({ geofenceStatus: "unassigned_location", workLocationSource: null });
   });
 });

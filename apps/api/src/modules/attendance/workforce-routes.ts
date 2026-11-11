@@ -19,6 +19,7 @@ import {
 import { OvertimeApproverError, resolveOvertimeApprover } from "./overtime-approver.js";
 import { ACTION_QUEUE_PERMISSIONS, allowedActionKinds, attendanceActionQueue, type ActionKind } from "./action-queue.js";
 import { attendanceCalculationRows } from "./calculation-rows.js";
+import { resolveGeofenceLocation } from "./geofence-location.js";
 import {
   createCalculationRunner,
   RUN_COLUMNS,
@@ -609,7 +610,7 @@ export async function registerAttendanceWorkforceRoutes(
       const employee = await employeeForAccount(pool, principal.id);
       const workDate = query.data.date ?? jakartaWorkDate();
       const schedule = await resolveSchedule(pool, employee.id, workDate);
-      const [result, clarifications, mobile, overtime] = await Promise.all([
+      const [result, clarifications, mobile, overtime, geofence] = await Promise.all([
         latestResult(pool, employee.id, workDate),
         pool.query(
           `SELECT id, work_date::text AS "workDate", kind, mode, reason, status,
@@ -646,6 +647,7 @@ export async function registerAttendanceWorkforceRoutes(
            LIMIT 20`,
           [employee.id],
         ),
+        resolveGeofenceLocation(pool, employee.id, workDate, schedule),
       ]);
       const enabledByConfig = config.MOBILE_ATTENDANCE_ENABLED === "1";
       const mediaReady = restrictedMediaReady(config);
@@ -664,8 +666,10 @@ export async function registerAttendanceWorkforceRoutes(
               : "ready",
           scheduleState: schedule.state,
           scheduleReason: schedule.reason ?? null,
-          hasWorkLocation: Boolean(schedule.workLocation),
-          workLocationId: schedule.workLocation?.id ?? null,
+          // ORG-005-3: true when the shift or, failing that, the employee's unit names a location.
+          hasWorkLocation: Boolean(geofence.location),
+          workLocationId: geofence.location?.id ?? null,
+          workLocationSource: geofence.source,
         },
         schedule: scheduleResponse(schedule),
         result,
@@ -740,23 +744,26 @@ export async function registerAttendanceWorkforceRoutes(
         }
         const now = new Date();
         const { workDate, schedule } = await resolveMobileWorkDate(pool, employee.id, now);
+        // ORG-005-3 (DRAFT D-5-8): the shift's location wins; else the employee's unit location.
+        const geofence = await resolveGeofenceLocation(pool, employee.id, workDate, schedule);
+        const workLocationSource = geofence.source;
         let workLocationId: string | null = null;
         let distanceMeters: number | null = null;
         let geofenceStatus: "inside" | "outside" | "uncertain_accuracy" | "unassigned_location";
         let reviewState: "accepted" | "needs_review";
-        if (!schedule.workLocation) {
+        if (!geofence.location) {
           geofenceStatus = "unassigned_location";
           reviewState = "needs_review";
         } else {
-          workLocationId = schedule.workLocation.id;
+          workLocationId = geofence.location.id;
           distanceMeters = haversineDistanceMeters(
             { latitude: body.data.latitude, longitude: body.data.longitude },
-            schedule.workLocation,
+            geofence.location,
           );
-          if (body.data.accuracyMeters > schedule.workLocation.radiusMeters) {
+          if (body.data.accuracyMeters > geofence.location.radiusMeters) {
             geofenceStatus = "uncertain_accuracy";
             reviewState = "needs_review";
-          } else if (distanceMeters <= schedule.workLocation.radiusMeters) {
+          } else if (distanceMeters <= geofence.location.radiusMeters) {
             geofenceStatus = "inside";
             reviewState = "accepted";
           } else {
@@ -784,7 +791,7 @@ export async function registerAttendanceWorkforceRoutes(
             [
               eventId, employee.id, body.data.action, now,
               `mobile:${employee.id}:${idempotencyKey}`,
-              JSON.stringify({ workDate, geofenceStatus, reviewState }),
+              JSON.stringify({ workDate, geofenceStatus, reviewState, workLocationSource }),
             ],
           );
           await client.query(
@@ -822,6 +829,8 @@ export async function registerAttendanceWorkforceRoutes(
           geofenceStatus,
           reviewState,
           distanceMeters,
+          workLocationId,
+          workLocationSource,
           result: mapResult(result as unknown as Record<string, unknown>),
         });
       } catch (error) {
@@ -1074,11 +1083,45 @@ export async function registerAttendanceWorkforceRoutes(
   app.get("/admin/attendance/work-locations", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "attendance.schedule.manage");
     if (!principal) return;
+    // ORG-005-3: what uses each location, so HC sees at a glance which shifts and units check against
+    // it. Bounded master data (ENG-LIST-001 §4): a handful of locations, at most ~200 shifts.
     const result = await pool.query(
-      `SELECT id, name, latitude, longitude, radius_meters AS "radiusMeters", active
-       FROM attendance_work_locations ORDER BY active DESC, name`,
+      `WITH current_structure AS (
+         SELECT id FROM organization_change_sets
+         WHERE status = 'PUBLISHED' AND effective_on <= $1::date
+         ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
+         LIMIT 1
+       ),
+       shift_location AS (
+         SELECT schedule.id, coalesce(version.name, schedule.name) AS name,
+           CASE WHEN version.id IS NULL THEN schedule.work_location_id ELSE version.work_location_id END AS location_id
+         FROM attendance_schedule_templates schedule
+         LEFT JOIN LATERAL (
+           SELECT candidate.* FROM attendance_schedule_versions candidate
+           WHERE candidate.schedule_template_id = schedule.id AND candidate.effective_from <= now()
+             AND (candidate.effective_to IS NULL OR candidate.effective_to > now())
+           ORDER BY candidate.version DESC LIMIT 1
+         ) version ON true
+         WHERE schedule.active
+       )
+       SELECT location.id, location.name, location.latitude, location.longitude,
+         location.radius_meters AS "radiusMeters", location.active,
+         json_build_object(
+           'shifts', (SELECT coalesce(json_agg(json_build_object('id', shift.id, 'name', shift.name) ORDER BY shift.name), '[]'::json)
+                        FROM shift_location shift WHERE shift.location_id = location.id),
+           'unitCount', (SELECT count(DISTINCT node.stable_key)::int FROM organization_nodes node
+                           WHERE node.change_set_id IN (SELECT id FROM current_structure)
+                             AND node.work_location_id = location.id AND node.active
+                             AND node.effective_from <= $1::date
+                             AND (node.effective_to IS NULL OR node.effective_to >= $1::date)),
+           'deviceCount', (SELECT count(*)::int FROM attendance_adms_devices device
+                             WHERE device.work_location_id = location.id AND device.lifecycle <> 'retired')
+         ) AS usage
+       FROM attendance_work_locations location
+       ORDER BY location.active DESC, location.name`,
+      [jakartaBusinessDate()],
     );
-    return reply.send({ items: result.rows });
+    return reply.send({ items: result.rows, mobileAttendanceEnabled: config.MOBILE_ATTENDANCE_ENABLED === "1" });
   });
 
 
@@ -1196,7 +1239,8 @@ export async function registerAttendanceWorkforceRoutes(
          ON location.id = CASE WHEN version.id IS NULL THEN schedule.work_location_id ELSE version.work_location_id END
        ORDER BY schedule.active DESC, schedule.name`,
     );
-    return reply.send({ items: result.rows });
+    // ORG-005-3: the Shift screen warns about shifts without a location only while HP attendance is on.
+    return reply.send({ items: result.rows, mobileAttendanceEnabled: config.MOBILE_ATTENDANCE_ENABLED === "1" });
   });
 
   app.patch("/admin/attendance/schedules/:scheduleId", async (request, reply) => {

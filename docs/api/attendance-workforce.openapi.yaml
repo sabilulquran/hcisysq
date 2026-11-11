@@ -55,9 +55,34 @@ paths:
                 photoBase64:
                   type: string
                   description: Base64-encoded JPEG captured by the shipped camera UI; server validates JPEG signature and size.
+      description: >-
+        ORG-005-3 (DRAFT D-5-8): the clock-in is checked against the work location of the day's shift
+        version; when the shift names none, against the work location of the employee's primary unit in
+        the structure effective on the work date (inherited from the nearest ancestor unit, ORG-005-1).
+        A switched-off location is never used. With neither, `geofenceStatus` is `unassigned_location`
+        and the evidence needs review. The source used is returned as `workLocationSource` and kept in
+        the event's `safe_metadata`.
       responses:
         '201':
           description: Mobile evidence persisted; outside/uncertain geofence evidence is retained with needs_review.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [duplicate, evidenceId, workDate, geofenceStatus, reviewState, distanceMeters, workLocationId, workLocationSource, result]
+                properties:
+                  duplicate: { type: boolean, const: false }
+                  evidenceId: { type: string, format: uuid }
+                  workDate: { type: string, format: date }
+                  geofenceStatus: { type: string, enum: [inside, outside, uncertain_accuracy, unassigned_location] }
+                  reviewState: { type: string, enum: [accepted, needs_review] }
+                  distanceMeters: { type: [number, 'null'] }
+                  workLocationId: { type: [string, 'null'], format: uuid }
+                  workLocationSource:
+                    type: [string, 'null']
+                    enum: [shift, unit, null]
+                    description: ORG-005-3 — `shift` when the shift named the location, `unit` when it came from the employee's unit, null when none applied.
+                  result: { type: [object, 'null'] }
         '200':
           description: Existing evidence returned for duplicate idempotency key.
         '409':
@@ -166,8 +191,47 @@ paths:
       tags: [Attendance]
       operationId: listAttendanceWorkLocations
       x-required-permission: attendance.schedule.manage
+      description: >-
+        Bounded master data (ENG-LIST-001 §4), not paginated. ORG-005-3 adds `usage` per location and
+        `mobileAttendanceEnabled` for the whole response, so the Lokasi kerja screen can show what checks
+        against each location.
       responses:
-        '200': { description: Work locations and geofence radius }
+        '200':
+          description: Work locations and geofence radius
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, mobileAttendanceEnabled]
+                properties:
+                  mobileAttendanceEnabled: { type: boolean, description: Whether HP attendance is switched on for this server. }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, latitude, longitude, radiusMeters, active, usage]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        latitude: { type: number }
+                        longitude: { type: number }
+                        radiusMeters: { type: integer }
+                        active: { type: boolean }
+                        usage:
+                          type: object
+                          required: [shifts, unitCount, deviceCount]
+                          properties:
+                            shifts:
+                              type: array
+                              description: Active shifts whose version in force now names this location, by name.
+                              items:
+                                type: object
+                                required: [id, name]
+                                properties:
+                                  id: { type: string, format: uuid }
+                                  name: { type: string }
+                            unitCount: { type: integer, minimum: 0, description: Active units of today's structure that name this location directly (units inheriting it are not counted). }
+                            deviceCount: { type: integer, minimum: 0, description: Machines not retired that stand at this location. }
     post:
       tags: [Attendance]
       operationId: createAttendanceWorkLocation
@@ -186,7 +250,7 @@ paths:
       operationId: listAttendanceSchedules
       x-required-permission: attendance.schedule.manage
       responses:
-        '200': { description: 'Schedule templates with the hours of the version in force now; each carries `extraBlocks` (ATT-013), `pendingVersion` (a change from a later date, ATT-011-4a) and `employeeCount` (employees with a pattern on it today or later)' }
+        '200': { description: 'Schedule templates with the hours of the version in force now; each carries `extraBlocks` (ATT-013), `pendingVersion` (a change from a later date, ATT-011-4a) and `employeeCount` (employees with a pattern on it today or later). The response also carries `mobileAttendanceEnabled` (ORG-005-3) so the Shift screen warns about active shifts without a work location only while HP attendance is on.' }
     post:
       tags: [Attendance]
       operationId: createAttendanceSchedule
@@ -1338,8 +1402,9 @@ components:
             captureReason: { type: string, enum: [runtime_disabled, restricted_media_not_ready, ready] }
             scheduleState: { type: string, enum: [scheduled, off, configuration_error] }
             scheduleReason: { type: [string, 'null'] }
-            hasWorkLocation: { type: boolean }
+            hasWorkLocation: { type: boolean, description: ORG-005-3 — true when the shift or, failing that, the employee's unit names an active work location. }
             workLocationId: { type: [string, 'null'], format: uuid }
+            workLocationSource: { type: [string, 'null'], enum: [shift, unit, null] }
         schedule:
           type: object
           required: [state]

@@ -503,6 +503,28 @@ paths:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1contacts~1{id}'
   /admin/help/audit-events:
     $ref: './help-center.openapi.yaml#/paths/~1admin~1help~1audit-events'
+  /me/employee-documents:
+    $ref: './employee-documents.openapi.yaml#/paths/~1me~1employee-documents'
+  /me/employee-documents/{documentId}/file:
+    $ref: './employee-documents.openapi.yaml#/paths/~1me~1employee-documents~1{documentId}~1file'
+  /me/employee-documents/{documentId}/withdraw:
+    $ref: './employee-documents.openapi.yaml#/paths/~1me~1employee-documents~1{documentId}~1withdraw'
+  /admin/employee-documents/expiring:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1expiring'
+  /admin/employee-documents/pending:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1pending'
+  /admin/employee-documents/employees/{employeeId}:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1employees~1{employeeId}'
+  /admin/employee-documents/{documentId}/file:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1{documentId}~1file'
+  /admin/employee-documents/{documentId}:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1{documentId}'
+  /admin/employee-documents/{documentId}/verify:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1{documentId}~1verify'
+  /admin/employee-documents/{documentId}/reject:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1{documentId}~1reject'
+  /admin/employee-documents/{documentId}/remove:
+    $ref: './employee-documents.openapi.yaml#/paths/~1admin~1employee-documents~1{documentId}~1remove'
   /me/employee-card:
     $ref: './employee-cards.openapi.yaml#/paths/~1me~1employee-card'
   /me/employee-card/photo:

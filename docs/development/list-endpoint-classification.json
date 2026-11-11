@@ -936,6 +936,34 @@
       "list": "paged"
     },
     {
+      "url": "/admin/employee-documents/employees/:employeeId",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employee-documents/expiring",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employee-documents/pending",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/employee-documents/:documentId/file",
+      "list": "single"
+    },
+    {
+      "url": "/admin/decision-documents/:documentId/file",
+      "list": "single"
+    },
+    {
+      "url": "/me/employee-documents",
+      "list": "paged"
+    },
+    {
+      "url": "/me/employee-documents/:documentId/file",
+      "list": "single"
+    },
+    {
       "url": "/me/employee-card",
       "list": "single"
     },

@@ -34,6 +34,8 @@ export const HC_ADMIN_PERMISSIONS = [
   "help.manage",
   // EMP-012: migration 0133 grants employee_cards.manage to human_capital_admin.
   "employee_cards.manage",
+  // EMP-011: migration 0143 grants both to human_capital_admin.
+  "employee_documents.read", "employee_documents.manage",
   // ORG-012 D-18: migration 0135 grants both to human_capital_admin.
   "committees.read", "committees.manage",
   // ORG-011: migration 0110 grants both to human_capital_admin.
@@ -81,6 +83,11 @@ export type HelpPermission = (typeof HELP_PERMISSIONS)[number];
  * card needs no permission. */
 export const EMPLOYEE_CARD_PERMISSIONS = ["employee_cards.manage"] as const;
 export type EmployeeCardPermission = (typeof EMPLOYEE_CARD_PERMISSIONS)[number];
+/** EMP-011 D-08..D-10: HC-only; never granted through legacy Super Admin compatibility and never
+ * carried by a unit-scoped role, so managers do not read their staff's documents. Reading,
+ * downloading, proposing and withdrawing one's own documents needs no permission. */
+export const EMPLOYEE_DOCUMENT_PERMISSIONS = ["employee_documents.read", "employee_documents.manage"] as const;
+export type EmployeeDocumentPermission = (typeof EMPLOYEE_DOCUMENT_PERMISSIONS)[number];
 /** ORG-012: HC-only; never granted through legacy Super Admin compatibility. "Kepanitiaan Saya"
  * needs no permission (D-15). */
 export const COMMITTEE_PERMISSIONS = ["committees.read", "committees.manage"] as const;

@@ -193,6 +193,8 @@ export const ISSUE_LABEL: Record<string, string> = {
   // EMP-006 S6: the history and ORG-004 disagree about who sits where.
   STRUCTURE_SEAT_WITHOUT_PLACEMENT: "Memegang jabatan di Struktur Organisasi, tanpa penempatan",
   PLACEMENT_WITHOUT_STRUCTURE_SEAT: "Ada penempatan, tanpa jabatan di Struktur Organisasi",
+  // EMP-005 S2B §8.7: reported for HC/access review; the account is not changed automatically.
+  ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD: "Akun pegawai masih terhubung ke data di luar pengelolaan HCIS",
   BASELINE_NOT_LOADED: "Data awal belum dibuat",
   BASELINE_EXCLUDED_BUMY: "Staf BUMY (tidak dikelola)",
   BASELINE_EXCLUDED_FOUNDATION_BOARD: "Pengurus Yayasan (bukan pegawai)",

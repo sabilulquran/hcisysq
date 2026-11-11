@@ -1681,7 +1681,8 @@ export async function registerAttendanceWorkforceRoutes(
            ORDER BY a.effective_from DESC
            LIMIT 1
          ) assignment ON true
-         WHERE employee.status = 'active'
+         -- EMP-005 S2B §8.7: a record outside HCIS management is not rostered.
+         WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED'
          ORDER BY unit.name NULLS LAST, employee.full_name`,
         [query.data.weekStart],
       ),
@@ -2595,7 +2596,11 @@ export async function registerAttendanceWorkforceRoutes(
       if (actorEmployeeId && (actorEmployeeId === body.data.supervisorEmployeeId || actorEmployeeId === item.employeeId)) {
         throw new WorkforceAttendanceError(403, "OVERTIME_REASSIGN_CONFLICT", "Pengalihan approver yang melibatkan diri sendiri harus dilakukan staf HC lain.");
       }
-      const active = await client.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active'", [body.data.supervisorEmployeeId]);
+      // EMP-005 S2B §8.7: a record outside HCIS management is never chosen as an approver.
+      const active = await client.query(
+        "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND management_scope = 'MANAGED'",
+        [body.data.supervisorEmployeeId],
+      );
       if (!active.rows[0]) throw new WorkforceAttendanceError(422, "OVERTIME_APPROVER_INACTIVE", "Approver pengganti harus pegawai aktif.");
       await client.query(
         `UPDATE attendance_overtime_requests

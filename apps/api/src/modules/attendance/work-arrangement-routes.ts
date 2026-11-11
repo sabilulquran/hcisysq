@@ -197,7 +197,9 @@ async function resolveApprovalChain(db: Queryable, employee: EmployeeContext, ef
     `SELECT employee.id, employee.full_name AS "fullName", employee.status, account.status AS "accountStatus"
        FROM employees employee
        LEFT JOIN accounts account ON account.employee_id = employee.id AND account.principal_type = 'EMPLOYEE'
-      WHERE employee.id = ANY($1::uuid[]) AND employee.removed_at IS NULL`,
+      WHERE employee.id = ANY($1::uuid[]) AND employee.removed_at IS NULL
+        -- EMP-005 S2B §8.7: an approver outside HCIS management reads as not active.
+        AND employee.management_scope = 'MANAGED'`,
     [ids],
   );
   const byId = new Map(actors.rows.map((row) => [row.id, row]));

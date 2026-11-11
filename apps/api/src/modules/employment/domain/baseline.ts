@@ -295,7 +295,10 @@ export type ConsistencyIssueCode =
   | "CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP"
   // EMP-006 S6: the two records of the same working life disagree.
   | "STRUCTURE_SEAT_WITHOUT_PLACEMENT"
-  | "PLACEMENT_WITHOUT_STRUCTURE_SEAT";
+  | "PLACEMENT_WITHOUT_STRUCTURE_SEAT"
+  // EMP-005 S2B §8.7: an EMPLOYEE account (invited or active) still linked to a record marked
+  // "di luar pengelolaan HCIS". Reported for HC/access review; never changed automatically.
+  | "ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD";
 
 export interface ConsistencyFinding {
   employeeId: string;

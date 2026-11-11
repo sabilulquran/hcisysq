@@ -5,6 +5,8 @@ import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
   listEmployees,
+  outsideHcisBadgeLabel,
+  type AdminEmployeeListItem,
   type AdminEmployeeListResponse,
   type EmployeeManagementScopeFilter,
   type EmployeeStatus,
@@ -20,6 +22,88 @@ function statusClass(status: EmployeeStatus) {
   if (status === "active") return "bg-success-soft text-success-ink";
   if (status === "resigned") return "bg-warning-soft text-warning-ink";
   return "bg-muted text-foreground";
+}
+
+const SCOPE_OPTIONS: Array<[EmployeeManagementScopeFilter, string]> = [
+  ["MANAGED", "Dikelola HCIS"],
+  ["OUTSIDE_HCIS", "Di luar pengelolaan HCIS"],
+  ["ALL", "Semua data"],
+];
+
+/**
+ * EMP-005 S2B §13.9: which population the list shows. The default is the one
+ * HCIS manages; "Di luar pengelolaan HCIS" finds the BUMY staff and Pengurus
+ * Yayasan records, which are kept but read-only.
+ */
+export function ManagementScopeFilter({
+  value,
+  onChange,
+}: {
+  value: EmployeeManagementScopeFilter;
+  onChange: (scope: EmployeeManagementScopeFilter) => void;
+}) {
+  return (
+    <select
+      aria-label="Cakupan pengelolaan"
+      value={value}
+      onChange={(event) => onChange(event.target.value as EmployeeManagementScopeFilter)}
+      className="h-10 min-w-0 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+    >
+      {SCOPE_OPTIONS.map(([scope, label]) => (
+        <option key={scope} value={scope}>{label}</option>
+      ))}
+    </select>
+  );
+}
+
+/** One table row. A marked record carries the grey §13.9 badge beside its status. */
+export function EmployeeListRow({ employee }: { employee: AdminEmployeeListItem }) {
+  const outside = outsideHcisBadgeLabel(employee);
+  return (
+    <tr className="hover:bg-surface/70">
+      <td className="whitespace-nowrap px-4 py-3 font-semibold text-foreground">{employee.employeeNumber}</td>
+      <td className="px-4 py-3">
+        <a href={`/admin/employees/${employee.id}`} className="font-semibold text-brand-primary-deep hover:underline">
+          {employee.fullName}
+        </a>
+        <p className="mt-0.5 text-xs text-muted-foreground">{employee.employmentStatus ?? "—"}</p>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(employee.status)}`}>
+            {statusLabel(employee.status)}
+          </span>
+          {outside ? (
+            <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">
+              {outside}
+            </span>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-muted-foreground">{employee.unitName ?? "—"}</td>
+      <td className="px-4 py-3 text-muted-foreground">{employee.positionName ?? "—"}</td>
+      <td className="px-4 py-3 text-muted-foreground">{employee.email ?? "—"}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{employee.startedOn ?? "—"}</td>
+    </tr>
+  );
+}
+
+/** Empty list. With the "outside" filter the import hint would mislead, so it says what the filter holds. */
+export function EmployeeListEmpty({ scope }: { scope: EmployeeManagementScopeFilter }) {
+  if (scope === "OUTSIDE_HCIS") {
+    return (
+      <div className="p-10 text-center">
+        <p className="text-sm font-semibold text-foreground">Tidak ada data di luar pengelolaan HCIS yang cocok.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Staf BUMY dan Pengurus Yayasan yang sudah ditandai HC muncul di sini.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="p-10 text-center">
+      <p className="text-sm font-semibold text-foreground">Belum ada pegawai yang cocok.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Jika database masih kosong, mulai dari menu Impor Pegawai.</p>
+    </div>
+  );
 }
 
 export function AdminEmployeesPage() {
@@ -57,7 +141,14 @@ export function AdminEmployeesPage() {
     return () => {
       mounted = false;
     };
-  }, [page, positionId, query, status, unitId]);
+    // scope belongs here: without it the "Di luar pengelolaan HCIS" filter changed
+    // nothing until another filter or the page moved.
+  }, [page, positionId, query, scope, status, unitId]);
+
+  const changeScope = (next: EmployeeManagementScopeFilter) => {
+    setScope(next);
+    setPage(1);
+  };
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -81,13 +172,24 @@ export function AdminEmployeesPage() {
           ["Aktif", summary.active],
           ["Tidak aktif", summary.inactive],
           ["Keluar", summary.resigned],
-          ["Di luar pengelolaan HCIS", summary.outsideHcis],
         ].map(([label, value]) => (
           <article key={String(label)} className="rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
             <p className="text-xs font-semibold text-muted-foreground">{label}</p>
             <p className="mt-1 text-2xl font-bold text-brand-heading">{value}</p>
           </article>
         ))}
+        {/* The marked records' tile doubles as the way into the filter. */}
+        <button
+          type="button"
+          onClick={() => changeScope("OUTSIDE_HCIS")}
+          aria-pressed={scope === "OUTSIDE_HCIS"}
+          className={`rounded-2xl border bg-surface-raised p-4 text-left shadow-[var(--shadow-soft)] hover:border-brand-primary ${
+            scope === "OUTSIDE_HCIS" ? "border-brand-primary" : "border-border/70"
+          }`}
+        >
+          <span className="block text-xs font-semibold text-muted-foreground">Di luar pengelolaan HCIS</span>
+          <span className="mt-1 block text-2xl font-bold text-brand-heading">{summary.outsideHcis}</span>
+        </button>
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
@@ -117,18 +219,7 @@ export function AdminEmployeesPage() {
             <option value="resigned">Keluar</option>
           </select>
 
-          <select
-            value={scope}
-            onChange={(event) => {
-              setScope(event.target.value as EmployeeManagementScopeFilter);
-              setPage(1);
-            }}
-            className="h-10 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
-          >
-            <option value="MANAGED">Dikelola HCIS</option>
-            <option value="OUTSIDE_HCIS">Di luar pengelolaan HCIS</option>
-            <option value="ALL">Semua data</option>
-          </select>
+          <ManagementScopeFilter value={scope} onChange={changeScope} />
 
           <select
             value={unitId}
@@ -164,6 +255,12 @@ export function AdminEmployeesPage() {
         </form>
       </section>
 
+      {scope === "OUTSIDE_HCIS" ? (
+        <p role="status" className="mt-4 rounded-2xl border border-border/70 bg-muted px-4 py-3 text-sm text-muted-foreground">
+          Data di luar pengelolaan HCIS hanya dapat dibaca. Riwayat cuti, kehadiran, dan slip tetap terlihat di detail masing-masing.
+        </p>
+      ) : null}
+
       <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         {error ? (
           <div className="p-6 text-sm text-destructive">{error}</div>
@@ -186,24 +283,7 @@ export function AdminEmployeesPage() {
                 </thead>
                 <tbody className="divide-y divide-border/70">
                   {data.items.map((employee) => (
-                    <tr key={employee.id} className="hover:bg-surface/70">
-                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-foreground">{employee.employeeNumber}</td>
-                      <td className="px-4 py-3">
-                        <a href={`/admin/employees/${employee.id}`} className="font-semibold text-brand-primary-deep hover:underline">
-                          {employee.fullName}
-                        </a>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{employee.employmentStatus ?? "—"}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(employee.status)}`}>
-                          {statusLabel(employee.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.unitName ?? "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.positionName ?? "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{employee.email ?? "—"}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{employee.startedOn ?? "—"}</td>
-                    </tr>
+                    <EmployeeListRow key={employee.id} employee={employee} />
                   ))}
                 </tbody>
               </table>
@@ -233,10 +313,7 @@ export function AdminEmployeesPage() {
             </div>
           </>
         ) : (
-          <div className="p-10 text-center">
-            <p className="text-sm font-semibold text-foreground">Belum ada pegawai yang cocok.</p>
-            <p className="mt-1 text-sm text-muted-foreground">Jika database masih kosong, mulai dari menu Impor Pegawai.</p>
-          </div>
+          <EmployeeListEmpty scope={scope} />
         )}
       </section>
     </AdminShell>

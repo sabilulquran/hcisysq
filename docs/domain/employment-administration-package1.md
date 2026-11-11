@@ -487,6 +487,13 @@ Implementation notes (S2B-a, 2026-10-27):
 - The read-only refusal reaches every write to the employee master, which is wider than the four paths listed above: it also covers the Package 2 records (education, skills, family, addresses), the acceptance of an EMP-003 data-change proposal, and the leave entitlement group. A marked employee cannot file a proposal either, since accepting it could only ever be refused.
 - The check reads the employee row without locking it. A mark committed in the same instant as a write can let that one write through; the cost of locking the employee row on every write path — one mark blocking all of HCIS for that person — is larger than the millisecond it would buy, and the audit shows what happened.
 
+Implementation notes (S2B-b, 2026-11-11):
+
+- "Hidden from workflow eligibility" is applied as: no new leave (preview and submit refused with `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`), no attendance expectation (calculation, daily view, today monitor, roster, schedule changes), and never an approver (ORG-004 eligibility and every legacy chain check read the record as not active, so the existing inactive-approver behaviour applies). Approval snapshots already stored are not rewritten.
+- ORG-006 publishes a marked person as `active: false`, the same way as a removed one; the person is not omitted, so consumers keep a stable identity.
+- The consistency report line is `ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD` ("Akun pegawai masih terhubung ke data di luar pengelolaan HCIS"), for `EMPLOYEE` accounts in `invited` or `active`.
+- `DRAFT`: the ORG-013 board-account conflict check still treats a marked record's e-mail as an employee's; see the implementation plan, S2B.
+
 ## 9. Permissions and visibility
 
 New permission keys (additive migration, assigned explicitly — never inferred from job title or ORG-004 position):
@@ -624,7 +631,7 @@ Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis ba
 
 ### 13.6 Menu **Pegawai → Kecocokan Data** (halaman "Periksa Kecocokan Data"; SHADOW dan sesudahnya)
 
-Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Pengurus Yayasan (bukan pegawai)", "Status kepegawaian bertentangan dengan Aktif PKWT", "Jenis kepegawaian kosong/tidak valid", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
+Kelompok masalah dengan jumlah: "Staf BUMY (tidak dikelola)", "Pengurus Yayasan (bukan pegawai)", "Akun pegawai masih terhubung ke data di luar pengelolaan HCIS", "Status kepegawaian bertentangan dengan Aktif PKWT", "Jenis kepegawaian kosong/tidak valid", "Tanggal mulai belum diketahui", "Masa kontrak belum diketahui", "Status kepegawaian belum dikelompokkan", "Status aktif bertentangan dengan tanggal keluar", "Tanpa unit/jabatan", "Berbeda dengan Struktur Organisasi", "Proyeksi tertinggal". Setiap baris menautkan ke detail pegawai.
 
 ### 13.7 Pegawai — **Profil saya → Kepegawaian** (D-17 disetujui)
 

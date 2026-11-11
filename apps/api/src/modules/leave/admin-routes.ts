@@ -219,7 +219,8 @@ export async function registerLeaveAdminRoutes(
 
     if (body.data.employeeId) {
       const approver = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1 AND status = 'active'",
+        // EMP-005 S2B §8.7: a record outside HCIS management is never configured as an approver.
+        "SELECT id FROM employees WHERE id = $1 AND status = 'active' AND management_scope = 'MANAGED'",
         [body.data.employeeId],
       );
       if (!approver.rows[0]) {

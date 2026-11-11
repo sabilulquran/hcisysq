@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S7 merged (#226); S2B-a implemented, S2B-b and S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S7 merged (#226); S2B-a and S2B-b implemented, S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -67,14 +67,13 @@ S2B, S3 and S4 can run in parallel after S2. S5A and S6 can run in parallel afte
 
 ## S2B — Records outside HCIS management (BUMY, Pengurus Yayasan)
 
-**Status:** the marker and every write refusal are IMPLEMENTED (2026-10-27);
-the consumer exclusions are split into **S2B-b** and are not done yet. The
-step was split because the two halves touch different code and different
-sessions: the marker is confined to the employee master and its write paths,
-while the exclusions reach into leave, attendance, Board aggregates and
-ORG-006, where other work is in flight. `AUTHORITATIVE` still waits for
-S2B-b, because until then a marked record is merely unwritable, not
-genuinely out of the population.
+**Status:** the marker and every write refusal are IMPLEMENTED (S2B-a,
+2026-10-27); the consumer exclusions are IMPLEMENTED (**S2B-b**, 2026-11-11).
+The step was split because the two halves touch different code: the marker
+is confined to the employee master and its write paths, while the exclusions
+reach into leave, attendance, approval routing, Board aggregates and ORG-006.
+With S2B-b a marked record is out of the population, not merely unwritable,
+so S2B no longer holds `AUTHORITATIVE` back.
 
 Delivered in S2B-a: migration `0107_employee_management_scope.sql`
 (`management_scope`, its reason, note, who marked it and when, with CHECKs
@@ -88,10 +87,62 @@ employee import skips a marked row whole and says so in the preview; the
 admin list hides marked records, offers `scope=OUTSIDE_HCIS` to find them,
 and counts them apart from the active-employee figures.
 
-Left for S2B-b: exclusion from leave and attendance eligibility, approval
-routing, Board aggregates and the ORG-006 directory producer; the
-consistency-report line for EMPLOYEE accounts still linked to a marked
-record; the admin screen's own filter control.
+Delivered in S2B-b (no migration, no data change; production has no marked
+record today):
+
+- **Board aggregates** (ORG-003 dashboard and the ORG-010 governance summary):
+  every employee population — status counts, entitlement groups, approval
+  readiness, movements, unit and employment-status distribution — requires
+  `management_scope = 'MANAGED'`. Workflow counts (leave in review, HC tasks,
+  attendance cases) are not a population and are unchanged.
+- **ORG-006 producer:** a marked record is published like a removed one —
+  still identifiable, `active: false`. The marker is an input, not a published
+  field, so the contract and the version of an unchanged snapshot stay the
+  same.
+- **Attendance:** the calculation run (`calculationPairs`), the daily read
+  model and the today monitor (`activeEmployees`), the roster employee list
+  and the schedule-change calendar and unit-wide changes leave a marked record
+  out; one named explicitly in a schedule change is set aside with a
+  non-blocking issue, like an inactive employee. Results already written are
+  neither recalculated nor deleted.
+- **Leave:** a marked employee is refused a new Cuti Tahunan, planned leave or
+  special leave at preview and at submit with `EMPLOYEE_OUTSIDE_HCIS_READ_ONLY`
+  (409); a replay of a submission that went through before the mark still
+  answers with the stored request, and every earlier request stays readable.
+  Cancelling and adding evidence to an existing request are unchanged.
+- **Approval routing:** a marked employee is never resolved as an approver.
+  The ORG-004 eligibility check reads a marked incumbent as
+  `EMPLOYEE_NOT_ACTIVE`, so the walk applies the position's vacancy policy as
+  it does for an inactive one; the legacy-chain checks of annual, planned and
+  special leave, work arrangements, trips, loans, overtime and performance
+  read a marked approver as not active (`APPROVER_NOT_ACTIVE`,
+  `OVERTIME_APPROVER_UNRESOLVED`, `RATER_NOT_ACTIVE`, special leave's
+  line-notification warning). A marked employee cannot be configured as a unit
+  leave approver or chosen as a replacement overtime approver. Stored approval
+  snapshots and pending steps are not rewritten.
+- **Consistency report:** `ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD` lists a
+  marked record whose `EMPLOYEE` account is `invited` or `active`. Report only;
+  nothing changes the account.
+- **Admin screen:** the list's "Cakupan pengelolaan" filter now reloads the
+  list when changed (the scope was missing from the effect's dependencies),
+  the "Di luar pengelolaan HCIS" tile opens the filter, marked rows carry the
+  grey badge "Di luar pengelolaan HCIS — BUMY" / "— Pengurus Yayasan", and the
+  detail shows contact and line manager as text with every edit control
+  hidden (contact, line manager, account preparation and activation link,
+  ending an additional placement).
+
+Not changed by S2B-b, deliberately:
+
+- `DRAFT`: the ORG-013 Foundation Board conflict check
+  (`ACCOUNT_PERSON_IS_EMPLOYEE`, an e-mail matching an active employee) still
+  counts a marked record. Marking a Pengurus Yayasan record therefore does not
+  by itself make that person's board account an eligible governance approver;
+  that is an authorization change and is left to a reviewed follow-up.
+- Requests in flows other than leave (work arrangements, trips, loans,
+  overtime, mobile clock-in) are not refused for a marked requester. The
+  consistency-report line is how HC finds and deactivates such an account.
+- Chart publication (`validateStructuralIncumbent`) still accepts a marked
+  incumbent, so marking never blocks publishing a structure.
 
 **Spec:** EMP-005-L, §8.7, §13.9.
 **Review:** touches EMP-001 employee master and every consumer of the active-employee population — extra review.

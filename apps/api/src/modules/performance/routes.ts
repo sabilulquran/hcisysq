@@ -198,7 +198,11 @@ async function resolveRater(db: Queryable, employeeId: string, effectiveDate: st
   if (!authority || authority.employeeId === employeeId) {
     return { employeeId: null, source: null, snapshot: { ...base, unresolved: "DIRECT_MANAGER_MISSING" } };
   }
-  const active = await db.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL", [authority.employeeId]);
+  // EMP-005 S2B §8.7: a rater outside HCIS management reads as not active.
+  const active = await db.query(
+    "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL AND management_scope = 'MANAGED'",
+    [authority.employeeId],
+  );
   if (!active.rows[0]) {
     return { employeeId: null, source: null, snapshot: { ...base, unresolved: "RATER_NOT_ACTIVE" } };
   }

@@ -77,9 +77,14 @@ export function reportDates(from: string, to: string, maximum = 93) {
   return output;
 }
 
+/**
+ * Who is expected to work: active employees HCIS manages. EMP-005 S2B §8.7 leaves a record marked
+ * "di luar pengelolaan HCIS" out of the daily view and the today monitor; its stored results are not
+ * touched.
+ */
 export async function activeEmployees(pool: Pool, filter: Pick<AttendanceReportFilter, "employeeId" | "unitId">) {
   const values: unknown[] = [];
-  const clauses = ["employee.status = 'active'"];
+  const clauses = ["employee.status = 'active'", "employee.management_scope = 'MANAGED'"];
   if (filter.employeeId) {
     values.push(filter.employeeId);
     clauses.push(`employee.id = $${values.length}`);

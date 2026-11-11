@@ -16,7 +16,7 @@ import {
   AccountActivationApiError,
   issueAccountActivation,
 } from "@/lib/accountActivation";
-import { AdminApiError } from "@/lib/adminEmployees";
+import { AdminApiError, outsideHcisBadgeLabel } from "@/lib/adminEmployees";
 import {
   getEmployeeDetail,
   prepareEmployeeAccount,
@@ -90,6 +90,46 @@ function accountStatusLabel(status: string | null) {
   if (status === "suspended") return "Ditangguhkan";
   if (status === "inactive") return "Nonaktif";
   return "Belum ada account";
+}
+
+/**
+ * EMP-005 S2B §13.9: the contact and reporting line of a record outside HCIS
+ * management, shown as text. The edit forms are not rendered at all; the API
+ * refuses the write anyway (EMPLOYEE_OUTSIDE_HCIS_READ_ONLY).
+ */
+export function OutsideHcisReadOnlyMaster({
+  employee,
+}: {
+  employee: Pick<
+    EmployeeDetailResponse["employee"],
+    "email" | "phone" | "managerFullName" | "managerEmployeeNumber" | "managementScope" | "managementScopeReason"
+  >;
+}) {
+  const badge = outsideHcisBadgeLabel(employee) ?? "Di luar pengelolaan HCIS";
+  return (
+    <div className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
+      <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground">{badge}</span>
+      <dl className="mt-3 grid gap-x-5 gap-y-3 sm:grid-cols-2">
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">Email</dt>
+          <dd className="mt-1 break-all text-sm font-semibold text-foreground">{employee.email ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">Nomor HP</dt>
+          <dd className="mt-1 text-sm font-semibold text-foreground">{employee.phone ?? "—"}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-xs font-semibold text-muted-foreground">Atasan langsung</dt>
+          <dd className="mt-1 text-sm font-semibold text-foreground">
+            {employee.managerFullName
+              ? `${employee.managerFullName}${employee.managerEmployeeNumber ? ` · ${employee.managerEmployeeNumber}` : ""}`
+              : "Belum ditetapkan"}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs leading-5 text-muted-foreground">Data ini hanya dapat dibaca; tidak ada yang dapat diubah dari halaman ini.</p>
+    </div>
+  );
 }
 
 export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) {
@@ -394,7 +434,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           view={employmentView ?? { kind: "loading" }}
           timeline={timelineView}
           onEndAdditional={
-            canManageEmployment && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
+            canManageEmployment && !outsideHcis && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
               ? (placementId) => {
                   setEndingPlacementId(placementId);
                   setEmploymentAction("PLACEMENT_END");
@@ -439,6 +479,9 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             ))}
           </dl>
 
+          {outsideHcis && employee ? (
+            <OutsideHcisReadOnlyMaster employee={employee} />
+          ) : (
           <form onSubmit={saveContact} className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
             <div>
               <p className="text-sm font-bold text-foreground">Kontak terverifikasi</p>
@@ -475,7 +518,10 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
               {savingContact ? "Menyimpan..." : "Simpan kontak"}
             </button>
           </form>
+          )}
         </article>
+
+        {outsideHcis ? null : (
 
         <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
@@ -507,6 +553,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             </button>
           </form>
         </article>
+        )}
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
@@ -519,7 +566,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           {employee?.accountId ? (
             <>
               <p className="mt-1 break-all text-sm text-muted-foreground">{employee.accountEmail}</p>
-              {employee.accountStatus === "invited" ? (
+              {employee.accountStatus === "invited" && !outsideHcis ? (
                 <button
                   type="button"
                   onClick={() => void issueActivation(employee.accountId!)}
@@ -533,6 +580,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                 Kelola role & scope →
               </a>
             </>
+          ) : outsideHcis ? (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">Account tidak disiapkan untuk data di luar pengelolaan HCIS.</p>
           ) : (
             <div className="mt-4 space-y-3">
               <input

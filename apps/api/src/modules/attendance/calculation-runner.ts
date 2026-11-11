@@ -71,7 +71,9 @@ export function validateCalculationRange(from: string, to: string, now = new Dat
 
 /**
  * Employed pairs in scope, split by the D-14-3 coverage rule. A pair is employed when the employee
- * works on that date (started_on ≤ date ≤ ended_on; inactive employees only up to ended_on). It is
+ * works on that date (started_on ≤ date ≤ ended_on; inactive employees only up to ended_on) and the
+ * record is managed by HCIS (EMP-005 S2B §8.7: a record marked "di luar pengelolaan HCIS" is not
+ * expected to work, so no run writes a result for it; results already written stay readable). It is
  * covered when a machine PIN mapping is valid on that date, or a mobile/manual event or an approved
  * clarification exists for it. Uncovered pairs are never written; they read as "Tidak tercatat".
  */
@@ -84,6 +86,7 @@ export async function calculationPairs(pool: Pick<Pool, "query">, scope: Calcula
          AND ($2::uuid IS NULL OR employee.organizational_unit_id = $2)
          AND (employee.status = 'active' OR employee.ended_on >= $3::date)
          AND (employee.started_on IS NULL OR employee.started_on <= $4::date)
+         AND employee.management_scope = 'MANAGED'
      ), pairs AS (
        SELECT scoped.id AS employee_id, day::date AS work_date,
               (day::date::timestamp AT TIME ZONE 'Asia/Jakarta') AS day_start

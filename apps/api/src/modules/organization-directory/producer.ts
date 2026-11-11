@@ -23,6 +23,13 @@ interface EmployeeDirectoryRow extends QueryResultRow {
   startedOn: string | Date | null;
   endedOn: string | Date | null;
   removedAt: Date | null;
+  /**
+   * EMP-005 S2B §8.7. A record marked "di luar pengelolaan HCIS" is published
+   * like a removed one: still identifiable, never active. Required rather
+   * than optional so a caller cannot forget it and publish a marked person as
+   * active staff.
+   */
+  managementScope: "MANAGED" | "OUTSIDE_HCIS";
 }
 
 interface EmployeeIdentityRow extends QueryResultRow {
@@ -212,7 +219,9 @@ export function buildOrganizationDirectorySnapshot(input: {
       id: personExternalId(employee.id),
       employeeNumber: employee.employeeNumber,
       displayName: employee.fullName,
-      active: employee.status === "active" && employee.removedAt === null,
+      active: employee.status === "active"
+        && employee.removedAt === null
+        && employee.managementScope === "MANAGED",
       employmentStatus: employee.employmentStatus,
       startedOn: dateText(employee.startedOn),
       endedOn: dateText(employee.endedOn),
@@ -278,7 +287,8 @@ export async function loadOrganizationDirectorySnapshot(
          employment_status AS "employmentStatus",
          started_on AS "startedOn",
          ended_on AS "endedOn",
-         removed_at AS "removedAt"
+         removed_at AS "removedAt",
+         management_scope AS "managementScope"
        FROM employees
        ORDER BY id`,
     ),

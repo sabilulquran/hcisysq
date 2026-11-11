@@ -2749,6 +2749,14 @@ paths:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime'
   /admin/attendance/overtime/{overtimeId}/decision:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime~1{overtimeId}~1decision'
+  /admin/attendance/overtime-policy:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime-policy'
+  /admin/attendance/overtime-eligibility-rules:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime-eligibility-rules'
+  /admin/attendance/overtime-eligibility-rules/targets:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime-eligibility-rules~1targets'
+  /admin/attendance/overtime-eligibility-rules/{ruleId}/end:
+    $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1overtime-eligibility-rules~1{ruleId}~1end'
   /admin/attendance/manual-corrections:
     $ref: './attendance-workforce.openapi.yaml#/paths/~1admin~1attendance~1manual-corrections'
   /admin/attendance/daily:

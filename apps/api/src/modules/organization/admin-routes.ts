@@ -43,7 +43,8 @@ import {
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { classificationOn } from "./job-classification-service.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
-import { assertIsoDate, isEffective as isEffectiveOn, jakartaBusinessDate } from "./jakarta-date.js";
+import { linkedUnitChain, searchPositions } from "./structure-lookups.js";
+import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
 
 const uuid = z.string().uuid();
 const ORGAN_ACCOUNT_LABEL = "Akun Organ Yayasan";
@@ -611,34 +612,6 @@ export async function registerOrganizationAdminRoutes(
     });
   });
 
-  /**
-   * ORG-008-6 (O-9, ATT-011 D-11): the imported units this structural unit stands for, itself first
-   * and then upwards.
-   *
-   * Role scopes point at organizational_units, a flat list with no parent. The hierarchy lives in
-   * the structure. Walking up the structure and collecting each linked imported unit is what turns
-   * "the employee's unit or the unit above it" into something that can actually be resolved.
-   * A unit with no link contributes nothing, so an unlinked branch falls back to the
-   * organisation-wide recipients ATT-011 already uses rather than guessing.
-   */
-  function linkedUnitChain(
-    nodes: Array<{ stableKey: string; parentNodeKey: string | null; legacyUnitId?: string | null }>,
-    nodeKey: string,
-  ): string[] {
-    const byKey = new Map(nodes.map((node) => [node.stableKey, node]));
-    const chain: string[] = [];
-    const seen = new Set<string>();
-    let current: string | null = nodeKey;
-    while (current && !seen.has(current)) {
-      seen.add(current);
-      const node = byKey.get(current);
-      if (!node) break;
-      if (node.legacyUnitId) chain.push(node.legacyUnitId);
-      current = node.parentNodeKey;
-    }
-    return chain;
-  }
-
   app.get("/admin/organization/units/:nodeKey/hc-staff", async (request, reply) => {
     if (!(await authenticate(request, reply, "organization.manage"))) return;
     const params = z.object({ nodeKey: uuid }).safeParse(request.params);
@@ -700,36 +673,8 @@ export async function registerOrganizationAdminRoutes(
       : await repository.loadEffectiveSnapshot(asOf);
     if (!snapshot) return reply.send({ asOf, items: [] });
 
-    // ORG-008-6 (O-8, ATT-011 D-10): the overtime rule points at a position by its stable key, which
-    // survives renames and restructuring. The unit path is here so two seats with the same title in
-    // different schools can be told apart (gap S-4).
-    const nodeByKey = new Map(snapshot.nodes.map((node) => [node.stableKey, node]));
-    const pathOf = (nodeKey: string) => {
-      const names: string[] = [];
-      const seen = new Set<string>();
-      let current: string | null = nodeKey;
-      while (current && !seen.has(current)) {
-        seen.add(current);
-        const node = nodeByKey.get(current);
-        if (!node) break;
-        names.unshift(node.name);
-        current = node.parentNodeKey;
-      }
-      return names;
-    };
-    const needle = query.data.q?.toLowerCase() ?? "";
-    const items = snapshot.positions
-      .filter((position) => position.active && isEffectiveOn(position.effectiveFrom, position.effectiveTo, asOf))
-      .map((position) => ({
-        stableKey: position.stableKey,
-        title: position.title,
-        nodeKey: position.nodeKey,
-        unitPath: pathOf(position.nodeKey),
-      }))
-      .filter((item) => !needle
-        || item.title.toLowerCase().includes(needle)
-        || item.unitPath.join(" ").toLowerCase().includes(needle))
-      .slice(0, query.data.limit);
+    // ORG-008-6 (O-8, ATT-011 D-10): shared with the overtime rule screen (structure-lookups.ts).
+    const items = searchPositions(snapshot, { q: query.data.q, asOf, limit: query.data.limit });
     return reply.send({ asOf, items });
   });
 

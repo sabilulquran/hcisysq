@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { overtimeExclusionFor } from "./overtime-rules.js";
+
 type ScheduleRow = {
   scheduleTemplateId: string;
   scheduleVersionId: string | null;
@@ -764,8 +766,11 @@ export async function materializeAttendanceResult(
        ORDER BY decided_at NULLS LAST, created_at, id`,
       [employeeId, workDate],
     );
-    const overtimeMinutes = overtime.rows.reduce((sum, row) => sum + Number(row.approvedMinutes ?? 0), 0);
     const overtimeIds = overtime.rows.map((row) => row.id);
+    // ATT-011-6b-3 D-10 (§7.8): no overtime minutes on a day a position/role rule excludes. The approved
+    // requests stay (history) and are named in the result source; only days with overtime are checked.
+    const overtimeExclusion = overtime.rows.length ? await overtimeExclusionFor(client, employeeId, workDate) : null;
+    const overtimeMinutes = overtimeExclusion ? 0 : overtime.rows.reduce((sum, row) => sum + Number(row.approvedMinutes ?? 0), 0);
 
     // ATT-011-6a §5.6: the kind of day, stored so payroll can tell a holiday from a rest day without
     // guessing. A holiday on which the employee is scheduled is a working day that is also a holiday.
@@ -846,6 +851,8 @@ export async function materializeAttendanceResult(
       // Only days with an approved arrangement carry it, so every other day keeps its input hash.
       ...(arrangement ? { workArrangement: arrangement.id } : {}),
       overtime: overtimeIds.length <= 1 ? (overtimeIds[0] ?? null) : overtimeIds,
+      // Only excluded days carry it, so every other day keeps its input hash.
+      ...(overtimeExclusion ? { overtimeExcludedByRule: overtimeExclusion.ruleId } : {}),
       // The kind of day is part of the input: versions are immutable, so a day calculated before
       // ATT-011-6a gets one new version carrying day_type on its next Kalkulasi, then stays stable.
       dayType,
@@ -952,7 +959,10 @@ export async function materializeAttendanceResult(
         computed.overtimeMinutes, inputHash, JSON.stringify(events.map((event) => event.id)),
         JSON.stringify(clarifications.rows.map((item) => item.id)), disposition?.leaveRequestId ?? null,
         disposition?.resolutionCaseId ?? null,
-        JSON.stringify({ overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds }),
+        JSON.stringify({
+          overtimeRequestId: overtimeIds.at(-1) ?? null, overtimeRequestIds: overtimeIds,
+          ...(overtimeExclusion ? { overtimeExcludedByRuleId: overtimeExclusion.ruleId } : {}),
+        }),
         dayType, holidayScheduledWork, arrangement?.id ?? null,
       ],
     );

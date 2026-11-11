@@ -341,6 +341,10 @@ function createUnpaidPreviewPool() {
     if (sql.includes("FROM accounts account") && sql.includes("JOIN employees employee")) {
       return { rows: [employeeRow(E)], rowCount: 1 };
     }
+    // EMP-005 S2B-b: the requester is managed by HCIS, so a new request is allowed.
+    if (sql.includes("management_scope = 'OUTSIDE_HCIS' AS outside")) {
+      return { rows: [{ outside: false }], rowCount: 1 };
+    }
     if (sql.includes("FROM leave_calendar_settings")) {
       return { rows: [{ workingWeekdayMask: 31 }], rowCount: 1 };
     }

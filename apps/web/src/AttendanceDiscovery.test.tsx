@@ -56,7 +56,7 @@ describe("employee attendance discoverability", () => {
     expect(html).toContain("lg:hidden");
   });
 
-  it("links implemented services to real routes while reminders remain a proposal", () => {
+  it("links implemented services to real routes, reminders included (NOTIF-003)", () => {
     expect(getEmployeeService("overtime")?.stage).toBe("available");
     expect(getEmployeeService("overtime")?.href).toBe("/app/attendance#overtime");
     expect(getEmployeeService("attendance-clarification")?.href).toBe("/app/attendance#clarifications");
@@ -64,7 +64,7 @@ describe("employee attendance discoverability", () => {
     expect(getEmployeeService("shift-swap")?.href).toBe("/app/attendance/shift-swap");
     expect(getEmployeeService("notifications")?.stage).toBe("available");
     expect(getEmployeeService("notifications")?.href).toBe("/app/notifications");
-    expect(getEmployeeService("reminders")?.stage).toBe("discovery");
+    expect(getEmployeeService("reminders")?.stage).toBe("available");
     expect(getEmployeeService("clock-in")?.details ?? []).not.toContain("Face recognition");
   });
 });

@@ -26,10 +26,10 @@ describe("admin module catalog", () => {
     // DOC-001/DOC-002 Package 1 ships a real Human Capital workspace.
     expect(getAdminService("documents")?.stage).toBe("available");
     expect(getAdminService("documents")?.href).toBe("/admin/documents");
-    // NOTIF-002 Package 1 ships announcements; reminders and external adapters stay out.
+    // NOTIF-002 announcements and NOTIF-003 reminders; email stays out (NOTIF-001 D-10).
     expect(getAdminService("communications")?.stage).toBe("available");
     expect(getAdminService("communications")?.href).toBe("/admin/announcements");
-    expect(getAdminService("communications")?.featureIds).not.toContain("NOTIF-003");
+    expect(getAdminService("communications")?.featureIds).toContain("NOTIF-003");
     // TRIP-001 Package 1 ships the register and the surat tugas; costs stay out (REIMB-001).
     expect(getAdminService("business-travel")?.stage).toBe("available");
     expect(getAdminService("business-travel")?.href).toBe("/admin/trips");

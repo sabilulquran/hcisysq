@@ -861,12 +861,19 @@ features:
     module: notification
     name: Email, WhatsApp, and in-app notification adapters
     legacy_evidence: SMTP and Starsender integrations exist
-    target_status: implementing
+    target_status: implemented
     priority: foundation
     risk: high
-    mvp_note: The in-app recipient-owned adapter is implemented through NOTIF-004. Email and WhatsApp delivery adapters remain outside this implementation and are not implied by the bell/inbox.
+    mvp_note: The in-app recipient-owned adapter is implemented through NOTIF-004.
+    notes: >-
+      Closed 2026-11-11 (docs/domain/reminders.md §8): two adapters, in-app (NOTIF-004) and
+      WhatsApp through Kirim SQ (meetings/whatsapp.ts: log adapter by default, kirim adapter with
+      the SQ Hub machine client, CAL-001 K-17 recipient allowlist), used by CAL-001 and NOTIF-003.
+      Email is not built (D-10 DRAFT): HCIS has no SMTP adapter and account mail belongs to Akun
+      SQ; it needs an owner decision and an adapter ADR.
     docs:
       - docs/domain/in-app-notification-center.md
+      - docs/domain/reminders.md
 
   - id: NOTIF-004
     module: notification
@@ -901,9 +908,20 @@ features:
       reimbursement); Reminder types agenda, check-in, check-out, leave expiring,
       reimbursement pending and custom; per-employee ReminderPreference (enabled, lead time,
       channels) at account/settings/reminders.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
+    notes: >-
+      Package 1 ACCEPTED and implemented 2026-11-11 (docs/domain/reminders.md): one in-process
+      engine behind the CAL-001 runner switch, nine DRAFT rules (approval digest, HC leave and
+      document queues, contract/probation ending, certificate expiry, performance self/review
+      due, payroll cutoff and pay date), idempotent per rule/occurrence/recipient, 06:00-21:00
+      WIB send window, in-app always plus WhatsApp per rule default and per-account preference,
+      allowlist respected. The meeting reminder stays in the CAL-001 runner. Not carried: daily
+      check-in reminder, warning-letter expiry (D-09). Migration 0142.
+    docs:
+      - docs/domain/reminders.md
+      - docs/api/reminders.openapi.yaml
 
   - id: CAL-001
     module: workplace

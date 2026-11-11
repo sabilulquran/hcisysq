@@ -108,6 +108,7 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/reports": "attendance.reports.read",
       "/admin/attendance/overtime": "attendance.overtime.manage",
       "/admin/attendance/settings/locations": "attendance.schedule.manage",
+      "/admin/attendance/settings/overtime-rules": "attendance.policy.manage",
       "/admin/attendance/adms": "attendance.devices.read",
       "/admin/attendance/action-queue": "attendance.clarification.manage",
     };

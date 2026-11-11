@@ -22,6 +22,7 @@ const ATTENDANCE_PATH_PERMISSIONS: Record<string, string> = {
   "/admin/attendance/reports/print": "attendance.reports.read",
   "/admin/attendance/overtime": "attendance.overtime.manage",
   "/admin/attendance/settings/locations": "attendance.schedule.manage",
+  "/admin/attendance/settings/overtime-rules": "attendance.policy.manage",
 };
 
 // Ringkasan shows one card per area the account can load, so any attendance permission opens it.

@@ -40,6 +40,7 @@ import { AdminAttendanceReportPrintPage } from "@/pages/AdminAttendanceReportPri
 import { AdminAttendanceReportsPage } from "@/pages/AdminAttendanceReportsPage";
 import { AdminAttendanceShiftSwapsPage } from "@/pages/AdminAttendanceShiftSwapsPage";
 import { AdminAttendanceOvertimePage } from "@/pages/AdminAttendanceOvertimePage";
+import { AdminAttendanceOvertimeRulesPage } from "@/pages/AdminAttendanceOvertimeRulesPage";
 import { AdminAttendanceRosterPage } from "@/pages/AdminAttendanceRosterPage";
 import { AdminAttendancePlannerPage } from "@/pages/AdminAttendancePlannerPage";
 import { EmployeeTeamOvertimePage } from "@/pages/EmployeeTeamOvertimePage";
@@ -581,6 +582,13 @@ const adminAttendanceLocationsRoute = createRoute({
   component: AdminAttendanceLocationsPage,
 });
 
+const adminAttendanceOvertimeRulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/settings/overtime-rules",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/attendance/settings/overtime-rules"),
+  component: AdminAttendanceOvertimeRulesPage,
+});
+
 // Routes before ATT-011 stay reachable for at least one release and forward to their new home.
 const adminAttendanceLegacyRoutes = Object.entries(legacyAttendanceRedirects).map(([path, target]) => createRoute({
   getParentRoute: () => rootRoute,
@@ -948,6 +956,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceReportPrintRoute,
   adminAttendanceOvertimeRoute,
   adminAttendanceLocationsRoute,
+  adminAttendanceOvertimeRulesRoute,
   ...adminAttendanceLegacyRoutes,
   adminAdmsBackOfficeRoute,
   adminAdmsGlobalTransactionsRoute,

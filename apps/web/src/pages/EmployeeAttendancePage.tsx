@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ClarificationForm } from "@/components/attendance/ClarificationForm";
 import { AppShell } from "@/layouts/AppShell";
+import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
 import { clarificationKindLabel, clarificationModeLabel, requestStatusLabel } from "@/lib/attendanceLabels";
 import {
   canClarifyDate,
@@ -14,6 +15,7 @@ import {
   getMyWorkforceAttendance,
   listMyAttendanceClarifications,
   submitAttendanceOvertime,
+  type OvertimeWarning,
   type MyAttendanceClarification,
   type WorkforceResult,
   type WorkforceSnapshot,
@@ -89,7 +91,10 @@ export function EmployeeAttendancePage() {
   const [snapshot,setSnapshot]=useState<WorkforceSnapshot|null>(null);
   const [history,setHistory]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"];result:WorkforceResult|null}>>([]);
   const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const [notice,setNotice]=useState<string|null>(null);
-  const [overtime,setOvertime]=useState({workDate:today,requestedMinutes:"60",note:""}); const [submitting,setSubmitting]=useState(false);
+  const [overtime,setOvertimeForm]=useState({workDate:today,requestedMinutes:"60",note:""}); const [submitting,setSubmitting]=useState(false);
+  const [overtimeWarnings,setOvertimeWarnings]=useState<OvertimeWarning[]|null>(null);
+  // A changed form needs a new check before "Tetap kirim".
+  const setOvertime=(value:typeof overtime)=>{setOvertimeForm(value);setOvertimeWarnings(null);};
   const [cancellingOvertimeId,setCancellingOvertimeId]=useState<string|null>(null);
   const [upcoming,setUpcoming]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"]}>>([]);
   const [clarifications,setClarifications]=useState<MyAttendanceClarification[]>([]);
@@ -147,10 +152,17 @@ export function EmployeeAttendancePage() {
     }catch(cause){setError(cause instanceof Error?cause.message:"Jawaban perintah lembur gagal dikirim.");}
     finally{setCancellingOvertimeId(null);}
   };
-  const submitOvertime=async()=>{
+  // ATT-011-6b-3 D-5b: check first; above the PP 35/2021 guide the warning is shown and "Tetap kirim" sends.
+  const submitOvertime=async(confirmed=false)=>{
     setSubmitting(true);setError(null);setNotice(null);
+    const input={workDate:overtime.workDate,requestedMinutes:Number(overtime.requestedMinutes),note:overtime.note||null};
     try{
-      await submitAttendanceOvertime({workDate:overtime.workDate,requestedMinutes:Number(overtime.requestedMinutes),note:overtime.note||null});
+      if(!confirmed){
+        const preview=await submitAttendanceOvertime({...input,dryRun:true});
+        if(preview.warnings.length){setOvertimeWarnings(preview.warnings);return;}
+      }
+      await submitAttendanceOvertime(input);
+      setOvertimeWarnings(null);
       setNotice("Pengajuan lembur dikirim ke atasan Anda. Menit lembur baru masuk rekap setelah disetujui.");
       setOvertime({workDate:today,requestedMinutes:"60",note:""});
       await load();
@@ -181,7 +193,8 @@ export function EmployeeAttendancePage() {
           <p className="mt-1 text-xs leading-5 text-muted-foreground">Pulang lebih lambat tidak otomatis menjadi lembur. Hanya menit yang disetujui yang masuk hasil kehadiran.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2"><input className="h-10 rounded-xl border px-3 text-sm" type="date" value={overtime.workDate} onChange={e=>setOvertime({...overtime,workDate:e.target.value})}/><input className="h-10 rounded-xl border px-3 text-sm" type="number" min="1" max="1440" value={overtime.requestedMinutes} onChange={e=>setOvertime({...overtime,requestedMinutes:e.target.value})}/></div>
           <input className="mt-3 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Catatan (opsional)" value={overtime.note} onChange={e=>setOvertime({...overtime,note:e.target.value})}/>
-          <button disabled={submitting||!overtime.workDate} onClick={()=>void submitOvertime()} className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4"/>{submitting?"Mengirim…":"Kirim pengajuan"}</button>
+          <OvertimeWarnings warnings={overtimeWarnings}/>
+          <button disabled={submitting||!overtime.workDate} onClick={()=>void submitOvertime(overtimeWarnings!==null)} className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"><Plus className="h-4 w-4"/>{submitting?"Mengirim…":overtimeWarnings?"Tetap kirim":"Kirim pengajuan"}</button>
           <div className="mt-5 border-t pt-4"><p className="text-xs font-bold text-brand-heading">Pengajuan terakhir</p><div className="mt-2 space-y-2">{snapshot.overtimeRequests?.slice(0,5).map(item=><OvertimeRequestCard key={item.id} item={item} busy={cancellingOvertimeId!==null} cancelling={cancellingOvertimeId===item.id} onCancel={()=>void cancelOvertime(item.id)} onRespond={(decision)=>void respondOrder(item.id,decision)}/>)}{!snapshot.overtimeRequests?.length?<p className="text-xs text-muted-foreground">Belum ada pengajuan lembur.</p>:null}</div></div>
         </article>
       </section>

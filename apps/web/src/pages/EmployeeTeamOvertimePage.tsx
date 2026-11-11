@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, Plus, Send, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
 import { requestStatusLabel } from "@/lib/attendanceLabels";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -10,6 +11,7 @@ import {
   listOvertimeSubordinates,
   listTeamOvertime,
   orderTeamOvertime,
+  type OvertimeWarning,
   type TeamOvertimeItem,
   type TeamOvertimeTab,
 } from "@/lib/workforceAttendance";
@@ -67,7 +69,11 @@ export function EmployeeTeamOvertimePage() {
   const run = async (key: string, action: () => Promise<unknown>, message: string) => {
     setBusy(key); setError(null); setNotice(null);
     try { await action(); setNotice(message); setSelected(new Set()); await load(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Lembur gagal disimpan."); }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Lembur gagal disimpan.");
+      // ATT-011-6b-3: a 409 OVERTIME_NO_LONGER_APPLICABLE cancelled the request; show the list as it is now.
+      await load().catch(() => undefined);
+    }
     finally { setBusy(null); }
   };
   const approveSelected = () => run("bulk", async () => {
@@ -94,7 +100,7 @@ export function EmployeeTeamOvertimePage() {
         ) : null}
       </nav>
 
-      {ordering ? <OrderForm busy={busy !== null} onCancel={() => setOrdering(false)} onSubmit={(input) => void run("order", async () => {
+      {ordering ? <OrderForm busy={busy !== null} onCancel={() => setOrdering(false)} onSubmit={(input) => run("order", async () => {
         await orderTeamOvertime(input);
         setOrdering(false);
         setTab("orders");
@@ -118,6 +124,7 @@ export function EmployeeTeamOvertimePage() {
                   <p className="text-xs text-muted-foreground">{item.workDate} · {item.requestedMinutes} mnt{item.approvedMinutes != null ? ` · disetujui ${item.approvedMinutes} mnt` : ""}</p>
                   {item.note ? <p className="mt-1 text-xs">{item.note}</p> : null}
                   {item.decisionNote ? <p className="mt-1 text-xs text-muted-foreground">Catatan: {item.decisionNote}</p> : null}
+                  <OvertimeWarnings warnings={item.status === "submitted" || item.status === "approved" ? item.warnings : null} compact />
                 </div>
               </div>
               <span className="shrink-0 rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{orderStatusLabel(item)}</span>
@@ -157,7 +164,7 @@ export function EmployeeTeamOvertimePage() {
 function OrderForm({ busy, onCancel, onSubmit }: {
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (input: { employeeIds: string[]; workDate: string; requestedMinutes: number; note: string }) => void;
+  onSubmit: (input: { employeeIds: string[]; workDate: string; requestedMinutes: number; note: string }) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<Array<{ id: string; fullName: string; employeeNumber: string }>>([]);
@@ -165,11 +172,34 @@ function OrderForm({ busy, onCancel, onSubmit }: {
   const [workDate, setWorkDate] = useState(todayJakarta());
   const [requestedMinutes, setRequestedMinutes] = useState("60");
   const [note, setNote] = useState("");
+  // ATT-011-6b-3 D-5b: warnings per employee from a dry run; "Tetap kirim" sends after they were shown.
+  const [warnings, setWarnings] = useState<Array<{ name: string; warnings: OvertimeWarning[] }> | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => { void listOvertimeSubordinates(query).then((result) => setOptions(result.items)).catch(() => setOptions([])); }, 250);
+    // D-10: employees to whom overtime does not apply on that date are not offered.
+    const timer = setTimeout(() => { void listOvertimeSubordinates(query, workDate || undefined).then((result) => setOptions(result.items)).catch(() => setOptions([])); }, 250);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, workDate]);
+  useEffect(() => { setWarnings(null); setCheckError(null); }, [picked, workDate, requestedMinutes, note]);
   const ready = picked.length > 0 && workDate && Number(requestedMinutes) > 0 && note.trim().length >= 3;
+  const input = { employeeIds: picked.map((item) => item.id), workDate, requestedMinutes: Number(requestedMinutes), note: note.trim() };
+  const send = async () => {
+    if (warnings) { await onSubmit(input); return; }
+    setChecking(true); setCheckError(null);
+    try {
+      const preview = await orderTeamOvertime({ ...input, dryRun: true });
+      const found = preview.orders
+        .filter((order) => order.warnings.length)
+        .map((order) => ({ name: picked.find((item) => item.id === order.employeeId)?.fullName ?? "Pegawai", warnings: order.warnings }));
+      if (found.length) setWarnings(found);
+      else await onSubmit(input);
+    } catch (cause) {
+      setCheckError(cause instanceof Error ? cause.message : "Perintah lembur tidak dapat diperiksa.");
+    } finally {
+      setChecking(false);
+    }
+  };
   return (
     <section aria-label="Perintahkan lembur" className="mt-4 rounded-2xl border bg-surface-raised p-4 text-sm">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Perintahkan lembur</h2><button type="button" aria-label="Tutup" onClick={onCancel}><X className="h-4 w-4" /></button></div>
@@ -186,10 +216,17 @@ function OrderForm({ busy, onCancel, onSubmit }: {
         <label className="text-xs text-muted-foreground">Durasi (menit)<input type="number" min={1} max={1440} className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" value={requestedMinutes} onChange={(event) => setRequestedMinutes(event.target.value)} /></label>
         <label className="text-xs text-muted-foreground">Keterangan<input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Mis. persiapan wisuda" value={note} onChange={(event) => setNote(event.target.value)} /></label>
       </div>
+      {checkError ? <p role="alert" className="mt-3 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs text-danger-ink">{checkError}</p> : null}
+      {warnings ? (
+        <div className="mt-3 space-y-2">
+          {warnings.map((entry) => <div key={entry.name}><p className="text-xs font-semibold">{entry.name}</p><OvertimeWarnings warnings={entry.warnings} compact /></div>)}
+          <p className="text-xs text-muted-foreground">Peringatan ini tidak menghalangi pengiriman.</p>
+        </div>
+      ) : null}
       <div className="mt-3 flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="min-h-10 rounded-xl border px-4">Batal</button>
-        <button type="button" disabled={busy || !ready} onClick={() => onSubmit({ employeeIds: picked.map((item) => item.id), workDate, requestedMinutes: Number(requestedMinutes), note: note.trim() })}
-          className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-brand-primary px-4 font-semibold text-brand-foreground disabled:opacity-50"><Send className="h-4 w-4" /> Kirim</button>
+        <button type="button" disabled={busy || checking || !ready} onClick={() => void send()}
+          className="inline-flex min-h-10 items-center gap-1 rounded-xl bg-brand-primary px-4 font-semibold text-brand-foreground disabled:opacity-50"><Send className="h-4 w-4" /> {warnings ? "Tetap kirim" : "Kirim"}</button>
       </div>
     </section>
   );

@@ -578,7 +578,7 @@ paths:
       operationId: getAdmsManagementSummary
       summary: Read fleet-level ADMS operational summary
       responses:
-        '200': { description: Fleet, unmapped PIN, review, and command counters }
+        '200': { description: 'Fleet lifecycle counters, connectivity of active machines (online/offline/unknown, same timeout rule as the health list), unmapped PIN, review, and command counters' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -608,7 +608,7 @@ paths:
         - { name: status, in: query, schema: { type: string, enum: [pending, delivered, acknowledged, succeeded, failed, expired, cancelled] } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 250, default: 100 } }
       responses:
-        '200': { description: Command/job summaries without wire commands }
+        '200': { description: 'Command/job summaries without wire commands; `action` names physical device actions in operator language' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }

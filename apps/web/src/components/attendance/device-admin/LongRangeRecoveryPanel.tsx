@@ -77,7 +77,7 @@ export function LongRangeRecoveryPanel() {
       return { valid: false, reason: "Untuk rentang sampai 31 hari gunakan Ambil ulang transaksi di atas.", days, chunks: 1 };
     }
     if (durationMs > 730 * DAY_MS) {
-      return { valid: false, reason: "Satu job dibatasi maksimal 730 hari.", days, chunks: 0 };
+      return { valid: false, reason: "Satu permintaan dibatasi maksimal 730 hari.", days, chunks: 0 };
     }
     return {
       valid: true,
@@ -92,7 +92,7 @@ export function LongRangeRecoveryPanel() {
     const start = new Date(startAt);
     const end = new Date(endAt);
     const confirmed = window.confirm(
-      `Buat pemulihan ${rangePlan.chunks} chunk untuk periode ${start.toLocaleString("id-ID")} sampai ${end.toLocaleString("id-ID")}?\n\nHCIS hanya akan mengirim DATA QUERY ATTLOG maksimal 31 hari per chunk, satu per satu. Tidak ada USERINFO atau operasi biometrik.`,
+      `Ambil ulang transaksi dalam ${rangePlan.chunks} bagian untuk periode ${start.toLocaleString("id-ID")} sampai ${end.toLocaleString("id-ID")}?\n\nHCIS meminta mesin mengirim ulang transaksi absen, paling banyak 31 hari per bagian, satu per satu. Data pegawai dan biometrik di mesin tidak disentuh.`,
     );
     if (!confirmed) return;
 
@@ -105,7 +105,7 @@ export function LongRangeRecoveryPanel() {
         31,
       );
       setNotice(
-        `Pemulihan periode panjang dibuat: ${result.item.totalChunks} chunk. Command pertama${result.item.firstCommandNumber ? ` C:${result.item.firstCommandNumber}` : ""} akan diproses lebih dulu.`,
+        `Pemulihan periode panjang dibuat: ${result.item.totalChunks} bagian. Bagian pertama diproses lebih dulu, lalu berikutnya satu per satu.`,
       );
       setStartAt("");
       setEndAt("");
@@ -119,15 +119,15 @@ export function LongRangeRecoveryPanel() {
   }, [deviceId, endAt, load, rangePlan, startAt]);
 
   const cancelJob = useCallback(async (job: AdmsRecoveryJob) => {
-    if (!window.confirm("Batalkan job pemulihan ini? Hanya chunk yang belum dikirim yang dapat dihentikan dengan aman.")) return;
+    if (!window.confirm("Batalkan pemulihan ini? Hanya bagian yang belum dikirim ke mesin yang dapat dihentikan dengan aman.")) return;
     setBusy(`cancel:${job.id}`);
     try {
       await cancelAdmsRecoveryJob(job.id);
-      setNotice("Job pemulihan dibatalkan. Chunk yang belum dikirim tidak akan diteruskan.");
+      setNotice("Pemulihan dibatalkan. Bagian yang belum dikirim ke mesin tidak akan diteruskan.");
       setError(null);
       await load(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Job pemulihan tidak dapat dibatalkan.");
+      setError(cause instanceof Error ? cause.message : "Pemulihan tidak dapat dibatalkan.");
     } finally {
       setBusy(null);
     }
@@ -142,7 +142,7 @@ export function LongRangeRecoveryPanel() {
             <h2 className="text-base font-bold text-brand-heading">Pemulihan periode panjang</h2>
           </div>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-            Untuk rentang lebih dari 31 hari, HCIS memecah permintaan menjadi DATA QUERY ATTLOG yang sudah tervalidasi dan menjalankannya satu per satu. Ini bukan command upload-all baru.
+            Untuk rentang lebih dari 31 hari, HCIS membagi permintaan menjadi beberapa bagian dan meminta mesin mengirim ulang transaksi satu bagian demi satu bagian.
           </p>
         </div>
         <button
@@ -182,18 +182,18 @@ export function LongRangeRecoveryPanel() {
           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50"
         >
           {busy === "create" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-          Buat job
+          Buat permintaan
         </button>
       </div> : sessionResolved ? (
         <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">
-          Mode baca saja. Membuat atau membatalkan job pemulihan memerlukan izin operasi perangkat.
+          Mode baca saja. Membuat atau membatalkan pemulihan memerlukan izin operasi perangkat.
         </div>
       ) : null}
 
       {canOperate && rangePlan ? (
         <div className={`mt-2 text-[11px] ${rangePlan.valid ? "text-info-ink" : "text-muted-foreground"}`}>
           {rangePlan.valid
-            ? `Rencana: sekitar ${Math.ceil(rangePlan.days)} hari → ${rangePlan.chunks} chunk, maksimal 31 hari per chunk.`
+            ? `Rencana: sekitar ${Math.ceil(rangePlan.days)} hari → ${rangePlan.chunks} bagian, maksimal 31 hari per bagian.`
             : rangePlan.reason}
         </div>
       ) : null}
@@ -203,8 +203,8 @@ export function LongRangeRecoveryPanel() {
 
       <div className="mt-5 border-t border-border/70 pt-4">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Job terbaru</div>
-          <div className="text-[11px] text-muted-foreground">Maks. 730 hari per job · 31 hari per chunk</div>
+          <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">Pemulihan terbaru</div>
+          <div className="text-[11px] text-muted-foreground">Maks. 730 hari per permintaan · 31 hari per bagian</div>
         </div>
 
         {loading ? (
@@ -227,8 +227,8 @@ export function LongRangeRecoveryPanel() {
                         {fmt(job.requestedRangeStart)} — {fmt(job.requestedRangeEnd)}
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground">
-                        {job.succeededChunks}/{job.totalChunks} chunk selesai
-                        {job.activeCommandNumber ? ` · aktif C:${job.activeCommandNumber}` : ""}
+                        {job.succeededChunks}/{job.totalChunks} bagian selesai
+                        {job.activeCommandNumber ? " · satu bagian sedang diproses" : ""}
                         {job.queuedChunks > 0 ? ` · ${job.queuedChunks} menunggu giliran` : ""}
                       </div>
                     </div>
@@ -261,7 +261,7 @@ export function LongRangeRecoveryPanel() {
       </div>
 
       <div className="mt-4 rounded-xl bg-surface px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
-        Pemulihan ini hanya mengirim fakta ATTLOG. Exact duplicate tetap dideduplikasi server dan tidak ada inferensi terlambat, absen, jam kerja, overtime, cuti, atau payroll.
+        Pemulihan ini hanya mengambil catatan absen dari mesin. Transaksi yang sudah ada tidak tercatat dua kali, dan HCIS tidak menyimpulkan terlambat, absen, jam kerja, lembur, cuti, atau payroll dari sini.
       </div>
     </section>
   );

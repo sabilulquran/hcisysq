@@ -48,6 +48,44 @@ describe("ATT-012 approved ADMS operator experience", () => {
     expect(combined).toContain("Tidak didukung mesin ini");
   });
 
+  it("keeps command numbers and protocol names out of transaction, recovery, mapping and health copy", async () => {
+    const files = [
+      "./pages/AdminAdmsDeviceTransactionsPage.tsx",
+      "./components/attendance/device-admin/LongRangeRecoveryPanel.tsx",
+      "./components/attendance/device-admin/MappingReviewPanel.tsx",
+      "./pages/AdminAdmsHealthPage.tsx",
+      "./pages/AdminAdmsBackOfficePage.tsx",
+    ];
+    const combined = (await Promise.all(files.map(source))).join("\n");
+    for (const term of ["C:${", "tab Perintah", "DATA QUERY", "ATTLOG", "USERINFO", "Job terbaru", "exact-deduped", "Source IP"]) {
+      expect(combined).not.toContain(term);
+    }
+    // Code identifiers may say "chunks"; visible copy must not.
+    expect(combined).not.toMatch(/\s(?:chunk|Chunk)\b/);
+    // Raw enums are translated before they are shown.
+    const health = await source("./pages/AdminAdmsHealthPage.tsx");
+    expect(health).not.toContain("{item.connectivityStatus} · {item.lifecycle}");
+    expect(health).toContain("connectivityText(item.connectivityStatus)");
+    expect(health).toContain("lifecycleText(item.lifecycle)");
+  });
+
+  it("answers how many active machines are online, offline or unknown on the dashboard", async () => {
+    const dashboard = await source("./pages/AdminAdmsBackOfficePage.tsx");
+    expect(dashboard).toContain("summary.connectivity.online");
+    expect(dashboard).toContain("summary.connectivity.offline");
+    expect(dashboard).toContain("summary.connectivity.unknown");
+    expect(dashboard).toContain("Belum diketahui");
+  });
+
+  it("offers a date filter for one machine's transactions through the shared transaction view", async () => {
+    const transactions = await source("./pages/AdminAdmsDeviceTransactionsPage.tsx");
+    const global = await source("./pages/AdminAdmsGlobalTransactionsPage.tsx");
+    expect(transactions).toContain("/admin/attendance/adms/transactions?deviceId=");
+    expect(transactions).toContain("Ambil transaksi terbaru");
+    expect(global).toContain('get("deviceId")');
+    expect(global).toContain("UUID_PATTERN.test(value)");
+  });
+
   it("provides fleet synchronization preview without machine-to-machine copy", async () => {
     const page = await source("./pages/AdminAdmsJobsPage.tsx");
     expect(page).toContain("Preview perubahan");

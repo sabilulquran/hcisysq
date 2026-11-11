@@ -349,3 +349,34 @@ Before future ADMS coding, implementation must:
 3. keep ATT-005 ledger as the physical-verification authority;
 4. never convert protocol/vendor support into a verified-device claim;
 5. keep raw/engineering controls out of the normal HC GUI.
+
+## Implementation status and baseline closure (2026-11-11)
+
+The 2026-09-23 operator baseline is implemented. Evidence per item:
+
+| Baseline item | Where it lives | Evidence |
+|---|---|---|
+| One sidebar entry, workspace Dashboard · Perangkat · Pegawai & Mapping · Sinkronisasi · Transaksi · Kesehatan & Alert · Audit | `AdmsManagementNav`, `AdminAdms*Page` | PR #83, #85; `AdmsOperatorExperience.test.ts` |
+| Device detail Ringkasan · Pengguna · Biometrik · Data Mesin · Transaksi · Konfigurasi · Maintenance; Diagnostik teknis secondary | `DeviceDetailShell`, `AdminAdmsDevicePage` | PR #85; route-permission tests |
+| Aksi cepat in human language, disabled with a human reason until the per-device capability is verified | `AdminAdmsDeviceOverviewPage`, `admsOperator.ts` | PR #85 |
+| Kirim/perbarui and aktifkan/nonaktifkan pegawai; fleet preview "Sinkronkan yang belum sesuai" without machine-to-machine copy | `AdminAdmsDeviceUsersPage`, `AdminAdmsJobsPage` | PR #85 |
+| Kode kegiatan and Pesan (Data Mesin); Waktu & absensi, Sumber waktu otomatis, Pengiriman data (Konfigurasi) | `AdminAdmsDeviceDataPage`, `AdminAdmsDeviceSettingsPage` | PR #85 |
+| Perawatan aman, Riwayat tindakan, firmware and break-glass separated; reboot needs a typed phrase | `AdminAdmsDeviceMaintenancePage` | PR #85; owner decision 2026-10-16 |
+| Execute is business-permission gated, canary stays technical, execute fails closed until verified | `physical-mode-permissions.ts` | `adms-physical-mode-permissions.test.ts` |
+
+### Gaps closed on 2026-11-11
+
+A review of current `main` against the baseline found these leftovers, now fixed:
+
+1. **Dashboard answers online/offline/unknown.** `GET /admin/attendance/adms/management/summary` returns `connectivity: { online, offline, unknown }`. It counts **active** machines only and uses the same timeout rule as the health list (`connectivity_timeout_seconds`, else heartbeat × 3 clamped to 60–900 s). Offline and unknown machines count toward "item perlu perhatian". `DRAFT`: non-active machines (disabled, quarantined, retired) are left out because they are not expected to connect.
+2. **Riwayat tindakan names the action.** Physical device actions were all labelled "Operasi perangkat". The jobs list now names them by capability in operator language (for example "Sinkronkan waktu", "Jeda absensi ganda", "Kode kegiatan di mesin", "Mulai ulang mesin"). No command number, return code, or capability key is added to the response.
+3. **Transaksi tab speaks operator language.** Notices no longer show command numbers (`C:<n>`) or point to the removed "Perintah" tab; they point to Maintenance › Riwayat tindakan. The long-range recovery panel no longer shows `DATA QUERY ATTLOG`, `USERINFO`, "chunk" or "job"; it speaks of "bagian" and "permintaan".
+4. **Date filter for one machine.** The Transaksi tab links to the shared Transaksi view with the machine preselected (`/admin/attendance/adms/transactions?deviceId=<uuid>`), which already filters by date range, mapping state and PIN/name. `DRAFT`: one date-filter implementation is shared instead of adding a second one to the device tab.
+5. **Kesehatan & Alert shows no raw enum.** Connectivity and lifecycle are shown as Online/Offline/Belum diketahui and Aktif/Dinonaktifkan/Karantina/Dipensiunkan; "Source IP" became "Alamat jaringan".
+6. **Mapping review note** no longer mentions USERINFO or confidence/probability.
+
+### Outside the accepted baseline
+
+These items from the capability matrix are not part of the 2026-09-23 baseline and need their own specification before work starts: a support diagnostic bundle, ADMS notifications beyond dashboard alerts, editable capture/transfer profiles (the baseline only asks for a simplified read-only status, which exists), device-side DST, card enrollment, and access-control operations. Compatible-device biometric distribution stays under ATT-005 and the biometric gate.
+
+Physical verification of each machine capability is tracked only in the ATT-005 ledger (`attendance-wdms-full-physical-parity-ledger.md`). A capability that is not yet verified on a machine stays visible but disabled with "Perlu pengujian perangkat"; that is the intended product behavior, not an open ATT-012 gap.

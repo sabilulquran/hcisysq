@@ -69,7 +69,68 @@ async function writeRetirementAudit(
   );
 }
 
-function humanAction(commandType: string, reason: string) {
+/**
+ * Effective connectivity timeout of a device row aliased `d`. The summary counters and the
+ * health list must agree on when a machine counts as offline, so both use this expression.
+ */
+const EFFECTIVE_TIMEOUT_SQL = "coalesce(d.connectivity_timeout_seconds, greatest(60, least(900, d.heartbeat_interval_seconds * 3)))";
+
+/** Operator wording for a physical device action, by capability (ATT-012 UX baseline). */
+const PHYSICAL_ACTION_LABELS: Record<string, string> = {
+  time_sync: "Sinkronkan waktu",
+  duplicate_punch_period: "Jeda absensi ganda",
+  ntp_config: "Sumber waktu otomatis",
+  work_code_delivery: "Kode kegiatan di mesin",
+  message_delivery: "Pesan di mesin",
+  user_profile_upsert: "Kirim / perbarui pegawai",
+  user_enable_disable: "Aktifkan / nonaktifkan pegawai",
+  reboot: "Mulai ulang mesin",
+  server_config: "Alamat server mesin",
+  firmware_upgrade: "Pembaruan firmware",
+  attendance_photo: "Foto absensi dari mesin",
+  biometric_query: "Periksa data biometrik",
+  biometric_enrollment: "Daftarkan biometrik",
+  biometric_restore: "Pulihkan biometrik",
+  biometric_delete: "Hapus biometrik terpilih",
+  clear_attendance: "Bersihkan transaksi di mesin",
+  clear_photo_cache: "Bersihkan cache foto",
+  clear_all_data: "Hapus seluruh data mesin",
+};
+
+export interface AdmsConnectivityCounts {
+  online: number;
+  offline: number;
+  unknown: number;
+}
+
+/**
+ * Online/offline/unknown counts for active machines, using the same timeout rule as the
+ * health list: offline once the last request is older than the effective timeout.
+ */
+export async function countActiveDeviceConnectivity(
+  db: Pick<Pool, "query"> | Pick<PoolClient, "query">,
+): Promise<AdmsConnectivityCounts> {
+  const result = await db.query<AdmsConnectivityCounts>(
+    `SELECT
+       count(*) FILTER (
+         WHERE d.last_seen_at IS NOT NULL
+           AND now() - d.last_seen_at <= make_interval(secs => ${EFFECTIVE_TIMEOUT_SQL})
+       )::int AS online,
+       count(*) FILTER (
+         WHERE d.last_seen_at IS NOT NULL
+           AND now() - d.last_seen_at > make_interval(secs => ${EFFECTIVE_TIMEOUT_SQL})
+       )::int AS offline,
+       count(*) FILTER (WHERE d.last_seen_at IS NULL)::int AS unknown
+     FROM attendance_adms_devices d
+     WHERE d.lifecycle = 'active'`,
+  );
+  return result.rows[0] ?? { online: 0, offline: 0, unknown: 0 };
+}
+
+export function humanAction(commandType: string, reason: string, physicalCapabilityKey: string | null = null) {
+  if (physicalCapabilityKey && PHYSICAL_ACTION_LABELS[physicalCapabilityKey]) {
+    return PHYSICAL_ACTION_LABELS[physicalCapabilityKey];
+  }
   if (reason === "scheduled_reconciliation") return "Rekonsiliasi terjadwal";
   if (reason === "admin_range_recovery" || reason === "admin_long_range_recovery") return "Ambil ulang transaksi";
   if (reason === "registration_recovery" || reason === "admin_sync_new") return "Sinkronkan data baru";
@@ -99,7 +160,7 @@ export async function registerAdmsManagementRoutes(
     const principal = await authenticate(auth, request, reply, "attendance.devices.read");
     if (!principal) return;
 
-    const [fleet, detected, mapping, commands] = await Promise.all([
+    const [fleet, detected, mapping, commands, connectivity] = await Promise.all([
       pool.query<{
         total: number; active: number; disabled: number; quarantined: number; retired: number;
       }>(
@@ -138,12 +199,14 @@ export async function registerAdmsManagementRoutes(
            count(*) FILTER (WHERE status = 'failed' AND updated_at >= now() - interval '24 hours')::int AS failed
          FROM attendance_adms_commands`,
       ),
+      countActiveDeviceConnectivity(pool),
     ]);
 
     const fleetRow = fleet.rows[0] ?? { total: 0, active: 0, disabled: 0, quarantined: 0, retired: 0 };
     reply.header("Cache-Control", "no-store");
     return reply.send({
       fleet: fleetRow,
+      connectivity,
       detectedCount: detected.rows[0]?.count ?? 0,
       unmappedPinCount: mapping.rows[0]?.unmapped ?? 0,
       reviewRequiredCount: mapping.rows[0]?.reviewRequired ?? 0,
@@ -247,6 +310,7 @@ export async function registerAdmsManagementRoutes(
       commandNumber: string;
       commandType: string;
       reason: string;
+      physicalCapabilityKey: string | null;
       status: string;
       attemptCount: number;
       requestedRangeStart: Date | null;
@@ -266,6 +330,7 @@ export async function registerAdmsManagementRoutes(
          c.command_number::text AS "commandNumber",
          c.command_type AS "commandType",
          c.reason,
+         c.physical_capability_key AS "physicalCapabilityKey",
          c.status,
          c.attempt_count AS "attemptCount",
          c.requested_range_start AS "requestedRangeStart",
@@ -286,9 +351,9 @@ export async function registerAdmsManagementRoutes(
     );
     reply.header("Cache-Control", "no-store");
     return reply.send({
-      items: result.rows.map((row) => ({
+      items: result.rows.map(({ physicalCapabilityKey, ...row }) => ({
         ...row,
-        action: humanAction(row.commandType, row.reason),
+        action: humanAction(row.commandType, row.reason, physicalCapabilityKey),
         requestedRangeStart: row.requestedRangeStart?.toISOString() ?? null,
         requestedRangeEnd: row.requestedRangeEnd?.toISOString() ?? null,
         deliveredAt: row.deliveredAt?.toISOString() ?? null,
@@ -328,10 +393,7 @@ export async function registerAdmsManagementRoutes(
          d.last_seen_at AS "lastSeenAt",
          d.last_successful_request_at AS "lastSuccessfulRequestAt",
          d.last_ip AS "lastIp",
-         coalesce(
-           d.connectivity_timeout_seconds,
-           greatest(60, least(900, d.heartbeat_interval_seconds * 3))
-         )::int AS "effectiveTimeoutSeconds",
+         ${EFFECTIVE_TIMEOUT_SQL}::int AS "effectiveTimeoutSeconds",
          d.reconciliation_enabled AS "reconciliationEnabled",
          d.reconciliation_interval_minutes AS "reconciliationIntervalMinutes",
          d.reconciliation_last_requested_at AS "reconciliationLastRequestedAt",

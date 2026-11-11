@@ -34,7 +34,7 @@ export const HC_ADMIN_PERMISSIONS = [
   "help.manage",
   // EMP-012: migration 0133 grants employee_cards.manage to human_capital_admin.
   "employee_cards.manage",
-  // EMP-011: migration 0142 grants both to human_capital_admin.
+  // EMP-011: migration 0143 grants both to human_capital_admin.
   "employee_documents.read", "employee_documents.manage",
   // ORG-012 D-18: migration 0135 grants both to human_capital_admin.
   "committees.read", "committees.manage",

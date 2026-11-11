@@ -113,8 +113,8 @@ describe("EMP-011 rules", () => {
     expect(daysUntil("2026-11-01", "2026-11-11")).toBe(-10);
   });
 
-  it("the type catalog matches the database CHECK in migration 0141", async () => {
-    const sql = await readFile(new URL("../migrations/0141_employee_documents.sql", import.meta.url), "utf8");
+  it("the type catalog matches the database CHECK in migration 0142", async () => {
+    const sql = await readFile(new URL("../migrations/0142_employee_documents.sql", import.meta.url), "utf8");
     const check = /document_type text NOT NULL CHECK \(document_type IN \(([^)]*)\)\)/.exec(sql)?.[1] ?? "";
     expect(check.match(/'[A-Z_]+'/g)?.map((value) => value.slice(1, -1))).toEqual([...DOCUMENT_TYPES]);
   });

@@ -173,7 +173,7 @@ Melihat kartu sendiri dan melaporkannya hilang tidak membutuhkan permission (ses
 
 ### Arsip Dokumen Pegawai (EMP-011)
 
-Migration `0142_employee_document_permissions.sql`, berscope organisasi (`docs/domain/employee-documents.md` §6, D-08–D-10).
+Migration `0143_employee_document_permissions.sql`, berscope organisasi (`docs/domain/employee-documents.md` §6, D-08–D-10).
 
 | Permission | Pemegang | Catatan |
 |---|---|---|

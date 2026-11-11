@@ -13,7 +13,7 @@
 --
 -- Down: DELETE FROM role_permissions WHERE permission_key IN ('employee_documents.read', 'employee_documents.manage');
 --       DELETE FROM permissions WHERE permission_key IN ('employee_documents.read', 'employee_documents.manage');
---       DELETE FROM schema_migrations WHERE name = '0142_employee_document_permissions.sql';
+--       DELETE FROM schema_migrations WHERE name = '0143_employee_document_permissions.sql';
 INSERT INTO permissions (permission_key, description) VALUES
   ('employee_documents.read', 'EMP-011: read employee document archives, download document files, and read the expiry and pending worklists'),
   ('employee_documents.manage', 'EMP-011: upload, verify, reject, replace, remove and edit employee documents')

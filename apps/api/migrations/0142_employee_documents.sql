@@ -15,7 +15,7 @@
 --
 -- Down (after the previous build runs again; destroys every uploaded file):
 --   DROP TABLE IF EXISTS employee_document_audit_events, employee_document_files, employee_documents;
---   DELETE FROM schema_migrations WHERE name = '0141_employee_documents.sql';
+--   DELETE FROM schema_migrations WHERE name = '0142_employee_documents.sql';
 
 CREATE TABLE IF NOT EXISTS employee_documents (
   id uuid PRIMARY KEY,

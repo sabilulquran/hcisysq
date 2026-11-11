@@ -1,4 +1,5 @@
 import type { CriticalPeriodMatch } from "@/lib/leaveCriticalPeriods";
+import type { LeavePostponementFields, LeaveRequestStatus } from "@/lib/employeeLeave";
 
 export type SupportedPlannedLeaveKey =
   | "employee_marriage"
@@ -31,11 +32,11 @@ export interface PlannedLeaveSummary {
     positionName: string | null;
   };
   policies: PlannedLeavePolicy[];
-  requests: Array<{
+  requests: Array<LeavePostponementFields & {
     id: string;
     policyKey: SupportedPlannedLeaveKey;
     policyName: string;
-    status: "in_review" | "approved" | "rejected" | "cancelled";
+    status: LeaveRequestStatus;
     startOn: string;
     endOn: string;
     workingDays: number;

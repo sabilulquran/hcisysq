@@ -127,6 +127,10 @@ Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Sel
 
 Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).
 
+### Penangguhan cuti (LEAVE-008)
+
+Tidak ada permission baru (`docs/domain/leave-postponement.md` §6). Mengusulkan tanggal lain memakai kepemilikan tahap persetujuan yang sama dengan setujui/tolak (termasuk `leave.governance.approve` untuk akun pengurus ORG-013); menerima dan menolak usulan adalah kepemilikan pengajuan oleh pegawai.
+
 ### Masa kritis cuti (LEAVE-009)
 
 Tidak ada permission baru (`docs/domain/leave-critical-periods.md` §6, D-07 DRAFT).

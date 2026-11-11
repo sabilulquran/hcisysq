@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
+import { PostponementResponse } from "@/components/leave/PostponementResponse";
+import { postponementStatusNote } from "@/lib/leavePostponementView";
 import { AppShell } from "@/layouts/AppShell";
 import {
   EmployeeLeaveApiError,
@@ -45,6 +47,8 @@ function statusLabel(status: string) {
   if (status === "approved") return "Disetujui";
   if (status === "rejected") return "Ditolak";
   if (status === "cancelled") return "Dibatalkan";
+  if (status === "postponement_proposed") return "Menunggu respons Anda";
+  if (status === "postponed") return "Ditangguhkan";
   return "Dalam persetujuan";
 }
 
@@ -418,6 +422,24 @@ export function EmployeeLeavePage() {
                       ? " · menunggu tinjauan Human Capital (masa kritis)"
                       : ""}
                   </p>
+                  {postponementStatusNote(item) ? (
+                    <p className="mt-1 text-xs font-semibold text-brand-primary-deep">{postponementStatusNote(item)}</p>
+                  ) : null}
+                  {item.canRespondToPostponement && item.postponement ? (
+                    <PostponementResponse
+                      postponement={item.postponement}
+                      onDone={(outcome) => {
+                        if (outcome.ok) {
+                          setError(null);
+                          setSuccess(outcome.message);
+                        } else {
+                          setSuccess(null);
+                          setError(outcome.message);
+                        }
+                        void load();
+                      }}
+                    />
+                  ) : null}
                 </div>
                 <div className="flex flex-col items-start gap-2 sm:items-end">
                   <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">

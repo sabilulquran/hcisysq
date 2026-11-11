@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { describeLeave } from "../src/modules/leave/approver-notifications.js";
 import {
   assertLeaveRequestCancellable,
+  assertLeaveStepPostponable,
+  assertPostponementDates,
   canCancelLeaveRequest,
   decideLeaveApprovalStep,
   LeaveWorkflowError,
@@ -111,5 +113,50 @@ describe("LEAVE-010 requester cancellation rule", () => {
       .toMatch(/^Cuti Tahunan 2 Feb 2099.3 Feb 2099 \(2 hari kerja\)$/);
     expect(describeLeave({ policyKey: "unpaid", startOn: "2099-02-02", endOn: "2099-02-02", workingDays: 1 }))
       .toBe("Cuti Tanpa Gaji 2 Feb 2099 (1 hari kerja)");
+  });
+});
+
+describe("LEAVE-008 postponement rules", () => {
+  const steps = [
+    { id: "step-1", order: 1, status: "approved" as const },
+    { id: "step-2", order: 2, status: "pending" as const },
+    { id: "step-3", order: 3, status: "waiting" as const },
+  ];
+
+  it("lets only the active line step propose, and closes the later steps", () => {
+    expect(assertLeaveStepPostponable({
+      requestStatus: "in_review", lineHandling: "approval", policySupported: true, stepId: "step-2", steps,
+    })).toEqual({ postponedStepId: "step-2", cancelledStepIds: ["step-3"] });
+    expect(() => assertLeaveStepPostponable({
+      requestStatus: "in_review", lineHandling: "approval", policySupported: true, stepId: "step-3", steps,
+    })).toThrow(expect.objectContaining({ code: "STEP_NOT_PENDING" }));
+    for (const requestStatus of ["approved", "rejected", "cancelled", "postponement_proposed", "postponed"] as const) {
+      expect(() => assertLeaveStepPostponable({
+        requestStatus, lineHandling: "approval", policySupported: true, stepId: "step-2", steps,
+      }), requestStatus).toThrow(expect.objectContaining({ code: "REQUEST_NOT_REVIEWABLE" }));
+    }
+    expect(() => assertLeaveStepPostponable({
+      requestStatus: "in_review", lineHandling: "notify", policySupported: true, stepId: "step-2", steps,
+    })).toThrow(expect.objectContaining({ code: "POSTPONEMENT_NOT_SUPPORTED" }));
+    expect(() => assertLeaveStepPostponable({
+      requestStatus: "in_review", lineHandling: "approval", policySupported: false, stepId: "step-2", steps,
+    })).toThrow(expect.objectContaining({ code: "POSTPONEMENT_NOT_SUPPORTED" }));
+  });
+
+  it("requires different dates that start after today", () => {
+    const base = { currentStartOn: "2099-02-02", currentEndOn: "2099-02-03", today: "2099-01-05" };
+    expect(() => assertPostponementDates({ ...base, proposedStartOn: "2099-02-09", proposedEndOn: "2099-02-10" })).not.toThrow();
+    expect(() => assertPostponementDates({ ...base, proposedStartOn: "2099-02-02", proposedEndOn: "2099-02-03" }))
+      .toThrow(expect.objectContaining({ code: "POSTPONEMENT_DATES_UNCHANGED" }));
+    expect(() => assertPostponementDates({ ...base, proposedStartOn: "2099-01-05", proposedEndOn: "2099-01-06" }))
+      .toThrow(expect.objectContaining({ code: "POSTPONEMENT_DATE_PASSED" }));
+    // Only the end moves: still a different proposal.
+    expect(() => assertPostponementDates({ ...base, proposedStartOn: "2099-02-02", proposedEndOn: "2099-02-02" })).not.toThrow();
+  });
+
+  it("points a requester with an open proposal to the proposal instead of cancelling", () => {
+    expect(canCancelLeaveRequest({ status: "postponement_proposed", lineHandling: "approval" })).toBe(false);
+    expect(() => assertLeaveRequestCancellable({ status: "postponement_proposed", lineHandling: "approval" }))
+      .toThrow(/Terima atau tolak usulan/);
   });
 });

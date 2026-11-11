@@ -9,6 +9,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 import { CancelLeaveRequest } from "@/components/leave/CancelLeaveRequest";
+import { PostponementResponse } from "@/components/leave/PostponementResponse";
+import { postponementStatusNote } from "@/lib/leavePostponementView";
 import { AppShell } from "@/layouts/AppShell";
 import {
   getPlannedLeaveSummary,
@@ -341,9 +343,27 @@ export function EmployeePlannedLeavePage() {
                     <p className="text-sm font-bold text-brand-heading">{item.policyName}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{formatDate(item.startOn)} – {formatDate(item.endOn)} · {item.workingDays} hari kerja · {item.validationSummary.calendarDurationDays ?? "—"} hari kalender</p>
                   </div>
-                  <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">{item.status === "approved" ? "Selesai" : item.status === "rejected" ? "Ditolak" : item.status === "cancelled" ? "Dibatalkan" : "Diproses"}</span>
+                  <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">{item.status === "approved" ? "Selesai" : item.status === "rejected" ? "Ditolak" : item.status === "cancelled" ? "Dibatalkan" : item.status === "postponement_proposed" ? "Menunggu respons Anda" : item.status === "postponed" ? "Ditangguhkan" : "Diproses"}</span>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-brand-primary-deep">{item.nextAction}</p>
+                {postponementStatusNote(item) && item.status !== "postponed" ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{postponementStatusNote(item)}</p>
+                ) : null}
+                {item.canRespondToPostponement && item.postponement ? (
+                  <PostponementResponse
+                    postponement={item.postponement}
+                    onDone={(outcome) => {
+                      if (outcome.ok) {
+                        setError(null);
+                        setSuccess(outcome.message);
+                      } else {
+                        setSuccess(null);
+                        setError(outcome.message);
+                      }
+                      void load();
+                    }}
+                  />
+                ) : null}
                 {item.canCancel ? (
                   <div className="mt-2">
                     <CancelLeaveRequest

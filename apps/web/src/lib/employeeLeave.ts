@@ -43,10 +43,40 @@ export interface EmployeeLeaveSummary {
   requests: LeaveRequestSummary[];
 }
 
-export interface LeaveRequestSummary {
+/** LEAVE-008 adds `postponement_proposed` (awaiting my answer) and `postponed` (replaced). */
+export type LeaveRequestStatus =
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "postponement_proposed"
+  | "postponed";
+
+/** LEAVE-008: the latest proposal of other dates on one request. */
+export interface LeavePostponement {
+  id: string;
+  status: "proposed" | "accepted" | "declined";
+  proposedStartOn: string;
+  proposedEndOn: string;
+  proposedWorkingDays: number;
+  note: string;
+  proposedByName: string;
+  proposedAt: string;
+  respondedAt: string | null;
+  replacementRequestId: string | null;
+}
+
+/** LEAVE-008 fields that every leave history item carries. */
+export interface LeavePostponementFields {
+  postponement?: LeavePostponement | null;
+  replacesRequestId?: string | null;
+  canRespondToPostponement?: boolean;
+}
+
+export interface LeaveRequestSummary extends LeavePostponementFields {
   id: string;
   policyKey: string;
-  status: "in_review" | "approved" | "rejected" | "cancelled";
+  status: LeaveRequestStatus;
   startOn: string;
   endOn: string;
   workingDays: number;
@@ -207,5 +237,66 @@ export async function decideLeaveApproval(
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(input),
     }),
+  );
+}
+
+export interface LeavePostponementPreview {
+  stepId: string;
+  requestId: string;
+  policyKey: string;
+  currentStartOn: string;
+  currentEndOn: string;
+  proposedStartOn: string;
+  proposedEndOn: string;
+  workingDays: number;
+  workingDates: string[];
+  nonWorkingDates: string[];
+  criticalPeriods: CriticalPeriodMatch[];
+  criticalReviewRequired: boolean;
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  return readJson<T>(
+    await fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+/** LEAVE-008: check other dates for my active approval step; nothing is stored. */
+export function previewLeavePostponement(stepId: string, input: { startOn: string; endOn: string }) {
+  return postJson<LeavePostponementPreview>(`/api/leave/approvals/${stepId}/postponement/preview`, input);
+}
+
+/** LEAVE-008: propose other dates instead of approving or rejecting. */
+export function postponeLeaveApproval(stepId: string, input: { startOn: string; endOn: string; note: string }) {
+  return postJson<{
+    requestId: string;
+    requestStatus: "postponement_proposed";
+    proposalId: string;
+    proposedStartOn: string;
+    proposedEndOn: string;
+    proposedWorkingDays: number;
+  }>(`/api/leave/approvals/${stepId}/postpone`, input);
+}
+
+/** LEAVE-008: accept the proposed dates; the API submits a replacement request. */
+export function acceptLeavePostponement(proposalId: string, idempotencyKey: string) {
+  return postJson<{
+    proposalId: string;
+    status: "accepted";
+    replacementRequestId: string;
+    idempotentReplay: boolean;
+  }>(`/api/leave/me/postponements/${proposalId}/accept`, { idempotencyKey });
+}
+
+/** LEAVE-008: decline the proposed dates; the original request ends without leave. */
+export function declineLeavePostponement(proposalId: string, reason: string | null) {
+  return postJson<{ proposalId: string; status: "declined"; requestStatus: LeaveRequestStatus }>(
+    `/api/leave/me/postponements/${proposalId}/decline`,
+    { reason },
   );
 }

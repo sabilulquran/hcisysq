@@ -578,15 +578,21 @@ features:
       one proposed start or end date, sets the request to suspended; the employee accepts
       through leave/{leaveRequest}/accept-suspension (migrations
       add_suspension_columns_to_leave_approvals_table, allow_suspended_status_on_leave_requests).
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
-    planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. HCIS approvers can only approve or
-      reject, so a manager who wants "not that week, the next one" has to reject. Must keep
-      APR-001 snapshot-on-submit semantics: acceptance should create a new request or a
-      recorded amendment, not silently rewrite the approved dates or the balance.
+    notes: >-
+      Implemented 2026-11-11 (docs/domain/leave-postponement.md). The owner of the active line step
+      (or the ORG-013 board approver) can propose other dates with a note instead of approving or
+      rejecting; the request becomes postponement_proposed and holds no quota. The employee accepts,
+      which submits a replacement request with a fresh APR-001 snapshot from the first step (the
+      original becomes postponed and keeps its dates), or declines, which ends it cancelled. Unlike
+      legacy, nothing is rewritten in place. Migration adds the statuses, replaces_request_id and
+      leave_postponement_proposals. Owner-facing DRAFT defaults: both dates required, notice counted
+      from the original submission date, the whole chain decides again, HC cannot propose.
     docs:
+      - docs/domain/leave-postponement.md
+      - docs/api/leave.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: LEAVE-010

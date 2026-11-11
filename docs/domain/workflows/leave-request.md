@@ -1,7 +1,7 @@
 # Leave Request Workflow
 
 **Status:** ACTIVE IMPLEMENTATION BASELINE  
-**Specifications:** LEAVE-001, LEAVE-002, LEAVE-003, APR-001, ORG-002
+**Specifications:** LEAVE-001, LEAVE-002, LEAVE-003, LEAVE-008, APR-001, ORG-002
 
 ## Purpose
 
@@ -90,7 +90,7 @@ Common input may include:
 - Request cannot overlap prohibited leave/attendance events.
 - Working-day calculation uses the same calendar in preview and submit.
 - Frontend never owns entitlement, payroll, approval, or validation rules.
-- Requester can only change/cancel requests in states allowed by policy (LEAVE-010: cancel while `in_review` for line-approval leave).
+- Requester can only change/cancel requests in states allowed by policy (LEAVE-010: cancel while `in_review` for line-approval leave; LEAVE-008: accept or decline proposed dates while `postponement_proposed`).
 - An actor can only act on an active step assigned to that actor.
 - Submitted approval steps are never recomputed because organization configuration later changes.
 
@@ -146,7 +146,13 @@ in_review
   -> approved
   -> rejected
   -> cancelled
+  -> postponement_proposed      (LEAVE-008: line approver proposed other dates)
+postponement_proposed
+  -> postponed                  (requester accepted; a replacement request is submitted)
+  -> cancelled                  (requester declined)
 ```
+
+LEAVE-008 (`docs/domain/leave-postponement.md`) never rewrites the dates of a submitted request: accepting a proposal submits a new request linked by `replaces_request_id`, with its own snapshot. `postponement_proposed` and `postponed` hold no quota.
 
 Validation tasks distinguish `approval` from `validation`; do not infer semantics solely from the parent request state.
 
@@ -224,6 +230,9 @@ leave.request.submitted
 leave.request.approved_step
 leave.request.rejected
 leave.request.cancelled
+leave.postponement.proposed
+leave.postponement.accepted
+leave.postponement.declined
 leave.request.validated
 leave.request.validation_rejected
 leave.request.reassigned

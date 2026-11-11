@@ -148,7 +148,11 @@ export async function registerAccountActivationAdminRoutes(
         `SELECT principal_type AS "principalType" FROM accounts WHERE id = $1`,
         [params.data.accountId],
       );
-      const refusal = localActivationLinkRefusal(config.AUTH_MODE, target.rows[0]?.principalType);
+      reply.header("Cache-Control", "no-store");
+      if (!target.rows[0]) {
+        return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
+      }
+      const refusal = localActivationLinkRefusal(config.AUTH_MODE, target.rows[0].principalType);
       if (refusal) return reply.status(409).send(refusal);
     }
 
@@ -220,6 +224,8 @@ export function localActivationLinkRefusal(
   return {
     code: "ACTIVATION_USES_AKUN_SQ",
     message:
-      "HCIS memakai Akun SQ. Account Organ Yayasan diaktifkan dengan memetakan Akun SQ-nya lalu mengubah status menjadi Aktif, bukan link kata sandi lokal.",
+      principalType === "FOUNDATION_BOARD"
+        ? "HCIS memakai Akun SQ. Account Organ Yayasan diaktifkan dengan memetakan Akun SQ-nya lalu mengubah status menjadi Aktif, bukan link kata sandi lokal."
+        : "HCIS memakai Akun SQ; link kata sandi lokal tidak diterbitkan.",
   };
 }

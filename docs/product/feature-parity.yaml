@@ -44,9 +44,9 @@ features:
     target_status: implemented
     priority: foundation
     risk: high
-    mvp_note: Invited-account activation is implemented; password recovery is not part of the completed MVP proof.
+    mvp_note: Invited-account activation is implemented; password recovery was not part of the completed MVP proof and is now delegated to Akun SQ.
     planning_note: >-
-      Closed 2026-11-11. Production signs in with Akun SQ (AUTH_MODE=oidc). Activation is
+      Closed 2026-11-11 (code and docs); Kirim aktivasi in production still waits for the owner's Keycloak fix below. Production signs in with Akun SQ (AUTH_MODE=oidc). Activation is
       "Kirim aktivasi" (AUTH-002-INVITE, Akun SQ e-mail) for employees and Akun SQ identity
       mapping for Organ Yayasan accounts; password recovery is "Lupa kata sandi?" on the
       Akun SQ sign-in page (sq-staff realm reset allowed, SMTP configured and reachable,

@@ -101,7 +101,7 @@ Tidak dibuat dalam perubahan ini (usulan lanjutan, butuh keputusan owner): route
 
 **Status:** ACCEPTED 2026-11-04 (permintaan Kepala HC: "ketika buat link aktivasi pegawai kirim ke WA dan emailnya"). Pasangan di SQ Hub: `HUB-IMPL-024` (`docs/specs/HUB-IMPL-024-hcis-staff-activation-invite.md` di repository SQ Hub).
 
-Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lokal di atas tidak membuat pegawai bisa masuk. AUTH-002-INVITE menggantinya, **hanya di mode OIDC dan hanya untuk account `EMPLOYEE`**, dengan satu tombol **Kirim aktivasi** di Administrasi → Account & Akses. Mode lokal (development) dan account `FOUNDATION_BOARD` tetap memakai alur lama.
+Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lokal di atas tidak membuat pegawai bisa masuk. AUTH-002-INVITE menggantinya, **hanya di mode OIDC dan hanya untuk account `EMPLOYEE`**, dengan satu tombol **Kirim aktivasi** di Administrasi → Account & Akses. Mode lokal (development) tetap memakai alur lama; account `FOUNDATION_BOARD` di mode OIDC diaktifkan lewat pemetaan Akun SQ (lihat "AUTH-002 — penutupan").
 
 ### Keputusan desain
 
@@ -192,9 +192,13 @@ Token lokal yang pernah diterbitkan tetap tersimpan sampai kedaluwarsa tetapi ti
 
 Kegagalan `staff_identity.password_initialization` pada 2026-10-17 00:15 WIB (uji HUB-IMPL-013) dan `organ_identity.activation_email` pada 2026-10-18 00:08 WIB **bukan kegagalan SMTP**: log Keycloak pada kedua waktu itu tidak memuat percobaan kirim maupun galat email. Penyebabnya, realm `sq-staff` tidak memiliki konfigurasi *user profile* sendiri, sehingga Keycloak 26 memakai bawaan *unmanaged attributes disabled* dan **membuang** atribut `hcisEmployeeId` yang dikirim SQ Hub saat membuat Akun SQ (2026-11-11: 0 pengguna `sq-staff` memiliki atribut itu). SQ Hub mensyaratkan atribut itu sebelum meminta email aktivasi (`IDENTITY_ACTION_NOT_PENDING`), jadi Keycloak tidak pernah diminta mengirim. Untuk Organ Yayasan, penanda `sqProvisionedFor` terbuang dengan cara yang sama (sudah dikoreksi SQ Hub 2026-10-18).
 
-Dampak lanjutan: **AUTH-002-INVITE ("Kirim aktivasi") tidak dapat berhasil di production** sampai atribut itu tersimpan, karena HCIS mewajibkan employee id dari SQ Hub sama dengan pegawai account (§AUTH-002-INVITE langkah 3). Dua percobaan pada 2026-11-04 gagal di tahap pembuatan identitas; penyebab yang paling mungkin (log SQ Hub hari itu sudah terotasi) adalah identitas uji 2026-10-17 dengan username yang sama yang tidak membawa `hcisEmployeeId`, sehingga dianggap konflik.
+Dampak lanjutan: **AUTH-002-INVITE ("Kirim aktivasi") tidak dapat berhasil di production** sampai atribut itu tersimpan. Gerbangnya ada di SQ Hub, bukan di HCIS: `provisionVerified` menolak identitas yang sudah ada tetapi tidak membawa employee id (`EMPLOYEE_IDENTITY_CONFLICT`), dan `sendPasswordInitialization` menolak meminta email tanpa employee id (`IDENTITY_ACTION_NOT_PENDING`). Dua percobaan pada 2026-11-04 gagal di tahap pembuatan identitas; penjelasan paling mungkin adalah identitas uji 2026-10-17 dengan username yang sama tanpa `hcisEmployeeId` (`DISCOVERY`: log SQ Hub hari itu sudah terotasi).
 
-Perbaikan (butuh kredensial admin Keycloak, jadi dikerjakan owner/operator, bukan agent): deklarasikan atribut `hcisEmployeeId` pada user profile realm `sq-staff` dengan izin lihat/ubah **hanya admin** (tidak tampil dan tidak dapat diubah pengguna di konsol akun), lalu tautkan ulang identitas uji 2026-10-17 lewat Admin Center SQ Hub (atau hapus identitas uji itu) sebelum mengirim aktivasi berikutnya. Konfigurasi SMTP tidak perlu diubah.
+Perbaikan (butuh kredensial admin Keycloak, jadi dikerjakan owner/operator, bukan agent):
+
+1. Deklarasikan atribut `hcisEmployeeId` pada user profile realm `sq-staff` dengan izin lihat/ubah **hanya admin** (tidak tampil dan tidak dapat diubah pengguna di konsol akun).
+2. Deklarasi tidak mengisi pengguna lama. Setiap identitas staf yang sudah dibuat SQ Hub (per 2026-11-11: 1 identitas, uji 2026-10-17; 3 pengguna non-layanan di realm) harus ditautkan ulang ke employee id-nya lewat Admin Center SQ Hub, atau identitas uji dihapus, sebelum aktivasi berikutnya dikirim.
+3. Konfigurasi SMTP tidak perlu diubah.
 
 ## MFA
 

@@ -2,6 +2,7 @@ import { CheckCircle2, KeyRound } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { AuthLayout } from "@/layouts/AuthLayout";
+import { getAuthMode } from "@/lib/auth";
 import {
   AccountActivationApiError,
   activateAccount,
@@ -44,8 +45,19 @@ export function AccountActivationPage() {
 
     setToken(activationToken);
     if (!activationToken) {
-      setError("Link aktivasi tidak lengkap. Minta link aktivasi baru kepada administrator.");
-      setLoading(false);
+      // AUTH-002: in Akun SQ mode no local link can be issued, so do not ask for a new one.
+      void getAuthMode()
+        .then((mode) => {
+          if (!mounted) return;
+          if (mode === "oidc") setUsesAkunSq(true);
+          else setError("Link aktivasi tidak lengkap. Minta link aktivasi baru kepada administrator.");
+        })
+        .catch(() => {
+          if (mounted) setError("Link aktivasi tidak lengkap. Minta link aktivasi baru kepada administrator.");
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
       return () => {
         mounted = false;
       };
@@ -117,9 +129,11 @@ export function AccountActivationPage() {
         <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-[2.15rem]">
           Aktifkan account
         </h2>
-        <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-          Buat kata sandi untuk membuka layanan kepegawaian sesuai jenis account yang sudah ditetapkan administrator.
-        </p>
+        {usesAkunSq ? null : (
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+            Buat kata sandi untuk membuka layanan kepegawaian sesuai jenis account yang sudah ditetapkan administrator.
+          </p>
+        )}
       </header>
 
       {loading ? (

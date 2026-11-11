@@ -64,6 +64,10 @@ describe("ATT-011-6a overtime routes", () => {
   const respond = async (sql: string, values: unknown[] = []) => {
     statements.push({ sql, values });
     if (sql.includes("SELECT id FROM employees WHERE id = $1 AND status = 'active'")) return { rows: [{ id: EMPLOYEE }] };
+    // EMP-005 S2B-b: HC-entered overtime first checks the record is managed by HCIS.
+    if (sql.includes("SELECT id, management_scope = 'OUTSIDE_HCIS' AS outside FROM employees")) {
+      return { rows: [{ id: EMPLOYEE, outside: false }] };
+    }
     if (sql.includes("coalesce(sum(CASE WHEN status = 'approved'")) return { rows: [{ minutes: dayTotal }] };
     if (sql.includes("FROM attendance_overtime_requests") && sql.includes("FOR UPDATE")) {
       return { rows: [{ employeeId: EMPLOYEE, workDate: "2026-10-20", requestedMinutes: 120, status: "submitted", initiatedBy: "hc_legacy" }] };

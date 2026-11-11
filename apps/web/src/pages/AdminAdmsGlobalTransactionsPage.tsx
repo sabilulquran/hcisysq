@@ -42,10 +42,19 @@ function toIso(value: string) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A link from a machine's Transaksi tab preselects that machine (`?deviceId=`). */
+function initialDeviceId() {
+  if (typeof window === "undefined") return "";
+  const value = new URLSearchParams(window.location.search).get("deviceId") ?? "";
+  return UUID_PATTERN.test(value) ? value : "";
+}
+
 export function AdminAdmsGlobalTransactionsPage() {
   const [items, setItems] = useState<AdmsGlobalTransaction[]>([]);
   const [devices, setDevices] = useState<AdmsDevice[]>([]);
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState(initialDeviceId);
   const [mapping, setMapping] = useState<"all" | "mapped" | "unmapped">("all");
   const [from, setFrom] = useState(jakartaStartOfToday());
   const [to, setTo] = useState(jakartaLocalDateTime());

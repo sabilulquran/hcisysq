@@ -23,6 +23,12 @@ export interface AdmsManagementSummary {
     quarantined: number;
     retired: number;
   };
+  /** Active machines only, using the same timeout rule as the health list. */
+  connectivity: {
+    online: number;
+    offline: number;
+    unknown: number;
+  };
   detectedCount: number;
   unmappedPinCount: number;
   reviewRequiredCount: number;

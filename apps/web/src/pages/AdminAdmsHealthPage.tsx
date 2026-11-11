@@ -10,13 +10,27 @@ function fmt(value: string | null) {
   return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
 }
 
+function connectivityText(value: string) {
+  if (value === "online") return "Online";
+  if (value === "offline") return "Offline";
+  return "Belum diketahui";
+}
+
+function lifecycleText(value: string) {
+  if (value === "active") return "Aktif";
+  if (value === "disabled") return "Dinonaktifkan";
+  if (value === "quarantined") return "Karantina";
+  if (value === "retired") return "Dipensiunkan";
+  return "Belum diketahui";
+}
+
 const alertLabels: Record<string, string> = {
   device_offline: "Mesin offline",
   connectivity_unknown: "Koneksi belum diketahui",
   unmapped_pin: "PIN belum termap",
-  failed_job: "Ada perintah gagal",
-  reconciliation_stale: "Rekonsiliasi terlambat",
-  source_ip_anomaly: "Perubahan IP perlu ditinjau",
+  failed_job: "Ada tindakan yang gagal",
+  reconciliation_stale: "Pemulihan otomatis terlambat",
+  source_ip_anomaly: "Alamat jaringan berubah-ubah, perlu ditinjau",
 };
 
 export function AdminAdmsHealthPage() {
@@ -40,11 +54,11 @@ export function AdminAdmsHealthPage() {
   const alertCount = useMemo(() => items.reduce((total, item) => total + item.alertCodes.length, 0), [items]);
 
   return (
-    <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Kesehatan fleet berdasarkan evidence koneksi, mapping, perintah, rekonsiliasi, dan source IP.">
+    <AdminShell active="attendance-adms" title="Manajemen ADMS" description="Kesehatan mesin berdasarkan catatan koneksi, hubungan PIN, riwayat tindakan, pemulihan otomatis, dan alamat jaringan.">
       <AdmsManagementNav active="health" />
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className={"rounded-xl border px-3 py-2 text-sm font-semibold " + (alertCount ? "border-warning-line bg-warning-soft text-warning-ink" : "border-success-line bg-success-soft text-success-ink")}>
-          {alertCount ? alertCount + " alert aktif" : "Tidak ada alert aktif"}
+          {alertCount ? alertCount + " peringatan aktif" : "Tidak ada peringatan aktif"}
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold disabled:opacity-60">
           <RefreshCw className={"h-4 w-4 " + (loading ? "animate-spin" : "")} />Muat ulang
@@ -57,23 +71,23 @@ export function AdminAdmsHealthPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <a href={"/admin/attendance/devices/" + item.deviceId} className="font-bold text-brand-heading hover:underline">{item.deviceName || item.serialNumber}</a>
-                <div className="mt-1 font-mono text-xs text-muted-foreground">{item.serialNumber} · {item.connectivityStatus} · {item.lifecycle}</div>
+                <div className="mt-1 text-xs text-muted-foreground"><span className="font-mono">{item.serialNumber}</span> · {connectivityText(item.connectivityStatus)} · {lifecycleText(item.lifecycle)}</div>
               </div>
               <div className="text-right text-xs text-muted-foreground">Terakhir terlihat<br /><span className="font-semibold text-brand-heading">{fmt(item.lastSeenAt)}</span></div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {item.alertCodes.length ? item.alertCodes.map((code) => (
                 <span key={code} className="inline-flex items-center gap-1 rounded-full border border-warning-line bg-warning-soft px-2.5 py-1 text-xs font-semibold text-warning-ink">
-                  <AlertTriangle className="h-3.5 w-3.5" />{alertLabels[code] || code}
+                  <AlertTriangle className="h-3.5 w-3.5" />{alertLabels[code] || "Perlu ditinjau"}
                 </span>
               )) : (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-ink"><CheckCircle2 className="h-4 w-4" />Sehat menurut evidence saat ini</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-ink"><CheckCircle2 className="h-4 w-4" />Sehat menurut catatan saat ini</span>
               )}
             </div>
             <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
               <span>PIN belum termap: <strong className="text-brand-heading">{item.unmappedPinCount}</strong></span>
-              <span>Perintah gagal 24 jam: <strong className="text-brand-heading">{item.failedJob24hCount}</strong></span>
-              <span>Source IP 24 jam: <strong className="text-brand-heading">{item.sourceIp24hCount}</strong></span>
+              <span>Tindakan gagal 24 jam: <strong className="text-brand-heading">{item.failedJob24hCount}</strong></span>
+              <span>Alamat jaringan 24 jam: <strong className="text-brand-heading">{item.sourceIp24hCount}</strong></span>
             </div>
           </article>
         ))}

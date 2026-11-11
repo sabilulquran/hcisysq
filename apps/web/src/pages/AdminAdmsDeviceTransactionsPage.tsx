@@ -1,4 +1,4 @@
-import { Download, DownloadCloud, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { CalendarSearch, Download, DownloadCloud, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
@@ -87,8 +87,8 @@ export function AdminAdmsDeviceTransactionsPage() {
   const requestLatest = useCallback(async () => {
     setBusy("latest");
     try {
-      const result = await requestAdmsSyncNew(deviceId);
-      setNotice(`Perintah C:${result.item.commandNumber} untuk meminta transaksi terbaru sudah dibuat. Pantau prosesnya di tab Perintah.`);
+      await requestAdmsSyncNew(deviceId);
+      setNotice("Permintaan transaksi terbaru sudah dibuat. Pantau prosesnya di Maintenance › Riwayat tindakan.");
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Permintaan transaksi terbaru tidak dapat dibuat.");
@@ -115,8 +115,8 @@ export function AdminAdmsDeviceTransactionsPage() {
 
     setBusy("recovery");
     try {
-      const result = await requestAdmsAttendanceRange(deviceId, start.toISOString(), end.toISOString());
-      setNotice(`Perintah C:${result.item.commandNumber} untuk mengambil ulang transaksi sudah dibuat. Pantau proses dan hasilnya di tab Perintah.`);
+      await requestAdmsAttendanceRange(deviceId, start.toISOString(), end.toISOString());
+      setNotice("Permintaan ambil ulang transaksi sudah dibuat. Pantau proses dan hasilnya di Maintenance › Riwayat tindakan.");
       setRecoveryOpen(false);
       setRangeStart("");
       setRangeEnd("");
@@ -143,15 +143,16 @@ export function AdminAdmsDeviceTransactionsPage() {
           <div>
             <h2 className="text-base font-bold text-brand-heading">Transaksi mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              Menampilkan fakta punch mentah yang sudah tersimpan dari mesin ini. Data di sini tidak menyimpulkan terlambat, absen, jam kerja, overtime, atau payroll.
+              Menampilkan catatan absen yang sudah diterima dari mesin ini apa adanya. Data di sini tidak menyimpulkan terlambat, absen, jam kerja, lembur, atau payroll.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <a href={`/admin/attendance/adms/transactions?deviceId=${encodeURIComponent(deviceId)}`} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface"><CalendarSearch className="h-3.5 w-3.5" /> Cari per tanggal</a>
             {canExport ? <a href={admsTransactionExportUrl(deviceId)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface"><Download className="h-3.5 w-3.5" /> Export CSV</a> : null}
             {canOperate ? (
               <>
                 <button type="button" disabled={busy !== null} onClick={() => void requestLatest()} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-surface disabled:opacity-50">
-                  {busy === "latest" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />} Minta transaksi terbaru
+                  {busy === "latest" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DownloadCloud className="h-3.5 w-3.5" />} Ambil transaksi terbaru
                 </button>
                 <button type="button" disabled={busy !== null} onClick={() => setRecoveryOpen(true)} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-semibold text-brand-foreground disabled:opacity-50">Ambil ulang transaksi</button>
               </>
@@ -162,11 +163,11 @@ export function AdminAdmsDeviceTransactionsPage() {
 
         <label className="relative mt-4 block max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari PIN, nama, nomor pegawai, atau timestamp mentah" className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari PIN, nama, nomor pegawai, atau waktu" className="h-10 w-full rounded-xl border border-border bg-surface-raised pl-9 pr-3 text-sm outline-none focus:border-brand-primary" />
         </label>
         <SavedFilterBar deviceId={deviceId} viewKey="transactions" criteria={{ query, pageSize }} onApply={applySavedFilter} canManage={canOperate} />
 
-        {sessionResolved && !canOperate ? <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">Mode baca saja. Permintaan sinkronisasi dan recovery memerlukan izin operasi perangkat.</div> : null}
+        {sessionResolved && !canOperate ? <div className="mt-4 rounded-xl bg-surface p-3 text-xs leading-5 text-muted-foreground">Mode baca saja. Mengambil transaksi dari mesin memerlukan izin operasi perangkat.</div> : null}
         {notice ? <div className="mt-4 rounded-xl border border-success-line bg-success-soft p-3 text-xs leading-5 text-success-ink">{notice}</div> : null}
         {error ? <div className="mt-4 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs leading-5 text-danger-ink">{error}</div> : null}
       </section>
@@ -195,7 +196,7 @@ export function AdminAdmsDeviceTransactionsPage() {
           </div>
         )}
         <PaginationBar page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Sumber API tetap membatasi 200 transaksi terbaru yang tersimpan. Pagination hanya mengatur tampilan; export membaca fakta raw durable hingga batas server, dan pengambilan ulang tetap exact-deduped.</div>
+        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Daftar ini memuat 200 transaksi terbaru dari mesin ini. Untuk periode lain gunakan Cari per tanggal. Export CSV memuat transaksi tersimpan hingga batas server, dan transaksi yang diambil ulang tidak tercatat dua kali.</div>
       </section>
 
       {canOperate && recoveryOpen ? (

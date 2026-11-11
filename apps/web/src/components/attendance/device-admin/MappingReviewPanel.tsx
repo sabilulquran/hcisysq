@@ -164,7 +164,7 @@ export function MappingReviewPanel() {
           )}
 
           <div className="mt-3 text-[11px] leading-5 text-muted-foreground">
-            Similarity adalah alat urut untuk manusia, bukan confidence/probability. Card, NIP, unit, PIN, dan external ID tidak dipakai untuk membuat identitas otomatis. Active USERINFO read tetap dipensiunkan.
+            Kemiripan nama hanya membantu mengurutkan pilihan, bukan tingkat keyakinan. Kartu, NIP, unit, PIN, dan ID lain tidak pernah dipakai untuk menghubungkan pegawai secara otomatis; Anda yang memilih.
           </div>
         </>
       )}

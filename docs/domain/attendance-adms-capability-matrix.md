@@ -3,7 +3,7 @@
 **Status:** ACCEPTED PRODUCT BASELINE  
 **Parent:** ATT-005 — WDMS-compatible fingerprint device operations  
 **Owner decision:** 2026-09-23  
-**Implementation status:** documentation baseline; implementation may lag this document
+**Implementation status:** operator baseline implemented (PR #83, #85, and the 2026-11-11 closure in `attendance-adms-operational-management.md`); physical verification per machine follows the ATT-005 ledger
 
 ## Purpose
 
@@ -108,8 +108,8 @@ HCIS reconciliation + audit
 | user enable / disable | Aktifkan / nonaktifkan pegawai di mesin | Ada | Typed non-delete implementation exists | `not_verified` | Operator after verification |
 | user authorization group/timezone/door | Hak akses perangkat | Ada on capable device families | Part of typed user enable/upsert path | `not_verified`; hardware scope dependent | Restricted / discovery |
 | delete user identity from machine | Hapus pegawai dari mesin | Legacy ADMS supports it | Intentionally not used as normal HCIS workflow | Excluded by current safety direction | Excluded from ordinary product |
-| fleet desired-vs-observed reconciliation | Status sinkron pegawai | HCIS product design | Partial: user-sync state exists; bulk action UX incomplete | N/A + device writes depend capability | Operator |
-| bulk sync selected employees to selected devices | Sinkronkan pegawai | Legacy/WDMS breadth supports multi-device operation | Backend primitives exist; fleet workflow incomplete | Physical verification required | Operator target |
+| fleet desired-vs-observed reconciliation | Status sinkron pegawai | HCIS product design | Implemented: user-sync state + fleet preview (PR #85) | N/A + device writes depend capability | Operator |
+| bulk sync selected employees to selected devices | Sinkronkan pegawai | Legacy/WDMS breadth supports multi-device operation | Implemented: Sinkronisasi preview + typed jobs (PR #85) | Physical verification required | Operator |
 
 ### D. Biometrik
 
@@ -200,9 +200,9 @@ These capabilities must **not** all remain hidden just because their internal im
 
 ### Backend foundation exists; product workflow still incomplete
 
-- fleet employee x device synchronization matrix;
-- one-click “sync differences” workflow;
-- user-friendly biometric enrollment/distribution workflow;
+The fleet employee × device synchronization matrix and the one-click "Sinkronkan yang belum sesuai" workflow were delivered in PR #85. Still open, each needing its own specification:
+
+- user-friendly biometric enrollment/distribution workflow beyond the employee-centric view (biometric gate stays OFF);
 - compatible-device biometric distribution;
 - capture/transfer profile management;
 - support diagnostic bundle;

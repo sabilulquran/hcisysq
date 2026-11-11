@@ -7,6 +7,7 @@ import { getAdmsManagementSummary, type AdmsManagementSummary } from "@/lib/adms
 
 const emptySummary: AdmsManagementSummary = {
   fleet: { total: 0, active: 0, disabled: 0, quarantined: 0, retired: 0 },
+  connectivity: { online: 0, offline: 0, unknown: 0 },
   detectedCount: 0,
   unmappedPinCount: 0,
   reviewRequiredCount: 0,
@@ -33,7 +34,12 @@ export function AdminAdmsBackOfficePage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const attention = summary.unmappedPinCount + summary.reviewRequiredCount + summary.failedJob24hCount + summary.detectedCount;
+  const attention = summary.unmappedPinCount
+    + summary.reviewRequiredCount
+    + summary.failedJob24hCount
+    + summary.detectedCount
+    + summary.connectivity.offline
+    + summary.connectivity.unknown;
 
   return (
     <AdminShell
@@ -56,7 +62,7 @@ export function AdminAdmsBackOfficePage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Total mesin", summary.fleet.total, Fingerprint, "/admin/attendance/devices"],
+          ["Mesin online", `${summary.connectivity.online}/${summary.fleet.active}`, Fingerprint, "/admin/attendance/adms/health"],
           ["PIN belum termap", summary.unmappedPinCount, Link2, "/admin/attendance/adms/users"],
           ["Perintah berjalan", summary.pendingJobCount, Workflow, "/admin/attendance/adms/jobs"],
           ["Perintah gagal 24 jam", summary.failedJob24hCount, HeartPulse, "/admin/attendance/adms/health"],
@@ -73,7 +79,21 @@ export function AdminAdmsBackOfficePage() {
 
       <section className="mt-5 grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
+          <h2 className="font-bold text-brand-heading">Koneksi mesin aktif</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Dihitung dari kapan mesin terakhir menghubungi HCIS.</p>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+            {[
+              ["Online", summary.connectivity.online],
+              ["Offline", summary.connectivity.offline],
+              ["Belum diketahui", summary.connectivity.unknown],
+            ].map(([label, value]) => <div key={String(label)} className="rounded-xl bg-surface p-3"><div className="text-xs text-muted-foreground">{String(label)}</div><div className="mt-1 text-xl font-bold text-brand-heading">{String(value)}</div></div>)}
+          </div>
+          {summary.connectivity.offline + summary.connectivity.unknown > 0 ? <a href="/admin/attendance/adms/health" className="mt-4 block rounded-xl border border-warning-line bg-warning-soft p-3 text-sm font-semibold text-warning-ink">{summary.connectivity.offline + summary.connectivity.unknown} mesin aktif tidak terhubung. Periksa listrik dan jaringan di lokasi mesin.</a> : null}
+        </article>
+
+        <article className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="font-bold text-brand-heading">Status armada</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Total {summary.fleet.total} mesin terdaftar.</p>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
             {[
               ["Aktif", summary.fleet.active],

@@ -123,7 +123,7 @@ Per employment, berlaku-efektif:
 - persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3);
 - target kualifikasi khusus (opsional);
 - kepesertaan BPJS Kesehatan: segmen (`PPU_YAYASAN`, `PBI`, `MANDIRI`, `BELUM_TERDAFTAR`), tanggal aktif, jumlah anggota keluarga tambahan, referensi SK (D2). Anggota tambahan **diturunkan**, tidak diketik: `anggota_tambahan = max(0, tanggungan_terdaftar − (pasangan + min(anak, 3)))`, sesuai batas penanggungan pasangan + 3 anak pada iuran 5%. Nilai manual hanya boleh sebagai override dengan alasan dan selisihnya ditampilkan saat review;
-- status PTKP, dan **pengecualian pelaporan PPh21** (`pph21_report_excluded` + alasan wajib, migration 0142; §5.3);
+- status PTKP, dan **pengecualian pelaporan PPh21** (`pph21_report_excluded` + alasan wajib, migration 0144; §5.3);
 - rekening bank dan nama pemilik rekening;
 - tugas tambahan Pj. Media (placement `ADDITIONAL`, EMP-005) dengan tarif per konten.
 
@@ -358,7 +358,7 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 | P4 | Kebijakan tidak tersedia | `409 PPH21_TER_POLICY_MISSING` bila tidak ada versi `PPH21_TER` yang berlaku pada tanggal gajian; `409 PPH21_TER_POLICY_INVALID` bila versi yang berlaku (mis. dimuat sebelum skema ini ada) tidak sesuai bentuk. Kebijakan ini bukan kunci wajib perhitungan: ketiadaannya tidak memblokir periode. |
 | P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan; perhitungan itu **di luar v1**. Baris diberi `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap ditampilkan sebagai angka sementara. |
 | P6 | Laporan saja | Laporan **tidak** menulis baris `PPH21_EMPLOYER` ke hasil perhitungan, agar angka parallel run tetap stabil. Baris biaya yayasan menyusul setelah tabel TER diverifikasi dan dimuat; saat itu `PPH21_TER` menjadi kunci yang dibaca perhitungan. |
-| P7 | Pengecualian per orang | Atribut profil kompensasi `pph21_report_excluded` dengan `pph21_report_exclusion_reason` wajib (CHECK basis data, migration 0142). Mengikuti aturan profil: tidak dikirim = dibawa dari profil berlaku; `false` menghapus alasan. Audit `payroll.profile.opened` mencatat `pph21_report_excluded` (penanda, bukan alasan). |
+| P7 | Pengecualian per orang | Atribut profil kompensasi `pph21_report_excluded` dengan `pph21_report_exclusion_reason` wajib (CHECK basis data, migration 0144). Mengikuti aturan profil: tidak dikirim = dibawa dari profil berlaku; `false` menghapus alasan. Audit `payroll.profile.opened` mencatat `pph21_report_excluded` (penanda, bukan alasan). |
 | P8 | Kolom ekspor | CSV UTF-8 dengan BOM dan CRLF: NIP, nama, status PTKP, kategori TER, penghasilan bruto, tarif (persen dengan koma desimal), PPh21, kode objek, catatan; nama berkas `pph21-ter-YYYY-MM.csv`. **Tanpa NIK/NPWP** — HCIS tidak menyimpannya untuk payroll; formulir DJP diisi dari lembar ini di luar HCIS. |
 
 **Privasi dan audit.** Setiap baca dan setiap ekspor dicatat `payroll.report.read` dengan `scope: pph21_report` atau `pph21_report_csv` dan jumlah baris, tanpa nominal. Respons `Cache-Control: no-store`.

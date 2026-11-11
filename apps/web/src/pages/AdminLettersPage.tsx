@@ -47,7 +47,7 @@ import type { AuthSession } from "@/types/hcis";
 
 type Tab = "register" | "settings" | "grants";
 const field = "mt-1 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-normal text-brand-heading";
-const panel = "rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]";
+const panel = "min-w-0 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]";
 const button = "min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50";
 const primary = "min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50";
 const EMPTY_PAGE: Pagination = { page: 1, pageSize: 25, total: 0, pageCount: 1 };

@@ -35,6 +35,23 @@ describe("EMP-012 employee cards in the admin menu", () => {
   });
 });
 
+describe("EMP-011 employee documents", () => {
+  it("lists Dokumen Pegawai only for an employee_documents.read holder, even with nothing else", () => {
+    const holder = renderToStaticMarkup(<AdminNavigation active="employee-documents" session={session("EMPLOYEE", ["employee_documents.read"])} />);
+    expect(holder).toContain('href="/admin/employee-documents"');
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employee_documents.read"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["employee_documents.read"]), "/admin/employee-documents")).toBe(true);
+  });
+
+  it("D-09: never through other HC permissions, a unit role or the legacy Super Admin", () => {
+    const neighbours = session("EMPLOYEE", [...hcAdmin, "employees.read.unit", "employment.read", "documents.read", "employee_cards.manage"]);
+    expect(canAccessAdminPath(neighbours, "/admin/employee-documents")).toBe(false);
+    expect(renderToStaticMarkup(<AdminNavigation active="overview" session={neighbours} />)).not.toContain('href="/admin/employee-documents"');
+    expect(canAccessAdminPath(session("SUPER_ADMIN", hcAdmin), "/admin/employee-documents")).toBe(false);
+    expect(canAccessAdminPath(session("FOUNDATION_BOARD", ["employee_documents.read"]), "/admin/employee-documents")).toBe(false);
+  });
+});
+
 describe("DOC-002-F document corrector", () => {
   const corrector = session("EMPLOYEE", ["documents.read", "documents.correct"]);
 

@@ -252,6 +252,16 @@ describe("EMP-007 access", () => {
     expect(render(<EmployeeDetailTabs active="ringkasan" canReadEmployment={false} onSelect={() => undefined} />)).toBe("");
   });
 
+  it("EMP-011 D-09: shows Dokumen only with employee_documents.read, never through the profile read", () => {
+    const profileOnly = render(<EmployeeDetailTabs active="ringkasan" canReadEmployment canReadProfile onSelect={() => undefined} />);
+    expect(profileOnly).not.toContain(">Dokumen<");
+    const documentsOnly = render(
+      <EmployeeDetailTabs active="dokumen" canReadEmployment={false} canReadDocuments onSelect={() => undefined} />,
+    );
+    expect(documentsOnly).toContain(">Dokumen<");
+    expect(documentsOnly).not.toContain("Pendidikan");
+  });
+
   it("gates the expiring-certificate worklist on employees.read.all", () => {
     const path = "/admin/employees/certificates/expiring";
     expect(canAccessAdminPath(session(["employees.read.all"]), path)).toBe(true);

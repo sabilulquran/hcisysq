@@ -136,7 +136,8 @@ Aturan:
 - inside radius dan accuracy tidak lebih buruk dari radius => `accepted`;
 - outside radius => evidence tetap disimpan, `needs_review`;
 - accuracy lebih besar dari radius => `uncertain_accuracy` + `needs_review`;
-- schedule tanpa work location => `unassigned_location` + `needs_review`;
+- work location = lokasi shift; bila shift tanpa lokasi, lokasi unit pegawai di struktur yang berlaku (ORG-005-3, DRAFT D-5-8, `docs/domain/organization-sites-work-locations.md` §4.3a); sumbernya dicatat sebagai `workLocationSource` (`shift`/`unit`);
+- tidak ada lokasi dari keduanya => `unassigned_location` + `needs_review`;
 - GPS/foto tidak pernah diubah untuk membuat check-in tampak valid.
 
 Outside-geofence tidak dibuang karena evidence tersebut penting untuk tugas lapangan/klarifikasi.

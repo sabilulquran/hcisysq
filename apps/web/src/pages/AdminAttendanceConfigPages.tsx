@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Pencil, Plus, Save, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, MapPin, Pencil, Plus, Save, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 
 import { AttendanceAdvancedNotice, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
@@ -13,6 +13,8 @@ import {
   updateAttendanceWorkLocation,
   type AttendanceScheduleAssignmentItem, shiftHoursText,
   type ShiftBlock,
+  unlocatedShifts,
+  type WorkLocationUsage,
 } from "@/lib/workforceAttendance";
 
 function Notice({ error, notice }: { error: string | null; notice: string | null }) {
@@ -31,6 +33,12 @@ function Notice({ error, notice }: { error: string | null; notice: string | null
     </>
   );
 }
+
+// ORG-005-3: how a mobile clock-in finds its place — the shift's location, else the employee's unit's.
+const LOCATIONS_HREF = "/admin/attendance/settings/locations";
+const SHIFTS_HREF = "/admin/attendance/shifts";
+const SHIFT_LOCATION_HELP = "Absen dari HP dicek terhadap titik dan radius lokasi ini. Bila dikosongkan, dipakai lokasi kerja unit pegawai di Struktur; bila unitnya juga belum punya lokasi, absen HP tetap tersimpan tetapi masuk antrean tinjau.";
+const NO_LOCATION_WARNING = "Belum ada lokasi — absen HP tidak dicek radius";
 
 /** The latest date "Mundurkan awal berlaku" accepts: strictly earlier than the current start. */
 function dayBefore(date: string) {
@@ -77,7 +85,8 @@ function scheduleChanges(item: ScheduleItem, form: ScheduleEditForm) {
 }
 
 export function AdminAttendanceLocationsPage() {
-  const [items, setItems] = useState<Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean }>>([]);
+  const [items, setItems] = useState<Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean; usage?: WorkLocationUsage }>>([]);
+  const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState({ name: "", latitude: "", longitude: "", radiusMeters: "150" });
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", latitude: "", longitude: "", radiusMeters: "150", active: true });
@@ -85,7 +94,7 @@ export function AdminAttendanceLocationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const load = async () => setItems((await listAttendanceWorkLocations()).items);
+  const load = async () => { setItems((await listAttendanceWorkLocations()).items); setLoaded(true); };
   useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Lokasi kerja tidak dapat dimuat.")); }, []);
 
   const run = async (action: () => Promise<unknown>, message: string) => {
@@ -100,6 +109,7 @@ export function AdminAttendanceLocationsPage() {
       <Notice error={error} notice={notice} />
       <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="font-bold text-brand-heading">Tambah lokasi</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">Satu lokasi untuk setiap tempat kerja, misalnya satu gedung sekolah. Titik diambil dari peta (klik kanan di Google Maps lalu salin koordinat). Radius 100–200 m biasanya cukup untuk satu gedung; dua sekolah dalam satu kompleks boleh dibuat sebagai dua lokasi dengan titik dan radius masing-masing.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <input className="h-11 rounded-xl border border-border px-3 text-sm" placeholder="Nama lokasi" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <input className="h-11 rounded-xl border border-border px-3 text-sm" type="number" step="any" placeholder="Latitude" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} />
@@ -123,10 +133,19 @@ export function AdminAttendanceLocationsPage() {
       </section>
 
       <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
-        <div className="border-b border-border/70 p-4"><h2 className="font-bold text-brand-heading">Daftar lokasi</h2></div>
+        <div className="border-b border-border/70 p-4">
+          <h2 className="font-bold text-brand-heading">Daftar lokasi</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Absen dari HP dicek terhadap lokasi shift pegawai. Shift tanpa lokasi memakai lokasi unit pegawai yang diatur di <a className="font-semibold text-brand-primary-deep underline" href="/admin/organization">Struktur</a>.</p>
+        </div>
+        {loaded && items.length === 0 ? (
+          <div className="flex gap-3 p-5 text-sm text-muted-foreground">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>Belum ada lokasi kerja. Tambahkan lokasi seperti gedung sekolah di atas, lalu pilih lokasinya pada <a className="font-semibold text-brand-primary-deep underline" href={SHIFTS_HREF}>Shift</a> supaya absen dari HP dicek radiusnya.</p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-[850px] w-full text-left text-sm">
-            <thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Nama</th><th className="p-3">Latitude</th><th className="p-3">Longitude</th><th className="p-3">Radius</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead>
+          <table className="min-w-[980px] w-full text-left text-sm">
+            <thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Nama</th><th className="p-3">Latitude</th><th className="p-3">Longitude</th><th className="p-3">Radius</th><th className="p-3">Dipakai oleh</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead>
             <tbody className="divide-y divide-border/70">
               {items.map((item) => editing === item.id ? (
                 <tr key={item.id}>
@@ -134,6 +153,7 @@ export function AdminAttendanceLocationsPage() {
                   <td className="p-3"><input className="h-9 w-36 rounded-lg border px-2" type="number" step="any" value={editForm.latitude} onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value })} /></td>
                   <td className="p-3"><input className="h-9 w-36 rounded-lg border px-2" type="number" step="any" value={editForm.longitude} onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value })} /></td>
                   <td className="p-3"><input className="h-9 w-24 rounded-lg border px-2" type="number" min="10" value={editForm.radiusMeters} onChange={(e) => setEditForm({ ...editForm, radiusMeters: e.target.value })} /></td>
+                  <td className="p-3"><LocationUsage usage={item.usage} active={item.active} /></td>
                   <td className="p-3"><label className="flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label></td>
                   <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => {
                     await updateAttendanceWorkLocation(item.id, {
@@ -144,15 +164,51 @@ export function AdminAttendanceLocationsPage() {
                 </tr>
               ) : (
                 <tr key={item.id}>
-                  <td className="p-3 font-semibold">{item.name}</td><td className="p-3 font-mono text-xs">{item.latitude}</td><td className="p-3 font-mono text-xs">{item.longitude}</td><td className="p-3">{item.radiusMeters} m</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td>
+                  <td className="p-3 font-semibold">{item.name}</td><td className="p-3 font-mono text-xs">{item.latitude}</td><td className="p-3 font-mono text-xs">{item.longitude}</td><td className="p-3">{item.radiusMeters} m</td><td className="p-3"><LocationUsage usage={item.usage} active={item.active} /></td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td>
                   <td className="p-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm({ name: item.name, latitude: String(item.latitude), longitude: String(item.longitude), radiusMeters: String(item.radiusMeters), active: item.active }); }}><Pencil className="h-3.5 w-3.5" /> Edit</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        )}
       </section>
     </AttendanceWorkforceShell>
+  );
+}
+
+/** ORG-005-3: the Shift screen banner with the count and the next step. */
+export function UnlocatedShiftsBanner({ count, hasLocations, onLocate }: { count: number; hasLocations: boolean; onLocate: () => void }) {
+  if (!count) return null;
+  return (
+    <div role="status" className="mb-4 flex flex-wrap items-start gap-3 rounded-2xl border border-warning-line bg-warning-soft p-4 text-sm text-warning-ink">
+      <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="min-w-[16rem] flex-1">
+        <span className="font-bold">{count} shift aktif belum punya lokasi kerja.</span>{" "}
+        Absen dari HP pegawai di shift ini tidak dicek radius, kecuali unitnya punya lokasi di Struktur; hasilnya masuk antrean tinjau.
+      </p>
+      {hasLocations ? (
+        <button type="button" className="h-9 rounded-lg bg-brand-primary px-3 text-xs font-bold text-brand-foreground" onClick={onLocate}>Atur lokasi</button>
+      ) : (
+        <a className="inline-flex h-9 items-center rounded-lg bg-brand-primary px-3 text-xs font-bold text-brand-foreground" href={LOCATIONS_HREF}>Tambah lokasi kerja</a>
+      )}
+    </div>
+  );
+}
+
+/** ORG-005-3: which shifts, how many units and machines use a location; a nudge when no shift does. */
+export function LocationUsage({ usage, active }: { usage: WorkLocationUsage | undefined; active: boolean }) {
+  if (!usage) return <span className="text-muted-foreground">—</span>;
+  const extra = [usage.unitCount ? `${usage.unitCount} unit` : null, usage.deviceCount ? `${usage.deviceCount} mesin` : null].filter(Boolean).join(" · ");
+  return (
+    <div className="grid gap-1 text-xs">
+      {usage.shifts.length ? (
+        <span><span className="font-semibold">{usage.shifts.length} shift:</span> {usage.shifts.map((shift) => shift.name).join(", ")}</span>
+      ) : active ? (
+        <a className="font-semibold text-brand-primary-deep underline" href={SHIFTS_HREF}>Belum dipakai shift — tautkan ke shift</a>
+      ) : <span className="text-muted-foreground">Tidak dipakai shift</span>}
+      {extra ? <span className="text-muted-foreground">{extra}</span> : null}
+    </div>
   );
 }
 
@@ -169,10 +225,18 @@ export function AdminAttendanceSchedulesPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<ScheduleEditForm>({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "0", earlyLeaveToleranceMinutes: "0", workLocationId: "", active: true, effectiveFrom: "" });
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
+  const [mobileOn, setMobileOn] = useState(false);
 
   const load = async () => {
     const [scheduleResult, locationResult] = await Promise.all([listAttendanceSchedules(), listAttendanceWorkLocations()]);
-    setItems(scheduleResult.items); setLocations(locationResult.items);
+    setItems(scheduleResult.items); setLocations(locationResult.items); setMobileOn(Boolean(scheduleResult.mobileAttendanceEnabled));
+  };
+  // ORG-005-3: an active shift without a location is worth a warning only while HP attendance is on.
+  const activeLocations = locations.filter((item) => item.active);
+  const unlocated = unlocatedShifts(items, mobileOn, new Set(locations.filter((item) => !item.active).map((item) => item.id)));
+  const startLocating = (item: ScheduleItem) => {
+    setEditing(item.id); setEditForm(scheduleEditForm(item));
+    window.setTimeout(() => document.getElementById(`shift-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   };
   useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Shift tidak dapat dimuat.")); }, []);
   const run = async (action: () => Promise<unknown>, message: string) => { setBusy(true); setError(null); setNotice(null); try { await action(); await load(); setNotice(message); } catch (cause) { setError(cause instanceof Error ? cause.message : "Shift gagal disimpan."); } finally { setBusy(false); } };
@@ -180,6 +244,7 @@ export function AdminAttendanceSchedulesPage() {
   return (
     <AttendanceWorkforceShell tab="shifts" title="Shift" description="Jam kerja, toleransi terlambat, toleransi pulang cepat, dan lokasi kerja. Shift yang melewati tengah malam selesai keesokan harinya.">
       <Notice error={error} notice={notice} />
+      <UnlocatedShiftsBanner count={unlocated.length} hasLocations={activeLocations.length > 0} onLocate={() => startLocating(unlocated[0]!)} />
       <section className="rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <h2 className="font-bold text-brand-heading">Tambah shift</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -189,10 +254,14 @@ export function AdminAttendanceSchedulesPage() {
           <select className="h-11 rounded-xl border px-3 text-sm" value={form.endDayOffset} onChange={(e) => setForm({ ...form, endDayOffset: e.target.value })}><option value="0">Selesai hari yang sama</option><option value="1">Selesai hari berikutnya (+1)</option></select>
           <input className="h-11 rounded-xl border px-3 text-sm" type="number" min="0" max="240" placeholder="Toleransi terlambat (menit)" aria-label="Toleransi terlambat (menit)" value={form.lateGraceMinutes} onChange={(e) => setForm({ ...form, lateGraceMinutes: e.target.value })} />
           <input className="h-11 rounded-xl border px-3 text-sm" type="number" min="0" max="240" placeholder="Toleransi pulang cepat (menit)" aria-label="Toleransi pulang cepat (menit)" value={form.earlyLeaveToleranceMinutes} onChange={(e) => setForm({ ...form, earlyLeaveToleranceMinutes: e.target.value })} />
-          <select className="h-11 rounded-xl border px-3 text-sm" value={form.workLocationId} onChange={(e) => setForm({ ...form, workLocationId: e.target.value })}><option value="">Tanpa lokasi</option>{locations.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <label className="text-xs font-semibold text-muted-foreground">Berlaku sejak
             <input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" max={todayJakarta()} value={form.effectiveFrom} onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })} />
           </label>
+        </div>
+        <div className="mt-3 rounded-xl border border-brand-primary/30 bg-surface p-3">
+          <label htmlFor="new-shift-location" className="flex items-center gap-2 text-sm font-bold text-brand-heading"><MapPin className="h-4 w-4" /> Lokasi kerja (untuk absen HP)</label>
+          <select id="new-shift-location" className="mt-2 h-11 w-full max-w-md rounded-xl border px-3 text-sm" value={form.workLocationId} onChange={(e) => setForm({ ...form, workLocationId: e.target.value })}><option value="">Tanpa lokasi (pakai lokasi unit)</option>{activeLocations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">{SHIFT_LOCATION_HELP}{activeLocations.length ? null : <> Belum ada lokasi kerja: <a className="font-semibold text-brand-primary-deep underline" href={LOCATIONS_HREF}>tambahkan di Lokasi kerja</a>.</>}</p>
         </div>
         <div className="mt-3 grid gap-2">
           {extraBlocks.map((block, index) => (
@@ -232,19 +301,25 @@ export function AdminAttendanceSchedulesPage() {
         <div className="border-b p-4"><h2 className="font-bold text-brand-heading">Daftar shift</h2></div>
         <div className="overflow-x-auto"><table className="min-w-[950px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Shift</th><th className="p-3">Jam</th><th className="p-3">Toleransi terlambat</th><th className="p-3">Toleransi pulang cepat</th><th className="p-3">Lokasi</th><th className="p-3">Berlaku sejak</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead><tbody className="divide-y">
           {items.map((item) => editing === item.id ? (
-            <tr key={item.id}>
+            <tr key={item.id} id={`shift-${item.id}`}>
               <td className="p-3"><input className="h-9 w-full rounded-lg border px-2" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></td>
               <td className="p-3"><div className="flex gap-1"><input className="h-9 rounded-lg border px-2" type="time" value={editForm.startTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} /><input className="h-9 rounded-lg border px-2" type="time" value={editForm.endTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} /></div></td>
               <td className="p-3"><div className="grid gap-1"><select className="h-9 rounded-lg border px-2 text-xs" value={editForm.endDayOffset} onChange={(e) => setEditForm({ ...editForm, endDayOffset: e.target.value })}><option value="0">Hari sama</option><option value="1">+1 hari</option></select><input className="h-9 w-20 rounded-lg border px-2" type="number" value={editForm.lateGraceMinutes} onChange={(e) => setEditForm({ ...editForm, lateGraceMinutes: e.target.value })} /></div></td>
               <td className="p-3"><input className="h-9 w-20 rounded-lg border px-2" type="number" value={editForm.earlyLeaveToleranceMinutes} onChange={(e) => setEditForm({ ...editForm, earlyLeaveToleranceMinutes: e.target.value })} /></td>
-              <td className="p-3"><select className="h-9 rounded-lg border px-2" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi</option>{locations.map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></td>
+              <td className="p-3"><label className="grid gap-1 text-xs font-semibold text-brand-heading">Lokasi kerja (absen HP)<select className="h-9 rounded-lg border border-brand-primary/40 px-2 text-sm font-normal" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi (pakai lokasi unit)</option>{locations.filter((loc) => loc.active || loc.id === editForm.workLocationId).map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><span className="mt-1 block max-w-[14rem] text-[11px] leading-4 text-muted-foreground">Berlaku mulai tanggal di kolom sebelah. Kosong = lokasi unit pegawai.</span></td>
               <td className="p-3 text-xs"><label className="grid gap-1">Berlaku mulai<input className="h-9 rounded-lg border px-2" type="date" min={todayJakarta()} value={editForm.effectiveFrom} onChange={(e) => setEditForm({ ...editForm, effectiveFrom: e.target.value })} /></label><span className="mt-1 block text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai; jadwal sebelum tanggal ini tidak berubah.</span></td>
               <td className="p-3"><label className="flex gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label></td>
               <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => { const changes = scheduleChanges(item, editForm); if (Object.keys(changes).length) await updateAttendanceSchedule(item.id, changes); setEditing(null); }, editForm.effectiveFrom > todayJakarta() && hoursChanged(item, editForm) ? `Shift diperbarui mulai ${editForm.effectiveFrom}.` : "Shift diperbarui.")}><Save className="h-4 w-4" /></button><button className="rounded-lg border p-2" onClick={() => setEditing(null)}><X className="h-4 w-4" /></button></div></td>
             </tr>
           ) : (
             <Fragment key={item.id}>
-            <tr><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{item.workLocationName ?? "—"}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
+            <tr id={`shift-${item.id}`}><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{unlocated.includes(item) ? (
+              <span className="grid gap-1">
+                {item.workLocationName ? <span className="text-muted-foreground line-through">{item.workLocationName}</span> : null}
+                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="h-3 w-3" /> {item.workLocationName ? "Lokasi nonaktif — absen HP tidak memakainya" : NO_LOCATION_WARNING}</span>
+                {activeLocations.length ? <button type="button" className="w-fit text-xs font-bold text-brand-primary-deep" onClick={() => startLocating(item)}>Atur lokasi</button> : null}
+              </span>
+            ) : (item.workLocationName ?? "—")}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
             {backdating?.id === item.id ? (
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">

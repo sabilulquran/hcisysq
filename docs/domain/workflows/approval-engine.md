@@ -218,7 +218,7 @@ approved/rejected/cancelled
   -> terminal
 ```
 
-A module may add documented domain-specific states.
+A module may add documented domain-specific states. Leave adds `postponement_proposed` and `postponed` (LEAVE-008, `../leave-postponement.md`): the active approver proposes other dates, and acceptance submits a new request with a new snapshot instead of editing the old one.
 
 ## Approval-step state
 
@@ -227,6 +227,7 @@ waiting
 pending -> approved
 pending -> rejected
 pending -> reassigned
+pending -> postponed      (leave only, LEAVE-008)
 waiting -> pending
 ```
 

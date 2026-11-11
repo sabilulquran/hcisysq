@@ -267,7 +267,7 @@ features:
     priority: post-attendance-simplification
     risk: medium
     planning_note: >-
-      Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds; metadata/reference register only, file attachment waits for an accepted employee-document storage boundary. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
+      Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds. Since 2026-11-11 each register document carries one current scanned file through the EMP-011 employee-document storage boundary (docs/domain/employee-documents.md D-01, D-16): attaching needs employment.manage, replacing the file of a locked document also employment.correct and a reason, reading employment.read, every read audited. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md
@@ -318,16 +318,27 @@ features:
       file_path, mime_type, issued_at, expires_at), EmployeeDocumentController and
       routes profile/documents (employee upload) and documents/* (HC, unit-scoped);
       rule NoExecutableFile guards uploads.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: high
     planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. HCIS keeps metadata only (EMP-007,
-      EMP-008, EMP-010) and says file upload waits for an employee-document storage
-      boundary, but no ID owned that boundary. Personal identity scans are sensitive data:
-      needs the ObjectStorage port, encryption at rest, purpose and retention rules, and
-      access audit before any upload is accepted.
+      Found by the 2026-11-02 legacy parity audit. Package 1 implemented 2026-11-11
+      (docs/domain/employee-documents.md). It owns the employee-document storage boundary
+      (D-01): AES-256-GCM encrypted files in the HCIS database behind the EmployeeFileStore
+      port, shared with the EMP-010 PK/SK attachments. HC uploads (verified at once), the
+      employee proposes uploads from Data Saya that one HC officer verifies or rejects, and HC
+      replaces, edits or erases files. PDF/JPEG/PNG up to 4 MB checked by content, PDFs with
+      visible active content refused, downloads always sandboxed attachments without the
+      original file name; numbers stored encrypted and shown masked. Readers: the owner and
+      employee_documents.read (HC Admin only), never managers or legacy Super Admin. Every file
+      read, HC archive and worklist read, and write is audited without numbers, names or file
+      content. HC worklist Dokumen Pegawai: expiring (30/60/90/180 days, past included) and
+      pending. DRAFT: 4 MB limit, type catalog, 5 open proposals, 5-year retention after the
+      employment ends, rejected/withdrawn content erased at once; automatic reminders and
+      retention purge TBD.
     docs:
+      - docs/domain/employee-documents.md
+      - docs/api/employee-documents.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: EMP-012
@@ -578,15 +589,21 @@ features:
       one proposed start or end date, sets the request to suspended; the employee accepts
       through leave/{leaveRequest}/accept-suspension (migrations
       add_suspension_columns_to_leave_approvals_table, allow_suspended_status_on_leave_requests).
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
-    planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. HCIS approvers can only approve or
-      reject, so a manager who wants "not that week, the next one" has to reject. Must keep
-      APR-001 snapshot-on-submit semantics: acceptance should create a new request or a
-      recorded amendment, not silently rewrite the approved dates or the balance.
+    notes: >-
+      Implemented 2026-11-11 (docs/domain/leave-postponement.md). The owner of the active line step
+      (or the ORG-013 board approver) can propose other dates with a note instead of approving or
+      rejecting; the request becomes postponement_proposed and holds no quota. The employee accepts,
+      which submits a replacement request with a fresh APR-001 snapshot from the first step (the
+      original becomes postponed and keeps its dates), or declines, which ends it cancelled. Unlike
+      legacy, nothing is rewritten in place. Migration adds the statuses, replaces_request_id and
+      leave_postponement_proposals. Owner-facing DRAFT defaults: both dates required, notice counted
+      from the original submission date, the whole chain decides again, HC cannot propose.
     docs:
+      - docs/domain/leave-postponement.md
+      - docs/api/leave.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
   - id: LEAVE-010

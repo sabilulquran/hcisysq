@@ -2229,6 +2229,48 @@
     "permissions": []
   },
   {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/approvals/:stepId/postponement/preview",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/approvals/:stepId/postpone",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE",
+      "FOUNDATION_BOARD"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/postponements/:proposalId/accept",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/leave/postponement-routes.ts",
+    "method": "POST",
+    "url": "/leave/me/postponements/:proposalId/decline",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
     "file": "apps/api/src/modules/leave/planned-evidence-routes.ts",
     "method": "POST",
     "url": "/leave/planned/me/requests/:requestId/evidence",
@@ -4751,5 +4793,133 @@
       "EMPLOYEE"
     ],
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/me/employee-documents",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/me/employee-documents",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/me/employee-documents/:documentId/file",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/me/employee-documents/:documentId/withdraw",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-documents/expiring",
+    "permissions": [
+      "employee_documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-documents/pending",
+    "permissions": [
+      "employee_documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-documents/employees/:employeeId",
+    "permissions": [
+      "employee_documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-documents/employees/:employeeId",
+    "permissions": [
+      "employee_documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/employee-documents/:documentId/file",
+    "permissions": [
+      "employee_documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "PATCH",
+    "url": "/admin/employee-documents/:documentId",
+    "permissions": [
+      "employee_documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-documents/:documentId/verify",
+    "permissions": [
+      "employee_documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-documents/:documentId/reject",
+    "permissions": [
+      "employee_documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employee-documents/routes.ts",
+    "method": "POST",
+    "url": "/admin/employee-documents/:documentId/remove",
+    "permissions": [
+      "employee_documents.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "GET",
+    "url": "/admin/decision-documents/:documentId/file",
+    "permissions": [
+      "employment.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/employment/decision-document-routes.ts",
+    "method": "PUT",
+    "url": "/admin/decision-documents/:documentId/file",
+    "permissions": [
+      "employment.manage"
+    ]
   }
 ]

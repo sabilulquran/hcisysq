@@ -46,6 +46,7 @@ export type AdminNavKey =
   | "decision-documents"
   | "documents"
   | "employee-cards"
+  | "employee-documents"
   | "organization"
   | "job-classifications"
   | "committees"
@@ -101,6 +102,8 @@ const navGroups: AdminNavGroup[] = [
       { key: "documents", label: "Dokumen Kepegawaian", href: "/admin/documents", icon: FileText },
       // EMP-012: shown only to employee_cards.manage holders (canAccessAdminPath).
       { key: "employee-cards", label: "Kartu Pegawai", href: "/admin/employee-cards", icon: IdCard },
+      // EMP-011: shown only to employee_documents.read holders (canAccessAdminPath).
+      { key: "employee-documents", label: "Dokumen Pegawai", href: "/admin/employee-documents", icon: FileText },
     ],
   },
   {

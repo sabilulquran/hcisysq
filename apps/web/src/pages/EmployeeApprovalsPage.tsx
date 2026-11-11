@@ -9,6 +9,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { ArrangementApprovalsSection } from "@/components/arrangements/ArrangementApprovalsSection";
+import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -58,6 +59,7 @@ export function EmployeeApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [trips, setTrips] = useState<TripApprovalItem[]>([]);
   const [tripPaging, setTripPaging] = useState<Pagination | null>(null);
   const [tripPage, setTripPage] = useState(1);
@@ -169,6 +171,7 @@ export function EmployeeApprovalsPage() {
         : null;
     setActing(item.stepId);
     setError(null);
+    setNotice(null);
     try {
       await decideLeaveApproval(item.stepId, {
         decision,
@@ -203,6 +206,11 @@ export function EmployeeApprovalsPage() {
       {error ? (
         <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">
           {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="mt-5 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink" role="status">
+          {notice}
         </div>
       ) : null}
 
@@ -242,7 +250,21 @@ export function EmployeeApprovalsPage() {
                       {item.sources.includes("UNIT_APPROVER") ? "Approver unit" : ""}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
+                    <ProposeAlternativeDates
+                      stepId={item.stepId}
+                      disabled={acting === item.stepId}
+                      onDone={(outcome) => {
+                        if (outcome.ok) {
+                          setError(null);
+                          setNotice(outcome.message);
+                        } else {
+                          setNotice(null);
+                          setError(outcome.message);
+                        }
+                        void load();
+                      }}
+                    />
                     <button
                       type="button"
                       disabled={acting === item.stepId}

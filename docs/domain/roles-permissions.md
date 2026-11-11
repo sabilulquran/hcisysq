@@ -127,6 +127,10 @@ Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Sel
 
 Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).
 
+### Penangguhan cuti (LEAVE-008)
+
+Tidak ada permission baru (`docs/domain/leave-postponement.md` §6). Mengusulkan tanggal lain memakai kepemilikan tahap persetujuan yang sama dengan setujui/tolak (termasuk `leave.governance.approve` untuk akun pengurus ORG-013); menerima dan menolak usulan adalah kepemilikan pengajuan oleh pegawai.
+
 ### Masa kritis cuti (LEAVE-009)
 
 Tidak ada permission baru (`docs/domain/leave-critical-periods.md` §6, D-07 DRAFT).
@@ -166,6 +170,17 @@ Migration `0133_employee_card_permissions.sql`, berscope organisasi (`docs/domai
 | `employee_cards.manage` | HC Admin (`human_capital_admin`) | mengunggah pas foto, menerbitkan, menerbitkan ulang, mencabut, mencetak kartu; mengatur penanda tangan dan masa berlaku; membaca riwayat |
 
 Melihat kartu sendiri dan melaporkannya hilang tidak membutuhkan permission (sesi `EMPLOYEE` yang terhubung ke pegawai). Halaman cek keaslian `/public/employee-cards/*` tanpa sesi dan dibatasi lajunya. Super Admin tidak memperoleh `employee_cards.manage` lewat kompatibilitas legacy.
+
+### Arsip Dokumen Pegawai (EMP-011)
+
+Migration `0143_employee_document_permissions.sql`, berscope organisasi (`docs/domain/employee-documents.md` §6, D-08–D-10).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `employee_documents.read` | HC Admin (`human_capital_admin`) | membaca arsip dokumen seorang pegawai, mengunduh berkas, membaca daftar kerja akan berakhir dan menunggu verifikasi; setiap pembacaan diaudit |
+| `employee_documents.manage` | HC Admin (`human_capital_admin`) | mengunggah, memverifikasi, menolak, mengganti, menghapus isi berkas, dan mengubah metadata |
+
+Melihat, mengunduh, mengusulkan, dan menarik dokumen sendiri tidak membutuhkan permission (sesi `EMPLOYEE` yang terhubung ke pegawai). Tidak ada role bercakupan unit yang membawanya, sehingga atasan tidak membaca dokumen bawahan; `employees.read.all` juga tidak membukanya. Super Admin tidak memperolehnya lewat kompatibilitas legacy. Berkas Perjanjian Kerja/SK (EMP-010) memakai `employment.read`/`employment.manage`, dan mengganti berkas dokumen terkunci butuh juga `employment.correct`.
 
 ### Kepanitiaan (ORG-012)
 

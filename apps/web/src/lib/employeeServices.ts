@@ -122,8 +122,8 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   },
   {
     key: "profile-change", label: "Data Saya",
-    description: "Lihat dan ajukan perubahan data pegawai secara terkontrol.",
-    featureIds: ["EMP-003"], stage: "available", category: "employee-services", href: "/app/my-data",
+    description: "Lihat dan ajukan perubahan data pegawai serta simpan dokumen pribadi secara terkontrol.",
+    featureIds: ["EMP-003", "EMP-011"], stage: "available", category: "employee-services", href: "/app/my-data",
   },
   {
     key: "documents", label: "Dokumen",

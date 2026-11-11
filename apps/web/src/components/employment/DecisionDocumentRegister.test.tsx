@@ -69,6 +69,7 @@ const lockedDetail: DecisionDocumentDetail = {
     reason: "Nomor pada arsip berbeda",
     correctedAt: "2027-07-05T02:00:00.000Z",
   }],
+  file: null,
 };
 
 function session(permissions: string[], principalType: PrincipalType = "EMPLOYEE"): AuthSession {
@@ -170,6 +171,7 @@ describe("EMP-010 document detail", () => {
     employeeHref: (employeeId: string) => `/admin/employees/${employeeId}`,
     onClose: () => undefined,
     onEdit: () => undefined,
+    onFileChanged: () => undefined,
   };
 
   it("marks a linked document as locked and lists the actions using it", () => {
@@ -196,6 +198,21 @@ describe("EMP-010 document detail", () => {
     );
     expect(html).toContain("Ubah");
     expect(html).toContain("Belum dipakai pada tindakan kepegawaian mana pun.");
+  });
+
+  it("EMP-011 D-16: offers the scan for download and a replacement only to who may make it", () => {
+    const withFile = { ...lockedDetail, file: { contentType: "application/pdf", byteSize: 204_800, uploadedAt: "2027-07-02T02:00:00.000Z" } };
+    const corrector = render(<DocumentDetail document={withFile} canManage canCorrect {...detailProps} />);
+    expect(corrector).toContain(`/api/admin/decision-documents/${withFile.id}/file`);
+    expect(corrector).toContain("Ganti berkas");
+    expect(corrector).toContain("Alasan penggantian");
+    // A locked document's file is replaced only through a correction (employment.correct).
+    const manager = render(<DocumentDetail document={withFile} canManage canCorrect={false} {...detailProps} />);
+    expect(manager).toContain("Unduh");
+    expect(manager).not.toContain("Ganti berkas");
+    const empty = render(<DocumentDetail document={{ ...lockedDetail, file: null }} canManage canCorrect={false} {...detailProps} />);
+    expect(empty).toContain("Belum ada pindaian dokumen.");
+    expect(empty).toContain("Lampirkan berkas");
   });
 });
 

@@ -350,7 +350,8 @@ paths:
       description: |
         Requires employment.manage. Replacing the file of a document already linked to an action
         also requires employment.correct (403 otherwise) and a reason (400 otherwise). The previous
-        file stays stored as history. PDF/JPEG/PNG, at most 4 MB, checked by file signature, PDFs with
+        file stays stored as history; a locked document's replacement is also stored as a correction
+        record with its reason (EMP-010 D-09). PDF/JPEG/PNG, at most 4 MB, checked by file signature, PDFs with
         visible active content refused (EMP-011 D-02, D-07). Audited as
         employment.document.file_attached or employment.document.file_replaced.
       parameters: [{ $ref: '#/components/parameters/DocumentId' }]

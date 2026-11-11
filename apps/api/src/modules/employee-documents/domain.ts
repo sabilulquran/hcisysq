@@ -38,6 +38,8 @@ export const MAX_FILE_BASE64_LENGTH = Math.ceil(MAX_FILE_BYTES / 3) * 4;
 export const UPLOAD_BODY_LIMIT = 6_000_000;
 /** D-06: open proposals per employee. */
 export const MAX_PENDING_PER_EMPLOYEE = 5;
+/** D-06: proposals per employee in any 24 hours, withdrawn and rejected ones included. */
+export const MAX_PROPOSALS_PER_DAY = 10;
 export const WORKLIST_WINDOWS = [30, 60, 90, 180] as const;
 
 export class EmployeeDocumentError extends Error {
@@ -52,8 +54,14 @@ const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 /**
  * D-07: markers of active content a PDF reader may act on. A best-effort guard: markers inside a
  * compressed object stream are invisible here, which is why every file is served as a download.
+ * /OpenAction is left out on purpose: scanners write it to open on page one.
  */
-const PDF_ACTIVE_CONTENT = /\/(?:JavaScript|JS|Launch|EmbeddedFile|RichMedia|XFA)(?![A-Za-z0-9])/;
+const PDF_ACTIVE_CONTENT = /\/(?:JavaScript|JS|Launch|EmbeddedFile|EmbeddedFiles|RichMedia|XFA|AA|SubmitForm|ImportData)(?![A-Za-z0-9])/;
+
+/** PDF names may spell any byte as #xx (`/J#61vaScript`); readers decode it, so the check must too. */
+function decodePdfNames(text: string): string {
+  return text.replace(/\/[^\s/<>[\]()%{}]*/g, (name) => name.replace(/#([0-9A-Fa-f]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16))));
+}
 
 /** D-02, D-07: decodes the upload and checks size, file signature and visible active content. */
 export function decodeDocumentFile(contentType: FileContentType, contentBase64: string): Buffer {
@@ -74,7 +82,7 @@ export function decodeDocumentFile(contentType: FileContentType, contentBase64: 
   if (!signatureOk) {
     throw new EmployeeDocumentError(400, "EMPLOYEE_DOCUMENT_FILE_INVALID", "Tipe berkas tidak sesuai dengan isinya. Unggah PDF, JPG, atau PNG.");
   }
-  if (contentType === "application/pdf" && PDF_ACTIVE_CONTENT.test(bytes.toString("latin1"))) {
+  if (contentType === "application/pdf" && PDF_ACTIVE_CONTENT.test(decodePdfNames(bytes.toString("latin1")))) {
     throw new EmployeeDocumentError(
       400, "EMPLOYEE_DOCUMENT_FILE_ACTIVE_CONTENT",
       "PDF ini memuat skrip atau lampiran tersemat. Cetak ulang sebagai PDF biasa atau unggah hasil pindaian.",

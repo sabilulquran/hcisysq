@@ -58,6 +58,15 @@ describe("EMP-011 rules", () => {
       expect(() => decodeDocumentFile("application/pdf", b64(pdf)), marker)
         .toThrow(expect.objectContaining({ code: "EMPLOYEE_DOCUMENT_FILE_ACTIVE_CONTENT", statusCode: 400 }));
     }
+    // Readers decode #xx in names, so the check does too.
+    for (const escaped of ["/J#61vaScript", "/J#53", "/L#61unch"]) {
+      const pdf = Buffer.from(`%PDF-1.7
+<< /S ${escaped} (x) >>`);
+      expect(() => decodeDocumentFile("application/pdf", b64(pdf)), escaped)
+        .toThrow(expect.objectContaining({ code: "EMPLOYEE_DOCUMENT_FILE_ACTIVE_CONTENT" }));
+    }
+    // Scanners write /OpenAction to open on page one; that alone is not refused.
+    expect(decodeDocumentFile("application/pdf", b64(Buffer.from("%PDF-1.7 /OpenAction [3 0 R /Fit]")))).toBeTruthy();
     // A name that merely starts with JS is not active content.
     expect(decodeDocumentFile("application/pdf", b64(Buffer.from("%PDF-1.7 /JSONData")))).toBeTruthy();
   });

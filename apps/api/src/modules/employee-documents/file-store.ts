@@ -116,7 +116,9 @@ export class PostgresEmployeeFileStore implements EmployeeFileStore {
   async purge(db: Db, owner: FileOwner) {
     await db.query(
       `UPDATE employee_document_files file
-          SET ciphertext = NULL, iv = NULL, auth_tag = NULL, purged_at = now()
+          SET ciphertext = NULL, iv = NULL, auth_tag = NULL, purged_at = now(),
+              -- An unkeyed hash of the plaintext would still confirm a known scan; drop it too.
+              sha256 = repeat('0', 64)
         WHERE ${OWNER_SQL} AND file.purged_at IS NULL`,
       ownerValues(owner),
     );

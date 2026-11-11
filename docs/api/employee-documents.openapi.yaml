@@ -73,6 +73,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '413': { $ref: '#/components/responses/Error' }
+        '429':
+          description: EMPLOYEE_DOCUMENT_RATE_LIMITED — 10 employee uploads in the last 24 hours (D-06)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /me/employee-documents/{documentId}/file:
     get:
       tags: [Employee Documents]

@@ -346,6 +346,15 @@ export async function registerDecisionDocumentRoutes(
       } else {
         if (current) await files.markReplaced(client, owner);
         const stored = await files.put(client, owner, { contentType: body.data.contentType, bytes }, principal.id);
+        // EMP-010 D-09: replacing a locked document's file is a correction; its reason is kept there.
+        if (current && existing.locked && body.data.reason) {
+          await insertDecisionDocumentCorrection(client, {
+            documentId: existing.id,
+            previousValues: { fileId: current.id, fileContentType: current.contentType, fileByteSize: current.byteSize },
+            reason: body.data.reason,
+            actorAccountId: principal.id,
+          });
+        }
         await audit(client, {
           actorAccountId: principal.id,
           action: current ? "employment.document.file_replaced" : "employment.document.file_attached",

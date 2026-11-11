@@ -475,7 +475,8 @@ describe("EMP-011 D-16 register document files", () => {
     expect(noReason.writes).toEqual([]);
     const corrected = await put("hc_corrector", { hasFile: true, linkedActionCount: 1 }, { ...PDF, reason: "Pindaian lama terpotong" });
     expect(corrected.response.statusCode).toBe(200);
-    expect(corrected.writes).toEqual(["REPLACE file", "INSERT file", "INSERT audit"]);
+    // EMP-010 D-09: the reason is kept in the correction record, not only counted in the audit.
+    expect(corrected.writes).toEqual(["REPLACE file", "INSERT file", "INSERT correction", "INSERT audit"]);
   });
 
   it("is unavailable while the rollout mode is OFF", async () => {

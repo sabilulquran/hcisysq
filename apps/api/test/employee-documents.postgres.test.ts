@@ -202,8 +202,8 @@ describe.skipIf(!allowed)("EMP-011 employee documents", () => {
     const rejected = await call("POST", `/admin/employee-documents/${id}/reject`, { reason: "Pindaian buram, mohon unggah ulang" });
     expect(rejected.statusCode).toBe(200);
     expect(rejected.json()).toMatchObject({ status: "REJECTED", file: { purged: true } });
-    const row = await client.query(`SELECT ciphertext, purged_at FROM employee_document_files WHERE employee_document_id = $1`, [id]);
-    expect(row.rows[0]).toMatchObject({ ciphertext: null });
+    const row = await client.query(`SELECT ciphertext, iv, auth_tag, sha256, purged_at FROM employee_document_files WHERE employee_document_id = $1`, [id]);
+    expect(row.rows[0]).toMatchObject({ ciphertext: null, iv: null, auth_tag: null, sha256: "0".repeat(64) });
     expect(row.rows[0].purged_at).not.toBeNull();
     expect((await call("GET", `/admin/employee-documents/${id}/file`)).statusCode).toBe(410);
     expect((await call("POST", `/admin/employee-documents/${id}/verify`)).json().code).toBe("EMPLOYEE_DOCUMENT_INVALID_TRANSITION");
@@ -282,6 +282,17 @@ describe.skipIf(!allowed)("EMP-011 employee documents", () => {
     const sixth = await call("POST", "/me/employee-documents", { documentType: "SERTIFIKAT", file: file(PDF) });
     expect(sixth.statusCode).toBe(409);
     expect(sixth.json().code).toBe("EMPLOYEE_DOCUMENT_PENDING_LIMIT");
+    // Withdrawing and re-uploading does not escape the daily limit (10 per 24 hours).
+    const mine = (await call("GET", "/me/employee-documents")).json().items as Array<{ id: string }>;
+    for (const document of mine) await call("POST", `/me/employee-documents/${document.id}/withdraw`);
+    for (let index = 0; index < 5; index += 1) {
+      const next = await call("POST", "/me/employee-documents", { documentType: "SERTIFIKAT", file: file(PDF) });
+      expect(next.statusCode).toBe(201);
+      await call("POST", `/me/employee-documents/${next.json().id}/withdraw`);
+    }
+    const eleventh = await call("POST", "/me/employee-documents", { documentType: "SERTIFIKAT", file: file(PDF) });
+    expect(eleventh.statusCode).toBe(429);
+    expect(eleventh.json().code).toBe("EMPLOYEE_DOCUMENT_RATE_LIMITED");
 
     await client.query(`UPDATE employees SET management_scope = 'OUTSIDE_HCIS', management_scope_reason = 'BUMY',
               management_scope_marked_at = now(), management_scope_marked_by_account_id = $2,

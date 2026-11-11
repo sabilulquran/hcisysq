@@ -33,6 +33,7 @@ import {
   EmployeeDocumentError,
   FILE_CONTENT_TYPES,
   MAX_PENDING_PER_EMPLOYEE,
+  MAX_PROPOSALS_PER_DAY,
   numberLast4,
   UPLOAD_BODY_LIMIT,
   validateMetadata,
@@ -245,8 +246,8 @@ export async function registerEmployeeDocumentRoutes(
 
   /** The employee behind an EMPLOYEE session; null when the account is not linked. */
   async function selfEmployee(db: Db, accountId: string) {
-    const found = await db.query<{ id: string; managementScope: string }>(
-      `SELECT employee.id, employee.management_scope AS "managementScope"
+    const found = await db.query<{ id: string; managementScope: string; active: boolean }>(
+      `SELECT employee.id, employee.management_scope AS "managementScope", employee.status = 'active' AS active
          FROM accounts account
          JOIN employees employee ON employee.id = account.employee_id
         WHERE account.id = $1 AND account.principal_type = 'EMPLOYEE' AND account.status = 'active'
@@ -320,6 +321,32 @@ export async function registerEmployeeDocumentRoutes(
       eventType: "employee_document.replaced", employeeId: input.employeeId, documentId: input.oldId,
       actorAccountId: input.actorAccountId, metadata: { documentType: input.documentType, replacedBy: input.newId },
     });
+  }
+
+  /**
+   * D-06: the open-proposal limit and the daily proposal limit. Checked once before the upload is
+   * decoded (cheap refusal, no connection held) and again under the employee lock.
+   */
+  async function assertProposalAllowed(db: Db, employeeId: string) {
+    const counts = await db.query<{ pending: number; recent: number }>(
+      `SELECT count(*) FILTER (WHERE status = 'PENDING_REVIEW')::int AS pending,
+              count(*) FILTER (WHERE created_at > now() - interval '24 hours')::int AS recent
+         FROM employee_documents WHERE employee_id = $1 AND source = 'EMPLOYEE'`,
+      [employeeId],
+    );
+    const { pending = 0, recent = 0 } = counts.rows[0] ?? {};
+    if (pending >= MAX_PENDING_PER_EMPLOYEE) {
+      throw new EmployeeDocumentError(
+        409, "EMPLOYEE_DOCUMENT_PENDING_LIMIT",
+        `Masih ada ${MAX_PENDING_PER_EMPLOYEE} usulan yang menunggu verifikasi HC. Tunggu keputusan HC atau tarik salah satunya.`,
+      );
+    }
+    if (recent >= MAX_PROPOSALS_PER_DAY) {
+      throw new EmployeeDocumentError(
+        429, "EMPLOYEE_DOCUMENT_RATE_LIMITED",
+        `Paling banyak ${MAX_PROPOSALS_PER_DAY} unggahan dalam 24 jam. Coba lagi besok.`,
+      );
+    }
   }
 
   /** Shared by the HC upload and the employee proposal (§5.1). */
@@ -412,7 +439,7 @@ export async function registerEmployeeDocumentRoutes(
       items: rows.map((row) => present(row, today, "SELF")),
       pagination: pagination(query.data, total),
       types: TYPE_CATALOG,
-      canPropose: self.managementScope !== "OUTSIDE_HCIS",
+      canPropose: self.managementScope !== "OUTSIDE_HCIS" && self.active,
       maxPending: MAX_PENDING_PER_EMPLOYEE,
     });
   });
@@ -424,24 +451,19 @@ export async function registerEmployeeDocumentRoutes(
     if (!body.success) return send(reply, 400, { code: "EMPLOYEE_DOCUMENT_INVALID", message: "Data dokumen tidak lengkap atau tidak valid." });
     let bytes: Buffer;
     try {
+      const self = await selfEmployee(pool, principal.id);
+      if (!self || !self.active) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Akun tidak terhubung ke data pegawai aktif.");
+      if (self.managementScope === "OUTSIDE_HCIS") throw outside();
+      await assertProposalAllowed(pool, self.id);
       bytes = decodeDocumentFile(body.data.file.contentType, body.data.file.contentBase64);
     } catch (error) {
       return handleError(reply, error);
     }
     return inTransaction(reply, 201, async (client) => {
       const self = await selfEmployee(client, principal.id);
-      if (!self) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Akun tidak terhubung ke data pegawai.");
+      if (!self || !self.active) throw new EmployeeDocumentError(404, "EMPLOYEE_NOT_FOUND", "Akun tidak terhubung ke data pegawai aktif.");
       await lockManagedEmployee(client, self.id);
-      const pending = await client.query<{ count: number }>(
-        `SELECT count(*)::int AS count FROM employee_documents WHERE employee_id = $1 AND status = 'PENDING_REVIEW'`,
-        [self.id],
-      );
-      if ((pending.rows[0]?.count ?? 0) >= MAX_PENDING_PER_EMPLOYEE) {
-        throw new EmployeeDocumentError(
-          409, "EMPLOYEE_DOCUMENT_PENDING_LIMIT",
-          `Masih ada ${MAX_PENDING_PER_EMPLOYEE} usulan yang menunggu verifikasi HC. Tunggu keputusan HC atau tarik salah satunya.`,
-        );
-      }
+      await assertProposalAllowed(client, self.id);
       return createDocument(client, {
         employeeId: self.id, actorAccountId: principal.id, source: "EMPLOYEE", bytes, body: { ...body.data, notes: null },
       });

@@ -94,6 +94,8 @@ import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
 import { EmployeeCardPage } from "@/pages/EmployeeCardPage";
 import { PublicCardCheckPage } from "@/pages/PublicCardCheckPage";
 import { EmployeeCommitteesPage } from "@/pages/EmployeeCommitteesPage";
+import { EmployeeLettersPage } from "@/pages/EmployeeLettersPage";
+import { AdminLettersPage } from "@/pages/AdminLettersPage";
 import { EmployeeCalendarPage } from "@/pages/EmployeeCalendarPage";
 import { EmployeeNotificationsPage } from "@/pages/EmployeeNotificationsPage";
 import { EmployeeShiftSwapPage } from "@/pages/EmployeeShiftSwapPage";
@@ -227,6 +229,13 @@ const employeeDocumentsRoute = createRoute({
   path: "/app/documents",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeDocumentsPage,
+});
+
+const employeeLettersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/letters",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeLettersPage,
 });
 
 const employeeWorkArrangementsRoute = createRoute({
@@ -758,6 +767,13 @@ const adminDocumentsRoute = createRoute({
   component: AdminDocumentsPage,
 });
 
+const adminLettersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/letters",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/letters"),
+  component: AdminLettersPage,
+});
+
 const adminWorkArrangementsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/arrangements",
@@ -883,6 +899,7 @@ const routeTree = rootRoute.addChildren([
   employeeTeamOvertimeRoute,
   employeeNotificationsRoute,
   employeeDocumentsRoute,
+  employeeLettersRoute,
   employeeTripsRoute,
   employeeWorkArrangementsRoute,
   employeePerformanceRoute,
@@ -957,6 +974,7 @@ const routeTree = rootRoute.addChildren([
   adminPayrollPeriodRoute,
   adminPayslipsRoute,
   adminDocumentsRoute,
+  adminLettersRoute,
   adminTripsRoute,
   adminWorkArrangementsRoute,
   adminPerformanceRoute,

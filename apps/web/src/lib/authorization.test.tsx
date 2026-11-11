@@ -161,6 +161,11 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(actor, "/admin/documents")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["documents.read"]), "/admin/documents")).toBe(true);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/documents")).toBe(false);
+    // DOC-003 D-11: the letter book reuses documents.read; Super Admin compatibility never carries it.
+    expect(canAccessAdminPath(actor, "/admin/letters")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["documents.read"]), "/admin/letters")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["documents.manage"]), "/admin/letters")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/letters")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["announcements.read"]), "/admin/announcements")).toBe(true);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/announcements")).toBe(false);
     expect(canAccessAdminPath(actor, "/admin/trips")).toBe(false);

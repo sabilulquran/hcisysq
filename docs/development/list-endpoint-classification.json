@@ -1251,6 +1251,52 @@
       "url": "/trips/me/:id",
       "list": "single",
       "reason": "Satu perjalanan dinas milik pegawai beserta tahap approval dan riwayatnya."
+    },
+    {
+      "url": "/letters/me/options",
+      "list": "bounded",
+      "reason": "DOC-003: penerbit yang hak ambil nomornya dipegang pegawai itu (biasanya satu atau dua) dan katalog jenis surat yang dikelola HC."
+    },
+    {
+      "url": "/letters/me/numbers",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/letters/register",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/letters/register/export",
+      "list": "export",
+      "reason": "DOC-003 §5.4: CSV lengkap sesuai filter; di atas 20.000 baris ditolak 422 dengan pesan persempit filter (ENG-LIST-001-H)."
+    },
+    {
+      "url": "/admin/letters/types",
+      "list": "bounded",
+      "reason": "DOC-003 D-16: katalog jenis surat yang dikelola HC, puluhan baris paling banyak."
+    },
+    {
+      "url": "/admin/letters/issuers",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/letters/issuer-targets",
+      "list": "typeahead",
+      "reason": "DOC-003 §5.5: pencarian unit atau panitia untuk penerbit baru, minimal 2 huruf, maksimal 20 hasil."
+    },
+    {
+      "url": "/admin/letters/grants",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/letters/employee-options",
+      "list": "typeahead",
+      "reason": "DOC-003 §5.5: pencarian pegawai aktif untuk hak ambil nomor, minimal 2 huruf, maksimal 20 hasil."
+    },
+    {
+      "url": "/admin/letters/counters",
+      "list": "single",
+      "reason": "Satu penghitung untuk penerbit, jenis, dan periode."
     }
   ]
 }

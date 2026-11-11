@@ -237,6 +237,21 @@ export const adminServices: AdminServiceDefinition[] = [
     href: "/admin/documents",
   },
   {
+    key: "letters",
+    label: "Buku Nomor Surat",
+    description: "Buku nomor surat keluar yayasan: jenis, penerbit, hak ambil nomor, register, dan ekspor.",
+    featureIds: ["DOC-003"],
+    stage: "available",
+    category: "employee-services",
+    href: "/admin/letters",
+    accessRoles: ["HC Admin"],
+    details: [
+      "Nomor tanpa celah per penerbit, jenis, dan periode; nomor batal tetap tercatat",
+      "Pegawai yang diberi akses mengambil nomor sendiri dari layanan Nomor Surat",
+      "Register memuat juga surat yang diterbitkan HCIS, tanpa mengubah nomornya",
+    ],
+  },
+  {
     key: "communications",
     label: "Pengumuman & Notifikasi",
     description: "Kelola pengumuman, reminder, dan delivery notifikasi.",

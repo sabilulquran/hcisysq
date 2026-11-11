@@ -58,6 +58,7 @@ import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerNotificationRoutes } from "./modules/notifications/routes.js";
 import { registerAnnouncementRoutes } from "./modules/announcements/routes.js";
 import { registerJobClassificationRoutes } from "./modules/organization/job-classification-routes.js";
+import { registerLetterRoutes } from "./modules/documents/letter-routes.js";
 import { registerDocumentRoutes } from "./modules/documents/routes.js";
 import { registerEmployeeAssetRoutes } from "./modules/employee-assets/routes.js";
 import { registerReportRoutes } from "./modules/reports/routes.js";
@@ -224,6 +225,8 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAnnouncementRoutes(app, pool, config);
   await registerJobClassificationRoutes(app, pool, config);
   await registerDocumentRoutes(app, pool, config);
+  // DOC-003: outgoing letter numbering register (docs/domain/outgoing-letter-register.md).
+  await registerLetterRoutes(app, pool, config);
   await registerTripRoutes(app, pool, config);
   await registerPerformanceRoutes(app, pool, config);
   await registerLoanRoutes(app, pool, config);

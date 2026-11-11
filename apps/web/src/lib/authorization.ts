@@ -136,6 +136,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/payslips") return hasPermission(session, "payslips.import");
   // DOC-001/DOC-002: HC-only; Super Admin legacy compatibility never carries documents.*.
   if (path === "/admin/documents") return hasPermission(session, "documents.read");
+  // DOC-003 D-11: the letter book reuses documents.read; settings need documents.manage (API-checked).
+  if (path === "/admin/letters") return hasPermission(session, "documents.read");
   // NOTIF-002: HC-only; Super Admin legacy compatibility never carries announcements.*.
   if (path === "/admin/announcements") return hasPermission(session, "announcements.read");
   // TRIP-001: HC-only; Super Admin legacy compatibility never carries trips.*.

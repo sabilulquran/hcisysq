@@ -14,6 +14,7 @@ import {
   FileText,
   Flag,
   Grid2X2,
+  Hash,
   History,
   Fingerprint,
   IdCard,
@@ -45,6 +46,7 @@ export type AdminNavKey =
   | "data-changes"
   | "decision-documents"
   | "documents"
+  | "letters"
   | "employee-cards"
   | "employee-documents"
   | "organization"
@@ -100,6 +102,8 @@ const navGroups: AdminNavGroup[] = [
       { key: "data-changes", label: "Usulan Perubahan Data", href: "/admin/employees/data-changes", icon: FileSignature },
       { key: "decision-documents", label: "Perjanjian Kerja & SK", href: "/admin/decision-documents", icon: FileSignature },
       { key: "documents", label: "Dokumen Kepegawaian", href: "/admin/documents", icon: FileText },
+      // DOC-003: the yayasan outgoing letter book; documents.read opens it.
+      { key: "letters", label: "Buku Nomor Surat", href: "/admin/letters", icon: Hash },
       // EMP-012: shown only to employee_cards.manage holders (canAccessAdminPath).
       { key: "employee-cards", label: "Kartu Pegawai", href: "/admin/employee-cards", icon: IdCard },
       // EMP-011: shown only to employee_documents.read holders (canAccessAdminPath).

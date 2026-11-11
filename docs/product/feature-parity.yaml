@@ -795,16 +795,22 @@ features:
       Number format TYPE.SEQ/ISSUER/ROMAN-MONTH/YEAR (LetterNumber.php line 112), sequence
       per type and year, issuer unit or committee, subunit letter codes; only employees
       with an access grant may take numbers.
-    target_status: discovery
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
-      Found by the 2026-11-02 legacy parity audit. The HCIS IssuedDocument register only
-      numbers the letters HCIS itself issues (SKK, SP, surat tugas); the legacy register is
-      the yayasan's general outgoing-letter book for every unit. Product decision needed
-      whether this belongs in HCIS or another SQ Core app. Numbers must never be reused,
-      as in DOC-001 D-03.
+      Found by the 2026-11-02 legacy parity audit. Package 1 ACCEPTED and implemented
+      2026-11-11 (docs/domain/outgoing-letter-register.md): the book lives in HCIS (D-01
+      DRAFT); letter types with yearly or monthly reset, issuers (yayasan, unit, committee
+      while ACTIVE), per-issuer grants, gap-free allocation per issuer/type/period under
+      concurrency, edit and void (voided numbers stay visible, never reused), a starting
+      number to continue a manual book, a joined register with the letters HCIS issues
+      itself (their DOC-001 numbers unchanged, D-10), ENG-LIST-001 paging, CSV export and
+      audit. Migration 0144, no new permission key (documents.read / documents.manage).
+      Not included: letter files, approval before numbering, legacy CSV import.
     docs:
+      - docs/domain/outgoing-letter-register.md
+      - docs/api/letters.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
       - docs/domain/hr-documents.md
 

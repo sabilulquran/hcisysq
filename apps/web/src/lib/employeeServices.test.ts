@@ -23,6 +23,9 @@ describe("employee service catalog", () => {
     expect(getEmployeeService("reminders")?.stage).toBe("discovery");
     expect(getEmployeeService("documents")?.stage).toBe("available");
     expect(getEmployeeService("documents")?.href).toBe("/app/documents");
+    // DOC-003: every employee sees the service; taking a number needs an HC grant (API-checked).
+    expect(getEmployeeService("letters")?.stage).toBe("available");
+    expect(getEmployeeService("letters")?.href).toBe("/app/letters");
     expect(getEmployeeService("announcements")?.stage).toBe("available");
     expect(getEmployeeService("announcements")?.href).toBe("/app/announcements");
     expect(getEmployeeService("business-travel")?.featureIds).toContain("TRIP-001");

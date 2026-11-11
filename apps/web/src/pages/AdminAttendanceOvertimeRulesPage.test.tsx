@@ -25,6 +25,7 @@ describe("ATT-011-6b-3 Aturan lembur", () => {
     expect(ruleStateLabel({ state: "active", effectiveFrom: "2026-11-11", effectiveTo: null })).toBe("Berlaku sejak 2026-11-11");
     expect(ruleStateLabel({ state: "scheduled", effectiveFrom: "2026-12-01", effectiveTo: null })).toBe("Berlaku mulai 2026-12-01");
     expect(ruleStateLabel({ state: "ended", effectiveFrom: "2026-11-11", effectiveTo: "2026-11-20" })).toBe("Berakhir 2026-11-20");
+    expect(ruleStateLabel({ state: "scheduled", effectiveFrom: "2026-12-01", effectiveTo: "2026-11-30" })).toBe("Dibatalkan sebelum berlaku");
   });
 
   it("shows warnings as a neutral note and nothing when there are none", () => {

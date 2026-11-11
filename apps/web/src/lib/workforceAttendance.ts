@@ -1,5 +1,11 @@
 export class WorkforceAttendanceApiError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    /** ATT-011-6b: employees a batch order was refused for (403 OVERTIME_NOT_SUBORDINATE, 422 OVERTIME_NOT_APPLICABLE). */
+    readonly employees?: Array<{ employeeId: string; reasonLabel?: string }>,
+  ) {
     super(message);
     this.name = "WorkforceAttendanceApiError";
   }
@@ -8,11 +14,12 @@ export class WorkforceAttendanceApiError extends Error {
 async function readJson<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => null)) as T | { code?: string; message?: string } | null;
   if (response.ok) return body as T;
-  const error = body as { code?: string; message?: string } | null;
+  const error = body as { code?: string; message?: string; employees?: Array<{ employeeId: string; reasonLabel?: string }> } | null;
   throw new WorkforceAttendanceApiError(
     response.status,
     error?.code ?? "ATTENDANCE_WORKFORCE_REQUEST_FAILED",
     error?.message ?? "Permintaan kehadiran tidak dapat diproses.",
+    Array.isArray(error?.employees) ? error.employees : undefined,
   );
 }
 

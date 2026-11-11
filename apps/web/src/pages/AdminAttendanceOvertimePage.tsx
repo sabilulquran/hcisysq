@@ -15,6 +15,7 @@ import {
   listAttendanceOvertime,
   reassignAttendanceOvertime,
   voidAttendanceOvertime,
+  WorkforceAttendanceApiError,
   type AttendanceOvertimeItem,
   type OvertimeStatusFilter,
   type OvertimeWarning,
@@ -134,12 +135,12 @@ export function AdminAttendanceOvertimePage() {
         <section className="mb-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="font-bold text-brand-heading">Ajukan lembur atas nama pegawai</h2>
           <p className="mt-1 text-xs text-muted-foreground">Pengajuan dikirim ke atasan langsung pegawai untuk disetujui; HC tidak menjadi approver.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <fieldset disabled={busy !== null} className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <EmployeeSearchField value={employee} onChange={setEmployee} />
             <label className="text-xs font-semibold text-muted-foreground">Tanggal<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="date" value={form.workDate} onChange={(e) => setForm({ ...form, workDate: e.target.value })} /></label>
             <label className="text-xs font-semibold text-muted-foreground">Durasi (menit)<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" type="number" min="1" max="1440" value={form.requestedMinutes} onChange={(e) => setForm({ ...form, requestedMinutes: e.target.value })} /></label>
             <label className="text-xs font-semibold text-muted-foreground">Catatan (opsional)<input className="mt-1 h-11 w-full rounded-xl border px-3 text-sm" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
-          </div>
+          </fieldset>
           {formBlocked ? <p role="alert" className="mt-3 rounded-xl border border-danger-line bg-danger-soft p-3 text-xs text-danger-ink">{formBlocked}</p> : null}
           <OvertimeWarnings warnings={formWarnings} />
           <button disabled={busy !== null || !employee || !form.workDate || formBlocked !== null} className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50" onClick={() => void (async () => {
@@ -150,8 +151,9 @@ export function AdminAttendanceOvertimePage() {
                 const preview = await createAttendanceOvertimeForEmployee({ ...input, dryRun: true });
                 if (preview.warnings.length) { setFormWarnings(preview.warnings); return; }
               } catch (cause) {
-                // D-10 (lembur tidak berlaku) and other refusals are shown here, before anything is sent.
-                setFormBlocked(cause instanceof Error ? cause.message : "Pengajuan lembur tidak dapat diperiksa.");
+                // D-10 (lembur tidak berlaku) is shown here before anything is sent; other errors stay retryable.
+                if (cause instanceof WorkforceAttendanceApiError && cause.status === 422) setFormBlocked(cause.message);
+                else setError(cause instanceof Error ? cause.message : "Pengajuan lembur tidak dapat diperiksa.");
                 return;
               } finally { setBusy(null); }
             }

@@ -24,6 +24,8 @@ export function hoursLabel(minutes: number) {
 }
 
 export function ruleStateLabel(rule: Pick<OvertimeEligibilityRule, "state" | "effectiveFrom" | "effectiveTo">) {
+  // Ended before its first day: it never applied.
+  if (rule.effectiveTo && rule.effectiveTo < rule.effectiveFrom) return "Dibatalkan sebelum berlaku";
   if (rule.state === "ended") return `Berakhir ${rule.effectiveTo}`;
   if (rule.state === "scheduled") return `Berlaku mulai ${rule.effectiveFrom}`;
   return rule.effectiveTo ? `Berlaku sampai ${rule.effectiveTo}` : `Berlaku sejak ${rule.effectiveFrom}`;
@@ -41,14 +43,17 @@ function Notice({ error, notice }: { error: string | null; notice: string | null
 function PolicySection({ onDone }: { onDone: (error: string | null, notice: string | null) => void }) {
   const [current, setCurrent] = useState<OvertimePolicyVersion | null>(null);
   const [history, setHistory] = useState<OvertimePolicyVersion[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPages, setHistoryPages] = useState(1);
   const [form, setForm] = useState({ effectiveFrom: todayJakarta(), daily: "4", weekly: "18", reason: "" });
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
-    const result = await getOvertimePolicy();
+    const result = await getOvertimePolicy(historyPage);
     setCurrent(result.current);
     setHistory(result.items);
-    setForm((value) => ({ ...value, daily: String(result.current.dailyWarningMinutes / 60), weekly: String(result.current.weeklyWarningMinutes / 60) }));
-  }, []);
+    setHistoryPages(result.pageCount);
+    setForm((value) => ({ ...value, daily: String(result.current.dailyWarningMinutes / 60).replace(".", ","), weekly: String(result.current.weeklyWarningMinutes / 60).replace(".", ",") }));
+  }, [historyPage]);
   useEffect(() => { void load().catch((cause) => onDone(cause instanceof Error ? cause.message : "Batas peringatan tidak dapat dimuat.", null)); }, [load, onDone]);
   const daily = Math.round(Number(form.daily.replace(",", ".")) * 60);
   const weekly = Math.round(Number(form.weekly.replace(",", ".")) * 60);
@@ -86,6 +91,13 @@ function PolicySection({ onDone }: { onDone: (error: string | null, notice: stri
           <ul className="mt-2 divide-y rounded-xl border">
             {history.map((item) => <li key={item.id ?? item.effectiveFrom} className="p-2">Mulai {item.effectiveFrom}: {hoursLabel(item.dailyWarningMinutes)}/hari, {hoursLabel(item.weeklyWarningMinutes)}/minggu{item.createdByName ? ` · ${item.createdByName}` : ""}{item.reason ? ` · ${item.reason}` : ""}</li>)}
           </ul>
+          {historyPages > 1 ? (
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <span>Halaman {historyPage} dari {historyPages}</span>
+              <button type="button" aria-label="Riwayat sebelumnya" disabled={historyPage <= 1} onClick={() => setHistoryPage(historyPage - 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+              <button type="button" aria-label="Riwayat berikutnya" disabled={historyPage >= historyPages} onClick={() => setHistoryPage(historyPage + 1)} className="rounded-lg border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+          ) : null}
         </details>
       ) : null}
     </section>
@@ -102,8 +114,13 @@ function RuleForm({ onSaved, onError }: { onSaved: () => Promise<void>; onError:
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (target) return undefined;
-    const timer = setTimeout(() => { void searchOvertimeRuleTargets(kind, query).then((result) => setOptions(result.items)).catch(() => setOptions([])); }, 250);
-    return () => clearTimeout(timer);
+    let current = true;
+    const timer = setTimeout(() => {
+      void searchOvertimeRuleTargets(kind, query)
+        .then((result) => { if (current && result.kind === kind) setOptions(result.items); })
+        .catch(() => { if (current) setOptions([]); });
+    }, 250);
+    return () => { current = false; clearTimeout(timer); };
   }, [kind, query, target]);
   const save = async () => {
     if (!target) return;
@@ -162,7 +179,7 @@ function EndRule({ rule, onEnded, onError }: { rule: OvertimeEligibilityRule; on
   return (
     <div className="grid gap-2 sm:min-w-[260px]">
       <input className="h-10 rounded-xl border px-3 text-xs" placeholder="Alasan (wajib)" value={reason} onChange={(event) => setReason(event.target.value)} />
-      <p className="text-[11px] text-muted-foreground">Lembur dihitung lagi mulai hari ini. Aturan tidak dihapus, tetap tercatat di riwayat.</p>
+      <p className="text-[11px] text-muted-foreground">{rule.state === "scheduled" ? "Aturan ini belum berlaku dan tidak akan pernah berlaku." : "Lembur dihitung lagi mulai hari ini."} Aturan tidak dihapus, tetap tercatat di riwayat.</p>
       <div className="flex gap-2">
         <button type="button" disabled={busy || reason.trim().length < 3} onClick={() => void (async () => {
           setBusy(true);

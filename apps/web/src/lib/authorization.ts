@@ -61,6 +61,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     "help.manage",
     // EMP-012: employee_cards.manage opens its own screen even for an account holding nothing else.
     "employee_cards.manage",
+    // EMP-011: employee_documents.read opens its own worklist even for an account holding nothing else.
+    "employee_documents.read",
     // ORG-012: committees.read opens its own screen even for an account holding nothing else.
     "committees.read",
   ].some((permission) => hasPermission(session, permission));
@@ -154,6 +156,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/employee-cards" || path === "/admin/employee-cards/print") {
     return hasPermission(session, "employee_cards.manage");
   }
+  // EMP-011 D-09: HC-only; Super Admin legacy compatibility never carries employee_documents.*.
+  if (path === "/admin/employee-documents") return hasPermission(session, "employee_documents.read");
   // ORG-012: HC-only; Super Admin legacy compatibility never carries committees.*.
   if (path === "/admin/committees") return hasPermission(session, "committees.read");
   if (path === "/admin/access") return hasPermission(session, "access.manage");

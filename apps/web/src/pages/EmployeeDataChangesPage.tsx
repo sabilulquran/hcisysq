@@ -4,6 +4,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import { MyDocumentsSection } from "@/components/employee-documents/MyDocumentsSection";
 import { MyDataChanges } from "@/components/employment/DataChangePanels";
 import { AppShell } from "@/layouts/AppShell";
 import { EmploymentApiError, type EmploymentView } from "@/lib/employment";
@@ -258,6 +259,9 @@ export function EmployeeDataChangesPage() {
             </div>
           </form>
         ) : null}
+
+        {/* EMP-011: the employee's own document archive and upload proposals. */}
+        <MyDocumentsSection />
 
         <MyDataChanges
           view={view}

@@ -320,6 +320,65 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /admin/decision-documents/{documentId}/file:
+    get:
+      tags: [Employment]
+      operationId: downloadDecisionDocumentFile
+      summary: Download the current scanned file of a register document (EMP-011 D-16)
+      description: |
+        Requires employment.read and a rollout mode other than OFF. Audited as
+        employment.document.file_read before the file is sent. Served as an attachment named
+        PK-<date> or SK-<date> with Cache-Control private, no-store, X-Content-Type-Options nosniff
+        and Content-Security-Policy sandbox (EMP-011 D-07).
+      parameters: [{ $ref: '#/components/parameters/DocumentId' }]
+      responses:
+        '200':
+          description: The decrypted file
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    put:
+      tags: [Employment]
+      operationId: attachDecisionDocumentFile
+      summary: Attach or replace the scanned file of a register document (EMP-011 D-16)
+      description: |
+        Requires employment.manage. Replacing the file of a document already linked to an action
+        also requires employment.correct (403 otherwise) and a reason (400 otherwise). The previous
+        file stays stored as history. PDF/JPEG/PNG, at most 4 MB, checked by file signature, PDFs with
+        visible active content refused (EMP-011 D-02, D-07). Audited as
+        employment.document.file_attached or employment.document.file_replaced.
+      parameters: [{ $ref: '#/components/parameters/DocumentId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [contentType, contentBase64]
+              properties:
+                contentType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+                contentBase64: { type: string }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: Stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecisionDocumentFile' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+
   /admin/employees/{employeeId}/employment-actions/preview:
     post:
       tags: [Employment]
@@ -1825,12 +1884,24 @@ components:
             locked: { type: boolean, description: True once an action uses the document; only a correction may change it. }
             createdAt: { type: string, format: date-time }
             updatedAt: { type: string, format: date-time }
+    DecisionDocumentFile:
+      type: object
+      description: The current scanned file of a register document (EMP-011 D-16); never its content or original name.
+      required: [contentType, byteSize, uploadedAt]
+      properties:
+        contentType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+        byteSize: { type: integer }
+        uploadedAt: { type: string, format: date-time }
     DecisionDocumentDetail:
       allOf:
         - { $ref: '#/components/schemas/DecisionDocument' }
         - type: object
-          required: [links, corrections]
+          required: [links, corrections, file]
           properties:
+            file:
+              oneOf:
+                - type: 'null'
+                - { $ref: '#/components/schemas/DecisionDocumentFile' }
             links:
               type: array
               items:

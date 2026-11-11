@@ -30,7 +30,7 @@ Package 1 sengaja kecil tetapi bernilai tinggi: **status/hubungan kerja + kontra
 | Statutory profile (PTKP/BPJS/risk) | Bergantung PAY-003. | Bersama PAY-003 |
 | Job classification / grade | Specification ID masih TBD (roadmap §C). Package 1 **tidak** membuat tabel grade; promosi/demosi dinyatakan oleh HC, bukan dihitung dari grade. | Discovery terpisah |
 | Perubahan kompensasi | Bergantung PAY-003. | Bersama PAY-003 |
-| Upload file SK (PDF/foto) | Storage boundary dokumen pegawai belum diterima; Package 1 hanya menyimpan metadata/referensi SK. | DOC/storage package |
+| Upload file SK (PDF/foto) | Storage boundary dokumen pegawai ditetapkan EMP-011 (`employee-documents.md` D-01) pada 2026-11-11; lampiran berkas PK/SK kini tersedia (D-16). | EMP-011 |
 | Penugasan sementara/Plt dengan authority | Authority acting tetap milik ORG-004 `ACTING` incumbency. | Tetap ORG-004 |
 | Approval workflow in-app (APR-001) untuk tindakan kepegawaian | Keputusan diambil di luar sistem dan dibuktikan oleh Perjanjian Kerja/SK; D-07 diterima (opsi A). | Setelah pilot |
 | Perpindahan lintas legal entity | ORG-007 masih discovery; ditolak fail-closed. | ORG-007 |
@@ -265,7 +265,7 @@ Kept for review traceability only.
 | `subject` | Short subject ("Penempatan guru semester ganjil 2027/2028"). |
 | `issuing_authority_label` | Text (e.g. "Ketua Yayasan"); optional link to an ORG-004 position stable key. Does **not** grant or prove authority. |
 | `signed_on`, `effective_on`, `effective_to` | Dates; `effective_to` optional. |
-| `external_reference` | Optional pointer to where the signed original is kept (e.g. "Arsip HC lemari 2 / map 2027"). No file upload in Package 1. |
+| `external_reference` | Optional pointer to where the signed original is kept (e.g. "Arsip HC lemari 2 / map 2027"). The scanned file itself is attached through the EMP-011 storage boundary (`employee-documents.md` D-16). |
 | `notes` | Optional. |
 
 Rules:

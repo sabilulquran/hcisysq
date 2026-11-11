@@ -1,6 +1,7 @@
 import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { EmployeeDocumentsPanel } from "@/components/employee-documents/EmployeeDocumentsPanel";
 import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
 import { FamilyAddressPanel } from "@/components/employment/FamilyAddressPanel";
 import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
@@ -34,7 +35,7 @@ import {
   type EmploymentView,
 } from "@/lib/employment";
 
-export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan" | "pendidikan" | "keluarga";
+export type EmployeeDetailTab = "ringkasan" | "kepegawaian" | "penempatan" | "pendidikan" | "keluarga" | "dokumen";
 
 const TABS: Array<{ key: EmployeeDetailTab; label: string }> = [
   { key: "ringkasan", label: "Ringkasan" },
@@ -42,25 +43,29 @@ const TABS: Array<{ key: EmployeeDetailTab; label: string }> = [
   { key: "penempatan", label: "Penempatan & Karier" },
   { key: "pendidikan", label: "Pendidikan & Keahlian" },
   { key: "keluarga", label: "Keluarga & Alamat" },
+  { key: "dokumen", label: "Dokumen" },
 ];
 
 /**
  * Tab bar. The employment tabs need employment.read; Pendidikan & Keahlian is
  * employee master data, so it follows employees.read.all instead (EMP-007
- * §5.1). The API authorizes either way.
+ * §5.1). The API authorizes either way. Dokumen follows employee_documents.read
+ * only (EMP-011 D-08, D-09): personal scans are not part of the ordinary profile read.
  */
-export function EmployeeDetailTabs({ active, canReadEmployment, canReadProfile = false, onSelect }: {
+export function EmployeeDetailTabs({ active, canReadEmployment, canReadProfile = false, canReadDocuments = false, onSelect }: {
   active: EmployeeDetailTab;
   canReadEmployment: boolean;
   canReadProfile?: boolean;
+  canReadDocuments?: boolean;
   onSelect: (tab: EmployeeDetailTab) => void;
 }) {
   const visible = TABS.filter((tab) => {
     if (tab.key === "pendidikan" || tab.key === "keluarga") return canReadProfile;
+    if (tab.key === "dokumen") return canReadDocuments;
     if (tab.key === "ringkasan") return true;
     return canReadEmployment;
   });
-  if (!canReadEmployment && !canReadProfile) return null;
+  if (!canReadEmployment && !canReadProfile && !canReadDocuments) return null;
   return (
     <div role="tablist" aria-label="Bagian detail pegawai" className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-surface p-1">
       {visible.map((tab) => (
@@ -103,11 +108,15 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<EmployeeDetailTab>("ringkasan");
+  // EMP-011: the document worklist links straight to ?tab=dokumen.
+  const [tab, setTab] = useState<EmployeeDetailTab>(() =>
+    new URLSearchParams(window.location.search).get("tab") === "dokumen" ? "dokumen" : "ringkasan");
   const [canReadEmployment, setCanReadEmployment] = useState(false);
   const [canManageEmployment, setCanManageEmployment] = useState(false);
   const [canReadProfile, setCanReadProfile] = useState(false);
   const [canManageProfile, setCanManageProfile] = useState(false);
+  const [canReadDocuments, setCanReadDocuments] = useState(false);
+  const [canManageDocuments, setCanManageDocuments] = useState(false);
   const [employmentAction, setEmploymentAction] = useState<EmploymentActionType | "PLACEMENT_END" | null>(null);
   const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
@@ -121,6 +130,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       setCanManageEmployment(hasPermission(session, "employment.manage"));
       setCanReadProfile(hasPermission(session, "employees.read.all"));
       setCanManageProfile(hasPermission(session, "employees.manage"));
+      setCanReadDocuments(hasPermission(session, "employee_documents.read"));
+      setCanManageDocuments(hasPermission(session, "employee_documents.manage"));
     });
     return () => {
       mounted = false;
@@ -128,7 +139,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   }, []);
 
   useEffect(() => {
-    if (tab === "ringkasan" || tab === "pendidikan" || tab === "keluarga" || employmentView !== null) return;
+    if (tab === "ringkasan" || tab === "pendidikan" || tab === "keluarga" || tab === "dokumen" || employmentView !== null) return;
     setEmploymentView({ kind: "loading" });
     void getEmployeeEmployment(employeeId)
       .then((data) => setEmploymentView({ kind: "ready", data }))
@@ -327,8 +338,13 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         active={tab}
         canReadEmployment={canReadEmployment}
         canReadProfile={canReadProfile}
+        canReadDocuments={canReadDocuments}
         onSelect={setTab}
       />
+
+      {tab === "dokumen" ? (
+        <EmployeeDocumentsPanel employeeId={employeeId} canManage={canManageDocuments} />
+      ) : null}
 
       {tab === "pendidikan" ? (
         <EducationSkillsPanel employeeId={employeeId} canManage={canManageProfile && !outsideHcis} />

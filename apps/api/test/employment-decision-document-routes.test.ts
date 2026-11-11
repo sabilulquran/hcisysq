@@ -109,7 +109,18 @@ interface PoolOptions {
   numberTaken?: boolean;
   /** The row every document read returns; defaults to the Perjanjian Kerja. */
   row?: typeof PK_ROW;
+  /** EMP-011 D-16: the document already carries a file. */
+  hasFile?: boolean;
 }
+
+const FILE_ROW = {
+  id: "40000000-0000-4000-8000-000000000001",
+  contentType: "application/pdf",
+  byteSize: 18,
+  createdAt: new Date("2027-06-21T03:00:00Z"),
+  replacedAt: null,
+  purgedAt: null,
+};
 
 function createPool(persona: Persona, options: PoolOptions = {}) {
   const writes: string[] = [];
@@ -147,6 +158,18 @@ function createPool(persona: Persona, options: PoolOptions = {}) {
     }
     if (sql.includes("FROM employment_action_documents link")) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM employment_decision_document_corrections")) return { rows: [], rowCount: 0 };
+    // EMP-011 D-16: the storage boundary, faked at the SQL level.
+    if (sql.includes("FROM employee_document_files file")) {
+      return options.hasFile ? { rows: [FILE_ROW], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("UPDATE employee_document_files file SET replaced_at")) {
+      writes.push("REPLACE file");
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO employee_document_files")) {
+      writes.push("INSERT file");
+      return { rows: [{ ...FILE_ROW, id: "40000000-0000-4000-8000-000000000002" }], rowCount: 1 };
+    }
     if (sql.includes("SELECT id FROM employment_decision_documents WHERE id = $1 FOR UPDATE")) {
       return { rows: [{ id: PK_ID }], rowCount: 1 };
     }
@@ -396,6 +419,88 @@ describe("EMP-010 register listing", () => {
 
   it("shows a document used by an action as locked", async () => {
     const { response } = await call("hc", "GET", `/admin/decision-documents/${PK_ID}`, { linkedActionCount: 3 });
-    expect(response.json()).toMatchObject({ locked: true, linkedActionCount: 3, links: [], corrections: [] });
+    expect(response.json()).toMatchObject({ locked: true, linkedActionCount: 3, links: [], corrections: [], file: null });
+  });
+});
+
+describe("EMP-011 D-16 register document files", () => {
+  const FILE_URL = `/admin/decision-documents/${PK_ID}/file`;
+  const PDF = { contentType: "application/pdf", contentBase64: Buffer.from("%PDF-1.7 synthetic").toString("base64") };
+
+  it("needs employment.read to download and employment.manage to attach, before validating", async () => {
+    expect((await call("anonymous", "GET", FILE_URL)).response.statusCode).toBe(401);
+    expect((await call("employee", "GET", FILE_URL)).response.statusCode).toBe(403);
+    expect((await call("super_admin", "GET", FILE_URL)).response.statusCode).toBe(403);
+    for (const persona of ["employee", "corrector_only"] as const) {
+      const { pool: personaPool, writes } = createPool(persona);
+      const personaApp = Fastify({ logger: false });
+      await registerDecisionDocumentRoutes(personaApp, personaPool, config);
+      const response = await personaApp.inject({
+        method: "PUT", url: FILE_URL, headers: { cookie: "hcis_session=test-token" }, payload: { contentType: "text/plain" },
+      });
+      expect(response.statusCode, persona).toBe(403);
+      expect(writes).toEqual([]);
+      await personaApp.close();
+    }
+  });
+
+  async function put(persona: Persona, options: PoolOptions, payload: object) {
+    const { pool, writes } = createPool(persona, options);
+    const app = Fastify({ logger: false });
+    await registerDecisionDocumentRoutes(app, pool, config);
+    const response = await app.inject({ method: "PUT", url: FILE_URL, headers: { cookie: "hcis_session=test-token" }, payload });
+    await app.close();
+    return { response, writes };
+  }
+
+  it("attaches a first file with employment.manage, even to a locked document", async () => {
+    const { response, writes } = await put("hc", { linkedActionCount: 2 }, PDF);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ contentType: "application/pdf" });
+    expect(writes).toEqual(["INSERT file", "INSERT audit"]);
+  });
+
+  it("replaces the file of an unlocked document with employment.manage; history is kept", async () => {
+    const { response, writes } = await put("hc", { hasFile: true }, PDF);
+    expect(response.statusCode).toBe(200);
+    expect(writes).toEqual(["REPLACE file", "INSERT file", "INSERT audit"]);
+  });
+
+  it("needs employment.correct and a reason to replace the file of a locked document", async () => {
+    const forbidden = await put("hc", { hasFile: true, linkedActionCount: 1 }, { ...PDF, reason: "Pindaian lama terpotong" });
+    expect(forbidden.response.statusCode).toBe(403);
+    expect(forbidden.writes).toEqual([]);
+    const noReason = await put("hc_corrector", { hasFile: true, linkedActionCount: 1 }, PDF);
+    expect(noReason.response.statusCode).toBe(400);
+    expect(noReason.writes).toEqual([]);
+    const corrected = await put("hc_corrector", { hasFile: true, linkedActionCount: 1 }, { ...PDF, reason: "Pindaian lama terpotong" });
+    expect(corrected.response.statusCode).toBe(200);
+    expect(corrected.writes).toEqual(["REPLACE file", "INSERT file", "INSERT audit"]);
+  });
+
+  it("is unavailable while the rollout mode is OFF", async () => {
+    const { response, writes } = await put("hc", { mode: "OFF" }, PDF);
+    expect(response.statusCode).toBe(409);
+    expect(writes).toEqual([]);
+  });
+
+  it("answers 404 when the document has no file yet", async () => {
+    const { response } = await call("hc", "GET", FILE_URL);
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: "DECISION_DOCUMENT_FILE_NOT_FOUND" });
+  });
+
+  it("refuses a file whose content does not match its type", async () => {
+    const { pool, writes } = createPool("hc");
+    const app = Fastify({ logger: false });
+    await registerDecisionDocumentRoutes(app, pool, config);
+    const response = await app.inject({
+      method: "PUT", url: FILE_URL, headers: { cookie: "hcis_session=test-token" },
+      payload: { ...PDF, contentType: "image/png" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "EMPLOYEE_DOCUMENT_FILE_INVALID" });
+    expect(writes).toEqual([]);
+    await app.close();
   });
 });

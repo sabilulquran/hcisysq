@@ -58,6 +58,8 @@ export interface DecisionDocumentDetail extends DecisionDocument {
     state: "RECORDED" | "REVERSED";
   }>;
   corrections: Array<{ id: string; previousValues: Record<string, unknown>; reason: string; correctedAt: string }>;
+  /** EMP-011 D-16: the current scanned file, never its content or original name. */
+  file: { contentType: string; byteSize: number; uploadedAt: string } | null;
 }
 
 export interface DecisionDocumentPage {
@@ -136,6 +138,21 @@ export function correctDecisionDocument(
     body: JSON.stringify(body),
   });
 }
+
+/** EMP-011 D-16: attach or replace the scan; a locked document also needs employment.correct and a reason. */
+export function attachDecisionDocumentFile(
+  documentId: string,
+  file: { contentType: string; contentBase64: string },
+  reason?: string,
+): Promise<{ contentType: string; byteSize: number; uploadedAt: string }> {
+  return request(`/api/admin/decision-documents/${encodeURIComponent(documentId)}/file`, {
+    method: "PUT",
+    body: JSON.stringify({ ...file, ...(reason ? { reason } : {}) }),
+  });
+}
+
+export const decisionDocumentFileUrl = (documentId: string) =>
+  `/api/admin/decision-documents/${encodeURIComponent(documentId)}/file`;
 
 export const DOCUMENT_KIND_LABEL: Record<DecisionDocumentKind, string> = {
   PERJANJIAN_KERJA: "Perjanjian Kerja",

@@ -51,6 +51,7 @@ import { AdminDecisionDocumentsPage } from "@/pages/AdminDecisionDocumentsPage";
 import { AdminEmploymentConsistencyPage } from "@/pages/AdminEmploymentConsistencyPage";
 import { AdminDataChangeRequestsPage } from "@/pages/AdminDataChangeRequestsPage";
 import { AdminExpiringCertificatesPage } from "@/pages/AdminExpiringCertificatesPage";
+import { AdminEmployeeDocumentsPage } from "@/pages/AdminEmployeeDocumentsPage";
 import { EmployeeDataChangesPage } from "@/pages/EmployeeDataChangesPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
@@ -799,6 +800,14 @@ const adminEmployeeCardsRoute = createRoute({
   component: AdminEmployeeCardsPage,
 });
 
+// EMP-011 §10: the HC worklist of expiring and pending employee documents.
+const adminEmployeeDocumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employee-documents",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/employee-documents"),
+  component: AdminEmployeeDocumentsPage,
+});
+
 // EMP-012 D-12: the standalone CR80 print sheet, without the admin shell.
 const adminEmployeeCardPrintRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -957,6 +966,7 @@ const routeTree = rootRoute.addChildren([
   adminHrReportsRoute,
   adminHelpRoute,
   adminEmployeeCardsRoute,
+  adminEmployeeDocumentsRoute,
   adminEmployeeCardPrintRoute,
   adminAnnouncementsRoute,
   adminAccessRoute,

@@ -171,6 +171,17 @@ Migration `0133_employee_card_permissions.sql`, berscope organisasi (`docs/domai
 
 Melihat kartu sendiri dan melaporkannya hilang tidak membutuhkan permission (sesi `EMPLOYEE` yang terhubung ke pegawai). Halaman cek keaslian `/public/employee-cards/*` tanpa sesi dan dibatasi lajunya. Super Admin tidak memperoleh `employee_cards.manage` lewat kompatibilitas legacy.
 
+### Arsip Dokumen Pegawai (EMP-011)
+
+Migration `0142_employee_document_permissions.sql`, berscope organisasi (`docs/domain/employee-documents.md` §6, D-08–D-10).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `employee_documents.read` | HC Admin (`human_capital_admin`) | membaca arsip dokumen seorang pegawai, mengunduh berkas, membaca daftar kerja akan berakhir dan menunggu verifikasi; setiap pembacaan diaudit |
+| `employee_documents.manage` | HC Admin (`human_capital_admin`) | mengunggah, memverifikasi, menolak, mengganti, menghapus isi berkas, dan mengubah metadata |
+
+Melihat, mengunduh, mengusulkan, dan menarik dokumen sendiri tidak membutuhkan permission (sesi `EMPLOYEE` yang terhubung ke pegawai). Tidak ada role bercakupan unit yang membawanya, sehingga atasan tidak membaca dokumen bawahan; `employees.read.all` juga tidak membukanya. Super Admin tidak memperolehnya lewat kompatibilitas legacy. Berkas Perjanjian Kerja/SK (EMP-010) memakai `employment.read`/`employment.manage`, dan mengganti berkas dokumen terkunci butuh juga `employment.correct`.
+
 ### Kepanitiaan (ORG-012)
 
 Migration `0135_committee_permissions.sql`, berscope organisasi (`docs/domain/committees.md` §6, D-18 DRAFT).

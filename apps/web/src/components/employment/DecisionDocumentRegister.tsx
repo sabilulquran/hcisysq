@@ -2,7 +2,7 @@
 // stateful only: required fields, the lock after an action uses a document, and
 // numbering are decided by the API, and every refusal is shown as it comes back.
 
-import { FileSignature, Lock, Plus, Search } from "lucide-react";
+import { Download, FileSignature, Lock, Paperclip, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
@@ -12,7 +12,9 @@ import {
   PK_CATEGORY_LABEL,
   PK_TYPE_LABEL,
   SK_TYPE_LABEL,
+  attachDecisionDocumentFile,
   correctDecisionDocument,
+  decisionDocumentFileUrl,
   createDecisionDocument,
   draftFrom,
   emptyDraft,
@@ -28,6 +30,7 @@ import {
   type SkType,
 } from "@/lib/decision-documents";
 import { ACTION_LABEL, formatDate, viewFromError, type EmploymentView } from "@/lib/employment";
+import { ACCEPT_ATTRIBUTE, formatBytes, readDocumentFile } from "@/lib/employeeDocuments";
 
 const card = "rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]";
 const field = "h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15";
@@ -324,6 +327,7 @@ export function DecisionDocumentRegister({
           canCorrect={canCorrect}
           employeeHref={employeeHref}
           onClose={() => setSelected(null)}
+          onFileChanged={() => void openDetail(selected.id)}
           onEdit={() => {
             setFormError(null);
             setForm({ mode: selected.locked ? "correction" : "edit", draft: draftFrom(selected) });
@@ -471,6 +475,7 @@ export function DocumentDetail({
   employeeHref,
   onClose,
   onEdit,
+  onFileChanged,
 }: {
   document: DecisionDocumentDetail;
   canManage: boolean;
@@ -478,6 +483,7 @@ export function DocumentDetail({
   employeeHref: (employeeId: string) => string;
   onClose: () => void;
   onEdit: () => void;
+  onFileChanged: () => void;
 }) {
   const isPk = document.documentKind === "PERJANJIAN_KERJA";
   const mayWrite = document.locked ? canCorrect : canManage;
@@ -539,6 +545,8 @@ export function DocumentDetail({
         <Detail label="Catatan" value={document.notes ?? "—"} />
       </dl>
 
+      <DecisionDocumentFile document={document} canManage={canManage} canCorrect={canCorrect} onChanged={onFileChanged} />
+
       <h3 className="mt-5 text-sm font-bold text-brand-heading">Dipakai pada tindakan</h3>
       {document.links.length === 0 ? (
         <p className="mt-1 text-sm text-muted-foreground">Belum dipakai pada tindakan kepegawaian mana pun.</p>
@@ -569,6 +577,80 @@ export function DocumentDetail({
         </>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * EMP-011 D-16: the scanned original. Attaching needs employment.manage; replacing the file of a
+ * locked document also needs employment.correct and a reason. The API decides; this mirrors it.
+ */
+function DecisionDocumentFile({
+  document,
+  canManage,
+  canCorrect,
+  onChanged,
+}: {
+  document: DecisionDocumentDetail;
+  canManage: boolean;
+  canCorrect: boolean;
+  onChanged: () => void;
+}) {
+  const [picked, setPicked] = useState<File | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const replacingLocked = Boolean(document.file) && document.locked;
+  const mayUpload = canManage && (!replacingLocked || canCorrect);
+
+  async function upload(event: FormEvent) {
+    event.preventDefault();
+    if (!picked) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await attachDecisionDocumentFile(document.id, await readDocumentFile(picked), replacingLocked ? reason : undefined);
+      setPicked(null);
+      setReason("");
+      onChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Berkas tidak dapat diunggah.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <h3 className="text-sm font-bold text-brand-heading">Berkas dokumen</h3>
+      {document.file ? (
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <Paperclip className="h-4 w-4" aria-hidden="true" />
+          {document.file.contentType === "application/pdf" ? "PDF" : "Gambar"} · {formatBytes(document.file.byteSize)} · diunggah{" "}
+          {new Date(document.file.uploadedAt).toLocaleDateString("id-ID")}
+          <a className="inline-flex items-center gap-1 font-semibold text-brand-primary" href={decisionDocumentFileUrl(document.id)}>
+            <Download className="h-3.5 w-3.5" aria-hidden="true" /> Unduh
+          </a>
+        </p>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">Belum ada pindaian dokumen.</p>
+      )}
+      {mayUpload ? (
+        <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={upload}>
+          <label className="block text-xs font-semibold text-muted-foreground">
+            {document.file ? "Ganti berkas" : "Lampirkan berkas"} (PDF/JPG/PNG, maks 4 MB)
+            <input className="mt-1 block text-sm" type="file" accept={ACCEPT_ATTRIBUTE} onChange={(event) => setPicked(event.target.files?.[0] ?? null)} />
+          </label>
+          {replacingLocked ? (
+            <label className="block min-w-[16rem] flex-1 text-xs font-semibold text-muted-foreground">
+              Alasan penggantian (min. 10 karakter)
+              <input className={field} minLength={10} maxLength={500} required value={reason} onChange={(event) => setReason(event.target.value)} />
+            </label>
+          ) : null}
+          <button type="submit" className={primaryButton} disabled={busy || !picked}>{busy ? "Mengunggah…" : "Unggah"}</button>
+        </form>
+      ) : null}
+      {error ? <p role="alert" className="mt-1 text-sm text-danger-ink">{error}</p> : null}
+    </div>
   );
 }
 

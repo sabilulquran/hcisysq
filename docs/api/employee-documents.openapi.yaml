@@ -1,0 +1,493 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee Document Archive (EMP-011 Package 1)
+  version: 1.0.0
+  description: |
+    The employee document archive (KTP, KK, ijazah, sertifikat, ...) with expiry, as implemented in
+    apps/api/src/modules/employee-documents/routes.ts. Spec: docs/domain/employee-documents.md.
+    Every JSON answer carries Cache-Control: no-store. Errors use { code, message, field? }.
+    /me/employee-documents* needs an EMPLOYEE session linked to an employee; the employee id comes
+    from the session, so another employee's document answers 404 like a missing one (D-08).
+    /admin/employee-documents* needs employee_documents.read or employee_documents.manage, checked
+    before any input validation; legacy Super Admin compatibility never grants them (D-09).
+    File downloads are always attachments with Cache-Control private, no-store,
+    X-Content-Type-Options nosniff and Content-Security-Policy sandbox (D-07); the original file name
+    is never stored or returned (D-03). Document numbers leave the API only masked (D-05).
+    Every file read, every HC archive or worklist read and every write is audited (D-11).
+    Uploads are JSON with base64 content, at most 4 MB decoded (413 EMPLOYEE_DOCUMENT_FILE_TOO_LARGE),
+    PDF/JPEG/PNG checked by file signature (400 EMPLOYEE_DOCUMENT_FILE_INVALID), and PDFs with
+    visible active content refused (400 EMPLOYEE_DOCUMENT_FILE_ACTIVE_CONTENT).
+paths:
+  /me/employee-documents:
+    get:
+      tags: [Employee Documents]
+      operationId: listMyEmployeeDocuments
+      summary: The employee's own PENDING_REVIEW, VERIFIED and REJECTED documents
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of documents with the type catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination, types, canPropose, maxPending]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmployeeDocument' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  types:
+                    type: array
+                    items: { $ref: '#/components/schemas/DocumentType' }
+                  canPropose: { type: boolean, description: false for an employee marked outside HCIS management }
+                  maxPending: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Employee Documents]
+      operationId: proposeMyEmployeeDocument
+      summary: Propose an upload; it waits as PENDING_REVIEW for one HC decision (D-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelfUpload' }
+      responses:
+        '201':
+          description: The proposal
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocument' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: EMPLOYEE_DOCUMENT_PENDING_LIMIT, EMPLOYEE_DOCUMENT_REPLACE_INVALID or EMPLOYEE_OUTSIDE_HCIS_READ_ONLY
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /me/employee-documents/{documentId}/file:
+    get:
+      tags: [Employee Documents]
+      operationId: downloadMyEmployeeDocumentFile
+      summary: Download one's own PENDING_REVIEW or VERIFIED document; audited
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200': { $ref: '#/components/responses/File' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /me/employee-documents/{documentId}/withdraw:
+    post:
+      tags: [Employee Documents]
+      operationId: withdrawMyEmployeeDocument
+      summary: Withdraw one's own pending proposal; its content is erased (D-12)
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [WITHDRAWN] }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/expiring:
+    get:
+      tags: [Employee Documents]
+      operationId: listExpiringEmployeeDocuments
+      summary: VERIFIED documents of active managed employees expiring within the window, including past ones (D-15); employee_documents.read
+      parameters:
+        - name: withinDays
+          in: query
+          schema: { type: integer, enum: [30, 60, 90, 180], default: 60 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of the worklist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [withinDays, items, pagination]
+                properties:
+                  withinDays: { type: integer }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExpiringItem' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/pending:
+    get:
+      tags: [Employee Documents]
+      operationId: listPendingEmployeeDocuments
+      summary: Employee proposals waiting for verification, oldest first; employee_documents.read
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of the worklist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PendingItem' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/employees/{employeeId}:
+    get:
+      tags: [Employee Documents]
+      operationId: listEmployeeDocuments
+      summary: One employee's archive; employee_documents.read; audited
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+        - name: includeHistory
+          in: query
+          description: true adds REPLACED, REJECTED, WITHDRAWN and REMOVED documents
+          schema: { type: string, enum: ['true', 'false'] }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: One page of documents with the type catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [employee, items, pagination, types]
+                properties:
+                  employee:
+                    type: object
+                    required: [id, managementScope]
+                    properties:
+                      id: { type: string, format: uuid }
+                      managementScope: { type: string, enum: [MANAGED, OUTSIDE_HCIS] }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+                  types:
+                    type: array
+                    items: { $ref: '#/components/schemas/DocumentType' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Employee Documents]
+      operationId: uploadEmployeeDocument
+      summary: HC upload, VERIFIED at once; replacesDocumentId turns the old one REPLACED (D-14); employee_documents.manage
+      parameters:
+        - $ref: '#/components/parameters/EmployeeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminUpload' }
+      responses:
+        '201':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/{documentId}/file:
+    get:
+      tags: [Employee Documents]
+      operationId: downloadEmployeeDocumentFile
+      summary: Download any document's file; employee_documents.read; audited
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200': { $ref: '#/components/responses/File' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '410':
+          description: EMPLOYEE_DOCUMENT_FILE_PURGED — the content was erased (rejected, withdrawn or removed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /admin/employee-documents/{documentId}:
+    patch:
+      tags: [Employee Documents]
+      operationId: updateEmployeeDocument
+      summary: Edit metadata of a PENDING_REVIEW or VERIFIED document; omitted fields keep their value, null clears; employee_documents.manage
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: [string, 'null'], maxLength: 200 }
+                issuer: { type: [string, 'null'], maxLength: 200 }
+                issuedOn: { type: [string, 'null'], format: date }
+                expiresOn: { type: [string, 'null'], format: date }
+                documentNumber: { type: [string, 'null'], maxLength: 60 }
+                notes: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/{documentId}/verify:
+    post:
+      tags: [Employee Documents]
+      operationId: verifyEmployeeDocument
+      summary: Accept a proposal; a named document still VERIFIED becomes REPLACED; employee_documents.manage
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/{documentId}/reject:
+    post:
+      tags: [Employee Documents]
+      operationId: rejectEmployeeDocument
+      summary: Refuse a proposal with a reason the employee reads; the content is erased; employee_documents.manage
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Reason' }
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /admin/employee-documents/{documentId}/remove:
+    post:
+      tags: [Employee Documents]
+      operationId: removeEmployeeDocument
+      summary: Erase the content of a VERIFIED or REPLACED document for good (D-13); employee_documents.manage
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Reason' }
+      responses:
+        '200':
+          description: The document
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeDocumentAdmin' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+components:
+  parameters:
+    EmployeeId:
+      name: employeeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    File:
+      description: The decrypted file as an attachment named after its type and date
+      headers:
+        Content-Disposition: { schema: { type: string }, description: 'attachment; filename="<TYPE>-<yyyy-mm-dd>.<ext>"' }
+        Content-Security-Policy: { schema: { type: string }, description: "sandbox; default-src 'none'" }
+      content:
+        application/pdf: { schema: { type: string, format: binary } }
+        image/jpeg: { schema: { type: string, format: binary } }
+        image/png: { schema: { type: string, format: binary } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        field: { type: string }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    DocumentTypeCode:
+      type: string
+      enum: [KTP, KK, NPWP, BPJS_KESEHATAN, BPJS_KETENAGAKERJAAN, IJAZAH, TRANSKRIP, SERTIFIKAT, SIM, PASPOR, SKCK, SURAT_SEHAT, LAINNYA]
+    DocumentType:
+      type: object
+      required: [code, label, expiry, titleRequired]
+      properties:
+        code: { $ref: '#/components/schemas/DocumentTypeCode' }
+        label: { type: string }
+        expiry: { type: string, enum: [REQUIRED, OPTIONAL] }
+        titleRequired: { type: boolean }
+    FileUpload:
+      type: object
+      required: [contentType, contentBase64]
+      properties:
+        contentType: { type: string, enum: [application/pdf, image/jpeg, image/png] }
+        contentBase64: { type: string, description: at most 4 MB once decoded }
+    SelfUpload:
+      type: object
+      additionalProperties: false
+      required: [documentType, file]
+      properties:
+        documentType: { $ref: '#/components/schemas/DocumentTypeCode' }
+        title: { type: [string, 'null'], maxLength: 200 }
+        issuer: { type: [string, 'null'], maxLength: 200 }
+        issuedOn: { type: [string, 'null'], format: date }
+        expiresOn: { type: [string, 'null'], format: date }
+        documentNumber: { type: [string, 'null'], maxLength: 60 }
+        replacesDocumentId: { type: [string, 'null'], format: uuid }
+        file: { $ref: '#/components/schemas/FileUpload' }
+    AdminUpload:
+      allOf:
+        - $ref: '#/components/schemas/SelfUpload'
+        - type: object
+          properties:
+            notes: { type: [string, 'null'], maxLength: 500 }
+    Reason:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 5, maxLength: 300 }
+    EmployeeDocument:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        documentType: { $ref: '#/components/schemas/DocumentTypeCode' }
+        typeLabel: { type: string }
+        title: { type: [string, 'null'] }
+        issuer: { type: [string, 'null'] }
+        issuedOn: { type: [string, 'null'], format: date }
+        expiresOn: { type: [string, 'null'], format: date }
+        daysLeft: { type: [integer, 'null'], description: negative once past (WIB) }
+        expired: { type: boolean }
+        numberMasked: { type: [string, 'null'], description: '••••1234; the full number never leaves the API (D-05)' }
+        status: { type: string, enum: [PENDING_REVIEW, VERIFIED, REJECTED, WITHDRAWN, REPLACED, REMOVED] }
+        source: { type: string, enum: [HC, EMPLOYEE] }
+        replacesDocumentId: { type: [string, 'null'], format: uuid }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        decisionReason: { type: [string, 'null'], description: the HC reason for a REJECTED proposal }
+        createdAt: { type: string, format: date-time }
+        file:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                contentType: { type: string }
+                byteSize: { type: integer }
+                purged: { type: boolean }
+    EmployeeDocumentAdmin:
+      allOf:
+        - $ref: '#/components/schemas/EmployeeDocument'
+        - type: object
+          properties:
+            notes: { type: [string, 'null'] }
+            endedAt: { type: [string, 'null'], format: date-time }
+            endReason: { type: [string, 'null'] }
+            updatedAt: { type: string, format: date-time }
+    ExpiringItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        fullName: { type: string }
+        employeeNumber: { type: string }
+        unitName: { type: [string, 'null'] }
+        documentType: { $ref: '#/components/schemas/DocumentTypeCode' }
+        typeLabel: { type: string }
+        title: { type: [string, 'null'] }
+        expiresOn: { type: string, format: date }
+        daysLeft: { type: integer }
+        expired: { type: boolean }
+    PendingItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        fullName: { type: string }
+        employeeNumber: { type: string }
+        unitName: { type: [string, 'null'] }
+        documentType: { $ref: '#/components/schemas/DocumentTypeCode' }
+        typeLabel: { type: string }
+        title: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        replacesDocumentId: { type: [string, 'null'], format: uuid }

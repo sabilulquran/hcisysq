@@ -228,6 +228,8 @@ export type CompensationProfileRow = {
   bpjsExtraFamilyOverrideReason: string | null;
   bpjsDecisionReference: string | null;
   ptkpStatus: string | null;
+  pph21ReportExcluded: boolean;
+  pph21ReportExclusionReason: string | null;
   pjMediaRatePerContent: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
@@ -254,6 +256,8 @@ export const PROFILE_COLUMNS = `
   bpjs_extra_family_override_reason AS "bpjsExtraFamilyOverrideReason",
   bpjs_decision_reference AS "bpjsDecisionReference",
   ptkp_status AS "ptkpStatus",
+  pph21_report_excluded AS "pph21ReportExcluded",
+  pph21_report_exclusion_reason AS "pph21ReportExclusionReason",
   pj_media_rate_per_content AS "pjMediaRatePerContent",
   bank_name AS "bankName",
   bank_account_number AS "bankAccountNumber", bank_account_name AS "bankAccountName",
@@ -293,6 +297,8 @@ export type NewCompensationProfile = {
   bpjsExtraFamilyOverrideReason?: string | null | undefined;
   bpjsDecisionReference?: string | null | undefined;
   ptkpStatus?: string | null | undefined;
+  pph21ReportExcluded?: boolean | undefined;
+  pph21ReportExclusionReason?: string | null | undefined;
   pjMediaRatePerContent?: number | null | undefined;
   bankName?: string | null | undefined;
   bankAccountNumber?: string | null | undefined;
@@ -338,6 +344,10 @@ export async function openCompensationProfile(
       return previous ? previous[key] : null;
     }
 
+    // A reason only means something beside an exclusion: reporting someone
+    // again drops the reason rather than carrying a stale one forward.
+    const pph21Excluded = (carried(profile.pph21ReportExcluded, "pph21ReportExcluded") ?? false) === true;
+
     await client.query(
       `UPDATE payroll_compensation_profiles
        SET effective_to = ($2::date - 1)
@@ -353,9 +363,9 @@ export async function openCompensationProfile(
          annual_performance_rate, monthly_performance_rate, bpjs_segment, bpjs_active_from,
          bpjs_extra_family_override, bpjs_extra_family_override_reason, bpjs_decision_reference,
          ptkp_status, pj_media_rate_per_content, bank_name, bank_account_number, bank_account_name,
-         recorded_by_account_id)
+         recorded_by_account_id, pph21_report_excluded, pph21_report_exclusion_reason)
        VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+               $16, $17::date, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
        RETURNING ${PROFILE_COLUMNS}`,
       [
         randomUUID(),
@@ -384,6 +394,8 @@ export async function openCompensationProfile(
         carried(profile.bankAccountNumber, "bankAccountNumber"),
         carried(profile.bankAccountName, "bankAccountName"),
         actorAccountId,
+        pph21Excluded,
+        pph21Excluded ? carried(profile.pph21ReportExclusionReason, "pph21ReportExclusionReason") : null,
       ],
     );
 
@@ -394,7 +406,10 @@ export async function openCompensationProfile(
       action: "payroll.profile.opened",
       periodId: null,
       employmentId: profile.employmentId,
-      payload: { effective_from: profile.effectiveFrom },
+      // Whether the profile keeps the person out of the PPh21 report is a flag,
+      // not a figure, and an auditor needs to see an exclusion appear. The
+      // reason stays on the profile row.
+      payload: { effective_from: profile.effectiveFrom, pph21_report_excluded: pph21Excluded },
     });
 
     await client.query("COMMIT");

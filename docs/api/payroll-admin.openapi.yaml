@@ -389,6 +389,18 @@ components:
         bpjsExtraFamilyOverrideReason: { type: [string, 'null'] }
         bpjsDecisionReference: { type: [string, 'null'] }
         ptkpStatus: { type: [string, 'null'] }
+        pph21ReportExcluded:
+          type: boolean
+          description: >-
+            PAY-003 section 5.3: keeps the employment out of the PPh21 TER report
+            while this profile applies. Left out, it is carried from the profile in
+            force; false drops the reason.
+        pph21ReportExclusionReason:
+          type: [string, 'null']
+          maxLength: 500
+          description: >-
+            Required, given or carried, when pph21ReportExcluded is true; the
+            database refuses an exclusion without one (PAYROLL_INVALID_PROFILE).
         pjMediaRatePerContent: { type: [integer, 'null'], minimum: 0 }
         bankName: { type: [string, 'null'] }
         bankAccountNumber: { type: [string, 'null'] }
@@ -423,6 +435,8 @@ components:
         bpjsExtraFamilyOverrideReason: { type: [string, 'null'] }
         bpjsDecisionReference: { type: [string, 'null'] }
         ptkpStatus: { type: [string, 'null'] }
+        pph21ReportExcluded: { type: boolean }
+        pph21ReportExclusionReason: { type: [string, 'null'] }
         pjMediaRatePerContent: { type: [string, 'null'] }
         bankName: { type: [string, 'null'] }
         bankAccountNumber: { type: [string, 'null'] }

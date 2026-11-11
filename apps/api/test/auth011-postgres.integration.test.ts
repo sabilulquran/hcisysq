@@ -190,7 +190,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(440);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(441);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(135);

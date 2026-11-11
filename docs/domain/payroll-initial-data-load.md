@@ -63,7 +63,43 @@ Setiap baris menyimpan `source` yang menyebut berkas, tab, dan bulan data, dan C
 
 ### 3.2 PPh21 TER
 
-Engine tidak membaca `PPH21_TER`, dan tabel TER A/B/C tidak ada di spreadsheet legacy (perhitungan PPh21 legacy berada di berkas laporan terpisah). Menyalin tabel dari ingatan tidak dapat diverifikasi, jadi putaran pertama **tidak** memuatnya (`DRAFT`). CLI menerima kunci ini bila disertakan; isinya harus disalin dari lampiran PP 58/2023 dan diverifikasi sebelum laporan PPh21 dibangun (PAY-003 §10 butir 9).
+Engine tidak membaca `PPH21_TER`, dan tabel TER A/B/C tidak ada di spreadsheet legacy (perhitungan PPh21 legacy berada di berkas laporan terpisah). Menyalin tabel dari ingatan tidak dapat diverifikasi, jadi putaran pertama **tidak** memuatnya (`DRAFT`). CLI menerima kunci ini bila disertakan; isinya harus disalin dari lampiran PP 58/2023 dan diverifikasi sebelum dipakai (PAY-003 §10 butir 9).
+
+Kebijakan ini dibaca **laporan PPh21 TER** (PAY-003 §7.2), bukan perhitungan: tanpa versi yang berlaku pada tanggal gajian, laporan menjawab `409 PPH21_TER_POLICY_MISSING`, sedangkan periode tetap dapat dihitung, diajukan, dan disahkan.
+
+**Memuat tabel TER setelah diverifikasi.** Process owner (Kepala HCM bersama Keuangan) menyalin ketiga tabel dari lampiran PP 58/2023 ke satu baris kebijakan, lalu menjalankan CLI yang sama (§5), dry-run dulu:
+
+```json
+{
+  "format": "PAY-003-MIG/1",
+  "policies": [
+    {
+      "rowId": "pph21-ter",
+      "policyKey": "PPH21_TER",
+      "effectiveFrom": "<YYYY-MM-01, tanggal mulai berlaku>",
+      "source": "PP 58/2023 lampiran; diverifikasi <nama/jabatan> <tanggal>",
+      "payload": {
+        "source": "PP 58/2023 lampiran (tabel TER bulanan A, B, C)",
+        "objectCode": "21-100-01",
+        "ptkpCategory": { "TK/0": "A", "...": "..." },
+        "categories": {
+          "A": [{ "upTo": <batas rupiah>, "rate": <pecahan, mis. 0.0025> }, "...", { "upTo": null, "rate": <tarif lapisan teratas> }],
+          "B": ["..."],
+          "C": ["..."]
+        }
+      }
+    }
+  ],
+  "profiles": [],
+  "loans": []
+}
+```
+
+Bentuk payload diperiksa CLI dan route (`validatePolicyPayload`): `objectCode` harus `21-100-01`; setiap status PTKP muncul sekali (dibandingkan tanpa spasi, huruf besar, sama dengan cara laporan mencocokkan status profil); ketiga kategori wajib ada; lapisan naik berurutan, hanya lapisan terakhir `upTo: null`; tarif berupa pecahan 0..1; batas berupa rupiah bulat. Baris yang tidak lolos ditolak `INVALID` dan tidak ditulis. Nilai di atas sengaja tidak diisi: dokumen dan repository ini tidak memuat tabel TER.
+
+Akun pelaku memerlukan `payroll.policies.manage`. Bila periode yang tanggal gajiannya pada atau setelah tanggal berlaku sudah `CALCULATED` ke atas, CLI menolak baris itu (`SETTLED_PERIOD`, §2); untuk laporan PPh21 periode yang sudah disahkan, versi dengan tanggal berlaku mundur dibuka lewat layar data acuan / `POST /payroll/policies` dengan `backdateReason` yang menyebut verifikasi tabel. Laporan membaca versi yang berlaku pada tanggal gajian masing-masing periode, dan perubahan peraturan cukup menambah versi baru.
+
+**Status PTKP dan pengecualian.** Laporan memetakan `ptkpStatus` profil (§3.3) ke kategori lewat `ptkpCategory`. Profil tanpa status atau dengan status yang tidak terpetakan tampil di laporan sebagai `PTKP_MISSING`. Pengecualian pelaporan per orang dimuat lewat field profil `pph21ReportExcluded` (boolean, default `false`) dan `pph21ReportExclusionReason` (wajib bila dikecualikan; tanpa alasan baris ditolak `INVALID`). Pemuatan awal tidak mengisi pengecualian apa pun (`DRAFT`): legacy tidak menyimpannya sebagai atribut, sehingga HC menetapkannya lewat layar profil dengan alasan.
 
 ### 3.3 Profil kompensasi (`payroll_compensation_profiles`)
 
@@ -82,7 +118,8 @@ Satu baris berkas per pegawai, dicocokkan lewat **NIP** (`employees.employee_num
 | `annualPerformanceRate`, `monthlyPerformanceRate` | `Kinerja & Jml Jam` bulan terakhir | Persen → pecahan (100% → 1). Kosong → `null`. |
 | `specialQualificationTarget` | `FORMULA GAJI` kolom N:Q "GAJI BARU" | Hanya bila kolom NIP berisi NIP yang cocok; baris berisi nama, bukan NIP, dilaporkan di berkas persiapan dan tidak dimuat. |
 | `bpjsSegment`, `bpjsActiveFrom` | `BPJS KESEHATAN` | Nomor diawali "00" (aturan tunjangan BPJS legacy) → `PPU_YAYASAN`, aktif sejak tanggal berlaku data (`DRAFT`). Selain itu `BELUM_TERDAFTAR` tanpa tanggal (`DRAFT`; spreadsheet tidak membedakan PBI dan mandiri, dan keduanya tidak menghasilkan iuran). |
-| `ptkpStatus` | `Status PTKP` | Teks apa adanya, maksimal 16 karakter. |
+| `ptkpStatus` | `Status PTKP` | Teks apa adanya, maksimal 16 karakter. Dipetakan ke kategori TER oleh laporan PPh21 (§3.2). |
+| `pph21ReportExcluded`, `pph21ReportExclusionReason` | — | Tidak diisi pada pemuatan awal (`false`, tanpa alasan); §3.2. |
 | `bankName` | — | `DRAFT`: "BSI", bank daftar transfer legacy. |
 | `bankAccountNumber` | `No. Rekening BANK` | Teks apa adanya. |
 | `bankAccountName` | `NAMA` | `DRAFT`: nama pegawai di master SDM. Legacy memperbaiki nama pemilik rekening di berkas laporan terpisah; HC memverifikasi sebelum periode diajukan. |

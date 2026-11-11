@@ -53,24 +53,24 @@ Paket 1 menyediakan **satu mesin pengingat** dengan katalog aturan, idempoten, m
 
 | `rule_key` | Penerima | Kapan (WIB) | Kunci kejadian | WA bawaan | Tautan |
 | --- | --- | --- | --- | --- | --- |
-| `approval.pending_digest` | Approver dengan langkah `pending` di cuti, dinas, pinjaman, atau tugas luar/WFH/ubah jadwal | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
+| `approval.pending_digest` | Approver dengan langkah `pending` pada pengajuan yang masih ditinjau (cuti, dinas, pinjaman, tugas luar/WFH/ubah jadwal) — sama dengan kotak Persetujuan; approver berupa akun Organ Yayasan menerima in-app saja | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
 | `leave.hc_queue_digest` | Pemegang `leave.validate` | Senin–Sabtu 07.00, bila ada tugas HC cuti `pending` | tanggal | Nyala | `/app/hc/leave` |
 | `documents.request_queue_digest` | Pemegang `documents.manage` | Senin–Sabtu 07.00, bila ada permintaan `SUBMITTED` ≥ 2 hari | tanggal | Nyala | `/admin/documents` |
-| `employment.term_ending` | Pemegang `employment.manage` | Harian 07.00; ambang H-60, H-30, H-7 dari akhir masa kontrak/percobaan/magang/lepas yang sedang berjalan | term + ambang | Mati | `/admin/employees/<id>` |
+| `employment.term_ending` | Pemegang `employment.manage`; tidak berjalan selama riwayat kepegawaian `OFF` | Harian 07.00; ambang H-60, H-30, H-7 dari akhir masa kontrak/percobaan/magang/lepas yang sedang berjalan | term + ambang | Mati | `/admin/employees/<id>` |
 | `employee.certificate_expiring` | Pegawai pemilik sertifikat | Harian 07.00; ambang H-30, H-7 | sertifikat + tanggal berakhir + ambang | Nyala | `/app/my-data` |
 | `performance.self_due` | Pegawai yang penilaian dirinya belum dikirim di siklus `OPEN` | Harian 07.00; ambang H-3, H-0 dari `self_due_on` | review + ambang | Nyala | `/app/performance` |
 | `performance.review_due` | Penilai (atasan) dengan penilaian `MANAGER_REVIEW` | Harian 07.00; ambang H-3, H-0 dari `review_due_on` | siklus + penilai + ambang | Nyala | `/app/performance` |
 | `payroll.cutoff_due` | Pemegang `payroll.inputs.manage` | Harian 08.00; ambang H-3, H-0 dari `cutoff_end` selama periode `DRAFT`/`COLLECTING` | periode + ambang | Nyala | `/admin/payroll/<id>` |
 | `payroll.pay_date_due` | Pemegang `payroll.submit` dan `payroll.approve` | Harian 08.00; ambang H-3, H-1 dari `pay_date` selama periode belum `APPROVED` | periode + ambang | Nyala | `/admin/payroll/<id>` |
 
-Ambang dan jam di atas adalah `DRAFT`. Aturan yang lewat jatuh tempo (sisa hari negatif) tidak menembak lagi; worklist HC (mis. "Sertifikat akan berakhir") tetap menampilkan yang terlambat. Ringkasan (`*_digest`) dihitung saat berjalan dan memuat jumlah, bukan daftar nama.
+Judul dipotong 160 karakter dan isi 500 karakter (batas NOTIF-004), sehingga nama yang panjang tidak menggagalkan aturan. Ambang dan jam di atas adalah `DRAFT`. Aturan yang lewat jatuh tempo (sisa hari negatif) tidak menembak lagi; worklist HC (mis. "Sertifikat akan berakhir") tetap menampilkan yang terlambat. Ringkasan (`*_digest`) dihitung saat berjalan dan memuat jumlah, bukan daftar nama.
 
 ## 5. Alur penjalan
 
 1. Setiap 60 detik, bila jam Jakarta di dalam 06.00–21.00 (D-04): untuk setiap aturan yang jam tembaknya sudah lewat hari ini, sisipkan `reminder_rule_runs (rule_key, run_date)`; bila baris sudah ada, aturan dilewati (sudah berjalan atau sedang dijalankan penjalan lain).
 2. Aturan menghasilkan kandidat `(occurrence_key, penerima, judul, isi, tautan, teks WA)`. Untuk tiap kandidat, sisipkan `reminder_occurrences` dengan `ON CONFLICT DO NOTHING`; hanya baris yang benar-benar baru yang menulis notifikasi in-app dan, bila WhatsApp aktif bagi penerima itu (D-08) dan ia pegawai, satu `reminder_deliveries` berstatus `QUEUED`. Semuanya dalam satu transaksi per aturan.
 3. Hasil aturan (`generated`, `finished_at`, atau `error_code` tanpa isi pesan) dicatat di `reminder_rule_runs`. Aturan yang gagal tidak menghentikan aturan lain dan **tidak diulang** di hari yang sama (D-05); kegagalan tampil di log dan baris run.
-4. Penyerahan WhatsApp: baris `QUEUED` yang jatuh tempo diklaim dengan `FOR UPDATE SKIP LOCKED` dan lease 5 menit, diserahkan ke Kirim SQ di luar transaksi dengan `idempotency-key` tetap, lalu dicatat `HANDED_OVER`/`DRY_RUN`/`SKIPPED`/`FAILED`. Gagal sementara diulang dengan jeda CAL-001 (`retryDelayMs`). Nomor diambil dari `employees.phone` saat penyerahan; tanpa nomor `SKIPPED no_phone`.
+4. Penyerahan WhatsApp: saat diserahkan, akun dan pegawai diperiksa ulang masih aktif dan preferensi WhatsApp aturan itu belum dimatikan hari itu (`SKIPPED inactive` / `SKIPPED opted_out`). Baris `QUEUED` yang jatuh tempo diklaim dengan `FOR UPDATE SKIP LOCKED` dan lease 5 menit, diserahkan ke Kirim SQ di luar transaksi dengan `idempotency-key` tetap, lalu dicatat `HANDED_OVER`/`DRY_RUN`/`SKIPPED`/`FAILED`. Gagal sementara diulang dengan jeda CAL-001 (`retryDelayMs`). Nomor diambil dari `employees.phone` saat penyerahan; tanpa nomor `SKIPPED no_phone`.
 
 ## 6. Preferensi
 
@@ -95,7 +95,7 @@ reminder_preferences     (account_id, rule_key) PK, whatsapp_enabled, updated_at
 reminder_audit_events    id, event_type, account_id, rule_key, metadata, occurred_at
 ```
 
-Isi in-app ada di `in_app_notifications` (NOTIF-004). Migrasi 0142 melonggarkan `href` notifikasi agar boleh juga menunjuk `/admin/...` (pengingat HC membuka worklist admin); halaman tujuan tetap memeriksa izinnya sendiri. `message_text` WhatsApp mengikuti D-07. Rollback migrasi: `-- Down:` di berkas migrasi; menghapus tabel tidak menyentuh notifikasi in-app yang sudah terkirim.
+Isi in-app ada di `in_app_notifications` (NOTIF-004). Migrasi 0145 melonggarkan `href` notifikasi agar boleh juga menunjuk `/admin/...` (pengingat HC membuka worklist admin); halaman tujuan tetap memeriksa izinnya sendiri. `message_text` WhatsApp mengikuti D-07. Rollback migrasi: `-- Down:` di berkas migrasi; menghapus tabel tidak menyentuh notifikasi in-app yang sudah terkirim.
 
 ## 8. NOTIF-001 — adapter notifikasi (penutupan)
 

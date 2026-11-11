@@ -301,6 +301,44 @@ describe.skipIf(!allowed)("NOTIF-003 reminder engine", () => {
     expect(await deliveries(people.approver.accountId)).toEqual([]);
   });
 
+  it("review fixes: closed requests are not counted, long names are clipped, OFF history is silent, same-day opt-out holds", async () => {
+    await pendingTripStep("approver", "requester");
+    await pendingTripStep("approver", "plain");
+    await client.query(
+      `UPDATE business_trip_requests SET status = 'CANCELLED', cancel_reason = 'Batal uji'
+        WHERE id = (SELECT request_id FROM business_trip_approval_steps WHERE approver_employee_id = $1 LIMIT 1)`,
+      [people.approver.employeeId],
+    );
+    const now = morning();
+    await engine(now).runRule(findReminderRule("approval.pending_digest")!, now);
+    expect((await inbox(people.approver.accountId, "reminder.approval.pending_digest"))[0]!.title).toBe("1 persetujuan menunggu Anda");
+
+    // A WhatsApp switched off after the reminder was made is still honoured at hand-over.
+    await client.query(
+      "INSERT INTO reminder_preferences (account_id, rule_key, whatsapp_enabled) VALUES ($1,'approval.pending_digest',false)",
+      [people.approver.accountId],
+    );
+    await client.query("UPDATE reminder_deliveries SET expires_at = now() + interval '1 hour'");
+    const kirim = new FakeSender("kirim");
+    await engine(now, { sender: kirim, allowlist: null }).handOverDeliveries();
+    expect(kirim.sent).toHaveLength(0);
+    expect((await deliveries(people.approver.accountId))[0]).toMatchObject({ status: "SKIPPED", errorCode: "opted_out" });
+
+    const today = jakartaClock(now).date;
+    await client.query(
+      `INSERT INTO employee_skills (id, employee_id, kind, name, category, issuer, issued_on, expires_on)
+       VALUES ($1,$2,'SERTIFIKAT',$3,'LAINNYA','Lembaga Uji','2024-01-01',$4::date)`,
+      [randomUUID(), people.plain.employeeId, "S".repeat(200), addDays(today, 5)],
+    );
+    const certificateRun = await engine(now).runRule(findReminderRule("employee.certificate_expiring")!, now);
+    expect(certificateRun.status).toBe("RAN");
+    const [note] = await inbox(people.plain.accountId, "reminder.employee.certificate_expiring");
+    expect([...note!.title].length).toBe(160);
+
+    await client.query("UPDATE employment_rollout_settings SET mode = 'OFF' WHERE id = 1");
+    expect(await findReminderRule("employment.term_ending")!.generate(client, { today })).toEqual([]);
+  });
+
   it("D-05: a failing rule is recorded without its message, does not stop the others, and is not retried that day", async () => {
     const broken: ReminderRule = {
       key: "test_reminder.broken", label: "Rusak", description: "Uji", defaultWhatsApp: false, fireHour: 6,

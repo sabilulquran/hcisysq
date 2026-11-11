@@ -918,7 +918,7 @@ features:
       due, payroll cutoff and pay date), idempotent per rule/occurrence/recipient, 06:00-21:00
       WIB send window, in-app always plus WhatsApp per rule default and per-account preference,
       allowlist respected. The meeting reminder stays in the CAL-001 runner. Not carried: daily
-      check-in reminder, warning-letter expiry (D-09). Migration 0142.
+      check-in reminder, warning-letter expiry (D-09). Migration 0145.
     docs:
       - docs/domain/reminders.md
       - docs/api/reminders.openapi.yaml

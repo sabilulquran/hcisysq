@@ -24,6 +24,16 @@ import { endOfSendWindow, insideSendWindow, jakartaClock, ruleIsDue, whatsappEna
 import { REMINDER_RULES, type ReminderRule } from "./rules.js";
 
 const CLAIM_LEASE = "5 minutes";
+/** in_app_notifications CHECKs (migration 0049) and reminder_deliveries.message_text. */
+const TITLE_MAX = 160;
+const BODY_MAX = 500;
+const WHATSAPP_MAX = 1000;
+
+/** Cuts on characters (code points), as the CHECK constraints count. */
+function clip(text: string, max: number) {
+  const chars = [...text];
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join("")}…`;
+}
 const DELIVERY_BATCH = 5;
 
 export interface ReminderEngineOptions {
@@ -98,6 +108,7 @@ export class ReminderEngine {
     const runDate = jakartaClock(now).date;
     const client = await this.pool.connect();
     let claimed = false;
+    let released = false;
     try {
       await client.query("BEGIN");
       const claim = await client.query(
@@ -118,7 +129,13 @@ export class ReminderEngine {
       await client.query("COMMIT");
       return { ruleKey: rule.key, status: "RAN", generated };
     } catch (error) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        client.release(rollbackError as Error);
+        released = true;
+        throw error;
+      }
       if (!claimed) throw error;
       // A SQLSTATE or the error's class name only: a database message can quote row values.
       const sqlState = (error as { code?: unknown }).code;
@@ -132,7 +149,7 @@ export class ReminderEngine {
       );
       return { ruleKey: rule.key, status: "FAILED", generated: 0 };
     } finally {
-      client.release();
+      if (!released) client.release();
     }
   }
 
@@ -152,7 +169,7 @@ export class ReminderEngine {
          VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (rule_key, occurrence_key, recipient_account_id) DO NOTHING
          RETURNING id`,
-        [occurrenceId, rule.key, candidate.occurrenceKey, candidate.accountId, candidate.employeeId, candidate.title, candidate.href],
+        [occurrenceId, rule.key, candidate.occurrenceKey, candidate.accountId, candidate.employeeId, clip(candidate.title, TITLE_MAX), candidate.href],
       );
       if (!inserted.rows[0]) continue;
       created += 1;
@@ -160,8 +177,8 @@ export class ReminderEngine {
         recipientAccountId: candidate.accountId,
         eventKey: `reminder.${rule.key}.${candidate.occurrenceKey}`,
         category: "system",
-        title: candidate.title,
-        body: candidate.body,
+        title: clip(candidate.title, TITLE_MAX),
+        body: clip(candidate.body, BODY_MAX),
         href: candidate.href,
         metadata: { reminderRule: rule.key },
       });
@@ -169,7 +186,7 @@ export class ReminderEngine {
         await client.query(
           `INSERT INTO reminder_deliveries (id, occurrence_id, employee_id, message_text, expires_at, idempotency_key)
            VALUES ($1,$2,$3,$4,$5,$6)`,
-          [randomUUID(), occurrenceId, candidate.employeeId, candidate.whatsappText, endOfSendWindow(now),
+          [randomUUID(), occurrenceId, candidate.employeeId, clip(candidate.whatsappText, WHATSAPP_MAX), endOfSendWindow(now),
             `hcis-reminder:${occurrenceId}`],
         );
       }
@@ -187,7 +204,7 @@ export class ReminderEngine {
     );
     const claimed = await this.pool.query<{
       id: string; employeeId: string; text: string; expiresAt: Date; idempotencyKey: string; attempts: number;
-      ruleKey: string; href: string;
+      ruleKey: string; href: string; accountId: string;
     }>(
       `WITH due AS (
          SELECT id FROM reminder_deliveries
@@ -202,7 +219,7 @@ export class ReminderEngine {
         WHERE delivery.id = due.id AND occurrence.id = delivery.occurrence_id
        RETURNING delivery.id, delivery.employee_id AS "employeeId", delivery.message_text AS text,
                  delivery.expires_at AS "expiresAt", delivery.idempotency_key AS "idempotencyKey", delivery.attempts,
-                 occurrence.rule_key AS "ruleKey", occurrence.href`,
+                 occurrence.rule_key AS "ruleKey", occurrence.href, occurrence.recipient_account_id AS "accountId"`,
       [DELIVERY_BATCH],
     );
     let delivered = 0;
@@ -226,17 +243,25 @@ export class ReminderEngine {
 
   private async deliver(row: {
     id: string; employeeId: string; text: string; expiresAt: Date; idempotencyKey: string; attempts: number;
-    ruleKey: string; href: string;
+    ruleKey: string; href: string; accountId: string;
   }) {
-    const recipient = await this.pool.query<{ phone: string | null; employeeNumber: string | null; active: boolean }>(
+    const recipient = await this.pool.query<{ phone: string | null; employeeNumber: string | null; active: boolean; optedOut: boolean }>(
       `SELECT employee.phone, employee.employee_number AS "employeeNumber",
-              (employee.status = 'active' AND employee.removed_at IS NULL) AS active
-         FROM employees employee WHERE employee.id = $1`,
-      [row.employeeId],
+              (employee.status = 'active' AND employee.removed_at IS NULL AND account.status = 'active') AS active,
+              coalesce(preference.whatsapp_enabled = false, false) AS "optedOut"
+         FROM employees employee
+         JOIN accounts account ON account.id = $2 AND account.employee_id = employee.id
+         LEFT JOIN reminder_preferences preference ON preference.account_id = account.id AND preference.rule_key = $3
+        WHERE employee.id = $1`,
+      [row.employeeId, row.accountId, row.ruleKey],
     );
     const person = recipient.rows[0];
     if (!person?.active) {
       await this.finish(row.id, "SKIPPED", { errorCode: "inactive" });
+      return false;
+    }
+    if (person.optedOut) {
+      await this.finish(row.id, "SKIPPED", { errorCode: "opted_out" });
       return false;
     }
     const to = normalizeWhatsAppNumber(person.phone);

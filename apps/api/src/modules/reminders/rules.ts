@@ -4,6 +4,7 @@
 
 import type { Pool, PoolClient } from "pg";
 
+import { getRolloutMode } from "../employment/infrastructure/postgres-employment-store.js";
 import { daysBetween, dueLabel, formatJakartaDate, thresholdReached } from "./domain.js";
 
 type Db = Pool | PoolClient;
@@ -35,7 +36,7 @@ export interface ReminderRule {
 const MONDAY_TO_SATURDAY = [1, 2, 3, 4, 5, 6] as const;
 
 /** D-13: active employee accounts holding a permission at organization scope today. */
-export async function accountsWithPermission(db: Db, permissionKeys: readonly string[]) {
+export async function accountsWithPermission(db: Db, permissionKeys: readonly string[], today: string) {
   const result = await db.query<{ accountId: string; employeeId: string }>(
     `SELECT account.id AS "accountId", account.employee_id AS "employeeId"
        FROM accounts account
@@ -49,16 +50,16 @@ export async function accountsWithPermission(db: Db, permissionKeys: readonly st
              WHERE assignment.account_id = account.id
                AND role_permission.permission_key = ANY($1::text[])
                AND assignment.scope_type = 'organization' AND assignment.organizational_unit_id IS NULL
-               AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
-               AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
+               AND (assignment.starts_on IS NULL OR assignment.starts_on <= $2::date)
+               AND (assignment.ends_on IS NULL OR assignment.ends_on >= $2::date)
           )
           OR EXISTS (
-            SELECT 1 FROM hcis_seat_permissions(current_date, account.id) seat
+            SELECT 1 FROM hcis_seat_permissions($2::date, account.id) seat
              WHERE seat.permission_key = ANY($1::text[])
           )
         )
       ORDER BY account.id`,
-    [permissionKeys],
+    [permissionKeys, today],
   );
   return result.rows;
 }
@@ -109,19 +110,40 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
     fireHour: 7,
     weekdays: MONDAY_TO_SATURDAY,
     async generate(db, { today }) {
-      const result = await db.query<{ accountId: string; employeeId: string; pending: number }>(
-        `WITH steps AS (
-           SELECT approver_employee_id FROM leave_request_approval_steps WHERE status = 'pending'
-           UNION ALL SELECT approver_employee_id FROM business_trip_approval_steps WHERE status = 'pending'
-           UNION ALL SELECT approver_employee_id FROM employee_loan_approval_steps WHERE status = 'pending'
-           UNION ALL SELECT approver_employee_id FROM attendance_work_arrangement_approval_steps WHERE status = 'pending'
-         ), counted AS (
-           SELECT approver_employee_id, count(*)::int AS pending FROM steps GROUP BY approver_employee_id
+      // The same steps the approval inboxes list: pending, on a request still in review.
+      const steps = `
+        SELECT step.approver_employee_id, step.approver_account_id
+          FROM leave_request_approval_steps step JOIN leave_requests request ON request.id = step.leave_request_id
+         WHERE step.status = 'pending' AND request.status = 'in_review'
+        UNION ALL
+        SELECT step.approver_employee_id, NULL::uuid
+          FROM business_trip_approval_steps step JOIN business_trip_requests request ON request.id = step.request_id
+         WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
+        UNION ALL
+        SELECT step.approver_employee_id, NULL::uuid
+          FROM employee_loan_approval_steps step JOIN employee_loans request ON request.id = step.loan_id
+         WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
+        UNION ALL
+        SELECT step.approver_employee_id, NULL::uuid
+          FROM attendance_work_arrangement_approval_steps step
+          JOIN attendance_work_arrangement_requests request ON request.id = step.request_id
+         WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'`;
+      const result = await db.query<{ accountId: string; employeeId: string | null; pending: number }>(
+        `WITH steps AS (${steps}), by_employee AS (
+           SELECT approver_employee_id, count(*)::int AS pending FROM steps
+            WHERE approver_employee_id IS NOT NULL GROUP BY approver_employee_id
+         ), by_account AS (
+           SELECT approver_account_id, count(*)::int AS pending FROM steps
+            WHERE approver_account_id IS NOT NULL GROUP BY approver_account_id
          )
-         SELECT recipient_account.id AS "accountId", recipient.id AS "employeeId", counted.pending
-           FROM counted
-           ${employeeAccountJoin("counted.approver_employee_id")}
-          ORDER BY recipient.id`,
+         SELECT recipient_account.id AS "accountId", recipient.id AS "employeeId", by_employee.pending
+           FROM by_employee
+           ${employeeAccountJoin("by_employee.approver_employee_id")}
+         UNION ALL
+         -- APR-001 leave steps held by an account (Organ Yayasan): in-app only, it has no employee number.
+         SELECT account.id, NULL::uuid, by_account.pending
+           FROM by_account JOIN accounts account ON account.id = by_account.approver_account_id AND account.status = 'active'
+         ORDER BY 1`,
       );
       return result.rows.map((row) => ({
         occurrenceKey: today,
@@ -147,7 +169,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
       );
       const pending = count.rows[0]?.pending ?? 0;
       if (!pending) return [];
-      return digestToHolders(await accountsWithPermission(db, ["leave.validate"]), {
+      return digestToHolders(await accountsWithPermission(db, ["leave.validate"], today), {
         today,
         title: `${pending} cuti menunggu tindakan HC`,
         body: "Cuti khusus atau cuti masa kritis menunggu validasi atau persetujuan Human Capital.",
@@ -171,7 +193,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
       );
       const pending = count.rows[0]?.pending ?? 0;
       if (!pending) return [];
-      return digestToHolders(await accountsWithPermission(db, ["documents.manage"]), {
+      return digestToHolders(await accountsWithPermission(db, ["documents.manage"], today), {
         today,
         title: `${pending} permintaan surat menunggu keputusan`,
         body: "Permintaan surat keterangan sudah menunggu dua hari atau lebih.",
@@ -187,6 +209,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
     defaultWhatsApp: false,
     fireHour: 7,
     async generate(db, { today }) {
+      if ((await getRolloutMode(db)).mode === "OFF") return [];
       // The current term per employee, as the "Kontrak akan berakhir" worklist (EMP-005 §13.4) reads it.
       const terms = await db.query<{ termId: string; employeeId: string; fullName: string; category: string; endsOn: string }>(
         `SELECT DISTINCT ON (employment.employee_id)
@@ -206,7 +229,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         .map((term) => ({ term, daysLeft: daysBetween(today, term.endsOn), threshold: thresholdReached(daysBetween(today, term.endsOn), [60, 30, 7]) }))
         .filter((item) => item.threshold !== null);
       if (!due.length) return [];
-      const holders = await accountsWithPermission(db, ["employment.manage"]);
+      const holders = await accountsWithPermission(db, ["employment.manage"], today);
       return due.flatMap(({ term, daysLeft, threshold }) => holders.map((holder) => ({
         occurrenceKey: `${term.termId}:${term.endsOn}:${threshold}`,
         accountId: holder.accountId,
@@ -341,7 +364,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         return threshold === null ? [] : [{ period, daysLeft, threshold }];
       });
       if (!due.length) return [];
-      const holders = await accountsWithPermission(db, ["payroll.inputs.manage"]);
+      const holders = await accountsWithPermission(db, ["payroll.inputs.manage"], today);
       return due.flatMap(({ period, daysLeft, threshold }) => holders.map((holder) => ({
         occurrenceKey: `${period.id}:${threshold}`,
         accountId: holder.accountId,
@@ -373,7 +396,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         return threshold === null ? [] : [{ period, daysLeft, threshold }];
       });
       if (!due.length) return [];
-      const holders = await accountsWithPermission(db, ["payroll.submit", "payroll.approve"]);
+      const holders = await accountsWithPermission(db, ["payroll.submit", "payroll.approve"], today);
       return due.flatMap(({ period, daysLeft, threshold }) => holders.map((holder) => ({
         occurrenceKey: `${period.id}:${threshold}`,
         accountId: holder.accountId,

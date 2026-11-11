@@ -43,7 +43,7 @@ No delete endpoint is exposed in v1. Retention remains a separate policy decisio
 
 NOTIF-001 is closed by `reminders.md` §8: in-app (this inbox) and WhatsApp (Kirim SQ) adapters; email is not built (D-10). NOTIF-003 reminders are implemented (`reminders.md`) and arrive here, category `system`.
 
-Since migration 0142 a notification link may point into the admin shell (`/admin/...`) as well as `/app/...`, because HC reminders open admin worklists. The destination still re-checks authorization.
+Since migration 0145 a notification link may point into the admin shell (`/admin/...`) as well as `/app/...`, because HC reminders open admin worklists. The destination still re-checks authorization.
 
 The employee service catalog splits:
 - Notifikasi — available (NOTIF-004 / in-app part of NOTIF-001)

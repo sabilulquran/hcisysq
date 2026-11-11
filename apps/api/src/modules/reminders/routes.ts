@@ -87,6 +87,12 @@ export async function registerReminderRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // Make the row exist (holding the rule default), then lock it, so two first saves serialize.
+      await client.query(
+        `INSERT INTO reminder_preferences (account_id, rule_key, whatsapp_enabled) VALUES ($1,$2,$3)
+         ON CONFLICT (account_id, rule_key) DO NOTHING`,
+        [accountId, rule.key, rule.defaultWhatsApp],
+      );
       const before = await client.query<{ whatsappEnabled: boolean }>(
         `SELECT whatsapp_enabled AS "whatsappEnabled" FROM reminder_preferences
           WHERE account_id = $1 AND rule_key = $2 FOR UPDATE`,
@@ -94,8 +100,7 @@ export async function registerReminderRoutes(
       );
       const previous = whatsappEnabled(rule.defaultWhatsApp, before.rows[0]?.whatsappEnabled);
       await client.query(
-        `INSERT INTO reminder_preferences (account_id, rule_key, whatsapp_enabled) VALUES ($1,$2,$3)
-         ON CONFLICT (account_id, rule_key) DO UPDATE SET whatsapp_enabled = EXCLUDED.whatsapp_enabled, updated_at = now()`,
+        `UPDATE reminder_preferences SET whatsapp_enabled = $3, updated_at = now() WHERE account_id = $1 AND rule_key = $2`,
         [accountId, rule.key, body.data.whatsapp],
       );
       if (previous !== body.data.whatsapp) {

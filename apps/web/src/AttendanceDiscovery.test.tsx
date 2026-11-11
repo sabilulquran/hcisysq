@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AppShell, EmployeeHumanCapitalNavigation } from "@/layouts/AppShell";
 import { AdminDeviceAccessNote, AdminNavigation } from "@/layouts/AdminShell";
 import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAttendanceNavigation";
-import { AttendanceSectionTabs } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { AttendanceAdvancedLinks, AttendanceAdvancedNotice, AttendanceSectionTabs } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { DeviceDetailNavigation } from "@/components/attendance/device-admin/DeviceDetailShell";
 import { SavedFilterBar } from "@/components/attendance/device-admin/SavedFilterBar";
 import { getEmployeeService } from "@/lib/employeeServices";
@@ -186,7 +186,20 @@ describe("HC and device-operator navigation", () => {
     expect(html).toContain("flex-wrap");
     expect(html).not.toContain("overflow-x-auto");
     expect(html).toContain('href="/admin/attendance/schedules/swaps"');
-    expect(html).toContain('href="/admin/attendance/schedules/dates"');
+    expect(html).toContain('href="/admin/attendance/schedules/calendar"');
+    // ATT-011-8: the old screens are not tabs any more.
+    expect(html).not.toContain('href="/admin/attendance/schedules/dates"');
+    expect(html).not.toContain('href="/admin/attendance/schedules"');
     expect(html).not.toContain('href="/admin/attendance/settings/locations"');
+  });
+
+  it("ATT-011-8: a read-only advanced page marks Kalender as the current Jadwal tab", () => {
+    const html = renderToStaticMarkup(<AttendanceSectionTabs tab="dates" session={session(["attendance.shift_swap.manage", "attendance.schedule.manage"])} />);
+    expect(html).toMatch(/href="\/admin\/attendance\/schedules\/calendar" aria-current="page"/);
+    expect(html).not.toContain('href="/admin/attendance/schedules/dates"');
+    expect(renderToStaticMarkup(<AttendanceAdvancedNotice />)).toContain("Tampilan lanjutan — baca saja.");
+    const links = renderToStaticMarkup(<AttendanceAdvancedLinks views={[{ key: "patterns", label: "Pola jadwal (lama)", href: "/admin/attendance/schedules" }]} />);
+    expect(links).toContain('href="/admin/attendance/schedules"');
+    expect(renderToStaticMarkup(<AttendanceAdvancedLinks views={[]} />)).toBe("");
   });
 });

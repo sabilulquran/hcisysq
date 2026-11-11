@@ -16,7 +16,14 @@ import {
   requestStatusLabel,
   scanEventLabel,
 } from "@/lib/attendanceLabels";
-import { attendanceSectionHref, attendanceSections, legacyAttendanceRedirects } from "@/lib/attendanceNavigation";
+import {
+  attendanceAdvancedViews,
+  attendanceSectionHref,
+  attendanceSectionOf,
+  attendanceSections,
+  attendanceTabBarKey,
+  legacyAttendanceRedirects,
+} from "@/lib/attendanceNavigation";
 import { canAccessAdminPath } from "@/lib/authorization";
 import type { AuthSession } from "@/types/hcis";
 
@@ -104,7 +111,8 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       "/admin/attendance/adms": "attendance.devices.read",
       "/admin/attendance/action-queue": "attendance.clarification.manage",
     };
-    const tabs = attendanceSections.flatMap((section) => section.tabs).filter((tab) => tab.href !== "/admin/attendance");
+    // ATT-011-8: the read-only "Tampilan lanjutan" pages are gated like the tabs they used to be.
+    const tabs = attendanceSections.flatMap((section) => [...section.tabs, ...(section.advanced ?? [])]).filter((tab) => tab.href !== "/admin/attendance");
     expect(tabs.map((tab) => tab.href).sort()).toEqual(Object.keys(expected).sort());
     for (const tab of tabs) {
       expect(canAccessAdminPath(session([expected[tab.href]!]), tab.href), tab.href).toBe(true);
@@ -140,6 +148,30 @@ describe("ATT-011 Waktu & Kehadiran navigation (K-8)", () => {
       expect(newPaths.has(to.split("?")[0]!), `${from} -> ${to}`).toBe(true);
     }
     expect(legacyAttendanceRedirects["/admin/attendance/mobile-evidence"]).toBe("/admin/attendance/reports?tab=transactions&source=mobile");
+  });
+
+  it("ATT-011-8: keeps Pola jadwal and Jadwal per tanggal out of the tab bar, reachable read-only from Kalender", () => {
+    const schedules = attendanceSections.find((section) => section.key === "schedules")!;
+    expect(schedules.tabs.map((tab) => tab.label)).toEqual(["Kalender", "Tukar shift"]);
+    expect(schedules.tabs.map((tab) => tab.href)).not.toContain("/admin/attendance/schedules");
+    expect(schedules.tabs.map((tab) => tab.href)).not.toContain("/admin/attendance/schedules/dates");
+
+    // The old URLs still belong to Jadwal (bookmarks keep working) and show Kalender as the current tab.
+    expect(attendanceSectionOf("patterns").key).toBe("schedules");
+    expect(attendanceSectionOf("dates").key).toBe("schedules");
+    expect(attendanceTabBarKey("patterns")).toBe("calendar");
+    expect(attendanceTabBarKey("dates")).toBe("calendar");
+    expect(attendanceTabBarKey("swaps")).toBe("swaps");
+
+    // Only someone who could load them is offered the links.
+    expect(attendanceAdvancedViews(session(["attendance.schedule.manage"]), "calendar").map((view) => view.href))
+      .toEqual(["/admin/attendance/schedules", "/admin/attendance/schedules/dates"]);
+    expect(attendanceAdvancedViews(session(["attendance.reports.read"]), "calendar")).toEqual([]);
+    expect(attendanceAdvancedViews(null, "calendar")).toEqual([]);
+
+    // Old bookmarks of the pre-ATT-011 pattern and roster screens land on Kalender.
+    expect(legacyAttendanceRedirects["/admin/attendance/workforce/assignments"]).toBe("/admin/attendance/schedules/calendar");
+    expect(legacyAttendanceRedirects["/admin/attendance/workforce/roster"]).toBe("/admin/attendance/schedules/calendar");
   });
 
   it("keeps Kehadiran to three tabs and opens Perbaikan Absen for either correction permission (ATT-014 §19.8)", () => {

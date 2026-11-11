@@ -26,6 +26,11 @@ export interface AttendanceSection {
   key: AttendanceSectionKey;
   label: string;
   tabs: AttendanceTab[];
+  /**
+   * ATT-011-8: read-only "Tampilan lanjutan" pages of this section. They keep their URLs (bookmarks keep
+   * working) but are not in the tab bar; they are reached from `parent`, which the tab bar marks current.
+   */
+  advanced?: Array<AttendanceTab & { parent: AttendanceTabKey }>;
 }
 
 export const attendanceSections: AttendanceSection[] = [
@@ -43,11 +48,14 @@ export const attendanceSections: AttendanceSection[] = [
     key: "schedules",
     label: "Jadwal",
     tabs: [
-      // ATT-011-5: the planner is the main Jadwal screen; Pola jadwal and Jadwal per tanggal stay until UAT (ATT-011-8).
+      // ATT-011-5: the planner is the main Jadwal screen.
       { key: "calendar", label: "Kalender", href: "/admin/attendance/schedules/calendar" },
-      { key: "patterns", label: "Pola jadwal", href: "/admin/attendance/schedules" },
-      { key: "dates", label: "Jadwal per tanggal", href: "/admin/attendance/schedules/dates" },
       { key: "swaps", label: "Tukar shift", href: "/admin/attendance/schedules/swaps" },
+    ],
+    // ATT-011-8: the old screens, read-only, linked from Kalender ("Tampilan lanjutan").
+    advanced: [
+      { key: "patterns", label: "Pola jadwal (lama)", href: "/admin/attendance/schedules", parent: "calendar" },
+      { key: "dates", label: "Jadwal per tanggal (lama)", href: "/admin/attendance/schedules/dates", parent: "calendar" },
     ],
   },
   {
@@ -71,7 +79,20 @@ export const attendanceSections: AttendanceSection[] = [
 ];
 
 export function attendanceSectionOf(tab: AttendanceTabKey): AttendanceSection {
-  return attendanceSections.find((section) => section.tabs.some((item) => item.key === tab))!;
+  return attendanceSections.find((section) =>
+    section.tabs.some((item) => item.key === tab) || (section.advanced ?? []).some((item) => item.key === tab))!;
+}
+
+/** The tab bar entry that stands for `tab`: itself, or the parent of a "Tampilan lanjutan" page (ATT-011-8). */
+export function attendanceTabBarKey(tab: AttendanceTabKey): AttendanceTabKey {
+  return attendanceSectionOf(tab).advanced?.find((item) => item.key === tab)?.parent ?? tab;
+}
+
+/** ATT-011-8: the read-only "Tampilan lanjutan" pages reachable from `parent` that the account can load. */
+export function attendanceAdvancedViews(session: AuthSession | null, parent: AttendanceTabKey): AttendanceTab[] {
+  return attendanceSections
+    .flatMap((section) => section.advanced ?? [])
+    .filter((item) => item.parent === parent && canAccessAdminPath(session, item.href));
 }
 
 export function accessibleAttendanceTabs(session: AuthSession | null, section: AttendanceSection): AttendanceTab[] {
@@ -92,8 +113,9 @@ export const legacyAttendanceRedirects: Record<string, string> = {
   "/admin/attendance/workforce": "/admin/attendance",
   "/admin/attendance/workforce/locations": "/admin/attendance/settings/locations",
   "/admin/attendance/workforce/schedules": "/admin/attendance/shifts",
-  "/admin/attendance/workforce/assignments": "/admin/attendance/schedules",
-  "/admin/attendance/workforce/roster": "/admin/attendance/schedules/dates",
+  // ATT-011-8: the old pattern and roster screens are read-only now; their replacement is Kalender.
+  "/admin/attendance/workforce/assignments": "/admin/attendance/schedules/calendar",
+  "/admin/attendance/workforce/roster": "/admin/attendance/schedules/calendar",
   "/admin/attendance/workforce/clarifications": "/admin/attendance/corrections",
   "/admin/attendance/workforce/mobile": "/admin/attendance/reports?tab=transactions&source=mobile",
   "/admin/attendance/workforce/overtime": "/admin/attendance/overtime",

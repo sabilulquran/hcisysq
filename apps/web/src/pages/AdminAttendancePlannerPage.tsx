@@ -1,8 +1,9 @@
 import { AlertTriangle, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, Copy, History, Loader2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
+import { AttendanceAdvancedLinks, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import { listEmployees } from "@/lib/adminEmployees";
+import { attendanceAdvancedViews, type AttendanceTab } from "@/lib/attendanceNavigation";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import {
@@ -52,6 +53,8 @@ type Panel =
 
 export function AdminAttendancePlannerPage() {
   const [canManage, setCanManage] = useState(false);
+  // ATT-011-8: the old pattern and roster screens, read-only, reachable only from here.
+  const [advancedViews, setAdvancedViews] = useState<AttendanceTab[]>([]);
   const [from, setFrom] = useState(() => mondayOf(todayJakarta()));
   const [rangeKey, setRangeKey] = useState<RangeKey>("week");
   const [unitId, setUnitId] = useState("");
@@ -72,7 +75,10 @@ export function AdminAttendancePlannerPage() {
   const dates = useMemo(() => Array.from({ length: ranges[rangeKey].days }, (_, index) => addDays(from, index)), [from, rangeKey]);
 
   useEffect(() => {
-    void getCurrentSession().then((session) => setCanManage(hasPermission(session, "attendance.schedule.manage"))).catch(() => setCanManage(false));
+    void getCurrentSession().then((session) => {
+      setCanManage(hasPermission(session, "attendance.schedule.manage"));
+      setAdvancedViews(attendanceAdvancedViews(session, "calendar"));
+    }).catch(() => { setCanManage(false); setAdvancedViews([]); });
     void listEmployees({ pageSize: 1, status: "active" }).then((result) => setUnits(result.filters.units)).catch(() => undefined);
   }, []);
 
@@ -274,6 +280,7 @@ export function AdminAttendancePlannerPage() {
           </div>
         </>
       ) : null}
+      <AttendanceAdvancedLinks views={advancedViews} />
     </AttendanceWorkforceShell>
   );
 }

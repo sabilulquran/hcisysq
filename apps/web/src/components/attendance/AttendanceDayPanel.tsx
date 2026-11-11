@@ -156,7 +156,7 @@ export function AttendanceDayPanel({ employeeId, workDate, canDecide, canCorrect
           <div className="flex flex-wrap gap-2">
             {canCorrect && !correcting ? <button type="button" onClick={() => setCorrecting(true)} className="h-9 rounded-xl border px-3 text-xs font-bold">Perbaiki jam</button> : null}
             {canDecide || canCorrect ? <button type="button" onClick={() => void askEmployee()} className="h-9 rounded-xl border px-3 text-xs font-bold">Minta klarifikasi pegawai</button> : null}
-            {day.schedule.state === "configuration_error" ? <a href="/admin/attendance/schedules" className="inline-flex h-9 items-center rounded-xl border px-3 text-xs font-bold">Buka di Jadwal</a> : null}
+            {day.schedule.state === "configuration_error" ? <a href="/admin/attendance/schedules/calendar" className="inline-flex h-9 items-center rounded-xl border px-3 text-xs font-bold">Buka di Jadwal</a> : null}
           </div>
           {correcting ? (
             <div className="rounded-xl border p-3">

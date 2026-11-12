@@ -21,6 +21,8 @@ Yang dituju:
 
 **Keputusan owner 2026-11-12 (satu buku se-yayasan, pindah ke Sekretariat).** Tidak ada nomor HCIS sendiri; semua register penomoran surat terpusat di satu buku, dan owner kemudian memutuskan pada hari yang sama: **"pindahkan register nomor surat ke sekretariat."** Modul Sekretariat SQ Hub (SEK-001, `sekretariat.sabilulquran.or.id`) adalah aplikasi persuratan yang dimaksud D-01, dan buku ini pindah ke sana: model DOC-003 (jenis, penerbit, grant, penghitung, format D-02) diwarisi utuh, datanya dimigrasikan sekali pada cutover R1 Sekretariat — satu arah, bertanggal, diverifikasi (jumlah baris, penghitung tertinggi per penerbit×jenis×periode), tidak pernah dua buku aktif. Sampai cutover itu, implementasi DOC-003 di HCIS **terus berjalan seperti sekarang**. Setelahnya: layar `/app/letters` dan `/admin/letters` pensiun, dan surat terbitan HCIS (lihat D-10) mengalokasikan nomor lewat API buku Sekretariat dengan identitas layanan khusus, fail-closed tanpa deret cadangan lokal. Peralihan sisi HCIS ditulis sebagai spesifikasi tersendiri, dijadwalkan bersama cutover; rinciannya di SEK-001 §5.5.
 
+**Keputusan owner 2026-11-12 (kaidah penomoran).** Format nomor mengikuti **Pedoman Tata Naskah Dinas YSQ v0.11 (draf), Pasal 8 dan 13–14** — hanya kaidah penomorannya: pola `[kode jenis].[nomor urut]/[kode penerbit]/[bulan Romawi]/[tahun]` (contoh `01.001/PENG.YSQ/I/2026`), 21 kode jenis dua digit, urut tiga digit mulai 001 yang reset hanya 1 Januari per jenis per penerbit, katalog kode penerbit tetap (organ, DIR.YSQ, bidang, divisi, satuan pendidikan, PAN./TIM./SATGAS.[alias]), tanpa tanggal mundur, nomor batal tercatat dan tak dipakai ulang. D-02, D-16, dan opsi bulanan pada D-04 digantikan kaidah ini; nomor yang telanjur teralokasi dengan format lama dipertahankan apa adanya, dan katalog baru berlaku pada buku Sekretariat sejak cutover. Rincian di SEK-001 §8.
+
 ## 2. Batas
 
 Termasuk (Paket 1): katalog jenis surat, katalog penerbit, hak ambil nomor per penerbit, ambil nomor, ubah perihal/tujuan, batalkan nomor, register gabungan (buku + surat terbitan HCIS) dengan pencarian dan halaman, ekspor CSV, nomor awal per penerbit/jenis/periode untuk peralihan dari buku manual, audit.
@@ -41,9 +43,9 @@ Tidak termasuk:
 | # | Keputusan | Status |
 | --- | --- | --- |
 | D-01 | ~~Buku nomor surat keluar umum berada di HCIS, modul `documents`.~~ **DIGANTIKAN keputusan owner 2026-11-12:** buku pindah ke modul Sekretariat SQ Hub (SEK-001); implementasi di HCIS berjalan sebagai masa antara sampai cutover migrasi, lalu HCIS menjadi konsumen API buku. Lihat paragraf "Keputusan owner 2026-11-12" di §1. | SUPERSEDED (owner 2026-11-12) |
-| D-02 | Format nomor mengikuti legacy: `<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`, urut minimal 3 digit (`UND.007/SDIT/XI/2026`). | DRAFT |
+| D-02 | ~~Format nomor mengikuti legacy: `<JENIS>.<urut>/<PENERBIT>/<bulan romawi>/<tahun>`.~~ **DIGANTIKAN keputusan owner 2026-11-12:** format mengikuti Pedoman Tata Naskah Dinas YSQ v0.11 Pasal 13: `[kode jenis dua digit].[urut tiga digit]/[kode penerbit]/[bulan Romawi]/[tahun]`, contoh `10.005/KEU.YSQ/V/2026`. Nomor lama dipertahankan; katalog baru berlaku pada buku Sekretariat sejak cutover (lihat §1). | SUPERSEDED (owner 2026-11-12) |
 | D-03 | Urutan dihitung **per penerbit, per jenis, per periode**. Legacy menghitung per jenis per tahun lintas penerbit; HCIS memisahkan per penerbit karena setiap unit memegang buku agendanya sendiri dan celah per unit harus dapat diperiksa. | DRAFT |
-| D-04 | Periode reset diatur per jenis: `YEARLY` (bawaan, reset 1 Januari) atau `MONTHLY` (reset tanggal 1). Tanggal, bulan, dan tahun diturunkan dari zona **Asia/Jakarta**. Periode reset jenis yang **sudah punya nomor tidak dapat diubah** (`409 LETTER_TYPE_IN_USE`), karena format nomor hanya memuat bulan dan tahun sehingga penghitung periode baru akan mengulang nomor lama; perlu periode lain berarti jenis baru. Bila tetap terjadi tabrakan dengan nomor lama, pengambilan ditolak `409 LETTER_NUMBER_CONFLICT` dan HC menaikkan nomor awal (§5.5). | DRAFT |
+| D-04 | Periode reset diatur per jenis: `YEARLY` (bawaan, reset 1 Januari) atau `MONTHLY` (reset tanggal 1). Tanggal, bulan, dan tahun diturunkan dari zona **Asia/Jakarta**. Periode reset jenis yang **sudah punya nomor tidak dapat diubah** (`409 LETTER_TYPE_IN_USE`), karena format nomor hanya memuat bulan dan tahun sehingga penghitung periode baru akan mengulang nomor lama; perlu periode lain berarti jenis baru. Bila tetap terjadi tabrakan dengan nomor lama, pengambilan ditolak `409 LETTER_NUMBER_CONFLICT` dan HC menaikkan nomor awal (§5.5). **Catatan owner 2026-11-12:** Pedoman Tata Naskah hanya mengenal reset tahunan (Pasal 13 ayat 2), jadi `MONTHLY` tidak dipakai untuk jenis pedoman; mekanismenya tidak dihapus dari masa antara. | DRAFT |
 | D-05 | Alokasi tanpa celah: penghitung dinaikkan dan baris register disisipkan dalam **satu transaksi**. Bila penyisipan gagal, transaksi dibatalkan dan nomor kembali; dua pengambilan bersamaan saling menunggu pada kunci baris penghitung. | ACCEPTED |
 | D-06 | Tanggal surat = tanggal pengambilan nomor (Jakarta). Tidak ada nomor mundur tanggal di Paket 1, supaya urutan dan tanggal di buku selalu searah. | DRAFT |
 | D-07 | Hanya pegawai aktif yang punya **hak ambil nomor** (grant) untuk sebuah penerbit yang dapat mengambil nomor atas nama penerbit itu. Grant diberikan HC dengan alasan, dapat dicabut, dan tercatat. | ACCEPTED (bukti legacy) |
@@ -55,7 +57,7 @@ Tidak termasuk:
 | D-13 | Pemegang grant melihat buku penerbit yang grant-nya ia pegang, ditambah nomor yang pernah ia ambil sendiri walau grant-nya sudah dicabut. | DRAFT |
 | D-14 | Penerbit jenis panitia (`COMMITTEE`) hanya dapat menerbitkan nomor selama panitia ORG-012-nya berstatus `ACTIVE`. | DRAFT (bukti legacy: "an active committee could also issue numbered letters") |
 | D-15 | Kode jenis dan kode penerbit tidak dapat diubah setelah dibuat; label dapat diubah. Jenis dan penerbit dinonaktifkan, tidak dihapus. | ACCEPTED |
-| D-16 | Katalog awal (dapat diubah HC): penerbit `YSQ` (Yayasan Sabilul Qur'an); jenis `UND` Undangan, `PEM` Pemberitahuan, `PMH` Permohonan, `EDR` Edaran, `SK` Surat Keputusan, `KET` Keterangan, `REK` Rekomendasi, `LAIN` Lainnya — semuanya reset tahunan. | DRAFT |
+| D-16 | ~~Katalog awal: penerbit `YSQ`; jenis `UND`, `PEM`, `PMH`, `EDR`, `SK`, `KET`, `REK`, `LAIN`.~~ **DIGANTIKAN keputusan owner 2026-11-12:** katalog mengikuti Pedoman Tata Naskah Dinas YSQ v0.11 — 21 jenis berkode dua digit (Pasal 8) dan katalog kode penerbit tetap (Pasal 13 ayat 7); perubahan kode penerbit hanya lewat Keputusan Pengurus. Berlaku pada buku Sekretariat sejak cutover. | SUPERSEDED (owner 2026-11-12) |
 | D-17 | Nomor awal (§5.5) hanya dapat **menaikkan** penghitung, tidak pernah menurunkan, supaya tidak ada nomor yang terpakai dua kali. | ACCEPTED |
 
 ## 4. Objek
@@ -164,9 +166,9 @@ Setiap layar punya keadaan memuat, kosong, galat, terlarang, dan tampilan ponsel
 - DOC-003-L: setiap pengambilan, perubahan, pembatalan, pengaturan, grant, nomor awal, dan ekspor menulis satu audit event.
 - DOC-003-M: mencabut grant menghentikan pengambilan nomor berikutnya, tetapi pegawai tetap melihat nomor yang pernah ia ambil.
 
-## 10. Pertanyaan untuk owner (sudah dijawab dengan DRAFT)
+## 10. Pertanyaan untuk owner (1–3 terjawab lewat Pedoman Tata Naskah, keputusan owner 2026-11-12)
 
-1. Urutan per penerbit (D-03) atau satu urutan per jenis lintas penerbit seperti legacy?
-2. Daftar jenis dan kodenya (D-16), dan apakah ada jenis yang reset bulanan.
-3. Apakah nomor boleh diambil dengan tanggal mundur (D-06)?
-4. Siapa saja yang diberi hak ambil nomor per unit (diisi HC lewat layar, bukan keputusan kode).
+1. ~~Urutan per penerbit (D-03) atau satu urutan per jenis lintas penerbit?~~ **Per penerbit per jenis** (pedoman Pasal 13 ayat 2) — D-03 terkonfirmasi.
+2. ~~Daftar jenis dan kodenya, dan apakah ada yang reset bulanan.~~ **21 jenis dua digit pedoman Pasal 8; reset hanya tahunan.**
+3. ~~Apakah nomor boleh diambil dengan tanggal mundur (D-06)?~~ **Tidak** (pedoman Pasal 13 ayat 5) — D-06 terkonfirmasi.
+4. Siapa saja yang diberi hak ambil nomor per unit (diisi HC lewat layar, bukan keputusan kode). Pedoman Pasal 13 ayat (3) memberi kerangkanya: Sekretariat Pengurus untuk organ/Direktorat/bidang, petugas divisi, tata usaha satuan, petugas register induk untuk panitia.

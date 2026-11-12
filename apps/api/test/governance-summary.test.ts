@@ -203,6 +203,27 @@ describe("ORG-010-F governance summary contract v1", () => {
     expect(summary.metrics.some((metric) => "tone" in metric)).toBe(false);
   });
 
+  it("adds the caller's own pending decisions as the v1.1 decisions block (ORG-010-O)", () => {
+    const organ = buildGovernanceSummary({
+      ...base,
+      pendingDecisions: { count: 2, oldestSubmittedAt: new Date(NOW.getTime() - 3.5 * 86_400_000), path: "/board" },
+    });
+    expect(organ.decisions).toEqual([{
+      label: "Cuti menunggu keputusan Anda", count: 2, oldestAgeDays: 3, href: "https://hcis.example.invalid/board",
+    }]);
+    // attention keeps its own three slots.
+    expect(organ.attention).toHaveLength(2);
+
+    const employee = buildGovernanceSummary({
+      ...base, pendingDecisions: { count: 1, oldestSubmittedAt: NOW, path: "/app/approvals" },
+    });
+    expect(employee.decisions?.[0]).toMatchObject({ oldestAgeDays: 0, href: "https://hcis.example.invalid/app/approvals" });
+
+    expect(buildGovernanceSummary({ ...base, pendingDecisions: { count: 0, oldestSubmittedAt: null, path: "/board" } }))
+      .not.toHaveProperty("decisions");
+    expect(buildGovernanceSummary(base)).not.toHaveProperty("decisions");
+  });
+
   it("adds the trend metric and trend chart in AUTHORITATIVE mode", () => {
     const summary = buildGovernanceSummary({ ...base, employmentMode: "AUTHORITATIVE", employmentSpans: [span("2020-01-01")] });
     expect(summary.metrics[0].trend?.points).toHaveLength(12);

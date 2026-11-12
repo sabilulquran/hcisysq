@@ -131,7 +131,7 @@ HCIS verifies the token with the existing `jose` pattern used by `organization-d
 3. `exp` in the future and `iat`/`nbf` not in the future, with at most 30 seconds of clock skew;
 4. `aud` contains `GOVERNANCE_SUMMARY_AUDIENCE` (the HCIS OIDC client ID);
 5. `typ` claim equals `Bearer`, so an ID token or refresh token is refused (verify the claim on exchanged tokens in the Mi8VPS probe);
-6. `azp` is in `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`, which holds only the SQ Hub client. Only tokens exchanged by Hub are accepted (verify `azp` on a Keycloak standard token exchange result in the Mi8VPS probe);
+6. `azp` is in `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`, which holds only the SQ Hub client, and since the 2026-11-12 amendment also the Portal Organ Yayasan client `sq-organ` (ORGAN-IMPL-001 R1). Only tokens exchanged by SQ Hub, through the `sq-hub` or (since 2026-11-12) the `sq-organ` client, are accepted (verify `azp` on a Keycloak standard token exchange result in the Mi8VPS probe);
 7. `sub` present, 1–512 characters.
 
 The Authorization header must contain exactly one bearer token. A cookie on this request is ignored: the endpoint never authenticates by cookie, and a valid cookie without a bearer token gets `401`.
@@ -319,7 +319,7 @@ Hub caches a summary for up to 60 seconds per session, so `served` volume stays 
 | --- | --- |
 | `GOVERNANCE_SUMMARY_ENABLED` | `false` by default |
 | `GOVERNANCE_SUMMARY_AUDIENCE` | HCIS OIDC client ID; must differ from machine-token audiences |
-| `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` | comma-separated; only the SQ Hub client |
+| `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` | comma-separated; the SQ Hub client and, from ORGAN-IMPL-001 R1, `sq-organ` (`sq-hub,sq-organ`) |
 | `GOVERNANCE_SUMMARY_APPLICATION_KEY` | registry key returned as `applicationKey` |
 | issuer | reuses `OIDC_ISSUER` |
 
@@ -423,7 +423,7 @@ Still to verify on Mi8VPS with owner approval (unchanged): the realm signing alg
 - ORG-010-C: only Super Admin can grant or remove the board-view role; every other actor gets `ROLE_GRANT_SUPER_ADMIN_ONLY` with nothing written. Grants require organization scope and a reason.
 - ORG-010-D: `GET /governance/summary` accepts only a bearer token whose signature, issuer, expiry, `typ`, audience (HCIS client), and `azp` (SQ Hub) are valid, maps `iss + sub` like OIDC login, and requires board access.
 - ORG-010-E: the exchanged token is refused by every other HCIS route, and the endpoint never authenticates by cookie or creates a session.
-- ORG-010-F: the response follows HUB-IMPL-021 v1 with ORG-003 aggregates only, no actor data, no PII, and no attendance or payroll aggregates.
+- ORG-010-F: the response follows HUB-IMPL-021 v1 with ORG-003 aggregates only, no actor data, no PII, and no attendance or payroll aggregates. (Amended 2026-11-12: the caller's own `decisions` block, ORG-010-O, is the one exception.)
 - ORG-010-G: the monthly active-headcount trend covers the last 12 completed months, appears only in employment-history `AUTHORITATIVE` mode, uses `null` for months that unknown dates make uncertain, and is omitted with fewer than 6 known points.
 - ORG-010-H: the headcount-by-unit ranking has at most 8 items, largest first, with units under 3 active employees and any overflow folded into "Lainnya".
 - ORG-010-I: the identity hand-over moves one Akun SQ identity from a `FOUNDATION_BOARD` account to an `EMPLOYEE` account in one audited transaction and deactivates the old account without deleting it.
@@ -431,6 +431,22 @@ Still to verify on Mi8VPS with owner approval (unchanged): the realm signing alg
 - ORG-010-K: the endpoint is disabled by default and enabling it in production needs owner approval.
 - ORG-010-L: `GET /board/dashboard` no longer returns `actor.email`.
 - ORG-010-M: the summary endpoint re-checks SQ Hub Application Access on each request, and returns 503 when it or the signing keys are unavailable.
+
+## Amendment 2026-11-12: Portal Organ Yayasan R1
+
+SQ Hub ADR-0012 and ORGAN-IMPL-001 (ACCEPTED 2026-11-12) move the organs to `organ.sabilulquran.or.id`. For R1 HCIS changes two things; ORG-010-E and every other rule above are unchanged.
+
+1. **Second allowed client.** `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` adds `sq-organ`. This is configuration only: the verifier already reads the allowlist. The audience, the bearer-only rule, and the per-request Application Access check stay as they are.
+2. **`decisions` block (contract v1.1).** The summary adds, for the caller only, at most one item `{ label: "Cuti menunggu keputusan Anda", count, oldestAgeDays, href }` when the caller holds pending leave steps on requests in review:
+   - an organ account counts steps with `approver_account_id` = its account, only while it holds `leave.governance.approve`, and links to `/board`;
+   - an Employee with board access counts steps with `approver_employee_id` = its employee and links to `/app/approvals`;
+   - age is whole 24-hour periods since the request was submitted (the step has no own pending timestamp);
+   - no name, request id, or reason appears; the block is omitted when the count is 0.
+
+   `attention` keeps its three slots. The block is per caller, so a consumer must never store it or put it in shared reports (ORGAN-IMPL-001 §2).
+
+- ORG-010-N: `sq-organ` tokens are accepted on `/governance/summary` exactly as `sq-hub` tokens are, once allowlisted.
+- ORG-010-O: `decisions` holds only the caller's own pending leave steps, as a count, an age in days, and a link; no personal data.
 
 ## Product Owner decisions (2026-10-17)
 

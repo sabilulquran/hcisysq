@@ -400,6 +400,8 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
     it("adds only the caller's own pending leave steps as decisions, without names (ORG-010-O)", async () => {
       const requester = await addActor("decision_requester", "EMPLOYEE");
       const requestId = randomUUID();
+      const governanceRole = (await pool.query("SELECT id FROM roles WHERE role_key = 'governance_leave_approver'")).rows[0].id;
+      const assignment = randomUUID();
       await pool.query(
         `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling,
            idempotency_key, submitted_at)
@@ -412,6 +414,14 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
         [randomUUID(), requestId, actors.get("board")!.principal.id],
       );
       try {
+        // Without the governance capability the organ account would only reach a 403 on /board.
+        const withoutRole = (await call({ authorization: `Bearer ${await token({ sub: actors.get("board")!.subject })}` })).json();
+        expect(withoutRole).not.toHaveProperty("decisions");
+        await pool.query(
+          `INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,ends_on,reason)
+           VALUES($1,$2,$3,'organization','2099-12-31','Synthetic SK 002/2026')`,
+          [assignment, actors.get("board")!.principal.id, governanceRole],
+        );
         const organ = (await call({ authorization: `Bearer ${await token({ sub: actors.get("board")!.subject })}` })).json();
         expect(organ.decisions).toEqual([{
           label: "Cuti menunggu keputusan Anda", count: 1, oldestAgeDays: 2, href: "https://hcis.example.invalid/board",
@@ -419,8 +429,32 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
         expect(JSON.stringify(organ)).not.toContain("Nama Rahasia decision_requester");
         const viewer = (await call({ authorization: `Bearer ${await token({ sub: actors.get("viewer")!.subject })}` })).json();
         expect(viewer).not.toHaveProperty("decisions");
+
+        // An employee with board access: only its own pending step on a request in review counts.
+        // A waiting step, and a pending step on a request no longer in review, do not count.
+        const own = randomUUID();
+        const closed = randomUUID();
+        await pool.query(
+          `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling, idempotency_key)
+           VALUES ($1,$3,'annual','in_review','2026-11-21','2026-11-21',1,'none',$4), ($2,$3,'annual','approved','2026-11-22','2026-11-22',1,'none',$5)`,
+          [own, closed, requester.employeeId, randomUUID(), randomUUID()],
+        );
+        await pool.query(
+          `INSERT INTO leave_request_approval_steps(id, leave_request_id, step_order, approver_employee_id, sources, status)
+           VALUES ($1,$2,2,$3,ARRAY['DIRECT_MANAGER'],'waiting'),
+                  ($4,$5,1,$3,ARRAY['DIRECT_MANAGER'],'pending'),
+                  ($6,$7,1,$3,ARRAY['DIRECT_MANAGER'],'pending')`,
+          [randomUUID(), requestId, actors.get("viewer")!.employeeId, randomUUID(), own, randomUUID(), closed],
+        );
+        try {
+          const viewerAfter = (await call({ authorization: `Bearer ${await token({ sub: actors.get("viewer")!.subject })}` })).json();
+          expect(viewerAfter.decisions).toEqual([expect.objectContaining({ count: 1, href: "https://hcis.example.invalid/app/approvals" })]);
+        } finally {
+          await pool.query("DELETE FROM leave_requests WHERE id = ANY($1::uuid[])", [[own, closed]]);
+        }
       } finally {
         await pool.query("DELETE FROM leave_requests WHERE id = $1", [requestId]);
+        await pool.query("DELETE FROM account_role_assignments WHERE id = $1", [assignment]);
       }
     });
 

@@ -134,8 +134,18 @@ export function registerGovernanceSummaryRoutes(
        FROM leave_request_approval_steps s
        JOIN leave_requests r ON r.id = s.leave_request_id
        WHERE s.status = 'pending' AND r.status = 'in_review'
-         AND ${organ ? "s.approver_account_id = $1" : "s.approver_employee_id = $1"}`,
-      [organ ? account.id : account.employeeId],
+         AND ${organ ? "s.approver_account_id = $1" : "s.approver_employee_id = $1"}
+         -- An organ account decides only while it holds the governance capability, as the
+         -- /leave/approvals inbox requires; otherwise the link would end in 403.
+         AND (NOT $2::boolean OR EXISTS (
+           SELECT 1 FROM account_role_assignments ara
+           JOIN role_permissions rp ON rp.role_id = ara.role_id
+           WHERE ara.account_id = $3 AND rp.permission_key = 'leave.governance.approve'
+             AND ara.scope_type = 'organization'
+             AND (ara.starts_on IS NULL OR ara.starts_on <= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+             AND (ara.ends_on IS NULL OR ara.ends_on >= (now() AT TIME ZONE 'Asia/Jakarta')::date)
+         ))`,
+      [organ ? account.id : account.employeeId, organ, account.id],
     );
     const row = result.rows[0];
     return { count: row?.count ?? 0, oldestSubmittedAt: row?.oldest ?? null, path: organ ? "/board" : "/app/approvals" };

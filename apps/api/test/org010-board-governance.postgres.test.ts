@@ -397,6 +397,47 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       expect(event.account_id === null).toBe(!mapped);
     });
 
+    it("adds only the caller's own pending leave steps as decisions, without names (ORG-010-O)", async () => {
+      const requester = await addActor("decision_requester", "EMPLOYEE");
+      const requestId = randomUUID();
+      await pool.query(
+        `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling,
+           idempotency_key, submitted_at)
+         VALUES ($1,$2,'annual','in_review','2026-11-20','2026-11-20',1,'none',$3, now() - interval '2 days')`,
+        [requestId, requester.employeeId, randomUUID()],
+      );
+      await pool.query(
+        `INSERT INTO leave_request_approval_steps(id, leave_request_id, step_order, approver_account_id, sources, status)
+         VALUES ($1,$2,1,$3,ARRAY['GOVERNANCE_APPROVER'],'pending')`,
+        [randomUUID(), requestId, actors.get("board")!.principal.id],
+      );
+      try {
+        const organ = (await call({ authorization: `Bearer ${await token({ sub: actors.get("board")!.subject })}` })).json();
+        expect(organ.decisions).toEqual([{
+          label: "Cuti menunggu keputusan Anda", count: 1, oldestAgeDays: 2, href: "https://hcis.example.invalid/board",
+        }]);
+        expect(JSON.stringify(organ)).not.toContain("Nama Rahasia decision_requester");
+        const viewer = (await call({ authorization: `Bearer ${await token({ sub: actors.get("viewer")!.subject })}` })).json();
+        expect(viewer).not.toHaveProperty("decisions");
+      } finally {
+        await pool.query("DELETE FROM leave_requests WHERE id = $1", [requestId]);
+      }
+    });
+
+    it("accepts the portal client when it is allowlisted (ORGAN-IMPL-001 R1)", async () => {
+      const portal = Fastify();
+      registerGovernanceSummaryRoutes(portal, pool, enabledConfig, {
+        verifyToken: createGovernanceTokenVerifier({ issuer, audience: AUDIENCE, allowedClients: new Set([HUB_CLIENT, "sq-organ"]) }),
+        applicationAccess: access as unknown as Pick<SqHubApplicationAccessClient, "isAllowed">,
+        applicationKey: "hcis",
+        publicOrigin: "https://hcis.example.invalid",
+      });
+      const bearer = await token({ sub: actors.get("board")!.subject, azp: "sq-organ" });
+      const response = await portal.inject({ method: "GET", url: "/governance/summary", headers: { authorization: `Bearer ${bearer}` } });
+      expect(response.statusCode, response.body).toBe(200);
+      await portal.close();
+    });
+
     it("re-checks SQ Hub Application Access (D3)", async () => {
       access.isAllowed.mockResolvedValue(false);
       const denied = await call({ authorization: `Bearer ${await token()}` });

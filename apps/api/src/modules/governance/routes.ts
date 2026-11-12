@@ -12,6 +12,7 @@ import {
   buildGovernanceSummary,
   type EmploymentRolloutMode,
   type EmploymentSpan,
+  type PendingDecisions,
 } from "./summary.js";
 import {
   createGovernanceTokenVerifier,
@@ -44,6 +45,8 @@ const MESSAGES: Record<string, string> = {
   HCIS_ACCESS_DENIED: "Akses ke HCIS tidak diberikan.",
   APPLICATION_ACCESS_UNAVAILABLE: "Akses HCIS belum dapat diverifikasi. Coba lagi.",
 };
+
+interface ResolvedAccount { id: string; principalType: string; employeeId: string | null }
 
 class SummaryDenied extends Error {
   constructor(public readonly statusCode: number, public readonly code: string, public readonly accountId: string | null) {
@@ -96,9 +99,9 @@ export function registerGovernanceSummaryRoutes(
     );
   }
 
-  async function resolveAccount(identity: GovernanceIdentity): Promise<string> {
-    const mapped = await pool.query<{ id: string; principalType: string; status: string }>(
-      `SELECT id, principal_type AS "principalType", status
+  async function resolveAccount(identity: GovernanceIdentity): Promise<ResolvedAccount> {
+    const mapped = await pool.query<ResolvedAccount & { status: string }>(
+      `SELECT id, principal_type AS "principalType", employee_id AS "employeeId", status
        FROM accounts WHERE identity_issuer = $1 AND identity_subject = $2 LIMIT 2`,
       [identity.issuer, identity.subject],
     );
@@ -115,7 +118,27 @@ export function registerGovernanceSummaryRoutes(
       throw new SummaryDenied(503, "APPLICATION_ACCESS_UNAVAILABLE", account.id);
     }
     if (!allowed) throw new SummaryDenied(403, "HCIS_ACCESS_DENIED", account.id);
-    return account.id;
+    return { id: account.id, principalType: account.principalType, employeeId: account.employeeId };
+  }
+
+  /**
+   * ORG-010-O: the caller's own pending leave steps. An organ account decides on /board through the
+   * account principal (ORG-013); an employee with board access decides in /app/approvals. Age is
+   * counted from submission, the only timestamp a step's request carries.
+   */
+  async function loadPendingDecisions(account: ResolvedAccount): Promise<PendingDecisions | null> {
+    const organ = account.principalType === "FOUNDATION_BOARD";
+    if (!organ && !account.employeeId) return null;
+    const result = await pool.query<{ count: number; oldest: Date | null }>(
+      `SELECT count(*)::int AS count, min(r.submitted_at) AS oldest
+       FROM leave_request_approval_steps s
+       JOIN leave_requests r ON r.id = s.leave_request_id
+       WHERE s.status = 'pending' AND r.status = 'in_review'
+         AND ${organ ? "s.approver_account_id = $1" : "s.approver_employee_id = $1"}`,
+      [organ ? account.id : account.employeeId],
+    );
+    const row = result.rows[0];
+    return { count: row?.count ?? 0, oldestSubmittedAt: row?.oldest ?? null, path: organ ? "/board" : "/app/approvals" };
   }
 
   async function loadEmploymentHistory(): Promise<{ mode: EmploymentRolloutMode | null; spans: EmploymentSpan[] }> {
@@ -152,15 +175,17 @@ export function registerGovernanceSummaryRoutes(
         return await deny(request, reply, error.statusCode, error.code, null);
       }
 
-      let accountId: string;
+      let account: ResolvedAccount;
       try {
-        accountId = await resolveAccount(identity);
+        account = await resolveAccount(identity);
       } catch (error) {
         if (!(error instanceof SummaryDenied)) throw error;
         return await deny(request, reply, error.statusCode, error.code, error.accountId);
       }
 
-      const [aggregates, history] = await Promise.all([loadBoardAggregates(pool), loadEmploymentHistory()]);
+      const [aggregates, history, pendingDecisions] = await Promise.all([
+        loadBoardAggregates(pool), loadEmploymentHistory(), loadPendingDecisions(account),
+      ]);
       const summary = buildGovernanceSummary({
         aggregates,
         employmentMode: history.mode,
@@ -168,8 +193,9 @@ export function registerGovernanceSummaryRoutes(
         applicationKey: dependencies.applicationKey,
         publicOrigin: dependencies.publicOrigin,
         now: dependencies.now?.() ?? new Date(),
+        pendingDecisions,
       });
-      await audit(request, "governance.summary.served", accountId, null);
+      await audit(request, "governance.summary.served", account.id, null);
       reply.header("Cache-Control", "private, no-store");
       return reply.status(200).send(summary);
     } catch (error) {

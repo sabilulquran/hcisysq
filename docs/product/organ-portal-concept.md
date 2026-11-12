@@ -1,6 +1,6 @@
 # GOV-001 — Portal Organ Yayasan (konsep)
 
-**Status:** DRAFT. Diskusi owner 2026-11-03. Belum menjadi ADR. Bila diterima, konsep ini menggantikan SQ Hub ADR-0009 "Ringkasan Yayasan" untuk pintu masuk organ, dan ADR penggantinya ditulis di repository portal.
+**Status:** SUPERSEDED 2026-11-12 oleh SQ Hub [ADR-0012](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0012-portal-organ-yayasan.md) (ACCEPTED) dan [ORGAN-IMPL-001](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/specs/ORGAN-IMPL-001-portal-organ.md) (ACCEPTED). Dokumen ini disimpan sebagai catatan diskusi owner 2026-11-03; kontrak yang berlaku ada di kedua dokumen tersebut.
 **Related:** ORG-003, ORG-010, ORG-013 (`../domain/organ-account-approver.md`), SQ Hub ADR-0009 dan HUB-IMPL-021
 
 ## Gagasan

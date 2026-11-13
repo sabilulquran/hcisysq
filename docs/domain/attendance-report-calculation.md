@@ -228,6 +228,32 @@ Pemeriksaan ini dihitung set-based per permintaan baca (bukan per baris) untuk m
 Daftar sumber perubahan di atas **DRAFT**; yang wajib di paket pertama adalah bukti scan baru dan
 perubahan jadwal.
 
+### 6.5b Riwayat pegawai sebelum dikalkulasi (DRAFT)
+
+§6.5 menjaga kejujuran layar HC. Layar pegawai (`/app/attendance`, "Riwayat 30 hari") membaca
+sumber yang sama, yaitu hasil kalkulasi, sehingga tanggal yang belum pernah dikalkulasi tampil
+dengan Masuk dan Keluar "—" — tidak terbedakan dari pegawai yang memang tidak scan. Itu salah
+secara fakta dan merusak kepercayaan pegawai pada mesin.
+
+Aturan: untuk tanggal yang **belum punya versi hasil**, `GET /attendance/me/schedule` menyertakan
+`pendingScans` (scan pertama, scan terakhir, jumlah) dari scan ADMS yang sudah terpetakan ke pegawai
+itu lewat pemetaan PIN yang berlaku pada tanggalnya. Riwayat pegawai menampilkannya sebagai:
+
+| Kolom | Isi saat belum dikalkulasi |
+| --- | --- |
+| Status | **Belum dihitung** (bukan status resmi) |
+| Masuk / Keluar | jam scan apa adanya, redup; Keluar "—" bila baru satu scan |
+| Kerja / Telat / Lembur | "—", bukan 0 — angka itu hanya sah dari Kalkulasi |
+
+Keputusan owner 2026-10-24 (kehadiran tidak dihitung otomatis) **tidak berubah**: tidak ada
+perhitungan di latar, tidak ada materialisasi saat halaman dibuka. Yang ditambah hanya kejujuran
+tampilan. Begitu Kalkulasi dijalankan, `pendingScans` menjadi `null` dan baris memakai hasil resmi.
+
+Scan presensi HP tidak pernah muncul sebagai `pendingScans` karena jalur itu memateralisasi hasil
+saat scan diterima. Status `DRAFT`: belum ditinjau owner apakah baris "Belum dihitung" boleh
+diajukan klarifikasi, dan apakah tanggal yang sudah punya hasil tetapi menerima scan baru perlu
+penanda serupa di layar pegawai (di layar HC sudah ada "Berubah sejak dikalkulasi", §6.5).
+
 ### 6.6 Simbol
 
 Simbol dipakai di tab Detail Harian dan di Laporan Harian (grid bulanan). Usulan bawaan (D-14-5),

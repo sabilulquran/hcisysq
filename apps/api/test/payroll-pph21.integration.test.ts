@@ -1,5 +1,5 @@
 // PAY-003 PPh21 TER report against real PostgreSQL: the rows the report is built
-// from, the per-person exclusion of migration 0144, and its write path.
+// from, the per-person exclusion of migration 0146, and its write path.
 // Runs only against the loopback CI database. Synthetic data only. It writes no
 // PPH21_TER policy row: another suite owns that key, and the policy lookup is
 // covered by the route test.
@@ -301,7 +301,7 @@ describe.skipIf(!allowed)("PAY-003 PPh21 report against PostgreSQL", () => {
     });
   });
 
-  describe("migration 0144", () => {
+  describe("migration 0146", () => {
     it("defaults an existing profile to reported, with no reason", async () => {
       const employee = await newEmployee();
       const { rows } = await pool.query(

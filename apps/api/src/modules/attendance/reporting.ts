@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { resolveSchedule } from "./engine.js";
+import { overtimeExcludedSql } from "./overtime-rules.js";
 
 export type AttendanceReportType =
   | "detail"
@@ -403,10 +404,23 @@ export async function buildAttendanceReport(pool: Pool, filter: AttendanceReport
        JOIN employees employee ON employee.id = request.employee_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
        WHERE ${clauses.join(" AND ")}
+         -- ATT-011-6b-3 D-10 (§7.8): a day a position/role rule excludes is left out of the report;
+         -- the request itself stays (history) and HC sees it marked in Lembur.
+         AND NOT ${overtimeExcludedSql("request.employee_id", "request.work_date")}
        ORDER BY request.work_date DESC, request.created_at DESC`,
       values,
     );
-    return { type: filter.type, from: filter.from, to: filter.to, items: result.rows };
+    const excluded = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM attendance_overtime_requests request
+       JOIN employees employee ON employee.id = request.employee_id
+       WHERE ${clauses.join(" AND ")} AND ${overtimeExcludedSql("request.employee_id", "request.work_date")}`,
+      values,
+    );
+    return {
+      type: filter.type, from: filter.from, to: filter.to, items: result.rows,
+      excludedByRuleCount: excluded.rows[0]?.count ?? 0,
+    };
   }
 
   const detail = [];

@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { pageOffset, pagination, type PageQuery } from "../../lib/pagination.js";
+import { overtimeWarningColumnsSql, overtimeWarningJoinsSql, withOvertimeWarnings } from "./overtime-rules.js";
 
 // ATT-011-6a §7.4 HC overtime monitoring. The page of requests is chosen first; the kind of day and the
 // scan facts are looked up for those rows only, with time-range filters the punch indexes can use.
@@ -49,6 +50,9 @@ export async function listOvertimeForHc(pool: Pick<Pool, "query">, filter: Overt
               WHEN request.initiated_by = 'supervisor' THEN 'employee'
               WHEN request.initiated_by = 'employee' THEN 'supervisor' ELSE 'hc' END AS awaiting,
          supervisor.full_name AS "supervisorName",
+         -- ATT-011-6b-3 D-10: still listed for HC (D-11 limits notices only), marked when a rule excludes it.
+         excluded_rule.reason_label AS "excludedByRule",
+         ${overtimeWarningColumnsSql},
          result.day_type AS "dayType",
          CASE
            WHEN result.id IS NULL THEN NULL
@@ -63,6 +67,9 @@ export async function listOvertimeForHc(pool: Pick<Pool, "query">, filter: Overt
        JOIN employees employee ON employee.id = request.employee_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
        LEFT JOIN employees supervisor ON supervisor.id = request.supervisor_employee_id
+       LEFT JOIN attendance_overtime_eligibility_rules excluded_rule
+         ON excluded_rule.id = attendance_overtime_excluding_rule(request.employee_id, request.work_date)
+       ${overtimeWarningJoinsSql("request")}
        LEFT JOIN LATERAL (
          SELECT version.id, version.day_type, version.scheduled_start_at, version.scheduled_end_at,
            version.first_check_in_at, version.last_check_out_at
@@ -93,5 +100,5 @@ export async function listOvertimeForHc(pool: Pick<Pool, "query">, filter: Overt
       [...values, filter.pageSize, pageOffset(filter)],
     ),
   ]);
-  return { ...pagination(filter, count.rows[0]?.total ?? 0), items: page.rows };
+  return { ...pagination(filter, count.rows[0]?.total ?? 0), items: page.rows.map((row) => withOvertimeWarnings(row)) };
 }

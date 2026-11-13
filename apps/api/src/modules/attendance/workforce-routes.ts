@@ -31,6 +31,16 @@ import { listAttendanceCorrections } from "./corrections.js";
 import { attendanceExceptions } from "./exceptions.js";
 import { LEAVE_POLICY_CATALOG } from "../leave/domain/policy-catalog.js";
 import { listOvertimeForHc } from "./overtime-list.js";
+import { notifyHcOfApprovedOvertime } from "./overtime-hc-notify.js";
+import { registerOvertimeRuleRoutes } from "./overtime-rule-routes.js";
+import {
+  overtimeExcludedSql,
+  overtimeExclusionFor,
+  overtimeWarningColumnsSql,
+  overtimeWarningJoinsSql,
+  overtimeWarningsFor,
+  withOvertimeWarnings,
+} from "./overtime-rules.js";
 import { CLARIFICATION_LOOKBACK_DAYS, clarificationDateAllowed, manualCorrectionWindowError, manualCorrectionWindowMessages } from "./manual-correction-window.js";
 import { REPORT_MODELS, buildPunchTable, buildReportTable, isPunchModel, reportCsv, reportXlsx, type ReportModel } from "./report-models.js";
 import { attendanceDailyReadModel, buildAttendanceReport, type AttendanceReportType } from "./reporting.js";
@@ -230,6 +240,8 @@ const overtimeInputSchema = z.object({
   workDate: dateSchema,
   requestedMinutes: z.number().int().min(1).max(1440),
   note: z.string().trim().max(2000).nullable().optional(),
+  // ATT-011-6b-3 (§7.7): run every check and return the warnings, then write nothing.
+  dryRun: z.boolean().optional(),
 });
 const adminOvertimeInputSchema = overtimeInputSchema.extend({ employeeId: z.string().uuid() });
 const overtimeDecisionSchema = z.object({
@@ -250,10 +262,17 @@ const manualCorrectionSchema = z.object({
 });
 
 class WorkforceAttendanceError extends Error {
-  constructor(readonly statusCode: number, readonly code: string, message: string) {
+  constructor(readonly statusCode: number, readonly code: string, message: string, readonly details: Record<string, unknown> = {}) {
     super(message);
     this.name = "WorkforceAttendanceError";
   }
+}
+
+/** Raised after the transaction already committed (an automatic cancellation): nothing to roll back. */
+class CommittedOvertimeError extends WorkforceAttendanceError {}
+
+async function rollbackUnlessCommitted(client: Pick<PoolClient, "query">, error: unknown) {
+  if (!(error instanceof CommittedOvertimeError)) await client.query("ROLLBACK");
 }
 
 async function authenticate(
@@ -350,8 +369,10 @@ async function submitOvertimeForApproval(client: PoolClient, input: {
 }) {
   assertOvertimeWindow(input.workDate);
   await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${input.employeeId}:${input.workDate}`]);
+  await assertOvertimeApplicable(client, input.employeeId, input.workDate, input.onBehalf ? "other" : "self");
   const approver = await overtimeApprover(client, input.employeeId, input.workDate);
   await assertOvertimeDayTotal(client, input.employeeId, input.workDate, input.requestedMinutes);
+  const warnings = await overtimeWarningsFor(client, { employeeId: input.employeeId, workDate: input.workDate, addMinutes: input.requestedMinutes });
   const id = randomUUID();
   await client.query(
     `INSERT INTO attendance_overtime_requests (
@@ -367,6 +388,7 @@ async function submitOvertimeForApproval(client: PoolClient, input: {
   });
   await insertOvertimeEvent(client, id, input.actorAccountId, "submitted", {
     requestedMinutes: input.requestedMinutes, supervisorEmployeeId: approver.supervisorEmployeeId, ...(input.onBehalf ? { createdByHc: true } : {}),
+    ...(warnings.length ? { warnings } : {}),
   });
   await notifyEmployee(client, approver.supervisorEmployeeId, {
     eventKey: `overtime:${id}:awaiting-supervisor`,
@@ -377,7 +399,81 @@ async function submitOvertimeForApproval(client: PoolClient, input: {
     actorAccountId: input.actorAccountId,
     metadata: { overtimeId: id, workDate: input.workDate },
   });
-  return { id, supervisorEmployeeId: approver.supervisorEmployeeId };
+  return { id, supervisorEmployeeId: approver.supervisorEmployeeId, warnings };
+}
+
+/**
+ * ATT-011-6b-3 D-10 (§7.8): overtime does not apply to the employee's position or role on that date.
+ * `self` words the message for the employee; `other` names the rule for a supervisor or HC.
+ */
+async function assertOvertimeApplicable(db: Pick<PoolClient, "query">, employeeId: string, workDate: string, audience: "self" | "other") {
+  const exclusion = await overtimeExclusionFor(db, employeeId, workDate);
+  if (!exclusion) return;
+  throw new WorkforceAttendanceError(422, "OVERTIME_NOT_APPLICABLE",
+    audience === "self"
+      ? `Lembur tidak berlaku untuk jabatan Anda (${exclusion.reasonLabel}).`
+      : `Lembur tidak berlaku untuk pegawai ini: ${exclusion.reasonLabel}.`,
+    { rule: { id: exclusion.ruleId, reasonLabel: exclusion.reasonLabel } });
+}
+
+/**
+ * ATT-011-6b-3 D-10 (§7.8): checked again when someone approves or agrees. When a rule or the employee's
+ * position changed in between, the waiting request is cancelled with the reason recorded, the transaction
+ * is committed, and the caller gets 409 OVERTIME_NO_LONGER_APPLICABLE.
+ */
+async function cancelIfNoLongerApplicable(
+  client: Pick<PoolClient, "query">,
+  item: { id: string; employeeId: string; workDate: string; supervisorEmployeeId?: string | null },
+  actorAccountId: string,
+) {
+  const exclusion = await overtimeExclusionFor(client, item.employeeId, item.workDate);
+  if (!exclusion) return;
+  const note = `Dibatalkan otomatis: lembur tidak berlaku (${exclusion.reasonLabel}).`;
+  await client.query(
+    `UPDATE attendance_overtime_requests SET status = 'cancelled', decision_note = $2, updated_at = now() WHERE id = $1`,
+    [item.id, note],
+  );
+  // The actor only triggered it by trying to approve; the cancellation itself is automatic.
+  await insertOvertimeEvent(client, item.id, actorAccountId, "auto_cancelled", {
+    automatic: true, triggeredByAccountId: actorAccountId, ruleId: exclusion.ruleId, reasonLabel: exclusion.reasonLabel,
+  });
+  await insertAudit(client as Pool, actorAccountId, "attendance.overtime.auto_cancelled", "attendance_overtime_request", item.id, {
+    automatic: true, workDate: item.workDate, ruleId: exclusion.ruleId, reasonLabel: exclusion.reasonLabel,
+  });
+  await notifyEmployee(client as Pool, item.employeeId, {
+    eventKey: `overtime:${item.id}:auto-cancelled`,
+    category: "attendance",
+    title: "Lembur dibatalkan otomatis",
+    body: `Lembur ${item.workDate} dibatalkan karena lembur tidak berlaku untuk jabatan Anda.`,
+    href: "/app/attendance",
+    actorAccountId,
+    metadata: { overtimeId: item.id, workDate: item.workDate },
+  });
+  if (item.supervisorEmployeeId) {
+    await notifyEmployee(client as Pool, item.supervisorEmployeeId, {
+      eventKey: `overtime:${item.id}:auto-cancelled`,
+      category: "attendance",
+      title: "Lembur bawahan dibatalkan otomatis",
+      body: `Lembur ${item.workDate} dibatalkan karena lembur tidak berlaku untuk jabatan pegawai tersebut.`,
+      href: "/app/attendance/team-overtime",
+      actorAccountId,
+      metadata: { overtimeId: item.id, workDate: item.workDate },
+    });
+  }
+  await client.query("COMMIT");
+  throw new CommittedOvertimeError(409, "OVERTIME_NO_LONGER_APPLICABLE",
+    `Lembur tidak berlaku lagi untuk pegawai ini (${exclusion.reasonLabel}); pengajuan dibatalkan otomatis.`,
+    { rule: { id: exclusion.ruleId, reasonLabel: exclusion.reasonLabel } });
+}
+
+/** §7.4: an active direct report, or any request routed to this employee as supervisor. */
+async function isOvertimeSupervisor(db: Pick<Pool, "query">, employeeId: string) {
+  const result = await db.query<{ supervisor: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM employees WHERE direct_manager_employee_id = $1 AND status = 'active' AND id <> $1)
+       OR EXISTS (SELECT 1 FROM attendance_overtime_requests WHERE supervisor_employee_id = $1) AS supervisor`,
+    [employeeId],
+  );
+  return result.rows[0]?.supervisor ?? false;
 }
 
 async function assertOvertimeDayTotal(
@@ -514,7 +610,7 @@ async function insertAudit(
 async function sendError(reply: FastifyReply, error: unknown) {
   if (!(error instanceof WorkforceAttendanceError)) throw error;
   reply.header("Cache-Control", "no-store");
-  return reply.status(error.statusCode).send({ code: error.code, message: error.message });
+  return reply.status(error.statusCode).send({ ...error.details, code: error.code, message: error.message });
 }
 
 /**
@@ -571,6 +667,7 @@ export async function registerAttendanceWorkforceRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+  registerOvertimeRuleRoutes(app, pool, (request, reply) => authenticate(auth, request, reply, "attendance.policy.manage"));
   registerScheduleChangeRoutes(app, pool, {
     manage: (request, reply) => authenticate(auth, request, reply, "attendance.schedule.manage"),
     read: async (request, reply) => {
@@ -2020,21 +2117,22 @@ export async function registerAttendanceWorkforceRoutes(
     try {
       const employee = await employeeForAccount(pool, principal.id);
       const client = await pool.connect();
-      let id: string;
+      let submitted: Awaited<ReturnType<typeof submitOvertimeForApproval>>;
       try {
         await client.query("BEGIN");
-        ({ id } = await submitOvertimeForApproval(client, {
+        submitted = await submitOvertimeForApproval(client, {
           employeeId: employee.id, workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes,
           note: body.data.note ?? null, actorAccountId: principal.id, onBehalf: false,
-        }));
-        await client.query("COMMIT");
+        });
+        await client.query(body.data.dryRun ? "ROLLBACK" : "COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
       } finally {
         client.release();
       }
-      return reply.status(201).send({ id, status: "submitted", awaiting: "supervisor" });
+      if (body.data.dryRun) return reply.send({ dryRun: true, warnings: submitted.warnings });
+      return reply.status(201).send({ id: submitted.id, status: "submitted", awaiting: "supervisor", warnings: submitted.warnings });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -2087,6 +2185,7 @@ export async function registerAttendanceWorkforceRoutes(
     if (!params.success || !body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_DECISION", message: "Keputusan lembur tidak valid." });
     let workDate = "";
     let employeeId = "";
+    let warnings: Awaited<ReturnType<typeof overtimeWarningsFor>> = [];
     try {
       const employee = await employeeForAccount(pool, principal.id);
       employeeId = employee.id;
@@ -2107,7 +2206,9 @@ export async function registerAttendanceWorkforceRoutes(
         const agreed = body.data.decision === "agree";
         if (agreed) {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${employee.id}:${item.workDate}`]);
+          await cancelIfNoLongerApplicable(client, { id: params.data.overtimeId, employeeId: employee.id, workDate: item.workDate, supervisorEmployeeId: item.supervisorEmployeeId }, principal.id);
           await assertOvertimeDayTotal(client, employee.id, item.workDate, item.requestedMinutes, params.data.overtimeId);
+          warnings = await overtimeWarningsFor(client, { employeeId: employee.id, workDate: item.workDate, addMinutes: item.requestedMinutes, excludeId: params.data.overtimeId });
         }
         await client.query(
           `UPDATE attendance_overtime_requests
@@ -2115,9 +2216,18 @@ export async function registerAttendanceWorkforceRoutes(
            WHERE id = $1`,
           [params.data.overtimeId, agreed ? "approved" : "rejected", agreed ? item.requestedMinutes : null, principal.id, body.data.note ?? null],
         );
-        await insertOvertimeEvent(client, params.data.overtimeId, principal.id, agreed ? "employee_agreed" : "employee_declined", { note: body.data.note ?? null });
+        // §7.7: the warnings shown when agreeing are kept with the decision.
+        await insertOvertimeEvent(client, params.data.overtimeId, principal.id, agreed ? "employee_agreed" : "employee_declined", {
+          note: body.data.note ?? null, ...(warnings.length ? { warnings } : {}),
+        });
         await insertAudit(client, principal.id, agreed ? "attendance.overtime.employee_agreed" : "attendance.overtime.employee_declined",
-          "attendance_overtime_request", params.data.overtimeId, { workDate: item.workDate, minutes: item.requestedMinutes });
+          "attendance_overtime_request", params.data.overtimeId, { workDate: item.workDate, minutes: item.requestedMinutes, ...(warnings.length ? { warnings } : {}) });
+        if (agreed) {
+          await notifyHcOfApprovedOvertime(client, {
+            overtimeId: params.data.overtimeId, employeeId: employee.id, supervisorEmployeeId: item.supervisorEmployeeId,
+            workDate: item.workDate, minutes: item.requestedMinutes, approverAccountId: principal.id,
+          });
+        }
         await notifyEmployee(client, item.supervisorEmployeeId, {
           eventKey: `overtime:${params.data.overtimeId}:${agreed ? "agreed" : "declined"}`,
           category: "attendance",
@@ -2129,7 +2239,7 @@ export async function registerAttendanceWorkforceRoutes(
         });
         await client.query("COMMIT");
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackUnlessCommitted(client, error);
         throw error;
       } finally {
         client.release();
@@ -2138,7 +2248,7 @@ export async function registerAttendanceWorkforceRoutes(
       return sendError(reply, error);
     }
     if (body.data.decision === "agree") await materializeAttendanceResult(pool, employeeId, workDate);
-    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "agree" ? "approved" : "rejected" });
+    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "agree" ? "approved" : "rejected", warnings });
   });
 
   // ATT-011-6b-1 §7.4 Lembur Tim: what the signed-in employee decides or ordered as a supervisor.
@@ -2160,27 +2270,40 @@ export async function registerAttendanceWorkforceRoutes(
              employee.employee_number AS "employeeNumber", request.work_date::text AS "workDate",
              request.requested_minutes AS "requestedMinutes", request.approved_minutes AS "approvedMinutes",
              request.note, request.status, request.decision_note AS "decisionNote", request.initiated_by AS "initiatedBy",
-             request.created_at AS "createdAt", request.decided_at AS "decidedAt", count(*) OVER ()::int AS total
+             request.created_at AS "createdAt", request.decided_at AS "decidedAt", count(*) OVER ()::int AS total,
+             ${overtimeWarningColumnsSql}
            FROM attendance_overtime_requests request
            JOIN employees employee ON employee.id = request.employee_id
+           ${overtimeWarningJoinsSql("request")}
            WHERE request.supervisor_employee_id = $1 AND ${where}
            ORDER BY request.work_date DESC, request.created_at DESC, request.id
            LIMIT $2 OFFSET $3`,
           [me.id, query.data.pageSize, (query.data.page - 1) * query.data.pageSize],
         ),
-        pool.query<{ supervisor: boolean }>(
-          `SELECT EXISTS (SELECT 1 FROM employees WHERE direct_manager_employee_id = $1 AND status = 'active')
-             OR EXISTS (SELECT 1 FROM attendance_overtime_requests WHERE supervisor_employee_id = $1) AS supervisor`,
-          [me.id],
-        ),
+        isOvertimeSupervisor(pool, me.id),
       ]);
       reply.header("Cache-Control", "no-store");
       return reply.send({
-        isSupervisor: supervisor.rows[0]?.supervisor ?? false,
+        isSupervisor: supervisor,
         tab: query.data.tab, page: query.data.page, pageSize: query.data.pageSize,
         total: (rows.rows[0] as { total?: number } | undefined)?.total ?? 0,
-        items: rows.rows.map(({ total, ...row }) => { void total; return row; }),
+        items: rows.rows.map(({ total, ...row }) => { void total; return withOvertimeWarnings(row); }),
       });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // ATT-011-6b-3 (§7.4, §10.10 TBD): a light "am I a supervisor" answer so the Lembur Tim menu is shown
+  // only to supervisors. Same rule as the Lembur Tim list: an active direct report, or a request that
+  // waits for (or was decided by) this employee as supervisor, so a reassigned approver also sees it.
+  app.get("/attendance/team-overtime/status", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply, "EMPLOYEE");
+    if (!principal) return;
+    try {
+      const me = await employeeForAccount(pool, principal.id);
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ isSupervisor: await isOvertimeSupervisor(pool, me.id) });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -2191,7 +2314,8 @@ export async function registerAttendanceWorkforceRoutes(
   app.get("/attendance/team-overtime/subordinates", async (request, reply) => {
     const principal = await authenticate(auth, request, reply, "EMPLOYEE");
     if (!principal) return;
-    const query = z.object({ q: z.string().trim().max(100).optional() }).safeParse(request.query);
+    // ATT-011-6b-3 D-10: employees to whom overtime does not apply on that date are not offered.
+    const query = z.object({ q: z.string().trim().max(100).optional(), workDate: dateSchema.optional() }).safeParse(request.query);
     if (!query.success) return reply.status(400).send({ code: "INVALID_OVERTIME_FILTER", message: "Filter lembur tidak valid." });
     try {
       const me = await employeeForAccount(pool, principal.id);
@@ -2200,8 +2324,9 @@ export async function registerAttendanceWorkforceRoutes(
          FROM employees
          WHERE direct_manager_employee_id = $1 AND status = 'active' AND id <> $1
            AND ($2::text IS NULL OR full_name ILIKE '%' || $2 || '%' OR employee_number ILIKE '%' || $2 || '%')
+           AND NOT ${overtimeExcludedSql("id", "$3::date")}
          ORDER BY full_name, id LIMIT 50`,
-        [me.id, query.data.q ? query.data.q.replace(/[\\%_]/g, (character) => `\\${character}`) : null],
+        [me.id, query.data.q ? query.data.q.replace(/[\\%_]/g, (character) => `\\${character}`) : null, query.data.workDate ?? jakartaWorkDate()],
       );
       reply.header("Cache-Control", "no-store");
       return reply.send({ items: rows.rows });
@@ -2223,6 +2348,7 @@ export async function registerAttendanceWorkforceRoutes(
     let employeeId = "";
     let workDate = "";
     let approvedMinutes: number | null = null;
+    let warnings: Awaited<ReturnType<typeof overtimeWarningsFor>> = [];
     try {
       const me = await employeeForAccount(pool, principal.id);
       const client = await pool.connect();
@@ -2248,7 +2374,9 @@ export async function registerAttendanceWorkforceRoutes(
         }
         if (approvedMinutes !== null) {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${item.employeeId}:${item.workDate}`]);
+          await cancelIfNoLongerApplicable(client, { id: params.data.overtimeId, employeeId: item.employeeId, workDate: item.workDate }, principal.id);
           await assertOvertimeDayTotal(client, item.employeeId, item.workDate, approvedMinutes, params.data.overtimeId);
+          warnings = await overtimeWarningsFor(client, { employeeId: item.employeeId, workDate: item.workDate, addMinutes: approvedMinutes, excludeId: params.data.overtimeId });
         }
         const status = approvedMinutes !== null ? "approved" : "rejected";
         await client.query(
@@ -2257,9 +2385,20 @@ export async function registerAttendanceWorkforceRoutes(
            WHERE id = $1`,
           [params.data.overtimeId, status, approvedMinutes, principal.id, body.data.note ?? null],
         );
-        await insertOvertimeEvent(client, params.data.overtimeId, principal.id, status, { approvedMinutes, note: body.data.note ?? null, by: "supervisor" });
+        // §7.7: the warnings shown at approval are kept with the decision.
+        await insertOvertimeEvent(client, params.data.overtimeId, principal.id, status, {
+          approvedMinutes, note: body.data.note ?? null, by: "supervisor", ...(warnings.length ? { warnings } : {}),
+        });
         await insertAudit(client, principal.id, status === "approved" ? "attendance.overtime.supervisor_approved" : "attendance.overtime.supervisor_rejected",
-          "attendance_overtime_request", params.data.overtimeId, { workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes });
+          "attendance_overtime_request", params.data.overtimeId, {
+            workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes, ...(warnings.length ? { warnings } : {}),
+          });
+        if (approvedMinutes !== null) {
+          await notifyHcOfApprovedOvertime(client, {
+            overtimeId: params.data.overtimeId, employeeId: item.employeeId, supervisorEmployeeId: item.supervisorEmployeeId,
+            workDate: item.workDate, minutes: approvedMinutes, approverAccountId: principal.id,
+          });
+        }
         await notifyEmployee(client, item.employeeId, {
           eventKey: `overtime:${params.data.overtimeId}:${status}`,
           category: "attendance",
@@ -2273,7 +2412,7 @@ export async function registerAttendanceWorkforceRoutes(
         });
         await client.query("COMMIT");
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackUnlessCommitted(client, error);
         throw error;
       } finally {
         client.release();
@@ -2282,7 +2421,7 @@ export async function registerAttendanceWorkforceRoutes(
       return sendError(reply, error);
     }
     if (approvedMinutes !== null) await materializeAttendanceResult(pool, employeeId, workDate);
-    return reply.send({ id: params.data.overtimeId, status: approvedMinutes !== null ? "approved" : "rejected", approvedMinutes });
+    return reply.send({ id: params.data.overtimeId, status: approvedMinutes !== null ? "approved" : "rejected", approvedMinutes, warnings });
   });
 
   // Flow B (§7.2): a supervisor orders overtime for 1..N direct reports; each must agree. The whole batch
@@ -2295,6 +2434,7 @@ export async function registerAttendanceWorkforceRoutes(
       workDate: dateSchema,
       requestedMinutes: z.number().int().min(1).max(1440),
       note: z.string().trim().min(3).max(2000),
+      dryRun: z.boolean().optional(),
     }).safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_ORDER", message: "Perintah lembur tidak valid." });
     try {
@@ -2304,6 +2444,7 @@ export async function registerAttendanceWorkforceRoutes(
       assertOvertimeWindow(body.data.workDate);
       const client = await pool.connect();
       const ids: string[] = [];
+      const warningsByEmployee = new Map<string, Awaited<ReturnType<typeof overtimeWarningsFor>>>();
       try {
         await client.query("BEGIN");
         const invalid: Array<{ employeeId: string }> = [];
@@ -2323,9 +2464,25 @@ export async function registerAttendanceWorkforceRoutes(
           await client.query("ROLLBACK");
           return reply.status(403).send({ code: "OVERTIME_NOT_SUBORDINATE", message: "Sebagian pegawai bukan bawahan langsung Anda.", employees: invalid });
         }
+        // ATT-011-6b-3 D-10: the whole batch is refused when overtime does not apply to someone in it.
+        const excluded: Array<{ employeeId: string; reasonLabel: string }> = [];
+        for (const employeeId of employeeIds) {
+          const exclusion = await overtimeExclusionFor(client, employeeId, body.data.workDate);
+          if (exclusion) excluded.push({ employeeId, reasonLabel: exclusion.reasonLabel });
+        }
+        if (excluded.length) {
+          await client.query("ROLLBACK");
+          return reply.status(422).send({
+            code: "OVERTIME_NOT_APPLICABLE",
+            message: `Lembur tidak berlaku untuk sebagian pegawai: ${[...new Set(excluded.map((item) => item.reasonLabel))].join("; ")}.`,
+            employees: excluded,
+          });
+        }
         for (const employeeId of employeeIds) {
           await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${employeeId}:${body.data.workDate}`]);
           await assertOvertimeDayTotal(client, employeeId, body.data.workDate, body.data.requestedMinutes);
+          const warnings = await overtimeWarningsFor(client, { employeeId, workDate: body.data.workDate, addMinutes: body.data.requestedMinutes });
+          warningsByEmployee.set(employeeId, warnings);
           const id = randomUUID();
           ids.push(id);
           await client.query(
@@ -2335,7 +2492,7 @@ export async function registerAttendanceWorkforceRoutes(
              ) VALUES ($1, $2, $3::date, $4, $5, $6, 'supervisor', $7, $8::jsonb)`,
             [id, employeeId, body.data.workDate, body.data.requestedMinutes, body.data.note, principal.id, me.id, JSON.stringify(approvers.get(employeeId)!.snapshot)],
           );
-          await insertOvertimeEvent(client, id, principal.id, "ordered", { requestedMinutes: body.data.requestedMinutes });
+          await insertOvertimeEvent(client, id, principal.id, "ordered", { requestedMinutes: body.data.requestedMinutes, ...(warnings.length ? { warnings } : {}) });
           await insertAudit(client, principal.id, "attendance.overtime.ordered", "attendance_overtime_request", id, {
             employeeId, workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes, resolution: approvers.get(employeeId)!.snapshot,
           });
@@ -2349,14 +2506,18 @@ export async function registerAttendanceWorkforceRoutes(
             metadata: { overtimeId: id, workDate: body.data.workDate },
           });
         }
-        await client.query("COMMIT");
+        await client.query(body.data.dryRun ? "ROLLBACK" : "COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
       } finally {
         client.release();
       }
-      return reply.status(201).send({ ids, orders: employeeIds.map((employeeId, index) => ({ employeeId, id: ids[index] })), status: "submitted", awaiting: "employee" });
+      const orders = employeeIds.map((employeeId, index) => ({
+        employeeId, ...(body.data.dryRun ? {} : { id: ids[index] }), warnings: warningsByEmployee.get(employeeId) ?? [],
+      }));
+      if (body.data.dryRun) return reply.send({ dryRun: true, orders });
+      return reply.status(201).send({ ids, orders, status: "submitted", awaiting: "employee" });
     } catch (error) {
       return sendError(reply, error);
     }
@@ -2422,12 +2583,16 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const { id } = await submitOvertimeForApproval(client, {
+      const submitted = await submitOvertimeForApproval(client, {
         employeeId: body.data.employeeId, workDate: body.data.workDate, requestedMinutes: body.data.requestedMinutes,
         note: body.data.note ?? null, actorAccountId: principal.id, onBehalf: true,
       });
+      if (body.data.dryRun) {
+        await client.query("ROLLBACK");
+        return reply.send({ dryRun: true, warnings: submitted.warnings });
+      }
       await client.query("COMMIT");
-      return reply.status(201).send({ id, status: "submitted", awaiting: "supervisor" });
+      return reply.status(201).send({ id: submitted.id, status: "submitted", awaiting: "supervisor", warnings: submitted.warnings });
     } catch (error) {
       await client.query("ROLLBACK");
       return sendError(reply, error);
@@ -2445,6 +2610,7 @@ export async function registerAttendanceWorkforceRoutes(
     const client = await pool.connect();
     let employeeId = "";
     let workDate = "";
+    let warnings: Awaited<ReturnType<typeof overtimeWarningsFor>> = [];
     try {
       await client.query("BEGIN");
       const current = await client.query<{ employeeId: string; workDate: string; requestedMinutes: number; status: string; initiatedBy: string }>(
@@ -2472,11 +2638,13 @@ export async function registerAttendanceWorkforceRoutes(
       }
       if (approvedMinutes !== null) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`overtime:${item.employeeId}:${item.workDate}`]);
+        await cancelIfNoLongerApplicable(client, { id: params.data.overtimeId, employeeId: item.employeeId, workDate: item.workDate }, principal.id);
         await assertOvertimeDayTotal(client, item.employeeId, item.workDate, approvedMinutes, params.data.overtimeId);
+        warnings = await overtimeWarningsFor(client, { employeeId: item.employeeId, workDate: item.workDate, addMinutes: approvedMinutes, excludeId: params.data.overtimeId });
       }
       const status = body.data.decision === "approve" ? "approved" : "rejected";
       await insertAudit(client, principal.id, `attendance.overtime.${status}`, "attendance_overtime_request", params.data.overtimeId, {
-        workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes,
+        workDate: item.workDate, requestedMinutes: item.requestedMinutes, approvedMinutes, ...(warnings.length ? { warnings } : {}),
       });
       await client.query(
         `UPDATE attendance_overtime_requests
@@ -2489,7 +2657,7 @@ export async function registerAttendanceWorkforceRoutes(
         `INSERT INTO attendance_overtime_events (
            id, overtime_request_id, actor_account_id, event_type, payload
          ) VALUES ($1, $2, $3, $4, $5::jsonb)`,
-        [randomUUID(), params.data.overtimeId, principal.id, status, JSON.stringify({ approvedMinutes, note: body.data.note ?? null })],
+        [randomUUID(), params.data.overtimeId, principal.id, status, JSON.stringify({ approvedMinutes, note: body.data.note ?? null, ...(warnings.length ? { warnings } : {}) })],
       );
       await notifyEmployee(client, item.employeeId, {
         eventKey: `overtime:${params.data.overtimeId}:${status}`,
@@ -2504,13 +2672,13 @@ export async function registerAttendanceWorkforceRoutes(
       });
       await client.query("COMMIT");
     } catch (error) {
-      await client.query("ROLLBACK");
+      await rollbackUnlessCommitted(client, error);
       return sendError(reply, error);
     } finally {
       client.release();
     }
     const result = await materializeAttendanceResult(pool, employeeId, workDate);
-    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "approve" ? "approved" : "rejected", result: mapResult(result as unknown as Record<string, unknown>) });
+    return reply.send({ id: params.data.overtimeId, status: body.data.decision === "approve" ? "approved" : "rejected", warnings, result: mapResult(result as unknown as Record<string, unknown>) });
   });
 
   // ATT-011-6b-1 §7.2: administrative cancellation by HC for a wrong entry, with a reason; recalculated after.

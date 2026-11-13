@@ -430,7 +430,7 @@ Pemetaan backend: request tetap memakai status `submitted | approved | rejected 
 - Tab: **Menunggu** (menunggu siapa, sejak kapan) · Disetujui · Ditolak/Dibatalkan.
 - Baris: `Pegawai | Unit | Tanggal | Jenis hari | Dimulai oleh | Menit | Fakta scan di luar jadwal | Status | Menunggu siapa`.
 - Aksi HC: **Alihkan approver** (APR-001 reassign), **Batalkan administratif** (alasan wajib), **Putuskan** hanya untuk request lama `hc_legacy`, **Ajukan atas nama pegawai** (masuk alur A dengan approver atasan; HC tidak menjadi approver karenanya).
-- Notifikasi in-app ke HC saat lembur disetujui (ringkas, tanpa alasan rinci). **Penerima (D-11, diterima): hanya staf HC yang terkait unit pegawai**, yaitu akun aktif dengan `attendance.overtime.manage` yang assignment role-nya ber-scope unit pegawai atau unit induknya (model scope `roles-permissions.md`). Bila tidak ada satu pun, notifikasi jatuh ke pemegang `attendance.overtime.manage` ber-scope organisasi agar tidak hilang diam-diam (DRAFT — perlu verifikasi data scope YSQ saat implementasi). Penerima dihitung saat lembur disetujui dan disimpan pada notification intent.
+- Notifikasi in-app ke HC saat lembur disetujui (ringkas, tanpa alasan rinci). **Penerima (D-11, diterima): hanya staf HC yang terkait unit pegawai**, yaitu akun aktif dengan `attendance.overtime.manage` yang assignment role-nya ber-scope unit pegawai atau unit induknya (model scope `roles-permissions.md`). Bila tidak ada satu pun, notifikasi jatuh ke pemegang `attendance.overtime.manage` ber-scope organisasi agar tidak hilang diam-diam (DRAFT — perlu verifikasi data scope YSQ saat implementasi). Penerima dihitung saat lembur disetujui dan disimpan pada notification intent. Diimplementasikan 6b-3 (§10.12).
 - Layar HC tetap dapat melihat semua lembur sesuai permission baca; pembatasan D-11 hanya untuk notifikasi.
 - Pencarian pegawai penuh (bukan 100 pertama). Mobile < 768px: kartu.
 
@@ -540,7 +540,7 @@ Setiap paket = satu PR, dapat di-merge dan dirilis sendiri melalui OPS-MI8-REL-0
 
 Area dengan review tambahan (AGENTS.md §8): ATT-011-2 dan ATT-011-4 (migration + engine trigger), ATT-011-6a (perhitungan lembur), ATT-011-6b (otorisasi atasan + approval chain).
 
-Status paket (diperbarui 2026-11-11): **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (§10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (§10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (§10.3). **ATT-011-6a** diimplementasikan 2026-10-27 (§10.4). **ATT-011-4a**, **4b**, **4c** diimplementasikan (§10.5–10.7). **ATT-011-5** diimplementasikan (§10.8). **ATT-011-6b-1** dan **6b-2** diimplementasikan (§10.9–10.10); **ATT-011-6b-3** (peringatan PP 35/2021 dan aturan jabatan tidak berhak lembur) sedang dikerjakan. **ATT-011-8** diimplementasikan 2026-11-11 (§10.11). **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
+Status paket (diperbarui 2026-11-11): **P0** selesai (#110). **ATT-011-1** diimplementasikan 2026-10-23 (§10.1). **ATT-011-7** diimplementasikan 2026-10-27 tanpa butir lembur atasan (§10.2). **ATT-011-3** (antrean dan panel detail) diimplementasikan 2026-10-27 (§10.3). **ATT-011-6a** diimplementasikan 2026-10-27 (§10.4). **ATT-011-4a**, **4b**, **4c** diimplementasikan (§10.5–10.7). **ATT-011-5** diimplementasikan (§10.8). **ATT-011-6b-1** dan **6b-2** diimplementasikan (§10.9–10.10); **ATT-011-6b-3** diimplementasikan 2026-11-11 (§10.12: peringatan PP 35/2021, aturan lembur tidak berlaku per jabatan/peran, notifikasi HC per unit); dengan itu lingkup lembur ATT-011 lengkap. **ATT-011-8** diimplementasikan 2026-11-11 (§10.11). **ATT-011-2** digantikan oleh ATT-014 (Laporan & Kalkulasi) atas keputusan owner 2026-10-24; tab Hari ini dan Laporan dari **ATT-011-3** juga pindah ke ATT-014, sedangkan antrean "Perlu tindakan" dan panel detail tetap di ATT-011-3.
 
 Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 ∥ ATT-011-6a) → ATT-011-5 → ATT-011-7 → ATT-011-6b → ATT-011-8. ATT-011-6b tidak lagi diblokir keputusan owner, tetapi bergantung pada kelengkapan data atasan langsung dan jabatan Direktur di struktur (lihat asumsi §11).
 
@@ -757,8 +757,8 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - **HC → Lembur:** kolom Dimulai oleh (Pegawai/Atasan/HC) dan menunggu siapa; **Putuskan** hanya untuk
   pengajuan lama; **Batalkan administratif** dan **Alihkan approver** (alasan wajib); "Ajukan atas nama
   pegawai" dikirim ke atasan langsung pegawai.
-- `TBD`: menu Lembur Tim tampil untuk semua pegawai (halaman kosong bila bukan atasan); disembunyikan setelah
-  ada endpoint ringan "apakah atasan".
+- ~~`TBD`: menu Lembur Tim tampil untuk semua pegawai~~ — selesai di 6b-3: menu hanya tampil bila
+  `GET /attendance/team-overtime/status` menyatakan user atasan (§10.12).
 ### 10.11 Catatan implementasi ATT-011-8 (2026-11-11)
 
 - **UAT ATT-011-5:** penerimaan owner atas UAT Kalender belum tercatat. Mengikuti aturan owner 2026-10-27
@@ -787,6 +787,67 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
 - **Test:** route/navigasi (tab Jadwal, Tampilan lanjutan per izin, tab aktif, redirect lama, izin route),
   layar lama tidak lagi memanggil endpoint tulis; test ATT-008 tetap lulus. Tidak ada migration.
 
+### 10.12 Catatan implementasi ATT-011-6b-3 (2026-11-11)
+
+- Migration `0146_attendance_overtime_rules_and_warnings.sql`, aditif,
+  rollback di header: tabel `attendance_overtime_eligibility_rules` dan `attendance_overtime_policy_versions`,
+  fungsi `attendance_overtime_excluding_rule(employee, tanggal)` dan event `auto_cancelled`.
+- **Aturan lembur tidak berlaku (D-10, §7.8).** Target `position` (stable key ORG-004) atau `role` (role key);
+  tidak pernah id pegawai. Hanya tambah dan akhiri (trigger menolak delete/ubah); satu aturan berjalan per target;
+  `effective_to` = hari terakhir berlaku (inklusif, seperti struktur). Cocok bila pegawai memegang jabatan itu
+  (PRIMARY **atau ACTING** — DRAFT, dikonfirmasi saat UAT) pada struktur yang berlaku di tanggal lembur, atau
+  memegang peran itu lewat assignment langsung maupun peran yang mengikuti jabatan (AUTH-015). Assignment langsung
+  dihitung sejak tanggal yang lebih akhir antara `starts_on` dan tanggal dicatat, sehingga pemberian peran tidak
+  menjangkau hari yang sudah lewat. Satu fungsi SQL dipakai route, engine, laporan Lembur, laporan RPT `overtime`,
+  dan input lembur PAY-003, sehingga semuanya sama. Batas yang diketahui (DRAFT): assignment peran yang dihapus
+  dan tautan peran–jabatan tidak menyimpan riwayat, jadi aturan **role** dievaluasi terhadap data peran saat ini
+  untuk tanggal lampau; aturan **position** memakai riwayat struktur yang berlaku dan lebih disarankan.
+  - Ditegakkan: pengajuan pegawai dan atas nama HC → `422 OVERTIME_NOT_APPLICABLE`; perintah atasan → seluruh
+    batch `422` dengan daftar pegawai; persetujuan atasan, persetujuan pegawai atas perintah, dan keputusan HC
+    `hc_legacy` → `409 OVERTIME_NO_LONGER_APPLICABLE` dan pengajuan dibatalkan otomatis (catatan alasan, event
+    `auto_cancelled`, audit `attendance.overtime.auto_cancelled`, notifikasi pegawai). Pilihan bawahan pada
+    perintah lembur tidak menampilkan pegawai yang terkena aturan pada tanggal itu.
+  - Hasil: engine tidak menambahkan `overtime_minutes` pada tanggal yang terkena aturan; request approved tetap
+    tersimpan dan tercatat di `safe_metadata.overtimeExcludedByRuleId` hasil. Saat aturan ditambah/diakhiri, lembur
+    approved pada hari terdampak sampai hari ini dihitung ulang. Layar HC tetap menampilkan barisnya dengan tanda
+    "Dikecualikan oleh aturan jabatan" (`excludedByRule`); laporan Lembur menghilangkan semua baris pada tanggal
+    itu, apa pun statusnya (`excludedByRuleCount` mencatat jumlahnya). Hitung ulang setelah aturan ditambah atau
+    diakhiri hanya menyentuh hari terdampak (maks. 500; `recalculationIncomplete` bila lebih atau gagal — hari itu
+    ikut Kalkulasi berikutnya).
+  - Aturan baru tidak boleh mundur (mulai paling awal hari ini); akhir aturan paling awal kemarin.
+  - **Seed (DRAFT): tidak ada.** Repo tidak memuat stable key jabatan Direktur produksi, dan peran sistem
+    `director` (migration 0069) adalah paket izin pengesahan payroll PAY-003, bukan jabatan, sehingga tidak dipakai
+    sebagai pengganti. Sebelum go-live HC menambahkan aturan untuk jabatan Direktur di **Pengaturan → Aturan
+    lembur** (alasan disarankan: "Direktur — tidak menerima upah lembur"). Sampai itu dilakukan, aturan D-10 belum
+    berlaku untuk siapa pun.
+  - ORG-008 O-8 (peringatan restrukturisasi): baca `GET /admin/attendance/overtime-eligibility-rules?positionKey=…`
+    (field `targetRef` dengan `targetKind = "position"`, `state`, `targetActive`) atau langsung tabel
+    `attendance_overtime_eligibility_rules` (`target_kind = 'position'`, `target_ref` = stable key, `effective_to`
+    NULL atau ≥ tanggal).
+- **Peringatan PP 35/2021 (D-5b, §7.7).** Ambang effective-dated di `attendance_overtime_policy_versions`
+  (`GET/PUT /admin/attendance/overtime-policy`, audit `attendance.overtime_policy.updated`, versi baru mulai hari
+  ini atau sesudahnya). Tanpa versi tercatat berlaku default DRAFT **240 menit/hari dan 1.080 menit/minggu ISO**
+  (Senin–Minggu); hari libur dihitung sama (DRAFT, dikonfirmasi saat UAT). `warnings[]` pada respons pengajuan,
+  perintah, dan keputusan; `dryRun: true` pada pengajuan/perintah/atas nama HC mengembalikan peringatan tanpa
+  menulis apa pun (dipakai layar sebelum kirim). Daftar Lembur Tim dan pemantauan HC membawa `warnings[]` per baris.
+  Peringatan saat persetujuan disimpan pada payload event dan audit persetujuan. Tidak pernah memblokir.
+- **Notifikasi HC (D-11, §7.4).** Saat lembur menjadi disetujui (atasan menyetujui pengajuan atau pegawai menyetujui
+  perintah), dalam transaksi yang sama dibuat notifikasi in-app untuk akun aktif dengan
+  `attendance.overtime.manage` lewat assignment ber-scope unit pegawai atau unit di atasnya (rantai unit memakai
+  tautan `legacy_unit_id` ORG-008-6, logika bersama `organization/structure-lookups.ts`); bila tidak ada, ke
+  pemegang ber-scope organisasi (assignment langsung atau peran yang mengikuti jabatan); fallback juga dipakai bila
+  satu-satunya penerima unit adalah orang yang sudah diberi tahu. Approver, pegawai, dan atasan pada pengajuan itu
+  tidak dikirimi (sudah diberi tahu sendiri). Catatan DRAFT: grant `attendance.overtime.manage` ber-scope unit
+  belum membuka layar HC Lembur (otorisasi admin hanya menghitung scope organisasi), sehingga penerima ber-scope
+  unit menerima pemberitahuan tanpa dapat membuka layar itu; diverifikasi dengan data scope YSQ saat UAT. Isi ringkas tanpa alasan; tanpa tautan
+  karena tautan notifikasi hanya boleh ke `/app` (layar HC di area admin). Keputusan HC atas request `hc_legacy`
+  tidak memicu notifikasi ini. Kanal WhatsApp tidak disentuh.
+- **Atasan atau bukan.** `GET /attendance/team-overtime/status` → `{ isSupervisor }` (bawahan aktif atau ada
+  request yang diarahkan kepadanya); menu Lembur Tim disembunyikan bila `false`.
+- Permission: rute Aturan lembur memakai `attendance.policy.manage` (403 tanpa itu, diuji). Manifest AUTH-011 dan
+  klasifikasi ENG-LIST-001 diperbarui (daftar aturan dan riwayat ambang ber-halaman; pilihan target typeahead ≤ 50).
+- Sisa: tidak ada dalam lingkup lembur ATT-011. UAT owner tetap perlu mengonfirmasi angka ambang, perlakuan acting
+  dan hari libur, serta jabatan Direktur yang dipilih HC.
 ## 11. Keputusan owner
 
 ### 11.1 Dicatat 2026-10-16

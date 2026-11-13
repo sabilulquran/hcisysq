@@ -189,6 +189,8 @@ export function buildReportQuery(report: HrReport, filters: Filters, scope: Repo
               JOIN attendance_overtime_requests overtime
                 ON overtime.employee_id = employee.id AND overtime.status IN ('approved', 'submitted')
                AND overtime.work_date BETWEEN ${from} AND ${to}
+               -- ATT-011 D-10 (§7.8): days a position/role rule excludes are not reported.
+               AND attendance_overtime_excluding_rule(overtime.employee_id, overtime.work_date) IS NULL
               ${unitJoin}
              WHERE ${base}
              GROUP BY employee.id, unit.name`,

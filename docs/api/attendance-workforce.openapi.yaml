@@ -966,10 +966,15 @@ paths:
             schema: { $ref: '#/components/schemas/AttendanceOvertimeInput' }
       description: >-
         ATT-011-6b-1 flow A. Waits for the direct supervisor resolved now (APR-001 resolver, DIRECT_MANAGER)
-        and snapshotted on the request. Work date up to 7 days back (D-9).
+        and snapshotted on the request. Work date up to 7 days back (D-9). ATT-011-6b-3: refused with
+        422 OVERTIME_NOT_APPLICABLE (`rule { id, reasonLabel }`) when a position/role rule excludes the employee on
+        that date (D-10); `warnings[]` (D-5b, non-blocking) count approved + waiting overtime of the day and ISO
+        week including this one. `dryRun: true` runs every check, writes nothing and answers 200
+        `{ dryRun: true, warnings }` so the form can show the warning before sending.
       responses:
-        '201': { description: '`{ id, status: submitted, awaiting: supervisor }`' }
-        '422': { description: 'OVERTIME_APPROVER_UNRESOLVED, OVERTIME_DATE_OUT_OF_RANGE or OVERTIME_DAY_TOTAL_INVALID' }
+        '200': { description: '`{ dryRun: true, warnings[] }` (dryRun only)' }
+        '201': { description: '`{ id, status: submitted, awaiting: supervisor, warnings[] }`' }
+        '422': { description: 'OVERTIME_APPROVER_UNRESOLVED, OVERTIME_DATE_OUT_OF_RANGE, OVERTIME_DAY_TOTAL_INVALID or OVERTIME_NOT_APPLICABLE' }
 
   /attendance/overtime/{overtimeId}/cancel:
     post:
@@ -1001,9 +1006,13 @@ paths:
                 decision: { type: string, enum: [agree, decline] }
                 note: { type: string, maxLength: 2000, nullable: true }
       responses:
-        '200': { description: '`{ id, status }`' }
+        '200': { description: '`{ id, status, warnings[] }`; the warnings are stored on the decision event and audit (D-5b)' }
         '403': { description: OVERTIME_NOT_YOURS }
-        '409': { description: OVERTIME_STEP_ALREADY_DECIDED }
+        '409':
+          description: >-
+            OVERTIME_STEP_ALREADY_DECIDED, or OVERTIME_NO_LONGER_APPLICABLE: a D-10 rule now excludes the employee on
+            that date; the order is cancelled automatically (event `auto_cancelled`, audit
+            `attendance.overtime.auto_cancelled`) and the cancellation is kept.
 
   /attendance/team-overtime:
     get:
@@ -1012,6 +1021,7 @@ paths:
       description: >-
         ATT-011-6b-1 Lembur Tim. `pending` = employees' requests waiting for the caller as snapshotted supervisor,
         `orders` = the caller's orders, `history` = decided requests. `isSupervisor` says whether to show the menu.
+        ATT-011-6b-3: each item carries `warnings[]` (D-5b) for waiting and approved requests.
       parameters:
         - { name: tab, in: query, schema: { type: string, enum: [pending, orders, history], default: pending } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
@@ -1019,13 +1029,27 @@ paths:
       responses:
         '200': { description: '`{ isSupervisor, tab, page, pageSize, total, items }`' }
 
+  /attendance/team-overtime/status:
+    get:
+      tags: [Attendance]
+      operationId: getTeamOvertimeStatus
+      description: >-
+        ATT-011-6b-3: whether the signed-in employee is a supervisor for overtime (an active direct report, or a
+        request routed to them). The app shows the Lembur Tim menu only when true.
+      responses:
+        '200': { description: '`{ isSupervisor: boolean }`' }
+        '403': { description: EMPLOYEE_NOT_ACTIVE }
+
   /attendance/team-overtime/subordinates:
     get:
       tags: [Attendance]
       operationId: listOvertimeSubordinates
-      description: Active direct reports (ORG-002 data) for the order form; `q` search, at most 50.
+      description: >-
+        Active direct reports (ORG-002 data) for the order form; `q` search, at most 50. ATT-011-6b-3: employees a
+        D-10 rule excludes on `workDate` (default today, Asia/Jakarta) are left out.
       parameters:
         - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: workDate, in: query, schema: { type: string, format: date } }
       responses:
         '200': { description: '`{ items[{ id, employeeNumber, fullName }] }`' }
 
@@ -1040,10 +1064,13 @@ paths:
       parameters:
         - { name: overtimeId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: '`{ id, status, approvedMinutes }`' }
+        '200':
+          description: >-
+            `{ id, status, approvedMinutes, warnings[] }`. On approval the warnings are stored on the event and audit
+            (D-5b), and HC staff of the employee's unit are notified in-app (D-11).
         '400': { description: OVERTIME_REJECT_NOTE_REQUIRED or OVERTIME_APPROVED_EXCEEDS_REQUEST }
         '403': { description: OVERTIME_NOT_APPROVER }
-        '409': { description: OVERTIME_STEP_ALREADY_DECIDED }
+        '409': { description: 'OVERTIME_STEP_ALREADY_DECIDED, or OVERTIME_NO_LONGER_APPLICABLE (request cancelled automatically, D-10)' }
 
   /attendance/team-overtime/orders:
     post:
@@ -1065,10 +1092,15 @@ paths:
                 workDate: { type: string, format: date }
                 requestedMinutes: { type: integer, minimum: 1, maximum: 1440 }
                 note: { type: string, minLength: 3, maxLength: 2000 }
+                dryRun: { type: boolean, description: 'ATT-011-6b-3: check and return warnings, write nothing' }
       responses:
-        '201': { description: '`{ ids[], orders[{ employeeId, id }], status: submitted, awaiting: employee }`' }
+        '200': { description: '`{ dryRun: true, orders[{ employeeId, warnings[] }] }` (dryRun only)' }
+        '201': { description: '`{ ids[], orders[{ employeeId, id, warnings[] }], status: submitted, awaiting: employee }`' }
         '403': { description: OVERTIME_NOT_SUBORDINATE }
-        '422': { description: 'OVERTIME_DATE_OUT_OF_RANGE or OVERTIME_DAY_TOTAL_INVALID' }
+        '422':
+          description: >-
+            OVERTIME_DATE_OUT_OF_RANGE, OVERTIME_DAY_TOTAL_INVALID, or OVERTIME_NOT_APPLICABLE with
+            `employees[{ employeeId, reasonLabel }]` (the whole batch is refused, D-10)
 
   /attendance/team-overtime/{overtimeId}/cancel:
     post:
@@ -1093,6 +1125,9 @@ paths:
         public_holiday, null when not calculated since the column existed) and `scanOutsideScheduleMinutes`:
         scan time before the scheduled start plus after the scheduled end, or first-to-last scan on a day
         without a schedule; null when there is no scan. Information only; it never fills overtime minutes.
+        ATT-011-6b-3: `warnings[]` (D-5b) for waiting/approved rows and `excludedByRule` (the rule's reason label, or
+        null) when a D-10 rule excludes that employee on that date; such rows stay listed (history) but count no
+        overtime minutes and are left out of the overtime reports.
       parameters:
         - name: status
           in: query
@@ -1111,9 +1146,21 @@ paths:
       description: >-
         Ajukan atas nama pegawai: flow A with the employee's supervisor as approver; HC does not become the
         approver. Audited as `attendance.overtime.submitted` (initiatedBy hc_on_behalf).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/AttendanceOvertimeInput' }
+                - type: object
+                  required: [employeeId]
+                  properties:
+                    employeeId: { type: string, format: uuid }
       responses:
-        '201': { description: HC-created overtime request }
-        '422': { description: "OVERTIME_DAY_TOTAL_INVALID: waiting plus approved overtime of the day would exceed 24 hours" }
+        '200': { description: '`{ dryRun: true, warnings[] }` (dryRun only)' }
+        '201': { description: '`{ id, status: submitted, awaiting: supervisor, warnings[] }`' }
+        '422': { description: "OVERTIME_DAY_TOTAL_INVALID (more than 24 hours that day) or OVERTIME_NOT_APPLICABLE (D-10 rule, `rule { id, reasonLabel }`)" }
 
   /admin/attendance/overtime/{overtimeId}/decision:
     post:
@@ -1126,8 +1173,9 @@ paths:
         Only requests from before ATT-011-6b (`initiated_by = hc_legacy`); others are decided by the supervisor or
         the employee (403 OVERTIME_NOT_HC_DECIDED).
       responses:
-        '200': { description: Overtime approved/rejected and attendance result recomputed }
+        '200': { description: 'Overtime approved/rejected and attendance result recomputed; `warnings[]` stored with the decision' }
         '403': { description: OVERTIME_NOT_HC_DECIDED }
+        '409': { description: 'OVERTIME_ALREADY_DECIDED, or OVERTIME_NO_LONGER_APPLICABLE (request cancelled automatically, D-10)' }
 
   /admin/attendance/overtime/{overtimeId}/void:
     post:
@@ -1157,6 +1205,141 @@ paths:
         '200': { description: '`{ id, supervisorEmployeeId }`' }
         '409': { description: OVERTIME_NOT_REASSIGNABLE }
         '422': { description: OVERTIME_APPROVER_SELF or OVERTIME_APPROVER_INACTIVE }
+
+  /admin/attendance/overtime-policy:
+    get:
+      tags: [Attendance]
+      operationId: getAttendanceOvertimePolicy
+      x-required-permission: attendance.policy.manage
+      description: >-
+        ATT-011-6b-3 D-5b (Pengaturan > Aturan lembur). `current` = thresholds in force today
+        `{ id, effectiveFrom, dailyWarningMinutes, weeklyWarningMinutes, source: configured | default }`; with no
+        recorded version the DRAFT defaults apply (240 minutes a day, 1080 an ISO week). `items` = versions,
+        ENG-LIST-001 paged, newest first.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: '`{ current, defaults, page, pageSize, total, pageCount, items }`' }
+        '403': { description: Missing attendance.policy.manage }
+    put:
+      tags: [Attendance]
+      operationId: setAttendanceOvertimePolicy
+      x-required-permission: attendance.policy.manage
+      description: >-
+        Records a new version effective from `effectiveFrom` (today or later). Warnings never block. Audited
+        `attendance.overtime_policy.updated` with the previous values.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [effectiveFrom, dailyWarningMinutes, weeklyWarningMinutes]
+              properties:
+                effectiveFrom: { type: string, format: date }
+                dailyWarningMinutes: { type: integer, minimum: 1, maximum: 1440 }
+                weeklyWarningMinutes: { type: integer, minimum: 1, maximum: 10080 }
+                reason: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '200': { description: '`{ id, effectiveFrom, dailyWarningMinutes, weeklyWarningMinutes }`' }
+        '400': { description: INVALID_OVERTIME_POLICY }
+        '403': { description: Missing attendance.policy.manage }
+        '422': { description: OVERTIME_POLICY_DATE_IN_PAST }
+
+  /admin/attendance/overtime-eligibility-rules:
+    get:
+      tags: [Attendance]
+      operationId: listAttendanceOvertimeEligibilityRules
+      x-required-permission: attendance.policy.manage
+      description: >-
+        ATT-011-6b-3 D-10: rules under which overtime does not apply, by position (ORG-004 stable key) or role key.
+        ENG-LIST-001 paged. `status=current` applies today or later, `ended` has passed. `positionKey` lists the
+        rules pointing at one position (ORG-008 O-8 restructuring warning). Each item: `id, targetKind, targetRef,
+        targetLabel, effect, reasonLabel, effectiveFrom, effectiveTo (last day, inclusive), state (active | scheduled |
+        ended), targetActive` (position rules: whether the position is still active in the structure in force
+        today; null for role rules), created/ended by and when.
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [current, ended, all], default: current } }
+        - { name: positionKey, in: query, schema: { type: string, format: uuid } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: '`{ page, pageSize, total, pageCount, items }`' }
+        '403': { description: Missing attendance.policy.manage }
+    post:
+      tags: [Attendance]
+      operationId: createAttendanceOvertimeEligibilityRule
+      x-required-permission: attendance.policy.manage
+      description: >-
+        Adds a rule effective from `effectiveFrom` (today or later). A position must be active in the structure in
+        force on that date; a role must exist. One open rule per target. No employee id is ever stored. Audited
+        `attendance.overtime_rule.created`; approved overtime of the affected days up to today is recalculated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [targetKind, targetRef, reasonLabel, effectiveFrom]
+              properties:
+                targetKind: { type: string, enum: [position, role] }
+                targetRef: { type: string, maxLength: 120, description: Position stable key (uuid) or role key }
+                reasonLabel: { type: string, minLength: 3, maxLength: 200 }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '201': { description: '`{ id, targetKind, targetRef, targetLabel, reasonLabel, effectiveFrom, effectiveTo: null, recalculatedDays }`' }
+        '400': { description: INVALID_OVERTIME_RULE }
+        '403': { description: Missing attendance.policy.manage }
+        '409': { description: OVERTIME_RULE_ALREADY_OPEN }
+        '422': { description: OVERTIME_RULE_DATE_IN_PAST or OVERTIME_RULE_TARGET_NOT_FOUND }
+
+  /admin/attendance/overtime-eligibility-rules/targets:
+    get:
+      tags: [Attendance]
+      operationId: searchAttendanceOvertimeRuleTargets
+      x-required-permission: attendance.policy.manage
+      description: >-
+        Typeahead for the rule target (at most 50): active positions of the structure in force today, found by
+        title or unit path (`key` = stable key, `detail` = unit path), or roles (`key` = role key).
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [position, role], default: position } }
+        - { name: q, in: query, schema: { type: string, maxLength: 120 } }
+      responses:
+        '200': { description: '`{ kind, items[{ key, label, detail }] }`' }
+        '403': { description: Missing attendance.policy.manage }
+
+  /admin/attendance/overtime-eligibility-rules/{ruleId}/end:
+    post:
+      tags: [Attendance]
+      operationId: endAttendanceOvertimeEligibilityRule
+      x-required-permission: attendance.policy.manage
+      description: >-
+        Ends a rule; rules are never deleted. `lastDay` = the last day it still applies (inclusive), at the earliest
+        yesterday or the day before it starts; default that earliest day. Audited `attendance.overtime_rule.ended`;
+        approved overtime from the day after up to today is recalculated.
+      parameters:
+        - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                lastDay: { type: string, format: date }
+                reason: { type: string, minLength: 3, maxLength: 1000 }
+      responses:
+        '200': { description: '`{ id, effectiveTo, recalculatedDays }`' }
+        '400': { description: INVALID_OVERTIME_RULE_END }
+        '403': { description: Missing attendance.policy.manage }
+        '404': { description: OVERTIME_RULE_NOT_FOUND }
+        '409': { description: OVERTIME_RULE_ALREADY_ENDED }
+        '422': { description: OVERTIME_RULE_END_TOO_EARLY }
 
   /admin/attendance/manual-corrections:
     post:
@@ -1511,3 +1694,17 @@ components:
         workDate: { type: string, format: date }
         requestedMinutes: { type: integer, minimum: 1, maximum: 1440 }
         note: { type: [string, 'null'], maxLength: 2000 }
+        dryRun: { type: boolean, description: 'ATT-011-6b-3: check and return warnings, write nothing' }
+
+    AttendanceOvertimeWarning:
+      type: object
+      description: >-
+        ATT-011-6b-3 D-5b, non-blocking. Approved + waiting overtime of the employee on the day / ISO week above the
+        threshold in force on the work date (Pengaturan > Aturan lembur; DRAFT default 4 h a day, 18 h a week).
+      required: [code, scope, totalMinutes, limitMinutes, message]
+      properties:
+        code: { type: string, enum: [OVERTIME_DAILY_GUIDE_EXCEEDED, OVERTIME_WEEKLY_GUIDE_EXCEEDED] }
+        scope: { type: string, enum: [day, week] }
+        totalMinutes: { type: integer }
+        limitMinutes: { type: integer }
+        message: { type: string, description: 'Neutral wording, e.g. "Melebihi batas PP 35/2021: 5 j hari ini (acuan 4 j)."' }

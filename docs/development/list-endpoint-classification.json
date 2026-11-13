@@ -311,6 +311,21 @@
       "reason": "Pemantauan lembur HC (ATT-011-6a); halaman standar dengan total."
     },
     {
+      "url": "/admin/attendance/overtime-eligibility-rules",
+      "list": "paged",
+      "reason": "ATT-011-6b-3: aturan lembur tidak berlaku per jabatan/peran; halaman standar dengan total, filter status sebelum LIMIT."
+    },
+    {
+      "url": "/admin/attendance/overtime-eligibility-rules/targets",
+      "list": "typeahead",
+      "reason": "ATT-011-6b-3: pilihan jabatan (struktur berlaku) atau peran untuk aturan lembur; pencarian q, maksimal 50."
+    },
+    {
+      "url": "/admin/attendance/overtime-policy",
+      "list": "paged",
+      "reason": "ATT-011-6b-3: batas peringatan lembur yang berlaku hari ini, ditambah riwayat versi berlaku-mulai dengan halaman standar."
+    },
+    {
       "url": "/admin/attendance/report",
       "list": "debt",
       "reason": "Laporan lama tanpa halaman: hari x pegawai aktif hingga sekitar 9.200 baris per respons.",
@@ -814,6 +829,11 @@
       "url": "/attendance/team-overtime",
       "list": "paged",
       "reason": "Lembur Tim ATT-011-6b-1: lembur yang diputuskan atau diperintahkan atasan; halaman standar dengan total, scope atasan sebelum LIMIT."
+    },
+    {
+      "url": "/attendance/team-overtime/status",
+      "list": "single",
+      "reason": "ATT-011-6b-3: satu penanda apakah pegawai adalah atasan (menu Lembur Tim)."
     },
     {
       "url": "/attendance/team-overtime/subordinates",

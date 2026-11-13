@@ -1601,6 +1601,54 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/overtime-policy",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "PUT",
+    "url": "/admin/attendance/overtime-policy",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/overtime-eligibility-rules",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "GET",
+    "url": "/admin/attendance/overtime-eligibility-rules/targets",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/overtime-eligibility-rules",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/attendance/overtime-rule-routes.ts",
+    "method": "POST",
+    "url": "/admin/attendance/overtime-eligibility-rules/:ruleId/end",
+    "permissions": [
+      "attendance.policy.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/admin/attendance/manual-corrections",
@@ -2054,6 +2102,16 @@
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "GET",
     "url": "/attendance/team-overtime",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/team-overtime/status",
     "access": "self-service",
     "principals": [
       "EMPLOYEE"

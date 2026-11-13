@@ -89,6 +89,8 @@ async function resolveOvertime(pool: Pool, window: AttendanceWindow) {
      WHERE r.status = 'approved'
        AND r.approved_minutes > 0
        AND r.work_date BETWEEN $1::date AND $2::date
+       -- ATT-011 D-10 (§7.8): no overtime on a day a position/role rule excludes (Direktur).
+       AND attendance_overtime_excluding_rule(r.employee_id, r.work_date) IS NULL
        AND ${EMPLOYMENT_COVERS_DAY}
        AND (e.started_on IS NULL OR e.started_on <= r.work_date)
        AND (e.ended_on IS NULL OR e.ended_on >= r.work_date)

@@ -101,7 +101,7 @@ The employee catalog groups services by user intent rather than by backend packa
 ### Keuangan Saya
 
 - Slip Gaji — PAY-002 — available.
-- Reimbursement — REIMB-001 — deferred/after MVP.
+- Reimbursement — REIMB-001 — available (Package 1, `/app/reimbursements`).
 - Pinjaman — LOAN-001 — available (Package 1).
 
 Payroll calculation is an HC/admin workspace capability, not an employee launcher action.

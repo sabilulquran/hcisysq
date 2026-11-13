@@ -4,7 +4,7 @@
 
 export type HelpTopic =
   | "GENERAL" | "ATTENDANCE" | "OVERTIME" | "LEAVE" | "PAYSLIP" | "TRIPS" | "CALENDAR"
-  | "TRAINING" | "LOANS" | "ASSETS" | "DOCUMENTS" | "PERFORMANCE" | "APPROVALS";
+  | "TRAINING" | "LOANS" | "REIMBURSEMENT" | "ASSETS" | "DOCUMENTS" | "PERFORMANCE" | "APPROVALS";
 export type HelpKind = "FAQ" | "GUIDE";
 export type HelpStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 export type HelpChannel = "WHATSAPP" | "PHONE" | "EMAIL" | "OFFICE";
@@ -102,6 +102,7 @@ export const helpTopics: Array<{ topic: HelpTopic; label: string; href: string |
   { topic: "CALENDAR", label: "Kalender & rapat", href: "/app/calendar" },
   { topic: "TRAINING", label: "Pelatihan", href: "/app/training" },
   { topic: "LOANS", label: "Pinjaman", href: "/app/loans" },
+  { topic: "REIMBURSEMENT", label: "Reimbursement", href: "/app/reimbursements" },
   { topic: "ASSETS", label: "Asset Saya", href: "/app/services/assets" },
   { topic: "DOCUMENTS", label: "Dokumen", href: "/app/documents" },
   { topic: "PERFORMANCE", label: "Kinerja", href: "/app/performance" },

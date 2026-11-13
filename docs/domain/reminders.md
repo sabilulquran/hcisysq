@@ -3,13 +3,13 @@
 **Status:** ACCEPTED (Paket 1) — spesifikasi ini menjawab lima pertanyaan `announcements-and-reminders.md` §8 dan mengizinkan implementasi. Aturan bisnis yang belum tertulis memakai default paling masuk akal dan ditandai `DRAFT`.
 **Spesifikasi:** NOTIF-003, NOTIF-001
 **Tanggal:** 2026-11-11
-**Terkait:** NOTIF-004, CAL-001, EMP-005, EMP-007, PERF-001, PAY-003, DOC-001, LEAVE-001, TRIP-001, LOAN-001, ATT-015, APR-001; SQ Hub KIRIM-001 (Kirim SQ)
+**Terkait:** NOTIF-004, CAL-001, EMP-005, EMP-007, PERF-001, PAY-003, DOC-001, LEAVE-001, TRIP-001, LOAN-001, REIMB-001, ATT-015, APR-001; SQ Hub KIRIM-001 (Kirim SQ)
 
 ## 1. Tujuan
 
 Pengingat berbeda dari notifikasi transaksi: sumbernya **keadaan data** pada suatu waktu (kontrak akan berakhir, penilaian belum diisi, persetujuan menggantung), bukan peristiwa. Legacy punya `reminders:generate-*` dan `reminders:dispatch` dengan preferensi per pegawai. HCIS sudah punya satu aturan (pengingat rapat CAL-001) dengan penjalan sendiri.
 
-Paket 1 menyediakan **satu mesin pengingat** (sepuluh aturan sejak 2026-11-13) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
+Paket 1 menyediakan **satu mesin pengingat** (sebelas aturan sejak 2026-11-13, termasuk `reimbursement.finance_queue_digest` REIMB-001) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
 
 ## 2. Inventaris pengingat yang sudah dijanjikan
 
@@ -18,7 +18,7 @@ Paket 1 menyediakan **satu mesin pengingat** (sepuluh aturan sejak 2026-11-13) d
 | Rapat mulai 30 menit lagi | CAL-001 K-15 | **Sudah berjalan** di penjalan CAL-001 (`meetings/runner.ts`); tidak dipindah (D-02). |
 | Kontrak / masa percobaan / magang akan berakhir | EMP-005 D-11 (jendela 60 hari) | Aturan `employment.term_ending` |
 | Sertifikat pegawai akan berakhir | EMP-007 §7.5 | Aturan `employee.certificate_expiring` |
-| Persetujuan menunggu (cuti, dinas, pinjaman, tugas luar/WFH/ubah jadwal) | APR-001, NOTIF-003 legacy "leave pending" | Aturan `approval.pending_digest` |
+| Persetujuan menunggu (cuti, dinas, pinjaman, reimbursement, tugas luar/WFH/ubah jadwal) | APR-001, NOTIF-003 legacy "leave pending" | Aturan `approval.pending_digest` |
 | Validasi cuti HC menunggu | LEAVE-001 HC task | Aturan `leave.hc_queue_digest` |
 | Permintaan surat keterangan menunggu | DOC-001, `announcements-and-reminders.md` §8 | Aturan `documents.request_queue_digest` |
 | Penilaian diri dan penilaian atasan jatuh tempo | PERF-001 (`self_due_on`, `review_due_on`) | Aturan `performance.self_due`, `performance.review_due` |
@@ -27,7 +27,7 @@ Paket 1 menyediakan **satu mesin pengingat** (sepuluh aturan sejak 2026-11-13) d
 | Pengingat absen masuk harian 06.30 | Legacy `reminders:generate-attendance` | **Tidak** (D-09): jadwal pegawai beragam; pesan harian ke semua pegawai adalah kebisingan. Perlu keputusan owner. |
 | Penerbitan otomatis pengumuman terjadwal | NOTIF-002 N-07 | **Tidak**: N-07 tetap mensyaratkan tindakan operator. |
 | RTL pelatihan, tenggat tugas pelatihan | TRAIN-001 D-15 | Belum ada data tenggat di Paket 1 pelatihan; aturan ditambahkan bersama fiturnya. |
-| Reimbursement menunggu | Legacy | REIMB-001 belum dibangun. |
+| Reimbursement menunggu (approver dan Keuangan) | Legacy, REIMB-001 §8 | Approver: ikut `approval.pending_digest`. Keuangan: aturan `reimbursement.finance_queue_digest` (ditambahkan 2026-11-13) |
 | Dokumen pribadi pegawai (SIM, paspor, SKCK, surat sehat, dll.) akan berakhir | EMP-011 §2 (`TBD` menunggu NOTIF-003), legacy | Aturan `employee.document_expiring` (ditambahkan 2026-11-13) |
 
 ## 3. Keputusan
@@ -53,8 +53,9 @@ Paket 1 menyediakan **satu mesin pengingat** (sepuluh aturan sejak 2026-11-13) d
 
 | `rule_key` | Penerima | Kapan (WIB) | Kunci kejadian | WA bawaan | Tautan |
 | --- | --- | --- | --- | --- | --- |
-| `approval.pending_digest` | Approver dengan langkah `pending` pada pengajuan yang masih ditinjau (cuti, dinas, pinjaman, tugas luar/WFH/ubah jadwal) — sama dengan kotak Persetujuan; approver berupa akun Organ Yayasan menerima in-app saja | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
+| `approval.pending_digest` | Approver dengan langkah `pending` pada pengajuan yang masih ditinjau (cuti, dinas, pinjaman, reimbursement, tugas luar/WFH/ubah jadwal) — sama dengan kotak Persetujuan; approver berupa akun Organ Yayasan menerima in-app saja | Senin–Sabtu 07.00, bila ada | tanggal | Nyala | `/app/approvals` |
 | `leave.hc_queue_digest` | Pemegang `leave.validate` | Senin–Sabtu 07.00, bila ada tugas HC cuti `pending` | tanggal | Nyala | `/app/hc/leave` |
+| `reimbursement.finance_queue_digest` | Pemegang `reimbursements.manage` | Senin–Sabtu 07.00, bila ada klaim `APPROVED` (menunggu verifikasi) atau `VERIFIED` (menunggu pembayaran) | tanggal | Nyala | `/admin/reimbursements` |
 | `documents.request_queue_digest` | Pemegang `documents.manage` | Senin–Sabtu 07.00, bila ada permintaan `SUBMITTED` ≥ 2 hari | tanggal | Nyala | `/admin/documents` |
 | `employment.term_ending` | Pemegang `employment.manage`; tidak berjalan selama riwayat kepegawaian `OFF` | Harian 07.00; ambang H-60, H-30, H-7 dari akhir masa kontrak/percobaan/magang/lepas yang sedang berjalan | term + ambang | Mati | `/admin/employees/<id>` |
 | `employee.document_expiring` | Pegawai pemilik dokumen EMP-011 `VERIFIED` (pegawai aktif yang dikelola HCIS, sama dengan daftar kerja D-15) | Harian 07.00; ambang H-30, H-7 | dokumen + tanggal berakhir + ambang | Nyala | `/app/my-data` |

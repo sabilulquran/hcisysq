@@ -114,6 +114,16 @@ Tujuh artikel isi awal menjelaskan celah yang sejak 2026-11-03 ditutup: pilihan 
 
 Artikel yang disentuh: FAQ rapat lewat WhatsApp, FAQ salinan surat terbit, panduan Dokumen Kepegawaian, FAQ pembatalan cuti, panduan Cuti & Izin, FAQ notifikasi untuk penyetuju, dan FAQ isi halaman Notifikasi. `help-center-seed.json` tetap potret isi 0130.
 
+### 8.2 Topik Reimbursement (2026-11-13)
+
+REIMB-001 menambah topik `REIMBURSEMENT` ("Reimbursement", tautan `/app/reimbursements`) di antara Pinjaman dan Asset Saya. Migration `0150_help_center_reimbursement_articles.sql`:
+
+- memperluas `CHECK` topik `help_articles` (daftar `HELP_TOPICS` di API dan web berubah bersamaan);
+- menambah empat isi awal `DRAFT`/`SEED` (satu panduan, tiga FAQ: kategori dan batas, kapan dibayar, mengubah atau membatalkan) dengan revisi 1 tanpa actor dan audit `help.article.created`, sehingga tidak ada yang tampil ke pegawai sebelum HC menerbitkannya (D-03);
+- mengoreksi panduan Perjalanan Dinas dan FAQ "Apakah biaya perjalanan … bisa diajukan di HCIS?" yang menyatakan biaya belum diurus, dengan aturan 8.1 yang sama (draf awal dikoreksi di tempat, terbitan isi awal yang belum pernah disimpan HC disunting dengan versi naik, suntingan HC dibiarkan).
+
+**Rollback/recovery:** hapus baris `help_audit_events`, `help_article_revisions`, dan `help_articles` bertopik `REIMBURSEMENT`, lalu pulihkan `CHECK` topik 0130. Teks TRIPS dikembalikan HC di layar admin bila perlu. Build lama tidak mengenal topik itu dan hanya tidak menampilkannya.
+
 ## 9. API
 
 Kontrak: `docs/api/help-center.openapi.yaml`.

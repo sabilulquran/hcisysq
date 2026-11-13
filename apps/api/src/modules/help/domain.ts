@@ -3,10 +3,10 @@
 
 import { z } from "zod";
 
-/** D-01: fixed topic list, in reading order. Kept in step with the CHECK in 0130_help_center.sql. */
+/** D-01: fixed topic list, in reading order. Kept in step with the CHECK in 0130_help_center.sql (0150 added REIMBURSEMENT). */
 export const HELP_TOPICS = [
   "GENERAL", "ATTENDANCE", "OVERTIME", "LEAVE", "PAYSLIP", "TRIPS", "CALENDAR",
-  "TRAINING", "LOANS", "ASSETS", "DOCUMENTS", "PERFORMANCE", "APPROVALS",
+  "TRAINING", "LOANS", "REIMBURSEMENT", "ASSETS", "DOCUMENTS", "PERFORMANCE", "APPROVALS",
 ] as const;
 export type HelpTopic = (typeof HELP_TOPICS)[number];
 

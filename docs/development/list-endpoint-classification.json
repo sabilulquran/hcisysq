@@ -682,6 +682,33 @@
       "reason": "Satu penilaian kinerja beserta rubrik dan riwayatnya."
     },
     {
+      "url": "/admin/reimbursements",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/reimbursements/:id",
+      "list": "single",
+      "reason": "Satu klaim beserta baris biaya (maks. 10), bukti (maks. 10), tahap approval, pembayaran, dan riwayatnya."
+    },
+    {
+      "url": "/admin/reimbursements/:id/receipts/:receiptId",
+      "list": "single",
+      "reason": "Satu berkas bukti."
+    },
+    {
+      "url": "/admin/reimbursements/claimants",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/reimbursements/export.csv",
+      "list": "export",
+      "reason": "REIMB-001 D-17: rentang tanggal wajib maks. 366 hari; lebih dari 20.000 baris ditolak 422, tidak dipotong."
+    },
+    {
+      "url": "/admin/reimbursements/summary",
+      "list": "aggregate"
+    },
+    {
       "url": "/admin/reports/hr/:report",
       "list": "paged"
     },
@@ -1246,6 +1273,43 @@
     {
       "url": "/ready",
       "list": "single"
+    },
+    {
+      "url": "/reimbursements/approvals",
+      "list": "paged"
+    },
+    {
+      "url": "/reimbursements/approvals/:stepId",
+      "list": "single",
+      "reason": "Satu klaim yang tahapnya dipegang approver, dengan baris biaya (maks. 10) dan bukti (maks. 10)."
+    },
+    {
+      "url": "/reimbursements/approvals/:stepId/receipts/:receiptId",
+      "list": "single",
+      "reason": "Satu berkas bukti."
+    },
+    {
+      "url": "/reimbursements/me",
+      "list": "paged"
+    },
+    {
+      "url": "/reimbursements/me/:id",
+      "list": "single",
+      "reason": "Satu klaim milik pegawai beserta baris biaya (maks. 10), bukti (maks. 10), tahap approval, pembayaran, dan riwayatnya."
+    },
+    {
+      "url": "/reimbursements/me/:id/receipts/:receiptId",
+      "list": "single",
+      "reason": "Satu berkas bukti milik pegawai."
+    },
+    {
+      "url": "/reimbursements/me/approvers",
+      "list": "bounded",
+      "reason": "Pratinjau rantai APR-001: paling banyak dua approver (atasan langsung dan approver unit)."
+    },
+    {
+      "url": "/reimbursements/me/trips",
+      "list": "paged"
     },
     {
       "url": "/training/me/programs",

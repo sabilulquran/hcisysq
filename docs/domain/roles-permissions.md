@@ -151,6 +151,17 @@ Migration `0123_employee_loan_permissions.sql`, berscope organisasi (`docs/domai
 
 `payroll.loans.manage` (register kasbon PAY-003) dan `loans.*` tidak saling membuka. Super Admin tidak memperoleh `loans.*` lewat kompatibilitas legacy.
 
+### Reimbursement (REIMB-001)
+
+Migration `0149_reimbursement_permissions.sql`, berscope organisasi (`docs/domain/reimbursement.md` §6, D-12 DRAFT).
+
+| Permission | Pemegang | Catatan |
+|---|---|---|
+| `reimbursements.read` | Keuangan (`finance_officer`), HC Admin (`human_capital_admin`) | register, detail, bukti (dicatat), ringkasan, ekspor CSV (dicatat) |
+| `reimbursements.manage` | Keuangan (`finance_officer`) | verifikasi, tolak, catat pembayaran; tidak atas klaim sendiri dan tidak atas klaim yang ia setujui |
+
+Pegawai dan approver tidak memerlukan permission: akses berasal dari kepemilikan klaim dan tahap snapshot APR-001. `reimbursements.*`, `loans.*`, dan `payroll.*` tidak saling membuka. Super Admin tidak memperoleh `reimbursements.*` lewat kompatibilitas legacy.
+
 ### Pusat Bantuan (HELP-001)
 
 Migration `0131_help_center_permissions.sql`, berscope organisasi (`docs/domain/help-center.md` §6, D-08 DRAFT).

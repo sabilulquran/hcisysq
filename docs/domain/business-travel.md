@@ -35,7 +35,7 @@ Termasuk (Paket 1):
 
 | Di luar lingkup | Alasan |
 | --- | --- |
-| Uang muka, biaya, uang harian, akomodasi, tiket | Reimbursement dan pembiayaan pasca-MVP (AGENTS.md §5, REIMB-001). Paket 1 **tidak** menyimpan nominal apa pun dan tidak menghitung biaya. |
+| Uang muka, biaya, uang harian, akomodasi, tiket | TRIP-001 tidak menyimpan nominal apa pun dan tidak menghitung biaya. Biaya yang sudah dikeluarkan (tiket, akomodasi, konsumsi) diklaim lewat REIMB-001 dengan menautkan perjalanan `APPROVED`/`ISSUED`/`COMPLETED` (`docs/domain/reimbursement.md` D-06). Uang muka dan uang harian belum ada (REIMB-001 §2). |
 | Status kehadiran "dinas" pada hasil harian dan dampaknya ke payroll | Menyentuh engine ATT dan payroll. Kontraknya ditulis di §9.2 sebagai **Paket 2**. |
 | Pengajuan oleh atasan untuk bawahan, atau satu pengajuan untuk rombongan | Paket 1 satu pengajuan = satu pegawai yang berangkat (D-02). |
 | Perubahan tanggal setelah diajukan | Batalkan lalu ajukan ulang (D-09). |

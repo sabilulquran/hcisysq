@@ -3757,6 +3757,228 @@
     ]
   },
   {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/me/trips",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/me/approvers",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/reimbursements/me",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "PUT",
+    "url": "/reimbursements/me/:id",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/reimbursements/me/:id/receipts",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "DELETE",
+    "url": "/reimbursements/me/:id/receipts/:receiptId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/me/:id/receipts/:receiptId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/reimbursements/me/:id/submit",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/reimbursements/me/:id/cancel",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/approvals",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/approvals/:stepId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/reimbursements/approvals/:stepId/receipts/:receiptId",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/reimbursements/approvals/:stepId/decision",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements/claimants",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements/summary",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements/export.csv",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements/:id",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "GET",
+    "url": "/admin/reimbursements/:id/receipts/:receiptId",
+    "permissions": [
+      "reimbursements.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/admin/reimbursements/:id/verify",
+    "permissions": [
+      "reimbursements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/admin/reimbursements/:id/reject",
+    "permissions": [
+      "reimbursements.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/reimbursements/routes.ts",
+    "method": "POST",
+    "url": "/admin/reimbursements/:id/pay",
+    "permissions": [
+      "reimbursements.manage"
+    ]
+  },
+  {
     "file": "apps/api/src/modules/employee-assets/routes.ts",
     "method": "GET",
     "url": "/assets/me",

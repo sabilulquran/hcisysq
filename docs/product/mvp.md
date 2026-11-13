@@ -146,7 +146,7 @@ Satu defect ditemukan pada payslip period serialization dan diperbaiki pada fina
 
 ## Di luar MVP
 
-- Reimbursement.
+- Reimbursement. (Pasca-MVP; REIMB-001 Paket 1 dibangun 2026-11-13 atas instruksi owner 2026-11-11, `docs/domain/reimbursement.md`. Tidak mengubah definisi MVP.)
 - Payroll calculation dan payroll reconciliation penuh.
 - Loan/cicilan.
 - Performance review penuh.

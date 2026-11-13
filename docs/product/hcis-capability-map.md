@@ -58,7 +58,7 @@ Approved leave/permission may feed attendance/payroll as a resolved fact. Submis
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
 - Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
-- Reimbursement — REIMB-001.
+- Reimbursement — REIMB-001. Package 1 (draft claims with encrypted receipts, optional link to a business trip, APR-001 approval, Finance verification per item, payment outside payroll, register, summary and CSV export) is implemented; see `docs/domain/reimbursement.md`. Payroll handoff stays behind a DRAFT switch that is off; advances and per diem are not included.
 - Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is deferred until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
 
 PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
@@ -110,7 +110,7 @@ Employee services continue with:
 
 - Employee data change request — EMP-003.
 - Employment and HR documents — DOC-001 / DOC-002. Package 1 (work certificate request/issuance and warning letters) is implemented; see `docs/domain/hr-documents.md`. The income certificate waits for PAY-003.
-- Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Attendance disposition is Package 2; costs stay with REIMB-001.
+- Business travel / official travel workflow — TRIP-001. Package 1 (request, APR-001 approval, numbered surat tugas, cancellation, completion) is implemented; see `docs/domain/business-travel.md`. Attendance disposition is Package 2; trip costs are claimed through REIMB-001 Package 1 (advances not yet).
 - Employee asset assignment and return — ASSET-001. Aset SQ remains the asset/custody system of record; HCIS shows a read-only Asset Saya and an outstanding-asset warning in the Termination dialog (`docs/domain/employee-assets.md`).
 - ~~Desk/workplace booking — WORK-001~~ — removed by the product owner on 2026-11-02; not to be built.
 - Employee document file archive — EMP-011. Package 1 is implemented (`docs/domain/employee-documents.md`): scans of KTP, KK, NPWP, BPJS cards, diplomas, transcripts, certificates and licences with an expiry date. HC uploads and verifies; the employee sees and downloads their own documents and proposes uploads from Data Saya; HC's worklist Dokumen Pegawai lists documents about to expire and proposals waiting. EMP-011 owns the employee-document storage boundary (D-01): files encrypted in the HCIS database behind the `EmployeeFileStore` port, so object storage later is an adapter swap. The same boundary carries the scanned Perjanjian Kerja / Surat Keputusan of EMP-010. Only the owner and HC Admin read; every read is audited.

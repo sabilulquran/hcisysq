@@ -244,7 +244,7 @@ export async function registerPayrollAdminRoutes(app: FastifyInstance, pool: Poo
       if (code === "23514") {
         return send(reply, 400, {
           code: "PAYROLL_INVALID_PROFILE",
-          message: "Profil ditolak oleh aturan basis data; periksa alasan override dan segmen BPJS.",
+          message: "Profil ditolak oleh aturan basis data; periksa alasan override, segmen BPJS, dan alasan pengecualian laporan PPh21.",
         });
       }
       if (code === "23503") {

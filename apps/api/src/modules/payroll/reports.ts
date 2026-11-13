@@ -13,11 +13,16 @@
  *
  * A third view, the variance against the previous period, is the review screen's
  * own: it compares component totals per employee so a reviewer sees what moved.
+ *
+ * The fourth is the PPh21 TER report per masa pajak. Its arithmetic lives in
+ * pph21.ts, free of the database; this file only reads its rows and writes its CSV.
  */
 
 import type { Pool } from "pg";
 
 import { quoteCsvCell } from "../../lib/csv.js";
+import type { Pph21Report, Pph21Row, Pph21SourceRow } from "./pph21.js";
+import { parsePph21TerPolicy, type Pph21TerPolicy } from "./policy.js";
 import { LATEST_RESULTS_OF_PERIOD } from "./store.js";
 
 /**
@@ -337,4 +342,174 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
     [periodId],
   );
   return rows[0]?.id ?? null;
+}
+
+/**
+ * The rows the PPh21 TER report is built from (specification section 5.3): the
+ * latest result of each employment, its earning lines, and the PTKP status and
+ * reporting exclusion of the profile the result was calculated from. Reading the
+ * profile of the calculation, like the unit above, keeps a past masa pajak
+ * reading as it was paid; a correction to either goes through a recalculation.
+ *
+ * Each row also names the person (so two employments are taxed as one gross),
+ * the term category on the pay date, and whether the person keeps an employment
+ * with the same employer past the period (so ending one of two is not a final
+ * masa pajak).
+ */
+export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise<Pph21SourceRow[]> {
+  const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings"> & {
+    payFactor: string;
+    earnings: Array<{ code: string; amount: string | number }>;
+  }>(
+    `SELECT latest.employment_id AS "employmentId",
+            emp.id AS "employeeId",
+            emp.employee_number AS "employeeNumber",
+            emp.full_name AS "fullName",
+            profile.ptkp_status AS "ptkpStatus",
+            coalesce(profile.pph21_report_excluded, false) AS excluded,
+            profile.pph21_report_exclusion_reason AS "exclusionReason",
+            latest.pay_factor::text AS "payFactor",
+            jsonb_array_length(latest.blockers)::int AS "blockerCount",
+            to_char(e.ended_on, 'YYYY-MM-DD') AS "serviceEndDate",
+            EXISTS (
+              SELECT 1 FROM employments other
+              WHERE other.employee_id = e.employee_id
+                AND other.voided_by_action_id IS NULL
+                AND coalesce(other.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                    = coalesce(e.legal_entity_key, '00000000-0000-0000-0000-000000000000'::uuid)
+                AND (other.ended_on IS NULL OR other.ended_on > period.period_end)
+            ) AS "hasContinuingEmployment",
+            (
+              SELECT t.category FROM employment_terms t
+              WHERE t.employment_id = e.id
+                AND t.voided_by_action_id IS NULL
+                AND (t.effective_from IS NULL OR t.effective_from <= period.pay_date)
+                AND (t.effective_to IS NULL OR t.effective_to >= period.pay_date)
+              ORDER BY t.sequence DESC LIMIT 1
+            ) AS "termCategory",
+            coalesce((
+              SELECT jsonb_agg(jsonb_build_object('code', l.component_code, 'amount', l.amount::text))
+              FROM payroll_result_lines l
+              WHERE l.result_id = latest.id AND l.category = 'EARNING'
+            ), '[]'::jsonb) AS earnings
+     FROM (${LATEST_RESULTS_OF_PERIOD}) latest
+     JOIN employments e ON e.id = latest.employment_id
+     JOIN employees emp ON emp.id = e.employee_id
+     JOIN payroll_periods period ON period.id = latest.period_id
+     ${RESULT_PROFILE}
+     ORDER BY emp.employee_number, latest.employment_id`,
+    [periodId],
+  );
+  return rows.map((row) => ({
+    ...row,
+    payFactor: Number(row.payFactor),
+    earnings: row.earnings.map((line) => ({ code: line.code, amount: Number(line.amount) })),
+  }));
+}
+
+export type Pph21PolicyLookup =
+  | { ok: true; versionId: string; effectiveFrom: string; policy: Pph21TerPolicy }
+  | { ok: false; code: "PPH21_TER_POLICY_MISSING" | "PPH21_TER_POLICY_INVALID"; message: string };
+
+/** The PPH21_TER version in force on the pay date, checked against its schema. */
+export async function findPph21Policy(pool: Pool, payDate: string): Promise<Pph21PolicyLookup> {
+  const { rows } = await pool.query<{ id: string; effectiveFrom: string; payload: unknown }>(
+    `SELECT id, to_char(effective_from, 'YYYY-MM-DD') AS "effectiveFrom", payload
+     FROM payroll_policy_versions
+     WHERE policy_key = 'PPH21_TER'
+       AND effective_from <= $1::date
+       AND (effective_to IS NULL OR effective_to >= $1::date)
+     ORDER BY effective_from DESC
+     LIMIT 1`,
+    [payDate],
+  );
+  const row = rows[0];
+  if (!row) {
+    return {
+      ok: false,
+      code: "PPH21_TER_POLICY_MISSING",
+      message: `Kebijakan PPH21_TER belum berlaku pada tanggal gajian ${payDate}; muat tabel TER yang sudah diverifikasi lebih dulu.`,
+    };
+  }
+  const parsed = parsePph21TerPolicy(row.payload);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      code: "PPH21_TER_POLICY_INVALID",
+      message: `Isi kebijakan PPH21_TER yang berlaku tidak sesuai bentuk yang dibutuhkan: ${parsed.message}.`,
+    };
+  }
+  return { ok: true, versionId: row.id, effectiveFrom: row.effectiveFrom, policy: parsed.policy };
+}
+
+const PPH21_HEADER = [
+  "NIP",
+  "Nama",
+  "Status PTKP",
+  "Kategori TER",
+  "Penghasilan bruto",
+  "Tarif",
+  "PPh21",
+  "Kode objek",
+  "Dilaporkan",
+  "Catatan",
+];
+
+/** A TER rate as a person reads it in an Indonesian spreadsheet: 2,5%. */
+export function formatTerRate(rate: number): string {
+  const percent = Number((rate * 100).toPrecision(12));
+  return `${String(percent).replace(".", ",")}%`;
+}
+
+/** What a flag means, in the words the CSV and the screen both use. */
+export function pph21RowNote(row: Pph21Row): string {
+  const notes: string[] = [];
+  if (row.flags.includes("EXCLUDED")) {
+    notes.push(`Dikecualikan dari pelaporan: ${row.exclusionReason ?? "tanpa alasan"}`);
+  }
+  if (row.flags.includes("PTKP_MISSING")) {
+    notes.push("Status PTKP kosong atau tidak terpetakan di kebijakan; PPh21 belum dapat dihitung");
+  }
+  if (row.flags.includes("PTKP_CONFLICT")) {
+    notes.push("Status PTKP berbeda antar-employment pegawai ini; PPh21 belum dapat dihitung");
+  }
+  if (row.flags.includes("ANNUAL_CALCULATION_REQUIRED")) {
+    notes.push("Masa pajak terakhir: PPh21 final memakai perhitungan tahunan Pasal 17 (di luar v1); angka TER ini bukan angka final");
+  }
+  if (row.flags.includes("NON_PERMANENT_TERMS")) {
+    notes.push("Pegawai kontrak honorer/lepas: dilaporkan dengan TER bulanan 21-100-01 (DRAFT), menunggu konfirmasi aturan pegawai tidak tetap");
+  }
+  if (row.employmentIds.length > 1) {
+    notes.push(`Bruto gabungan ${row.employmentIds.length} employment`);
+  }
+  return notes.join("; ");
+}
+
+/**
+ * CSV for the PPh21 TER report: UTF-8 with a byte order mark and CRLF, like the
+ * transfer list, so a name with a diacritic and an NIP with a leading zero both
+ * survive the trip into a spreadsheet. No NIK or NPWP: HCIS does not store them
+ * for payroll, and the tax office's own form is filled from this sheet.
+ */
+export function pph21ReportToCsv(report: Pph21Report): string {
+  const lines = [PPH21_HEADER.map(quoteCsvCell).join(",")];
+  for (const row of report.rows) {
+    lines.push(
+      [
+        asText(row.employeeNumber),
+        row.fullName,
+        row.ptkpStatus ?? "",
+        row.terCategory ?? "",
+        String(row.gross),
+        row.rate === null ? "" : formatTerRate(row.rate),
+        row.tax === null ? "" : String(row.tax),
+        report.objectCode,
+        row.flags.includes("EXCLUDED") ? "N" : "Y",
+        pph21RowNote(row),
+      ]
+        .map((cell) => quoteCsvCell(cell))
+        .join(","),
+    );
+  }
+  return `${UTF8_BOM}${lines.join("\r\n")}\r\n`;
 }

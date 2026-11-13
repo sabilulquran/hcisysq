@@ -123,7 +123,7 @@ Per employment, berlaku-efektif:
 - persentase kinerja tahunan dan bulanan (default eksplisit, bukan diketik ulang per bulan; kebijakan default untuk masa kerja < 1 tahun: §10 butir 3);
 - target kualifikasi khusus (opsional);
 - kepesertaan BPJS Kesehatan: segmen (`PPU_YAYASAN`, `PBI`, `MANDIRI`, `BELUM_TERDAFTAR`), tanggal aktif, jumlah anggota keluarga tambahan, referensi SK (D2). Anggota tambahan **diturunkan**, tidak diketik: `anggota_tambahan = max(0, tanggungan_terdaftar − (pasangan + min(anak, 3)))`, sesuai batas penanggungan pasangan + 3 anak pada iuran 5%. Nilai manual hanya boleh sebagai override dengan alasan dan selisihnya ditampilkan saat review;
-- status PTKP;
+- status PTKP, dan **pengecualian pelaporan PPh21** (`pph21_report_excluded` + alasan wajib, migration 0147; §5.3);
 - rekening bank dan nama pemilik rekening;
 - tugas tambahan Pj. Media (placement `ADDITIONAL`, EMP-005) dengan tarif per konten.
 
@@ -228,6 +228,19 @@ Catatan v1 (`DRAFT`):
 
 PPh21 tidak dipotong dari gaji; dicatat sebagai `PPH21_EMPLOYER`. Penghasilan bruto pelaporan diturunkan dari hasil final yang **benar-benar dibayar** (D9), memakai TER sesuai status PTKP. Pengecualian pelaporan per orang disimpan sebagai atribut eksplisit dengan alasan, bukan NIK hard-coded.
 
+Rumus laporan v1 (implementasi `apps/api/src/modules/payroll/pph21.ts`, fungsi murni tanpa akses database seperti engine):
+
+```text
+bruto_employment = Σ baris EARNING hasil terakhir employment itu, kecuali BPJS_KES_ALLOW
+              lalu, bila faktor_bayar ≠ 1: ROUNDUP(bruto_employment × faktor_bayar)   (sama dengan DIBAYAR, §5)
+bruto_lapor = Σ bruto_employment per orang (employment tanpa blocker), §7.2 P11
+kategori    = PPH21_TER.ptkpCategory[status PTKP profil]   (dicocokkan tanpa spasi, huruf besar)
+tarif       = lapisan pertama kategori itu dengan upTo ≥ bruto_lapor (upTo null = tanpa batas atas)
+PPh21       = FLOOR(bruto_lapor × tarif)   ke rupiah bulat (DRAFT); 0 bila bruto_lapor ≤ 0
+```
+
+Status implementasi dan keputusan `DRAFT` laporan ini: §7.2.
+
 ### 5.4 Blocker (fail closed)
 
 Periode tidak dapat diajukan bila ada blocker:
@@ -295,7 +308,7 @@ Dua laporan terpisah, bukan satu (perbaikan review 2026-10-27):
 - Pengurus Yayasan tidak memperoleh kedua laporan di v1 (§2).
 - **Perbandingan periode** (`payroll.reports.read.organization`, serta aktor yang menjalankan periode): selisih per pegawai per komponen terhadap periode sebelumnya pada legal entity yang sama, disaring ambang §10 butir 6. Pegawai yang baru masuk atau keluar dilaporkan satu baris, bukan satu baris per komponen. Periode pertama menjawab perbandingan kosong, bukan error.
 - **Slip pegawai:** hasil final dipetakan ke draft slip (`lines` label/value sesuai urutan katalog komponen) setelah pembayaran dikonfirmasi, lalu diterbitkan lewat aksi tersendiri yang meminta `payslips.publish` — payroll menyiapkan, pemegang permission itu menerbitkan. Jalur publish batch PAY-002 bekerja per batch impor dan tidak dapat melihat slip bersumber periode, sehingga payroll memakai pintunya sendiri dengan permission yang sama. Slip bersumber periode payroll (`payslips.source_period_id`), bukan batch impor; tepat satu sumber per baris. Slip yang belum terbit diperbarui di tempat; slip yang sudah terbit tidak pernah diubah. Bila slip berlaku untuk bulan itu ternyata milik batch impor PAY-001, payroll tidak menyentuhnya dan melaporkan pegawainya sebagai konflik, supaya batch impor tidak kehilangan draftnya.
-- **Laporan PPh21 TER** per masa pajak dari hasil final.
+- **Laporan PPh21 TER** per masa pajak dari hasil final — **sudah diimplementasikan** sebagai laporan (§7.2); baris `PPH21_EMPLOYER` pada hasil perhitungan belum.
 - **Ringkasan biaya yayasan:** BPJS dan PPh21 yang ditanggung yayasan.
 
 ## 7.1 Layar operator (`DRAFT`, default agent 2026-10-27)
@@ -319,6 +332,53 @@ Data acuan dibaca berhalaman: `GET /payroll/loans` dan `GET /payroll/employments
 **Pengecualian ENG-LIST-001 untuk daftar kebijakan (`DRAFT`).** `GET /payroll/policies` mengembalikan seluruh versi tanpa halaman. Jumlahnya terbatas pada belasan kunci kebijakan dikali beberapa versi per kunci, dan daftar itu memang dibaca utuh untuk melihat rentang berlaku yang bersambung. Bila satu kunci melewati sekitar 200 versi, daftar ini dipindahkan ke endpoint berhalaman.
 
 **Pengecualian ENG-LIST-001 (`DRAFT`).** Daftar periode berhalaman server-side. Dua tabel pada layar periode — hasil per pegawai dan daftar transfer — menampilkan seluruh baris satu periode tanpa halaman, karena keduanya adalah satu periode gaji yang dibatasi jumlah pegawai aktif yayasan (±330 pada 2026) dan keduanya memang dibaca utuh saat ditinjau atau dibayarkan. Bila jumlah pegawai melewati sekitar 1.000, keduanya dipindahkan ke endpoint berhalaman.
+
+## 7.2 Laporan PPh21 TER (status implementasi)
+
+**Endpoint.** `GET /payroll/periods/{id}/pph21?format=json|csv` (`docs/api/payroll.openapi.yaml`). Pembacanya `payroll.reports.read.organization`, `payroll.calculate`, atau `payroll.inputs.manage`; tidak ada permission baru. **`payroll.periods.manage` saja tidak cukup**: peran `hcis_module_admin` memegangnya untuk menjalankan lifecycle, dan itu bukan izin membaca bruto dan pajak per orang. Memegang `payroll.approve` atau `payroll.payments.confirm` saja juga tidak cukup. Pengurus Yayasan dan Super Admin tidak membacanya (§2). *Tindak lanjut:* penyempitan yang sama untuk `/report`, `/results`, dan `/variance`, yang hari ini masih menerima `payroll.periods.manage` saja, dikerjakan di perubahan tersendiri.
+
+**Layar.** Bagian "Laporan PPh21 (TER)" pada layar periode, dibuka dengan sengaja seperti daftar transfer (tidak diambil otomatis), menampilkan total, baris per pegawai berikut penandanya, sumber tabel TER, dan unduhan CSV. Penolakan yang memang diharapkan (belum disahkan, tanpa akses, tabel TER belum dimuat) ditampilkan sebagai penjelasan, bukan galat.
+
+**Baris dan penanda.** Satu baris **per orang** (`employee_id`) dari hasil perhitungan terakhir. TER adalah tarif atas penghasilan bruto bulanan seseorang, sehingga dua employment orang yang sama dalam satu periode dijumlahkan dulu sebelum lapisan dicari. Dengan satu pemberi kerja, dua employment hanya bertemu dalam satu periode secara berurutan (constraint `employments_no_overlap`), misalnya pindah status di tengah bulan. Employment yang hasilnya masih memiliki blocker tidak ikut dijumlahkan. Status PTKP dan pengecualian dibaca dari profil yang dipakai saat hitung (`compensation_profile_id`), sama seperti unit pada laporan payroll, sehingga masa pajak lampau terbaca seperti saat dibayar. Orang yang dikecualikan diletakkan setelah semua orang yang dilaporkan.
+
+| Penanda | Arti | Akibat |
+|---|---|---|
+| `PTKP_MISSING` | status PTKP kosong atau tidak ada di `ptkpCategory` | tarif dan PPh21 kosong; tetap dihitung di jumlah pegawai dan bruto; `ptkpMissingCount` memberi tahu total pajak belum lengkap |
+| `PTKP_CONFLICT` | dua employment orang yang sama membawa status PTKP berbeda | seperti `PTKP_MISSING`; HC menyamakan profilnya lalu periode dihitung ulang |
+| `EXCLUDED` | salah satu profil orang itu menandai pengecualian, alasan ditampilkan | tidak dihitung pajaknya dan tidak masuk total; tetap tampil, di urutan terakhir |
+| `ANNUAL_CALCULATION_REQUIRED` | masa pajak Desember, atau employment berakhir di dalam periode **dan** orang itu tidak memiliki employment lain dengan pemberi kerja yang sama yang berlanjut melewati periode | angka TER tetap ditampilkan tetapi dinyatakan **bukan angka final** |
+| `NON_PERMANENT_TERMS` | kategori kontrak pada tanggal gajian (`employment_terms`) adalah `KONTRAK_HONORER` atau `LEPAS` | tetap dihitung dengan TER bulanan 21-100-01 (P10); penanda ini hanya memberi tahu bahwa aturannya menunggu konfirmasi |
+
+Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`skippedBlockedCount`).
+
+**Keputusan `DRAFT` (default agent 2026-11-11, menunggu konfirmasi process owner):**
+
+| # | Keputusan | Default v1 |
+|---|---|---|
+| P1 | Bentuk kebijakan `PPH21_TER` | `{ source, objectCode: "21-100-01", ptkpCategory: { <status>: A/B/C }, categories: { A, B, C: [{ upTo, rate }] } }`; lapisan naik berurutan, hanya lapisan terakhir `upTo: null`, tarif 0..1, `upTo` rupiah bulat. Divalidasi saat ditulis (route dan CLI pemuatan awal). **Tidak ada nilai tabel TER di kode, seed, atau test**; tabel dimuat process owner dari lampiran PP 58/2023 setelah diverifikasi (§10 butir 9, PAY-003-MIG §3.2). |
+| P2 | Pembulatan PPh21 | `FLOOR` ke rupiah bulat atas bruto × tarif. |
+| P3 | Status gerbang | Laporan baru terbuka setelah periode `APPROVED` ke atas **bagi semua pembaca, termasuk penjalan periode**, karena dibangun dari hasil final; berbeda dari laporan payroll yang dibaca penjalan periode sejak awal. Sebelum itu `409 PAYROLL_NOT_APPROVED_YET`. |
+| P4 | Kebijakan tidak tersedia | `409 PPH21_TER_POLICY_MISSING` bila tidak ada versi `PPH21_TER` yang berlaku pada tanggal gajian; `409 PPH21_TER_POLICY_INVALID` bila versi yang berlaku (mis. dimuat sebelum skema ini ada) tidak sesuai bentuk. Kebijakan ini bukan kunci wajib perhitungan: ketiadaannya tidak memblokir periode. |
+| P5 | Masa pajak terakhir | Desember dan bulan berakhirnya employment memakai perhitungan tahunan Pasal 17 menurut aturan; perhitungan itu **di luar v1**. Baris diberi `ANNUAL_CALCULATION_REQUIRED` dan angka TER-nya tetap ditampilkan sebagai angka sementara. |
+| P6 | Laporan saja | Laporan **tidak** menulis baris `PPH21_EMPLOYER` ke hasil perhitungan, agar angka parallel run tetap stabil. Baris biaya yayasan menyusul setelah tabel TER diverifikasi dan dimuat; saat itu `PPH21_TER` menjadi kunci yang dibaca perhitungan. |
+| P7 | Pengecualian per orang | Atribut profil kompensasi `pph21_report_excluded` dengan `pph21_report_exclusion_reason` wajib (CHECK basis data, migration 0147). Mengikuti aturan profil: tidak dikirim = dibawa dari profil berlaku; `false` menghapus alasan. CLI pemuatan awal yang barisnya tidak menyebut pengecualian juga membawa nilai profil yang berlaku, bukan menulis `false`. Audit `payroll.profile.opened` mencatat `pph21_report_excluded` (penanda, bukan alasan). |
+| P8 | Kolom ekspor | CSV UTF-8 dengan BOM dan CRLF: NIP, nama, status PTKP, kategori TER, penghasilan bruto, tarif (persen dengan koma desimal), PPh21, kode objek, dilaporkan (`Y`/`N`), catatan; orang yang dikecualikan di baris terakhir; nama berkas `pph21-ter-YYYY-MM.csv`. **Tanpa NIK/NPWP** — HCIS tidak menyimpannya untuk payroll; formulir DJP diisi dari lembar ini di luar HCIS. |
+| P9 | Masa pajak | Masa pajak = bulan periode (`period_month`), bukan bulan tanggal gajian. Keduanya sama selama tanggal gajian berada di bulan periode, yang dijaga saat periode dibuat. |
+| P10 | Kontrak honorer dan lepas | v1 melaporkan `KONTRAK_HONORER` dan `LEPAS` dengan kode objek 21-100-01 dan TER bulanan seperti pegawai tetap, ditandai `NON_PERMANENT_TERMS`. **Process owner wajib mengonfirmasi**: PMK 168/2023 dapat mewajibkan kode objek pegawai tidak tetap (21-100-03) dengan TER harian bagi penerima upah harian/per kehadiran. Sampai ada keputusan, laporan tidak memilih aturan itu sendiri. |
+| P11 | Dua employment satu orang | Bruto dijumlahkan per orang sebelum lapisan dicari; satu pengecualian pada salah satu profil mengecualikan orangnya; status PTKP yang berbeda menghasilkan `PTKP_CONFLICT`, bukan memilih salah satu. |
+
+**Privasi dan audit.** Setiap baca dan setiap ekspor dicatat `payroll.report.read` dengan `scope: pph21_report` atau `pph21_report_csv` dan jumlah baris, tanpa nominal. Respons `Cache-Control: no-store`.
+
+**Yang tetap di luar v1** (bukan kekurangan implementasi, melainkan batas cakupan §1.2 dan keputusan di atas):
+
+- perhitungan tahunan Pasal 17 untuk masa pajak terakhir (Desember / berakhirnya masa kerja) dan bukti potong 1721-A1;
+- aturan PPh21 pegawai tidak tetap (21-100-03, TER harian) untuk kontrak honorer dan lepas, sampai P10 diputuskan;
+- penyempitan pembaca `/report`, `/results`, dan `/variance` agar `payroll.periods.manage` saja tidak membuka angka per orang (tindak lanjut tersendiri);
+- baris `PPH21_EMPLOYER` pada hasil perhitungan dan ringkasan biaya yayasan yang memuat PPh21 (P6);
+- NIK/NPWP dan berkas e-Bupot/SPT Masa PPh21;
+- THR;
+- integrasi transfer bank (daftar transfer tetap CSV, §10 butir 7);
+- penerima non-pegawai, reimbursement, multi legal entity, akuntansi.
 
 ## 8. Privasi dan audit
 
@@ -375,6 +435,6 @@ Butir berikut sebelumnya terbuka. Agar implementasi dapat berjalan, setiap butir
 | 6 | Ambang peringatan selisih antar periode | Peringatan bila selisih mutlak komponen > **10%** dan > **Rp50.000** dibanding periode sebelumnya. Pegawai baru/keluar dilaporkan satu baris dengan nominal utuh **tanpa memandang ambang**, dan input manual > **Rp1.000.000** adalah pemicu tersendiri. Ambang disimpan sebagai kebijakan; nilai yang tidak masuk akal (negatif, bukan angka) jatuh ke default. Pembanding adalah periode sebelumnya yang sudah `APPROVED` ke atas. | Dua syarat sekaligus menekan peringatan palsu pada komponen kecil; pegawai baru/keluar adalah fakta yang harus dilihat peninjau apa pun nominalnya. |
 | 7 | Format ekspor laporan Keuangan | **CSV UTF-8** (satu baris per penerima: NIP, nama, unit, nominal dibayar, bank, nomor rekening, nama pemilik rekening) dan tampilan HTML di HCIS. Tanpa pembuatan surat/memorandum (ADR-0003 keputusan 6). Setiap ekspor dicatat sebagai akses sensitif. | CSV cukup untuk pembuatan daftar pindah buku dan tidak mengunci ke format bank tertentu. |
 | 8 | Slip revisi setelah publikasi | Slip terbit tidak diubah. Reopen yang disetujui Direktur menghasilkan **slip revisi** dengan `revision_of` menunjuk slip sebelumnya; slip lama ditandai `superseded_by_id` dan tetap dapat dibaca pegawai. Tepat satu slip berlaku per pegawai per bulan, dijaga unique index parsial. | PAYSLIP-001 melarang mutasi slip terbit; lineage menjaga jejak audit. |
-| 9 | Verifikasi naskah BPJS dan tabel TER | Nilai statutori (5%, +1% per anggota tambahan, batas atas Rp12.000.000, batas bawah UMK, tabel TER A/B/C) disimpan sebagai **baris kebijakan berversi dengan kolom sumber dan tanggal berlaku**, bukan konstanta kode. Verifikasi naskah resmi dilakukan saat pengisian data kebijakan, bukan saat implementasi engine. | Menghindari engine menunggu verifikasi dokumen; perubahan peraturan cukup menambah versi kebijakan. |
+| 9 | Verifikasi naskah BPJS dan tabel TER | Nilai statutori (5%, +1% per anggota tambahan, batas atas Rp12.000.000, batas bawah UMK, tabel TER A/B/C) disimpan sebagai **baris kebijakan berversi dengan kolom sumber dan tanggal berlaku**, bukan konstanta kode. Verifikasi naskah resmi dilakukan saat pengisian data kebijakan, bukan saat implementasi engine. Bentuk payload `PPH21_TER` divalidasi sejak laporan PPh21 dibangun (§7.2 P1); isinya tetap dimuat dan diverifikasi process owner. | Menghindari engine menunggu verifikasi dokumen; perubahan peraturan cukup menambah versi kebijakan. |
 
 Perubahan atas default di atas dilakukan dengan menambah versi kebijakan (bukan menimpa), sehingga periode lama tetap dapat dihitung ulang secara sah. Satu pengecualian sempit: versi yang dibuka pemuatan awal PAY-003-MIG dan **belum dipakai hasil perhitungan mana pun** boleh dikoreksi di tempat oleh CLI pemuatan awal dengan alasan tertulis, karena versi itu belum pernah membayar siapa pun (PAY-003-MIG §5.4; audit `payroll.policy.version_corrected` menyimpan payload sebelumnya).

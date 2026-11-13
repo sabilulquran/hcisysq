@@ -143,6 +143,51 @@ export interface PayrollTransferRow {
   paymentConfirmedAt: string | null;
 }
 
+export type PayrollPph21Flag =
+  | "PTKP_MISSING"
+  | "PTKP_CONFLICT"
+  | "EXCLUDED"
+  | "ANNUAL_CALCULATION_REQUIRED"
+  | "NON_PERMANENT_TERMS";
+
+/**
+ * One person on the PPh21 TER report: two employments in the period are one row
+ * on their combined gross. Figures and flags are the server's.
+ */
+export interface PayrollPph21Row {
+  employeeId: string;
+  employmentIds: string[];
+  employeeNumber: string;
+  fullName: string;
+  ptkpStatus: string | null;
+  terCategory: "A" | "B" | "C" | null;
+  gross: string;
+  rate: number | null;
+  tax: string | null;
+  flags: PayrollPph21Flag[];
+  exclusionReason: string | null;
+  /** What the flags mean, in the same words as the CSV. */
+  note: string;
+}
+
+export interface PayrollPph21Report {
+  /** YYYY-MM. */
+  taxPeriod: string;
+  objectCode: string;
+  policy: { versionId: string; effectiveFrom: string; source: string };
+  totals: {
+    employeeCount: number;
+    gross: string;
+    tax: string;
+    excludedCount: number;
+    ptkpMissingCount: number;
+    annualCalculationCount: number;
+    nonPermanentCount: number;
+    skippedBlockedCount: number;
+  };
+  rows: PayrollPph21Row[];
+}
+
 export interface PayrollVarianceRow {
   employmentId: string;
   componentCode: string | null;
@@ -290,6 +335,62 @@ export function getPayrollTransfers(periodId: string) {
 /** The CSV the server builds, so the file a bank sees is the server's, not the browser's. */
 export function payrollTransfersCsvUrl(periodId: string) {
   return `/api/payroll/periods/${encodeURIComponent(periodId)}/transfers?format=csv`;
+}
+
+export function getPayrollPph21Report(periodId: string) {
+  return request<{ report: PayrollPph21Report }>(
+    `/api/payroll/periods/${encodeURIComponent(periodId)}/pph21`,
+  );
+}
+
+/** The PPh21 CSV the server builds; every download is recorded as sensitive access. */
+export function payrollPph21CsvUrl(periodId: string) {
+  return `/api/payroll/periods/${encodeURIComponent(periodId)}/pph21?format=csv`;
+}
+
+const PPH21_FLAG_LABELS: Record<PayrollPph21Flag, string> = {
+  PTKP_MISSING: "PTKP belum terpetakan",
+  PTKP_CONFLICT: "PTKP berbeda antar-employment",
+  EXCLUDED: "Dikecualikan",
+  ANNUAL_CALCULATION_REQUIRED: "Masa pajak terakhir — bukan angka final",
+  NON_PERMANENT_TERMS: "Honorer/lepas — aturan menunggu konfirmasi",
+};
+
+export function payrollPph21FlagLabel(flag: PayrollPph21Flag): string {
+  return PPH21_FLAG_LABELS[flag] ?? flag;
+}
+
+/** A TER rate as a percentage with a decimal comma: 0.0025 reads "0,25%". */
+export function formatPph21Rate(rate: number | null): string {
+  if (rate === null) return "—";
+  return `${String(Number((rate * 100).toPrecision(12))).replace(".", ",")}%`;
+}
+
+/**
+ * What the PPh21 panel says when the server refused it. A period not yet
+ * approved, a permission not held and a TER table not yet loaded are expected
+ * states a reader needs explained ("info"); anything else is an error.
+ */
+export function payrollPph21Refusal(error: unknown): { tone: "info" | "error"; note: string } {
+  if (error instanceof PayrollApiError) {
+    if (error.code === "PAYROLL_NOT_APPROVED_YET") {
+      return {
+        tone: "info",
+        note: "Laporan PPh21 baru tersedia setelah periode disahkan, karena dibangun dari hasil final.",
+      };
+    }
+    if (error.code === "PAYROLL_FORBIDDEN") {
+      return { tone: "info", note: "Anda tidak memiliki akses untuk laporan PPh21." };
+    }
+    if (error.code === "PPH21_TER_POLICY_MISSING") {
+      return {
+        tone: "info",
+        note: "Tabel TER belum dimuat untuk tanggal gajian periode ini. Kebijakan PPH21_TER dimuat lebih dulu setelah diverifikasi dari lampiran PP 58/2023.",
+      };
+    }
+    return { tone: "error", note: error.message };
+  }
+  return { tone: "error", note: "Laporan PPh21 gagal dimuat." };
 }
 
 export function draftPayrollPayslips(periodId: string) {

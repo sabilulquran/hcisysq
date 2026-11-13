@@ -40,9 +40,14 @@ import {
   buildPeriodReport,
   buildTransferList,
   buildVariance,
+  findPph21Policy,
+  loadPph21SourceRows,
+  pph21ReportToCsv,
+  pph21RowNote,
   previousPeriodId,
   transferListToCsv,
 } from "./reports.js";
+import { buildPph21Report } from "./pph21.js";
 import { calculatePeriod } from "./calculation.js";
 import { draftPayslipsFromPeriod, publishPayslipsOfPeriod } from "./publication.js";
 import {
@@ -144,6 +149,13 @@ const NON_NEGATIVE_INPUTS: readonly string[] = [
 
 /** Report readers see a period's figures only from this state onwards (section 6). */
 const APPROVED_ONWARDS: readonly string[] = ["APPROVED", "PAYMENT_CONFIRMED", "PUBLISHED", "REOPEN_REQUESTED"];
+
+/** Who may read the PPh21 report (specification section 7.2, AUTH-011 manifest). */
+const PPH21_READER_PERMISSIONS: readonly string[] = [
+  "payroll.reports.read.organization",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
 
 const RUNNER_PERMISSIONS: readonly string[] = [
   "payroll.periods.manage",
@@ -738,6 +750,81 @@ export async function registerPayrollRoutes(app: FastifyInstance, pool: Pool, co
       return reply.status(200).send(transferListToCsv(transfers));
     }
     return send(reply, 200, { transfers });
+  });
+
+  app.get("/payroll/periods/:periodId/pph21", async (request, reply) => {
+    // Report readers, and the two runner permissions whose holders already see
+    // per-person figures while calculating. payroll.periods.manage alone is not
+    // enough: the module administrator role holds it to run the lifecycle, and
+    // that is no licence to read each person's gross and tax (section 7.2).
+    const actor = await requireAnyPermission(request, reply, PPH21_READER_PERMISSIONS);
+    if (!actor) return;
+
+    const params = periodParams.safeParse(request.params);
+    const query = transfersQuery.safeParse(request.query ?? {});
+    if (!params.success || !query.success) {
+      return send(reply, 400, { code: "PAYROLL_INVALID_QUERY", message: "Parameter tidak valid." });
+    }
+    const period = await getPeriod(pool, params.data.periodId);
+    if (!period) {
+      return send(reply, 404, { code: "PAYROLL_PERIOD_NOT_FOUND", message: "Periode tidak ditemukan." });
+    }
+    // A tax report is built from final results only, so unlike the payroll
+    // report it stays closed to the people running the period too until the
+    // director has approved it (specification section 5.3, DRAFT).
+    if (!APPROVED_ONWARDS.includes(period.state)) {
+      return send(reply, 409, {
+        code: "PAYROLL_NOT_APPROVED_YET",
+        message: "Laporan PPh21 baru tersedia setelah periode disahkan.",
+      });
+    }
+
+    const lookup = await findPph21Policy(pool, period.payDate);
+    if (!lookup.ok) {
+      return send(reply, 409, { code: lookup.code, message: lookup.message });
+    }
+
+    const report = buildPph21Report({
+      period: { periodMonth: period.periodMonth, periodStart: period.periodStart, periodEnd: period.periodEnd },
+      policy: lookup.policy,
+      rows: await loadPph21SourceRows(pool, period.id),
+    });
+    await recordSensitiveRead(
+      actor.accountId,
+      period.id,
+      query.data.format === "csv" ? "pph21_report_csv" : "pph21_report",
+      report.rows.length,
+    );
+
+    if (query.data.format === "csv") {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Content-Type", "text/csv; charset=utf-8");
+      reply.header("Content-Disposition", `attachment; filename="pph21-ter-${report.taxPeriod}.csv"`);
+      return reply.status(200).send(pph21ReportToCsv(report));
+    }
+    // Rupiah travel as text, like every other payroll figure in this API.
+    return send(reply, 200, {
+      report: {
+        taxPeriod: report.taxPeriod,
+        objectCode: report.objectCode,
+        policy: {
+          versionId: lookup.versionId,
+          effectiveFrom: lookup.effectiveFrom,
+          source: lookup.policy.source,
+        },
+        totals: {
+          ...report.totals,
+          gross: String(report.totals.gross),
+          tax: String(report.totals.tax),
+        },
+        rows: report.rows.map((row) => ({
+          ...row,
+          gross: String(row.gross),
+          tax: row.tax === null ? null : String(row.tax),
+          note: pph21RowNote(row),
+        })),
+      },
+    });
   });
 
   app.get("/payroll/periods/:periodId/variance", async (request, reply) => {

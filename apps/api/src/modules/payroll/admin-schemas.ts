@@ -47,6 +47,11 @@ export const profileBody = z.object({
   bpjsExtraFamilyOverrideReason: z.string().trim().max(500).nullable().optional(),
   bpjsDecisionReference: z.string().trim().max(200).nullable().optional(),
   ptkpStatus: z.string().trim().max(16).nullable().optional(),
+  // Section 5.3: keeping someone out of the PPh21 report is an explicit
+  // attribute with a reason, never an employee number written into code. The
+  // database refuses an exclusion without a reason, carried or given.
+  pph21ReportExcluded: z.boolean().optional(),
+  pph21ReportExclusionReason: z.string().trim().max(500).nullable().optional(),
   pjMediaRatePerContent: z.number().int().min(0).nullable().optional(),
   // The transfer list prints the bank beside the account, so the profile has
   // to be able to carry one; before this it could only ever be empty there.

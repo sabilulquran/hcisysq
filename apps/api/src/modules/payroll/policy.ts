@@ -46,6 +46,84 @@ const amountByRef = z.record(z.string(), rupiah);
 
 const EDUCATION_LEVELS = ["SD", "SMP", "SLTA", "D1_D2", "D3_D4", "S1", "S2_S3"] as const;
 
+export const TER_CATEGORIES = ["A", "B", "C"] as const;
+export type TerCategory = (typeof TER_CATEGORIES)[number];
+
+/** The bukti potong object code for the monthly PPh21 of a permanent employee. */
+export const PPH21_OBJECT_CODE = "21-100-01";
+
+/**
+ * A PTKP status as written in a profile ("TK/0", "k / 1") compared as one value:
+ * no spaces, upper case. The mapping in PPH21_TER is matched the same way.
+ */
+export function normalizePtkpStatus(status: string): string {
+  return status.replace(/\s+/g, "").toUpperCase();
+}
+
+/**
+ * One TER table: brackets by monthly gross, ascending, the last one open-ended.
+ * No value lives here; the brackets are the policy row the process owner loads
+ * from the PP 58/2023 attachment (specification section 10 item 9).
+ */
+const terTable = z
+  .array(z.object({ upTo: z.number().int().nonnegative().nullable(), rate: z.number().min(0).max(1) }))
+  .min(1)
+  .superRefine((brackets, ctx) => {
+    brackets.forEach((bracket, index) => {
+      const last = index === brackets.length - 1;
+      if (last && bracket.upTo !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "upTo"],
+          message: "lapisan terakhir harus upTo null (tanpa batas atas)",
+        });
+      }
+      if (!last && bracket.upTo === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "upTo"],
+          message: "hanya lapisan terakhir yang boleh tanpa batas atas",
+        });
+      }
+      const previous = index > 0 ? brackets[index - 1]!.upTo : null;
+      if (previous !== null && bracket.upTo !== null && bracket.upTo <= previous) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, "upTo"],
+          message: "batas lapisan harus naik berurutan",
+        });
+      }
+    });
+  });
+
+const PPH21_TER_SCHEMA = z.object({
+  // The legal reference the table was copied from, kept inside the payload so
+  // the report can name it beside every figure it prints.
+  source: z.string().trim().min(3).max(500),
+  objectCode: z.literal(PPH21_OBJECT_CODE),
+  ptkpCategory: z
+    .record(z.string().trim().min(1).max(16), z.enum(TER_CATEGORIES))
+    .refine((mapping) => Object.keys(mapping).length > 0, "pemetaan status PTKP tidak boleh kosong")
+    .refine(
+      (mapping) => new Set(Object.keys(mapping).map(normalizePtkpStatus)).size === Object.keys(mapping).length,
+      "status PTKP tercantum lebih dari sekali",
+    ),
+  categories: z.object({ A: terTable, B: terTable, C: terTable }),
+});
+
+export type Pph21TerPolicy = z.infer<typeof PPH21_TER_SCHEMA>;
+
+/** Reads a stored PPH21_TER payload, or says why it cannot be used. */
+export function parsePph21TerPolicy(
+  payload: unknown,
+): { ok: true; policy: Pph21TerPolicy } | { ok: false; message: string } {
+  const result = PPH21_TER_SCHEMA.safeParse(payload);
+  if (result.success) return { ok: true, policy: result.data };
+  const issue = result.error.issues[0];
+  const where = issue && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+  return { ok: false, message: `${where}${issue?.message ?? "bentuk kebijakan tidak sesuai"}` };
+}
+
 const PAYLOAD_SCHEMAS = {
   SALARY_SCALE: z.object({
     // The legacy scale is chained percentage rises, so its entries are not whole
@@ -96,6 +174,8 @@ const PAYLOAD_SCHEMAS = {
   CONTRACT_RATES: z.object({ transportPerAttendance: rupiah, teachingFeePerHour: rupiah }),
   EARLY_SERVICE: z.object({ months: z.number().int().min(0), netRate: rate }),
   VARIANCE_THRESHOLD: z.object({ relative: rate, absolute: rupiah, manualInput: rupiah }),
+  // Not read by the engine: the PPh21 report reads it (reports.ts, pph21.ts).
+  PPH21_TER: PPH21_TER_SCHEMA,
 } as const;
 
 /**
@@ -108,8 +188,8 @@ export function validatePolicyPayload(
   payload: unknown,
 ): { ok: true } | { ok: false; message: string } {
   const schema = (PAYLOAD_SCHEMAS as Record<string, { safeParse: (value: unknown) => { success: boolean; error?: { issues: Array<{ path: Array<string | number>; message: string }> } } }>)[policyKey];
-  // PPH21_TER has no schema yet: the engine does not read it, so it is stored as
-  // evidence and checked when the PPh21 report is built.
+  // Every accepted key has a schema, PPH21_TER included; an unknown key is the
+  // route's enum to refuse, not this function's.
   if (!schema) return { ok: true };
   const result = schema.safeParse(payload);
   if (result.success) return { ok: true };

@@ -42,6 +42,10 @@ export interface PayrollCompensationProfile {
   annualPerformanceRate: string | null;
   monthlyPerformanceRate: string | null;
   bpjsSegment: string;
+  ptkpStatus: string | null;
+  /** PAY-003 section 5.3: kept out of the PPh21 report while this profile applies. */
+  pph21ReportExcluded: boolean;
+  pph21ReportExclusionReason: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
@@ -168,6 +172,30 @@ const POLICY_LABELS: Record<string, string> = {
 /** The policy key as an operator reads it; an unknown key is shown as it is. */
 export function policyLabel(policyKey: string): string {
   return POLICY_LABELS[policyKey] ?? policyKey;
+}
+
+/**
+ * The PPh21 reporting choice on a new profile. "carry" sends nothing, so the
+ * server carries the current profile's choice and reason forward.
+ */
+export type Pph21ReportingChoice = "carry" | "reported" | "excluded";
+
+/**
+ * The PPh21 part of a new profile's request body. Left untouched it says
+ * nothing, so nothing is cleared; the server requires the reason, this only
+ * avoids sending an exclusion that is bound to be refused.
+ */
+export function pph21ProfileFields(
+  choice: Pph21ReportingChoice,
+  reason: string,
+): { ok: true; fields: Record<string, unknown> } | { ok: false; message: string } {
+  if (choice === "carry") return { ok: true, fields: {} };
+  if (choice === "reported") return { ok: true, fields: { pph21ReportExcluded: false } };
+  const trimmed = reason.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, message: "Pengecualian dari laporan PPh21 membutuhkan alasan." };
+  }
+  return { ok: true, fields: { pph21ReportExcluded: true, pph21ReportExclusionReason: trimmed } };
 }
 
 export const BPJS_SEGMENTS = ["PPU_YAYASAN", "PBI", "MANDIRI", "BELUM_TERDAFTAR"] as const;

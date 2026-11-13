@@ -367,7 +367,9 @@ function roundTo(value: number, digits: number): number {
 }
 
 /** The fields a profile row carries, with how the database returns each one. */
-const PROFILE_FIELDS: Array<{ key: keyof CompensationProfileRow & keyof NewCompensationProfile; kind: "text" | "int" | "num2" | "num4" }> = [
+type ProfileFieldKind = "text" | "int" | "num2" | "num4" | "bool";
+
+const PROFILE_FIELDS: Array<{ key: keyof CompensationProfileRow & keyof NewCompensationProfile; kind: ProfileFieldKind }> = [
   { key: "education", kind: "text" },
   { key: "workPattern", kind: "text" },
   { key: "unitRef", kind: "text" },
@@ -386,19 +388,45 @@ const PROFILE_FIELDS: Array<{ key: keyof CompensationProfileRow & keyof NewCompe
   { key: "bpjsExtraFamilyOverrideReason", kind: "text" },
   { key: "bpjsDecisionReference", kind: "text" },
   { key: "ptkpStatus", kind: "text" },
+  { key: "pph21ReportExcluded", kind: "bool" },
+  { key: "pph21ReportExclusionReason", kind: "text" },
   { key: "pjMediaRatePerContent", kind: "int" },
   { key: "bankName", kind: "text" },
   { key: "bankAccountNumber", kind: "text" },
   { key: "bankAccountName", kind: "text" },
 ];
 
-function normalizedField(value: unknown, kind: "text" | "int" | "num2" | "num4"): string | number | null {
+function normalizedField(value: unknown, kind: ProfileFieldKind): string | number | boolean | null {
+  if (kind === "bool") return value === true;
   if (value === null || value === undefined) return null;
   if (kind === "text") return String(value);
   const number = Number(value);
   if (kind === "num2") return roundTo(number, 2);
   if (kind === "num4") return roundTo(number, 4);
   return number;
+}
+
+/**
+ * The PPh21 exclusion a loaded profile writes: what the file says, or, when the
+ * file is silent, what the profile in force on that date already says.
+ */
+export function pph21ExclusionFor(
+  data: { effectiveFrom: string; pph21ReportExcluded?: boolean | undefined; pph21ReportExclusionReason?: string | null | undefined },
+  existing: ReadonlyArray<Pick<CompensationProfileRow, "employmentId" | "effectiveFrom" | "pph21ReportExcluded" | "pph21ReportExclusionReason">>,
+  employmentId: string,
+): { pph21ReportExcluded: boolean; pph21ReportExclusionReason: string | null } {
+  if (data.pph21ReportExcluded !== undefined) {
+    return {
+      pph21ReportExcluded: data.pph21ReportExcluded,
+      pph21ReportExclusionReason: data.pph21ReportExcluded ? (data.pph21ReportExclusionReason ?? null) : null,
+    };
+  }
+  const inForce = existing
+    .filter((item) => item.employmentId === employmentId && item.effectiveFrom <= data.effectiveFrom)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
+  return inForce?.pph21ReportExcluded
+    ? { pph21ReportExcluded: true, pph21ReportExclusionReason: inForce.pph21ReportExclusionReason }
+    : { pph21ReportExcluded: false, pph21ReportExclusionReason: null };
 }
 
 export function profileMatches(existing: CompensationProfileRow, desired: NewCompensationProfile): boolean {
@@ -704,6 +732,10 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
       bpjsExtraFamilyOverrideReason: data.bpjsExtraFamilyOverrideReason ?? null,
       bpjsDecisionReference: data.bpjsDecisionReference ?? null,
       ptkpStatus: data.ptkpStatus ?? null,
+      // A file that says nothing about the PPh21 exclusion carries the one in
+      // force on that date rather than resetting it to "reported": legacy has no
+      // such column, and a load must not quietly undo an exclusion HC set.
+      ...pph21ExclusionFor(data, existingProfiles.rows, employment.employmentId),
       pjMediaRatePerContent: data.pjMediaRatePerContent ?? null,
       bankName: data.bankName ?? null,
       bankAccountNumber: data.bankAccountNumber ?? null,
@@ -720,6 +752,11 @@ async function buildPlan(client: PoolClient, file: InitialLoadFile, actorAccount
       desired.bpjsExtraFamilyOverride !== null &&
       (desired.bpjsExtraFamilyOverrideReason ?? "").trim().length === 0
     ) {
+      row.errors.push("INVALID");
+    }
+    // The database refuses an exclusion from the PPh21 report without a reason
+    // (migration 0147); say so in the plan rather than fail half way through --apply.
+    if (desired.pph21ReportExcluded && (desired.pph21ReportExclusionReason ?? "").trim().length === 0) {
       row.errors.push("INVALID");
     }
     if (ownEmployments.has(employment.employmentId)) row.errors.push("OWN_RECORD");

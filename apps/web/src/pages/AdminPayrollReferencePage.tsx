@@ -17,8 +17,10 @@ import {
   openCompensationProfile,
   openPayrollPolicyVersion,
   policyLabel,
+  pph21ProfileFields,
   WORK_PATTERNS,
   type PayrollCompensationProfile,
+  type Pph21ReportingChoice,
   type PayrollEmployment,
   type PayrollLoan,
   type PayrollPolicyVersion,
@@ -448,6 +450,9 @@ function ProfilePanel() {
     bankName: "",
     bankAccountNumber: "",
     bankAccountName: "",
+    ptkpStatus: "",
+    pph21Reporting: "carry" as Pph21ReportingChoice,
+    pph21ExclusionReason: "",
     backdateReason: "",
   });
 
@@ -479,6 +484,11 @@ function ProfilePanel() {
       setError("Jam mengajar dan jumlah tanggungan harus bilangan bulat, atau dikosongkan.");
       return;
     }
+    const pph21 = pph21ProfileFields(form.pph21Reporting, form.pph21ExclusionReason);
+    if (!pph21.ok) {
+      setError(pph21.message);
+      return;
+    }
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -495,6 +505,9 @@ function ProfilePanel() {
         bankName: form.bankName || null,
         bankAccountNumber: form.bankAccountNumber || null,
         bankAccountName: form.bankAccountName || null,
+        // Left empty, PTKP is carried from the profile in force rather than cleared.
+        ...(form.ptkpStatus.trim() ? { ptkpStatus: form.ptkpStatus.trim() } : {}),
+        ...pph21.fields,
         ...(form.backdateReason ? { backdateReason: form.backdateReason } : {}),
       });
       setNotice(`Profil ${picked.fullName} berlaku sejak ${form.effectiveFrom} dibuka.`);
@@ -518,7 +531,8 @@ function ProfilePanel() {
           Profil kompensasi menentukan pendidikan, pola kerja, tanggungan, segmen BPJS, dan rekening tujuan transfer.
           Tanpa profil yang berlaku pada tanggal gajian, perhitungan menolak pegawai itu dengan blocker PROFILE_MISSING.
           Profil baru tidak menghapus apa pun: isian yang tidak ada di formulir ini — unit, jabatan, nilai kinerja,
-          PTKP, tarif Pj. Media — dibawa dari profil yang sedang berlaku.
+          tarif Pj. Media — dibawa dari profil yang sedang berlaku, begitu juga status PTKP dan pelaporan PPh21 bila
+          dibiarkan kosong.
         </p>
         <div className="mt-3">
           <EmploymentPicker label="Pegawai" picked={picked} onPick={setPicked} />
@@ -546,7 +560,13 @@ function ProfilePanel() {
                       {profile.education ?? "pendidikan belum diisi"} · {profile.workPattern ?? "pola kerja belum diisi"} ·
                       BPJS {profile.bpjsSegment} · {profile.bankName ?? "bank belum diisi"}
                       {profile.bankAccountNumber ? " · rekening terisi" : " · rekening belum diisi"}
+                      {" · PTKP "}{profile.ptkpStatus ?? "belum diisi"}
                     </p>
+                    {profile.pph21ReportExcluded ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Dikecualikan dari laporan PPh21: {profile.pph21ReportExclusionReason}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -663,6 +683,41 @@ function ProfilePanel() {
                   className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                 />
               </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-muted-foreground">Status PTKP (kosong = bawa dari profil berlaku)</span>
+                <input
+                  value={form.ptkpStatus}
+                  maxLength={16}
+                  placeholder="mis. TK/0, K/1"
+                  onChange={(event) => setForm({ ...form, ptkpStatus: event.target.value })}
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-muted-foreground">Laporan PPh21</span>
+                <select
+                  value={form.pph21Reporting}
+                  onChange={(event) =>
+                    setForm({ ...form, pph21Reporting: event.target.value as Pph21ReportingChoice })
+                  }
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="carry">Bawa dari profil berlaku</option>
+                  <option value="reported">Dilaporkan</option>
+                  <option value="excluded">Dikecualikan dari laporan</option>
+                </select>
+              </label>
+              {form.pph21Reporting === "excluded" ? (
+                <label className="text-sm sm:col-span-2">
+                  <span className="mb-1 block text-muted-foreground">Alasan pengecualian laporan PPh21 (wajib)</span>
+                  <input
+                    value={form.pph21ExclusionReason}
+                    maxLength={500}
+                    onChange={(event) => setForm({ ...form, pph21ExclusionReason: event.target.value })}
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  />
+                </label>
+              ) : null}
               <label className="text-sm sm:col-span-2">
                 <span className="mb-1 block text-muted-foreground">
                   Alasan berlaku mundur — hanya bila tanggal berlaku menyentuh periode yang sudah dihitung

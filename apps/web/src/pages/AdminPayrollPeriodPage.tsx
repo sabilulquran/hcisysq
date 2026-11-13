@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 
 import { PeriodInputsPanel } from "@/components/payroll/PeriodInputsPanel";
+import { Pph21ReportPanel } from "@/components/payroll/Pph21ReportPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
@@ -62,6 +63,17 @@ const VARIANCE_LABELS: Record<PayrollVarianceRow["kind"], string> = {
   LARGE_MANUAL_INPUT: "Input manual besar",
 };
 
+/**
+ * The permissions the PPh21 report route accepts (AUTH-011 manifest). Not
+ * payroll.periods.manage alone: running the lifecycle does not open per-person
+ * gross and tax (PAY-003 section 7.2).
+ */
+const PPH21_READER_PERMISSIONS = [
+  "payroll.reports.read.organization",
+  "payroll.calculate",
+  "payroll.inputs.manage",
+];
+
 export function AdminPayrollPeriodPage() {
   const { periodId } = useParams({ from: "/admin/payroll/$periodId" });
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -80,6 +92,9 @@ export function AdminPayrollPeriodPage() {
 
   const canReadTransfers = hasPermission(session, "payroll.transfers.read.organization");
   const canManageInputs = hasPermission(session, "payroll.inputs.manage");
+  // Whether to offer the PPh21 panel at all; the server still decides whether
+  // this reader may open it, and says why not when it refuses.
+  const canOpenPph21 = PPH21_READER_PERMISSIONS.some((permission) => hasPermission(session, permission));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -451,6 +466,10 @@ export function AdminPayrollPeriodPage() {
             </div>
           </section>
         ) : null}
+
+        {/* Keyed by version: a transition closes the panel again, so a report
+            opened before a reopen never stays on screen after it. */}
+        {canOpenPph21 ? <Pph21ReportPanel key={`${periodId}:${period.version}`} periodId={periodId} /> : null}
 
         {transitions.length > 0 ? (
           <section className="rounded-lg border bg-card">

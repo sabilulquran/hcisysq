@@ -1192,6 +1192,11 @@
       "reason": "Rekap per unit dan per komponen satu periode."
     },
     {
+      "url": "/payroll/periods/:periodId/pph21",
+      "list": "export",
+      "reason": "Laporan PPh21 TER satu masa pajak, dibatasi jumlah pegawai aktif; ekspor CSV."
+    },
+    {
       "url": "/payroll/periods/:periodId/results",
       "list": "bounded",
       "reason": "Hasil satu periode payroll, dibatasi jumlah pegawai aktif."

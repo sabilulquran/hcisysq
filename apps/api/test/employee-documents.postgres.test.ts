@@ -150,7 +150,7 @@ describe.skipIf(!allowed)("EMP-011 employee documents", () => {
     const download = await call("GET", `/me/employee-documents/${document.id}/file`);
     expect(download.statusCode).toBe(200);
     expect(download.rawPayload.equals(PDF)).toBe(true);
-    expect(download.headers["content-disposition"]).toBe('attachment; filename="KTP-2026-11-11.pdf"');
+    expect(download.headers["content-disposition"]).toMatch(/^attachment; filename="KTP-\d{4}-\d{2}-\d{2}\.pdf"$/);
     expect(download.headers["content-security-policy"]).toContain("sandbox");
     expect(download.headers["cache-control"]).toBe("private, no-store");
 

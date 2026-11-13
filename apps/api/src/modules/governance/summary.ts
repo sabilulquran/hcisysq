@@ -33,8 +33,20 @@ export interface GovernanceSummaryV1 {
   metrics: GovernanceMetric[];
   charts?: GovernanceChart[];
   attention?: Array<{ label: string; count: number; href: string }>;
+  /** ORG-010-O (ORGAN-IMPL-001 contract v1.1): the caller's own pending steps, 0–3 items. */
+  decisions?: Array<{ label: string; count: number; oldestAgeDays: number; href: string }>;
   detailUrl: string;
 }
+
+/** The caller's pending leave steps, as counted by the route (ORG-010-O). */
+export interface PendingDecisions {
+  count: number;
+  oldestSubmittedAt: Date | null;
+  /** Where this principal decides: `/board` for an organ account, `/app/approvals` for an employee. */
+  path: "/board" | "/app/approvals";
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type EmploymentRolloutMode = "OFF" | "SHADOW" | "AUTHORITATIVE";
 
@@ -150,6 +162,7 @@ export function buildGovernanceSummary(input: {
   applicationKey: string;
   publicOrigin: string;
   now: Date;
+  pendingDecisions?: PendingDecisions | null;
 }): GovernanceSummaryV1 {
   const { aggregates, now } = input;
   const dataAsOf = now.toISOString();
@@ -196,6 +209,19 @@ export function buildGovernanceSummary(input: {
     { label: "Kasus presensi belum selesai", count: aggregates.workflow.attendanceResolutionOpen },
   ].filter((item) => item.count > 0).map((item) => ({ ...item, href: detailUrl }));
 
+  // ORG-010-O: per caller, never part of the shared aggregates, never stored by the consumer.
+  const pending = input.pendingDecisions;
+  const decisions = pending && pending.count > 0
+    ? [{
+        label: "Cuti menunggu keputusan Anda",
+        count: pending.count,
+        oldestAgeDays: pending.oldestSubmittedAt
+          ? Math.max(0, Math.floor((now.getTime() - pending.oldestSubmittedAt.getTime()) / DAY_MS))
+          : 0,
+        href: new URL(pending.path, input.publicOrigin).href,
+      }]
+    : [];
+
   return {
     contractVersion: 1,
     applicationKey: input.applicationKey,
@@ -204,6 +230,7 @@ export function buildGovernanceSummary(input: {
     metrics,
     ...(charts.length ? { charts } : {}),
     ...(attention.length ? { attention } : {}),
+    ...(decisions.length ? { decisions } : {}),
     detailUrl,
   };
 }

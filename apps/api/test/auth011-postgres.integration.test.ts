@@ -195,7 +195,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
     expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(135);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
-    expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(1);
+    expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(2);
     // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still
     // gets 401, because the channel demands both credentials before anything else.
     expect(manifest.filter((route) => route.access === "machine-actor")).toHaveLength(4);

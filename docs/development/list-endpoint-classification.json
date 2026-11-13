@@ -901,6 +901,11 @@
       "reason": "Ringkasan kepegawaian pegawai yang masuk sendiri beserta linimasa tindakannya; dibatasi riwayat satu pegawai."
     },
     {
+      "url": "/governance/employees",
+      "list": "paged",
+      "reason": "ORG-014: pegawai aktif, page/pageSize 25/100 dengan total; daftar unit untuk filter adalah data master terbatas (<= 200)."
+    },
+    {
       "url": "/governance/summary",
       "list": "snapshot",
       "reason": "Ringkasan governance untuk SQ Hub (bearer); tidak dipakai layar manusia."

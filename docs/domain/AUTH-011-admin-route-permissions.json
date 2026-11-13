@@ -2184,6 +2184,19 @@
   {
     "file": "apps/api/src/modules/governance/routes.ts",
     "method": "GET",
+    "url": "/governance/employees",
+    "access": "governance-bearer",
+    "principals": [
+      "FOUNDATION_BOARD",
+      "EMPLOYEE"
+    ],
+    "permissions": [
+      "board.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/governance/routes.ts",
+    "method": "GET",
     "url": "/governance/summary",
     "access": "governance-bearer",
     "principals": [

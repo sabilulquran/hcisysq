@@ -22,8 +22,8 @@ import {
   type VerifyGovernanceToken,
 } from "./token-verifier.js";
 
-// ORG-010 §3: GET /governance/summary. Bearer-only, disabled by default. The exchanged token is
-// read here and nowhere else; no session or cookie is created. The token, its claims and the
+// ORG-010 §3: GET /governance/summary, and ORG-014 GET /governance/employees. Bearer-only, disabled by
+// default. The exchanged token is read on these two routes and nowhere else; no session or cookie is created. The token, its claims and the
 // response body are never logged or stored.
 
 export interface GovernanceSummaryDependencies {
@@ -31,6 +31,8 @@ export interface GovernanceSummaryDependencies {
   applicationAccess: Pick<SqHubApplicationAccessClient, "isAllowed">;
   applicationKey: string;
   publicOrigin: string;
+  /** ORG-014: `azp` values allowed on the employee list (the portal client only, by default). */
+  employeeListClients?: ReadonlySet<string>;
   now?: () => Date;
 }
 
@@ -70,6 +72,9 @@ function productionDependencies(config: ApiConfig): GovernanceSummaryDependencie
       oidc.issuer, oidc.machineClientId, oidc.machineClientSecret, oidc.applicationAccessUrl,
     ),
     applicationKey: config.GOVERNANCE_SUMMARY_APPLICATION_KEY!,
+    employeeListClients: new Set(
+      (config.GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS ?? "sq-organ").split(",").map((value) => value.trim()).filter(Boolean),
+    ),
     // detailUrl and attention links live on the HCIS public origin, the one users sign in on.
     publicOrigin: new URL(oidc.redirectUri).origin,
   };
@@ -113,7 +118,7 @@ export function registerGovernanceSummaryRoutes(
     // D3: re-check SQ Hub Application Access with the same client and rules as OIDC login.
     let allowed: boolean;
     try {
-      allowed = await dependencies!.applicationAccess.isAllowed(identity);
+      allowed = await dependencies!.applicationAccess.isAllowed({ issuer: identity.issuer, subject: identity.subject });
     } catch (error) {
       if (!(error instanceof ApplicationAccessError)) throw error;
       throw new SummaryDenied(503, "APPLICATION_ACCESS_UNAVAILABLE", account.id);
@@ -239,6 +244,11 @@ export function registerGovernanceSummaryRoutes(
       } catch (error) {
         if (!(error instanceof GovernanceTokenError)) throw error;
         return await deny(request, reply, error.statusCode, error.code, null, denied);
+      }
+
+      // Least privilege: the named list goes to the Portal Organ client, not to every summary client.
+      if (!(dependencies.employeeListClients ?? new Set(["sq-organ"])).has(identity.client)) {
+        return await deny(request, reply, 403, "FORBIDDEN_CLIENT", null, denied);
       }
 
       let account: ResolvedAccount;

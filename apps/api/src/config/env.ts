@@ -73,6 +73,8 @@ const envSchema = z
     GOVERNANCE_SUMMARY_ENABLED: z.enum(["true", "false", "1", "0"]).default("false"),
     GOVERNANCE_SUMMARY_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
     GOVERNANCE_SUMMARY_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    /** ORG-014: clients that may read the named employee list; a subset of the summary allowlist. */
+    GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-organ")),
     GOVERNANCE_SUMMARY_APPLICATION_KEY: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/).optional(),

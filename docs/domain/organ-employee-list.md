@@ -40,16 +40,16 @@ Yang **tidak** pernah dikembalikan:
 
 `GET /governance/employees?page=&pageSize=&q=&unitId=`
 
-- Autentikasinya sama dengan `/governance/summary` (ORG-010 §3): satu bearer hasil token exchange, dengan `aud` = `GOVERNANCE_SUMMARY_AUDIENCE` dan `azp` yang ada di `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`. Akun harus terpetakan, aktif, dan punya board access. Application Access diperiksa ulang di SQ Hub. Cookie tidak pernah diterima.
+- Autentikasinya sama dengan `/governance/summary` (ORG-010 §3): satu bearer hasil token exchange, dengan `aud` = `GOVERNANCE_SUMMARY_AUDIENCE` dan `azp` yang ada di `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS`. Selain itu, `azp` harus termasuk `GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS` (bawaan `sq-organ`): daftar bernama hanya untuk Portal Organ, tidak untuk Ringkasan Yayasan di SQ Hub. Client lain mendapat `403 FORBIDDEN_CLIENT`. Akun harus terpetakan, aktif, dan punya board access. Application Access diperiksa ulang di SQ Hub. Cookie tidak pernah diterima.
 - ENG-LIST-001:
   - pagination di server, `pageSize` bawaan 25 dan maksimal 100, dengan `total`;
-  - pencarian `q` (2–80 karakter) atas nama dan NIP;
+  - pencarian `q` (2–80 karakter) atas nama dan NIP, sebagai teks literal (`%`, `_`, dan `\` di-escape);
   - filter `unitId`;
   - semua filter dijalankan sebelum `LIMIT`;
   - urutan nama, lalu NIP.
 - Respons:
   - `{ items: [{ fullName, employeeNumber, unitName, position, employmentStatus, startedOn }], pagination, units: [{ id, name }] }`;
-  - `units` berisi unit aktif yang memiliki pegawai aktif, untuk dropdown filter;
+  - `units` berisi unit yang memiliki pegawai aktif, untuk dropdown filter. Ini pengecualian ENG-LIST-001 §4: unit adalah data master terbatas (realistisnya ≤ 200), dan portal memakai pencarian typeahead bila lebih dari 50;
   - `Cache-Control: private, no-store`.
 - `GOVERNANCE_SUMMARY_ENABLED=false` membuat endpoint ini 404, sama seperti ringkasan.
 

@@ -25,7 +25,8 @@ export interface OrganEmployeeRow {
  * education, documents, attendance, leave and pay never leave HCIS through this list.
  */
 export async function loadOrganEmployeeList(pool: Pool, query: EmployeeListQuery) {
-  const values = [query.q ?? null, query.unitId ?? null];
+  // Search text is literal: `%`, `_` and `\` are escaped so they never act as wildcards.
+  const values = [query.q ? query.q.replace(/[\\%_]/g, "\\$&") : null, query.unitId ?? null];
   const where = `
     WHERE e.status = 'active' AND e.removed_at IS NULL
       AND ($1::text IS NULL OR e.full_name ILIKE '%' || $1 || '%' OR e.employee_number ILIKE '%' || $1 || '%')

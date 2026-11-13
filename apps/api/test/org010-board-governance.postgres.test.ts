@@ -473,8 +473,16 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
     });
 
     it("lists active employees with six fields only, paged and searchable, for board access (ORG-014)", async () => {
+      // The Portal Organ client: allowlisted for the summary and, by default, for the named list.
+      const portal = Fastify();
+      registerGovernanceSummaryRoutes(portal, pool, enabledConfig, {
+        verifyToken: createGovernanceTokenVerifier({ issuer, audience: AUDIENCE, allowedClients: new Set([HUB_CLIENT, "sq-organ"]) }),
+        applicationAccess: access as unknown as Pick<SqHubApplicationAccessClient, "isAllowed">,
+        applicationKey: "hcis",
+        publicOrigin: "https://hcis.example.invalid",
+      });
       const list = (url: string, sub = actors.get("board")!.subject) =>
-        token({ sub }).then((bearer) => summary.inject({ method: "GET", url, headers: { authorization: `Bearer ${bearer}` } }));
+        token({ sub, azp: "sq-organ" }).then((bearer) => portal.inject({ method: "GET", url, headers: { authorization: `Bearer ${bearer}` } }));
 
       const response = await list("/governance/employees?pageSize=100");
       expect(response.statusCode, response.body).toBe(200);
@@ -489,7 +497,10 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       expect(body.items.map((item: { fullName: string }) => item.fullName)).not.toContain("Nama Rahasia resigned_viewer");
 
       const searched = (await list("/governance/employees?q=Rahasia%20viewer")).json();
+      expect(searched.items.length).toBeGreaterThan(0);
       expect(searched.items.every((item: { fullName: string }) => item.fullName.includes("Rahasia viewer"))).toBe(true);
+      // A wildcard is literal text, not "everything".
+      expect((await list("/governance/employees?q=%25%25")).json().items).toEqual([]);
       expect((await list("/governance/employees?pageSize=101")).statusCode).toBe(400);
       expect((await list("/governance/employees?q=a")).statusCode).toBe(400);
 
@@ -503,7 +514,22 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       const deniedAudit = (await pool.query(
         `SELECT reason_code FROM auth_audit_events WHERE event_type = 'governance.employees.denied' ORDER BY occurred_at DESC, id LIMIT 1`)).rows[0];
       expect(deniedAudit).toEqual({ reason_code: "BOARD_ACCESS_REQUIRED" });
-      expect((await summary.inject({ method: "GET", url: "/governance/employees", headers: { cookie: actors.get("board")!.cookie } })).statusCode).toBe(401);
+      expect((await portal.inject({ method: "GET", url: "/governance/employees", headers: { cookie: actors.get("board")!.cookie } })).statusCode).toBe(401);
+
+      // Least privilege: the summary's SQ Hub client may not read the named list (ORG-014).
+      const hubToken = await token({ sub: actors.get("board")!.subject, azp: HUB_CLIENT });
+      const hubOnly = Fastify();
+      registerGovernanceSummaryRoutes(hubOnly, pool, enabledConfig, {
+        verifyToken: createGovernanceTokenVerifier({ issuer, audience: AUDIENCE, allowedClients: new Set([HUB_CLIENT, "sq-organ"]) }),
+        applicationAccess: access as unknown as Pick<SqHubApplicationAccessClient, "isAllowed">,
+        applicationKey: "hcis",
+        publicOrigin: "https://hcis.example.invalid",
+      });
+      const fromHub = await hubOnly.inject({ method: "GET", url: "/governance/employees", headers: { authorization: `Bearer ${hubToken}` } });
+      expect(fromHub.statusCode).toBe(403);
+      expect(fromHub.json().code).toBe("FORBIDDEN_CLIENT");
+      await hubOnly.close();
+      await portal.close();
     });
 
     it("re-checks SQ Hub Application Access (D3)", async () => {

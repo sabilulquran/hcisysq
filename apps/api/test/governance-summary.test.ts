@@ -287,8 +287,8 @@ describe("ORG-010 §3.2 exchanged token verifier", () => {
 
   const verifier = () => createGovernanceTokenVerifier({ issuer, audience, allowedClients: new Set([hubClient]) });
 
-  it("accepts a token exchanged by SQ Hub for the HCIS audience and returns only iss + sub", async () => {
-    await expect(verifier()(await sign())).resolves.toEqual({ issuer, subject: "synthetic-subject" });
+  it("accepts a token exchanged by SQ Hub for the HCIS audience and returns only iss, sub and the client", async () => {
+    await expect(verifier()(await sign())).resolves.toEqual({ issuer, subject: "synthetic-subject", client: hubClient });
   });
 
   it.each([

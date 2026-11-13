@@ -882,7 +882,8 @@
     },
     {
       "url": "/governance/employees",
-      "list": "paged"
+      "list": "paged",
+      "reason": "ORG-014: pegawai aktif, page/pageSize 25/100 dengan total; daftar unit untuk filter adalah data master terbatas (<= 200)."
     },
     {
       "url": "/governance/summary",

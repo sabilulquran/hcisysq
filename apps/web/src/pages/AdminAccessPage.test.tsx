@@ -136,3 +136,29 @@ describe("AUTH-002-INVITE activation controls", () => {
     expect(html).toContain("nomor HP pegawai kosong");
   });
 });
+
+// AUTH-002 closing note: in Akun SQ mode no local password link is offered to anyone.
+describe("AUTH-002 local activation hidden in Akun SQ mode", () => {
+  const governance = session("SUPER_ADMIN", ["access.manage", "access.governance.manage"]);
+  const invitedBoard = {
+    ...data.accounts[0]!, id: "synthetic-board", employeeId: null, principalType: "FOUNDATION_BOARD" as const,
+    status: "invited" as const, employeeNumber: null, employeeName: null, employeeStatus: null, unitName: null, assignments: [],
+  };
+
+  it("offers no local link for an invited Organ Yayasan account and prepares it without one", () => {
+    const html = renderToStaticMarkup(
+      <AdminAccessWorkspace session={governance} data={{ ...data, activationMethod: "invitation", accounts: [invitedBoard] }} onDataChange={() => undefined} />,
+    );
+    expect(html).not.toContain("Buat link aktivasi");
+    expect(html).toContain(">Siapkan account</button>");
+    expect(html).not.toContain("link aktivasi</button>");
+  });
+
+  it("keeps the Organ Yayasan link in local mode", () => {
+    const html = renderToStaticMarkup(
+      <AdminAccessWorkspace session={governance} data={{ ...data, activationMethod: "link", accounts: [invitedBoard] }} onDataChange={() => undefined} />,
+    );
+    expect(html).toContain("Buat link aktivasi");
+    expect(html).toContain("Siapkan account &amp; link aktivasi");
+  });
+});

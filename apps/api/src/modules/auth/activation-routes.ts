@@ -9,6 +9,7 @@ import {
   ACCOUNT_ACTIVATION_PASSWORD_MIN_LENGTH,
 } from "./account-activation.js";
 import type { RequestContext } from "./service.js";
+import type { ApiConfig } from "../../config/env.js";
 
 const tokenSchema = z.string().min(32).max(128).regex(/^[A-Za-z0-9_-]+$/);
 const previewBodySchema = z.object({ token: tokenSchema });
@@ -32,11 +33,29 @@ async function sendActivationError(reply: FastifyReply, error: unknown) {
   return reply.status(error.statusCode).send({ code: error.code, message: error.message });
 }
 
-export async function registerAccountActivationRoutes(app: FastifyInstance, pool: Pool) {
+/**
+ * AUTH-002 (closing note 2026-11-11): with AUTH_MODE=oidc nobody signs in to HCIS with a
+ * local password, so a local activation link can only mislead. Employees are activated
+ * with "Kirim aktivasi" (Akun SQ e-mail), Organ Yayasan accounts through the Akun SQ
+ * identity mapping, and password recovery is "Lupa kata sandi?" on the Akun SQ page.
+ */
+export const ACTIVATION_USES_AKUN_SQ = {
+  code: "ACTIVATION_USES_AKUN_SQ",
+  message:
+    "HCIS memakai Akun SQ. Aktifkan akun lewat email dari Akun SQ, lalu masuk dari halaman login. Lupa kata sandi? Pakai tautan \"Lupa kata sandi?\" di halaman Akun SQ.",
+} as const;
+
+export async function registerAccountActivationRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  config: Pick<ApiConfig, "AUTH_MODE">,
+) {
   const activation = new AccountActivationService(pool);
+  const usesAkunSq = config.AUTH_MODE === "oidc";
 
   app.post("/auth/activation/preview", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
+    if (usesAkunSq) return reply.status(409).send(ACTIVATION_USES_AKUN_SQ);
     const body = previewBodySchema.safeParse(request.body);
     if (!body.success) {
       return reply.status(410).send({
@@ -54,6 +73,7 @@ export async function registerAccountActivationRoutes(app: FastifyInstance, pool
 
   app.post("/auth/activation/complete", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
+    if (usesAkunSq) return reply.status(409).send(ACTIVATION_USES_AKUN_SQ);
     const body = activationBodySchema.safeParse(request.body);
     if (!body.success) {
       const tokenValid = previewBodySchema.safeParse(request.body).success;

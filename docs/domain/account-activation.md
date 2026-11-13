@@ -101,7 +101,7 @@ Tidak dibuat dalam perubahan ini (usulan lanjutan, butuh keputusan owner): route
 
 **Status:** ACCEPTED 2026-11-04 (permintaan Kepala HC: "ketika buat link aktivasi pegawai kirim ke WA dan emailnya"). Pasangan di SQ Hub: `HUB-IMPL-024` (`docs/specs/HUB-IMPL-024-hcis-staff-activation-invite.md` di repository SQ Hub).
 
-Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lokal di atas tidak membuat pegawai bisa masuk. AUTH-002-INVITE menggantinya, **hanya di mode OIDC dan hanya untuk account `EMPLOYEE`**, dengan satu tombol **Kirim aktivasi** di Administrasi → Account & Akses. Mode lokal (development) dan account `FOUNDATION_BOARD` tetap memakai alur lama.
+Di production HCIS memakai Akun SQ (`AUTH_MODE=oidc`), sehingga link aktivasi lokal di atas tidak membuat pegawai bisa masuk. AUTH-002-INVITE menggantinya, **hanya di mode OIDC dan hanya untuk account `EMPLOYEE`**, dengan satu tombol **Kirim aktivasi** di Administrasi → Account & Akses. Mode lokal (development) tetap memakai alur lama; account `FOUNDATION_BOARD` di mode OIDC diaktifkan lewat pemetaan Akun SQ (lihat "AUTH-002 — penutupan").
 
 ### Keputusan desain
 
@@ -164,6 +164,41 @@ Tidak ada variabel baru yang wajib. HCIS memakai machine client SQ Hub yang suda
 ### Rollback
 
 Kode dapat dikembalikan ke rilis sebelumnya; tabel `account_activation_invitations` (migration `0138`) boleh tetap ada. Account yang sudah dipetakan tetap dapat diatur dengan `map-oidc-identity --clear` bila perlu.
+
+## AUTH-002 — penutupan: pemulihan kata sandi dan link lokal di mode Akun SQ
+
+**Status:** ACCEPTED 2026-11-11 (penutupan AUTH-002). Production memakai `AUTH_MODE=oidc`; seluruh kata sandi pegawai dan Organ Yayasan berada di Akun SQ (Keycloak realm `sq-staff`), bukan di HCIS.
+
+### Pemulihan kata sandi (password recovery)
+
+- HCIS **tidak** membangun reset kata sandi sendiri. Pemulihan kata sandi adalah tautan **"Lupa kata sandi?"** di halaman masuk Akun SQ, yang mengirim email reset milik Keycloak ke email akun. HCIS dan SQ Hub tidak pernah memegang link atau token reset.
+- Bukti read-only 2026-11-11 (tanpa mengirim email ke pegawai): realm `sq-staff` `resetPasswordAllowed = true`; konfigurasi SMTP realm lengkap (host `mail.sabilulquran.or.id`, port 465, SSL, autentikasi aktif, kredensial terisi); server SMTP dapat dijangkau dari Mi8VPS dengan sertifikat TLS yang valid untuk nama host tersebut; halaman masuk Akun SQ untuk client `hcis` menampilkan tautan "Lupa kata sandi?" (`login-actions/reset-credentials`). Satu-satunya email reset yang tercatat di event store Keycloak (2026-09-09) terkirim; log Keycloak sejak 2026-10-05 tidak memuat satu pun kegagalan pengiriman email (`SEND_RESET_PASSWORD_ERROR`, `EmailException`).
+- Penyelesaian pertama setelah aktivasi tetap lewat email aktivasi Akun SQ (AUTH-002-INVITE untuk pegawai, HUB-IMPL-021 untuk Organ Yayasan non-pegawai).
+
+### Link aktivasi lokal ditutup di mode Akun SQ
+
+Di `AUTH_MODE=oidc` tidak ada yang dapat masuk HCIS dengan kata sandi lokal (`POST /auth/login` sudah menolak), sehingga link kata sandi lokal hanya menyesatkan:
+
+| Titik | Perilaku di mode `oidc` | Mode `local` (development) |
+|---|---|---|
+| `POST /admin/access/accounts/:accountId/activation` | `409 ACTIVATION_USES_INVITATION` untuk `EMPLOYEE` (sudah sejak AUTH-002-INVITE), `409 ACTIVATION_USES_AKUN_SQ` untuk jenis account lain | tidak berubah |
+| `POST /auth/activation/preview`, `POST /auth/activation/complete` | `409 ACTIVATION_USES_AKUN_SQ` sebelum token dibaca; tidak ada query database | tidak berubah |
+| Administrasi → Account & Akses | tombol **Buat link aktivasi** tidak tampil untuk account apa pun; form Organ Yayasan menjadi **Siapkan account** tanpa link, dengan petunjuk aktivasi lewat pemetaan Akun SQ (§Aktivasi melalui Akun SQ) | tidak berubah |
+| Halaman `/activate` | menampilkan "Aktivasi memakai Akun SQ" dengan tombol **Masuk dengan Akun SQ** dan petunjuk "Lupa kata sandi?"; tidak ada form kata sandi | tidak berubah |
+
+Token lokal yang pernah diterbitkan tetap tersimpan sampai kedaluwarsa tetapi tidak dapat dipakai. Rollback: kembalikan kode; tidak ada perubahan database.
+
+### Temuan email Keycloak (kegagalan 2026-10-17)
+
+Kegagalan `staff_identity.password_initialization` pada 2026-10-17 00:15 WIB (uji HUB-IMPL-013) dan `organ_identity.activation_email` pada 2026-10-18 00:08 WIB **bukan kegagalan SMTP**: log Keycloak pada kedua waktu itu tidak memuat percobaan kirim maupun galat email. Penyebabnya, realm `sq-staff` tidak memiliki konfigurasi *user profile* sendiri, sehingga Keycloak 26 memakai bawaan *unmanaged attributes disabled* dan **membuang** atribut `hcisEmployeeId` yang dikirim SQ Hub saat membuat Akun SQ (2026-11-11: 0 pengguna `sq-staff` memiliki atribut itu). SQ Hub mensyaratkan atribut itu sebelum meminta email aktivasi (`IDENTITY_ACTION_NOT_PENDING`), jadi Keycloak tidak pernah diminta mengirim. Untuk Organ Yayasan, penanda `sqProvisionedFor` terbuang dengan cara yang sama (sudah dikoreksi SQ Hub 2026-10-18).
+
+Dampak lanjutan: **AUTH-002-INVITE ("Kirim aktivasi") tidak dapat berhasil di production** sampai atribut itu tersimpan. Gerbangnya ada di SQ Hub, bukan di HCIS: `provisionVerified` menolak identitas yang sudah ada tetapi tidak membawa employee id (`EMPLOYEE_IDENTITY_CONFLICT`), dan `sendPasswordInitialization` menolak meminta email tanpa employee id (`IDENTITY_ACTION_NOT_PENDING`). Dua percobaan pada 2026-11-04 gagal di tahap pembuatan identitas; penjelasan paling mungkin adalah identitas uji 2026-10-17 dengan username yang sama tanpa `hcisEmployeeId` (`DISCOVERY`: log SQ Hub hari itu sudah terotasi).
+
+Perbaikan (butuh kredensial admin Keycloak, jadi dikerjakan owner/operator, bukan agent):
+
+1. Deklarasikan atribut `hcisEmployeeId` pada user profile realm `sq-staff` dengan izin lihat/ubah **hanya admin** (tidak tampil dan tidak dapat diubah pengguna di konsol akun).
+2. Deklarasi tidak mengisi pengguna lama. Setiap identitas staf yang sudah dibuat SQ Hub (per 2026-11-11: 1 identitas, uji 2026-10-17; 3 pengguna non-layanan di realm) harus ditautkan ulang ke employee id-nya lewat Admin Center SQ Hub, atau identitas uji dihapus, sebelum aktivasi berikutnya dikirim.
+3. Konfigurasi SMTP tidak perlu diubah.
 
 ## MFA
 
@@ -231,3 +266,5 @@ Audit tidak boleh memuat token aktivasi, password, password hash, TOTP secret, a
 - Super Admin tetap wajib MFA.
 - Tidak ada registrasi publik atau pilihan role pada login.
 - Cross-principal route menampilkan 404, bukan silent redirect.
+- Di mode `oidc`, link kata sandi lokal tidak dapat diterbitkan maupun dipakai untuk jenis account apa pun, dan UI tidak menawarkannya (penutupan AUTH-002).
+- Pemulihan kata sandi tersedia lewat "Lupa kata sandi?" di Akun SQ; HCIS tidak menyimpan kata sandi.

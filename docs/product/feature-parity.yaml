@@ -41,10 +41,20 @@ features:
     module: identity
     name: Password recovery and account activation
     legacy_evidence: password reset and inactive-account handling exist
-    target_status: implementing
+    target_status: implemented
     priority: foundation
     risk: high
-    mvp_note: Invited-account activation is implemented; password recovery is not part of the completed MVP proof.
+    mvp_note: Invited-account activation is implemented; password recovery was not part of the completed MVP proof and is now delegated to Akun SQ.
+    planning_note: >-
+      Closed 2026-11-11 (code and docs); Kirim aktivasi in production still waits for the owner's Keycloak fix below. Production signs in with Akun SQ (AUTH_MODE=oidc). Activation is
+      "Kirim aktivasi" (AUTH-002-INVITE, Akun SQ e-mail) for employees and Akun SQ identity
+      mapping for Organ Yayasan accounts; password recovery is "Lupa kata sandi?" on the
+      Akun SQ sign-in page (sq-staff realm reset allowed, SMTP configured and reachable,
+      verified read-only without sending mail). In oidc mode the local password link is
+      refused by the API for every account type and hidden in the UI. Open owner action:
+      the sq-staff user profile drops the hcisEmployeeId attribute, which blocks Kirim
+      aktivasi in production until it is declared (docs/domain/account-activation.md,
+      "Temuan email Keycloak").
     docs:
       - docs/domain/account-activation.md
 

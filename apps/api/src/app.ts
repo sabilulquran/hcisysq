@@ -172,7 +172,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAdmsPhysicalParityDeviceRoutes(app, pool, config);
   await registerAdmsIngressRoutes(app, pool, config);
   await registerAuthRoutes(app, pool, config);
-  await registerAccountActivationRoutes(app, pool);
+  await registerAccountActivationRoutes(app, pool, config);
   await registerAccountActivationAdminRoutes(app, pool, config);
   await registerBoardDashboardRoutes(app, pool, config);
   registerGovernanceSummaryRoutes(app, pool, config);

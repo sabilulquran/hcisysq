@@ -141,17 +141,19 @@ export async function registerAccountActivationAdminRoutes(
     }
 
     if (config.AUTH_MODE === "oidc") {
-      // AUTH-002-INVITE: a local password cannot sign an employee in to Akun SQ-based HCIS.
+      // AUTH-002-INVITE: a local password cannot sign anyone in to Akun SQ-based HCIS.
+      // Employees get "Kirim aktivasi"; an Organ Yayasan account is activated by mapping
+      // its Akun SQ identity and setting it active (AUTH-002-OIDC).
       const target = await pool.query<{ principalType: string }>(
         `SELECT principal_type AS "principalType" FROM accounts WHERE id = $1`,
         [params.data.accountId],
       );
-      if (target.rows[0]?.principalType === "EMPLOYEE") {
-        return reply.status(409).send({
-          code: "ACTIVATION_USES_INVITATION",
-          message: "Account pegawai diaktifkan dengan Kirim aktivasi (Akun SQ), bukan link kata sandi lokal.",
-        });
+      reply.header("Cache-Control", "no-store");
+      if (!target.rows[0]) {
+        return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
       }
+      const refusal = localActivationLinkRefusal(config.AUTH_MODE, target.rows[0].principalType);
+      if (refusal) return reply.status(409).send(refusal);
     }
 
     try {
@@ -205,4 +207,25 @@ function createInvitationService(pool: Pool, config: ApiConfig): ActivationInvit
     ? new SqHubStaffActivationClient(oidc.issuer, oidc.machineClientId, oidc.machineClientSecret, inviteUrl)
     : null;
   return new ActivationInvitationService(pool, inviter, whatsapp, oidc.issuer);
+}
+
+/** Why a local activation link is refused, or null when local links are the activation path. */
+export function localActivationLinkRefusal(
+  authMode: string,
+  principalType: string | undefined,
+): { code: string; message: string } | null {
+  if (authMode !== "oidc") return null;
+  if (principalType === "EMPLOYEE") {
+    return {
+      code: "ACTIVATION_USES_INVITATION",
+      message: "Account pegawai diaktifkan dengan Kirim aktivasi (Akun SQ), bukan link kata sandi lokal.",
+    };
+  }
+  return {
+    code: "ACTIVATION_USES_AKUN_SQ",
+    message:
+      principalType === "FOUNDATION_BOARD"
+        ? "HCIS memakai Akun SQ. Account Organ Yayasan diaktifkan dengan memetakan Akun SQ-nya lalu mengubah status menjadi Aktif, bukan link kata sandi lokal."
+        : "HCIS memakai Akun SQ; link kata sandi lokal tidak diterbitkan.",
+  };
 }

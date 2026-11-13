@@ -881,6 +881,10 @@
       "reason": "Ringkasan kepegawaian pegawai yang masuk sendiri beserta linimasa tindakannya; dibatasi riwayat satu pegawai."
     },
     {
+      "url": "/governance/employees",
+      "list": "paged"
+    },
+    {
       "url": "/governance/summary",
       "list": "snapshot",
       "reason": "Ringkasan governance untuk SQ Hub (bearer); tidak dipakai layar manusia."

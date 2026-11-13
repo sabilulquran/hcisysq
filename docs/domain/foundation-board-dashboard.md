@@ -37,7 +37,7 @@ For a `FOUNDATION_BOARD` session only, `/board` shows "Menunggu keputusan Anda":
 
 The dashboard does not expose employee names, NIP, email, phone, dates of birth, identity numbers, uploaded evidence, or personal payslip lines.
 
-Named employee drill-down is out of scope for the initial Board dashboard unless a later permission decision explicitly authorizes it.
+Named employee drill-down is out of scope for the initial Board dashboard unless a later permission decision explicitly authorizes it. (Authorized 2026-11-13 by ORG-014, `organ-employee-list.md`: active employees with name, NIP, unit, position, employment status and start date, through the governance bearer route only.)
 
 ## Data freshness
 

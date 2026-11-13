@@ -8,6 +8,7 @@ import { ApplicationAccessError, SqHubApplicationAccessClient } from "../auth/ap
 import { hasBoardAccess } from "../auth/permissions.js";
 import { readBearerToken } from "../organization-directory/machine-auth.js";
 import { loadBoardAggregates } from "../board/aggregates.js";
+import { employeeListQuerySchema, loadOrganEmployeeList } from "./employee-list.js";
 import {
   buildGovernanceSummary,
   type EmploymentRolloutMode,
@@ -163,8 +164,11 @@ export function registerGovernanceSummaryRoutes(
     return { mode: current, spans: spans.rows };
   }
 
-  async function deny(request: FastifyRequest, reply: FastifyReply, statusCode: number, code: string, accountId: string | null) {
-    await audit(request, "governance.summary.denied", accountId, code);
+  async function deny(
+    request: FastifyRequest, reply: FastifyReply, statusCode: number, code: string, accountId: string | null,
+    eventType = "governance.summary.denied",
+  ) {
+    await audit(request, eventType, accountId, code);
     return reply.status(statusCode).send({ code, message: MESSAGES[code] ?? "Permintaan ditolak." });
   }
 
@@ -212,6 +216,47 @@ export function registerGovernanceSummaryRoutes(
       // §7: a database or unexpected error returns 500 without detail. Only the error class/code is
       // logged, never the request headers, claims or summary.
       request.log.error({ errorName: (error as Error)?.name, errorCode: (error as { code?: string })?.code }, "governance summary failed");
+      return reply.status(500).send({ code: "INTERNAL_ERROR", message: "Terjadi kesalahan." });
+    }
+  });
+
+  /**
+   * ORG-014: the active employees, with name, NIP, unit, position, employment status and start date
+   * only, for a caller with board access. Authenticated exactly as the summary (ORG-010 §3).
+   */
+  app.get("/governance/employees", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!dependencies) return reply.status(404).send({ code: "NOT_FOUND", message: "Tidak ditemukan." });
+    const denied = "governance.employees.denied";
+
+    try {
+      const token = authorizationHeaderCount(request) === 1 ? readBearerToken(request.headers.authorization) : null;
+      if (!token) return await deny(request, reply, 401, "UNAUTHENTICATED", null, denied);
+
+      let identity: GovernanceIdentity;
+      try {
+        identity = await dependencies.verifyToken(token);
+      } catch (error) {
+        if (!(error instanceof GovernanceTokenError)) throw error;
+        return await deny(request, reply, error.statusCode, error.code, null, denied);
+      }
+
+      let account: ResolvedAccount;
+      try {
+        account = await resolveAccount(identity);
+      } catch (error) {
+        if (!(error instanceof SummaryDenied)) throw error;
+        return await deny(request, reply, error.statusCode, error.code, error.accountId, denied);
+      }
+
+      const query = employeeListQuerySchema.safeParse(request.query);
+      if (!query.success) return reply.status(400).send({ code: "INVALID_QUERY", message: "Parameter tidak valid." });
+      const list = await loadOrganEmployeeList(pool, query.data);
+      await audit(request, "governance.employees.listed", account.id, null);
+      reply.header("Cache-Control", "private, no-store");
+      return reply.status(200).send(list);
+    } catch (error) {
+      request.log.error({ errorName: (error as Error)?.name, errorCode: (error as { code?: string })?.code }, "governance employee list failed");
       return reply.status(500).send({ code: "INTERNAL_ERROR", message: "Terjadi kesalahan." });
     }
   });

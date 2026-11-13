@@ -127,10 +127,12 @@ describe("AUTH-011 route manifest coverage", () => {
     expect(keys.filter((key) => PUBLIC_ROUTE(key.split(" ")[1]!))).toEqual([]);
   });
 
-  it("lists exactly the two ORG-010 board-access routes", async () => {
+  it("lists exactly the ORG-010 board-access routes and the ORG-014 employee list", async () => {
     const board = (await manifest()).filter((entry) => entry.access === "board" || entry.access === "governance-bearer")
       .map((entry) => `${entry.access} ${entry.method} ${entry.url}`);
-    expect(board).toEqual(["board GET /board/dashboard", "governance-bearer GET /governance/summary"]);
+    expect(board).toEqual([
+      "board GET /board/dashboard", "governance-bearer GET /governance/employees", "governance-bearer GET /governance/summary",
+    ]);
   });
 
   it("lists every role-administration route in the manifest, never the allowlist", async () => {

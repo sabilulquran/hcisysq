@@ -472,6 +472,40 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
       await portal.close();
     });
 
+    it("lists active employees with six fields only, paged and searchable, for board access (ORG-014)", async () => {
+      const list = (url: string, sub = actors.get("board")!.subject) =>
+        token({ sub }).then((bearer) => summary.inject({ method: "GET", url, headers: { authorization: `Bearer ${bearer}` } }));
+
+      const response = await list("/governance/employees?pageSize=100");
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      const body = response.json();
+      expect(body.pagination).toMatchObject({ page: 1, pageSize: 100 });
+      expect(body.items.length).toBe(body.pagination.total);
+      for (const item of body.items) {
+        expect(Object.keys(item).sort()).toEqual(["employeeNumber", "employmentStatus", "fullName", "position", "startedOn", "unitName"]);
+      }
+      expect(JSON.stringify(body)).not.toContain("@example.invalid");
+      expect(body.items.map((item: { fullName: string }) => item.fullName)).not.toContain("Nama Rahasia resigned_viewer");
+
+      const searched = (await list("/governance/employees?q=Rahasia%20viewer")).json();
+      expect(searched.items.every((item: { fullName: string }) => item.fullName.includes("Rahasia viewer"))).toBe(true);
+      expect((await list("/governance/employees?pageSize=101")).statusCode).toBe(400);
+      expect((await list("/governance/employees?q=a")).statusCode).toBe(400);
+
+      const audit = (await pool.query(
+        `SELECT account_id, reason_code FROM auth_audit_events WHERE event_type = 'governance.employees.listed' ORDER BY occurred_at DESC, id LIMIT 1`)).rows[0];
+      expect(audit).toEqual({ account_id: actors.get("board")!.principal.id, reason_code: null });
+
+      const refused = await list("/governance/employees", "subject-plain");
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().code).toBe("BOARD_ACCESS_REQUIRED");
+      const deniedAudit = (await pool.query(
+        `SELECT reason_code FROM auth_audit_events WHERE event_type = 'governance.employees.denied' ORDER BY occurred_at DESC, id LIMIT 1`)).rows[0];
+      expect(deniedAudit).toEqual({ reason_code: "BOARD_ACCESS_REQUIRED" });
+      expect((await summary.inject({ method: "GET", url: "/governance/employees", headers: { cookie: actors.get("board")!.cookie } })).statusCode).toBe(401);
+    });
+
     it("re-checks SQ Hub Application Access (D3)", async () => {
       access.isAllowed.mockResolvedValue(false);
       const denied = await call({ authorization: `Bearer ${await token()}` });

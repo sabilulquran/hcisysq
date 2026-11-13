@@ -149,7 +149,7 @@ No HCIS session is created, no cookie is set, and no refresh happens.
 
 ### 3.4 Bearer only on this route
 
-- Only `GET /governance/summary` reads the `Authorization` header for a user identity. No other HCIS route accepts the exchanged token: every other user route keeps the cookie session. A test sends a valid exchanged token to `/board/dashboard`, `/auth/me`, an `/app` route and an `/admin` route and expects `401`.
+- Only `GET /governance/summary` and, since ORG-014 (2026-11-13), `GET /governance/employees` read the `Authorization` header for a user identity. No other HCIS route accepts the exchanged token: every other user route keeps the cookie session. A test sends a valid exchanged token to `/board/dashboard`, `/auth/me`, an `/app` route and an `/admin` route and expects `401`.
 - The machine-token routes (HCIS-ID-001, Organization Directory) keep their own audiences (`hcis-staff-identity`, Organization Directory audience). A governance token is refused there because the audience differs, and their tokens are refused here because `aud`/`azp` differ.
 - `GOVERNANCE_SUMMARY_AUDIENCE` must differ from the two machine audiences. Startup fails if they are equal.
 

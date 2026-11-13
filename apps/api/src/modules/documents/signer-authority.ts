@@ -69,6 +69,8 @@ async function findDynamicSignerCandidate(
         AND (incumbent.effective_to IS NULL OR incumbent.effective_to >= current_date)
         AND incumbent.employee_id IS NOT NULL
         AND employee.status = 'active'
+        -- EMP-005 S2B §8.7: a record outside HCIS management never signs for HCIS.
+        AND employee.management_scope = 'MANAGED'
       ORDER BY CASE incumbent.kind WHEN 'PRIMARY' THEN 0 ELSE 1 END,
                incumbent.effective_from DESC,
                employee.full_name ASC
@@ -87,7 +89,7 @@ async function findLegacySignerCandidate(
        FROM employees employee
        LEFT JOIN positions position ON position.id = employee.position_id
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-      WHERE employee.status = 'active'
+      WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED'
         AND (
           (
             $1 = 'hcm'
@@ -177,7 +179,7 @@ export async function findFoundationChair(database: QueryTarget): Promise<Founda
         AND incumbent.effective_from <= current_date
         AND (incumbent.effective_to IS NULL OR incumbent.effective_to >= current_date)
         AND (
-          (employee.id IS NOT NULL AND employee.status = 'active')
+          (employee.id IS NOT NULL AND employee.status = 'active' AND employee.management_scope = 'MANAGED')
           OR (account.principal_type = 'FOUNDATION_BOARD' AND account.employee_id IS NULL AND account.status = 'active')
         )
       ORDER BY CASE incumbent.kind WHEN 'PRIMARY' THEN 0 ELSE 1 END,

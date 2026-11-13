@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import { decryptSecret, encryptSecret } from "../auth/crypto.js";
@@ -172,7 +173,9 @@ async function loadEmployeeContext(
       p.name AS "positionName",
       e.direct_manager_employee_id AS "directManagerEmployeeId",
       manager.full_name AS "directManagerName",
-      manager.status AS "directManagerStatus"
+      -- EMP-005 S2B §8.7: a manager outside HCIS management is not notified, as if inactive.
+      CASE WHEN manager.management_scope = 'OUTSIDE_HCIS' THEN 'inactive' ELSE manager.status END
+        AS "directManagerStatus"
     FROM accounts a
     JOIN employees e ON e.id = a.employee_id
     LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
@@ -194,6 +197,13 @@ async function loadEmployeeContext(
     );
   }
   return employee;
+}
+
+/** EMP-005 S2B §8.7: a record outside HCIS management files no new leave; its history stays. */
+async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
+  if (await isOutsideHcis(db, employeeId)) {
+    throw new EmployeeSpecialLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+  }
 }
 
 export async function hasHcValidationPermission(db: Pool | PoolClient, accountId: string) {
@@ -526,6 +536,7 @@ export async function registerSpecialLeaveRoutes(
 
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
+      await refuseOutsideHcis(pool, employee.id);
       const preview = await buildPreview(pool, employee, parsed.data);
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -573,6 +584,7 @@ export async function registerSpecialLeaveRoutes(
           await client.query("COMMIT");
           return reply.send({ ...existing.rows[0], idempotentReplay: true });
         }
+        await refuseOutsideHcis(client, employee.id);
 
         const evidenceInput = parsed.data.evidence ?? null;
         const preview = await buildPreview(client, employee, {

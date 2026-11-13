@@ -70,6 +70,8 @@ export async function unscheduledEmployees(pool: Pick<Pool, "query">, filter: Un
        LEFT JOIN positions position ON position.id = employee.position_id
        WHERE ($3::uuid IS NULL OR employee.id = $3)
          AND ($4::uuid IS NULL OR employee.organizational_unit_id = $4)
+         -- EMP-005 S2B §8.7: a record outside HCIS management is not expected to have a schedule.
+         AND employee.management_scope = 'MANAGED'
      ), punches AS (
        SELECT mapping.employee_id, event.occurred_at
        FROM attendance_adms_events event

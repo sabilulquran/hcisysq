@@ -261,7 +261,7 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
          unit.name AS "unitName", count(*) OVER ()::int AS total
        FROM employees employee
        LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-       WHERE employee.status = 'active'
+       WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED'
          AND ($1::uuid IS NULL OR employee.organizational_unit_id = $1)
          AND ($2::text IS NULL OR employee.full_name ILIKE '%' || $2 || '%' OR employee.employee_number ILIKE '%' || $2 || '%')
        ORDER BY employee.full_name, employee.id
@@ -346,7 +346,7 @@ export function registerScheduleChangeRoutes(app: FastifyInstance, pool: Pool, a
       from, to, page, pageSize,
       total: employees.rows[0]?.total ?? (page > 1 ? (await pool.query<{ total: number }>(
         `SELECT count(*)::int AS total FROM employees employee
-         WHERE employee.status = 'active' AND ($1::uuid IS NULL OR employee.organizational_unit_id = $1)
+         WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED' AND ($1::uuid IS NULL OR employee.organizational_unit_id = $1)
            AND ($2::text IS NULL OR employee.full_name ILIKE '%' || $2 || '%' OR employee.employee_number ILIKE '%' || $2 || '%')`,
         [unitId ?? null, q ? q.replace(/[\\%_]/g, (character) => `\\${character}`) : null],
       )).rows[0]?.total ?? 0 : 0),

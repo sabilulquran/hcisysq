@@ -98,7 +98,7 @@ export function changeRange(input: ScheduleChangeInput): { from: string; to: str
   return { from: input.from, to: input.to!, openEnded: false };
 }
 
-type EmployeeRow = { id: string; employeeNumber: string; fullName: string; status: string; endedOn: string | null };
+type EmployeeRow = { id: string; employeeNumber: string; fullName: string; status: string; endedOn: string | null; outsideHcis?: boolean };
 type AssignmentRow = { id: string; employeeId: string; scheduleTemplateId: string; weekdayMask: number; from: string; to: string | null };
 
 export type ScheduleChangePlan = {
@@ -219,9 +219,11 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
   // Who: the unit's active employees and/or the chosen ones, minus the excluded.
   const employeeRows = await db.query<EmployeeRow>(
     `SELECT employee.id, employee.employee_number AS "employeeNumber", employee.full_name AS "fullName",
-       employee.status, employee.ended_on::text AS "endedOn"
+       employee.status, employee.ended_on::text AS "endedOn",
+       employee.management_scope = 'OUTSIDE_HCIS' AS "outsideHcis"
      FROM employees employee
-     WHERE (employee.id = ANY($1::uuid[]) OR ($2::uuid IS NOT NULL AND employee.organizational_unit_id = $2 AND employee.status = 'active'))
+     WHERE (employee.id = ANY($1::uuid[]) OR ($2::uuid IS NOT NULL AND employee.organizational_unit_id = $2
+       AND employee.status = 'active' AND employee.management_scope = 'MANAGED'))
        AND NOT (employee.id = ANY($3::uuid[]))
      ORDER BY employee.full_name, employee.id`,
     [revert ? revert.employeeIds : input.employeeIds ?? [], revert ? null : input.unitId ?? null, input.excludeEmployeeIds ?? []],
@@ -238,6 +240,12 @@ export async function planScheduleChange(db: Db, input: ScheduleChangeInput, now
   const lastDate = new Map<string, string>();
   const active: EmployeeRow[] = [];
   for (const employee of employees) {
+    // EMP-005 S2B §8.7: a record outside HCIS management is not scheduled. A unit-wide change never
+    // picks it up; one named explicitly is set aside the same way an inactive employee is.
+    if (employee.outsideHcis) {
+      issues.push({ employeeId: employee.id, employeeName: employee.fullName, code: "inactive", date: null, message: "Di luar pengelolaan HCIS; dikecualikan otomatis.", blocking: false });
+      continue;
+    }
     if (employee.status !== "active") {
       issues.push({ employeeId: employee.id, employeeName: employee.fullName, code: "inactive", date: null, message: "Tidak aktif; dikecualikan otomatis.", blocking: false });
       continue;

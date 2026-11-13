@@ -26,10 +26,28 @@ export interface AdminEmployeeListItem {
   startedOn: string | null;
   endedOn: string | null;
   updatedAt: string;
+  /** EMP-005 S2B §8.7: OUTSIDE_HCIS marks a read-only record (BUMY, Pengurus Yayasan). */
+  managementScope?: "MANAGED" | "OUTSIDE_HCIS";
+  managementScopeReason?: string | null;
 }
 
 /** EMP-005 S2B §8.7: the list hides marked records unless asked. */
 export type EmployeeManagementScopeFilter = "MANAGED" | "OUTSIDE_HCIS" | "ALL";
+
+/**
+ * §13.9 badge text for a marked record: "Di luar pengelolaan HCIS — BUMY" or
+ * "— Pengurus Yayasan". Null for a record HCIS manages. Display only: the API
+ * is what refuses a write.
+ */
+export function outsideHcisBadgeLabel(item: {
+  managementScope?: "MANAGED" | "OUTSIDE_HCIS";
+  managementScopeReason?: string | null;
+}): string | null {
+  if (item.managementScope !== "OUTSIDE_HCIS") return null;
+  if (item.managementScopeReason === "BUMY") return "Di luar pengelolaan HCIS — BUMY";
+  if (item.managementScopeReason === "PENGURUS_YAYASAN") return "Di luar pengelolaan HCIS — Pengurus Yayasan";
+  return "Di luar pengelolaan HCIS";
+}
 
 export interface AdminEmployeeListResponse {
   items: AdminEmployeeListItem[];

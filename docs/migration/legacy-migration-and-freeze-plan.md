@@ -22,6 +22,7 @@ HCIS YSQ already serves real users on Mi8VPS. Some data reached it through dedic
 | Attendance history | New punches flow from devices via ADMS to HCIS | Legacy HCIS records (GPS/photo) and device memory | **Not migrated.** Device-side re-pull exists only for what devices still hold. |
 | Payslips | PAYSLIP-002 imports current periods from two CSV shapes, amounts as source strings | Payroll CSVs | **Ongoing per-period import.** Historical periods: DISCOVERY whether needed. |
 | Loans | LOAN-001 Package 1 implemented (`docs/domain/employee-loans.md`); no import path | Legacy HCIS | **Not migrated.** Financial reconciliation critical; legacy schedules never reached the slip. |
+| Reimbursements | REIMB-001 Package 1 implemented (`docs/domain/reimbursement.md`); no import path | Legacy HCIS (`reimbursements`, attachments on Google Drive) | **Not migrated.** Archive only, as D5; unpaid legacy claims are settled by Finance outside HCIS or re-submitted on owner decision (REIMB-001 §11). |
 | Documents / attachments | Not implemented (DOC-001/002 discovery) | Legacy HCIS | **Not migrated.** Needs file + checksum migration. |
 | Activity log | HCIS has its own audit tables | Legacy HCIS | **Not migrated.** Archive, do not convert into HCIS audit events. |
 

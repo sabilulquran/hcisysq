@@ -190,10 +190,10 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
         access?: "hc-operational" | "self-service" | "super-admin" | "board" | "governance-bearer";
         principals?: string[]; permissions: string[]; executePermissions?: string[] }>;
     // Route completeness against the registered app is enforced by auth011-route-coverage.test.ts.
-    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(442);
+    expect(manifest.filter((route) => route.access === undefined)).toHaveLength(451);
     expect(manifest.filter((route) => route.access === "super-admin")).toHaveLength(4);
     expect(manifest.filter((route) => route.access === "hc-operational")).toHaveLength(14);
-    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(135);
+    expect(manifest.filter((route) => route.access === "self-service")).toHaveLength(150);
     expect(manifest.filter((route) => route.access === "board")).toHaveLength(1);
     expect(manifest.filter((route) => route.access === "governance-bearer")).toHaveLength(2);
     // AUTH-014: the SQ Hub channel. No session and no HCIS permission; an anonymous caller still
@@ -714,7 +714,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       `SELECT rp.permission_key AS key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
         WHERE r.role_key = 'finance_officer' ORDER BY 1`,
     )).rows.map((row) => row.key);
-    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage"]);
+    // REIMB-001 (migration 0149) added the reimbursement register to the role.
+    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage", "reimbursements.manage", "reimbursements.read"]);
     expect(await permissionsOf("employee")).toEqual(finance);
     expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(true);
     expect((await pool.query(

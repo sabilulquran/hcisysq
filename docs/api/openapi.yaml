@@ -484,6 +484,48 @@ paths:
     $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1payments~1{paymentId}~1reverse'
   /admin/loans/{id}/cancel:
     $ref: './employee-loans.openapi.yaml#/paths/~1admin~1loans~1{id}~1cancel'
+  /reimbursements/me:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me'
+  /reimbursements/me/trips:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1trips'
+  /reimbursements/me/approvers:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1approvers'
+  /reimbursements/me/{id}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1{id}'
+  /reimbursements/me/{id}/receipts:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1{id}~1receipts'
+  /reimbursements/me/{id}/receipts/{receiptId}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1{id}~1receipts~1{receiptId}'
+  /reimbursements/me/{id}/submit:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1{id}~1submit'
+  /reimbursements/me/{id}/cancel:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1me~1{id}~1cancel'
+  /reimbursements/approvals:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1approvals'
+  /reimbursements/approvals/{stepId}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1approvals~1{stepId}'
+  /reimbursements/approvals/{stepId}/receipts/{receiptId}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1approvals~1{stepId}~1receipts~1{receiptId}'
+  /reimbursements/approvals/{stepId}/decision:
+    $ref: './reimbursements.openapi.yaml#/paths/~1reimbursements~1approvals~1{stepId}~1decision'
+  /admin/reimbursements:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements'
+  /admin/reimbursements/claimants:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1claimants'
+  /admin/reimbursements/summary:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1summary'
+  /admin/reimbursements/export.csv:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1export.csv'
+  /admin/reimbursements/{id}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}'
+  /admin/reimbursements/{id}/receipts/{receiptId}:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1receipts~1{receiptId}'
+  /admin/reimbursements/{id}/verify:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1verify'
+  /admin/reimbursements/{id}/reject:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1reject'
+  /admin/reimbursements/{id}/pay:
+    $ref: './reimbursements.openapi.yaml#/paths/~1admin~1reimbursements~1{id}~1pay'
   /training/me/summary:
     $ref: './training.openapi.yaml#/paths/~1training~1me~1summary'
   /training/me/records:

@@ -58,6 +58,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
     // LOAN-001: finance_officer reaches the loan register with loans.read, which no bundle
     // above carries for that role.
     "loans.read",
+    // REIMB-001: finance_officer reaches the reimbursement register with reimbursements.read.
+    "reimbursements.read",
     // HELP-001: help.manage opens its own screen even for an account holding nothing else.
     "help.manage",
     // EMP-012: employee_cards.manage opens its own screen even for an account holding nothing else.
@@ -149,6 +151,8 @@ export function canAccessAdminPath(session: AuthSession | null, path: string): b
   if (path === "/admin/performance") return hasPermission(session, "performance.read");
   // LOAN-001: Finance and HC only; Super Admin legacy compatibility never carries loans.*.
   if (path === "/admin/loans") return hasPermission(session, "loans.read");
+  // REIMB-001: Finance and HC only; Super Admin legacy compatibility never carries reimbursements.*.
+  if (path === "/admin/reimbursements") return hasPermission(session, "reimbursements.read");
   // TRAIN-001: HC-only; Super Admin legacy compatibility never carries training.*.
   if (path === "/admin/training") return hasPermission(session, "training.read");
   // RPT-001: organization- or unit-scoped; the API narrows every report to the account's units.

@@ -186,6 +186,12 @@ describe("AUTH-011 backend-derived admin navigation", () => {
     expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "loans.manage"]), "/admin")).toBe(true);
     expect(canAccessAdminPath(session("EMPLOYEE", ["payroll.loans.manage"]), "/admin/loans")).toBe(false);
     expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/loans")).toBe(false);
+    // REIMB-001: reimbursements.read opens the register; loan, payroll and Super Admin legacy do not.
+    expect(canAccessAdminPath(actor, "/admin/reimbursements")).toBe(false);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["reimbursements.read"]), "/admin/reimbursements")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["reimbursements.read", "reimbursements.manage"]), "/admin")).toBe(true);
+    expect(canAccessAdminPath(session("EMPLOYEE", ["loans.read", "payroll.approve"]), "/admin/reimbursements")).toBe(false);
+    expect(canAccessAdminPath(session("SUPER_ADMIN", []), "/admin/reimbursements")).toBe(false);
     // EMP-012: employee_cards.manage only; other HC permissions and Super Admin legacy do not open it.
     expect(canAccessAdminPath(actor, "/admin/employee-cards")).toBe(false);
     expect(canAccessAdminPath(session("EMPLOYEE", ["employee_cards.manage"]), "/admin/employee-cards")).toBe(true);

@@ -58,11 +58,14 @@ Istilah pada UI, API, database, dokumentasi, dan test harus menggunakan definisi
 | Cicilan / Angsuran | LOAN-001: satu baris jadwal per bulan. Pembayaran mengisi cicilan paling awal lebih dulu. |
 | Sisa pinjaman | LOAN-001: pokok dikurangi jumlah pembayaran yang berlaku (tidak dikoreksi). |
 | Pelunasan | LOAN-001: pembayaran sebesar sisa pinjaman; pinjaman menjadi Lunas. |
-| Reimbursement | Penggantian biaya berdasarkan bukti dan kebijakan. |
+| Reimbursement | REIMB-001: penggantian biaya kerja yang sudah dibayar pegawai, berdasarkan bukti dan batas kategori. Satu klaim berisi 1–10 baris biaya. |
+| Klaim (reimbursement) | REIMB-001: pengajuan penggantian biaya; mulai sebagai draf, lalu disetujui atasan langsung dan approver unit lewat APR-001. |
+| Verifikasi Keuangan | REIMB-001: Keuangan memeriksa bukti dan menetapkan nominal disetujui per baris (boleh lebih kecil dari yang diklaim, dengan alasan). |
+| Bukti (receipt) | REIMB-001: berkas PDF/JPG/PNG yang menunjukkan pembayaran; disimpan terenkripsi tanpa nama berkas asli. |
 | Field Assignment / Tugas Luar | Tugas harian pegawai di luar lokasi kerja tanpa menginap (paling lama 7 hari), diajukan pegawai dan disetujui lewat APR-001 (ATT-015). Yang disetujui menjadi status kehadiran `field_assignment` pada hari kerja tanpa scan; tidak pernah membuat punch. |
 | Remote Work / WFH/WFA | Bekerja dari rumah atau lokasi lain untuk satu hari, diajukan per hari dan disetujui lewat APR-001 (ATT-015). Yang disetujui menjadi status kehadiran `remote_work` pada hari kerja tanpa scan. |
 | Schedule Change Request / Ubah Jadwal | Permintaan pegawai mengganti shift-nya sendiri pada satu tanggal (ATT-015), berbeda dari Tukar Shift dengan rekan (ATT-008). Setelah disetujui, HC menerapkannya sebagai versi roster terbit. |
-| Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya milik REIMB-001. |
+| Business Trip / Perjalanan Dinas | Penugasan pegawai ke luar tempat kerja untuk jangka tertentu, diajukan pegawai dan disetujui lewat APR-001 (TRIP-001). Tidak memuat biaya; biaya diklaim lewat REIMB-001 dengan menautkan perjalanannya. |
 | Performance Review Cycle / Siklus Penilaian | Satu periode penilaian kinerja (bulanan atau tahun ajaran) dengan rubrik yang dibekukan saat siklus dibuka (PERF-001). |
 | Rater / Penilai | Pegawai yang menilai kinerja seorang pegawai pada satu siklus: atasan langsung menurut struktur yang disnapshot saat pegawai masuk siklus, atau pegawai yang ditunjuk HC. |
 | Predicate / Predikat Kinerja | Hasil akhir penilaian kinerja (A Sangat baik, B Baik, C Cukup, D Kurang) yang dihitung dari rata-rata berbobot skala 1–4 dan berlaku setelah disahkan HC. Belum dipakai payroll. |

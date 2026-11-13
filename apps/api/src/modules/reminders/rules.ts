@@ -106,7 +106,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
   {
     key: "approval.pending_digest",
     label: "Persetujuan menunggu",
-    description: "Ringkasan pagi bila ada pengajuan cuti, dinas, pinjaman, atau tugas luar/WFH yang menunggu persetujuan Anda.",
+    description: "Ringkasan pagi bila ada pengajuan cuti, dinas, pinjaman, reimbursement, atau tugas luar/WFH yang menunggu persetujuan Anda.",
     defaultWhatsApp: true,
     fireHour: 7,
     weekdays: MONDAY_TO_SATURDAY,
@@ -123,6 +123,10 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         UNION ALL
         SELECT step.approver_employee_id, NULL::uuid
           FROM employee_loan_approval_steps step JOIN employee_loans request ON request.id = step.loan_id
+         WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
+        UNION ALL
+        SELECT step.approver_employee_id, NULL::uuid
+          FROM reimbursement_approval_steps step JOIN reimbursement_claims request ON request.id = step.claim_id
          WHERE step.status = 'pending' AND request.status = 'IN_REVIEW'
         UNION ALL
         SELECT step.approver_employee_id, NULL::uuid
@@ -151,7 +155,7 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         accountId: row.accountId,
         employeeId: row.employeeId,
         title: `${row.pending} persetujuan menunggu Anda`,
-        body: "Pengajuan cuti, perjalanan dinas, pinjaman, atau tugas luar/WFH menunggu keputusan Anda.",
+        body: "Pengajuan cuti, perjalanan dinas, pinjaman, reimbursement, atau tugas luar/WFH menunggu keputusan Anda.",
         href: "/app/approvals",
         whatsappText: `HCIS: ${row.pending} pengajuan menunggu persetujuan Anda. Buka menu Persetujuan di HCIS.`,
       }));
@@ -200,6 +204,32 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         body: "Permintaan surat keterangan sudah menunggu dua hari atau lebih.",
         href: "/admin/documents",
         whatsappText: `HCIS: ${pending} permintaan surat keterangan menunggu keputusan Human Capital.`,
+      });
+    },
+  },
+  {
+    key: "reimbursement.finance_queue_digest",
+    label: "Reimbursement menunggu Keuangan",
+    description: "Ringkasan pagi bila ada klaim reimbursement yang menunggu verifikasi atau pembayaran Keuangan.",
+    defaultWhatsApp: true,
+    fireHour: 7,
+    weekdays: MONDAY_TO_SATURDAY,
+    async generate(db, { today }) {
+      // REIMB-001 §8: counts only, never a name or an amount (D-07, REIMB-001 D-14).
+      const count = await db.query<{ toVerify: number; toPay: number }>(
+        `SELECT count(*) FILTER (WHERE status = 'APPROVED')::int AS "toVerify",
+                count(*) FILTER (WHERE status = 'VERIFIED')::int AS "toPay"
+           FROM reimbursement_claims WHERE status IN ('APPROVED', 'VERIFIED')`,
+      );
+      const toVerify = count.rows[0]?.toVerify ?? 0;
+      const toPay = count.rows[0]?.toPay ?? 0;
+      if (!toVerify && !toPay) return [];
+      return digestToHolders(await accountsWithPermission(db, ["reimbursements.manage"], today), {
+        today,
+        title: `${toVerify + toPay} reimbursement menunggu Keuangan`,
+        body: `${toVerify} klaim menunggu verifikasi dan ${toPay} klaim menunggu pembayaran.`,
+        href: "/admin/reimbursements",
+        whatsappText: `HCIS: ${toVerify} klaim reimbursement menunggu verifikasi dan ${toPay} menunggu pembayaran Keuangan.`,
       });
     },
   },

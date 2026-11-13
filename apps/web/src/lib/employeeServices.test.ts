@@ -9,7 +9,8 @@ import {
 describe("employee service catalog", () => {
   it("keeps implemented and planned employee services distinguishable", () => {
     expect(getEmployeeService("attendance")?.stage).toBe("available");
-    expect(getEmployeeService("reimbursement")?.stage).toBe("deferred");
+    expect(getEmployeeService("reimbursement")?.stage).toBe("available");
+    expect(getEmployeeService("reimbursement")?.href).toBe("/app/reimbursements");
     // PERF-001 Package 1 ships self-assessment, rating, validation and history.
     expect(getEmployeeService("performance")?.stage).toBe("available");
     expect(getEmployeeService("performance")?.href).toBe("/app/performance");
@@ -57,9 +58,10 @@ describe("employee service catalog", () => {
   });
 
   it("maps every planned service to a real coming-soon route and feature id", () => {
+    // REIMB-001 (2026-11-13) was the last planned employee service; any future one still needs
+    // a coming-soon route and a feature id.
     const planned = employeeServices.filter((service) => service.stage !== "available");
 
-    expect(planned.length).toBeGreaterThan(0);
     for (const service of planned) {
       expect(service.href).toBe(`/app/services/${service.key}`);
       expect(service.featureIds.length).toBeGreaterThan(0);

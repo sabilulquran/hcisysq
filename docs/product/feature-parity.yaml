@@ -772,11 +772,24 @@ features:
   - id: REIMB-001
     module: reimbursement
     name: Reimbursement submission and approval
-    legacy_evidence: reimbursement module and notifications exist
-    target_status: deferred
+    legacy_evidence: >-
+      reimbursement module and notifications exist (hcysq/hcis-ysq: categories transport/konsumsi/
+      operasional/lain, one amount per claim, 1-5 attachments, chain line manager + Kabid above
+      Rp1 jt + Direktur above Rp3 jt + Finance Head, Finance Head marks paid)
+    target_status: implemented
     priority: after-mvp
     risk: high
+    notes: >-
+      Package 1 implemented 2026-11-13 on the owner's 2026-11-11 instruction to finish every HCIS
+      PRD (docs/domain/reimbursement.md): draft claims with 1-10 items in five DRAFT categories
+      with per-item limits, encrypted receipts, optional link to a TRIP-001 trip, APR-001 approval
+      (direct manager then unit approver), Finance verification per item, Finance rejection,
+      idempotent payment outside payroll, register, per-category summary, audited CSV export,
+      NOTIF-003 Finance digest. Payroll handoff stays behind REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED=0
+      (spec §9); PAY-001/PAY-002 untouched. Advances and per diem are not included.
     docs:
+      - docs/domain/reimbursement.md
+      - docs/api/reimbursements.openapi.yaml
       - docs/product/mvp.md
 
   - id: PAY-001
@@ -932,8 +945,8 @@ features:
       Package 1 implemented 2026-11-02 (docs/domain/business-travel.md): employee request,
       APR-001 approval (direct manager then unit approver), numbered surat tugas from the
       DOC-001 register, cancellation, completion and history. Approved trips are visible in
-      the ATT-014 exceptions tab. Attendance disposition is Package 2; advances, costs and
-      reimbursement stay with REIMB-001.
+      the ATT-014 exceptions tab. Attendance disposition is Package 2; trip costs are claimed
+      through REIMB-001 (linked trip); advances are not built.
     docs:
       - docs/domain/business-travel.md
       - docs/product/hcis-capability-map.md

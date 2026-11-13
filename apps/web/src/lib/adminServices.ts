@@ -137,11 +137,16 @@ export const adminServices: AdminServiceDefinition[] = [
   {
     key: "reimbursement",
     label: "Reimbursement",
-    description: "Kelola pengajuan dan persetujuan penggantian biaya.",
+    description: "Register klaim penggantian biaya, verifikasi bukti, dan pencatatan pembayaran.",
     featureIds: ["REIMB-001"],
-    stage: "deferred",
+    stage: "available",
     category: "payroll-benefits",
-    href: "/admin/services/reimbursement",
+    href: "/admin/reimbursements",
+    details: [
+      "Klaim pegawai dengan bukti, persetujuan atasan langsung lalu approver unit",
+      "Verifikasi per baris, penolakan, dan pencatatan pembayaran oleh Keuangan",
+      "Dibayar di luar slip gaji; ringkasan per kategori dan unduhan CSV",
+    ],
   },
   {
     key: "loans",
@@ -224,7 +229,7 @@ export const adminServices: AdminServiceDefinition[] = [
     details: [
       "Pengajuan pegawai dengan persetujuan atasan langsung dan approver unit",
       "Surat tugas bernomor dari register dokumen",
-      "Biaya, uang muka, dan reimbursement belum (REIMB-001)",
+      "Biaya perjalanan diklaim lewat Reimbursement (REIMB-001); uang muka belum",
     ],
   },
   {

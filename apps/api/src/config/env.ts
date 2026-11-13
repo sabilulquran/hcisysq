@@ -41,6 +41,9 @@ const envSchema = z
       z.string().url().optional(),
     ),
     ORG_DIRECTORY_EXPORT_ENABLED: z.enum(["0", "1"]).default("0"),
+    // REIMB-001 D-11 DRAFT: recording a reimbursement as paid through payroll. Stays off until the
+    // owner makes PAY-003 the official payslip path (docs/domain/reimbursement.md §9).
+    REIMBURSEMENT_PAYROLL_HANDOFF_ENABLED: z.enum(["0", "1"]).default("0"),
     ORG_DIRECTORY_TOKEN_ISSUER: z.preprocess(
       (value) => value === "" ? undefined : value,
       z.string().url().optional(),

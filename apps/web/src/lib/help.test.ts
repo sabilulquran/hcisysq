@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { articleQuery, contactHref, helpTopics, isUnreviewedSeed, paragraphs, topicHref, topicLabel } from "@/lib/help";
 
 describe("HELP-001 client helpers", () => {
-  it("keeps the thirteen topics in the API reading order (D-01)", () => {
+  it("keeps the fourteen topics in the API reading order (D-01)", () => {
     expect(helpTopics.map((entry) => entry.topic)).toEqual([
       "GENERAL", "ATTENDANCE", "OVERTIME", "LEAVE", "PAYSLIP", "TRIPS", "CALENDAR",
-      "TRAINING", "LOANS", "ASSETS", "DOCUMENTS", "PERFORMANCE", "APPROVALS",
+      "TRAINING", "LOANS", "REIMBURSEMENT", "ASSETS", "DOCUMENTS", "PERFORMANCE", "APPROVALS",
     ]);
     expect(topicLabel("ASSETS")).toBe("Asset Saya");
     expect(topicHref("LOANS")).toBe("/app/loans");
+    expect(topicHref("REIMBURSEMENT")).toBe("/app/reimbursements");
     expect(topicHref("GENERAL")).toBeNull();
   });
 

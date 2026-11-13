@@ -30,7 +30,10 @@ describe("admin module catalog", () => {
     expect(getAdminService("communications")?.stage).toBe("available");
     expect(getAdminService("communications")?.href).toBe("/admin/announcements");
     expect(getAdminService("communications")?.featureIds).toContain("NOTIF-003");
-    // TRIP-001 Package 1 ships the register and the surat tugas; costs stay out (REIMB-001).
+    // REIMB-001 Package 1: the register, verification and payment outside payroll.
+    expect(getAdminService("reimbursement")?.stage).toBe("available");
+    expect(getAdminService("reimbursement")?.href).toBe("/admin/reimbursements");
+    // TRIP-001 Package 1 ships the register and the surat tugas; trip costs go through REIMB-001.
     expect(getAdminService("business-travel")?.stage).toBe("available");
     expect(getAdminService("business-travel")?.href).toBe("/admin/trips");
     // ATT-015 Package 1: tugas luar, WFH/WFA and schedule change register.

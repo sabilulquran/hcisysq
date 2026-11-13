@@ -97,8 +97,8 @@ export const employeeServices: EmployeeServiceDefinition[] = [
   },
   {
     key: "reimbursement", label: "Reimbursement",
-    description: "Pengajuan dan persetujuan penggantian biaya.",
-    featureIds: ["REIMB-001"], stage: "deferred", category: "finance", href: "/app/services/reimbursement",
+    description: "Klaim penggantian biaya kerja dengan bukti, dibayar Keuangan di luar slip gaji.",
+    featureIds: ["REIMB-001"], stage: "available", category: "finance", href: "/app/reimbursements",
   },
   {
     key: "loan", label: "Pinjaman",

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ArrangementApprovalsSection } from "@/components/arrangements/ArrangementApprovalsSection";
 import { ProposeAlternativeDates } from "@/components/leave/ProposeAlternativeDates";
+import { ReimbursementApprovalsSection } from "@/components/reimbursements/ReimbursementApprovalsSection";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -384,6 +385,7 @@ export function EmployeeApprovalsPage() {
             onPageChange={(next) => { setLoanPage(next); void loadLoans(next); }} />
         ) : null}
       </section>
+      <ReimbursementApprovalsSection />
     </AppShell>
   );
 }

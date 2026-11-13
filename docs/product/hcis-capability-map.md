@@ -85,6 +85,8 @@ See `docs/domain/payroll-engine-discovery.md`.
 - Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. Results do not feed tunjangan kinerja until the PAY-003 link (spec §11).
 - Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. Evaluation and online modules remain discovery.
 
+- Employee awards — REWARD-001. Monthly awards whose candidates come only from the Al-Qur'an tilawah scoreboard (SQ Hub module, ADR-0013); the Kepala HCM decides, publication sends a notification, an announcement and a certificate. Specified in `docs/domain/rewards.md`; not an input to PERF-001 and not a payroll component. Staff open the Al-Qur'an module itself from an HCIS menu; reading data stays in SQ Hub.
+
 TRAIN-001 stays inside HCIS (Product Owner decision, 2026-10-20). Discovery direction, including training evaluation and server-hosted video, is in `docs/domain/training-lms-discovery.md`.
 
 ### 5. Employment administration and employee services

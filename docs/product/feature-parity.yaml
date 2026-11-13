@@ -1020,6 +1020,24 @@ features:
       - docs/api/help-center.openapi.yaml
       - docs/product/legacy-parity-audit-2026-11-02.md
 
+  - id: REWARD-001
+    module: performance
+    name: Employee awards from the Al-Qur'an tilawah scoreboard
+    legacy_evidence: >-
+      None. New capability decided by the Product Owner on 2026-11-13 together with the SQ Hub
+      Al-Qur'an module (ADR-0013, QURAN-001).
+    target_status: specified
+    priority: later
+    risk: medium
+    planning_note: >-
+      Monthly award rounds whose candidates come only from the Al-Qur'an monthly scoreboard
+      snapshot (top 3 foundation-wide, top 1 per unit); the Kepala HCM decides, publication sends
+      notifications, an announcement and a certificate. Not an input to PERF-001 and not a payroll
+      component. Implementation waits for Al-Qur'an R1 (QURAN-IMPL-001). Listed under the
+      performance module only as the HR area it belongs to; it is not part of PERF-001.
+    docs:
+      - docs/domain/rewards.md
+
   - id: MIG-001
     module: migration
     name: Repeatable legacy data migration

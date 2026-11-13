@@ -5,4 +5,5 @@ export * from "./resolver.js";
 export * from "./planner.js";
 export * from "./baseline.js";
 export * from "./decision-documents.js";
+export * from "./document-links.js";
 export * from "./projection.js";

@@ -303,11 +303,19 @@ features:
     module: employee
     name: "Employment basis documents: Perjanjian Kerja and Surat Keputusan"
     legacy_evidence: benchmark HRIS links contracts/career actions to SK; parent direction accepted 2026-09-22 without an ID
-    target_status: implementing
+    target_status: implemented
     priority: post-attendance-simplification
     risk: medium
     planning_note: >-
-      Package 1 spec accepted 2026-10-16. Perjanjian Kerja and Surat Keputusan are separate kinds. Since 2026-11-11 each register document carries one current scanned file through the EMP-011 employee-document storage boundary (docs/domain/employee-documents.md D-01, D-16): attaching needs employment.manage, replacing the file of a locked document also employment.correct and a reason, reading employment.read, every read audited. The register (S4) is implemented: list, record, edit while unlinked, audited correction once linked, and the admin screen Kepegawaian -> Perjanjian Kerja & SK. Linking documents to employment actions arrives with S5/S6; the register follows the same rollout gate and is unavailable while the mode is OFF.
+      Package 1 spec accepted 2026-10-16; implemented 2026-11-13. Perjanjian Kerja and Surat
+      Keputusan are separate kinds in one register (S4): list, record, edit while unlinked,
+      audited correction once linked (EMP-010-B). Documents are linked to employment actions
+      when the action is recorded (S5/S6, required kind enforced, PK/term match, EMP-010-C) and
+      afterwards to an action already recorded (S4b, POST
+      /admin/employment-actions/{actionId}/documents); every link is audited. The scanned file
+      of a document is stored through EMP-011 D-16. Like every employment screen it follows the
+      EMP-005 rollout gate: unavailable while production mode is OFF, linking only in
+      AUTHORITATIVE.
     docs:
       - docs/domain/employment-administration.md
       - docs/domain/employment-administration-package1.md

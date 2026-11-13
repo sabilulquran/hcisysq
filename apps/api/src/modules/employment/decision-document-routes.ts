@@ -16,7 +16,14 @@ import { z } from "zod";
 import type { ApiConfig } from "../../config/env.js";
 import type { EmploymentPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
+import { STATUS_BY_CODE } from "./action-routes.js";
+import { loadDecisionDocumentRefs } from "./infrastructure/postgres-action-store.js";
 import {
+  DEFAULT_EMPLOYMENT_POLICY,
+  EmploymentDomainError,
+  planDocumentLink,
+  type LinkableAction,
   DECISION_DOCUMENT_KINDS,
   PK_CATEGORIES,
   PK_TYPES,
@@ -86,6 +93,8 @@ const listQuery = z.object({
 });
 
 const documentParams = z.object({ documentId: z.string().uuid() });
+const actionParams = z.object({ actionId: z.string().uuid() });
+const linkBody = z.object({ documentIds: z.array(z.string().uuid()).min(1).max(10) }).strict();
 
 const fileBody = z.object({
   contentType: z.enum(FILE_CONTENT_TYPES),
@@ -498,4 +507,118 @@ export async function registerDecisionDocumentRoutes(
   app.post("/admin/decision-documents/:documentId/corrections", (request, reply) =>
     writeDocument(request, reply, "correction"),
   );
+
+  /**
+   * EMP-010-A: link PK/SK to an action that is already recorded, for the document that
+   * arrives after the action (or the one behind the baseline data). Same gate as recording
+   * an action: employment.manage, mode AUTHORITATIVE, never one's own record, never a record
+   * outside HCIS management. Linking locks the document (D-09) and is audited per document.
+   */
+  app.post("/admin/employment-actions/:actionId/documents", async (request, reply) => {
+    const principal = await authenticate(request, reply, "employment.manage");
+    if (!principal) return;
+    const params = actionParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Tindakan tidak valid." });
+    }
+    const body = linkBody.safeParse(request.body);
+    if (!body.success) return invalid(reply, "Pilih satu sampai sepuluh dokumen.");
+    const { mode } = await getRolloutMode(pool);
+    if (mode !== "AUTHORITATIVE") {
+      return send(reply, 409, { code: "EMPLOYMENT_HISTORY_DISABLED", message: "Riwayat kepegawaian belum diaktifkan." });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query<{
+        id: string; employeeId: string; actionType: LinkableAction["actionType"]; state: LinkableAction["state"];
+        reasonCode: string | null; newSnapshot: LinkableAction["newSnapshot"]; outside: boolean;
+      }>(
+        `SELECT a.id, a.employee_id AS "employeeId", a.action_type AS "actionType", a.state,
+                a.reason_code AS "reasonCode", a.new_snapshot AS "newSnapshot",
+                (e.management_scope = 'OUTSIDE_HCIS') AS outside
+         FROM employment_actions a JOIN employees e ON e.id = a.employee_id AND e.removed_at IS NULL
+         WHERE a.id = $1
+         FOR UPDATE OF a`,
+        [params.data.actionId],
+      );
+      const action = found.rows[0];
+      if (!action) {
+        await client.query("ROLLBACK");
+        return send(reply, 404, { code: "EMPLOYMENT_ACTION_NOT_FOUND", message: "Tindakan tidak ditemukan." });
+      }
+      if (action.outside) {
+        await client.query("ROLLBACK");
+        return send(reply, 409, { code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
+      }
+      const actor = await client.query<{ employeeId: string }>(
+        `SELECT employee_id AS "employeeId" FROM accounts WHERE id = $1 AND employee_id IS NOT NULL`,
+        [principal.id],
+      );
+      if (actor.rows[0]?.employeeId === action.employeeId) {
+        await client.query("ROLLBACK");
+        return send(reply, 403, {
+          code: "EMPLOYMENT_SELF_ACTION_FORBIDDEN",
+          message: "Tindakan kepegawaian untuk diri sendiri harus dicatat oleh petugas lain.",
+        });
+      }
+
+      const requested = [...new Set(body.data.documentIds)];
+      // Lock in id order so two concurrent links cannot deadlock; a locked row stays put
+      // while it is checked and linked (the link is what makes it immutable, D-09).
+      await client.query(
+        "SELECT id FROM employment_decision_documents WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE",
+        [requested],
+      );
+      const documents = await loadDecisionDocumentRefs(client, requested);
+      if (documents.length !== requested.length) {
+        await client.query("ROLLBACK");
+        return send(reply, 404, { code: "DECISION_DOCUMENT_NOT_FOUND", message: "Dokumen dasar tidak ditemukan." });
+      }
+      const ordered = requested.map((id) => documents.find((document) => document.id === id)!);
+      const existing = await client.query<{ documentId: string }>(
+        `SELECT document_id AS "documentId" FROM employment_action_documents WHERE action_id = $1`,
+        [action.id],
+      );
+      const plan = planDocumentLink(
+        action,
+        ordered,
+        existing.rows.map((row) => row.documentId),
+        DEFAULT_EMPLOYMENT_POLICY,
+      );
+      for (const documentId of plan.link) {
+        await client.query(
+          "INSERT INTO employment_action_documents (action_id, document_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [action.id, documentId],
+        );
+        await audit(client, {
+          actorAccountId: principal.id,
+          action: "employment.decision_document.linked",
+          entityType: "employment_decision_document",
+          entityId: documentId,
+          employeeId: action.employeeId,
+          payload: { documentId, actionId: action.id, actionType: action.actionType, after: "RECORDED" },
+        });
+      }
+      await client.query("COMMIT");
+      return send(reply, plan.link.length > 0 ? 201 : 200, {
+        actionId: action.id,
+        linkedDocumentIds: plan.link,
+        alreadyLinkedDocumentIds: plan.alreadyLinked,
+      });
+    } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // A failed ROLLBACK must not hide the error that caused it.
+      }
+      if (error instanceof EmploymentDomainError) {
+        return send(reply, STATUS_BY_CODE[error.code], { code: error.code, message: error.message });
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
 }

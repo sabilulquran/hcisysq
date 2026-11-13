@@ -290,6 +290,8 @@ export function PlacementCareerPanel({
   timeline,
   actions,
   onEndAdditional,
+  onLinkDocument,
+  linkForm,
 }: {
   view: EmploymentView<EmploymentSummary>;
   timeline: EmploymentView<EmploymentTimelineItem[]>;
@@ -297,6 +299,10 @@ export function PlacementCareerPanel({
   actions?: ReactNode;
   /** S6: end one additional duty; omitted where the operator may not record. */
   onEndAdditional?: (placementId: string) => void;
+  /** EMP-010-A: link a PK/SK to a recorded action; omitted where the operator may not record. */
+  onLinkDocument?: (item: EmploymentTimelineItem) => void;
+  /** The open link form, rendered under the action it belongs to. */
+  linkForm?: { actionId: string; node: ReactNode } | null;
 }) {
   if (view.kind !== "ready") return <EmploymentStateNotice view={view} subject="data penempatan" />;
   const data = view.data;
@@ -375,6 +381,16 @@ export function PlacementCareerPanel({
                     </p>
                   ) : null}
                   {reversed ? <p className="mt-0.5 text-xs text-muted-foreground">Dibatalkan</p> : null}
+                  {onLinkDocument && !reversed && item.actionType !== "REVERSAL" && linkForm?.actionId !== item.id ? (
+                    <button
+                      type="button"
+                      onClick={() => onLinkDocument(item)}
+                      className="mt-1 text-xs font-bold text-brand-primary"
+                    >
+                      Tautkan dokumen
+                    </button>
+                  ) : null}
+                  {linkForm?.actionId === item.id ? linkForm.node : null}
                 </li>
               );
             })}

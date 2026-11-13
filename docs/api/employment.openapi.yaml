@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: HCIS Employment Administration (EMP-005 / EMP-006 / EMP-010)
-  version: 0.10.0
+  version: 0.11.0
   description: |
     Package 1 steps S2, S4, S5, S5A and S6 (docs/domain/employment-administration-package1.md).
     Read API, SHADOW consistency report, rollout mode, the EMP-010 register of
@@ -313,6 +313,55 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DecisionDocument' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /admin/employment-actions/{actionId}/documents:
+    post:
+      tags: [Employment]
+      operationId: linkDecisionDocumentsToAction
+      summary: Link PK/SK to an employment action that is already recorded (EMP-010-A)
+      description: |
+        Requires employment.manage and rollout mode AUTHORITATIVE. Refused for one's own
+        record (EMPLOYMENT_SELF_ACTION_FORBIDDEN) and for a record outside HCIS management
+        (EMPLOYEE_OUTSIDE_HCIS_READ_ONLY). An action with a required kind (D-08) takes only that
+        kind and type, and a Perjanjian Kerja must match the recorded term (PK_TERM_MISMATCH);
+        a resignation or death takes only SK Pemberhentian; a placement any SK; the baseline any
+        SK or a PK of the same employee; a reversed action or a reversal nothing
+        (DECISION_DOCUMENT_LINK_NOT_ALLOWED). Linking locks the document (D-09). Each new link
+        is audited as employment.decision_document.linked with ids only. A document already
+        linked is reported and not written again (200).
+      parameters:
+        - { name: actionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [documentIds]
+              properties:
+                documentIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { type: string, format: uuid }
+      responses:
+        '201':
+          description: At least one document linked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentLinkResult' }
+        '200':
+          description: Every document was already linked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentLinkResult' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
@@ -1366,6 +1415,13 @@ components:
               message: { type: string }
               field: { type: string, description: Set by DECISION_DOCUMENT_INVALID. }
   schemas:
+    DocumentLinkResult:
+      type: object
+      required: [actionId, linkedDocumentIds, alreadyLinkedDocumentIds]
+      properties:
+        actionId: { type: string, format: uuid }
+        linkedDocumentIds: { type: array, items: { type: string, format: uuid } }
+        alreadyLinkedDocumentIds: { type: array, items: { type: string, format: uuid } }
     DataChangeTarget:
       type: string
       enum: [ALAMAT, KONTAK, KELUARGA, PENDIDIKAN, KEAHLIAN]

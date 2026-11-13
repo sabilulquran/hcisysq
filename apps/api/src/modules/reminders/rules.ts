@@ -4,6 +4,7 @@
 
 import type { Pool, PoolClient } from "pg";
 
+import { DOCUMENT_TYPE_RULES, type DocumentType } from "../employee-documents/domain.js";
 import { getRolloutMode } from "../employment/infrastructure/postgres-employment-store.js";
 import { daysBetween, dueLabel, formatJakartaDate, thresholdReached } from "./domain.js";
 
@@ -239,6 +240,46 @@ export const REMINDER_RULES: readonly ReminderRule[] = [
         href: `/admin/employees/${term.employeeId}`,
         whatsappText: `HCIS: ada ${TERM_LABEL[term.category]!.toLowerCase()} pegawai yang berakhir ${dueLabel(daysLeft)}. Rinciannya di Notifikasi HCIS.`,
       })));
+    },
+  },
+  {
+    key: "employee.document_expiring",
+    label: "Dokumen pribadi Anda akan berakhir",
+    description: "Pengingat H-30 dan H-7 sebelum dokumen di Data Saya → Dokumen Pribadi (SIM, paspor, SKCK, surat sehat, dan lainnya) berakhir.",
+    defaultWhatsApp: true,
+    fireHour: 7,
+    async generate(db, { today }) {
+      // EMP-011 D-15: the documents the HC worklist shows, i.e. verified documents of active
+      // employees HCIS manages. A replaced document is no longer VERIFIED, so it stops reminding.
+      const result = await db.query<{
+        id: string; documentType: DocumentType; title: string | null; expiresOn: string; accountId: string; employeeId: string;
+      }>(
+        `SELECT doc.id, doc.document_type AS "documentType", doc.title, to_char(doc.expires_on, 'YYYY-MM-DD') AS "expiresOn",
+                recipient_account.id AS "accountId", recipient.id AS "employeeId"
+           FROM employee_documents doc
+           ${employeeAccountJoin("doc.employee_id")}
+          WHERE doc.status = 'VERIFIED' AND doc.expires_on IS NOT NULL
+            AND doc.expires_on BETWEEN $1::date AND $1::date + 30
+            AND recipient.management_scope = 'MANAGED'
+          ORDER BY doc.id`,
+        [today],
+      );
+      return result.rows.flatMap((row) => {
+        const daysLeft = daysBetween(today, row.expiresOn);
+        const threshold = thresholdReached(daysLeft, [30, 7]);
+        if (threshold === null) return [];
+        const label = DOCUMENT_TYPE_RULES[row.documentType]?.label ?? "Dokumen";
+        return [{
+          occurrenceKey: `${row.id}:${row.expiresOn}:${threshold}`,
+          accountId: row.accountId,
+          employeeId: row.employeeId,
+          title: `${label}${row.title ? ` ${row.title}` : ""} berakhir ${dueLabel(daysLeft)}`,
+          body: `Masa berlaku berakhir ${formatJakartaDate(row.expiresOn)}. Perpanjang lalu unggah dokumen barunya lewat Data Saya → Dokumen Pribadi.`,
+          href: "/app/my-data",
+          // D-07: the document kind stays in the in-app reminder only.
+          whatsappText: `HCIS: salah satu dokumen pribadi Anda berakhir ${dueLabel(daysLeft)}. Rinciannya di Notifikasi HCIS.`,
+        }];
+      });
     },
   },
   {

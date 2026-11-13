@@ -24,14 +24,14 @@ General chat, CRM, accounting/general ledger, generic project management, and ge
 - Daily attendance factual records — ATT-001.
 - Attendance clarification and permission — ATT-002.
 - Work schedules, shifts, holidays, and employee schedule visibility — ATT-003.
-- Fingerprint/device operations — ATT-005.
+- Fingerprint/device operations — ATT-005 (implemented; physical verification per machine tracked in `docs/operations/adms-physical-verification-checklist.md`). ADMS operator workspace — ATT-012 (implemented).
 - Mobile clock in/out with controlled attendance evidence — ATT-006.
 - Attendance evaluation such as lateness and overtime outcomes — ATT-007.
 - Shift exchange / shift-swap workflow — ATT-008.
 
 Implementation packages that support the attendance capability family are ATT-009 (operations/reporting polish) and ATT-010 (canonical attendance convergence). These package IDs do not replace ATT-008; ATT-008 remains uniquely reserved for shift exchange.
 
-- Operational simplification of the admin/employee experience — ATT-011 (PROPOSED). Target operator mental model: **Shift -> Jadwal -> Kehadiran -> Lembur**, while backend versioning/evidence/audit remains intact.
+- Operational simplification of the admin/employee experience — ATT-011 (implemented: all packages through ATT-011-8; ATT-011-2 superseded by ATT-014). Target operator mental model: **Shift -> Jadwal -> Kehadiran -> Lembur**, while backend versioning/evidence/audit remains intact.
 
 ATT-011 should prefer bulk schedule-range operations, explicit schedule replacement/conflict preview, and one human-readable daily attendance outcome with drill-down evidence. Missing punch remains missing/incomplete; schedule time is not evidence.
 
@@ -149,9 +149,11 @@ Candidate remains distinct from Employee until the accepted hire/activation boun
 
 - Current organization/access foundation — ORG-001.
 - Dynamic organization structure and authority resolution — ORG-004.
-- Organization sites, branches, and work locations — ORG-005 (DRAFT spec `docs/domain/organization-sites-work-locations.md`; ORG-005-1 unit work location built).
-- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (ACCEPTED contract; runtime deployment gated).
-- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (PROPOSED/DISCOVERY, ADR-0005 PROPOSED).
+- Organization sites, branches, and work locations — ORG-005 (implemented v1, DRAFT spec `docs/domain/organization-sites-work-locations.md`: units and machines name a work location; mobile clock-in falls back from the shift's location to the unit's).
+- Organization Directory publishing to SQ Hub as a read-only projection/distribution boundary — ORG-006 (implemented; production export on and pulled by SQ Hub).
+- Multi-company / multi-legal-entity boundary above ORG-004 structures — ORG-007 (DEFERRED by owner direction 2026-11-11: not needed now; ADR-0005 stays PROPOSED as reference).
+- Organization structure designer UX — ORG-008 (implemented: packages ORG-008-1..12).
+- Foundation organ accounts as structural approvers — ORG-013 (implemented; effective once a workflow rollout is STRUCTURE).
 - Job classification and grade catalog, separate from structure and from payroll salary scales — ORG-011 (DRAFT/DISCOVERY, ADR-0004 PROPOSED).
 - Committees (kepanitiaan) — ORG-012. Package 1 implemented (`docs/domain/committees.md`).
 

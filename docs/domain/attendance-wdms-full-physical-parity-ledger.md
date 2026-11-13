@@ -1,6 +1,6 @@
 # ATT-005 Full WDMS Physical Parity Ledger
 
-Status ATT-005: **IMPLEMENTING** — software complete and deployed; 7 physical rows verified; the rest wait for an owner-approved site session.
+Status ATT-005: **IMPLEMENTED** (software complete and deployed; parity status since 2026-11-13) — 7 physical rows verified; the rest wait for an owner-approved site session or owner decision (`docs/operations/adms-physical-verification-checklist.md`). **DRAFT:** "closed" in the closure rule below means parity status `verified`; `implemented` records software completion only.
 
 Evidence review 2026-11-11: read-only aggregate queries on production (`attendance_adms_physical_capabilities`, `attendance_adms_physical_operations`, `attendance_adms_commands`, `attendance_adms_request_journal`, `attendance_adms_events`, `attendance_adms_devices`) and the API logs. No personal data, PIN or biometric material was read out. Production holds exactly three per-device capability rows, all `verified` on `SPK7245000707` (`time_sync`, `duplicate_punch_period`, `work_code_delivery`), backed by 5 physical operations and 7 device commands, all `succeeded` with return code 0. No other physical operation was ever run.
 

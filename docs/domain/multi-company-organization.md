@@ -1,6 +1,6 @@
 # Multi-Company / Multi-Legal-Entity Organization
 
-**Status:** PROPOSED / DISCOVERY  
+**Status:** DEFERRED (owner direction relayed 2026-11-11: multi-company is not needed now). Kept as reference; no implementation planned until a new owner decision.  
 **Specification:** ORG-007  
 **Proposed:** 2026-09-22  
 **Related:** ORG-001, ORG-004, ORG-005, ORG-006, ORG-011, EMP-005, EMP-006, AUTH-010  

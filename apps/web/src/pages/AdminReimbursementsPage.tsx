@@ -2,10 +2,11 @@
 // rejection and payment. Spec: docs/domain/reimbursement.md. The API authorizes every call and
 // computes every total; this page only reads what Finance types as whole rupiah.
 
-import { Download, Loader2, X } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { ReimbursementDetailPanel } from "@/components/reimbursements/ReimbursementDetailPanel";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -66,7 +67,10 @@ export function AdminReimbursementsPage() {
   const [from, setFrom] = useState(() => monthStart(todayInJakarta()));
   const [to, setTo] = useState(() => todayInJakarta());
   const [report, setReport] = useState<ClaimSummaryReport | null>(null);
+  // The open claim lives in the URL (`?klaim=<id>`) next to the page and filters.
+  const [claimId, openClaim, closeClaim] = useDialogParam("klaim");
   const [selected, setSelected] = useState<ClaimDetail | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -112,7 +116,7 @@ export function AdminReimbursementsPage() {
     params.set("page", String(page));
     params.set("status", status);
     if (category) params.set("category", category); else params.delete("category");
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status, category, employee?.id]);
   useEffect(() => {
@@ -130,14 +134,21 @@ export function AdminReimbursementsPage() {
     try {
       const claim = await getAdminClaim(id);
       setSelected(claim);
+      setOpenError(null);
       setApprovedAmounts(Object.fromEntries(claim.items.map((item) => [item.id, String(item.amount)])));
       setVerificationNote("");
       setPayment(emptyPayment());
       setPaymentKey(crypto.randomUUID());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Klaim tidak dapat dibuka.");
+      setOpenError(cause instanceof Error ? cause.message : "Klaim tidak dapat dibuka.");
     }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setOpenError(null);
+    if (claimId) void open(claimId);
+  }, [claimId]);
 
   const run = async (action: () => Promise<string>, claim: ClaimDetail) => {
     setBusy(true);
@@ -253,7 +264,7 @@ export function AdminReimbursementsPage() {
             )}
           </section>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div>
             <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
               <div className="grid gap-3 p-5 sm:grid-cols-2">
                 <label className="text-xs font-semibold text-muted-foreground">
@@ -284,8 +295,8 @@ export function AdminReimbursementsPage() {
                 <ul className="divide-y divide-border/70 border-t border-border/70">
                   {items.map((claim) => (
                     <li key={claim.id}>
-                      <button type="button" onClick={() => void open(claim.id)}
-                        className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === claim.id ? "bg-muted/60" : ""}`}>
+                      <button type="button" onClick={() => { setNotice(null); openClaim(claim.id); }}
+                        className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${claimId === claim.id ? "bg-muted/60" : ""}`}>
                         <span className="block font-semibold text-brand-heading">{claim.employeeName} · <span className="tabular-nums">{formatRupiah(claim.claimedTotal)}</span></span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {claim.employeeNumber}{claim.unitName ? ` · ${claim.unitName}` : ""} · {claim.title}
@@ -303,96 +314,92 @@ export function AdminReimbursementsPage() {
                 <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} />
               ) : null}
             </section>
-
-            <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-              {selected ? (
-                <>
-                  <div className="flex justify-end">
-                    <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <ReimbursementDetailPanel
-                    claim={selected}
-                    receiptHref={(receipt) => adminReceiptHref(selected.id, receipt.id)}
-                    itemAction={canManage && selected.status === "APPROVED" ? (itemId) => (
-                      <label className="text-xs font-semibold text-muted-foreground">Disetujui (Rp)
-                        <input inputMode="numeric" autoComplete="off" value={approvedAmounts[itemId] ?? ""} className={field}
-                          onChange={(event) => setApprovedAmounts({ ...approvedAmounts, [itemId]: event.target.value })} />
-                        {approvedAmounts[itemId] && approvedValue(itemId) === null ? (
-                          <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
-                        ) : null}
-                      </label>
-                    ) : undefined}
-                    actions={canManage ? (
-                      <div className="w-full space-y-3">
-                        {selected.status === "APPROVED" ? (
-                          <div className="rounded-2xl border border-border/70 bg-surface p-3">
-                            <p className="text-sm font-bold text-brand-heading">Verifikasi</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Periksa bukti, lalu isi nominal disetujui per baris di Rincian biaya. Bila ada yang dikurangi, tulis alasannya.
-                            </p>
-                            <label className="mt-2 block text-xs font-semibold text-muted-foreground">Catatan (wajib bila ada pengurangan)
-                              <textarea rows={2} maxLength={500} value={verificationNote} onChange={(event) => setVerificationNote(event.target.value)}
-                                className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground" />
-                            </label>
-                            <button type="button" disabled={busy || !verificationReady} onClick={() => verify(selected)}
-                              className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                              Verifikasi
-                            </button>
-                          </div>
-                        ) : null}
-                        {selected.status === "VERIFIED" ? (
-                          <div className="rounded-2xl border border-border/70 bg-surface p-3">
-                            <p className="text-sm font-bold text-brand-heading">Catat pembayaran {formatRupiah(selected.verifiedTotal ?? 0)}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">Dibayar di luar slip gaji. Nominalnya selalu total yang disetujui.</p>
-                            <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                              <label className="text-xs font-semibold text-muted-foreground">Tanggal bayar
-                                <input type="date" max={todayInJakarta()} value={payment.paidOn} className={field}
-                                  onChange={(event) => changePayment({ paidOn: event.target.value })} />
-                              </label>
-                              <label className="text-xs font-semibold text-muted-foreground">Cara
-                                <select value={payment.method} className={field}
-                                  onChange={(event) => changePayment({ method: event.target.value as "CASH" | "TRANSFER" })}>
-                                  <option value="TRANSFER">Transfer</option>
-                                  <option value="CASH">Tunai</option>
-                                </select>
-                              </label>
-                              <label className="text-xs font-semibold text-muted-foreground">No. bukti (opsional)
-                                <input maxLength={200} value={payment.reference} className={field}
-                                  onChange={(event) => changePayment({ reference: event.target.value })} />
-                              </label>
-                              <label className="text-xs font-semibold text-muted-foreground">Catatan (opsional)
-                                <input maxLength={500} value={payment.note} className={field}
-                                  onChange={(event) => changePayment({ note: event.target.value })} />
-                              </label>
-                            </div>
-                            <button type="button" disabled={busy} onClick={() => pay(selected)}
-                              className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                              Catat pembayaran
-                            </button>
-                          </div>
-                        ) : null}
-                        {selected.status === "APPROVED" || selected.status === "VERIFIED" ? (
-                          <button type="button" disabled={busy} onClick={() => reject(selected)}
-                            className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
-                            Tolak klaim
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  />
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Pilih klaim untuk melihat rincian, bukti, persetujuan, dan riwayatnya. Klaim yang sudah disetujui atasan menunggu
-                  verifikasi Keuangan.
-                </p>
-              )}
-            </section>
           </div>
         </>
       )}
+
+      {!forbidden && claimId ? (
+        <DetailDialog wide title="Detail klaim" description={selected ? `${selected.employeeName} · ${selected.title}` : undefined} onClose={closeClaim}>
+          {error ? <div role="alert" className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+          {notice ? <div role="status" className="mb-4 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+          {openError ? (
+            <p className="text-sm text-danger-ink">{openError}</p>
+          ) : selected?.id === claimId ? (
+            <ReimbursementDetailPanel
+              claim={selected}
+              receiptHref={(receipt) => adminReceiptHref(selected.id, receipt.id)}
+              itemAction={canManage && selected.status === "APPROVED" ? (itemId) => (
+                <label className="text-xs font-semibold text-muted-foreground">Disetujui (Rp)
+                  <input inputMode="numeric" autoComplete="off" value={approvedAmounts[itemId] ?? ""} className={field}
+                    onChange={(event) => setApprovedAmounts({ ...approvedAmounts, [itemId]: event.target.value })} />
+                  {approvedAmounts[itemId] && approvedValue(itemId) === null ? (
+                    <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
+                  ) : null}
+                </label>
+              ) : undefined}
+              actions={canManage ? (
+                <div className="w-full space-y-3">
+                  {selected.status === "APPROVED" ? (
+                    <div className="rounded-2xl border border-border/70 bg-surface p-3">
+                      <p className="text-sm font-bold text-brand-heading">Verifikasi</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Periksa bukti, lalu isi nominal disetujui per baris di Rincian biaya. Bila ada yang dikurangi, tulis alasannya.
+                      </p>
+                      <label className="mt-2 block text-xs font-semibold text-muted-foreground">Catatan (wajib bila ada pengurangan)
+                        <textarea rows={2} maxLength={500} value={verificationNote} onChange={(event) => setVerificationNote(event.target.value)}
+                          className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground" />
+                      </label>
+                      <button type="button" disabled={busy || !verificationReady} onClick={() => verify(selected)}
+                        className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                        Verifikasi
+                      </button>
+                    </div>
+                  ) : null}
+                  {selected.status === "VERIFIED" ? (
+                    <div className="rounded-2xl border border-border/70 bg-surface p-3">
+                      <p className="text-sm font-bold text-brand-heading">Catat pembayaran {formatRupiah(selected.verifiedTotal ?? 0)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Dibayar di luar slip gaji. Nominalnya selalu total yang disetujui.</p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs font-semibold text-muted-foreground">Tanggal bayar
+                          <input type="date" max={todayInJakarta()} value={payment.paidOn} className={field}
+                            onChange={(event) => changePayment({ paidOn: event.target.value })} />
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Cara
+                          <select value={payment.method} className={field}
+                            onChange={(event) => changePayment({ method: event.target.value as "CASH" | "TRANSFER" })}>
+                            <option value="TRANSFER">Transfer</option>
+                            <option value="CASH">Tunai</option>
+                          </select>
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">No. bukti (opsional)
+                          <input maxLength={200} value={payment.reference} className={field}
+                            onChange={(event) => changePayment({ reference: event.target.value })} />
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Catatan (opsional)
+                          <input maxLength={500} value={payment.note} className={field}
+                            onChange={(event) => changePayment({ note: event.target.value })} />
+                        </label>
+                      </div>
+                      <button type="button" disabled={busy} onClick={() => pay(selected)}
+                        className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                        Catat pembayaran
+                      </button>
+                    </div>
+                  ) : null}
+                  {selected.status === "APPROVED" || selected.status === "VERIFIED" ? (
+                    <button type="button" disabled={busy} onClick={() => reject(selected)}
+                      className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
+                      Tolak klaim
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat klaim...</div>
+          )}
+        </DetailDialog>
+      ) : null}
     </AdminShell>
   );
 }

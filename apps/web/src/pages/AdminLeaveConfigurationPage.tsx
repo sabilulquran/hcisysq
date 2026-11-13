@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
@@ -31,7 +32,10 @@ export function AdminLeaveConfigurationPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  // "Cek chain" opens the employee's preview as a pop-up kept in the URL (`?pratinjau=<employeeId>`).
+  const [previewEmployeeId, openPreview, closePreview] = useDialogParam("pratinjau");
   const [preview, setPreview] = useState<LeaveApprovalPreviewResponse | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
@@ -136,21 +140,35 @@ export function AdminLeaveConfigurationPage() {
     }
   };
 
-  const loadPreview = async (employeeId: string) => {
-    setPreviewLoading(true);
-    setError(null);
-    try {
-      setPreview(await getLeaveApprovalPreview(employeeId));
-    } catch (cause) {
-      setError(
-        cause instanceof AdminApiError
-          ? cause.message
-          : "Preview approval tidak dapat dimuat.",
-      );
-    } finally {
-      setPreviewLoading(false);
+  useEffect(() => {
+    if (!previewEmployeeId) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
     }
-  };
+    let active = true;
+    setPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    void getLeaveApprovalPreview(previewEmployeeId)
+      .then((result) => {
+        if (active) setPreview(result);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setPreviewError(
+          cause instanceof AdminApiError
+            ? cause.message
+            : "Preview approval tidak dapat dimuat.",
+        );
+      })
+      .finally(() => {
+        if (active) setPreviewLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [previewEmployeeId]);
 
   const employeeName = (employeeId: string) =>
     data?.employees.find((employee) => employee.id === employeeId)?.fullName ?? employeeId;
@@ -341,7 +359,7 @@ export function AdminLeaveConfigurationPage() {
                     <button
                       type="button"
                       disabled={previewLoading}
-                      onClick={() => void loadPreview(employee.id)}
+                      onClick={() => openPreview(employee.id)}
                       className="inline-flex h-9 items-center rounded-xl border border-border bg-surface-raised px-3 text-xs font-semibold hover:bg-muted/60 disabled:opacity-60"
                     >
                       Cek chain
@@ -354,72 +372,85 @@ export function AdminLeaveConfigurationPage() {
         </div>
       </section>
 
-      {preview ? (
-        <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-          <div className="flex items-center gap-2">
-            {preview.warnings.length === 0 ? (
-              <CheckCircle2 className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-            ) : (
-              <AlertTriangle className="h-5 w-5 text-warning-ink" aria-hidden="true" />
-            )}
-            <h2 className="text-base font-bold text-brand-heading">Preview — {preview.employee.fullName}</h2>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl bg-surface p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Approval Cuti Tahunan</p>
-              <div className="mt-3 space-y-2 text-sm">
-                {preview.approvalChain.length ? (
-                  preview.approvalChain.map((step, index) => (
-                    <div key={step.employeeId} className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-primary-pale text-xs font-bold text-brand-primary-deep">{index + 1}</span>
-                      <span className="font-semibold">{employeeName(step.employeeId)}</span>
-                      <span className="text-xs text-muted-foreground">{step.sources.join(" + ")}</span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground">Chain belum dapat dibentuk.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-surface p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Hak dan ketersediaan</p>
-              {preview.annualLeave ? (
-                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Hak tahunan</p>
-                    <p className="mt-1 font-bold text-brand-heading">{preview.annualLeave.annualEntitlementDays} hari / tahun</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Tersedia sekarang</p>
-                    <p className="mt-1 font-bold text-brand-heading">{preview.annualLeave.availableNowDays} hari</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Eligible sejak</p>
-                    <p className="mt-1 font-semibold">{preview.annualLeave.eligibleFrom}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Periode saat ini</p>
-                    <p className="mt-1 font-semibold">{preview.annualLeave.currentPeriodKey}</p>
-                  </div>
-                </div>
+      {previewEmployeeId ? (
+        <DetailDialog
+          title={preview ? `Preview — ${preview.employee.fullName}` : "Preview approval cuti"}
+          description={preview ? (
+            <span className="inline-flex items-center gap-1.5">
+              {preview.warnings.length === 0 ? (
+                <CheckCircle2 className="h-4 w-4 text-brand-primary-deep" aria-hidden="true" />
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">Tanggal mulai kerja belum tersedia.</p>
+                <AlertTriangle className="h-4 w-4 text-warning-ink" aria-hidden="true" />
               )}
-            </div>
-          </div>
-
-          {preview.warnings.length ? (
-            <div className="mt-4 space-y-2">
-              {preview.warnings.map((warning) => (
-                <div key={warning.code} className="rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-warning-ink">
-                  <span className="font-semibold">{warning.code}</span> — {warning.message}
+              {preview.warnings.length === 0 ? "Tanpa peringatan." : `${preview.warnings.length} peringatan.`}
+            </span>
+          ) : undefined}
+          onClose={closePreview}
+          wide
+        >
+          {previewError ? (
+            <div className="rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{previewError}</div>
+          ) : !preview || previewLoading ? (
+            <p className="text-sm text-muted-foreground">Memuat preview…</p>
+          ) : (
+            <>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl bg-surface p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Approval Cuti Tahunan</p>
+                  <div className="mt-3 space-y-2 text-sm">
+                    {preview.approvalChain.length ? (
+                      preview.approvalChain.map((step, index) => (
+                        <div key={step.employeeId} className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-primary-pale text-xs font-bold text-brand-primary-deep">{index + 1}</span>
+                          <span className="font-semibold">{employeeName(step.employeeId)}</span>
+                          <span className="text-xs text-muted-foreground">{step.sources.join(" + ")}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">Chain belum dapat dibentuk.</p>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : null}
-        </section>
+
+                <div className="rounded-xl bg-surface p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Hak dan ketersediaan</p>
+                  {preview.annualLeave ? (
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Hak tahunan</p>
+                        <p className="mt-1 font-bold text-brand-heading">{preview.annualLeave.annualEntitlementDays} hari / tahun</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Tersedia sekarang</p>
+                        <p className="mt-1 font-bold text-brand-heading">{preview.annualLeave.availableNowDays} hari</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Eligible sejak</p>
+                        <p className="mt-1 font-semibold">{preview.annualLeave.eligibleFrom}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Periode saat ini</p>
+                        <p className="mt-1 font-semibold">{preview.annualLeave.currentPeriodKey}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">Tanggal mulai kerja belum tersedia.</p>
+                  )}
+                </div>
+              </div>
+
+              {preview.warnings.length ? (
+                <div className="mt-4 space-y-2">
+                  {preview.warnings.map((warning) => (
+                    <div key={warning.code} className="rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-warning-ink">
+                      <span className="font-semibold">{warning.code}</span> — {warning.message}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </DetailDialog>
       ) : null}
     </AdminShell>
   );

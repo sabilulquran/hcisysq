@@ -163,7 +163,7 @@ Eka   (S-051)  Humas                 Staf                 —                   
 ```
 
 - Kolom tambahan saat ada perbandingan: **Atasan di data lama** dan penanda "berbeda".
-- Klik baris → panel **Kenapa atasannya ini?** dalam kalimat:
+- Klik baris → pop-up **Kenapa atasannya ini?** (`?pegawai=<employeeId>`, di samping `tab`/`draftId`/`effectiveDate`; daftar tidak bergeser) dalam kalimat:
 
 ```text
 Ahmad adalah anggota SDIT › Kurikulum.

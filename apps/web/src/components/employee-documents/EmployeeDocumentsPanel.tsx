@@ -5,6 +5,7 @@
 import { Download, FileText, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { DocumentForm } from "@/components/employee-documents/DocumentForm";
 import { formatDate } from "@/lib/employment";
@@ -38,7 +39,8 @@ export function EmployeeDocumentsPanel({ employeeId, canManage }: { employeeId: 
   const [view, setView] = useState<View>({ kind: "loading" });
   const [page, setPage] = useState(1);
   const [history, setHistory] = useState(false);
-  const [form, setForm] = useState<{ mode: "hc-upload" } | { mode: "hc-edit"; document: EmployeeDocument } | null>(null);
+  // "Unggah dokumen" and "Ubah data" open as a pop-up kept in the URL: `?berkas=baru` or `?berkas=<documentId>`.
+  const [formParam, openForm, closeForm] = useDialogParam("berkas");
   const [decision, setDecision] = useState<{ action: "reject" | "remove"; document: EmployeeDocument } | null>(null);
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -78,6 +80,12 @@ export function EmployeeDocumentsPanel({ employeeId, canManage }: { employeeId: 
 
   const { data } = view;
   const writable = canManage && data.employee.managementScope === "MANAGED";
+  const editedDocument = formParam && formParam !== "baru" ? data.items.find((document) => document.id === formParam) ?? null : null;
+  const form: { mode: "hc-upload" } | { mode: "hc-edit"; document: EmployeeDocument } | null = formParam === "baru"
+    ? { mode: "hc-upload" }
+    : editedDocument && (editedDocument.status === "PENDING_REVIEW" || editedDocument.status === "VERIFIED")
+      ? { mode: "hc-edit", document: editedDocument }
+      : null;
   return (
     <section aria-label="Dokumen pegawai" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -89,8 +97,8 @@ export function EmployeeDocumentsPanel({ employeeId, canManage }: { employeeId: 
             <input type="checkbox" checked={history} onChange={(event) => { setPage(1); setHistory(event.target.checked); }} />
             Tampilkan riwayat
           </label>
-          {writable && !form ? (
-            <button type="button" className={primaryButton} onClick={() => setForm({ mode: "hc-upload" })}>
+          {writable ? (
+            <button type="button" className={primaryButton} onClick={() => openForm("baru")}>
               <Upload className="h-4 w-4" aria-hidden="true" /> Unggah dokumen
             </button>
           ) : null}
@@ -100,25 +108,37 @@ export function EmployeeDocumentsPanel({ employeeId, canManage }: { employeeId: 
       {notice ? <p role="status" className="rounded-xl bg-success-soft px-3 py-2 text-sm text-success-ink">{notice}</p> : null}
       {error ? <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
 
-      {form ? (
-        <DocumentForm
-          mode={form.mode}
-          types={data.types}
-          replaceable={data.items}
-          {...(form.mode === "hc-edit" ? { initial: form.document } : {})}
-          onCancel={() => setForm(null)}
-          onSubmit={async (draft, file, clearNumber) => {
-            if (form.mode === "hc-edit") {
-              await updateEmployeeDocument(form.document.id, draft, clearNumber);
-              setNotice("Data dokumen diperbarui.");
-            } else {
-              await uploadEmployeeDocument(employeeId, draft, file!);
-              setNotice("Dokumen diunggah dan terverifikasi.");
-            }
-            setForm(null);
-            load();
-          }}
-        />
+
+      {writable && formParam ? (
+        <DetailDialog
+          title={form?.mode === "hc-edit" ? "Ubah data dokumen" : "Unggah dokumen"}
+          description={form?.mode === "hc-edit" ? form.document.typeLabel : undefined}
+          onClose={closeForm}
+        >
+          {form ? (
+            <DocumentForm
+              key={formParam}
+              mode={form.mode}
+              types={data.types}
+              replaceable={data.items}
+              {...(form.mode === "hc-edit" ? { initial: form.document } : {})}
+              onCancel={closeForm}
+              onSubmit={async (draft, file, clearNumber) => {
+                if (form.mode === "hc-edit") {
+                  await updateEmployeeDocument(form.document.id, draft, clearNumber);
+                  setNotice("Data dokumen diperbarui.");
+                } else {
+                  await uploadEmployeeDocument(employeeId, draft, file!);
+                  setNotice("Dokumen diunggah dan terverifikasi.");
+                }
+                closeForm();
+                load();
+              }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Dokumen ini tidak ada di daftar yang ditampilkan atau datanya tidak dapat diubah lagi.</p>
+          )}
+        </DetailDialog>
       ) : null}
 
       {decision ? (
@@ -192,7 +212,7 @@ export function EmployeeDocumentsPanel({ employeeId, canManage }: { employeeId: 
                     </>
                   ) : null}
                   {writable && (document.status === "PENDING_REVIEW" || document.status === "VERIFIED") ? (
-                    <button type="button" className={quietButton} onClick={() => setForm({ mode: "hc-edit", document })}>Ubah data</button>
+                    <button type="button" className={quietButton} onClick={() => openForm(document.id)}>Ubah data</button>
                   ) : null}
                   {writable && (document.status === "VERIFIED" || document.status === "REPLACED") ? (
                     <button type="button" className={quietButton} onClick={() => setDecision({ action: "remove", document })}>Hapus berkas</button>

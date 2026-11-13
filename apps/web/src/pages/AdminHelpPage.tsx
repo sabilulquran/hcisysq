@@ -4,6 +4,7 @@
 import { History, Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
@@ -95,12 +96,10 @@ function ArticleEditor({ initial, busy, onCancel, onSave }: {
   onSave: (state: EditorState) => void;
 }) {
   const [state, setState] = useState(initial);
-  useEffect(() => setState(initial), [initial]);
   const set = <K extends keyof EditorState>(key: K, value: EditorState[K]) => setState((current) => ({ ...current, [key]: value }));
   return (
-    <form className={cardClass} onSubmit={(event) => { event.preventDefault(); onSave(state); }}>
-      <h2 className="text-sm font-bold text-brand-heading">{state.id ? "Ubah artikel" : "Artikel baru"}</h2>
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+    <form onSubmit={(event) => { event.preventDefault(); onSave(state); }}>
+      <div className="grid gap-4 sm:grid-cols-3">
         <label className="text-sm font-semibold text-brand-heading">
           Jenis
           <select value={state.kind} onChange={(event) => set("kind", event.target.value as HelpKind)} className={inputClass}>
@@ -152,7 +151,7 @@ function ArticleEditor({ initial, busy, onCancel, onSave }: {
   );
 }
 
-function RevisionPanel({ article, onClose }: { article: AdminHelpArticle; onClose: () => void }) {
+function RevisionPanel({ article }: { article: AdminHelpArticle }) {
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<HelpRevision[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -166,14 +165,10 @@ function RevisionPanel({ article, onClose }: { article: AdminHelpArticle; onClos
     return () => { active = false; };
   }, [article.id, page]);
   return (
-    <section className={cardClass}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-brand-heading">Riwayat revisi: {article.title}</h2>
-        <button type="button" onClick={onClose} className={secondaryButton}>Tutup</button>
-      </div>
-      {error ? <p className="mt-3 text-sm text-danger-ink">{error}</p> : null}
-      {!pagination && !error ? <p className="mt-3 text-sm text-muted-foreground">Memuat revisi...</p> : null}
-      <ul className="mt-3 divide-y divide-border/70">
+    <section>
+      {error ? <p className="text-sm text-danger-ink">{error}</p> : null}
+      {!pagination && !error ? <p className="text-sm text-muted-foreground">Memuat revisi...</p> : null}
+      <ul className="divide-y divide-border/70">
         {items.map((revision) => (
           <li key={revision.id} className="py-3">
             <button type="button" onClick={() => setOpenVersion(openVersion === revision.version ? null : revision.version)}
@@ -213,8 +208,18 @@ function ArticlesTab() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [editor, setEditor] = useState<EditorState | null>(null);
-  const [revisionsOf, setRevisionsOf] = useState<AdminHelpArticle | null>(null);
+  // The article editor and the revision history open as pop-ups kept in the URL:
+  // `?artikel=baru` or `?artikel=<id>`, and `?revisi=<id>`.
+  const [editorParam, openEditor, closeEditor] = useDialogParam("artikel");
+  const [revisionsParam, openRevisions, closeRevisions] = useDialogParam("revisi");
+  const editedArticle = editorParam && editorParam !== "baru" ? items.find((article) => article.id === editorParam) ?? null : null;
+  const editor: EditorState | null = editorParam === "baru"
+    ? { ...emptyEditor }
+    : editedArticle && editedArticle.status !== "ARCHIVED" ? {
+      id: editedArticle.id, version: editedArticle.version, kind: editedArticle.kind, topic: editedArticle.topic,
+      title: editedArticle.title, body: editedArticle.body, sortOrder: editedArticle.sortOrder, changeNote: "",
+    } : null;
+  const revisionsOf = revisionsParam ? items.find((article) => article.id === revisionsParam) ?? null : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,7 +267,7 @@ function ArticlesTab() {
         : createHelpArticle(input)),
       state.id ? "Perubahan tersimpan." : "Draf artikel tersimpan. Terbitkan bila sudah siap.",
     );
-    if (saved) setEditor(null);
+    if (saved) closeEditor();
   };
 
   const archive = (article: AdminHelpArticle) => {
@@ -301,10 +306,24 @@ function ArticlesTab() {
       {error ? <div className="rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
-      {editor ? (
-        <ArticleEditor initial={editor} busy={busy} onCancel={() => setEditor(null)} onSave={(state) => void save(state)} />
+      {editorParam && (editorParam === "baru" || pagination) ? (
+        <DetailDialog
+          title={editorParam === "baru" ? "Artikel baru" : editedArticle && isUnreviewedSeed(editedArticle) ? "Tinjau artikel" : "Ubah artikel"}
+          description={editedArticle ? editedArticle.title : undefined}
+          onClose={closeEditor}
+          wide
+        >
+          {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+          {editor ? (
+            <ArticleEditor key={editorParam} initial={editor} busy={busy} onCancel={closeEditor} onSave={(state) => void save(state)} />
+          ) : <p className="text-sm text-muted-foreground">Artikel ini tidak ada di daftar yang ditampilkan, atau sudah diarsipkan. Ubah filter, lalu pilih artikelnya lagi.</p>}
+        </DetailDialog>
       ) : null}
-      {revisionsOf ? <RevisionPanel article={revisionsOf} onClose={() => setRevisionsOf(null)} /> : null}
+      {revisionsParam && pagination ? (
+        <DetailDialog title="Riwayat revisi" description={revisionsOf ? revisionsOf.title : undefined} onClose={closeRevisions} wide>
+          {revisionsOf ? <RevisionPanel article={revisionsOf} /> : <p className="text-sm text-muted-foreground">Artikel ini tidak ada di daftar yang ditampilkan. Ubah filter, lalu pilih artikelnya lagi.</p>}
+        </DetailDialog>
+      ) : null}
 
       <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] lg:items-end">
@@ -335,7 +354,7 @@ function ArticlesTab() {
               <option value="FAQ">FAQ</option>
             </select>
           </label>
-          <button type="button" disabled={busy} onClick={() => { setEditor({ ...emptyEditor }); setRevisionsOf(null); }} className={primaryButton}>
+          <button type="button" disabled={busy} onClick={() => openEditor("baru")} className={primaryButton}>
             <Plus className="h-4 w-4" aria-hidden="true" /> Artikel baru
           </button>
         </div>
@@ -357,13 +376,7 @@ function ArticlesTab() {
                 <div className="flex flex-wrap gap-2">
                   {article.status !== "ARCHIVED" ? (
                     <button type="button" disabled={busy} className={secondaryButton}
-                      onClick={() => {
-                        setRevisionsOf(null);
-                        setEditor({
-                          id: article.id, version: article.version, kind: article.kind, topic: article.topic,
-                          title: article.title, body: article.body, sortOrder: article.sortOrder, changeNote: "",
-                        });
-                      }}>
+                      onClick={() => openEditor(article.id)}>
                       {isUnreviewedSeed(article) ? "Tinjau" : "Ubah"}
                     </button>
                   ) : null}
@@ -382,7 +395,7 @@ function ArticlesTab() {
                     <button type="button" disabled={busy} className={secondaryButton} onClick={() => archive(article)}>Arsipkan</button>
                   )}
                   <button type="button" className={secondaryButton} aria-label={`Riwayat revisi ${article.title}`}
-                    onClick={() => { setEditor(null); setRevisionsOf(article); }}>
+                    onClick={() => openRevisions(article.id)}>
                     <History className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>

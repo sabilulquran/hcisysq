@@ -10,6 +10,8 @@
 import { Home, Pencil, Phone, Plus, CircleSlash, Users } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+
 import { EmploymentApiError, formatDate, type EmploymentView } from "@/lib/employment";
 import {
   ADDRESS_KIND_LABEL,
@@ -283,7 +285,9 @@ export function addressPayload(draft: AddressInput): AddressInput {
   };
 }
 
-export function FamilyForm({ draft, editing, busy, onChange, onSubmit, onCancel }: {
+export function FamilyForm({ draft, editing, busy, onChange, onSubmit, onCancel, bare = false }: {
+  /** Inside a pop-up: no card, and the pop-up carries the heading. */
+  bare?: boolean;
   draft: FamilyMemberInput;
   editing: boolean;
   busy: boolean;
@@ -294,10 +298,12 @@ export function FamilyForm({ draft, editing, busy, onChange, onSubmit, onCancel 
   const isDependent = draft.isDependent === true;
   const isEmergencyContact = draft.isEmergencyContact === true;
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-      <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
-        {editing ? "Ubah data anggota keluarga" : "Anggota keluarga baru"}
-      </h3>
+    <form onSubmit={onSubmit} className={bare ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2"}>
+      {bare ? null : (
+        <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
+          {editing ? "Ubah data anggota keluarga" : "Anggota keluarga baru"}
+        </h3>
+      )}
       <Labelled label="Hubungan">
         <select className={field} value={draft.relation} onChange={(event) => onChange({ ...draft, relation: event.target.value as FamilyRelation })}>
           {Object.entries(FAMILY_RELATION_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -369,7 +375,9 @@ export function FamilyForm({ draft, editing, busy, onChange, onSubmit, onCancel 
   );
 }
 
-export function AddressForm({ draft, editing, busy, onChange, onSubmit, onCancel }: {
+export function AddressForm({ draft, editing, busy, onChange, onSubmit, onCancel, bare = false }: {
+  /** Inside a pop-up: no card, and the pop-up carries the heading. */
+  bare?: boolean;
   draft: AddressInput;
   editing: boolean;
   busy: boolean;
@@ -378,10 +386,12 @@ export function AddressForm({ draft, editing, busy, onChange, onSubmit, onCancel
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-      <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
-        {editing ? "Ubah alamat" : "Alamat baru"}
-      </h3>
+    <form onSubmit={onSubmit} className={bare ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2"}>
+      {bare ? null : (
+        <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
+          {editing ? "Ubah alamat" : "Alamat baru"}
+        </h3>
+      )}
       {!editing ? (
         <p className="sm:col-span-2 text-xs text-muted-foreground">
           Alamat yang berlaku untuk jenis ini akan ditutup sehari sebelum tanggal berlakunya alamat baru. Tidak ada
@@ -476,9 +486,12 @@ export function FamilyAddressPanel({ employeeId, canManage, askReason }: FamilyA
   const [addressView, setAddressView] = useState<EmploymentView<AddressList>>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
   const [familyDraft, setFamilyDraft] = useState<FamilyMemberInput | null>(null);
-  const [familyEditing, setFamilyEditing] = useState<string | null>(null);
   const [addressDraft, setAddressDraft] = useState<AddressInput | null>(null);
-  const [addressEditing, setAddressEditing] = useState<string | null>(null);
+  // The add/edit forms open as pop-ups kept in the URL: `?keluarga=baru|<id>` and `?alamat=baru|<id>`.
+  const [familyParam, openFamily, closeFamily] = useDialogParam("keluarga");
+  const [addressParam, openAddress, closeAddress] = useDialogParam("alamat");
+  const familyEditing = familyParam && familyParam !== "baru" ? familyParam : null;
+  const addressEditing = addressParam && addressParam !== "baru" ? addressParam : null;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -496,13 +509,27 @@ export function FamilyAddressPanel({ employeeId, canManage, askReason }: FamilyA
     return () => { mounted = false; };
   }, [employeeId, reloadToken]);
 
+  // The form starts from an empty draft (`baru`) or from the saved record once the list has loaded.
+  useEffect(() => {
+    if (!familyParam) { setFamilyDraft(null); return; }
+    if (familyParam === "baru") { setFamilyDraft({ ...EMPTY_FAMILY }); return; }
+    const row = familyView.kind === "ready" ? familyView.data.rows.find((item) => item.id === familyParam) : undefined;
+    setFamilyDraft(row ? draftFromFamily(row) : null);
+  }, [familyParam, familyView]);
+
+  // The form starts from an empty draft (`baru`) or from the saved record once the list has loaded.
+  useEffect(() => {
+    if (!addressParam) { setAddressDraft(null); return; }
+    if (addressParam === "baru") { setAddressDraft({ ...EMPTY_ADDRESS }); return; }
+    const row = addressView.kind === "ready" ? addressView.data.rows.find((item) => item.id === addressParam) : undefined;
+    setAddressDraft(row ? draftFromAddress(row) : null);
+  }, [addressParam, addressView]);
+
   const refresh = (message: string) => {
     setNotice(message);
     setError(null);
-    setFamilyDraft(null);
-    setFamilyEditing(null);
-    setAddressDraft(null);
-    setAddressEditing(null);
+    if (familyParam) closeFamily();
+    if (addressParam) closeAddress();
     setReloadToken((token) => token + 1);
   };
 
@@ -575,44 +602,54 @@ export function FamilyAddressPanel({ employeeId, canManage, askReason }: FamilyA
 
       <FamilyRecords
         view={familyView}
-        onAdd={() => { setFamilyEditing(null); setFamilyDraft({ ...EMPTY_FAMILY }); }}
-        actions={actionsFor("family", (recordId) => {
-          const row = familyView.kind === "ready" ? familyView.data.rows.find((item) => item.id === recordId) : undefined;
-          if (!row) return;
-          setFamilyEditing(recordId);
-          setFamilyDraft(draftFromFamily(row));
-        })}
+        onAdd={() => openFamily("baru")}
+        actions={actionsFor("family", openFamily)}
       />
-      {familyDraft ? (
-        <FamilyForm
-          draft={familyDraft}
-          editing={familyEditing !== null}
-          busy={busy}
-          onChange={setFamilyDraft}
-          onSubmit={submitFamily}
-          onCancel={() => { setFamilyDraft(null); setFamilyEditing(null); }}
-        />
+      {canManage && familyParam ? (
+        <DetailDialog title={familyEditing ? "Ubah data anggota keluarga" : "Anggota keluarga baru"} onClose={closeFamily}>
+          {error ? <p role="alert" className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
+          {familyDraft ? (
+            <FamilyForm
+              bare
+              draft={familyDraft}
+              editing={familyEditing !== null}
+              busy={busy}
+              onChange={setFamilyDraft}
+              onSubmit={submitFamily}
+              onCancel={closeFamily}
+            />
+          ) : familyView.kind === "loading" ? (
+            <p className="text-sm text-muted-foreground">Memuat…</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Anggota keluarga ini tidak ada di daftar yang ditampilkan.</p>
+          )}
+        </DetailDialog>
       ) : null}
 
       <AddressRecords
         view={addressView}
-        onAdd={() => { setAddressEditing(null); setAddressDraft({ ...EMPTY_ADDRESS }); }}
-        actions={actionsFor("address", (recordId) => {
-          const row = addressView.kind === "ready" ? addressView.data.rows.find((item) => item.id === recordId) : undefined;
-          if (!row) return;
-          setAddressEditing(recordId);
-          setAddressDraft(draftFromAddress(row));
-        })}
+        onAdd={() => openAddress("baru")}
+        actions={actionsFor("address", openAddress)}
       />
-      {addressDraft ? (
-        <AddressForm
-          draft={addressDraft}
-          editing={addressEditing !== null}
-          busy={busy}
-          onChange={setAddressDraft}
-          onSubmit={submitAddress}
-          onCancel={() => { setAddressDraft(null); setAddressEditing(null); }}
-        />
+      {canManage && addressParam ? (
+        <DetailDialog title={addressEditing ? "Ubah alamat" : "Alamat baru"} onClose={closeAddress}>
+          {error ? <p role="alert" className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
+          {addressDraft ? (
+            <AddressForm
+              bare
+              draft={addressDraft}
+              editing={addressEditing !== null}
+              busy={busy}
+              onChange={setAddressDraft}
+              onSubmit={submitAddress}
+              onCancel={closeAddress}
+            />
+          ) : addressView.kind === "loading" ? (
+            <p className="text-sm text-muted-foreground">Memuat…</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Alamat ini tidak ada di daftar yang ditampilkan.</p>
+          )}
+        </DetailDialog>
       ) : null}
     </section>
   );

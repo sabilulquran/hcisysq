@@ -728,9 +728,9 @@ usulan ENG-LIST-001).
 | Nama tab | **"Perbaikan Absen"** (D-14-14; alternatif "Klarifikasi & Koreksi"). Tab "Koreksi HC" dihapus; alamatnya dialihkan. |
 | Satu daftar | Semua klarifikasi dan koreksi, berhalaman, terbaru dulu. Filter: status (Menunggu, Disetujui, Ditolak, Dibatalkan, Digantikan), asal, jenis (koreksi jam / alasan), unit, rentang tanggal kerja, cari pegawai. Bawaan: Menunggu. |
 | Asal pengajuan | Kolom **Asal**: "Diajukan pegawai" atau "Diinput HC", diturunkan dari event `submitted` yang sudah ada (tanpa kolom baru). Koreksi HC tampil langsung "Disetujui" dengan nama penginput. |
-| Input HC | Tombol **"Input koreksi"** di tab yang sama (hanya untuk `attendance.records.manage`), membuka form §19.5. |
-| Keputusan | Pengajuan pegawai diputuskan dari panel detail (setujui/tolak + catatan), seperti sekarang. |
-| Bukti pendukung | Panel detail menampilkan scan asli hari itu, hasil terakhir, dan — bila ada — bukti absen HP (§19.7). |
+| Input HC | Tombol **"Input koreksi"** di tab yang sama (hanya untuk `attendance.records.manage`), membuka form §19.5 sebagai pop-up (`?koreksi=baru`). |
+| Keputusan | Pengajuan pegawai diputuskan dari pop-up detail (setujui/tolak + catatan); daftar tetap selebar halaman dan pengajuan yang dibuka ada di URL (`?perbaikan=<id>`). |
+| Bukti pendukung | Pop-up detail menampilkan scan asli hari itu, hasil terakhir, dan — bila ada — bukti absen HP (§19.7). |
 | Permission | Tab terlihat dengan `attendance.clarification.manage` **atau** `attendance.records.manage`; tiap aksi tetap memeriksa permission-nya sendiri di API. Tidak ada permission baru. |
 | Backend | Model data **sudah cukup**; tidak perlu disatukan. Yang ditambah: daftar admin berhalaman + filter asal, dan validasi §19.5. `POST /admin/attendance/manual-corrections` tetap sebagai jalur input HC. |
 
@@ -750,9 +750,9 @@ sumber mana pun. Alasannya:
   absen. Di daftar Perbaikan Absen barisnya satu pengajuan, sehingga absen HP yang tidak pernah
   diajukan perbaikan tidak akan terlihat di sana.
 - Operator memeriksa absen dalam konteks lingkup dan rentang yang sama dengan laporannya, tanpa pindah
-  layar. Bila absen HP perlu diperbaiki, panel detail barisnya punya tombol **"Buat koreksi"** (hanya
+  layar. Bila absen HP perlu diperbaiki, pop-up detail barisnya punya tombol **"Buat koreksi"** (hanya
   untuk `attendance.records.manage`) yang membuka form Perbaikan Absen terisi pegawai dan tanggal kerja.
-- Panel detail di Perbaikan Absen menampilkan absen hari itu dengan komponen yang sama, sehingga
+- Pop-up detail di Perbaikan Absen menampilkan absen hari itu dengan komponen yang sama, sehingga
   pemutus pengajuan juga melihat GPS/foto tanpa membuka layar lain.
 
 | Aspek | Rencana |
@@ -879,14 +879,15 @@ D-14-15 (revisi) dan D-14-16 disetujui owner 2026-10-26 (diteruskan sesi koordin
   satu daftar berhalaman, tab status (Menunggu keputusan dengan jumlahnya, Disetujui, Ditolak,
   Dibatalkan, Semua), penyaring asal, jenis, rentang tanggal kerja, cari nama/NIP. Kolom **Asal**
   ("Diajukan pegawai"/"Diinput HC") diturunkan dari event `submitted` yang sudah ada, tanpa migration.
-  Panel detail: alasan, usulan jam, status dan pemutus, **absen tercatat hari itu** (komponen Data
+  Klik baris membuka pop-up detail (`?perbaikan=<id>`) (aturan app-shell "Detail views open as a pop-up", 2026-11-13): alasan, usulan jam, status dan pemutus, **absen tercatat hari itu** (komponen Data
   Transaksi), serta tombol Setujui/Tolak untuk pengajuan yang menunggu (`attendance.clarification.manage`).
-  Tombol **Input koreksi** (`attendance.records.manage`) membuka form satu tanggal kerja + jam dari
+  Tombol **Input koreksi** (`attendance.records.manage`) membuka pop-up (`?koreksi=baru`) berisi form satu tanggal kerja + jam dari
   ATT-FIX-1. Daftar dibaca dengan salah satu dari dua permission itu; setiap aksi tetap memeriksa
   permission-nya sendiri di API.
 - **Bukti HP dilebur ke Data Transaksi:** kolom Sumber tetap, absen HP dengan `needs_review` diberi
   lencana **"Perlu ditinjau"** yang terlihat semua pembaca, dan tombol cepat "Perlu ditinjau (N)" tampil
-  selama ada baris seperti itu. Klik baris membuka detail: alasan tinjauan, panel GPS (posisi terhadap
+  selama ada baris seperti itu. Klik baris membuka detail sebagai pop-up (`?absen=<sumber>:<id>:<batas>`, aturan
+  app-shell "Detail views open as a pop-up" 2026-11-13): alasan tinjauan, panel GPS (posisi terhadap
   lokasi kerja, jarak, akurasi, koordinat) dan tombol **Lihat foto**, serta **Buat koreksi** langsung di
   tempat (`attendance.records.manage`). API hanya mengirim field GPS dan id bukti bila pemanggil memegang
   `attendance.clarification.manage`; foto diambil satu per satu lewat endpoint foto yang ada dan setiap

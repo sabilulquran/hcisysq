@@ -6,6 +6,8 @@ import { Loader2, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { CommitteeDetailPanel } from "@/components/committees/CommitteeDetailPanel";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DIALOG_PRINT_CSS, replaceDialogParam } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
@@ -56,11 +58,11 @@ import {
 import { cn } from "@/lib/utils";
 
 type Tab = "committees" | "participation";
-type Panel = { kind: "none" } | { kind: "create" } | { kind: "edit" } | { kind: "activate" } | { kind: "cancel" };
+/** What the open committee pop-up shows besides its detail; creating a committee is `?panitia=baru`. */
+type Panel = { kind: "none" } | { kind: "edit" } | { kind: "activate" } | { kind: "cancel" };
 
 const inputClass = "mt-1.5 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-normal text-brand-heading";
 const labelClass = "text-sm font-semibold text-brand-heading";
-const cardClass = "rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]";
 const primaryButton = "inline-flex min-h-11 items-center gap-1 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50";
 const secondaryButton = "inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50";
 const dangerButton = "inline-flex min-h-11 items-center gap-1 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50";
@@ -71,6 +73,10 @@ const yearOptions = [currentYear + 1, currentYear, currentYear - 1, currentYear 
 function problemText(cause: unknown, fallback: string) {
   if (cause instanceof CommitteeRequestError && cause.problems.length) return cause.problems.join(" ");
   return cause instanceof Error ? cause.message : fallback;
+}
+
+function DialogLoading() {
+  return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>;
 }
 
 function StatusBadge({ status }: { status: CommitteeStatus }) {
@@ -98,11 +104,11 @@ function CommitteeForm({ initial, busy, onCancel, onSave }: {
   const locked = Boolean(initial && initial.status !== "DRAFT");
   const set = (patch: Partial<typeof state>) => setState((current) => ({ ...current, ...patch }));
   return (
-    <form className={cardClass} onSubmit={(event) => {
+    <form onSubmit={(event) => {
       event.preventDefault();
       onSave({ ...state, name: state.name.trim(), description: state.description.trim() || null, organizer: state.organizer.trim() || null });
     }}>
-      <h2 className="text-sm font-bold text-brand-heading">{initial ? "Ubah data kegiatan" : "Catat kepanitiaan"}</h2>
+      {initial ? <h3 className="text-sm font-bold text-brand-heading">Ubah data kegiatan</h3> : null}
       {locked ? <p className="mt-1 text-xs text-muted-foreground">Nama, jenis, dan tanggal mulai sudah tertulis di SK dan tidak dapat diubah.</p> : null}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className={`${labelClass} sm:col-span-2`}>
@@ -376,13 +382,17 @@ function CancelForm({ busy, hasDecree, onCancel, onSubmit }: { busy: boolean; ha
 
 // -------------------------------------------------------------- committees tab
 
-function CommitteesTab({ canManage }: { canManage: boolean }) {
+export function CommitteesTab({ canManage }: { canManage: boolean }) {
   const [filter, setFilter] = useState<CommitteeFilter>({ status: "", category: "", year: "", q: "", page: 1, pageSize: 25 });
   const [items, setItems] = useState<CommitteeSummary[]>([]);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  // The open committee lives in the URL: `?panitia=<id>`, or `?panitia=baru` for the create form.
+  const [committeeId, openCommittee, closeCommittee] = useDialogParam("panitia");
+  const creating = committeeId === "baru";
   const [detail, setDetail] = useState<CommitteeDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [history, setHistory] = useState<CommitteeEvent[]>([]);
   const [historyPaging, setHistoryPaging] = useState<Pagination | null>(null);
   const [panel, setPanel] = useState<Panel>({ kind: "none" });
@@ -415,17 +425,28 @@ function CommitteesTab({ canManage }: { canManage: boolean }) {
     setHistoryPaging(result.pagination);
   };
 
-  const open = async (id: string) => {
+  const open = (id: string) => {
     setError(null);
     setNotice(null);
-    setPanel({ kind: "none" });
-    try {
-      const [loaded] = await Promise.all([getCommittee(id), loadHistory(id)]);
-      setDetail(loaded);
-    } catch (cause) {
-      setError(problemText(cause, "Kepanitiaan tidak dapat dibuka."));
-    }
+    openCommittee(id);
   };
+
+  useEffect(() => {
+    setPanel({ kind: "none" });
+    setDetail(null);
+    setDetailError(null);
+    if (!committeeId || committeeId === "baru") return;
+    let active = true;
+    void Promise.all([getCommittee(committeeId), listCommitteeHistory(committeeId, 1)])
+      .then(([loaded, events]) => {
+        if (!active) return;
+        setDetail(loaded);
+        setHistory(events.items);
+        setHistoryPaging(events.pagination);
+      })
+      .catch((cause) => { if (active) setDetailError(problemText(cause, "Kepanitiaan tidak dapat dibuka.")); });
+    return () => { active = false; };
+  }, [committeeId]);
 
   const update = (patch: Partial<CommitteeFilter>) => setFilter((current) => ({ ...current, page: 1, ...patch }));
 
@@ -456,10 +477,17 @@ function CommitteesTab({ canManage }: { canManage: boolean }) {
     return <div role="alert" className="rounded-2xl border border-warning-line bg-warning-soft p-4 text-sm text-warning-ink">Anda tidak memiliki akses ke data kepanitiaan.</div>;
   }
 
-  return (
-    <div className="space-y-5">
+  // Shown above the list and again inside the pop-up, where the write that produced them happened.
+  const messages = (
+    <>
       {error ? <div role="alert" className="rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
       {notice ? <div role="status" className="rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+    </>
+  );
+
+  return (
+    <div className="space-y-5">
+      {committeeId ? null : messages}
 
       <div className="flex flex-wrap items-end gap-3">
         <label className={labelClass}>
@@ -488,149 +516,158 @@ function CommitteesTab({ canManage }: { canManage: boolean }) {
           </select>
         </label>
         {canManage ? (
-          <button type="button" onClick={() => { setDetail(null); setPanel({ kind: "create" }); }} className={`${primaryButton} ml-auto`}>
+          <button type="button" onClick={() => { setError(null); setNotice(null); openCommittee("baru"); }} className={`${primaryButton} ml-auto`}>
             <Plus className="h-4 w-4" />Catat kepanitiaan
           </button>
         ) : null}
       </div>
 
-      {panel.kind === "create" ? (
-        <CommitteeForm initial={null} busy={busy} onCancel={() => setPanel({ kind: "none" })} onSave={(input) => {
-          void (async () => {
-            setBusy(true);
-            setError(null);
-            try {
-              const created = await createCommittee(input);
-              setNotice("Kepanitiaan dicatat sebagai draf. Tambahkan susunan panitia, lalu tetapkan.");
-              setPanel({ kind: "none" });
-              await Promise.all([open(created.id), loadList(filter)]);
-            } catch (cause) {
-              setError(problemText(cause, "Kepanitiaan tidak dapat dicatat."));
-            } finally {
-              setBusy(false);
-            }
-          })();
-        }} />
+      <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]" aria-busy={loading}>
+        {loading && items.length === 0 ? (
+          <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
+        ) : items.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada kepanitiaan yang cocok dengan filter ini.</p>
+        ) : (
+          <ul className="divide-y divide-border/70">
+            {items.map((item) => (
+              <li key={item.id}>
+                <button type="button" onClick={() => open(item.id)}
+                  className={cn("flex w-full flex-col items-start gap-1 px-5 py-3 text-left hover:bg-muted/50", committeeId === item.id && "bg-muted/60")}>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-brand-heading">{item.name}</span>
+                    <StatusBadge status={item.status} />
+                  </span>
+                  <span className="text-xs text-muted-foreground">{formatPeriod(item.startOn, item.endOn)} · {CATEGORY_LABELS[item.category]}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Ketua: {item.chairName ?? "belum ada"} · {item.activeMemberCount} anggota{item.decreeNumber ? ` · SK ${item.decreeNumber}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {paging && paging.total > 0 ? (
+          <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total}
+            onPageChange={(page) => setFilter((current) => ({ ...current, page }))}
+            onPageSizeChange={(pageSize) => update({ pageSize })} />
+        ) : null}
+      </section>
+
+      {creating && canManage ? (
+        <DetailDialog title="Catat kepanitiaan" onClose={closeCommittee}>
+          <div className="space-y-4">
+            {messages}
+            <CommitteeForm initial={null} busy={busy} onCancel={closeCommittee} onSave={(input) => {
+              void (async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  const created = await createCommittee(input);
+                  setNotice("Kepanitiaan dicatat sebagai draf. Tambahkan susunan panitia, lalu tetapkan.");
+                  replaceDialogParam("panitia", created.id);
+                  await loadList(filter);
+                } catch (cause) {
+                  setError(problemText(cause, "Kepanitiaan tidak dapat dicatat."));
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }} />
+          </div>
+        </DetailDialog>
       ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-        <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]" aria-busy={loading}>
-          {loading && items.length === 0 ? (
-            <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
-          ) : items.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada kepanitiaan yang cocok dengan filter ini.</p>
-          ) : (
-            <ul className="divide-y divide-border/70">
-              {items.map((item) => (
-                <li key={item.id}>
-                  <button type="button" onClick={() => void open(item.id)}
-                    className={cn("flex w-full flex-col items-start gap-1 px-5 py-3 text-left hover:bg-muted/50", detail?.id === item.id && "bg-muted/60")}>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-brand-heading">{item.name}</span>
-                      <StatusBadge status={item.status} />
-                    </span>
-                    <span className="text-xs text-muted-foreground">{formatPeriod(item.startOn, item.endOn)} · {CATEGORY_LABELS[item.category]}</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      Ketua: {item.chairName ?? "belum ada"} · {item.activeMemberCount} anggota{item.decreeNumber ? ` · SK ${item.decreeNumber}` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {paging && paging.total > 0 ? (
-            <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total}
-              onPageChange={(page) => setFilter((current) => ({ ...current, page }))}
-              onPageSizeChange={(pageSize) => update({ pageSize })} />
-          ) : null}
-        </section>
-
-        <section className={cardClass}>
+      {committeeId && !creating ? (
+        <DetailDialog title={detail?.name ?? "Kepanitiaan"} description={detail ? `${STATUS_LABELS[detail.status]} · ${CATEGORY_LABELS[detail.category]}` : undefined}
+          onClose={closeCommittee} wide>
+          <style>{DIALOG_PRINT_CSS}</style>
           {!detail ? (
-            <p className="text-sm text-muted-foreground">Pilih kepanitiaan untuk melihat susunan panitia, SK, dan riwayatnya.</p>
+            detailError ? <p className="text-sm text-muted-foreground">{detailError}</p> : <DialogLoading />
           ) : panel.kind === "edit" ? (
-            <CommitteeForm initial={detail} busy={busy} onCancel={() => setPanel({ kind: "none" })}
-              onSave={(input) => void run(() => updateCommittee(detail.id, { ...input, version }), "Data kegiatan disimpan.", "Data kegiatan tidak dapat disimpan.")} />
+            <div className="space-y-4">
+              {messages}
+              <CommitteeForm initial={detail} busy={busy} onCancel={() => setPanel({ kind: "none" })}
+                onSave={(input) => void run(() => updateCommittee(detail.id, { ...input, version }), "Data kegiatan disimpan.", "Data kegiatan tidak dapat disimpan.")} />
+            </div>
           ) : (
-            <CommitteeDetailPanel
-              detail={detail}
-              actions={writable ? (
-                <>
-                  <button type="button" disabled={busy} onClick={() => setPanel({ kind: "edit" })} className={secondaryButton}>Ubah data</button>
-                  {detail.status === "DRAFT" ? (
-                    <button type="button" disabled={busy} onClick={() => setPanel({ kind: "activate" })} className={primaryButton}>Tetapkan</button>
-                  ) : null}
-                  {detail.status === "ACTIVE" ? (
-                    <button type="button" disabled={busy} onClick={() => {
-                      if (!window.confirm(`Tandai ${detail.name} selesai? Tugas semua anggota ikut berakhir.`)) return;
-                      void run(() => completeCommittee(detail.id, version), "Kepanitiaan ditandai selesai.", "Kepanitiaan tidak dapat diselesaikan.");
-                    }} className={secondaryButton}>Selesaikan</button>
-                  ) : null}
-                  <button type="button" disabled={busy} onClick={() => setPanel({ kind: "cancel" })} className={dangerButton}>Batalkan</button>
-                </>
-              ) : null}
-              memberActions={writable ? (member) => (
-                <MemberControls key={`${member.id}-${member.role}-${member.section ?? ""}`} member={member} busy={busy}
-                  onChange={(role, section) => void run(() => updateCommitteeMember(detail.id, member.id, { role, section, version }),
-                    "Peran anggota disimpan.", "Peran anggota tidak dapat diubah.")}
-                  onEnd={() => {
-                    const reason = detail.status === "DRAFT" ? null
-                      : window.prompt(`Akhiri tugas ${member.fullName}? Alasan (opsional, maks. 300 karakter):`, "");
-                    if (detail.status !== "DRAFT" && reason === null) return;
-                    void run(() => endCommitteeMember(detail.id, member.id, { reason: reason?.trim() || null, version }),
-                      detail.status === "DRAFT" ? "Anggota dihapus dari draf." : "Tugas anggota diakhiri.", "Tugas anggota tidak dapat diakhiri.");
-                  }} />
-              ) : undefined}
-            >
-              {panel.kind === "activate" ? (
-                <ActivateForm busy={busy} signerOptions={detail.decreeSignerOptions ?? []} onCancel={() => setPanel({ kind: "none" })}
-                  onSubmit={(decree) => void run(() => activateCommittee(detail.id, { decree, version }),
-                    "Kepanitiaan ditetapkan.", "Kepanitiaan tidak dapat ditetapkan.")} />
-              ) : null}
-              {panel.kind === "cancel" ? (
-                <CancelForm busy={busy} hasDecree={detail.decreeMode === "ISSUED"} onCancel={() => setPanel({ kind: "none" })}
-                  onSubmit={(reason) => void run(() => cancelCommittee(detail.id, { reason, version }),
-                    "Kepanitiaan dibatalkan.", "Kepanitiaan tidak dapat dibatalkan.")} />
-              ) : null}
-              {writable ? (
-                <MemberAdder busy={busy} onAdd={(employee, role, section) => void run(
-                  () => addCommitteeMember(detail.id, { employeeId: employee.id, role, section, version }),
-                  `${employee.fullName} ditambahkan sebagai ${roleLabel(role, section)}.`, "Anggota tidak dapat ditambahkan.")} />
-              ) : null}
-            </CommitteeDetailPanel>
+            <div className="space-y-6">
+              {messages}
+              <CommitteeDetailPanel
+                detail={detail}
+                actions={writable ? (
+                  <>
+                    <button type="button" disabled={busy} onClick={() => setPanel({ kind: "edit" })} className={secondaryButton}>Ubah data</button>
+                    {detail.status === "DRAFT" ? (
+                      <button type="button" disabled={busy} onClick={() => setPanel({ kind: "activate" })} className={primaryButton}>Tetapkan</button>
+                    ) : null}
+                    {detail.status === "ACTIVE" ? (
+                      <button type="button" disabled={busy} onClick={() => {
+                        if (!window.confirm(`Tandai ${detail.name} selesai? Tugas semua anggota ikut berakhir.`)) return;
+                        void run(() => completeCommittee(detail.id, version), "Kepanitiaan ditandai selesai.", "Kepanitiaan tidak dapat diselesaikan.");
+                      }} className={secondaryButton}>Selesaikan</button>
+                    ) : null}
+                    <button type="button" disabled={busy} onClick={() => setPanel({ kind: "cancel" })} className={dangerButton}>Batalkan</button>
+                  </>
+                ) : null}
+                memberActions={writable ? (member) => (
+                  <MemberControls key={`${member.id}-${member.role}-${member.section ?? ""}`} member={member} busy={busy}
+                    onChange={(role, section) => void run(() => updateCommitteeMember(detail.id, member.id, { role, section, version }),
+                      "Peran anggota disimpan.", "Peran anggota tidak dapat diubah.")}
+                    onEnd={() => {
+                      const reason = detail.status === "DRAFT" ? null
+                        : window.prompt(`Akhiri tugas ${member.fullName}? Alasan (opsional, maks. 300 karakter):`, "");
+                      if (detail.status !== "DRAFT" && reason === null) return;
+                      void run(() => endCommitteeMember(detail.id, member.id, { reason: reason?.trim() || null, version }),
+                        detail.status === "DRAFT" ? "Anggota dihapus dari draf." : "Tugas anggota diakhiri.", "Tugas anggota tidak dapat diakhiri.");
+                    }} />
+                ) : undefined}
+              >
+                {panel.kind === "activate" ? (
+                  <ActivateForm busy={busy} signerOptions={detail.decreeSignerOptions ?? []} onCancel={() => setPanel({ kind: "none" })}
+                    onSubmit={(decree) => void run(() => activateCommittee(detail.id, { decree, version }),
+                      "Kepanitiaan ditetapkan.", "Kepanitiaan tidak dapat ditetapkan.")} />
+                ) : null}
+                {panel.kind === "cancel" ? (
+                  <CancelForm busy={busy} hasDecree={detail.decreeMode === "ISSUED"} onCancel={() => setPanel({ kind: "none" })}
+                    onSubmit={(reason) => void run(() => cancelCommittee(detail.id, { reason, version }),
+                      "Kepanitiaan dibatalkan.", "Kepanitiaan tidak dapat dibatalkan.")} />
+                ) : null}
+                {writable ? (
+                  <MemberAdder busy={busy} onAdd={(employee, role, section) => void run(
+                    () => addCommitteeMember(detail.id, { employeeId: employee.id, role, section, version }),
+                    `${employee.fullName} ditambahkan sebagai ${roleLabel(role, section)}.`, "Anggota tidak dapat ditambahkan.")} />
+                ) : null}
+              </CommitteeDetailPanel>
+              <section>
+                <h4 className="text-sm font-bold text-brand-heading">Riwayat</h4>
+                {history.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">Belum ada riwayat.</p>
+                ) : (
+                  <ol className="mt-2 space-y-1.5 border-l border-border pl-4">
+                    {history.map((event) => (
+                      <li key={event.id} className="text-sm">
+                        <p className="font-semibold text-brand-heading">{describeEvent(event)}</p>
+                        <p className="text-xs text-muted-foreground">{formatInstant(event.occurredAt)}{event.actorName ? ` · ${event.actorName}` : ""}</p>
+                        {event.reason ? <p className="text-xs text-foreground">{event.reason}</p> : null}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {historyPaging && historyPaging.total > historyPaging.pageSize ? (
+                  <PaginationBar page={historyPaging.page} pageSize={historyPaging.pageSize} total={historyPaging.total}
+                    onPageChange={(page) => void loadHistory(detail.id, page)} />
+                ) : null}
+              </section>
+            </div>
           )}
-
-          {detail && panel.kind !== "edit" ? (
-            <section className="mt-6">
-              <h4 className="text-sm font-bold text-brand-heading">Riwayat</h4>
-              {history.length === 0 ? (
-                <p className="mt-2 text-sm text-muted-foreground">Belum ada riwayat.</p>
-              ) : (
-                <ol className="mt-2 space-y-1.5 border-l border-border pl-4">
-                  {history.map((event) => (
-                    <li key={event.id} className="text-sm">
-                      <p className="font-semibold text-brand-heading">{describeEvent(event)}</p>
-                      <p className="text-xs text-muted-foreground">{formatInstant(event.occurredAt)}{event.actorName ? ` · ${event.actorName}` : ""}</p>
-                      {event.reason ? <p className="text-xs text-foreground">{event.reason}</p> : null}
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {historyPaging && historyPaging.total > historyPaging.pageSize ? (
-                <PaginationBar page={historyPaging.page} pageSize={historyPaging.pageSize} total={historyPaging.total}
-                  onPageChange={(page) => void loadHistory(detail.id, page)} />
-              ) : null}
-            </section>
-          ) : null}
-        </section>
-      </div>
+        </DetailDialog>
+      ) : null}
     </div>
   );
 }
 
 // ----------------------------------------------------------- participation tab
 
-function ParticipationTab() {
+export function ParticipationTab() {
   const [year, setYear] = useState(currentYear);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
@@ -639,7 +676,10 @@ function ParticipationTab() {
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The open employee lives in the URL (`?rekap=<employeeId>`).
+  const [employeeId, openEmployee, closeEmployee] = useDialogParam("rekap");
   const [selected, setSelected] = useState<EmployeeParticipation | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -653,11 +693,22 @@ function ParticipationTab() {
     return () => { active = false; window.clearTimeout(timer); };
   }, [year, q, page, pageSize]);
 
-  const openEmployee = (employeeId: string, nextPage = 1) => {
-    void getEmployeeParticipation(employeeId, year, nextPage)
-      .then(setSelected)
-      .catch((cause) => setError(problemText(cause, "Rincian tidak dapat dimuat.")));
+  const loadEmployee = (id: string, nextPage = 1) => {
+    void getEmployeeParticipation(id, year, nextPage)
+      .then((result) => { setSelected(result); setDetailError(null); })
+      .catch((cause) => setDetailError(problemText(cause, "Rincian tidak dapat dimuat.")));
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setDetailError(null);
+    if (!employeeId) return;
+    let active = true;
+    void getEmployeeParticipation(employeeId, year, 1)
+      .then((result) => { if (active) setSelected(result); })
+      .catch((cause) => { if (active) setDetailError(problemText(cause, "Rincian tidak dapat dimuat.")); });
+    return () => { active = false; };
+  }, [employeeId, year]);
 
   return (
     <div className="space-y-5">
@@ -669,7 +720,7 @@ function ParticipationTab() {
       <div className="flex flex-wrap items-end gap-3">
         <label className={labelClass}>
           Tahun
-          <select value={year} onChange={(event) => { setYear(Number(event.target.value)); setPage(1); setSelected(null); }} className={inputClass}>
+          <select value={year} onChange={(event) => { setYear(Number(event.target.value)); setPage(1); }} className={inputClass}>
             {yearOptions.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
@@ -678,57 +729,58 @@ function ParticipationTab() {
           <input value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }} placeholder="Nama atau NIP, minimal 2 huruf" className={`${inputClass} w-64`} />
         </label>
       </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]" aria-busy={loading}>
-          {loading && rows.length === 0 ? (
-            <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
-          ) : rows.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada keikutsertaan kepanitiaan pada tahun {year}.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[34rem] text-left text-sm">
-                <thead className="border-b border-border/70 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-semibold">Pegawai</th>
-                    <th className="px-2 py-2 text-right font-semibold">Kepanitiaan</th>
-                    <th className="px-2 py-2 text-right font-semibold">Ketua</th>
-                    <th className="px-2 py-2 text-right font-semibold">Pengurus inti</th>
-                    <th className="px-4 py-2 text-right font-semibold">Berjalan</th>
+      <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]" aria-busy={loading}>
+        {loading && rows.length === 0 ? (
+          <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
+        ) : rows.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada keikutsertaan kepanitiaan pada tahun {year}.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead className="border-b border-border/70 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-semibold">Pegawai</th>
+                  <th className="px-2 py-2 text-right font-semibold">Kepanitiaan</th>
+                  <th className="px-2 py-2 text-right font-semibold">Ketua</th>
+                  <th className="px-2 py-2 text-right font-semibold">Pengurus inti</th>
+                  <th className="px-4 py-2 text-right font-semibold">Berjalan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {rows.map((row) => (
+                  <tr key={row.employeeId} className={cn("cursor-pointer hover:bg-muted/50", employeeId === row.employeeId && "bg-muted/60")}
+                    onClick={() => openEmployee(row.employeeId)}>
+                    <td className="px-4 py-2">
+                      <button type="button" className="text-left font-semibold text-brand-heading" onClick={(event) => { event.stopPropagation(); openEmployee(row.employeeId); }}>
+                        {row.fullName}
+                      </button>
+                      <span className="block text-xs text-muted-foreground">{row.employeeNumber} · {row.unitName ?? "Tanpa unit"}</span>
+                    </td>
+                    <td className="px-2 py-2 text-right font-bold">{row.total}</td>
+                    <td className="px-2 py-2 text-right">{row.asChair}</td>
+                    <td className="px-2 py-2 text-right">{row.asCore}</td>
+                    <td className="px-4 py-2 text-right">{row.ongoing}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-border/70">
-                  {rows.map((row) => (
-                    <tr key={row.employeeId} className={cn("cursor-pointer hover:bg-muted/50", selected?.employee.id === row.employeeId && "bg-muted/60")}
-                      onClick={() => openEmployee(row.employeeId)}>
-                      <td className="px-4 py-2">
-                        <button type="button" className="text-left font-semibold text-brand-heading" onClick={(event) => { event.stopPropagation(); openEmployee(row.employeeId); }}>
-                          {row.fullName}
-                        </button>
-                        <span className="block text-xs text-muted-foreground">{row.employeeNumber} · {row.unitName ?? "Tanpa unit"}</span>
-                      </td>
-                      <td className="px-2 py-2 text-right font-bold">{row.total}</td>
-                      <td className="px-2 py-2 text-right">{row.asChair}</td>
-                      <td className="px-2 py-2 text-right">{row.asCore}</td>
-                      <td className="px-4 py-2 text-right">{row.ongoing}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {paging && paging.total > 0 ? (
-            <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage}
-              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-          ) : null}
-        </section>
-        <section className={cardClass}>
-          {!selected ? (
-            <p className="text-sm text-muted-foreground">Pilih pegawai untuk melihat kepanitiaannya pada tahun {year}.</p>
-          ) : (
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {paging && paging.total > 0 ? (
+          <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+        ) : null}
+      </section>
+
+      {employeeId ? (
+        <DetailDialog
+          title={selected?.employee.fullName ?? "Keikutsertaan kepanitiaan"}
+          description={selected ? `${selected.employee.employeeNumber} · ${selected.employee.unitName ?? "Tanpa unit"} · ${selected.year}` : undefined}
+          onClose={closeEmployee}
+        >
+          {selected ? (
             <>
-              <h3 className="text-base font-bold text-brand-heading">{selected.employee.fullName}</h3>
-              <p className="text-xs text-muted-foreground">{selected.employee.employeeNumber} · {selected.employee.unitName ?? "Tanpa unit"} · {selected.year}</p>
-              <ul className="mt-3 divide-y divide-border/70 rounded-xl border border-border/70 bg-surface">
+              <ul className="divide-y divide-border/70 rounded-xl border border-border/70 bg-surface">
                 {selected.items.map((item) => (
                   <li key={item.memberId} className="px-3 py-2.5 text-sm">
                     <p className="flex flex-wrap items-center gap-2 font-semibold text-brand-heading">{item.name} <StatusBadge status={item.status} /></p>
@@ -742,18 +794,19 @@ function ParticipationTab() {
               </ul>
               {selected.pagination.total > selected.pagination.pageSize ? (
                 <PaginationBar page={selected.pagination.page} pageSize={selected.pagination.pageSize} total={selected.pagination.total}
-                  onPageChange={(next) => openEmployee(selected.employee.id, next)} />
+                  onPageChange={(next) => loadEmployee(selected.employee.id, next)} />
               ) : null}
             </>
-          )}
-        </section>
-      </div>
+          ) : detailError ? <p className="text-sm text-muted-foreground">{detailError}</p> : <DialogLoading />}
+        </DetailDialog>
+      ) : null}
     </div>
   );
 }
 
 export function AdminCommitteesPage() {
-  const [tab, setTab] = useState<Tab>("committees");
+  // A link to an employee's recap (`?rekap=<employeeId>`) opens on the tab that shows it.
+  const [tab, setTab] = useState<Tab>(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("rekap") ? "participation" : "committees"));
   const [canManage, setCanManage] = useState(false);
   useEffect(() => {
     void getCurrentSession().then((session) => setCanManage(hasPermission(session, "committees.manage"))).catch(() => setCanManage(false));

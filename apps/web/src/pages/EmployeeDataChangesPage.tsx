@@ -4,6 +4,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogMessages } from "@/components/DetailDialogParts";
 import { MyDocumentsSection } from "@/components/employee-documents/MyDocumentsSection";
 import { MyDataChanges } from "@/components/employment/DataChangePanels";
 import { AppShell } from "@/layouts/AppShell";
@@ -29,6 +31,10 @@ const quietButton = "rounded-xl border border-border/70 px-3 py-1.5 text-xs font
  * for employees; until then HC records them (spec §7.3).
  */
 const OPEN_TARGETS: DataChangeTarget[] = ["ALAMAT", "KONTAK"];
+
+/** Each form opens as a pop-up named in the URL: ?usulan=alamat or ?usulan=kontak. */
+const TARGET_PARAM: Record<string, DataChangeTarget> = { alamat: "ALAMAT", kontak: "KONTAK" };
+const paramFor = (target: DataChangeTarget) => target.toLowerCase();
 
 interface AddressDraft {
   kind: "DOMISILI" | "KTP";
@@ -69,7 +75,8 @@ export function EmployeeDataChangesPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [view, setView] = useState<EmploymentView<DataChangeRequest[]>>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
-  const [target, setTarget] = useState<DataChangeTarget | null>(null);
+  const [proposal, showProposal, closeProposal] = useDialogParam("usulan");
+  const target: DataChangeTarget | null = proposal ? TARGET_PARAM[proposal] ?? null : null;
   const [address, setAddress] = useState<AddressDraft>({ ...EMPTY_ADDRESS });
   const [contact, setContact] = useState({ email: "", phone: "", clearEmail: false, clearPhone: false });
   const [busy, setBusy] = useState(false);
@@ -129,7 +136,7 @@ export function EmployeeDataChangesPage() {
     void run(async () => {
       await submitDataChange(target, payload);
       setNotice("Usulan terkirim dan menunggu keputusan Human Capital.");
-      setTarget(null);
+      closeProposal();
       setAddress({ ...EMPTY_ADDRESS });
       setContact({ email: "", phone: "", clearEmail: false, clearPhone: false });
       setReloadToken((token) => token + 1);
@@ -146,118 +153,120 @@ export function EmployeeDataChangesPage() {
           </p>
         </header>
 
-        {notice ? <p role="status" className="rounded-2xl border border-border/70 bg-surface p-4 text-sm">{notice}</p> : null}
-        {error ? <p role="alert" className="rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
+        {notice && !target ? <p role="status" className="rounded-2xl border border-border/70 bg-surface p-4 text-sm">{notice}</p> : null}
+        {error && !target ? <p role="alert" className="rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
 
         <div className="flex flex-wrap gap-2">
           {OPEN_TARGETS.map((option) => (
             <button
               key={option}
               type="button"
-              className={option === target ? primaryButton : quietButton}
-              onClick={() => setTarget(option)}
+              className={quietButton}
+              onClick={() => showProposal(paramFor(option))}
             >
               Ajukan perubahan {TARGET_LABEL[option].toLowerCase()}
             </button>
           ))}
-          {target ? (
-            <button type="button" className={quietButton} onClick={() => setTarget(null)}>Batal</button>
-          ) : null}
         </div>
 
-        {target === "ALAMAT" ? (
-          <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-            <h2 className="sm:col-span-2 text-sm font-bold text-brand-heading">Usulan alamat</h2>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Jenis</span>
-              <select className={field} value={address.kind} onChange={(event) => setAddress({ ...address, kind: event.target.value as AddressDraft["kind"] })}>
-                <option value="DOMISILI">Domisili</option>
-                <option value="KTP">Sesuai KTP</option>
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Berlaku sejak</span>
-              <input className={field} type="date" required value={address.validFrom} onChange={(event) => setAddress({ ...address, validFrom: event.target.value })} />
-            </label>
-            <label className="sm:col-span-2 block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Alamat</span>
-              <textarea className={field} rows={2} required value={address.addressLine} onChange={(event) => setAddress({ ...address, addressLine: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Desa/kelurahan</span>
-              <input className={field} value={address.village} onChange={(event) => setAddress({ ...address, village: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Kecamatan</span>
-              <input className={field} value={address.district} onChange={(event) => setAddress({ ...address, district: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Kota/kabupaten</span>
-              <input className={field} required value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Provinsi</span>
-              <input className={field} value={address.province} onChange={(event) => setAddress({ ...address, province: event.target.value })} />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block font-bold text-brand-heading">Kode pos</span>
-              <input className={field} inputMode="numeric" value={address.postalCode} onChange={(event) => setAddress({ ...address, postalCode: event.target.value })} />
-            </label>
-            <div className="sm:col-span-2">
-              <button type="submit" className={primaryButton} disabled={busy}>Kirim usulan</button>
-            </div>
-          </form>
-        ) : null}
+        {target ? (
+          <DetailDialog title={target === "ALAMAT" ? "Usulan alamat" : "Usulan kontak"} onClose={closeProposal}>
+            <DialogMessages error={error} />
+            {target === "ALAMAT" ? (
+              <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Jenis</span>
+                  <select className={field} value={address.kind} onChange={(event) => setAddress({ ...address, kind: event.target.value as AddressDraft["kind"] })}>
+                    <option value="DOMISILI">Domisili</option>
+                    <option value="KTP">Sesuai KTP</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Berlaku sejak</span>
+                  <input className={field} type="date" required value={address.validFrom} onChange={(event) => setAddress({ ...address, validFrom: event.target.value })} />
+                </label>
+                <label className="sm:col-span-2 block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Alamat</span>
+                  <textarea className={field} rows={2} required value={address.addressLine} onChange={(event) => setAddress({ ...address, addressLine: event.target.value })} />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Desa/kelurahan</span>
+                  <input className={field} value={address.village} onChange={(event) => setAddress({ ...address, village: event.target.value })} />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Kecamatan</span>
+                  <input className={field} value={address.district} onChange={(event) => setAddress({ ...address, district: event.target.value })} />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Kota/kabupaten</span>
+                  <input className={field} required value={address.city} onChange={(event) => setAddress({ ...address, city: event.target.value })} />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Provinsi</span>
+                  <input className={field} value={address.province} onChange={(event) => setAddress({ ...address, province: event.target.value })} />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block font-bold text-brand-heading">Kode pos</span>
+                  <input className={field} inputMode="numeric" value={address.postalCode} onChange={(event) => setAddress({ ...address, postalCode: event.target.value })} />
+                </label>
+                <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  <button type="submit" className={primaryButton} disabled={busy}>Kirim usulan</button>
+                  <button type="button" className={quietButton} onClick={closeProposal}>Batal</button>
+                </div>
+              </form>
+            ) : null}
 
-        {target === "KONTAK" ? (
-          <form onSubmit={submit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-            <h2 className="sm:col-span-2 text-sm font-bold text-brand-heading">Usulan kontak</h2>
-            <div className="block text-sm">
-              <label>
-                <span className="mb-1 block font-bold text-brand-heading">Email baru</span>
-                <input
-                  className={field}
-                  type="email"
-                  disabled={contact.clearEmail}
-                  value={contact.email}
-                  onChange={(event) => setContact({ ...contact, email: event.target.value })}
-                />
-              </label>
-              <label className="mt-2 flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={contact.clearEmail}
-                  onChange={(event) => setContact({ ...contact, clearEmail: event.target.checked })}
-                />
-                Usulkan agar email dihapus
-              </label>
-            </div>
-            <div className="block text-sm">
-              <label>
-                <span className="mb-1 block font-bold text-brand-heading">Telepon baru</span>
-                <input
-                  className={field}
-                  disabled={contact.clearPhone}
-                  value={contact.phone}
-                  onChange={(event) => setContact({ ...contact, phone: event.target.value })}
-                />
-              </label>
-              <label className="mt-2 flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={contact.clearPhone}
-                  onChange={(event) => setContact({ ...contact, clearPhone: event.target.checked })}
-                />
-                Usulkan agar nomor telepon dihapus
-              </label>
-            </div>
-            <p className="sm:col-span-2 text-xs text-muted-foreground">
-              Kotak yang dibiarkan kosong tidak diubah. Untuk menghapus sebuah data, centang pilihan di bawahnya.
-            </p>
-            <div className="sm:col-span-2">
-              <button type="submit" className={primaryButton} disabled={busy}>Kirim usulan</button>
-            </div>
-          </form>
+            {target === "KONTAK" ? (
+              <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+                <div className="block text-sm">
+                  <label>
+                    <span className="mb-1 block font-bold text-brand-heading">Email baru</span>
+                    <input
+                      className={field}
+                      type="email"
+                      disabled={contact.clearEmail}
+                      value={contact.email}
+                      onChange={(event) => setContact({ ...contact, email: event.target.value })}
+                    />
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={contact.clearEmail}
+                      onChange={(event) => setContact({ ...contact, clearEmail: event.target.checked })}
+                    />
+                    Usulkan agar email dihapus
+                  </label>
+                </div>
+                <div className="block text-sm">
+                  <label>
+                    <span className="mb-1 block font-bold text-brand-heading">Telepon baru</span>
+                    <input
+                      className={field}
+                      disabled={contact.clearPhone}
+                      value={contact.phone}
+                      onChange={(event) => setContact({ ...contact, phone: event.target.value })}
+                    />
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={contact.clearPhone}
+                      onChange={(event) => setContact({ ...contact, clearPhone: event.target.checked })}
+                    />
+                    Usulkan agar nomor telepon dihapus
+                  </label>
+                </div>
+                <p className="sm:col-span-2 text-xs text-muted-foreground">
+                  Kotak yang dibiarkan kosong tidak diubah. Untuk menghapus sebuah data, centang pilihan di bawahnya.
+                </p>
+                <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  <button type="submit" className={primaryButton} disabled={busy}>Kirim usulan</button>
+                  <button type="button" className={quietButton} onClick={closeProposal}>Batal</button>
+                </div>
+              </form>
+            ) : null}
+          </DetailDialog>
         ) : null}
 
         {/* EMP-011: the employee's own document archive and upload proposals. */}

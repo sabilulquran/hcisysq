@@ -238,18 +238,13 @@ export function MeetingForm({
   const today = jakartaDate();
 
   return (
-    <form onSubmit={submit} className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-base font-bold text-brand-heading">{editing ? "Ubah rapat" : "Buat undangan rapat"}</h2>
-        <button type="button" aria-label="Tutup formulir" onClick={onClose} className="rounded-lg p-1 hover:bg-muted">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      {error ? <div role="alert" className="mt-4 rounded-2xl border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
+    // Shown inside a DetailDialog whose header carries the title ("Ubah rapat" / "Buat undangan rapat")
+    // and the close button; Batal at the bottom calls onClose.
+    <form onSubmit={submit}>
+      {error ? <div role="alert" className="mt-4 rounded-2xl first:mt-0 border border-danger-line bg-danger-soft p-3 text-sm text-danger-ink">{error}</div> : null}
       <IssueList issues={conflicts} tone="danger" />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4 first:mt-0 sm:grid-cols-2">
         <label className={`${label} sm:col-span-2`}>
           Judul
           <input required minLength={3} maxLength={200} value={form.title} placeholder="Contoh: Rapat koordinasi kurikulum tahfidz"

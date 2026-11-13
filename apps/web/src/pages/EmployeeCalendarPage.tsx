@@ -5,6 +5,9 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Lock, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
+import { replaceDialogParam } from "@/lib/detailDialogParam";
 import { PaginationBar } from "@/components/PaginationBar";
 import { MeetingDetailPanel } from "@/components/meetings/MeetingDetailPanel";
 import { MeetingForm } from "@/components/meetings/MeetingForm";
@@ -36,6 +39,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+/** `?meeting=baru` opens the invitation form; any other value is a meeting id. */
+const NEW_MEETING = "baru";
 
 function chipClass(item: CalendarItem) {
   switch (item.kind) {
@@ -111,6 +116,9 @@ export function EmployeeCalendarPage() {
   const [listLoading, setListLoading] = useState(true);
   const [selected, setSelected] = useState<MeetingDetail | null>(null);
   const [form, setForm] = useState<{ date: string; editing: MeetingDetail | null } | null>(null);
+  // The open meeting (or the invitation form) lives in ?meeting=<id|baru> and shows as one pop-up;
+  // notification links use ?meeting=<id>. Ubah swaps the pop-up's content to the form.
+  const [meetingParam, showMeeting, closeMeeting] = useDialogParam("meeting");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -159,18 +167,23 @@ export function EmployeeCalendarPage() {
 
   useEffect(() => {
     void getEmployeeLeaveSummary().then((summary) => setEmployee(summary.employee)).catch(() => undefined);
-    // A notification links here with ?meeting=<id>.
-    const linked = new URLSearchParams(window.location.search).get("meeting");
-    if (linked) void open(linked);
-  }, [open]);
+  }, []);
+
+  useEffect(() => {
+    if (meetingParam === NEW_MEETING) {
+      setSelected(null);
+      // Opened by Buat rapat the form is already set; a link to ?meeting=baru starts from the chosen day.
+      setForm((current) => (current && !current.editing ? current : { date: selectedDate < today ? today : selectedDate, editing: null }));
+    } else if (meetingParam) {
+      void open(meetingParam);
+    } else {
+      setSelected(null);
+      setForm(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingParam, open]);
 
   useEffect(() => { void loadCalendar(); }, [loadCalendar]);
-  // Phones stack the panel under the calendar: bring the form or detail into view.
-  useEffect(() => {
-    if ((form || selected) && window.innerWidth < 1024) {
-      document.getElementById("meeting-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [form, selected]);
   useEffect(() => { void loadList(listTab, 1); }, [listTab, loadList]);
 
   const refresh = async (id?: string) => {
@@ -218,7 +231,11 @@ export function EmployeeCalendarPage() {
     setSelected(null);
     setNotice(null);
     setForm({ date: date < today ? today : date, editing: null });
+    showMeeting(NEW_MEETING);
   };
+
+  // The form shows when it belongs to the pop-up in the URL: the new invitation, or the meeting being edited.
+  const formOpen = form !== null && (form.editing ? form.editing.id === meetingParam : meetingParam === NEW_MEETING);
 
   const selectedItems = byDate.get(selectedDate) ?? [];
   // Phones: every day of the month that has something, plus the selected day.
@@ -243,8 +260,8 @@ export function EmployeeCalendarPage() {
           </button>
         </div>
 
-        {error ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div role="status" className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !meetingParam ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !meetingParam ? <div role="status" className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
         <div className="mt-6 inline-flex rounded-xl border border-border bg-surface p-1" role="tablist" aria-label="Tampilan">
           {([["calendar", "Kalender"], ["list", "Rapat saya"]] as const).map(([key, label]) => (
@@ -255,7 +272,7 @@ export function EmployeeCalendarPage() {
           ))}
         </div>
 
-        <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="mt-4">
           <div className="min-w-0">
             {tab === "calendar" ? (
               <section className="rounded-3xl border border-border/75 bg-surface-raised p-4 shadow-[var(--shadow-soft)]">
@@ -318,7 +335,7 @@ export function EmployeeCalendarPage() {
                     {selectedItems.length === 0 ? (
                       <p className="mt-2 text-sm text-muted-foreground">Belum ada rapat.</p>
                     ) : (
-                      <div className="mt-1">{selectedItems.map((item, index) => <ItemRow key={index} item={item} onOpen={(id) => void open(id)} />)}</div>
+                      <div className="mt-1">{selectedItems.map((item, index) => <ItemRow key={index} item={item} onOpen={showMeeting} />)}</div>
                     )}
                   </div>
                 </div>
@@ -340,7 +357,7 @@ export function EmployeeCalendarPage() {
                           ) : null}
                         </div>
                         {dayItems.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada rapat.</p>
-                          : dayItems.map((item, index) => <ItemRow key={index} item={item} onOpen={(id) => void open(id)} />)}
+                          : dayItems.map((item, index) => <ItemRow key={index} item={item} onOpen={showMeeting} />)}
                       </div>
                     );
                   })}
@@ -364,8 +381,8 @@ export function EmployeeCalendarPage() {
                   <ul className="mt-3 divide-y divide-border/70">
                     {meetings.map((meeting) => (
                       <li key={meeting.id}>
-                        <button type="button" onClick={() => void open(meeting.id)}
-                          className={cn("flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50", selected?.id === meeting.id && "bg-muted/60")}>
+                        <button type="button" onClick={() => showMeeting(meeting.id)}
+                          className={cn("flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50", meetingParam === meeting.id && "bg-muted/60")}>
                           <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                           <span className="min-w-0">
                             <span className={cn("block truncate font-semibold text-brand-heading", meeting.status === "CANCELLED" && "line-through")}>
@@ -391,37 +408,50 @@ export function EmployeeCalendarPage() {
             )}
           </div>
 
-          <aside id="meeting-panel" className="min-w-0 scroll-mt-4">
-            {form ? (
-              <MeetingForm
-                key={form.editing ? `edit-${form.editing.id}-${form.editing.version}` : `new-${form.date}`}
-                defaultDate={form.date}
-                editing={form.editing}
-                whatsappActive={whatsappActive}
-                onClose={() => setForm(null)}
-                onSaved={(id, message) => {
-                  setForm(null);
-                  setNotice(message);
-                  void refresh(id);
-                }}
-              />
-            ) : selected ? (
-              <MeetingDetailPanel
-                meeting={selected}
-                busy={busy}
-                whatsappActive={whatsappActive}
-                onClose={() => setSelected(null)}
-                onRespond={(response) => respond(selected, response)}
-                onEdit={() => setForm({ date: jakartaDate(selected.startAt), editing: selected })}
-                onCancel={() => cancel(selected)}
-              />
-            ) : (
-              <div className="rounded-3xl border border-dashed border-border p-5 text-sm text-muted-foreground">
-                Pilih rapat untuk melihat peserta dan menjawab undangan, atau tekan <span className="font-semibold">Buat rapat</span>.
-                Rapat orang lain hanya tampil ringkas; rapat rahasia tampil sebagai "Sibuk".
-              </div>
-            )}
-          </aside>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Pilih rapat untuk melihat peserta dan menjawab undangan, atau tekan <span className="font-semibold">Buat rapat</span>.
+            Rapat orang lain hanya tampil ringkas; rapat rahasia tampil sebagai "Sibuk".
+          </p>
+
+          {meetingParam ? (
+            <DetailDialog
+              title={formOpen ? (form.editing ? "Ubah rapat" : "Buat undangan rapat") : selected?.id === meetingParam ? selected.title : "Rapat"}
+              onClose={closeMeeting}
+            >
+              <DialogMessages error={error} notice={notice} />
+              {formOpen ? (
+                <MeetingForm
+                  key={form.editing ? `edit-${form.editing.id}-${form.editing.version}` : `new-${form.date}`}
+                  defaultDate={form.date}
+                  editing={form.editing}
+                  whatsappActive={whatsappActive}
+                  // Ubah goes back to the meeting's detail; a new invitation's Batal closes the pop-up.
+                  onClose={() => (form.editing ? setForm(null) : closeMeeting())}
+                  onSaved={(id, message) => {
+                    const created = !form.editing;
+                    setForm(null);
+                    setNotice(message);
+                    // A new meeting takes the place of the form in the URL, so Back closes the pop-up.
+                    if (created) {
+                      replaceDialogParam("meeting", id);
+                      void refresh();
+                    } else {
+                      void refresh(id);
+                    }
+                  }}
+                />
+              ) : selected?.id === meetingParam ? (
+                <MeetingDetailPanel
+                  meeting={selected}
+                  busy={busy}
+                  whatsappActive={whatsappActive}
+                  onRespond={(response) => respond(selected, response)}
+                  onEdit={() => setForm({ date: jakartaDate(selected.startAt), editing: selected })}
+                  onCancel={() => cancel(selected)}
+                />
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

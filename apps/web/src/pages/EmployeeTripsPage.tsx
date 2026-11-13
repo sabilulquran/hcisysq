@@ -1,9 +1,11 @@
 // TRIP-001 employee surface: submit a business trip, follow its approval, print the surat
 // tugas, cancel or complete it. Spec: docs/domain/business-travel.md.
 
-import { Loader2, Plane, X } from "lucide-react";
+import { Loader2, Plane } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { TripDetailPanel } from "@/components/trips/TripDetailPanel";
 import { AppShell } from "@/layouts/AppShell";
@@ -34,6 +36,8 @@ export function EmployeeTripsPage() {
   const [page, setPage] = useState(1);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<TripDetail | null>(null);
+  // The open trip lives in ?trip=<id> (notification links use it too) and shows as a pop-up.
+  const [tripId, showTrip, closeTrip] = useDialogParam("trip");
   const [form, setForm] = useState(emptyForm);
   // One key per filled-in form: a double click or a retry after a lost response replays
   // the same submission instead of creating a second trip.
@@ -66,11 +70,13 @@ export function EmployeeTripsPage() {
     void loadList(1)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Perjalanan dinas tidak dapat dimuat."))
       .finally(() => setLoading(false));
-    // A notification links here with ?trip=<id>.
-    const linked = new URLSearchParams(window.location.search).get("trip");
-    if (linked) void open(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (tripId) void open(tripId);
+    else setSelected(null);
+  }, [tripId]);
 
   const changePage = (next: number) => {
     setPage(next);
@@ -109,7 +115,7 @@ export function EmployeeTripsPage() {
       setNotice("Perjalanan dinas diajukan dan sedang menunggu persetujuan.");
       setPage(1);
       await loadList(1);
-      await open(created.id);
+      showTrip(created.id);
     }, "Perjalanan dinas tidak dapat diajukan.");
   };
 
@@ -145,8 +151,8 @@ export function EmployeeTripsPage() {
           menerbitkan surat tugas bernomor. Biaya dan uang muka belum diurus di sini.
         </p>
 
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink print:hidden">{error}</div> : null}
-        {notice ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading print:hidden">{notice}</div> : null}
+        {error && !tripId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink print:hidden">{error}</div> : null}
+        {notice && !tripId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading print:hidden">{notice}</div> : null}
 
         <form onSubmit={submit} className="mt-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)] print:hidden">
           <h2 className="text-sm font-bold text-brand-heading">Ajukan perjalanan dinas</h2>
@@ -195,7 +201,7 @@ export function EmployeeTripsPage() {
           </div>
         </form>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="mt-6">
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)] print:hidden">
             <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Perjalanan saya</h2>
             {loading ? (
@@ -206,8 +212,8 @@ export function EmployeeTripsPage() {
               <ul className="mt-3 divide-y divide-border/70">
                 {items.map((trip) => (
                   <li key={trip.id}>
-                    <button type="button" onClick={() => void open(trip.id)}
-                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === trip.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => showTrip(trip.id)}
+                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${tripId === trip.id ? "bg-muted/60" : ""}`}>
                       <Plane className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{trip.destination}</span>
@@ -228,14 +234,10 @@ export function EmployeeTripsPage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)] print:border-0 print:shadow-none">
-            {selected ? (
-              <>
-                <div className="flex justify-end print:hidden">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+          {tripId ? (
+            <DetailDialog title="Detail perjalanan dinas" onClose={closeTrip} wide>
+              <DialogMessages error={error} notice={notice} />
+              {selected?.id === tripId ? (
                 <TripDetailPanel
                   trip={selected}
                   actions={(
@@ -255,11 +257,9 @@ export function EmployeeTripsPage() {
                     </>
                   )}
                 />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih perjalanan untuk melihat persetujuan, surat tugas, dan riwayatnya.</p>
-            )}
-          </section>
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

@@ -2,6 +2,8 @@ import { AlertTriangle, CheckCircle2, Loader2, Plus, Send, X } from "lucide-reac
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogMessages } from "@/components/DetailDialogParts";
 import { requestStatusLabel } from "@/lib/attendanceLabels";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -47,7 +49,9 @@ export function EmployeeTeamOvertimePage() {
   const [minutes, setMinutes] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [ordering, setOrdering] = useState(false);
+  // "Perintahkan lembur" opens the order form as a pop-up named in the URL (?perintah=baru).
+  const [orderParam, showOrder, closeOrder] = useDialogParam("perintah");
+  const ordering = orderParam === "baru" && Boolean(data?.isSupervisor);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -90,8 +94,8 @@ export function EmployeeTeamOvertimePage() {
         <h1 className="mt-1 text-2xl font-bold text-brand-heading">Lembur Tim</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Setujui atau tolak lembur bawahan langsung Anda, dan perintahkan lembur yang perlu disetujui pegawainya. Persetujuan di HCIS berlaku sebagai persetujuan tertulis.</p>
       </section>
-      {error ? <div role="alert" className="mt-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div> : null}
-      {notice ? <div role="status" className="mt-4 flex gap-2 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4 shrink-0" />{notice}</div> : null}
+      {error && !ordering ? <div role="alert" className="mt-4 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4 shrink-0" />{error}</div> : null}
+      {notice && !ordering ? <div role="status" className="mt-4 flex gap-2 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4 shrink-0" />{notice}</div> : null}
 
       <nav className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Lembur tim">
         {TABS.map((item) => (
@@ -99,15 +103,20 @@ export function EmployeeTeamOvertimePage() {
             className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${tab === item.value ? "border-brand-primary/40 bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground"}`}>{item.label}</button>
         ))}
         {data?.isSupervisor ? (
-          <button type="button" onClick={() => setOrdering(!ordering)} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-full bg-brand-primary px-4 text-sm font-semibold text-brand-foreground"><Plus className="h-4 w-4" /> Perintahkan lembur</button>
+          <button type="button" onClick={() => showOrder("baru")} className="ml-auto inline-flex min-h-11 items-center gap-1 rounded-full bg-brand-primary px-4 text-sm font-semibold text-brand-foreground"><Plus className="h-4 w-4" /> Perintahkan lembur</button>
         ) : null}
       </nav>
 
-      {ordering ? <OrderForm busy={busy !== null} onCancel={() => setOrdering(false)} onSubmit={(input) => run("order", async () => {
-        await orderTeamOvertime(input);
-        setOrdering(false);
-        setTab("orders");
-      }, `Perintah lembur dikirim ke ${input.employeeIds.length} pegawai. Menunggu persetujuan pegawai.`)} /> : null}
+      {ordering ? (
+        <DetailDialog title="Perintahkan lembur" onClose={closeOrder}>
+          <DialogMessages error={error} />
+          <OrderForm busy={busy !== null} onCancel={closeOrder} onSubmit={(input) => run("order", async () => {
+            await orderTeamOvertime(input);
+            closeOrder();
+            setTab("orders");
+          }, `Perintah lembur dikirim ke ${input.employeeIds.length} pegawai. Menunggu persetujuan pegawai.`)} />
+        </DetailDialog>
+      ) : null}
 
       {tab === "pending" && selected.size > 0 ? (
         <div className="mt-4 flex items-center justify-between rounded-2xl border bg-surface-raised p-3 text-sm">
@@ -220,10 +229,10 @@ function OrderForm({ busy, onCancel, onSubmit }: {
   };
   const locked = busy || checking;
   return (
-    <section aria-label="Perintahkan lembur" className="mt-4 rounded-2xl border bg-surface-raised p-4 text-sm">
-      <div className="flex items-center justify-between"><h2 className="font-semibold">Perintahkan lembur</h2><button type="button" aria-label="Tutup" disabled={locked} onClick={onCancel}><X className="h-4 w-4" /></button></div>
+    // Shown inside a DetailDialog whose header carries the title and the close button.
+    <section aria-label="Perintahkan lembur" className="text-sm">
       <fieldset disabled={locked} className="min-w-0">
-      <label className="mt-3 block text-xs text-muted-foreground">Bawahan langsung<input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Cari nama atau NIP" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <label className="block text-xs text-muted-foreground">Bawahan langsung<input className="mt-1 h-10 w-full rounded-xl border px-3 text-sm" placeholder="Cari nama atau NIP" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
       <ul className="mt-2 max-h-40 overflow-y-auto">
         {options.filter((option) => !picked.some((item) => item.id === option.id)).map((option) => (
           <li key={option.id}><button type="button" className="min-h-10 w-full rounded-lg px-2 text-left hover:bg-surface" onClick={() => setPicked([...picked, { id: option.id, fullName: option.fullName }])}>{option.fullName} <span className="text-muted-foreground">· {option.employeeNumber}</span></button></li>

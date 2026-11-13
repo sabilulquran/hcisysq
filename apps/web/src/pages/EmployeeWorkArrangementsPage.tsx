@@ -1,10 +1,12 @@
 // ATT-015 employee surface: ask for tugas luar, WFH/WFA or a schedule change, follow its approval,
 // cancel it. Spec: docs/domain/attendance-remote-and-schedule-requests.md.
 
-import { CalendarClock, Home, Loader2, MapPin, X } from "lucide-react";
+import { CalendarClock, Home, Loader2, MapPin } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ArrangementDetailPanel } from "@/components/arrangements/ArrangementDetailPanel";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
@@ -65,6 +67,8 @@ export function EmployeeWorkArrangementsPage() {
   const [page, setPage] = useState(1);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<ArrangementDetail | null>(null);
+  // The open request lives in ?arrangement=<id> (notification links use it too) and shows as a pop-up.
+  const [arrangementId, showArrangement, closeArrangement] = useDialogParam("arrangement");
   const [form, setForm] = useState(() => emptyForm());
   // One key per filled-in form: a double click or a retry after a lost response replays the same submission.
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
@@ -98,11 +102,13 @@ export function EmployeeWorkArrangementsPage() {
     void loadList(1)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Pengajuan tidak dapat dimuat."))
       .finally(() => setLoading(false));
-    // A notification links here with ?arrangement=<id>.
-    const linked = new URLSearchParams(window.location.search).get("arrangement");
-    if (linked) void open(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (arrangementId) void open(arrangementId);
+    else setSelected(null);
+  }, [arrangementId]);
 
   // A schedule change shows the current shift of the chosen date and the shifts it may become.
   useEffect(() => {
@@ -168,7 +174,7 @@ export function EmployeeWorkArrangementsPage() {
       setNotice(`${ARRANGEMENT_TYPE_LABELS[form.type]} diajukan dan sedang menunggu persetujuan.`);
       setPage(1);
       await loadList(1);
-      await open(created.id);
+      showArrangement(created.id);
     }, "Pengajuan tidak dapat dikirim.");
   };
 
@@ -197,8 +203,8 @@ export function EmployeeWorkArrangementsPage() {
           approver unit menyetujui. Yang disetujui menjelaskan hari tanpa scan di rekap kehadiran; jam absen tidak diisi otomatis.
         </p>
 
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !arrangementId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !arrangementId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
         <form onSubmit={submit} className="mt-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-sm font-bold text-brand-heading">Ajukan</h2>
@@ -298,7 +304,7 @@ export function EmployeeWorkArrangementsPage() {
           </div>
         </form>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="mt-6">
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
             <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Pengajuan saya</h2>
             {loading ? (
@@ -311,8 +317,8 @@ export function EmployeeWorkArrangementsPage() {
                   const Icon = TYPE_ICONS[item.type];
                   return (
                     <li key={item.id}>
-                      <button type="button" onClick={() => void open(item.id)}
-                        className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === item.id ? "bg-muted/60" : ""}`}>
+                      <button type="button" onClick={() => showArrangement(item.id)}
+                        className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${arrangementId === item.id ? "bg-muted/60" : ""}`}>
                         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                         <span className="min-w-0">
                           <span className="block truncate font-semibold text-brand-heading">{ARRANGEMENT_TYPE_LABELS[item.type]} · {arrangementSubject(item)}</span>
@@ -333,14 +339,10 @@ export function EmployeeWorkArrangementsPage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+          {arrangementId ? (
+            <DetailDialog title="Detail pengajuan" onClose={closeArrangement}>
+              <DialogMessages error={error} notice={notice} />
+              {selected?.id === arrangementId ? (
                 <ArrangementDetailPanel
                   item={selected}
                   actions={selected.status === "IN_REVIEW" || (selected.status === "APPROVED" && today < selected.startOn) ? (
@@ -350,11 +352,9 @@ export function EmployeeWorkArrangementsPage() {
                     </button>
                   ) : null}
                 />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih pengajuan untuk melihat persetujuan dan riwayatnya.</p>
-            )}
-          </section>
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

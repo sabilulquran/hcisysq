@@ -339,6 +339,35 @@ describe.skipIf(!allowed)("NOTIF-003 reminder engine", () => {
     expect(await findReminderRule("employment.term_ending")!.generate(client, { today })).toEqual([]);
   });
 
+  it("EMP-011: a verified document of a managed employee reminds its owner at H-30 and H-7 only", async () => {
+    const now = morning();
+    const today = jakartaClock(now).date;
+    const insertDocument = async (who: Who, type: string, status: string, expiresOn: string) => {
+      const id = randomUUID();
+      await client.query(
+        `INSERT INTO employee_documents (id, employee_id, document_type, expires_on, status, source, submitted_by_account_id)
+         VALUES ($1,$2,$3,$4::date,$5,'HC',$6)`,
+        [id, people[who].employeeId, type, expiresOn, status, people.hc.accountId],
+      );
+      return id;
+    };
+    await insertDocument("plain", "SIM", "VERIFIED", addDays(today, 20));
+    await insertDocument("requester", "PASPOR", "PENDING_REVIEW", addDays(today, 20));
+    await insertDocument("approver", "SKCK", "VERIFIED", addDays(today, 45));
+    const rule = findReminderRule("employee.document_expiring")!;
+    await engine(now).runRule(rule, now);
+    expect(await occurrences(rule.key, people.plain.accountId)).toHaveLength(1);
+    expect(await occurrences(rule.key, people.requester.accountId)).toEqual([]);
+    expect(await occurrences(rule.key, people.approver.accountId)).toEqual([]);
+    expect((await inbox(people.plain.accountId, "reminder.employee.document_expiring"))[0]!.title).toBe("SIM berakhir 20 hari lagi");
+    const [delivery] = await deliveries(people.plain.accountId);
+    expect(delivery!.text).not.toContain("SIM");
+
+    const later = new Date(now.getTime() + 13 * 86_400_000);
+    await engine(later).runRule(rule, later);
+    expect((await occurrences(rule.key, people.plain.accountId)).map((key) => key.split(":").pop())).toEqual(["30", "7"]);
+  });
+
   it("D-05: a failing rule is recorded without its message, does not stop the others, and is not retried that day", async () => {
     const broken: ReminderRule = {
       key: "test_reminder.broken", label: "Rusak", description: "Uji", defaultWhatsApp: false, fireHour: 6,

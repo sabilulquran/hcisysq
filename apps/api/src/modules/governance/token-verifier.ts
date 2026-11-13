@@ -34,6 +34,8 @@ export class GovernanceTokenError extends Error {
 export interface GovernanceIdentity {
   issuer: string;
   subject: string;
+  /** The allowlisted `azp`; ORG-014 narrows the employee list to the portal client. */
+  client: string;
 }
 
 export type VerifyGovernanceToken = (token: string) => Promise<GovernanceIdentity>;
@@ -128,7 +130,7 @@ export function createGovernanceTokenVerifier(input: {
         throw new GovernanceTokenError("FORBIDDEN_CLIENT");
       }
 
-      return { issuer, subject: payload.sub };
+      return { issuer, subject: payload.sub, client: payload.azp };
     } catch (error) {
       if (error instanceof GovernanceTokenError) throw error;
       if (isKeySetUnavailable(error)) {

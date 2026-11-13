@@ -149,7 +149,7 @@ No HCIS session is created, no cookie is set, and no refresh happens.
 
 ### 3.4 Bearer only on this route
 
-- Only `GET /governance/summary` reads the `Authorization` header for a user identity. No other HCIS route accepts the exchanged token: every other user route keeps the cookie session. A test sends a valid exchanged token to `/board/dashboard`, `/auth/me`, an `/app` route and an `/admin` route and expects `401`.
+- Only `GET /governance/summary` and, since ORG-014 (2026-11-13), `GET /governance/employees` read the `Authorization` header for a user identity. No other HCIS route accepts the exchanged token: every other user route keeps the cookie session. A test sends a valid exchanged token to `/board/dashboard`, `/auth/me`, an `/app` route and an `/admin` route and expects `401`.
 - The machine-token routes (HCIS-ID-001, Organization Directory) keep their own audiences (`hcis-staff-identity`, Organization Directory audience). A governance token is refused there because the audience differs, and their tokens are refused here because `aud`/`azp` differ.
 - `GOVERNANCE_SUMMARY_AUDIENCE` must differ from the two machine audiences. Startup fails if they are equal.
 
@@ -320,6 +320,7 @@ Hub caches a summary for up to 60 seconds per session, so `served` volume stays 
 | `GOVERNANCE_SUMMARY_ENABLED` | `false` by default |
 | `GOVERNANCE_SUMMARY_AUDIENCE` | HCIS OIDC client ID; must differ from machine-token audiences |
 | `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` | comma-separated; the SQ Hub client and, from ORGAN-IMPL-001 R1, `sq-organ` (`sq-hub,sq-organ`) |
+| `GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS` | ORG-014: comma-separated subset allowed on `/governance/employees`; default `sq-organ` |
 | `GOVERNANCE_SUMMARY_APPLICATION_KEY` | registry key returned as `applicationKey` |
 | issuer | reuses `OIDC_ISSUER` |
 
@@ -422,7 +423,7 @@ Still to verify on Mi8VPS with owner approval (unchanged): the realm signing alg
 - ORG-010-B: `board.read` is carried only by the board-view role, is outside every HC bundle and outside legacy Super Admin compatibility, and grants no mutation.
 - ORG-010-C: only Super Admin can grant or remove the board-view role; every other actor gets `ROLE_GRANT_SUPER_ADMIN_ONLY` with nothing written. Grants require organization scope and a reason.
 - ORG-010-D: `GET /governance/summary` accepts only a bearer token whose signature, issuer, expiry, `typ`, audience (HCIS client), and `azp` (SQ Hub) are valid, maps `iss + sub` like OIDC login, and requires board access.
-- ORG-010-E: the exchanged token is refused by every other HCIS route, and the endpoint never authenticates by cookie or creates a session.
+- ORG-010-E: the exchanged token is refused by every other HCIS route, and the endpoint never authenticates by cookie or creates a session. (Amended 2026-11-13: also accepted on `/governance/employees`, ORG-014.)
 - ORG-010-F: the response follows HUB-IMPL-021 v1 with ORG-003 aggregates only, no actor data, no PII, and no attendance or payroll aggregates. (Amended 2026-11-12: the caller's own `decisions` block, ORG-010-O, is the one exception.)
 - ORG-010-G: the monthly active-headcount trend covers the last 12 completed months, appears only in employment-history `AUTHORITATIVE` mode, uses `null` for months that unknown dates make uncertain, and is omitted with fewer than 6 known points.
 - ORG-010-H: the headcount-by-unit ranking has at most 8 items, largest first, with units under 3 active employees and any overflow folded into "Lainnya".

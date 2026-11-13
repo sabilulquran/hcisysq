@@ -1,5 +1,11 @@
 export class WorkforceAttendanceApiError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    /** ATT-011-6b: employees a batch order was refused for (403 OVERTIME_NOT_SUBORDINATE, 422 OVERTIME_NOT_APPLICABLE). */
+    readonly employees?: Array<{ employeeId: string; reasonLabel?: string }>,
+  ) {
     super(message);
     this.name = "WorkforceAttendanceApiError";
   }
@@ -8,11 +14,12 @@ export class WorkforceAttendanceApiError extends Error {
 async function readJson<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => null)) as T | { code?: string; message?: string } | null;
   if (response.ok) return body as T;
-  const error = body as { code?: string; message?: string } | null;
+  const error = body as { code?: string; message?: string; employees?: Array<{ employeeId: string; reasonLabel?: string }> } | null;
   throw new WorkforceAttendanceApiError(
     response.status,
     error?.code ?? "ATTENDANCE_WORKFORCE_REQUEST_FAILED",
     error?.message ?? "Permintaan kehadiran tidak dapat diproses.",
+    Array.isArray(error?.employees) ? error.employees : undefined,
   );
 }
 
@@ -662,6 +669,19 @@ export interface AttendanceOvertimeItem {
   dayType?: "working_day" | "rest_day" | "public_holiday" | null;
   /** Scan time outside the schedule (all scans on a day without one); information only. */
   scanOutsideScheduleMinutes?: number | null;
+  /** ATT-011-6b-3 D-5b: non-blocking PP 35/2021 warnings (HC list). */
+  warnings?: OvertimeWarning[];
+  /** ATT-011-6b-3 D-10: the reason label of the rule that excludes this day, when one does. */
+  excludedByRule?: string | null;
+}
+
+/** ATT-011-6b-3 D-5b: approved + waiting overtime above the guide figure; never blocks. */
+export interface OvertimeWarning {
+  code: "OVERTIME_DAILY_GUIDE_EXCEEDED" | "OVERTIME_WEEKLY_GUIDE_EXCEEDED";
+  scope: "day" | "week";
+  totalMinutes: number;
+  limitMinutes: number;
+  message: string;
 }
 
 export type OvertimeInitiator = "employee" | "supervisor" | "hc_legacy";
@@ -693,8 +713,10 @@ export async function submitAttendanceOvertime(input: {
   workDate: string;
   requestedMinutes: number;
   note?: string | null;
+  /** ATT-011-6b-3: check and return the warnings without sending. */
+  dryRun?: boolean;
 }) {
-  return readJson<{ id: string; status: string }>(
+  return readJson<{ id?: string; status?: string; dryRun?: boolean; warnings: OvertimeWarning[] }>(
     await fetch("/api/attendance/overtime", {
       method: "POST",
       credentials: "include",
@@ -764,8 +786,9 @@ export async function createAttendanceOvertimeForEmployee(input: {
   workDate: string;
   requestedMinutes: number;
   note?: string | null;
+  dryRun?: boolean;
 }) {
-  return readJson<{ id: string; status: string }>(
+  return readJson<{ id?: string; status?: string; dryRun?: boolean; warnings: OvertimeWarning[] }>(
     await fetch("/api/admin/attendance/overtime", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -810,6 +833,8 @@ export interface TeamOvertimeItem {
   initiatedBy: OvertimeInitiator;
   createdAt: string;
   decidedAt: string | null;
+  /** ATT-011-6b-3 D-5b: shown before the supervisor approves. */
+  warnings?: OvertimeWarning[];
 }
 
 export type TeamOvertimeTab = "pending" | "orders" | "history";
@@ -820,23 +845,31 @@ export async function listTeamOvertime(tab: TeamOvertimeTab, page = 1) {
   );
 }
 
-export async function listOvertimeSubordinates(q = "") {
+/** ATT-011-6b-3: whether to show the Lembur Tim menu. */
+export async function getTeamOvertimeStatus() {
+  return readJson<{ isSupervisor: boolean }>(
+    await fetch("/api/attendance/team-overtime/status", { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function listOvertimeSubordinates(q = "", workDate?: string) {
   const params = new URLSearchParams(q ? { q } : {});
+  if (workDate) params.set("workDate", workDate);
   return readJson<{ items: Array<{ id: string; employeeNumber: string; fullName: string }> }>(
     await fetch(`/api/attendance/team-overtime/subordinates?${params.toString()}`, { credentials: "include", headers: { Accept: "application/json" } }),
   );
 }
 
 export async function decideTeamOvertime(overtimeId: string, input: { decision: "approve" | "reject"; approvedMinutes?: number | null; note?: string | null }) {
-  return readJson<{ id: string; status: string; approvedMinutes: number | null }>(
+  return readJson<{ id: string; status: string; approvedMinutes: number | null; warnings?: OvertimeWarning[] }>(
     await fetch(`/api/attendance/team-overtime/${encodeURIComponent(overtimeId)}/decision`, {
       method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
     }),
   );
 }
 
-export async function orderTeamOvertime(input: { employeeIds: string[]; workDate: string; requestedMinutes: number; note: string }) {
-  return readJson<{ ids: string[] }>(await fetch("/api/attendance/team-overtime/orders", {
+export async function orderTeamOvertime(input: { employeeIds: string[]; workDate: string; requestedMinutes: number; note: string; dryRun?: boolean }) {
+  return readJson<{ ids?: string[]; dryRun?: boolean; orders: Array<{ employeeId: string; id?: string; warnings: OvertimeWarning[] }> }>(await fetch("/api/attendance/team-overtime/orders", {
     method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
   }));
 }
@@ -888,4 +921,69 @@ export async function getMyAttendanceScheduleRange(from: string, to: string) {
       headers: { Accept: "application/json" },
     }),
   );
+}
+
+// ATT-011-6b-3 Pengaturan > Aturan lembur (attendance.policy.manage).
+export interface OvertimePolicyVersion {
+  id: string | null;
+  effectiveFrom: string | null;
+  dailyWarningMinutes: number;
+  weeklyWarningMinutes: number;
+  source?: "configured" | "default";
+  reason?: string | null;
+  createdAt?: string;
+  createdByName?: string | null;
+}
+
+export async function getOvertimePolicy(page = 1) {
+  return readJson<{ current: OvertimePolicyVersion; page: number; pageSize: number; total: number; pageCount: number; items: OvertimePolicyVersion[] }>(
+    await fetch(`/api/admin/attendance/overtime-policy?page=${page}`, { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function setOvertimePolicy(input: { effectiveFrom: string; dailyWarningMinutes: number; weeklyWarningMinutes: number; reason?: string | null }) {
+  return readJson<OvertimePolicyVersion>(await fetch("/api/admin/attendance/overtime-policy", {
+    method: "PUT", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
+  }));
+}
+
+export interface OvertimeEligibilityRule {
+  id: string;
+  targetKind: "position" | "role";
+  targetRef: string;
+  targetLabel: string;
+  reasonLabel: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  state: "active" | "scheduled" | "ended";
+  targetActive: boolean | null;
+  createdByName: string | null;
+  endReason: string | null;
+}
+
+export async function listOvertimeEligibilityRules(status: "current" | "ended" | "all" = "current", page = 1) {
+  const params = new URLSearchParams({ status, page: String(page) });
+  return readJson<{ page: number; pageSize: number; total: number; pageCount: number; items: OvertimeEligibilityRule[] }>(
+    await fetch(`/api/admin/attendance/overtime-eligibility-rules?${params.toString()}`, { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function searchOvertimeRuleTargets(kind: "position" | "role", q = "") {
+  const params = new URLSearchParams({ kind });
+  if (q) params.set("q", q);
+  return readJson<{ kind: "position" | "role"; items: Array<{ key: string; label: string; detail: string }> }>(
+    await fetch(`/api/admin/attendance/overtime-eligibility-rules/targets?${params.toString()}`, { credentials: "include", headers: { Accept: "application/json" } }),
+  );
+}
+
+export async function createOvertimeEligibilityRule(input: { targetKind: "position" | "role"; targetRef: string; reasonLabel: string; effectiveFrom: string }) {
+  return readJson<OvertimeEligibilityRule>(await fetch("/api/admin/attendance/overtime-eligibility-rules", {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
+  }));
+}
+
+export async function endOvertimeEligibilityRule(ruleId: string, input: { reason: string; lastDay?: string }) {
+  return readJson<{ id: string; effectiveTo: string }>(await fetch(`/api/admin/attendance/overtime-eligibility-rules/${encodeURIComponent(ruleId)}/end`, {
+    method: "POST", credentials: "include", headers: jsonHeaders, body: JSON.stringify(input),
+  }));
 }

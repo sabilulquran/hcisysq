@@ -846,6 +846,16 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   request yang diarahkan kepadanya); menu Lembur Tim disembunyikan bila `false`.
 - Permission: rute Aturan lembur memakai `attendance.policy.manage` (403 tanpa itu, diuji). Manifest AUTH-011 dan
   klasifikasi ENG-LIST-001 diperbarui (daftar aturan dan riwayat ambang ber-halaman; pilihan target typeahead ≤ 50).
+- **Layar (web).** **Pengaturan → Aturan lembur** (`/admin/attendance/settings/overtime-rules`,
+  `attendance.policy.manage`): batas peringatan per hari/minggu dalam jam dengan tanggal berlaku dan riwayat;
+  daftar aturan Berlaku/Berakhir (ber-halaman), tambah aturan dengan pencarian jabatan (nama atau unit) atau peran,
+  akhiri aturan dengan alasan; jabatan yang tidak aktif lagi di struktur diberi tanda. **Lembur Saya**, **Perintahkan
+  lembur** (Lembur Tim) dan **Ajukan atas nama pegawai** (HC) memeriksa dulu (`dryRun`): bila ada peringatan,
+  peringatan tampil dan tombol menjadi "Tetap kirim"/"Tetap catat"; penolakan D-10 tampil sebelum kirim. Kartu
+  Lembur Tim dan baris HC Lembur menampilkan peringatan serta "Dikecualikan oleh aturan jabatan". Setelah 409
+  pembatalan otomatis, daftar dimuat ulang. Menu Lembur Tim hanya untuk atasan. Pilihan pegawai HC "atas nama"
+  memakai pencarian pegawai umum (pegawai yang terkena aturan tetap muncul, tetapi ditolak dengan nama aturan saat
+  diperiksa) — DRAFT, cukup selama aturan hanya mengenai jabatan Direktur.
 - Sisa: tidak ada dalam lingkup lembur ATT-011. UAT owner tetap perlu mengonfirmasi angka ambang, perlakuan acting
   dan hari libur, serta jabatan Direktur yang dipilih HC.
 ## 11. Keputusan owner

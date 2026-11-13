@@ -26,6 +26,7 @@ import { boardNavigationFor } from "@/layouts/boardNavigation";
 import { CoreShell, type ShellNavGroup, type ShellNavItem, type ShellPreviewMode } from "@/layouts/CoreShell";
 import { categoryTileClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
 import { cn } from "@/lib/utils";
+import { getTeamOvertimeStatus } from "@/lib/workforceAttendance";
 
 interface AppShellUser {
   name: string;
@@ -180,6 +181,16 @@ export function AppShell({
   const [session, setSession] = useState<AuthSession | null>(null);
   const [canAdminister, setCanAdminister] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  // ATT-011-6b-3 (§7.4): Lembur Tim only for supervisors; the page itself stays reachable by link.
+  const [overtimeSupervisor, setOvertimeSupervisor] = useState(activeItem === "Lembur Tim");
+  useEffect(() => {
+    if (activeItem === "Lembur Tim") return;
+    let active = true;
+    void getTeamOvertimeStatus()
+      .then((value) => { if (active) setOvertimeSupervisor(value.isSupervisor); })
+      .catch(() => { if (active) setOvertimeSupervisor(false); });
+    return () => { active = false; };
+  }, [activeItem]);
   useEffect(() => {
     let active = true;
     const refreshNotifications = () => {
@@ -222,7 +233,8 @@ export function AppShell({
       ? item.href === currentPath
       : item.label === activeItem || (item.label === "Semua Layanan" && activeItem === "Lainnya"),
   }));
-  const taskItems: ShellNavItem[] = [...managementNavigation, ...humanCapitalItems, ...boardNavigationFor(session)].map((item) => ({
+  const managementItems = managementNavigation.filter((item) => item.href !== "/app/attendance/team-overtime" || overtimeSupervisor);
+  const taskItems: ShellNavItem[] = [...managementItems, ...humanCapitalItems, ...boardNavigationFor(session)].map((item) => ({
     key: item.href,
     label: item.label,
     shortLabel: mobileShortLabels[item.href],

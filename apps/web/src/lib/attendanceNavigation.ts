@@ -14,7 +14,8 @@ export type AttendanceTabKey =
   | "daily" | "queue" | "corrections" | "reports"
   | "overtime"
   | "devices"
-  | "locations";
+  | "locations"
+  | "overtimeRules";
 
 export interface AttendanceTab {
   key: AttendanceTabKey;
@@ -74,6 +75,8 @@ export const attendanceSections: AttendanceSection[] = [
     label: "Pengaturan",
     tabs: [
       { key: "locations", label: "Lokasi kerja", href: "/admin/attendance/settings/locations" },
+      // ATT-011-6b-3 §7.7/§7.8: PP 35/2021 warning thresholds and "overtime does not apply" rules.
+      { key: "overtimeRules", label: "Aturan lembur", href: "/admin/attendance/settings/overtime-rules" },
     ],
   },
 ];

@@ -8,6 +8,7 @@
 import { AlertTriangle, CheckCircle2, ChevronRight, Info, LoaderCircle, Search } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { DetailDialog } from "@/components/DetailDialog";
 import type { OrganizationPosition } from "@/lib/organizationDesigner";
 import {
   organizationComparisonLabel,
@@ -380,7 +381,11 @@ export function OrganizationPeopleTab({
       </Panel>
 
       {selectedEmployeeId ? (
-        <Panel title="Kenapa atasannya ini?">
+        <DetailDialog
+          title="Kenapa atasannya ini?"
+          description={explanation?.person.fullName ?? page?.items.find((person) => person.employeeId === selectedEmployeeId)?.fullName}
+          onClose={onCloseExplanation}
+        >
           {explanationLoading ? <LoadingRow label="Menyusun penjelasan..." /> : null}
           {!explanationLoading && explanation ? (
             <>
@@ -402,10 +407,7 @@ export function OrganizationPeopleTab({
               ) : null}
             </>
           ) : null}
-          <button type="button" onClick={onCloseExplanation} className="mt-4 h-9 rounded-xl border border-border px-3 text-xs font-bold hover:bg-muted">
-            Tutup
-          </button>
-        </Panel>
+        </DetailDialog>
       ) : null}
     </div>
   );

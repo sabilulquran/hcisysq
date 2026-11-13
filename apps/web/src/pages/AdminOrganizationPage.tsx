@@ -31,6 +31,7 @@ import {
   OrganizationChart,
   type OrganizationSelection,
 } from "@/components/organization/OrganizationChart";
+import { useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
@@ -1842,7 +1843,8 @@ export function AdminOrganizationPage() {
   const [peopleIssue, setPeopleIssue] = useState("");
   const [peoplePage, setPeoplePage] = useState(1);
 
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  // "Kenapa atasannya ini?" opens as a pop-up kept in the URL (`?pegawai=<employeeId>`) beside tab/draftId/effectiveDate.
+  const [selectedEmployeeId, openExplanation, closeExplanation] = useDialogParam("pegawai");
   const [explanation, setExplanation] = useState<OrganizationExplanation | null>(null);
   const [explanationLoading, setExplanationLoading] = useState(false);
 
@@ -2070,8 +2072,8 @@ export function AdminOrganizationPage() {
           selectedEmployeeId={selectedEmployeeId}
           explanation={explanation}
           explanationLoading={explanationLoading}
-          onSelect={setSelectedEmployeeId}
-          onCloseExplanation={() => setSelectedEmployeeId(null)}
+          onSelect={openExplanation}
+          onCloseExplanation={closeExplanation}
         />
       ) : null}
 

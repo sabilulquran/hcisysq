@@ -6,6 +6,8 @@ import { Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { replaceDialogParam } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
@@ -116,9 +118,14 @@ function Feedback({ action }: { action: ReturnType<typeof useAction> }) {
   );
 }
 
+function DialogLoading() {
+  return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>;
+}
+
 export function AdminTrainingPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [tab, setTab] = useState<Tab>("programs");
+  // A link to a record (`?catatan=<id>`) opens on the tab that shows it.
+  const [tab, setTab] = useState<Tab>(() => (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("catatan") ? "records" : "programs"));
   const canManage = hasPermission(session, "training.manage");
 
   useEffect(() => {
@@ -155,9 +162,12 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  // The open program lives in the URL: `?program=<id>`, or `?program=baru` for the create form.
+  const [programId, openProgram, closeProgram] = useDialogParam("program");
+  const creating = programId === "baru";
   const [selected, setSelected] = useState<ProgramDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [form, setForm] = useState(emptyProgram);
-  const [creating, setCreating] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -182,10 +192,22 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
   const open = async (id: string) => {
     try {
       setSelected(await getProgram(id));
+      setDetailError(null);
     } catch (cause) {
-      action.setError(cause instanceof Error ? cause.message : "Program tidak dapat dibuka.");
+      setDetailError(cause instanceof Error ? cause.message : "Program tidak dapat dibuka.");
     }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setDetailError(null);
+    if (!programId || programId === "baru") return;
+    let active = true;
+    void getProgram(programId)
+      .then((program) => { if (active) setSelected(program); })
+      .catch((cause) => { if (active) setDetailError(cause instanceof Error ? cause.message : "Program tidak dapat dibuka."); });
+    return () => { active = false; };
+  }, [programId]);
 
   const create = (event: React.FormEvent) => {
     event.preventDefault();
@@ -196,9 +218,8 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
         minAttendancePercent: Number(form.minAttendancePercent),
       });
       setForm(emptyProgram());
-      setCreating(false);
       await load();
-      await open(created.id);
+      replaceDialogParam("program", created.id);
       return "Program dibuat. Tambahkan sesi dan peserta.";
     }, "Program tidak dapat dibuat.");
   };
@@ -208,107 +229,119 @@ function ProgramsTab({ canManage }: { canManage: boolean }) {
   return (
     <>
       <Feedback action={action} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)]">
-        <section className={`${card} overflow-hidden`}>
-          <div className="grid gap-3 p-5 sm:grid-cols-2">
+      <section className={`${card} overflow-hidden`}>
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <label className={label}>
+            Status
+            <select className={input} value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as ProgramStatus | ""); }}>
+              <option value="">Semua</option>
+              {Object.entries(PROGRAM_STATUS_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+            </select>
+          </label>
+          <label className={label}>
+            Cari judul
+            <input className={input} value={q} maxLength={100} onChange={(event) => { setPage(1); setQ(event.target.value); }} />
+          </label>
+        </div>
+        {canManage ? (
+          <div className="px-5 pb-3">
+            <button type="button" className={secondary} onClick={() => openProgram("baru")}>Program baru</button>
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
+        ) : items.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada program pada filter ini.</p>
+        ) : (
+          <ul className="divide-y divide-border/70 border-t border-border/70">
+            {items.map((program) => (
+              <li key={program.id}>
+                <button type="button" onClick={() => openProgram(program.id)}
+                  className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${programId === program.id ? "bg-muted/60" : ""}`}>
+                  <span className="block font-semibold text-brand-heading">{program.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {CATEGORY_LABELS[program.category]} · {program.sessionCount} sesi · {program.participantCount} peserta
+                    {program.firstSessionAt ? ` · mulai ${formatInstant(program.firstSessionAt)}` : ""}
+                  </span>
+                  <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{PROGRAM_STATUS_LABELS[program.status]}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {paging && paging.total > 0 ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
+      </section>
+
+      {creating && canManage ? (
+        <DetailDialog title="Program baru" description="Setelah disimpan, tambahkan sesi dan peserta." onClose={closeProgram}>
+          <Feedback action={action} />
+          <form onSubmit={create} className="grid gap-3 sm:grid-cols-2">
+            <label className={`${label} sm:col-span-2`}>
+              Judul
+              <input required minLength={3} maxLength={200} className={input} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+            </label>
             <label className={label}>
-              Status
-              <select className={input} value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as ProgramStatus | ""); }}>
-                <option value="">Semua</option>
-                {Object.entries(PROGRAM_STATUS_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+              Kategori
+              <select className={input} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as TrainingCategory })}>
+                {Object.entries(CATEGORY_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
               </select>
             </label>
             <label className={label}>
-              Cari judul
-              <input className={input} value={q} maxLength={100} onChange={(event) => { setPage(1); setQ(event.target.value); }} />
+              Penyelenggara (kosong = yayasan)
+              <input maxLength={200} className={input} value={form.organizer} onChange={(event) => setForm({ ...form, organizer: event.target.value })} />
             </label>
-          </div>
-          {canManage ? (
-            <div className="px-5 pb-3">
-              <button type="button" className={secondary} onClick={() => setCreating((value) => !value)}>
-                {creating ? "Tutup formulir" : "Program baru"}
-              </button>
+            <label className={label}>
+              Kuota peserta (opsional)
+              <input type="number" min={1} max={500} className={input} value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} />
+            </label>
+            <label className={label}>
+              Kehadiran minimal (%)
+              <input type="number" min={50} max={100} required className={input} value={form.minAttendancePercent}
+                onChange={(event) => setForm({ ...form, minAttendancePercent: event.target.value })} />
+            </label>
+            <label className={`${label} sm:col-span-2`}>
+              Deskripsi (opsional)
+              <textarea maxLength={2000} rows={2} className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-brand-heading"
+                value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+            </label>
+            <div className="sm:col-span-2">
+              <button type="submit" className={primary} disabled={action.busy || form.title.trim().length < 3}>Simpan program</button>
             </div>
-          ) : null}
-          {creating ? (
-            <form onSubmit={create} className="grid gap-3 border-t border-border/70 p-5 sm:grid-cols-2">
-              <label className={`${label} sm:col-span-2`}>
-                Judul
-                <input required minLength={3} maxLength={200} className={input} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
-              </label>
-              <label className={label}>
-                Kategori
-                <select className={input} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as TrainingCategory })}>
-                  {Object.entries(CATEGORY_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-                </select>
-              </label>
-              <label className={label}>
-                Penyelenggara (kosong = yayasan)
-                <input maxLength={200} className={input} value={form.organizer} onChange={(event) => setForm({ ...form, organizer: event.target.value })} />
-              </label>
-              <label className={label}>
-                Kuota peserta (opsional)
-                <input type="number" min={1} max={500} className={input} value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} />
-              </label>
-              <label className={label}>
-                Kehadiran minimal (%)
-                <input type="number" min={50} max={100} required className={input} value={form.minAttendancePercent}
-                  onChange={(event) => setForm({ ...form, minAttendancePercent: event.target.value })} />
-              </label>
-              <label className={`${label} sm:col-span-2`}>
-                Deskripsi (opsional)
-                <textarea maxLength={2000} rows={2} className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-brand-heading"
-                  value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
-              </label>
-              <div className="sm:col-span-2">
-                <button type="submit" className={primary} disabled={action.busy || form.title.trim().length < 3}>Simpan program</button>
-              </div>
-            </form>
-          ) : null}
-          {loading ? (
-            <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
-          ) : items.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada program pada filter ini.</p>
-          ) : (
-            <ul className="divide-y divide-border/70 border-t border-border/70">
-              {items.map((program) => (
-                <li key={program.id}>
-                  <button type="button" onClick={() => void open(program.id)}
-                    className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === program.id ? "bg-muted/60" : ""}`}>
-                    <span className="block font-semibold text-brand-heading">{program.title}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {CATEGORY_LABELS[program.category]} · {program.sessionCount} sesi · {program.participantCount} peserta
-                      {program.firstSessionAt ? ` · mulai ${formatInstant(program.firstSessionAt)}` : ""}
-                    </span>
-                    <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{PROGRAM_STATUS_LABELS[program.status]}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {paging && paging.total > 0 ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
-        </section>
-
-        <section className={`${card} p-5`}>
+          </form>
+        </DetailDialog>
+      ) : null}
+      {programId && !creating ? (
+        <DetailDialog
+          title={selected?.title ?? "Program"}
+          description={selected ? (
+            <>
+              {CATEGORY_LABELS[selected.category]} · {selected.organizer} · {PROGRAM_STATUS_LABELS[selected.status]}
+              {selected.capacity ? ` · kuota ${selected.capacity}` : ""} · kehadiran minimal {selected.minAttendancePercent}%
+            </>
+          ) : undefined}
+          onClose={closeProgram}
+        >
           {selected ? (
-            <ProgramPanel key={selected.id} program={selected} canManage={canManage} action={action}
-              onClose={() => setSelected(null)} reload={async () => { await Promise.all([load(), open(selected.id)]); }} />
-          ) : (
-            <p className="text-sm text-muted-foreground">Pilih program untuk mengatur sesi, peserta, dan kehadiran.</p>
-          )}
-        </section>
-      </div>
+            <>
+              <Feedback action={action} />
+              <ProgramPanel key={selected.id} program={selected} canManage={canManage} action={action}
+                reload={async () => { await Promise.all([load(), open(selected.id)]); }} />
+            </>
+          ) : detailError ? (
+            <p className="text-sm text-muted-foreground">{detailError}</p>
+          ) : <DialogLoading />}
+        </DetailDialog>
+      ) : null}
     </>
   );
 }
 
 const emptySession = () => ({ title: "", day: todayInJakarta(), from: "08:00", to: "10:00", location: "", speakerName: "" });
 
-function ProgramPanel({ program, canManage, action, onClose, reload }: {
+function ProgramPanel({ program, canManage, action, reload }: {
   program: ProgramDetail;
   canManage: boolean;
   action: ReturnType<typeof useAction>;
-  onClose: () => void;
   reload: () => Promise<void>;
 }) {
   const active = program.status === "ACTIVE";
@@ -388,19 +421,9 @@ function ProgramPanel({ program, canManage, action, onClose, reload }: {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-brand-heading">{program.title}</h2>
-          <p className="text-xs text-muted-foreground">
-            {CATEGORY_LABELS[program.category]} · {program.organizer} · {PROGRAM_STATUS_LABELS[program.status]}
-            {program.capacity ? ` · kuota ${program.capacity}` : ""} · kehadiran minimal {program.minAttendancePercent}%
-          </p>
-          {program.cancelReason ? <p className="mt-1 text-xs text-danger-ink">Dibatalkan: {program.cancelReason}</p> : null}
-        </div>
-        <button type="button" aria-label="Tutup detail" onClick={onClose} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-      </div>
+      {program.cancelReason ? <p className="text-xs text-danger-ink">Dibatalkan: {program.cancelReason}</p> : null}
       {editable ? (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           <button type="button" className={primary} disabled={action.busy} onClick={close}>Tutup program</button>
           <button type="button" className={danger} disabled={action.busy} onClick={cancel}>Batalkan program</button>
         </div>
@@ -583,7 +606,10 @@ function RecordsTab({ canManage }: { canManage: boolean }) {
   const [status, setStatus] = useState<RecordStatus | "">("SUBMITTED");
   const [source, setSource] = useState<"INTERNAL" | "EXTERNAL" | "">("");
   const [loading, setLoading] = useState(true);
+  // The open record lives in the URL (`?catatan=<id>`).
+  const [recordId, openRecord, closeRecord] = useDialogParam("catatan");
   const [selected, setSelected] = useState<RecordDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -603,8 +629,19 @@ function RecordsTab({ canManage }: { canManage: boolean }) {
   }, [page, status, source]);
 
   const open = async (id: string) => {
-    try { setSelected(await getRecord(id)); } catch (cause) { action.setError(cause instanceof Error ? cause.message : "Catatan tidak dapat dibuka."); }
+    try { setSelected(await getRecord(id)); setDetailError(null); } catch (cause) { setDetailError(cause instanceof Error ? cause.message : "Catatan tidak dapat dibuka."); }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setDetailError(null);
+    if (!recordId) return;
+    let active = true;
+    void getRecord(recordId)
+      .then((record) => { if (active) setSelected(record); })
+      .catch((cause) => { if (active) setDetailError(cause instanceof Error ? cause.message : "Catatan tidak dapat dibuka."); });
+    return () => { active = false; };
+  }, [recordId]);
 
   const verify = (record: RecordDetail) => void action.run(async () => {
     await verifyRecord(record.id); await Promise.all([load(), open(record.id)]); return "Catatan diverifikasi.";
@@ -626,59 +663,56 @@ function RecordsTab({ canManage }: { canManage: boolean }) {
   return (
     <>
       <Feedback action={action} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <section className={`${card} overflow-hidden`}>
-          <div className="grid gap-3 p-5 sm:grid-cols-2">
-            <label className={label}>
-              Status
-              <select className={input} value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as RecordStatus | ""); }}>
-                <option value="">Semua</option>
-                {Object.entries(RECORD_STATUS_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-              </select>
-            </label>
-            <label className={label}>
-              Sumber
-              <select className={input} value={source} onChange={(event) => { setPage(1); setSource(event.target.value as "INTERNAL" | "EXTERNAL" | ""); }}>
-                <option value="">Semua</option>
-                <option value="INTERNAL">Program internal</option>
-                <option value="EXTERNAL">Pihak luar</option>
-              </select>
-            </label>
-          </div>
-          {loading ? (
-            <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
-          ) : items.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">Tidak ada catatan pada filter ini.</p>
-          ) : (
-            <ul className="divide-y divide-border/70 border-t border-border/70">
-              {items.map((record) => (
-                <li key={record.id}>
-                  <button type="button" onClick={() => void open(record.id)}
-                    className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === record.id ? "bg-muted/60" : ""}`}>
-                    <span className="block font-semibold text-brand-heading">{record.employeeName} · {record.title}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {formatDateRange(record.startOn, record.endOn)} · {formatHours(record.hours)} · {RECORD_STATUS_LABELS[record.status]}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {paging && paging.total > 0 ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
-        </section>
-        <section className={`${card} p-5 text-sm`}>
+      <section className={`${card} overflow-hidden`}>
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <label className={label}>
+            Status
+            <select className={input} value={status} onChange={(event) => { setPage(1); setStatus(event.target.value as RecordStatus | ""); }}>
+              <option value="">Semua</option>
+              {Object.entries(RECORD_STATUS_LABELS).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+            </select>
+          </label>
+          <label className={label}>
+            Sumber
+            <select className={input} value={source} onChange={(event) => { setPage(1); setSource(event.target.value as "INTERNAL" | "EXTERNAL" | ""); }}>
+              <option value="">Semua</option>
+              <option value="INTERNAL">Program internal</option>
+              <option value="EXTERNAL">Pihak luar</option>
+            </select>
+          </label>
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
+        ) : items.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-muted-foreground">Tidak ada catatan pada filter ini.</p>
+        ) : (
+          <ul className="divide-y divide-border/70 border-t border-border/70">
+            {items.map((record) => (
+              <li key={record.id}>
+                <button type="button" onClick={() => openRecord(record.id)}
+                  className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${recordId === record.id ? "bg-muted/60" : ""}`}>
+                  <span className="block font-semibold text-brand-heading">{record.employeeName} · {record.title}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {formatDateRange(record.startOn, record.endOn)} · {formatHours(record.hours)} · {RECORD_STATUS_LABELS[record.status]}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {paging && paging.total > 0 ? <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} /> : null}
+      </section>
+
+      {recordId ? (
+        <DetailDialog
+          title={selected?.title ?? "Catatan pelatihan"}
+          description={selected ? <>{selected.employeeName} · {selected.employeeNumber}{selected.unitName ? ` · ${selected.unitName}` : ""}</> : undefined}
+          onClose={closeRecord}
+        >
           {selected ? (
-            <>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold text-brand-heading">{selected.title}</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {selected.employeeName} · {selected.employeeNumber}{selected.unitName ? ` · ${selected.unitName}` : ""}
-                  </p>
-                </div>
-                <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-              </div>
-              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <div className="text-sm">
+              <Feedback action={action} />
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                 <dt className="text-muted-foreground">Penyelenggara</dt><dd>{selected.organizer}</dd>
                 <dt className="text-muted-foreground">Kategori</dt><dd>{CATEGORY_LABELS[selected.category]}</dd>
                 <dt className="text-muted-foreground">Tanggal</dt><dd>{formatDateRange(selected.startOn, selected.endOn)}</dd>
@@ -708,10 +742,12 @@ function RecordsTab({ canManage }: { canManage: boolean }) {
                   <li key={event.id}>{formatInstant(event.occurredAt)} · {eventLabel(event.eventType)}{event.actorName ? ` · ${event.actorName}` : ""}{event.note ? ` · ${event.note}` : ""}</li>
                 ))}
               </ol>
-            </>
-          ) : <p className="text-muted-foreground">Pilih catatan untuk memverifikasi atau melihat sertifikat.</p>}
-        </section>
-      </div>
+            </div>
+          ) : detailError ? (
+            <p className="text-sm text-muted-foreground">{detailError}</p>
+          ) : <DialogLoading />}
+        </DetailDialog>
+      ) : null}
     </>
   );
 }

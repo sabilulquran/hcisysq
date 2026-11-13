@@ -2,10 +2,11 @@
 // Spec: docs/domain/employee-loans.md. The API authorizes every call and computes every amount;
 // this page only reads what Finance types as whole rupiah.
 
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { LoanDetailPanel } from "@/components/loans/LoanDetailPanel";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -46,7 +47,10 @@ export function AdminLoansPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<LoanStatus | "">("APPROVED");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
+  // The open loan lives in the URL (`?pinjaman=<id>`), so a link opens it and Back closes it.
+  const [loanId, openLoan, closeLoan] = useDialogParam("pinjaman");
   const [selected, setSelected] = useState<LoanDetail | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -96,13 +100,20 @@ export function AdminLoansPage() {
   const open = async (id: string) => {
     try {
       setSelected(await getAdminLoan(id));
+      setOpenError(null);
       setDisbursement(emptyDisbursement());
       setPayment(emptyPayment());
       setPaymentKey(crypto.randomUUID());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pinjaman tidak dapat dibuka.");
+      setOpenError(cause instanceof Error ? cause.message : "Pinjaman tidak dapat dibuka.");
     }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setOpenError(null);
+    if (loanId) void open(loanId);
+  }, [loanId]);
 
   const run = async (action: () => Promise<string>, loan: LoanDetail) => {
     setBusy(true);
@@ -174,7 +185,7 @@ export function AdminLoansPage() {
       {notice ? <div className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
       {forbidden ? null : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div>
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
             <div className="grid gap-3 p-5 sm:grid-cols-2">
               <label className="text-xs font-semibold text-muted-foreground">
@@ -196,8 +207,8 @@ export function AdminLoansPage() {
               <ul className="divide-y divide-border/70 border-t border-border/70">
                 {items.map((loan) => (
                   <li key={loan.id}>
-                    <button type="button" onClick={() => void open(loan.id)}
-                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === loan.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => { setNotice(null); openLoan(loan.id); }}
+                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${loanId === loan.id ? "bg-muted/60" : ""}`}>
                       <span className="block font-semibold text-brand-heading">{loan.employeeName} · <span className="tabular-nums">{formatRupiah(loan.principal)}</span></span>
                       <span className="block text-xs text-muted-foreground">
                         {loan.employeeNumber}{loan.unitName ? ` · ${loan.unitName}` : ""} · {loan.tenorMonths} bulan
@@ -216,114 +227,110 @@ export function AdminLoansPage() {
               <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} />
             ) : null}
           </section>
-
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <LoanDetailPanel
-                  loan={selected}
-                  paymentAction={canManage ? (target) => (
-                    <button type="button" disabled={busy} onClick={() => reverse(selected, target)}
-                      className="min-h-9 rounded-lg border border-border px-2 text-xs font-bold text-brand-heading disabled:opacity-50">
-                      Koreksi
-                    </button>
-                  ) : undefined}
-                  actions={canManage ? (
-                    <div className="w-full space-y-3">
-                      {selected.status === "APPROVED" ? (
-                        <div className="rounded-2xl border border-border/70 bg-surface p-3">
-                          <p className="text-sm font-bold text-brand-heading">Pencairan</p>
-                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                            <label className="text-xs font-semibold text-muted-foreground">Tanggal cair
-                              <input type="date" max={todayInJakarta()} value={disbursement.disbursedOn} className={field}
-                                onChange={(event) => setDisbursement({ ...disbursement, disbursedOn: event.target.value })} />
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">Cara
-                              <select value={disbursement.method} className={field}
-                                onChange={(event) => setDisbursement({ ...disbursement, method: event.target.value as "CASH" | "TRANSFER" })}>
-                                <option value="TRANSFER">Transfer</option>
-                                <option value="CASH">Tunai</option>
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">Cicilan pertama (opsional)
-                              <input type="month" value={disbursement.firstDueMonth} className={field}
-                                onChange={(event) => setDisbursement({ ...disbursement, firstDueMonth: event.target.value })} />
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">No. bukti (opsional)
-                              <input maxLength={200} value={disbursement.reference} className={field}
-                                onChange={(event) => setDisbursement({ ...disbursement, reference: event.target.value })} />
-                            </label>
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">Tanpa bulan cicilan pertama, cicilan mulai bulan setelah pencairan.</p>
-                          <button type="button" disabled={busy} onClick={() => disburse(selected)}
-                            className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                            Cairkan dan buat jadwal
-                          </button>
-                        </div>
-                      ) : null}
-                      {selected.status === "DISBURSED" ? (
-                        <div className="rounded-2xl border border-border/70 bg-surface p-3">
-                          <p className="text-sm font-bold text-brand-heading">Catat pembayaran</p>
-                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                            <label className="text-xs font-semibold text-muted-foreground">Jumlah (Rp)
-                              <input inputMode="numeric" autoComplete="off" value={payment.amount} placeholder="Contoh: 250.000" className={field}
-                                onChange={(event) => changePayment({ amount: event.target.value })} />
-                              {payment.amount && paymentAmount === null ? (
-                                <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
-                              ) : null}
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">Tanggal bayar
-                              <input type="date" min={selected.disbursedOn ?? undefined} max={todayInJakarta()} value={payment.paidOn} className={field}
-                                onChange={(event) => changePayment({ paidOn: event.target.value })} />
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">Cara
-                              <select value={payment.method} className={field}
-                                onChange={(event) => changePayment({ method: event.target.value as LoanPaymentMethod })}>
-                                {(Object.keys(PAYMENT_METHOD_LABELS) as LoanPaymentMethod[]).map((key) => <option key={key} value={key}>{PAYMENT_METHOD_LABELS[key]}</option>)}
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold text-muted-foreground">No. bukti / periode slip (opsional)
-                              <input maxLength={200} value={payment.reference} className={field}
-                                onChange={(event) => setPayment({ ...payment, reference: event.target.value })} />
-                            </label>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" disabled={busy || paymentAmount === null} onClick={() => pay(selected)}
-                              className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                              Catat pembayaran
-                            </button>
-                            <button type="button" disabled={busy}
-                              onClick={() => changePayment({ amount: String(selected.outstanding) })}
-                              className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
-                              Isi sisa ({formatRupiah(selected.outstanding)}) untuk pelunasan
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {selected.status === "IN_REVIEW" || selected.status === "APPROVED" ? (
-                        <button type="button" disabled={busy} onClick={() => cancel(selected)}
-                          className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
-                          Batalkan pengajuan
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Pilih pinjaman untuk melihat jadwal cicilan, pembayaran, dan riwayatnya. Pinjaman yang sudah disetujui
-                menunggu pencairan oleh Keuangan.
-              </p>
-            )}
-          </section>
         </div>
       )}
+
+      {!forbidden && loanId ? (
+        <DetailDialog title="Detail pinjaman" description={selected ? `${selected.employeeName} · ${selected.employeeNumber}` : undefined} onClose={closeLoan}>
+          {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+          {notice ? <div className="mb-4 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+          {openError ? (
+            <p className="text-sm text-danger-ink">{openError}</p>
+          ) : selected?.id === loanId ? (
+            <LoanDetailPanel
+              loan={selected}
+              paymentAction={canManage ? (target) => (
+                <button type="button" disabled={busy} onClick={() => reverse(selected, target)}
+                  className="min-h-9 rounded-lg border border-border px-2 text-xs font-bold text-brand-heading disabled:opacity-50">
+                  Koreksi
+                </button>
+              ) : undefined}
+              actions={canManage ? (
+                <div className="w-full space-y-3">
+                  {selected.status === "APPROVED" ? (
+                    <div className="rounded-2xl border border-border/70 bg-surface p-3">
+                      <p className="text-sm font-bold text-brand-heading">Pencairan</p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs font-semibold text-muted-foreground">Tanggal cair
+                          <input type="date" max={todayInJakarta()} value={disbursement.disbursedOn} className={field}
+                            onChange={(event) => setDisbursement({ ...disbursement, disbursedOn: event.target.value })} />
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Cara
+                          <select value={disbursement.method} className={field}
+                            onChange={(event) => setDisbursement({ ...disbursement, method: event.target.value as "CASH" | "TRANSFER" })}>
+                            <option value="TRANSFER">Transfer</option>
+                            <option value="CASH">Tunai</option>
+                          </select>
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Cicilan pertama (opsional)
+                          <input type="month" value={disbursement.firstDueMonth} className={field}
+                            onChange={(event) => setDisbursement({ ...disbursement, firstDueMonth: event.target.value })} />
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">No. bukti (opsional)
+                          <input maxLength={200} value={disbursement.reference} className={field}
+                            onChange={(event) => setDisbursement({ ...disbursement, reference: event.target.value })} />
+                        </label>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">Tanpa bulan cicilan pertama, cicilan mulai bulan setelah pencairan.</p>
+                      <button type="button" disabled={busy} onClick={() => disburse(selected)}
+                        className="mt-3 min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                        Cairkan dan buat jadwal
+                      </button>
+                    </div>
+                  ) : null}
+                  {selected.status === "DISBURSED" ? (
+                    <div className="rounded-2xl border border-border/70 bg-surface p-3">
+                      <p className="text-sm font-bold text-brand-heading">Catat pembayaran</p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs font-semibold text-muted-foreground">Jumlah (Rp)
+                          <input inputMode="numeric" autoComplete="off" value={payment.amount} placeholder="Contoh: 250.000" className={field}
+                            onChange={(event) => changePayment({ amount: event.target.value })} />
+                          {payment.amount && paymentAmount === null ? (
+                            <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
+                          ) : null}
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Tanggal bayar
+                          <input type="date" min={selected.disbursedOn ?? undefined} max={todayInJakarta()} value={payment.paidOn} className={field}
+                            onChange={(event) => changePayment({ paidOn: event.target.value })} />
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">Cara
+                          <select value={payment.method} className={field}
+                            onChange={(event) => changePayment({ method: event.target.value as LoanPaymentMethod })}>
+                            {(Object.keys(PAYMENT_METHOD_LABELS) as LoanPaymentMethod[]).map((key) => <option key={key} value={key}>{PAYMENT_METHOD_LABELS[key]}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-xs font-semibold text-muted-foreground">No. bukti / periode slip (opsional)
+                          <input maxLength={200} value={payment.reference} className={field}
+                            onChange={(event) => setPayment({ ...payment, reference: event.target.value })} />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button type="button" disabled={busy || paymentAmount === null} onClick={() => pay(selected)}
+                          className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                          Catat pembayaran
+                        </button>
+                        <button type="button" disabled={busy}
+                          onClick={() => changePayment({ amount: String(selected.outstanding) })}
+                          className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
+                          Isi sisa ({formatRupiah(selected.outstanding)}) untuk pelunasan
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.status === "IN_REVIEW" || selected.status === "APPROVED" ? (
+                    <button type="button" disabled={busy} onClick={() => cancel(selected)}
+                      className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
+                      Batalkan pengajuan
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat pinjaman...</div>
+          )}
+        </DetailDialog>
+      ) : null}
     </AdminShell>
   );
 }

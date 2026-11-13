@@ -219,7 +219,7 @@ Kontrak lengkap: `docs/api/openapi.yaml`, tag `Business Travel`. Daftar mengikut
 
 - Pegawai: `/app/trips` di Layanan Pegawai — formulir pengajuan dengan pratinjau penyetuju, daftar perjalanan berhalaman, detail berisi tahap approval, riwayat, surat tugas siap cetak, tombol batal/selesai sesuai state.
 - Approver: bagian "Perjalanan Dinas" di halaman Persetujuan.
-- HC: `/admin/trips` di Layanan Pegawai admin — register berhalaman dengan filter status dan pencarian pegawai, detail, Terbitkan surat tugas, Batalkan.
+- HC: `/admin/trips` di Layanan Pegawai admin — register berhalaman dengan filter status dan pencarian pegawai, detail sebagai pop-up (`?perjalanan=<id>`) (aturan app-shell "Detail views open as a pop-up", 2026-11-13), Terbitkan surat tugas, Batalkan. Surat tugas tetap dicetak dari pop-up itu tanpa terpotong.
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga layar.
 

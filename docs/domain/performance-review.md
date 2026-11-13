@@ -246,7 +246,7 @@ Kontrak lengkap: `docs/api/performance.openapi.yaml`, tag `Performance`. Semua d
 ## 14. Layar
 
 - Pegawai: `/app/performance` — tab **Penilaian saya** (daftar berhalaman, formulir penilaian diri, hasil setelah disahkan, tanda dibaca) dan tab **Tim saya** (antrean penilaian yang ditugaskan, formulir nilai dengan penilaian diri di sampingnya).
-- HC: `/admin/performance` di Layanan Pegawai admin — daftar siklus, buat/ubah siklus dan rubrik, tambah peserta (semua pegawai aktif atau typeahead), buka/tutup/batal, rekap per status dan predikat, tabel penilaian berhalaman dengan filter, detail penilaian dengan Sahkan/Kembalikan/Tunjuk penilai/Keluarkan, riwayat per pegawai.
+- HC: `/admin/performance` di Layanan Pegawai admin — daftar siklus (siklus yang dipilih menjadi ruang kerja halaman), buat siklus lewat pop-up (`?siklus=baru`), ubah siklus dan rubrik, tambah peserta (semua pegawai aktif atau typeahead), buka/tutup/batal, rekap per status dan predikat, tabel penilaian berhalaman dengan filter, detail penilaian sebagai pop-up lebar (`?penilaian=<id>`; tautan langsung membuka siklusnya lebih dulu) dengan Sahkan/Kembalikan/Tunjuk penilai/Keluarkan dan riwayat per pegawai (aturan app-shell "Detail views open as a pop-up", 2026-11-13).
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 

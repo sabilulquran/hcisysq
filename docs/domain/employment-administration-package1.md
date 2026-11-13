@@ -273,6 +273,9 @@ Rules:
 - One SK may be linked to many actions (e.g. one collective SK Mutasi for 12 teachers); each link is explicit per action. A PK links only to actions of its own employee.
 - Once a PK/SK is linked to a recorded action, its number/type/dates are immutable; mistakes are fixed by an audited correction that keeps the previous values (D-09, accepted).
 - PK and SK are evidence. The structured action, terms, and placements remain domain truth.
+- A document can be linked while recording the action (the action dialog) or afterwards, to an action that is already recorded (`POST /admin/employment-actions/{actionId}/documents`, `employment.manage`, AUTHORITATIVE only, EMP-010-A, added 2026-11-13). Afterwards-linking follows the same kind rules as recording (§5, D-08, `PK_TERM_MISMATCH` against the recorded term), and where §5 requires nothing it takes (`DRAFT`): SK Pemberhentian for a resignation or death, any SK for a placement, any SK or a PK of the same employee for the baseline. A reversed action and a reversal take nothing (`DECISION_DOCUMENT_LINK_NOT_ALLOWED`, 409). There is no unlink in Package 1 (`DRAFT`): a wrong link is fixed by reversing the action, or by correcting the document (D-09).
+- Every link, at recording time and afterwards, is audited as `employment.decision_document.linked` with document id, action id and action type only.
+- The document pickers search the register by number or subject and show at most 10 matches (ENG-LIST-001); a Perjanjian Kerja is offered only for its own employee.
 
 ## 5. Action taxonomy (Package 1)
 
@@ -561,6 +564,7 @@ All failures return an error code and an Indonesian message; nothing is partiall
 | `DECISION_DOCUMENT_KIND_INVALID` | 422 | Wrong kind/type for the action (e.g. SK for an extension). | "Jenis dokumen tidak sesuai. Perpanjangan kontrak memakai Perjanjian Kerja; mutasi/promosi/demosi/pengangkatan/pemberhentian memakai SK." |
 | `PK_TERM_MISMATCH` | 422 | Contract period/category differs from the linked PK. | "Masa kontrak tidak sama dengan yang tertulis di Perjanjian Kerja." |
 | `DECISION_DOCUMENT_LOCKED` | 409 | Editing a PK/SK already linked. | "Dokumen sudah dipakai pada tindakan; gunakan koreksi." |
+| `DECISION_DOCUMENT_LINK_NOT_ALLOWED` | 409 | Linking a document to a reversed action or to a reversal. | "Dokumen hanya dapat ditautkan ke tindakan yang masih berlaku." |
 | `DECISION_DOCUMENT_NOT_FOUND` | 404 | The PK/SK, or the previous PK referenced, does not exist. (Added with S4.) | "Dokumen tidak ditemukan." |
 | `DECISION_DOCUMENT_NUMBER_TAKEN` | 409 | The number already exists in the same kind and signing year. (Added with S4.) | "Nomor dokumen ini sudah tercatat untuk tahun yang sama." |
 | `DECISION_DOCUMENT_INVALID` | 400 | A required field of the kind is missing or inconsistent; the response carries the offending `field`. (Added with S4.) | Field-specific, e.g. "Tanggal akhir kontrak wajib diisi." |

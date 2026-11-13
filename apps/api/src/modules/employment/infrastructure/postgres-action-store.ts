@@ -304,6 +304,15 @@ export async function persistAction(client: PoolClient, input: PersistActionInpu
       "INSERT INTO employment_action_documents (action_id, document_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
       [plan.actionId, documentId],
     );
+    // Spec §10: one employment.decision_document.linked per link, ids only.
+    await audit(client, {
+      actorAccountId: input.actorAccountId,
+      action: "employment.decision_document.linked",
+      entityType: "employment_decision_document",
+      entityId: documentId,
+      employeeId: plan.employeeId,
+      payload: { documentId, actionId: plan.actionId, actionType: plan.actionType, after: "NEW_ACTION" },
+    });
   }
 
   const projection = await refreshProjection(client, plan.employeeId, input.today);

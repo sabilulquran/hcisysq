@@ -5,6 +5,7 @@ import { EmployeeDocumentsPanel } from "@/components/employee-documents/Employee
 import { EducationSkillsPanel } from "@/components/employment/EducationSkillsPanel";
 import { FamilyAddressPanel } from "@/components/employment/FamilyAddressPanel";
 import { EmploymentActionDialog } from "@/components/employment/EmploymentActionDialog";
+import { LinkDocumentForm } from "@/components/employment/LinkDocumentForm";
 import {
   EmploymentActionButtons,
   EmploymentContractPanel,
@@ -27,6 +28,7 @@ import {
 import { getCurrentSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/authorization";
 import {
+  ACTION_LABEL,
   getEmployeeEmployment,
   getEmployeeEmploymentTimeline,
   viewFromError,
@@ -161,6 +163,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [endingPlacementId, setEndingPlacementId] = useState<string | null>(null);
   const [employmentView, setEmploymentView] = useState<EmploymentView<EmploymentSummary> | null>(null);
   const [timelineView, setTimelineView] = useState<EmploymentView<EmploymentTimelineItem[]>>({ kind: "loading" });
+  const [linkingAction, setLinkingAction] = useState<EmploymentTimelineItem | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -433,6 +436,32 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         <PlacementCareerPanel
           view={employmentView ?? { kind: "loading" }}
           timeline={timelineView}
+          onLinkDocument={
+            canManageEmployment && !outsideHcis && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
+              ? setLinkingAction
+              : undefined
+          }
+          linkForm={
+            linkingAction
+              ? {
+                  actionId: linkingAction.id,
+                  node: (
+                    <LinkDocumentForm
+                      employeeId={employeeId}
+                      actionId={linkingAction.id}
+                      actionLabel={ACTION_LABEL[linkingAction.actionType] ?? linkingAction.actionType}
+                      onClose={() => setLinkingAction(null)}
+                      onLinked={(message) => {
+                        setLinkingAction(null);
+                        setNotice(message);
+                        setTimelineView({ kind: "loading" });
+                        setEmploymentView(null);
+                      }}
+                    />
+                  ),
+                }
+              : null
+          }
           onEndAdditional={
             canManageEmployment && !outsideHcis && employmentView?.kind === "ready" && employmentView.data.mode === "AUTHORITATIVE"
               ? (placementId) => {

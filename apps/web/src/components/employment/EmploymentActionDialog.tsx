@@ -28,7 +28,8 @@ import {
 } from "@/lib/employment-actions";
 import { CATEGORY_LABEL, EmploymentApiError, formatDate } from "@/lib/employment";
 import { listEmployees } from "@/lib/adminEmployees";
-import { listDecisionDocuments, type DecisionDocument } from "@/lib/decision-documents";
+import { DecisionDocumentPicker } from "@/components/employment/DecisionDocumentPicker";
+import type { DecisionDocument, SkType } from "@/lib/decision-documents";
 
 import { TerminationAssetWarning } from "./TerminationAssetWarning";
 
@@ -217,7 +218,7 @@ export function EmploymentActionDialog({
   const [classificationsTruncated, setClassificationsTruncated] = useState(false);
   const [classificationsFailed, setClassificationsFailed] = useState(false);
   const [draft, setDraft] = useState<DraftState>(emptyDraft);
-  const [documents, setDocuments] = useState<DecisionDocument[]>([]);
+  const [document, setDocument] = useState<DecisionDocument | null>(null);
   const [preview, setPreview] = useState<EmploymentActionPreview | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -283,22 +284,10 @@ export function EmploymentActionDialog({
     [actionType, draft.category, draft.reasonCode],
   );
 
+  // A different requirement means a different register filter: drop a pick that no longer fits.
   useEffect(() => {
-    if (!requirement) {
-      setDocuments([]);
-      return;
-    }
-    let mounted = true;
-    void listDecisionDocuments({
-      kind: requirement.kind,
-      pageSize: 50,
-      ...(requirement.skType ? { skType: requirement.skType as never } : {}),
-    })
-      .then((page) => { if (mounted) setDocuments(page.rows); })
-      .catch(() => { if (mounted) setDocuments([]); });
-    return () => {
-      mounted = false;
-    };
+    setDocument(null);
+    setDraft((current) => (current.documentId ? { ...current, documentId: "" } : current));
   }, [requirement?.kind, requirement?.skType]);
 
   const set = (patch: Partial<DraftState>) => {
@@ -504,15 +493,17 @@ export function EmploymentActionDialog({
           {requirement ? (
             <div className="sm:col-span-2">
               <Labelled label={requirement.kind === "PERJANJIAN_KERJA" ? "Perjanjian Kerja" : "Surat Keputusan"}>
-                <select value={draft.documentId} onChange={(event) => set({ documentId: event.target.value })} className={field}>
-                  <option value="">Pilih dokumen dasar</option>
-                  {documents.map((document) => (
-                    <option key={document.id} value={document.id}>
-                      {document.documentNumber} · {formatDate(document.signedOn)}
-                      {document.subject ? ` · ${document.subject}` : ""}
-                    </option>
-                  ))}
-                </select>
+                <DecisionDocumentPicker
+                  kind={requirement.kind}
+                  skType={requirement.skType as SkType | undefined}
+                  employeeId={employeeId}
+                  value={document}
+                  label={requirement.kind === "PERJANJIAN_KERJA" ? "Cari Perjanjian Kerja" : "Cari Surat Keputusan"}
+                  onChange={(picked) => {
+                    setDocument(picked);
+                    set({ documentId: picked?.id ?? "" });
+                  }}
+                />
               </Labelled>
               <p className="mt-1 text-xs text-muted-foreground">
                 {requirement.hint} Dokumen dicatat di menu Pegawai → Perjanjian Kerja &amp; SK.

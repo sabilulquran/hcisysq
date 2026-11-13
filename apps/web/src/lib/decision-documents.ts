@@ -77,6 +77,8 @@ export interface DecisionDocumentListInput {
   pkType?: PkType;
   skType?: SkType;
   category?: PkCategory;
+  /** A Perjanjian Kerja belongs to one employee; filters the register to that employee's PK. */
+  employeeId?: string;
   page?: number;
   pageSize?: number;
 }
@@ -107,6 +109,7 @@ export function listDecisionDocuments(input: DecisionDocumentListInput): Promise
   if (input.pkType) params.set("pkType", input.pkType);
   if (input.skType) params.set("skType", input.skType);
   if (input.category) params.set("category", input.category);
+  if (input.employeeId) params.set("employeeId", input.employeeId);
   return request(`/api/admin/decision-documents?${params.toString()}`);
 }
 
@@ -261,4 +264,15 @@ export function payloadOf(draft: Draft): DecisionDocumentWrite {
     effectiveOn: optional(draft.effectiveOn),
     effectiveTo: optional(draft.effectiveTo),
   };
+}
+
+/** EMP-010-A: link register documents to an employment action that is already recorded. */
+export function linkDecisionDocuments(
+  actionId: string,
+  documentIds: string[],
+): Promise<{ actionId: string; linkedDocumentIds: string[]; alreadyLinkedDocumentIds: string[] }> {
+  return request(`/api/admin/employment-actions/${encodeURIComponent(actionId)}/documents`, {
+    method: "POST",
+    body: JSON.stringify({ documentIds }),
+  });
 }

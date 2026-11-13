@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B open (#222); S6 implemented; S7 merged (#226); S2B-a and S2B-b implemented, S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B merged (#222); S6 implemented; S7 merged (#226); S2B-a and S2B-b implemented; S4b (link documents to recorded actions) implemented 2026-11-13; S8 not started  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -208,6 +208,8 @@ Two decisions this step settled, both DRAFT until the owner says otherwise:
 New error codes beyond the original spec §12 table, now added to it: `DECISION_DOCUMENT_NUMBER_TAKEN` (409) for the unique (kind, number, signing year) series, `DECISION_DOCUMENT_INVALID` (400) which carries the offending `field`, `DECISION_DOCUMENT_NOT_FOUND` (404) and `EMPLOYEE_NOT_FOUND` (404). `EMPLOYMENT_VERSION_CONFLICT` is reused for an edit whose `expectedUpdatedAt` is stale.
 
 Independent review (2026-10-27) closed on this step: the lock, the kind, the Perjanjian Kerja employee, and the values a correction keeps are all decided inside the transaction on the row read under `FOR UPDATE`, so an action linking the document meanwhile cannot let a plain edit slip past the lock once S5/S6 add the linking path; `PATCH` replaces the document in full (documented in OpenAPI); paging has a unique tiebreaker; search escapes `%` and `_`; a Perjanjian Kerja cannot extend itself.
+
+**S4b — linking documents to recorded actions (2026-11-13).** Linking at recording time existed since S5/S6; S4b adds `POST /admin/employment-actions/{actionId}/documents` (pure rules in `domain/document-links.ts`, route in `decision-document-routes.ts`), the per-link audit `employment.decision_document.linked` on both paths, the timeline button **Tautkan dokumen** on **Penempatan & Karier**, and a typeahead document picker (`DecisionDocumentPicker`) that replaces the action dialog's first-50 dropdown and offers a Perjanjian Kerja only for its own employee. The scanned file of a document is attached through EMP-011 D-16 and is not part of this step. Tests: 10 API (domain + route: permission, mode, self, outside HCIS, kinds, idempotent re-link, audit payload), 4 web.
 
 **Spec:** EMP-010-A/B/C, §4.5, §13.5.  
 **Prerequisite decisions:** D-08 (accepted: PK and SK are separate kinds), D-09 (accepted).

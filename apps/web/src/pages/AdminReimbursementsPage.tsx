@@ -40,15 +40,28 @@ import type { AuthSession } from "@/types/hcis";
 
 const searchPeople = async (q: string) => (await searchClaimants(q)).items;
 const REGISTER_STATUSES = (Object.keys(CLAIM_STATUS_LABELS) as ClaimStatus[]).filter((status) => status !== "DRAFT");
+/** ENG-LIST-001-J: page and filters live in the query string, so a refresh or a shared link keeps them. */
+function initialFilter() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("status");
+  const category = params.get("category");
+  return {
+    page: Math.max(1, Number(params.get("page")) || 1),
+    status: (status === null ? "APPROVED" : (REGISTER_STATUSES as string[]).includes(status) ? status : "") as ClaimStatus | "",
+    category: (category ?? "") as CategoryKey | "",
+  };
+}
+
 const emptyPayment = () => ({ paidOn: todayInJakarta(), method: "TRANSFER" as "CASH" | "TRANSFER", reference: "", note: "" });
 
 export function AdminReimbursementsPage() {
   const [items, setItems] = useState<ClaimSummary[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [paging, setPaging] = useState<Pagination | null>(null);
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<ClaimStatus | "">("APPROVED");
-  const [category, setCategory] = useState<CategoryKey | "">("");
+  const [initial] = useState(initialFilter);
+  const [page, setPage] = useState(initial.page);
+  const [status, setStatus] = useState<ClaimStatus | "">(initial.status);
+  const [category, setCategory] = useState<CategoryKey | "">(initial.category);
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
   const [from, setFrom] = useState(() => monthStart(todayInJakarta()));
   const [to, setTo] = useState(() => todayInJakarta());
@@ -71,7 +84,8 @@ export function AdminReimbursementsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const result = await getAdminClaims({ page, status, category, employeeId: employee?.id, from, to });
+      // The register has no date window: an older claim approved today must still show (review finding).
+      const result = await getAdminClaims({ page, status, category, employeeId: employee?.id });
       setItems(result.items);
       setPaging(result.pagination);
       setCategories(result.categories);
@@ -94,8 +108,13 @@ export function AdminReimbursementsPage() {
 
   useEffect(() => {
     void load();
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", String(page));
+    params.set("status", status);
+    if (category) params.set("category", category); else params.delete("category");
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, status, category, employee?.id, from, to]);
+  }, [page, status, category, employee?.id]);
   useEffect(() => {
     if (from && to) void loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,8 +197,8 @@ export function AdminReimbursementsPage() {
 
   const changePayment = (patch: Partial<ReturnType<typeof emptyPayment>>) => {
     setPayment((current) => ({ ...current, ...patch }));
-    // The server refuses a reused key with another date or method: new terms, new key.
-    if (patch.paidOn !== undefined || patch.method !== undefined) setPaymentKey(crypto.randomUUID());
+    // The server replays a key only with identical terms, so any change is a new payment key.
+    setPaymentKey(crypto.randomUUID());
   };
 
   const field = "mt-1 h-11 w-full rounded-xl border bg-surface px-3 text-sm text-foreground";
@@ -195,12 +214,20 @@ export function AdminReimbursementsPage() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-brand-heading">Ringkasan per kategori</h2>
-                <p className="text-xs text-muted-foreground">Klaim yang dikirim dalam rentang tanggal di bawah (maks. 366 hari).</p>
+                <p className="text-xs text-muted-foreground">Klaim yang dikirim dalam rentang tanggal ini (maks. 366 hari). Unduhan CSV memakai rentang dan filter status yang sama.</p>
               </div>
-              <a href={exportHref(from, to, status)}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading">
-                <Download className="h-4 w-4" aria-hidden="true" /> Unduh CSV
-              </a>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-xs font-semibold text-muted-foreground">Diajukan dari
+                  <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} className={field} />
+                </label>
+                <label className="text-xs font-semibold text-muted-foreground">Sampai
+                  <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} className={field} />
+                </label>
+                <a href={exportHref(from, to, status)}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading">
+                  <Download className="h-4 w-4" aria-hidden="true" /> Unduh CSV
+                </a>
+              </div>
             </div>
             {report && report.byCategory.length > 0 ? (
               <div className="mt-3 overflow-x-auto">
@@ -242,12 +269,6 @@ export function AdminReimbursementsPage() {
                     <option value="">Semua kategori</option>
                     {categories.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
                   </select>
-                </label>
-                <label className="text-xs font-semibold text-muted-foreground">Diajukan dari
-                  <input type="date" value={from} max={to} onChange={(event) => { setPage(1); setFrom(event.target.value); }} className={field} />
-                </label>
-                <label className="text-xs font-semibold text-muted-foreground">Sampai
-                  <input type="date" value={to} min={from} onChange={(event) => { setPage(1); setTo(event.target.value); }} className={field} />
                 </label>
                 <div className="sm:col-span-2">
                   <EmployeeSearchField value={employee} onChange={(next) => { setPage(1); setEmployee(next); }}
@@ -339,11 +360,11 @@ export function AdminReimbursementsPage() {
                               </label>
                               <label className="text-xs font-semibold text-muted-foreground">No. bukti (opsional)
                                 <input maxLength={200} value={payment.reference} className={field}
-                                  onChange={(event) => setPayment({ ...payment, reference: event.target.value })} />
+                                  onChange={(event) => changePayment({ reference: event.target.value })} />
                               </label>
                               <label className="text-xs font-semibold text-muted-foreground">Catatan (opsional)
                                 <input maxLength={500} value={payment.note} className={field}
-                                  onChange={(event) => setPayment({ ...payment, note: event.target.value })} />
+                                  onChange={(event) => changePayment({ note: event.target.value })} />
                               </label>
                             </div>
                             <button type="button" disabled={busy} onClick={() => pay(selected)}

@@ -82,14 +82,17 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const month = z.string().regex(/^\d{4}-\d{2}$/);
 // JSON integers only: 150000.5 or "150000" is refused, never rounded (D-15).
 const rupiah = z.number().int().positive().max(1_000_000_000);
+/** Text whose length the database counts in characters (code points), not UTF-16 units. */
+const text = (min: number, max: number) => z.string().trim().max(max)
+  .refine((value) => [...value].length >= min, { message: `at least ${min} characters` });
 const itemBody = z.object({
   category: z.enum(CATEGORY_KEYS),
   expenseDate: isoDate,
-  description: z.string().trim().min(3).max(300),
+  description: text(3, 300),
   amount: rupiah,
 });
 const draftBody = z.object({
-  title: z.string().trim().min(5).max(200),
+  title: text(5, 200),
   businessTripId: z.string().uuid().nullable().optional(),
   items: z.array(itemBody).min(1).max(MAX_ITEMS),
 });
@@ -398,7 +401,9 @@ async function loadClaimDetail(db: Queryable, id: string, scope: DetailScope, ow
                  JOIN reimbursement_claims other_claim ON other_claim.id = other.claim_id
                 WHERE receipt.purged_at IS NULL AND other.purged_at IS NULL
                   AND other.sha256 = receipt.sha256 AND other.claim_id <> receipt.claim_id
-                  AND other_claim.status <> 'CANCELLED') AS "duplicateClaims"
+                  AND other_claim.status <> 'CANCELLED'
+                  -- A private draft never shows up in the register, not even as a count.
+                  AND other_claim.submitted_at IS NOT NULL) AS "duplicateClaims"
          FROM reimbursement_receipts receipt
         WHERE receipt.claim_id = $1 AND receipt.purged_at IS NULL
         ORDER BY receipt.created_at ASC, receipt.id ASC`,
@@ -1271,7 +1276,8 @@ export async function registerReimbursementRoutes(
       const [byStatus, byCategory] = await Promise.all([
         pool.query<{ status: ClaimStatus; claims: number; claimedTotal: string; verifiedTotal: string }>(
           `SELECT claim.status, count(*)::int AS claims, COALESCE(sum(claim.claimed_total), 0)::text AS "claimedTotal",
-                  COALESCE(sum(claim.verified_total), 0)::text AS "verifiedTotal"
+                  -- A claim Finance rejected after verifying keeps its verified total as history only.
+                  COALESCE(sum(claim.verified_total) FILTER (WHERE claim.status IN ('VERIFIED', 'PAID')), 0)::text AS "verifiedTotal"
              FROM reimbursement_claims claim WHERE ${where.sql}
             GROUP BY claim.status ORDER BY claim.status`,
           where.values,
@@ -1491,8 +1497,12 @@ export async function registerReimbursementRoutes(
       const claim = await lockClaim(client, params.data.id, null);
       await assertNotOwnClaim(client, principal.id, claim.employeeId);
       // D-10: one payment per claim. The same key with the same terms is a retry and replays.
-      const existing = await client.query<{ id: string; idempotencyKey: string; paidOn: string; method: string; amount: string }>(
-        `SELECT id, idempotency_key AS "idempotencyKey", to_char(paid_on, 'YYYY-MM-DD') AS "paidOn", method, amount::text AS amount
+      const existing = await client.query<{
+        id: string; idempotencyKey: string; paidOn: string; method: string; amount: string;
+        payrollMonth: string | null; reference: string | null; note: string | null;
+      }>(
+        `SELECT id, idempotency_key AS "idempotencyKey", to_char(paid_on, 'YYYY-MM-DD') AS "paidOn", method, amount::text AS amount,
+                to_char(payroll_month, 'YYYY-MM') AS "payrollMonth", reference, note
            FROM reimbursement_payments WHERE claim_id = $1`,
         [params.data.id],
       );
@@ -1501,7 +1511,10 @@ export async function registerReimbursementRoutes(
         if (previous.idempotencyKey !== body.data.idempotencyKey) {
           throw new ReimbursementError(409, "REIMBURSEMENT_ALREADY_PAID", "Klaim ini sudah dibayar.");
         }
-        if (previous.paidOn !== body.data.paidOn || previous.method !== body.data.method) {
+        const same = previous.paidOn === body.data.paidOn && previous.method === body.data.method
+          && previous.payrollMonth === (body.data.method === "PAYROLL" ? body.data.payrollMonth ?? null : null)
+          && previous.reference === (body.data.reference || null) && previous.note === (body.data.note || null);
+        if (!same) {
           throw new ReimbursementError(409, "IDEMPOTENCY_KEY_REUSED", "Pembayaran ini sudah tercatat dengan nilai lain. Muat ulang halaman.");
         }
         return [200, { id: params.data.id, paymentId: previous.id, status: "PAID", amount: amount(previous.amount), idempotentReplay: true }];

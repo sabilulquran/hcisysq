@@ -312,6 +312,8 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
     const future = await createDraft({ items: items([{ category: "OTHER", expenseDate: "2999-01-01", description: "Masa depan", amount: 5_000 }]) });
     expect(future.json().code).toBe("REIMBURSEMENT_EXPENSE_IN_FUTURE");
     expect((await createDraft({ items: items([{ category: "OTHER", expenseDate: today, description: "Pecahan", amount: 5_000.5 }]) })).statusCode).toBe(400);
+    // Lengths are counted in characters, as the database counts them: three emoji are three, not six.
+    expect((await createDraft({ title: "\u{1F600}\u{1F600}\u{1F600}" })).statusCode).toBe(400);
 
     // D-06: another employee's trip, or one still in review, cannot be linked.
     const othersTrip = await insertTrip("other", "APPROVED");
@@ -405,6 +407,7 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({ paymentId: paid.json().paymentId, idempotentReplay: true });
     expect((await pay(claim.id, { idempotencyKey: key, method: "CASH" })).json().code).toBe("IDEMPOTENCY_KEY_REUSED");
+    expect((await pay(claim.id, { idempotencyKey: key, reference: "TRF-002" })).json().code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect((await pay(claim.id)).json().code).toBe("REIMBURSEMENT_ALREADY_PAID");
     const payments = await client.query("SELECT amount::int AS amount FROM reimbursement_payments WHERE claim_id = $1", [claim.id]);
     expect(payments.rows).toEqual([{ amount: 325_000 }]);
@@ -502,7 +505,7 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
     const csv = await app.inject({ method: "GET", url: `/admin/reimbursements/export.csv?from=${today}&to=${today}` });
     expect(csv.statusCode, csv.body).toBe(200);
     expect(csv.headers["content-type"]).toMatch(/text\/csv/);
-    const lines = csv.body.replace(/^﻿/, "").trim().split("\r\n");
+    const lines = csv.body.replace(String.fromCharCode(0xfeff), "").trim().split("\r\n");
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain(claim.id);
     const exported = await client.query("SELECT metadata FROM reimbursement_events WHERE event_type = 'reimbursement.register.exported' AND actor_account_id = $1", [people.finance.accountId]);
@@ -518,6 +521,14 @@ describe.skipIf(!allowed)("REIMB-001 reimbursements", () => {
 
   it("D-16: the same receipt on two live claims is flagged for Finance", async () => {
     const first = await submitted();
+    // Another employee's private draft carrying the same file is never counted.
+    const otherDraft = (await createDraft({}, "other")).json().id as string;
+    actAs("other");
+    const otherUpload = await app.inject({
+      method: "POST", url: `/reimbursements/me/${otherDraft}/receipts`, payload: { contentType: "application/pdf", contentBase64: PDF },
+    });
+    expect(otherUpload.statusCode).toBe(201);
+    expect((await detail(first.id)).receipts[0].duplicateClaims).toBe(0);
     const second = await submitted();
     const state = await detail(second.id);
     expect(state.receipts[0].duplicateClaims).toBe(1);

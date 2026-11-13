@@ -85,9 +85,9 @@ describe("HELP-001 rules", () => {
     expect(contactInput.safeParse({ label: "Layanan\u0000HC", channel: "OFFICE", value: "Ruang HC" }).success).toBe(false);
   });
 
-  it("D-01: the topic list matches the database CHECK in migration 0130", async () => {
-    const sql = await readFile(new URL("../migrations/0130_help_center.sql", import.meta.url), "utf8");
-    const check = /topic text NOT NULL CHECK \(topic IN \(([^)]*)\)\)/.exec(sql)?.[1] ?? "";
+  it("D-01: the topic list matches the database CHECK, last set by migration 0150 (REIMB-001)", async () => {
+    const sql = await readFile(new URL("../migrations/0150_help_center_reimbursement_articles.sql", import.meta.url), "utf8");
+    const check = /ADD CONSTRAINT help_articles_topic_check CHECK \(topic IN \(([^)]*)\)\)/.exec(sql)?.[1] ?? "";
     expect(check.match(/'[A-Z]+'/g)?.map((value) => value.slice(1, -1))).toEqual([...HELP_TOPICS]);
   });
 });

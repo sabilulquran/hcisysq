@@ -714,7 +714,8 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       `SELECT rp.permission_key AS key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
         WHERE r.role_key = 'finance_officer' ORDER BY 1`,
     )).rows.map((row) => row.key);
-    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage"]);
+    // REIMB-001 (migration 0149) added the reimbursement register to the role.
+    expect(finance).toEqual(["loans.manage", "loans.read", "payroll.loans.manage", "reimbursements.manage", "reimbursements.read"]);
     expect(await permissionsOf("employee")).toEqual(finance);
     expect(await hasOrganizationPermission(pool, employee.principal.id, "payroll.loans.manage")).toBe(true);
     expect((await pool.query(

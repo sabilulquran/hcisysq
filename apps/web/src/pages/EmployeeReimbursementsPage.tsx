@@ -39,17 +39,25 @@ import {
 } from "@/lib/reimbursements";
 
 interface ItemRow { category: CategoryKey; expenseDate: string; description: string; amount: string }
-interface Editor { id: string | null; title: string; businessTripId: string; items: ItemRow[] }
+interface Editor {
+  id: string | null;
+  title: string;
+  businessTripId: string;
+  /** The draft's linked trip, kept as an option even when it is not on the loaded page. */
+  linkedTrip: LinkableTrip | null;
+  items: ItemRow[];
+}
 
 const emptyRow = (): ItemRow => ({ category: "TRANSPORT", expenseDate: todayInJakarta(), description: "", amount: "" });
-const emptyEditor = (): Editor => ({ id: null, title: "", businessTripId: "", items: [emptyRow()] });
+const emptyEditor = (): Editor => ({ id: null, title: "", businessTripId: "", linkedTrip: null, items: [emptyRow()] });
 
 export function EmployeeReimbursementsPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [items, setItems] = useState<ClaimSummary[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [policy, setPolicy] = useState<ClaimPolicy | null>(null);
-  const [page, setPage] = useState(1);
+  // ENG-LIST-001-J: the page number lives in the query string.
+  const [page, setPage] = useState(() => Math.max(1, Number(new URLSearchParams(window.location.search).get("page")) || 1));
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<ClaimDetail | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -92,7 +100,7 @@ export function EmployeeReimbursementsPage() {
 
   useEffect(() => {
     void getEmployeeLeaveSummary().then((summary) => setEmployee(summary.employee)).catch(() => undefined);
-    void loadList(1)
+    void loadList(page)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Reimbursement tidak dapat dimuat."))
       .finally(() => setLoading(false));
     // A notification links here with ?claim=<id>.
@@ -103,6 +111,9 @@ export function EmployeeReimbursementsPage() {
 
   const changePage = (next: number) => {
     setPage(next);
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", String(next));
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
     void loadList(next).catch((cause) => setError(cause instanceof Error ? cause.message : "Halaman tidak dapat dimuat."));
   };
 
@@ -126,6 +137,10 @@ export function EmployeeReimbursementsPage() {
       id: claim.id,
       title: claim.title,
       businessTripId: claim.businessTripId ?? "",
+      linkedTrip: claim.businessTripId && claim.tripDestination && claim.tripStartOn ? {
+        id: claim.businessTripId, destination: claim.tripDestination, startOn: claim.tripStartOn,
+        endOn: claim.tripEndOn ?? claim.tripStartOn, status: claim.tripStatus ?? "",
+      } : null,
       items: claim.items.map((item) => ({
         category: item.category, expenseDate: item.expenseDate, description: item.description, amount: String(item.amount),
       })),
@@ -289,6 +304,9 @@ export function EmployeeReimbursementsPage() {
                   Perjalanan dinas (opsional)
                   <select value={editor.businessTripId} onChange={(event) => setEditor({ ...editor, businessTripId: event.target.value })} className={input}>
                     <option value="">Tidak terkait perjalanan dinas</option>
+                    {editor.linkedTrip && !trips.some((trip) => trip.id === editor.linkedTrip!.id) ? (
+                      <option value={editor.linkedTrip.id}>{editor.linkedTrip.destination} · {formatClaimDate(editor.linkedTrip.startOn)}</option>
+                    ) : null}
                     {trips.map((trip) => (
                       <option key={trip.id} value={trip.id}>{trip.destination} · {formatClaimDate(trip.startOn)}</option>
                     ))}

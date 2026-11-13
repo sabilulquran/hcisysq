@@ -913,8 +913,8 @@ features:
     risk: medium
     notes: >-
       Package 1 ACCEPTED and implemented 2026-11-11 (docs/domain/reminders.md): one in-process
-      engine behind the CAL-001 runner switch, nine DRAFT rules (approval digest, HC leave and
-      document queues, contract/probation ending, certificate expiry, performance self/review
+      engine behind the CAL-001 runner switch, ten DRAFT rules (approval digest, HC leave and
+      document queues, contract/probation ending, certificate and EMP-011 document expiry, performance self/review
       due, payroll cutoff and pay date), idempotent per rule/occurrence/recipient, 06:00-21:00
       WIB send window, in-app always plus WhatsApp per rule default and per-account preference,
       allowlist respected. The meeting reminder stays in the CAL-001 runner. Not carried: daily

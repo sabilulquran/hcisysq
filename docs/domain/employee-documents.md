@@ -32,7 +32,7 @@ Termasuk (Paket 1):
 | --- | --- |
 | Object storage di luar database | Batas Paket 1 adalah database (D-01). Port `EmployeeFileStore` membuat perpindahan ke object storage menjadi pergantian adapter (ADR-0002). |
 | Pemindaian antivirus | Tidak ada mesin AV di Mi8VPS. Paket 1 memeriksa tanda tangan berkas dan menolak PDF dengan konten aktif yang terlihat (D-07); berkas selalu dikirim sebagai unduhan. |
-| Notifikasi otomatis ke pegawai menjelang kedaluwarsa | Butuh penjadwal NOTIF-003. Paket 1: daftar kerja HC dan penanda di layar pegawai. `TBD`. |
+| Notifikasi otomatis ke pegawai menjelang kedaluwarsa | Dikirim oleh NOTIF-003 sejak 2026-11-13: aturan `employee.document_expiring` (H-30 dan H-7, in-app dan WhatsApp sesuai preferensi; `docs/domain/reminders.md` §4). Daftar kerja HC tetap di sini. |
 | Penghapusan otomatis menurut masa retensi | Masa retensi `DRAFT` (D-12); penghapusannya manual oleh HC sampai owner menetapkan. |
 | Atasan membaca dokumen bawahan | Tidak pernah secara bawaan (D-09). |
 | Pegawai membaca berkas PK/SK miliknya | Register EMP-010 belum punya layar pegawai; menyusul bersama layar itu. `TBD`. |

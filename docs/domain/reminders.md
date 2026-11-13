@@ -9,7 +9,7 @@
 
 Pengingat berbeda dari notifikasi transaksi: sumbernya **keadaan data** pada suatu waktu (kontrak akan berakhir, penilaian belum diisi, persetujuan menggantung), bukan peristiwa. Legacy punya `reminders:generate-*` dan `reminders:dispatch` dengan preferensi per pegawai. HCIS sudah punya satu aturan (pengingat rapat CAL-001) dengan penjalan sendiri.
 
-Paket 1 menyediakan **satu mesin pengingat** dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
+Paket 1 menyediakan **satu mesin pengingat** (sepuluh aturan sejak 2026-11-13) dengan katalog aturan, idempoten, menghormati jam kirim 06.00–21.00 WIB, mengirim in-app dan WhatsApp (Kirim SQ), dengan preferensi WhatsApp per penerima per aturan.
 
 ## 2. Inventaris pengingat yang sudah dijanjikan
 
@@ -28,7 +28,7 @@ Paket 1 menyediakan **satu mesin pengingat** dengan katalog aturan, idempoten, m
 | Penerbitan otomatis pengumuman terjadwal | NOTIF-002 N-07 | **Tidak**: N-07 tetap mensyaratkan tindakan operator. |
 | RTL pelatihan, tenggat tugas pelatihan | TRAIN-001 D-15 | Belum ada data tenggat di Paket 1 pelatihan; aturan ditambahkan bersama fiturnya. |
 | Reimbursement menunggu | Legacy | REIMB-001 belum dibangun. |
-| Arsip dokumen pegawai (KTP, ijazah) kedaluwarsa | Legacy | EMP-011 belum dibangun. |
+| Dokumen pribadi pegawai (SIM, paspor, SKCK, surat sehat, dll.) akan berakhir | EMP-011 §2 (`TBD` menunggu NOTIF-003), legacy | Aturan `employee.document_expiring` (ditambahkan 2026-11-13) |
 
 ## 3. Keputusan
 
@@ -57,6 +57,7 @@ Paket 1 menyediakan **satu mesin pengingat** dengan katalog aturan, idempoten, m
 | `leave.hc_queue_digest` | Pemegang `leave.validate` | Senin–Sabtu 07.00, bila ada tugas HC cuti `pending` | tanggal | Nyala | `/app/hc/leave` |
 | `documents.request_queue_digest` | Pemegang `documents.manage` | Senin–Sabtu 07.00, bila ada permintaan `SUBMITTED` ≥ 2 hari | tanggal | Nyala | `/admin/documents` |
 | `employment.term_ending` | Pemegang `employment.manage`; tidak berjalan selama riwayat kepegawaian `OFF` | Harian 07.00; ambang H-60, H-30, H-7 dari akhir masa kontrak/percobaan/magang/lepas yang sedang berjalan | term + ambang | Mati | `/admin/employees/<id>` |
+| `employee.document_expiring` | Pegawai pemilik dokumen EMP-011 `VERIFIED` (pegawai aktif yang dikelola HCIS, sama dengan daftar kerja D-15) | Harian 07.00; ambang H-30, H-7 | dokumen + tanggal berakhir + ambang | Nyala | `/app/my-data` |
 | `employee.certificate_expiring` | Pegawai pemilik sertifikat | Harian 07.00; ambang H-30, H-7 | sertifikat + tanggal berakhir + ambang | Nyala | `/app/my-data` |
 | `performance.self_due` | Pegawai yang penilaian dirinya belum dikirim di siklus `OPEN` | Harian 07.00; ambang H-3, H-0 dari `self_due_on` | review + ambang | Nyala | `/app/performance` |
 | `performance.review_due` | Penilai (atasan) dengan penilaian `MANAGER_REVIEW` | Harian 07.00; ambang H-3, H-0 dari `review_due_on` | siklus + penilai + ambang | Nyala | `/app/performance` |

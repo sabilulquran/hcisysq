@@ -6,6 +6,7 @@ import {
   getOrganizationDesignerView,
   listOpenOrganizationChanges,
   OrganizationDraftAlreadyOpenError,
+  overtimeRuleSeatWarningText,
   updateOrganizationPosition,
   validateOrganizationDraft,
 } from "@/lib/organizationDesigner";
@@ -114,5 +115,21 @@ describe("ORG-008 follow-up: open change sets", () => {
       "/api/admin/organization/designer/drafts/change-1/discard",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ reason: "Sudah digantikan struktur terbit" }) }),
     );
+  });
+});
+
+describe("ORG-008-12 overtime rule seat warning text", () => {
+  const base = {
+    ruleId: "r1", positionKey: "k", targetLabel: "Direktur · Yayasan", reasonLabel: "Direktur — tidak menerima upah lembur",
+    positionTitle: "Direktur", beforeUnitName: "Yayasan", afterUnitName: null,
+  };
+  it("reads as a sentence for each change, without codes", () => {
+    expect(overtimeRuleSeatWarningText({ ...base, change: "REMOVED" })).toBe(
+      'Jabatan Direktur dihapus di perubahan ini, padahal dipakai aturan lembur "Direktur — tidak menerima upah lembur".',
+    );
+    expect(overtimeRuleSeatWarningText({ ...base, change: "DEACTIVATED" })).toContain("tidak berlaku lagi");
+    const moved = overtimeRuleSeatWarningText({ ...base, change: "MOVED", afterUnitName: "Bidang Pendidikan" });
+    expect(moved).toContain("dipindah dari Yayasan ke Bidang Pendidikan");
+    expect(moved).not.toMatch(/MOVED|REMOVED|DEACTIVATED/);
   });
 });

@@ -97,6 +97,15 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().url().refine((value) => ["https:", "http:"].includes(new URL(value).protocol)).optional(),
     ),
+    // ORG-010 amendment 2026-11-13 (ORGAN-IMPL-001 R1): when set, organ accounts use /board for
+    // approvals only and the dashboard points them here. An https origin or base path, no query or fragment.
+    ORGAN_PORTAL_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().refine((value) => {
+        const url = new URL(value);
+        return url.protocol === "https:" && !url.search && !url.hash && !url.username && !url.password;
+      }, "ORGAN_PORTAL_URL must be an https URL without query, fragment or credentials").optional(),
+    ),
     // CAL-001 §9.2: `log` sends nothing (dry run). `kirim` hands messages to Kirim SQ on SQ Hub.
     // SQ Hub KIRIM-IMPL-003 §6: HCIS uses the machine client it already holds for SQ Hub
     // (SQ_HUB_MACHINE_CLIENT_*), the token endpoint of OIDC_ISSUER and the SQ Hub origin, so no

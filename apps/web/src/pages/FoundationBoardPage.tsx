@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   Loader2,
   LogOut,
   ShieldCheck,
@@ -17,12 +18,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { BoardApprovalsSection } from "@/components/board/BoardApprovalsSection";
 import { BrandLockup } from "@/components/BrandLockup";
-import { getCurrentSession, logout } from "@/lib/auth";
-import {
-  BoardDashboardApiError,
-  getBoardDashboard,
-  type BoardDashboardData,
-} from "@/lib/boardDashboard";
+import { logout } from "@/lib/auth";
+import { loadBoardPage, type BoardDashboardData } from "@/lib/boardDashboard";
 
 function percent(value: number, total: number) {
   if (total <= 0) return 0;
@@ -40,6 +37,35 @@ function generatedLabel(value: string) {
   }).format(new Date(value));
 }
 
+/** ORG-010 amendment 2026-11-13: /board for an organ account once the Portal Organ Yayasan holds the rest. */
+export function OrganApprovalsOnly({ organPortalUrl }: { organPortalUrl: string | null }) {
+  return (
+    <>
+      <section>
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Organ Yayasan</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Persetujuan Organ Yayasan</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Putuskan pengajuan cuti yang menunggu persetujuan Anda.
+        </p>
+      </section>
+      <BoardApprovalsSection />
+      <p className="mt-6 text-xs leading-5 text-muted-foreground">
+        {organPortalUrl ? (
+          <a
+            href={organPortalUrl}
+            className="inline-flex items-center gap-1.5 font-semibold text-brand-primary-deep underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Ringkasan dan data pegawai ada di Portal Organ Yayasan
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        ) : (
+          "Ringkasan dan data pegawai ada di Portal Organ Yayasan."
+        )}
+      </p>
+    </>
+  );
+}
+
 export function FoundationBoardPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<BoardDashboardData | null>(null);
@@ -48,25 +74,23 @@ export function FoundationBoardPage() {
   // ORG-013-3: null until the session answers, so the approvals section never loads for an Employee.
   const [principalType, setPrincipalType] = useState<string | null>(null);
   const isEmployee = principalType === "EMPLOYEE";
+  // ORG-010 amendment 2026-11-13: approvals only for an organ account when ORGAN_PORTAL_URL is set.
+  const [portalOnly, setPortalOnly] = useState(false);
+  const [organPortalUrl, setOrganPortalUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    void getCurrentSession().then((session) => setPrincipalType(session?.principal.principalType ?? "UNKNOWN")).catch(() => setPrincipalType("UNKNOWN"));
-  }, []);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setData(await getBoardDashboard());
+    void loadBoardPage().then((state) => {
+      setPrincipalType(state.principalType);
+      if (state.kind === "approvals-only") {
+        setOrganPortalUrl(state.organPortalUrl);
+        setPortalOnly(true);
+      } else if (state.kind === "dashboard") {
+        setData(state.data);
         setError(null);
-      } catch (cause) {
-        setError(
-          cause instanceof BoardDashboardApiError
-            ? cause.message
-            : "Dashboard Organ Yayasan tidak dapat dimuat.",
-        );
+      } else {
+        setError(state.message);
       }
-    };
-    void load();
+    });
   }, []);
 
   const handleLogout = async () => {
@@ -123,6 +147,14 @@ export function FoundationBoardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6 sm:pt-8 lg:px-8">
+        {portalOnly ? (
+          <OrganApprovalsOnly organPortalUrl={organPortalUrl} />
+        ) : principalType === null ? (
+          <div className="flex items-center gap-2 rounded-3xl border border-border/70 bg-surface-raised p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat...
+          </div>
+        ) : (
+        <>
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Ringkasan organisasi</p>
@@ -321,6 +353,8 @@ export function FoundationBoardPage() {
               </article>
             </section>
           </>
+        )}
+        </>
         )}
       </main>
     </div>

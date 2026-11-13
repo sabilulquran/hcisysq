@@ -222,6 +222,9 @@ paths:
         active employee record and an effective organization-scope board.read assignment (ORG-010-A).
         Everyone else gets 403. Aggregate only; the response no longer carries actor.email (ORG-010 D7).
         Cache-Control private, no-store.
+        ORG-010-P (amendment 2026-11-13): when HCIS sets ORGAN_PORTAL_URL, a FOUNDATION_BOARD account
+        that passes the guard gets 403 ORGAN_PORTAL_ONLY with the portal URL, before any data is loaded;
+        an EMPLOYEE with board.read is unaffected. Unset, nothing changes.
       responses:
         '200':
           description: ORG-003 aggregates
@@ -249,7 +252,21 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: >-
+            Not allowed (`FORBIDDEN`), or, with ORGAN_PORTAL_URL set, an organ account sent to the
+            Portal Organ Yayasan (`ORGAN_PORTAL_ONLY`, ORG-010-P). Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string, enum: [FORBIDDEN, ORGAN_PORTAL_ONLY] }
+                  message: { type: string }
+                  organPortalUrl:
+                    type: string
+                    format: uri
+                    description: Only with ORGAN_PORTAL_ONLY; the configured https Portal Organ Yayasan URL.
 
   /internal/v1/organization-directory/snapshot:
     get:
@@ -4206,6 +4223,12 @@ components:
                 (reports.read.organization, reports.export.organization). A UI hint; the report
                 routes resolve the units themselves.
               items: { type: string }
+        organPortalUrl:
+          type: string
+          format: uri
+          description: >-
+            ORG-010-P (amendment 2026-11-13), /auth/me only. Present only for a FOUNDATION_BOARD session
+            while HCIS sets ORGAN_PORTAL_URL; /board then shows the leave approvals only.
 
     Actor:
       type: object

@@ -57,9 +57,9 @@ Approved leave/permission may feed attendance/payroll as a resolved fact. Submis
 
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
-- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003.
+- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
 - Reimbursement — REIMB-001.
-- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction waits for PAY-003 (Package 2).
+- Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is deferred until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
 
 PAY-003 is an accepted roadmap domain expansion and must not reinterpret the verified PAY-001/PAY-002 MVP as a payroll engine.
 
@@ -100,7 +100,7 @@ Classic employment administration is an explicit HCIS direction, using effective
 - Family, dependents, and employee relations — EMP-009.
 - Employment basis documents: Perjanjian Kerja and Surat Keputusan — EMP-010.
 
-Package 1 (EMP-005, EMP-006, EMP-010) is specified and accepted by the owner (2026-10-16) in `docs/domain/employment-administration-package1.md`. Package 2 (EMP-007, EMP-008, EMP-009 and addresses/contacts through the EMP-003 data-change flow) is specified in `docs/domain/employment-administration-package2.md` (2026-10-27); its step P2-2 shipped EMP-007 and EMP-008 (education, skills and certificates, with the worklist of certificates about to expire) and P2-3 shipped EMP-009 with dated addresses and P2-4 the employee's own data-change proposal with HC's decision on it (EMP-003 §7.3, §7.4). Package 2 is complete.
+Package 1 (EMP-005, EMP-006, EMP-010) is accepted by the owner (2026-10-16) in `docs/domain/employment-administration-package1.md` and implemented (2026-11-13); production waits in rollout mode OFF for the HC steps of `docs/development/employment-pilot-activation-runbook.md`. Package 2 (EMP-007, EMP-008, EMP-009 and addresses/contacts through the EMP-003 data-change flow) is specified in `docs/domain/employment-administration-package2.md` (2026-10-27); its step P2-2 shipped EMP-007 and EMP-008 (education, skills and certificates, with the worklist of certificates about to expire) and P2-3 shipped EMP-009 with dated addresses and P2-4 the employee's own data-change proposal with HC's decision on it (EMP-003 §7.3, §7.4). Package 2 is complete.
 
 EMP-005/EMP-006 should support explicit Human Capital business actions and supporting decision/SK references. Current state must be explainable from historical/effective records.
 

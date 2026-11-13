@@ -1,6 +1,6 @@
 # Employment Administration Package 1 — Implementation Plan
 
-**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B merged (#222); S6 implemented; S7 merged (#226); S2B-a and S2B-b implemented; S4b (link documents to recorded actions) implemented 2026-11-13; S8 not started  
+**Status:** ACCEPTED PRODUCT DIRECTION — all owner decisions D-01..D-19 accepted 2026-10-16 (spec §15); S1–S3 merged (#113, #117, #120) and released to production in `hcis-5e4ddc96-20261017` with rollout mode OFF; S4 merged (#183); S5 merged (#208); S5A merged (#216); S5B merged (#222); S6 implemented; S7 merged (#226); S2B-a and S2B-b implemented (#319); S4b (link documents to recorded actions) implemented 2026-11-13 (#341); S8 runbook written (`docs/development/employment-pilot-activation-runbook.md`, 2026-11-13); production stays OFF until the HC steps in that runbook  
 **Specifications:** EMP-005, EMP-006, EMP-010  
 **Spec:** `docs/domain/employment-administration-package1.md`  
 **Prepared:** 2026-10-16
@@ -318,6 +318,8 @@ Independent review (2026-10-27) closed on this step: the dialog now asks for the
 - **Rollback:** revert PR; reversals already recorded remain valid history.
 
 ## S8 — Pilot activation runbook (documentation + owner-approved ops)
+
+**Status:** runbook written 2026-11-13: `docs/development/employment-pilot-activation-runbook.md`. The operational steps (SHADOW, HC review, rehearsal, worker entry, AUTHORITATIVE) run on HC's timetable.
 
 - Document in `docs/development/` how to: take the verified backup, deploy the release via OPS-MI8-REL-001, run baseline dry-run (counts only), owner review of counts, apply baseline, switch to `SHADOW`, HC UAT, resolve consistency issues, switch to `AUTHORITATIVE` for the pilot.
 - Exit criteria for `AUTHORITATIVE`:

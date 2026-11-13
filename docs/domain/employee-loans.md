@@ -180,7 +180,9 @@ Kerahasiaan log: PostgreSQL menaruh baris yang gagal — termasuk nominal — di
 
 Judul dan isi notifikasi tidak memuat nominal (D-15). Notifikasi ditulis dalam transaksi yang sama dengan transisinya dan idempoten per `eventKey`.
 
-## 9. Kontrak Paket 2 dengan payroll (belum dibangun)
+## 9. Kontrak Paket 2 dengan payroll (ditunda)
+
+**Status 2026-11-13: ditunda dengan alasan tercatat.** PAY-003 v1 sudah lengkap, tetapi butir 9.2.6 hanya mengizinkan Paket 2 setelah pemilik memutuskan PAY-003 menjadi jalur slip resmi. Uji paralel baru selesai putaran 1 (Oktober 2026); putaran 2 dan keputusan itu masih proses owner. Paket 2 (termasuk peringatan pinjaman di dialog Pemberhentian, §9.3) dikerjakan begitu keputusan itu ada.
 
 ### 9.1 Kondisi hari ini
 

@@ -3699,7 +3699,7 @@ components:
 
     OrganizationImpactPreview:
       type: object
-      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact, compensationImpact, routingImpact]
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact, compensationImpact, routingImpact, overtimeRuleWarnings]
       properties:
         directManagerChanges: { type: array, items: { type: object } }
         unitApproverChanges: { type: array, items: { type: object } }
@@ -3710,6 +3710,26 @@ components:
         noApprovalRoutingImpact: { type: boolean, description: 'Benar ketika jalur persetujuan tidak berubah. Tidak terikat ke visualOnlyChanges.' }
         compensationImpact: { type: boolean, description: 'ORG-011: klasifikasi kursi berubah. Memengaruhi kompensasi, tidak pernah jalur persetujuan.' }
         routingImpact: { type: boolean }
+        overtimeRuleWarnings:
+          type: array
+          description: >
+            ORG-008-12 (keputusan O-8). Jabatan yang dipakai aturan lembur ATT-011 (D-10, target posisi,
+            masih berlaku pada atau setelah tanggal berlaku perubahan) yang dihapus, tidak berlaku lagi,
+            atau dipindah unit di perubahan ini dibanding dasarnya. Hanya peringatan; tidak memblokir
+            Periksa atau Terbitkan dan tidak mengubah aturan. Ganti nama saja tidak diperingatkan karena
+            aturan mengikuti stable key.
+          items:
+            type: object
+            required: [ruleId, positionKey, targetLabel, reasonLabel, change, positionTitle, beforeUnitName, afterUnitName]
+            properties:
+              ruleId: { type: string, format: uuid }
+              positionKey: { type: string, format: uuid }
+              targetLabel: { type: string }
+              reasonLabel: { type: string }
+              change: { type: string, enum: [REMOVED, DEACTIVATED, MOVED] }
+              positionTitle: { type: string, nullable: true }
+              beforeUnitName: { type: string, nullable: true }
+              afterUnitName: { type: string, nullable: true }
 
     OrganizationPerson:
       type: object

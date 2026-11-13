@@ -48,6 +48,7 @@ import {
   listOpenOrganizationChanges,
   listOrganizationEmployees,
   OrganizationDraftAlreadyOpenError,
+  overtimeRuleSeatWarningText,
   previewOrganizationResolution,
   publishOrganizationDraft,
   replaceOrganizationIncumbencies,
@@ -1267,6 +1268,13 @@ export function OrganizationDesignerWorkspace({
       {impact ? <section className="mt-5 rounded-2xl border border-border/70 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
         <div className="flex items-start justify-between gap-4"><div><h2 className="text-base font-bold text-brand-heading">Dampak perubahan</h2><p className="mt-1 text-xs text-muted-foreground">Dihitung server untuk tanggal berlaku perubahan ini. Pengajuan yang sudah dikirim tidak berubah.</p></div><div className="flex flex-wrap items-center justify-end gap-2">{impact.noApprovalRoutingImpact ? <span className="rounded-full bg-info-soft px-3 py-1.5 text-xs font-bold text-info-ink">Tidak mengubah jalur persetujuan</span> : <span className="rounded-full bg-warning-soft px-3 py-1.5 text-xs font-bold text-warning-ink">Jalur persetujuan perlu ditinjau</span>}{impact.compensationImpact ? <span className="rounded-full bg-warning-soft px-3 py-1.5 text-xs font-bold text-warning-ink">Klasifikasi jabatan berubah</span> : null}</div></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6"><ImpactCard label="Atasan langsung berubah" count={impact.directManagerChanges.length} /><ImpactCard label="Penyetuju cuti unit berubah" count={impact.unitApproverChanges.length} /><ImpactCard label="Jalur kewenangan terpengaruh" count={impact.authorityPathsAffected.length} /><ImpactCard label="Jabatan kosong" count={impact.vacantAuthorities.length} tone="warning" /><ImpactCard label="Atasan belum bisa ditentukan" count={impact.unresolvedEmployees.length} tone="warning" /><ImpactCard label="Hanya tampilan" count={impact.visualOnlyChanges.length} tone="visual" /></div>
+        {impact.overtimeRuleWarnings?.length ? <div className="mt-4 rounded-xl border border-warning-line bg-warning-soft p-4" role="status">
+          <p className="text-sm font-bold text-warning-ink">Jabatan yang dipakai aturan lembur ikut berubah</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-warning-ink">
+            {impact.overtimeRuleWarnings.map((warning) => <li key={`${warning.ruleId}-${warning.change}`}>{overtimeRuleSeatWarningText(warning)}</li>)}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">Ini hanya peringatan; perubahan tetap bisa diterbitkan. Periksa aturannya di Waktu &amp; Kehadiran → Pengaturan → <a className="font-bold underline" href="/admin/attendance/settings/overtime-rules">Aturan lembur</a>.</p>
+        </div> : null}
       </section> : null}
 
       {hasActiveDraft ? <section className="mt-5">

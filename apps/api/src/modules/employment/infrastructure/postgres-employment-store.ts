@@ -281,8 +281,9 @@ export async function insertBaseline(
 }
 
 /**
- * Removes baseline rows for employments whose only action is BASELINE
- * (spec §8.6). Real actions are never purged. Caller owns the transaction.
+ * Removes baseline rows for employments whose only action is BASELINE and whose
+ * baseline carries no linked PK/SK (spec §8.6). Real actions are never purged.
+ * Caller owns the transaction.
  */
 export async function purgeBaseline(client: PoolClient, employeeIds?: string[]): Promise<number> {
   await client.query("SET LOCAL hcis.employment_baseline_purge = 'on'");
@@ -292,7 +293,14 @@ export async function purgeBaseline(client: PoolClient, employeeIds?: string[]):
        AND NOT EXISTS (
          SELECT 1 FROM employment_actions a WHERE a.employment_id = e.id AND a.action_type <> 'BASELINE'
        )
-     FOR UPDATE`,
+       -- EMP-010-A: a PK/SK linked to the baseline is recorded evidence; such an
+       -- employment is kept like one with a real action (the link is ON DELETE RESTRICT).
+       AND NOT EXISTS (
+         SELECT 1 FROM employment_actions a
+         JOIN employment_action_documents link ON link.action_id = a.id
+         WHERE a.employment_id = e.id
+       )
+     FOR UPDATE OF e`,
     [employeeIds ?? null],
   );
   const ids = targets.rows.map((row) => row.id);

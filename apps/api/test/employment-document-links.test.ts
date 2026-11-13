@@ -72,6 +72,24 @@ describe("EMP-010-A planDocumentLink", () => {
     expect(planDocumentLink(baseline, [pk(), sk(SK_MUTASI, "SK_MUTASI")], [], policy).link).toEqual([PK, SK_MUTASI]);
   });
 
+  it("matches HIRE and CATEGORY_CHANGE terms, and asks SK Pengangkatan for a permanent appointment", () => {
+    const hire = action({ actionType: "HIRE" });
+    expect(planDocumentLink(hire, [pk({ pkType: "PK_BARU" })], [], policy).link).toEqual([PK]);
+    expect(code(() => planDocumentLink(hire, [pk({ pkType: "PK_PERPANJANGAN" })], [], policy))).toBe("DECISION_DOCUMENT_KIND_INVALID");
+    expect(code(() => planDocumentLink(hire, [pk({ pkType: "PK_BARU", category: "MAGANG" })], [], policy))).toBe("PK_TERM_MISMATCH");
+    const permanent = action({ actionType: "CATEGORY_CHANGE", newSnapshot: { category: "TETAP", termFrom: "2027-07-01", termTo: null } });
+    expect(planDocumentLink(permanent, [sk(SK_END, "SK_PENGANGKATAN")], [], policy).link).toEqual([SK_END]);
+    expect(code(() => planDocumentLink(permanent, [pk()], [], policy))).toBe("DECISION_DOCUMENT_KIND_INVALID");
+  });
+
+  it("treats death like resignation and requires SK Pemberhentian for other terminations", () => {
+    const death = action({ actionType: "TERMINATION", reasonCode: "MENINGGAL_DUNIA", newSnapshot: null });
+    expect(planDocumentLink(death, [sk(SK_END, "SK_PEMBERHENTIAN")], [], policy).link).toEqual([SK_END]);
+    const dismissal = action({ actionType: "TERMINATION", reasonCode: "PEMBERHENTIAN", newSnapshot: null });
+    expect(planDocumentLink(dismissal, [sk(SK_END, "SK_PEMBERHENTIAN")], [], policy).link).toEqual([SK_END]);
+    expect(code(() => planDocumentLink(dismissal, [sk(SK_MUTASI, "SK_MUTASI")], [], policy))).toBe("DECISION_DOCUMENT_KIND_INVALID");
+  });
+
   it("refuses a reversed action and a reversal", () => {
     expect(code(() => planDocumentLink(action({ state: "REVERSED" }), [pk()], [], policy))).toBe("DECISION_DOCUMENT_LINK_NOT_ALLOWED");
     expect(code(() => planDocumentLink(action({ actionType: "REVERSAL" }), [pk()], [], policy))).toBe("DECISION_DOCUMENT_LINK_NOT_ALLOWED");
@@ -90,7 +108,7 @@ const PERMISSIONS: Record<Persona, string[]> = {
   anonymous: [], reader: ["employment.read"], hc: ["employment.read", "employment.manage"], super_admin: [],
 };
 
-interface Options { mode?: "OFF" | "SHADOW" | "AUTHORITATIVE"; actorEmployeeId?: string | null; outside?: boolean; actionMissing?: boolean; linked?: string[] }
+interface Options { mode?: "OFF" | "SHADOW" | "AUTHORITATIVE"; actorEmployeeId?: string | null; outside?: boolean; actionMissing?: boolean; linked?: string[]; reversed?: boolean; actionId?: string }
 
 async function call(persona: Persona, documentIds: string[], options: Options = {}) {
   const writes: string[] = [];
@@ -119,7 +137,7 @@ async function call(persona: Persona, documentIds: string[], options: Options = 
       if (options.actionMissing) return { rows: [], rowCount: 0 };
       return {
         rows: [{
-          id: ACTION, employeeId: EMPLOYEE, actionType: "TERMINATION", state: "RECORDED", reasonCode: "RESIGN",
+          id: ACTION, employeeId: EMPLOYEE, actionType: "TERMINATION", state: options.reversed ? "REVERSED" : "RECORDED", reasonCode: "RESIGN",
           newSnapshot: null, outside: options.outside ?? false,
         }],
         rowCount: 1,
@@ -152,7 +170,7 @@ async function call(persona: Persona, documentIds: string[], options: Options = 
   await registerDecisionDocumentRoutes(app, pool, config);
   const response = await app.inject({
     method: "POST",
-    url: `/admin/employment-actions/${ACTION}/documents`,
+    url: `/admin/employment-actions/${options.actionId ?? ACTION}/documents`,
     headers: persona === "anonymous" ? {} : { cookie: "hcis_session=test-token" },
     payload: { documentIds },
   });
@@ -207,5 +225,15 @@ describe("EMP-010-A POST /admin/employment-actions/{actionId}/documents", () => 
     const missing = await call("hc", [SK_END], { actionMissing: true });
     expect(missing.response.statusCode).toBe(404);
     expect((await call("hc", [])).response.statusCode).toBe(400);
+  });
+
+  it("refuses a reversed action with 409 and a malformed action id with 400, writing nothing", async () => {
+    const reversed = await call("hc", [SK_END], { reversed: true });
+    expect(reversed.response.statusCode).toBe(409);
+    expect(reversed.response.json()).toMatchObject({ code: "DECISION_DOCUMENT_LINK_NOT_ALLOWED" });
+    expect(reversed.writes).toEqual([]);
+    const malformed = await call("hc", [SK_END], { actionId: "not-a-uuid" });
+    expect(malformed.response.statusCode).toBe(400);
+    expect(malformed.response.json()).toMatchObject({ code: "INVALID_EMPLOYMENT_REQUEST" });
   });
 });

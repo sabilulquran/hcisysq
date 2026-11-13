@@ -518,8 +518,11 @@ export async function registerDecisionDocumentRoutes(
     const principal = await authenticate(request, reply, "employment.manage");
     if (!principal) return;
     const params = actionParams.safeParse(request.params);
+    if (!params.success) {
+      return send(reply, 400, { code: "INVALID_EMPLOYMENT_REQUEST", message: "Tindakan tidak valid." });
+    }
     const body = linkBody.safeParse(request.body);
-    if (!params.success || !body.success) return invalid(reply, "Pilih satu sampai sepuluh dokumen.");
+    if (!body.success) return invalid(reply, "Pilih satu sampai sepuluh dokumen.");
     const { mode } = await getRolloutMode(pool);
     if (mode !== "AUTHORITATIVE") {
       return send(reply, 409, { code: "EMPLOYMENT_HISTORY_DISABLED", message: "Riwayat kepegawaian belum diaktifkan." });
@@ -535,7 +538,7 @@ export async function registerDecisionDocumentRoutes(
         `SELECT a.id, a.employee_id AS "employeeId", a.action_type AS "actionType", a.state,
                 a.reason_code AS "reasonCode", a.new_snapshot AS "newSnapshot",
                 (e.management_scope = 'OUTSIDE_HCIS') AS outside
-         FROM employment_actions a JOIN employees e ON e.id = a.employee_id
+         FROM employment_actions a JOIN employees e ON e.id = a.employee_id AND e.removed_at IS NULL
          WHERE a.id = $1
          FOR UPDATE OF a`,
         [params.data.actionId],

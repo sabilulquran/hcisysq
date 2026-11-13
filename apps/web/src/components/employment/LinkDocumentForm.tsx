@@ -57,6 +57,7 @@ export function LinkDocumentForm({ employeeId, actionId, actionLabel, onClose, o
             onClick={() => {
               setKind(option);
               setDocument(null);
+              setError(null);
             }}
             className={`h-9 rounded-xl border px-3 text-xs font-bold ${kind === option ? "border-brand-primary bg-brand-primary/10 text-brand-primary-deep" : "border-border text-foreground"}`}
           >
@@ -68,7 +69,10 @@ export function LinkDocumentForm({ employeeId, actionId, actionLabel, onClose, o
         kind={kind}
         employeeId={employeeId}
         value={document}
-        onChange={setDocument}
+        onChange={(picked) => {
+          setDocument(picked);
+          setError(null);
+        }}
         label={kind === "PERJANJIAN_KERJA" ? "Cari Perjanjian Kerja" : "Cari Surat Keputusan"}
       />
       <p className="text-xs text-muted-foreground">

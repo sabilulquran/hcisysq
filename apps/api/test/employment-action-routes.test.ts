@@ -369,6 +369,10 @@ describe("EMP-005 contract extension", () => {
     expect(writes).toContain("PROJECT employee");
     expect(writes).toContain("LINK document");
     expect(writes).toContain("INSERT audit");
+    // EMP-010-A: every link is audited on its own (employment.decision_document.linked),
+    // besides the employment.action.recorded event.
+    expect(writes[writes.indexOf("LINK document") + 1]).toBe("INSERT audit");
+    expect(writes.filter((write) => write === "INSERT audit").length).toBeGreaterThanOrEqual(2);
   });
 
   it("requires an Idempotency-Key and replays the first result", async () => {

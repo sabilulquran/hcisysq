@@ -344,4 +344,59 @@ describe.skipIf(!allowed)("ORG-011 designer classification binding", () => {
     expect(after.json().issues.some((row: { code: string }) => row.code === "JOB_CLASSIFICATION_NOT_EFFECTIVE"))
       .toBe(true);
   });
+  it("ORG-008-12 (O-8): moving a seat named by an overtime rule is reported on the impact, not refused", async () => {
+    const base = randomUUID();
+    const otherNodeKey = randomUUID();
+    const seatKey = randomUUID();
+    await client.query(
+      `INSERT INTO organization_change_sets
+         (id, name, effective_on, status, created_by_account_id, validated_at, published_at)
+       VALUES ($1,'Basis sintetis O-8','2026-01-01'::date,'PUBLISHED',$2, now(), now())`,
+      [base, accountId],
+    );
+    const revision = randomUUID();
+    await client.query(
+      `INSERT INTO organization_change_sets
+         (id, name, effective_on, status, created_by_account_id, base_change_set_id)
+       VALUES ($1,'Revisi sintetis O-8','2026-09-01'::date,'DRAFT',$2,$3)`,
+      [revision, accountId, base],
+    );
+    for (const changeSet of [base, revision]) {
+      for (const [key, name] of [[nodeKey, "Unit sintetis"], [otherNodeKey, "Unit lain sintetis"]] as const) {
+        await client.query(
+          `INSERT INTO organization_nodes (id, change_set_id, stable_key, name, node_type, effective_from)
+           VALUES ($1,$2,$3,$4,'UNIT','2026-01-01'::date)`,
+          [randomUUID(), changeSet, key, name],
+        );
+      }
+    }
+    // The seat sits in the first unit in the base and in the other unit in the revision.
+    await client.query(
+      `INSERT INTO organization_positions (id, change_set_id, stable_key, node_key, title, effective_from, visual_rank_offset)
+       VALUES ($1,$2,$3,$4,'Direktur sintetis','2026-01-01'::date,0), ($5,$6,$3,$7,'Direktur sintetis','2026-01-01'::date,0)`,
+      [randomUUID(), base, seatKey, nodeKey, randomUUID(), revision, otherNodeKey],
+    );
+
+    const before = await app.inject({ method: "GET", url: `/admin/organization/designer/drafts/${revision}/impact`, headers: cookie });
+    expect(before.statusCode, before.body).toBe(200);
+    expect(before.json().overtimeRuleWarnings).toEqual([]);
+
+    const ruleId = randomUUID();
+    await client.query(
+      `INSERT INTO attendance_overtime_eligibility_rules
+         (id, target_kind, target_ref, target_label, reason_label, effective_from, created_by_account_id)
+       VALUES ($1,'position',$2,'Direktur sintetis · Unit sintetis','Direktur — tidak menerima upah lembur','2026-01-01'::date,$3)`,
+      [ruleId, seatKey, accountId],
+    );
+    const after = await app.inject({ method: "GET", url: `/admin/organization/designer/drafts/${revision}/impact`, headers: cookie });
+    expect(after.statusCode, after.body).toBe(200);
+    expect(after.json().overtimeRuleWarnings).toEqual([{
+      ruleId, positionKey: seatKey, targetLabel: "Direktur sintetis · Unit sintetis",
+      reasonLabel: "Direktur — tidak menerima upah lembur", change: "MOVED", positionTitle: "Direktur sintetis",
+      beforeUnitName: "Unit sintetis", afterUnitName: "Unit lain sintetis",
+    }]);
+    // A warning only: the rule is untouched.
+    const rule = await client.query(`SELECT effective_to FROM attendance_overtime_eligibility_rules WHERE id = $1`, [ruleId]);
+    expect(rule.rows[0]?.effective_to).toBeNull();
+  });
 });

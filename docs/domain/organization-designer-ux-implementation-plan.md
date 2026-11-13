@@ -1,6 +1,6 @@
 # ORG-008 — Rencana Implementasi Designer Struktur Organisasi
 
-**Status:** DISETUJUI OWNER 2026-10-23 — eksekusi berjalan. **ORG-008-1 selesai** (frontend saja). Paket berikutnya menurut urutan di bawah: ORG-008-8, yang menunggu keputusan owner B (pemegang izin Terbitkan).
+**Status:** SELESAI 2026-11-13 — semua paket ORG-008-1..12 diimplementasikan; status per paket dan sisa yang menjadi bagian aktivasi ORG-004 ada di `organization-designer-ux-spec.md` (baris Status dan §9). Isi di bawah adalah rencana historis.
 **Specification:** ORG-008 (`organization-designer-ux-spec.md`, ACCEPTED, O-1..O-10)
 **Gap analysis:** `organization-designer-ux-gap-analysis.md`
 **Batas semantik:** ORG-004 (`dynamic-organization-structure.md`, `organization-designer-visual-ranking.md`)

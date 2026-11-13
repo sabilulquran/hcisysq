@@ -1,6 +1,6 @@
 # ORG-005 — Lokasi kerja (site / cabang)
 
-**Status:** DRAFT — default diambil tanpa keputusan tertulis berdasarkan aturan owner 2026-10-27 ("ambil default paling masuk akal, tandai DRAFT, jalan terus"). Setiap keputusan bertanda **D-5-x** dapat diubah owner.
+**Status:** v1 IMPLEMENTED (ORG-005-1..3) — keputusan tetap DRAFT: default diambil tanpa keputusan tertulis berdasarkan aturan owner 2026-10-27 ("ambil default paling masuk akal, tandai DRAFT, jalan terus"). Setiap keputusan bertanda **D-5-x** dapat diubah owner.
 **Related:** ORG-004 (struktur), ORG-007 (legal entity), ATT-003 (lokasi absensi/geofence), ATT-011 (jadwal), EMP-005 (penempatan), ORG-008 (designer)
 
 ## 1. Tujuan

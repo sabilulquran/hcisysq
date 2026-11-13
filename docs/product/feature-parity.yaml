@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-11-02
+updated_at: 2026-11-13
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -133,10 +133,20 @@ features:
     module: organization
     name: Organization sites, branches, and work locations
     legacy_evidence: none recorded; product owner accepted multi-site/branch capability in HCIS scope on 2026-09-18
-    target_status: planned
+    target_status: implemented
     priority: later
     risk: high
-    planning_note: This is one-organization multi-site capability, not commercial multi-tenancy. It may later provide work-location context to schedules, attendance/geofence policy, temporary assignment, and workplace booking.
+    planning_note: >-
+      v1 implemented (DRAFT decisions D-5-1..D-5-8 in docs/domain/organization-sites-work-locations.md):
+      attendance_work_locations is the one Lokasi kerja list; units name a work location inside a change
+      set and units below inherit it (ORG-005-1, #187); ADMS machines name their work location and a
+      location in use cannot be switched off (ORG-005-2, #203); mobile clock-in uses the shift's location
+      and otherwise the employee's unit location, and the Shift and Lokasi kerja screens show which
+      shifts, units and machines use each location and warn about shifts without one (ORG-005-3, #324). A
+      Taman Tahfizh site needs no model change: HC adds it as a location with its own point and radius.
+      Out of v1 (TBD, no current owner need): several locations per unit, temporary assignment to another
+      location, room booking, locations per legal entity (ORG-007),
+      employment_placements.work_location_key.
     docs:
       - docs/product/hcis-capability-map.md
 
@@ -144,10 +154,14 @@ features:
     module: organization
     name: Multi-company / multi-legal-entity organization boundary
     legacy_evidence: SemartHRIS benchmark supports multi-company; product owner requested evaluation for HCIS on 2026-09-22
-    target_status: discovery
+    target_status: deferred
     priority: later
     risk: critical
-    planning_note: Proposed as a legal-entity boundary above ORG-004, not SaaS tenancy. Existing YSQ would become the first/default legal entity. Authorization, employment, payroll, leave, attendance, and reporting must be explicitly entity-scoped before activation.
+    planning_note: >-
+      Deferred by owner direction (relayed 2026-11-11): multi-company is not needed now; YSQ is one legal
+      entity. The DRAFT readiness assessment (docs/domain/multi-entity-readiness.md) and ADR-0005
+      (PROPOSED) stay as reference for a future decision; no schema, permission or UI work is planned.
+      Reopening requires a new owner decision and acceptance of ADR-0005.
     docs:
       - docs/domain/multi-company-organization.md
       - docs/product/roadmap.md
@@ -157,10 +171,15 @@ features:
     module: organization
     name: Organization Directory publishing to SQ Hub
     legacy_evidence: none; cross-repository projection boundary is a new integration contract
-    target_status: accepted
+    target_status: implemented
     priority: post-org004-integration
     risk: high
-    planning_note: HCIS remains the organization authoring/system-of-authority side. ORG-006 v1 accepts authenticated full-snapshot pull to SQ Hub, stable namespaced identifiers, content-addressed versioning, minimum privacy projection, and explicit recovery/staleness boundaries. Runtime export remains default OFF until real ORG-004 structure acceptance and deployment evidence.
+    planning_note: >-
+      Producer implemented (#86, #88), bounded OIDC coverage accepted and integration closed (#91).
+      Production gate ORG_DIRECTORY_EXPORT_ENABLED=1 on Mi8VPS, and the production API log shows the
+      sq-hub-organization-directory client pulling GET /internal/v1/organization-directory/snapshot with a
+      content-addressed version (read-only check 2026-11-11). HCIS stays the authoring side; no writeback,
+      dual-write or direct database access.
     docs:
       - docs/domain/organization-directory-publishing.md
       - docs/domain/dynamic-organization-structure.md
@@ -170,10 +189,19 @@ features:
     module: organization
     name: Organization structure designer UX simplification
     legacy_evidence: owner reported on 2026-10-16 that the ORG-004 Organization Designer is still uncomfortable for HC operators; ATT-011 overtime approval depends on complete direct-manager, Direktur position, HC unit scope and acting data
-    target_status: specified
+    target_status: implemented
     priority: immediate-product-ux
     risk: high
-    planning_note: UX and workflow layer over ORG-004 only. Does not change resolver semantics, effective dating, approval snapshots or rollout; does not activate SHADOW/STRUCTURE. Owner accepted recommendations O-1..O-10 on 2026-10-16 (HC Admin drafts everything, publish stays with approvals.policy.manage holder; seed from legacy data; one open draft; Direktur picked in overtime rules; structure units linked to legacy units for HC scope; view-only on phone); O-11 pilot unit remains open. Packages ORG-008-1..8 still require their own PRs and owner-approved releases. Includes a publish safety fix for stale-base drafts silently overwriting other published snapshots.
+    planning_note: >-
+      All designer packages ORG-008-1..12 are implemented and released: plain language and gating, read
+      model and readiness screens, stale-base guard and safe change lifecycle, combined commands with
+      journal/undo/rebase, advanced settings, legacy-unit link and HC staff panel, proposal from legacy
+      data, HC composing with Kepala HC publishing, Kepala HC seat check (superseded by AUTH-015),
+      four-eyes publish (DRAFT), primary seat command, discard of stale open changes, and the O-8 warning
+      when a change removes, switches off or moves a seat named by an ATT-011 overtime rule (ORG-008-12).
+      Resolver semantics, effective dating, approval snapshots and rollout are unchanged. What remains
+      belongs to ORG-004 STRUCTURE activation, not to the designer: pilot unit O-11 (owner) and locking
+      legacy manager/Unit Approver fields per unit once STRUCTURE is on (O-2).
     docs:
       - docs/domain/organization-designer-ux-spec.md
       - docs/domain/organization-designer-ux-gap-analysis.md
@@ -230,13 +258,15 @@ features:
     legacy_evidence: >-
       None in legacy; owner decision 2026-11-03 (production chart has Ketua and Sekretaris
       positions held by FOUNDATION_BOARD accounts, holder_source ACCOUNT).
-    target_status: specified
+    target_status: implemented
     priority: later
     risk: medium
     planning_note: >-
-      Specified in PR #290 under the ID ORG-012, which the registry had already given to
-      committees since the 2026-11-02 audit; renumbered to ORG-013 on 2026-11-03 with no change
-      to its decisions. Reuses the 0023 governance approver principal; no new route or role.
+      Implemented and released (hcis-af226c4e, 2026-11-03; #299, #301): Foundation Board accounts holding
+      a seat (holder_source ACCOUNT) are valid approver principals in the resolver, Leave (annual and
+      planned), oversight, the SQ Hub role channel and the /board decision box, reusing the 0023
+      governance approver principal with no new route or role. It takes effect only when a leave workflow
+      rollout is STRUCTURE; production is still LEGACY.
     docs:
       - docs/domain/organ-account-approver.md
       - docs/product/organ-portal-concept.md
@@ -433,10 +463,20 @@ features:
     module: attendance
     name: WDMS-compatible fingerprint device operations
     legacy_evidence: SQ fingerprint devices use ZKTeco PUSH/ADMS transport; ZKBio WDMS is the accepted operational parity reference for device management
-    target_status: implementing
+    target_status: implemented
     priority: core
     risk: critical
-    planning_note: Packages 1-3 established the HCIS device plane, recovery, Admin operations, encrypted biometric control plane, safe catalogs, and typed physical parity implementation. The supplied 2026-09-15 VPS audit reports three capability rows in state verified, but does not identify enough row-level evidence here to close any specific ledger row. ATT-005 therefore remains implementing. Physical functions require one-capability-at-a-time evidence; BIOMETRIC_COLLECTION_ENABLED remains OFF, active USERINFO reads stay retired, and no arbitrary command escape hatch is permitted.
+    planning_note: >-
+      Software complete and deployed (Waves 1-3, packages 1-3, typed physical parity, encrypted biometric
+      control plane; BIOMETRIC_COLLECTION_ENABLED stays OFF; no arbitrary command escape hatch). The
+      2026-11-11 read-only production review verified 7 ledger rows (passive registration, heartbeat, push
+      metadata, attendance-only profile, time sync, duplicate-punch period, Work Code); 2 product
+      exclusions stay. The remaining 22 physical rows and 6 export UAT rows are not software work: each is
+      mapped in docs/operations/adms-physical-verification-checklist.md to a site session, an owner
+      decision (NTP value, firmware package, attendance photo), the biometric gate, or the high-risk last
+      phase. DRAFT (2026-11-13): implemented means software complete; ATT-005 moves to verified only when
+      the ledger closure rule holds (no row left not_verified). Both machines were offline at the
+      2026-11-11 review (site item S-0).
     docs:
       - docs/domain/attendance-wdms-device-parity.md
       - docs/domain/attendance-wdms-implementation-plan.md
@@ -513,10 +553,21 @@ features:
     module: attendance
     name: Attendance operational simplification
     legacy_evidence: product owner reports current HCIS schedule/attendance administration is more complex operationally than classic Shift -> Schedule -> Attendance -> Overtime flows
-    target_status: implementing
+    target_status: implemented
     priority: immediate-product-ux
     risk: high
-    planning_note: ATT-011-1 (language and navigation, "Waktu & Kehadiran" menu, legacy route redirects, permission-gated menus, full employee search for overtime) implemented 2026-10-23 without API changes; ATT-011-2..8 not started. Simplify operator and employee information architecture without deleting backend versioning, immutable evidence, provenance, or audit. Primary HC mental model is Shift -> Jadwal -> Kehadiran -> Lembur. Prefer bulk schedule-range/pattern operations with explicit replacement/conflict preview. Human Capital sees one explainable daily result; missing punches remain incomplete and schedule time is never synthesized as attendance evidence. A 2026-10-16 DRAFT specification and gap analysis define screens, schedule change sets, automatic recompute, and packages ATT-011-1..8; owner decisions D-1..D-8 were recorded the same day (D-5 changed overtime to supervisor/employee two-party approval with HC notified), and the second round (D-5a confirmed, D-5b warning-only PP 35/2021 limit, D-5c, D-9 7-day window, D-10 configurable position/role rule excluding the Direktur from overtime, D-11 unit-scoped HC notification) closed all product decisions; implementation packages still require their own PRs and owner-approved releases.
+    planning_note: >-
+      All packages are implemented and released through OPS-MI8-REL-001: P0, ATT-011-1
+      (language/navigation), ATT-011-3 (Perlu Tindakan queue and day detail), ATT-011-4a/4b/4c (dated
+      shift versions, schedule change sets with preview/apply/revert), ATT-011-5 (Jadwal Kalender
+      planner), ATT-011-6a (overtime summed, day type, HC monitor), ATT-011-6b-1/6b-2 (supervisor/employee
+      two-party overtime approval, Lembur Tim), ATT-011-6b-3 (D-10 position/role overtime rules, D-5b PP
+      35/2021 warnings, D-11 unit-scoped HC notice, supervisor-only Lembur Tim; #327, #340), ATT-011-7
+      (Kehadiran Saya) and ATT-011-8 (old Pola jadwal/Jadwal per tanggal retired to read-only Tampilan
+      lanjutan; #325). ATT-011-2 was superseded by ATT-014 on 2026-10-24. DRAFT defaults: no seeded
+      Direktur rule (HC must add the Direktur position rule in Pengaturan > Aturan lembur before go-live),
+      4 h/day and 18 h/week warning thresholds, owner UAT of the Kalender planner taken as accepted.
+      Backend versioning, evidence and audit are unchanged.
     docs:
       - docs/domain/attendance-operational-simplification.md
       - docs/domain/attendance-operational-simplification-spec.md
@@ -528,10 +579,19 @@ features:
     module: attendance
     name: ADMS operational management and operator UX
     legacy_evidence: legacy ADMS(v3.1-168), ZKTeco WDMS/PUSH reference, current HCIS ATT-005 device plane, and product-owner review on 2026-09-23
-    target_status: implementing
+    target_status: implemented
     priority: immediate-product-ux
     risk: critical
-    planning_note: The initial ATT-012 operational workspace is deployed. The accepted 2026-09-23 next baseline restores safe machine actions to operator-facing UX using human language while keeping engineering mechanics, firmware, destructive work, biometrics, and other sensitive controls appropriately gated. Use the master capability matrix to distinguish protocol/reference support, HCIS implementation, physical verification, and GUI exposure. ATT-005 remains authoritative for physical verification; no vendor/legacy capability is treated as physically supported until evidenced.
+    planning_note: >-
+      The 2026-09-23 operator baseline is implemented (#83, #85, #316): one Manajemen ADMS workspace with
+      the approved device tabs (Ringkasan, Pengguna, Biometrik, Data Mesin, Transaksi, Konfigurasi,
+      Maintenance), plain-language quick actions that stay disabled with a plain reason until the machine
+      passes its ATT-005 test, fleet sync preview, Kode kegiatan/Pesan, a separate high-risk maintenance
+      area, online/offline counts, and operator wording in history, transactions and health. Physical
+      capability per machine stays under the ATT-005 ledger; untested actions show 'Perlu pengujian
+      perangkat' by design. Out of the baseline and needing their own specification: support bundle,
+      notifications beyond the dashboard, editable transfer profile, device-side DST, card enrollment,
+      access control.
     docs:
       - docs/domain/attendance-adms-operational-management.md
       - docs/domain/attendance-adms-capability-matrix.md

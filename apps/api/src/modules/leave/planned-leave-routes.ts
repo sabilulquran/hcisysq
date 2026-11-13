@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import { decryptSecret, encryptSecret } from "../auth/crypto.js";
@@ -226,6 +227,13 @@ async function loadEmployeeContext(
   return employee;
 }
 
+/** EMP-005 S2B §8.7: a record outside HCIS management files no new leave; its history stays. */
+async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
+  if (await isOutsideHcis(db, employeeId)) {
+    throw new PlannedLeaveRouteError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+  }
+}
+
 async function loadWorkingCalendar(
   db: Pool | PoolClient,
   startOn: string,
@@ -274,7 +282,9 @@ async function hydrateApprovalChain(
       ON account.employee_id = employee.id
       AND account.principal_type = 'EMPLOYEE'
     WHERE employee.id = ANY($1::uuid[])
-      AND employee.removed_at IS NULL`,
+      AND employee.removed_at IS NULL
+      -- EMP-005 S2B §8.7: an approver outside HCIS management reads as not active.
+      AND employee.management_scope = 'MANAGED'`,
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
@@ -915,6 +925,7 @@ export async function registerPlannedLeaveRoutes(
     }
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
+      await refuseOutsideHcis(pool, employee.id);
       const preview = await buildPlannedPreview(pool, employee, parsed.data);
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -964,6 +975,7 @@ export async function registerPlannedLeaveRoutes(
           await client.query("COMMIT");
           return reply.send({ ...existing.rows[0], idempotentReplay: true });
         }
+        await refuseOutsideHcis(client, employee.id);
 
         const { requestId, policy, preview, evidence, insertedSteps } = await insertPlannedRequest(client, {
           employee,

@@ -65,8 +65,9 @@ Evidence:
 Lifecycle facts:
 - `status = active|inactive|resigned`;
 - `removed_at` is a separate population-removal fact;
-- directory `active=true` only when `status='active'` and `removed_at IS NULL`;
-- inactive, resigned, or removed people remain identifiable and are exported as inactive rather than hard-deleted.
+- `management_scope` (EMP-005 §8.7) is `MANAGED` or `OUTSIDE_HCIS` (BUMY staff, Pengurus Yayasan);
+- directory `active=true` only when `status='active'`, `removed_at IS NULL` and `management_scope='MANAGED'`;
+- inactive, resigned, removed, or outside-HCIS people remain identifiable and are exported as inactive rather than hard-deleted. The marker itself is not a published field, so the contract and the version of an unchanged snapshot are unchanged (EMP-005 S2B-b).
 
 ### Placement and position
 

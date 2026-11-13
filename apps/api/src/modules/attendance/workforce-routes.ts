@@ -9,6 +9,7 @@ import { pageQuerySchema } from "../../lib/pagination.js";
 import { requireAnyPermissionFromCookie, requirePermissionsFromCookie, requirePrincipalFromCookie } from "../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import { notifyEmployee } from "../notifications/service.js";
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE } from "../employees/management-scope.js";
 import type { AdminPermission } from "../auth/permissions.js";
 import {
   haversineDistanceMeters,
@@ -1778,7 +1779,8 @@ export async function registerAttendanceWorkforceRoutes(
            ORDER BY a.effective_from DESC
            LIMIT 1
          ) assignment ON true
-         WHERE employee.status = 'active'
+         -- EMP-005 S2B §8.7: a record outside HCIS management is not rostered.
+         WHERE employee.status = 'active' AND employee.management_scope = 'MANAGED'
          ORDER BY unit.name NULLS LAST, employee.full_name`,
         [query.data.weekStart],
       ),
@@ -2578,8 +2580,13 @@ export async function registerAttendanceWorkforceRoutes(
     if (!principal) return;
     const body = adminOvertimeInputSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ code: "INVALID_OVERTIME_REQUEST", message: "Pengajuan lembur tidak valid." });
-    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    const employee = await pool.query<{ id: string; outside: boolean }>(
+      "SELECT id, management_scope = 'OUTSIDE_HCIS' AS outside FROM employees WHERE id = $1 AND status = 'active'",
+      [body.data.employeeId],
+    );
     if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    // EMP-005 S2B §8.7: nothing new is recorded for a record outside HCIS management.
+    if (employee.rows[0].outside) return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -2763,7 +2770,11 @@ export async function registerAttendanceWorkforceRoutes(
       if (actorEmployeeId && (actorEmployeeId === body.data.supervisorEmployeeId || actorEmployeeId === item.employeeId)) {
         throw new WorkforceAttendanceError(403, "OVERTIME_REASSIGN_CONFLICT", "Pengalihan approver yang melibatkan diri sendiri harus dilakukan staf HC lain.");
       }
-      const active = await client.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active'", [body.data.supervisorEmployeeId]);
+      // EMP-005 S2B §8.7: a record outside HCIS management is never chosen as an approver.
+      const active = await client.query(
+        "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND management_scope = 'MANAGED'",
+        [body.data.supervisorEmployeeId],
+      );
       if (!active.rows[0]) throw new WorkforceAttendanceError(422, "OVERTIME_APPROVER_INACTIVE", "Approver pengganti harus pegawai aktif.");
       await client.query(
         `UPDATE attendance_overtime_requests
@@ -2805,8 +2816,13 @@ export async function registerAttendanceWorkforceRoutes(
     if (!body.success) return reply.status(400).send({ code: "INVALID_MANUAL_CORRECTION", message: "Koreksi manual tidak valid." });
     const windowError = manualCorrectionWindowError(body.data);
     if (windowError) return reply.status(422).send({ code: windowError, message: manualCorrectionWindowMessages[windowError] });
-    const employee = await pool.query<{ id: string }>("SELECT id FROM employees WHERE id = $1 AND status = 'active'", [body.data.employeeId]);
+    const employee = await pool.query<{ id: string; outside: boolean }>(
+      "SELECT id, management_scope = 'OUTSIDE_HCIS' AS outside FROM employees WHERE id = $1 AND status = 'active'",
+      [body.data.employeeId],
+    );
     if (!employee.rows[0]) return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai aktif tidak ditemukan." });
+    // EMP-005 S2B §8.7: nothing new is recorded for a record outside HCIS management.
+    if (employee.rows[0].outside) return reply.status(409).send({ code: OUTSIDE_HCIS_CODE, message: OUTSIDE_HCIS_MESSAGE });
     const clarificationId = randomUUID();
     const client = await pool.connect();
     try {

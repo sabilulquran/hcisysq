@@ -2076,9 +2076,16 @@ components:
                 description: >-
                   Baseline issue code (BASELINE_*), BASELINE_NOT_LOADED,
                   HISTORY_DIFFERS_FROM_MASTER, ACTIVE_WITHOUT_PLACEMENT,
-                  CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP, and in AUTHORITATIVE the
+                  CONTRACT_EXPIRED_WITHOUT_FOLLOW_UP, in AUTHORITATIVE the
                   two EMP-006 structure comparisons STRUCTURE_SEAT_WITHOUT_PLACEMENT
-                  and PLACEMENT_WITHOUT_STRUCTURE_SEAT.
+                  and PLACEMENT_WITHOUT_STRUCTURE_SEAT, and (EMP-005 S2B-b §8.7)
+                  ACCOUNT_LINKED_TO_OUTSIDE_HCIS_RECORD for a record marked
+                  OUTSIDE_HCIS whose EMPLOYEE account is still invited or active.
+                  That line is a report for HC/access review; the account is never
+                  changed automatically. FOUNDATION_BOARD accounts are not linked to
+                  an employee record and never appear. APPROVER_OUTSIDE_HCIS marks an
+                  active managed employee whose direct manager or unit leave approver
+                  is marked OUTSIDE_HCIS (routing treats that approver as inactive).
               count: { type: integer }
         total: { type: integer }
         page: { type: integer }

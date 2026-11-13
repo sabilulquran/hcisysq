@@ -167,6 +167,28 @@ export interface OrganizationImpactPreview {
   /** ORG-011: a seat classification moved. Affects pay, never approval routing. */
   compensationImpact?: boolean;
   routingImpact?: boolean;
+  /** ORG-008-12 (O-8): seats named by an ATT-011 overtime rule that this change removes, switches off or moves. */
+  overtimeRuleWarnings?: OrganizationOvertimeRuleSeatWarning[];
+}
+
+export interface OrganizationOvertimeRuleSeatWarning {
+  ruleId: string;
+  positionKey: string;
+  targetLabel: string;
+  reasonLabel: string;
+  change: "REMOVED" | "DEACTIVATED" | "MOVED";
+  positionTitle: string | null;
+  beforeUnitName: string | null;
+  afterUnitName: string | null;
+}
+
+/** One sentence per warning, in the designer's language (no codes). */
+export function overtimeRuleSeatWarningText(warning: OrganizationOvertimeRuleSeatWarning): string {
+  const seat = warning.positionTitle ?? warning.targetLabel;
+  const rule = `aturan lembur "${warning.reasonLabel}"`;
+  if (warning.change === "REMOVED") return `Jabatan ${seat} dihapus di perubahan ini, padahal dipakai ${rule}.`;
+  if (warning.change === "DEACTIVATED") return `Jabatan ${seat} tidak berlaku lagi di perubahan ini, padahal dipakai ${rule}.`;
+  return `Jabatan ${seat} dipindah dari ${warning.beforeUnitName ?? "unit lama"} ke ${warning.afterUnitName ?? "unit lain"}; ${rule} tetap mengikuti jabatan ini.`;
 }
 
 export interface OrganizationResolutionPreview {

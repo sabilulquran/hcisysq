@@ -759,8 +759,10 @@ export class PostgresOrganizationRepository {
       accountActive: boolean;
       capabilityValid: boolean;
     }>(
+      // EMP-005 S2B §8.7: an incumbent outside HCIS management is not an eligible authority, so
+      // the walk treats it like an inactive one (escalates, or blocks, per the vacancy policy).
       `SELECT
-         (e.status = 'active' AND e.removed_at IS NULL) AS "employeeActive",
+         (e.status = 'active' AND e.removed_at IS NULL AND e.management_scope = 'MANAGED') AS "employeeActive",
          EXISTS (
            SELECT 1 FROM accounts a
            WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE' AND a.status = 'active'

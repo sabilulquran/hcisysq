@@ -85,6 +85,8 @@ See `docs/domain/payroll-engine-discovery.md`.
 - Performance review and KPI — PERF-001. Package 1 (cycles, self-assessment, rating by the structural line manager, HC validation, A–D predicate, history and recap) is implemented; see `docs/domain/performance-review.md`. Results do not feed tunjangan kinerja until the PAY-003 link (spec §11).
 - Training / LMS and learning records — TRAIN-001. Package 1 (training record keeping: programs, sessions with time blocking, participants, attendance, internal and external records, certificates, yearly hours) is implemented; see `docs/domain/training.md`. Evaluation and online modules remain discovery.
 
+- Employee awards — REWARD-001. Monthly awards whose candidates come only from the Al-Qur'an tilawah scoreboard (SQ Hub module, ADR-0013); the Kepala HCM decides, publication sends a notification, an announcement and a certificate. Specified in `docs/domain/rewards.md`; not an input to PERF-001 and not a payroll component. Staff open the Al-Qur'an module itself from an HCIS menu; reading data stays in SQ Hub.
+
 TRAIN-001 stays inside HCIS (Product Owner decision, 2026-10-20). Discovery direction, including training evaluation and server-hosted video, is in `docs/domain/training-lms-discovery.md`.
 
 ### 5. Employment administration and employee services
@@ -120,7 +122,7 @@ Employee services continue with:
 - Delivery adapters for transactional notifications — NOTIF-001. Closed (`docs/domain/reminders.md` §8): in-app (NOTIF-004) and WhatsApp through Kirim SQ (allowlisted while HCIS is pre-launch); email is not built (DRAFT D-10).
 - Recipient-owned in-app notification center — NOTIF-004.
 - Announcements — NOTIF-002. Package 1 is implemented; see `docs/domain/announcements-and-reminders.md`. Scheduled auto-publication and external channels are not included.
-- Reminders and scheduled notifications — NOTIF-003. Package 1 is implemented (`docs/domain/reminders.md`): an in-process engine with nine DRAFT rules (approval digest, HC queues, contract/probation ending, certificate expiry, performance due dates, payroll cutoff and pay date), 06:00–21:00 WIB, in-app plus WhatsApp per rule with a per-employee WhatsApp switch under Notifikasi.
+- Reminders and scheduled notifications — NOTIF-003. Package 1 is implemented (`docs/domain/reminders.md`): an in-process engine with ten DRAFT rules (approval digest, HC queues, contract/probation ending, certificate and EMP-011 document expiry, performance due dates, payroll cutoff and pay date), 06:00–21:00 WIB, in-app plus WhatsApp per rule with a per-employee WhatsApp switch under Notifikasi.
 - Meeting invitations with participant time blocking and a personal calendar — CAL-001. Package 1 is accepted in `docs/domain/meeting-calendar.md` and implemented (menu Kalender, `/me/calendar`, `/me/meetings`): in-app and WhatsApp (Kirim SQ) notifications and a 30-minute reminder; no room booking. WhatsApp runs on the `log` adapter (dry run) until the HCIS number is paired.
 
 ### 7. Talent acquisition

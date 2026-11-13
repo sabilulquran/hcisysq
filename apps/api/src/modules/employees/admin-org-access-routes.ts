@@ -342,7 +342,8 @@ export async function registerOrgAccessAdminRoutes(
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
           LEFT JOIN positions p ON p.id = e.position_id
-          WHERE e.status = 'active' AND e.id <> $1
+          -- EMP-005 S2B §8.7: a record outside HCIS management is never offered as a manager.
+          WHERE e.status = 'active' AND e.management_scope = 'MANAGED' AND e.id <> $1
           ORDER BY e.full_name ASC
         `,
         [employeeId],
@@ -455,9 +456,9 @@ export async function registerOrgAccessAdminRoutes(
     }
 
     // EMP-005 S2B: a record outside HCIS management is read-only (§8.7), and
-    // one may not be named as a manager either. Existing subordinates of a
-    // record marked later keep pointing at it until approval routing learns
-    // the marker, which is S2B-b.
+    // one may not be named as a manager either. Subordinates of a record marked
+    // later keep pointing at it; routing treats it as inactive and the
+    // consistency report lists them as APPROVER_OUTSIDE_HCIS.
     for (const target of [employeeId, managerId]) {
       if (target && await isOutsideHcis(pool, target)) {
         reply.header("Cache-Control", "no-store");

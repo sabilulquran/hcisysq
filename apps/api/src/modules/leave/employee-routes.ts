@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
+import { OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE, isOutsideHcis } from "../employees/management-scope.js";
 import type { ApiConfig } from "../../config/env.js";
 import { requirePrincipalFromCookie } from "../auth/authorization.js";
 import {
@@ -213,6 +214,16 @@ export async function loadEmployeeContext(
   return employee;
 }
 
+/**
+ * EMP-005 S2B §8.7: a record marked "di luar pengelolaan HCIS" files no new leave. Its earlier
+ * requests stay readable and are not touched; only a new preview or submission is refused.
+ */
+export async function refuseOutsideHcis(db: Pool | PoolClient, employeeId: string): Promise<void> {
+  if (await isOutsideHcis(db, employeeId)) {
+    throw new EmployeeLeaveError(409, OUTSIDE_HCIS_CODE, OUTSIDE_HCIS_MESSAGE);
+  }
+}
+
 async function loadAnnualUsage(
   db: Pool | PoolClient,
   employeeId: string,
@@ -292,7 +303,9 @@ async function hydrateApprovalChain(
       ON a.employee_id = e.id
       AND a.principal_type = 'EMPLOYEE'
     WHERE e.id = ANY($1::uuid[])
-      AND e.removed_at IS NULL`,
+      AND e.removed_at IS NULL
+      -- EMP-005 S2B §8.7: an approver outside HCIS management reads as not active.
+      AND e.management_scope = 'MANAGED'`,
     [ids],
   );
   const byId = new Map(result.rows.map((row) => [row.id, row]));
@@ -801,6 +814,7 @@ export async function registerEmployeeLeaveRoutes(
 
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
+      await refuseOutsideHcis(pool, employee.id);
       const preview = await buildAnnualPreview(pool, employee, parsed.data, jakartaToday());
       reply.header("Cache-Control", "no-store");
       return reply.send({
@@ -854,6 +868,8 @@ export async function registerEmployeeLeaveRoutes(
         });
       }
 
+      // After the replay: a retry of a submission that already went through is not new leave.
+      await refuseOutsideHcis(client, employee.id);
       const { requestId, preview, insertedSteps } = await insertAnnualRequest(client, {
         employee,
         actorAccountId: principal.id,

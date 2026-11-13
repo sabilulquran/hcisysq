@@ -104,6 +104,7 @@ function employees() {
       startedOn: "2025-01-01",
       endedOn: null,
       removedAt: null,
+      managementScope: "MANAGED" as "MANAGED" | "OUTSIDE_HCIS",
     },
     {
       id: ids.employeeTwo,
@@ -114,6 +115,7 @@ function employees() {
       startedOn: "2025-06-01",
       endedOn: null,
       removedAt: new Date("2026-09-20T00:00:00.000Z"),
+      managementScope: "MANAGED" as "MANAGED" | "OUTSIDE_HCIS",
     },
   ];
 }
@@ -161,6 +163,38 @@ describe("ORG-006 producer snapshot", () => {
 
     expect(output.people.find((item) => item.id === `hcis:employee:${ids.employeeTwo}`))
       .toMatchObject({ active: false, employeeNumber: "DEMO-002" });
+  });
+
+  // EMP-005 S2B §8.7: a marked record (BUMY, Pengurus Yayasan) stays
+  // identifiable, like a removed one, but is never published as active staff.
+  it("projects a record outside HCIS management as inactive and keeps its identity", () => {
+    const marked = employees();
+    marked[0] = { ...marked[0]!, managementScope: "OUTSIDE_HCIS" };
+    const output = buildOrganizationDirectorySnapshot({
+      snapshot: sourceSnapshot(),
+      employees: marked,
+      identities: [],
+      asOf: "2026-09-24",
+      generatedAt: "2026-09-24T01:30:00.000Z",
+    });
+
+    expect(output.counts.people).toBe(2);
+    expect(output.people.find((item) => item.id === `hcis:employee:${ids.employeeOne}`))
+      .toMatchObject({ active: false, employeeNumber: "DEMO-001" });
+  });
+
+  it("publishes an unmarked active record exactly as before the marker existed", () => {
+    const output = buildOrganizationDirectorySnapshot({
+      snapshot: sourceSnapshot(),
+      employees: employees(),
+      identities: [],
+      asOf: "2026-09-24",
+      generatedAt: "2026-09-24T01:30:00.000Z",
+    });
+    const person = output.people.find((item) => item.id === `hcis:employee:${ids.employeeOne}`);
+    expect(person?.active).toBe(true);
+    // The marker is an input only; it adds no field to the published contract.
+    expect(Object.keys(person ?? {})).not.toContain("managementScope");
   });
 
   it("is content-idempotent across retries and changes version when projected person content changes", () => {

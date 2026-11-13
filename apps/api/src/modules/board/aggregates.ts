@@ -2,6 +2,12 @@ import type { Pool } from "pg";
 
 // ORG-003 aggregates, shared by GET /board/dashboard and the ORG-010 governance summary.
 // Aggregate only: no names, numbers, contact data or per-person rows leave this module.
+//
+// EMP-005 S2B §8.7: every employee population here is the one HCIS manages. A
+// record marked "di luar pengelolaan HCIS" (BUMY staff, Pengurus Yayasan) is
+// kept and readable elsewhere but is not counted — not as active, not in the
+// total, not in the unit or status distribution.
+const MANAGED = "management_scope = 'MANAGED'";
 
 export interface EmployeeStatusCounts {
   active: number;
@@ -73,7 +79,8 @@ export async function loadBoardAggregates(pool: Pick<Pool, "query">): Promise<Bo
         count(*) FILTER (WHERE status = 'inactive')::int AS inactive,
         count(*) FILTER (WHERE status = 'resigned')::int AS resigned,
         count(*)::int AS total
-      FROM employees`,
+      FROM employees
+      WHERE ${MANAGED}`,
     ),
     pool.query<EntitlementCounts>(
       `SELECT
@@ -86,27 +93,42 @@ export async function loadBoardAggregates(pool: Pick<Pool, "query">): Promise<Bo
         count(*) FILTER (
           WHERE status = 'active' AND leave_entitlement_group IS NULL
         )::int AS unclassified
-      FROM employees`,
+      FROM employees
+      WHERE ${MANAGED}`,
     ),
     pool.query<ReadinessCounts>(
+      // A manager or unit approver counts as configured only while it can actually approve: active
+      // and managed by HCIS. A marked or departed one is what routing refuses, so it is "without".
       `WITH active_units AS (
         SELECT DISTINCT organizational_unit_id AS id
         FROM employees
-        WHERE status = 'active' AND organizational_unit_id IS NOT NULL
+        WHERE status = 'active' AND ${MANAGED} AND organizational_unit_id IS NOT NULL
+      ), staff AS (
+        SELECT employee.id,
+          EXISTS (
+            SELECT 1 FROM employees manager
+            WHERE manager.id = employee.direct_manager_employee_id
+              AND manager.status = 'active' AND manager.${MANAGED}
+          ) AS has_manager
+        FROM employees employee
+        WHERE employee.status = 'active' AND employee.${MANAGED}
+      ), unit_readiness AS (
+        SELECT unit.id,
+          EXISTS (
+            SELECT 1 FROM employees approver
+            WHERE approver.id = unit.leave_approver_employee_id
+              AND approver.status = 'active' AND approver.${MANAGED}
+          ) AS has_approver
+        FROM organizational_units unit
+        JOIN active_units active_unit ON active_unit.id = unit.id
       )
       SELECT
-        (SELECT count(*)::int FROM employees WHERE status = 'active') AS "activeEmployees",
-        (SELECT count(*)::int FROM employees WHERE status = 'active' AND direct_manager_employee_id IS NOT NULL) AS "withDirectManager",
-        (SELECT count(*)::int FROM employees WHERE status = 'active' AND direct_manager_employee_id IS NULL) AS "withoutDirectManager",
+        (SELECT count(*)::int FROM staff) AS "activeEmployees",
+        (SELECT count(*)::int FROM staff WHERE has_manager) AS "withDirectManager",
+        (SELECT count(*)::int FROM staff WHERE NOT has_manager) AS "withoutDirectManager",
         (SELECT count(*)::int FROM active_units) AS "activeUnits",
-        (SELECT count(*)::int
-           FROM organizational_units unit
-           JOIN active_units active_unit ON active_unit.id = unit.id
-          WHERE unit.leave_approver_employee_id IS NOT NULL) AS "unitsWithApprover",
-        (SELECT count(*)::int
-           FROM organizational_units unit
-           JOIN active_units active_unit ON active_unit.id = unit.id
-          WHERE unit.leave_approver_employee_id IS NULL) AS "unitsWithoutApprover"`,
+        (SELECT count(*)::int FROM unit_readiness WHERE has_approver) AS "unitsWithApprover",
+        (SELECT count(*)::int FROM unit_readiness WHERE NOT has_approver) AS "unitsWithoutApprover"`,
     ),
     pool.query<WorkflowCounts>(
       `SELECT
@@ -128,7 +150,8 @@ export async function loadBoardAggregates(pool: Pick<Pool, "query">): Promise<Bo
           WHERE ended_on >= date_trunc('year', current_date)::date
             AND ended_on < (date_trunc('year', current_date) + interval '1 year')::date
         )::int AS "endedThisYear"
-      FROM employees`,
+      FROM employees
+      WHERE ${MANAGED}`,
     ),
     pool.query<UnitDistributionRow>(
       `SELECT
@@ -136,7 +159,7 @@ export async function loadBoardAggregates(pool: Pick<Pool, "query">): Promise<Bo
         count(*)::int AS "employeeCount"
       FROM employees employee
       LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
-      WHERE employee.status = 'active'
+      WHERE employee.status = 'active' AND employee.${MANAGED}
       GROUP BY coalesce(unit.name, 'Tanpa Unit')
       ORDER BY count(*) DESC, coalesce(unit.name, 'Tanpa Unit') ASC`,
     ),
@@ -145,7 +168,7 @@ export async function loadBoardAggregates(pool: Pick<Pool, "query">): Promise<Bo
         coalesce(nullif(trim(employment_status), ''), 'Belum diklasifikasikan') AS "employmentStatus",
         count(*)::int AS "employeeCount"
       FROM employees
-      WHERE status = 'active'
+      WHERE status = 'active' AND ${MANAGED}
       GROUP BY coalesce(nullif(trim(employment_status), ''), 'Belum diklasifikasikan')
       ORDER BY count(*) DESC, coalesce(nullif(trim(employment_status), ''), 'Belum diklasifikasikan') ASC`,
     ),

@@ -52,7 +52,11 @@ export async function resolveOvertimeApprover(db: Db, employeeId: string, workDa
   const authority = result.authorities.find((item) => sourcesOf(item).includes("DIRECT_MANAGER"))
     ?? result.authorities.find((item) => sourcesOf(item).includes("GOVERNANCE_APPROVER"));
   if (!authority?.employeeId || authority.employeeId === employeeId) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
-  const active = await db.query("SELECT 1 FROM employees WHERE id = $1 AND status = 'active'", [authority.employeeId]);
+  // EMP-005 S2B §8.7: a supervisor outside HCIS management reads as not active.
+  const active = await db.query(
+    "SELECT 1 FROM employees WHERE id = $1 AND status = 'active' AND management_scope = 'MANAGED'",
+    [authority.employeeId],
+  );
   if (!active.rows[0]) throw new OvertimeApproverError("OVERTIME_APPROVER_UNRESOLVED", UNRESOLVED);
   return {
     supervisorEmployeeId: authority.employeeId,

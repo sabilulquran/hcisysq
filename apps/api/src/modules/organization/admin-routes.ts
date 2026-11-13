@@ -44,6 +44,7 @@ import { OrganizationAuthorityResolver } from "./resolver.js";
 import { classificationOn } from "./job-classification-service.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { linkedUnitChain, searchPositions } from "./structure-lookups.js";
+import { openPositionOvertimeRules, overtimeRuleSeatWarnings } from "./overtime-rule-seat-warnings.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
 
 const uuid = z.string().uuid();
@@ -1695,6 +1696,14 @@ export async function registerOrganizationAdminRoutes(
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
     const impact = await draftService.previewImpact(snapshot.changeSet.id);
     const pureVisual = impact.visualOnly;
+    // ORG-008-12 (O-8): seats named by an ATT-011 overtime rule that this change removes, switches
+    // off, or moves. A warning only; the rule is HC's to change in Aturan lembur.
+    const base = snapshot.changeSet.baseChangeSetId
+      ? await repository.loadChangeSetSnapshot(snapshot.changeSet.baseChangeSetId)
+      : null;
+    const overtimeRuleWarnings = overtimeRuleSeatWarnings(
+      await openPositionOvertimeRules(pool, snapshot.changeSet.effectiveOn), base, snapshot,
+    );
     return reply.send({ directManagerChanges: impact.directManagerChanges, unitApproverChanges: impact.unitApproverChanges,
       authorityPathsAffected: impact.affectedAuthorityPaths.map((path) => ({ path })),
       vacantAuthorities: impact.vacantPositionKeys.map((positionKey) => ({ positionKey })),
@@ -1707,7 +1716,8 @@ export async function registerOrganizationAdminRoutes(
       routingImpact: impact.routingImpact,
       // Says exactly what it claims. Tying it to visualOnly made a classification-only
       // revision report that approval routing needed review, which is simply untrue.
-      noApprovalRoutingImpact: !impact.routingImpact });
+      noApprovalRoutingImpact: !impact.routingImpact,
+      overtimeRuleWarnings });
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/resolution-preview", async (request, reply) => {

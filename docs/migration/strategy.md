@@ -1,6 +1,6 @@
 # Legacy Migration Strategy
 
-**Status:** DRAFT  
+**Status:** ACCEPTED as implemented 2026-11-13 (repeatable path below); phases and go/no-go remain the cutover discipline  
 **Specification:** MIG-001
 
 ## Objective
@@ -62,6 +62,27 @@ announce freeze
 ### 7. Legacy read-only
 
 Legacy dipertahankan read-only selama periode verifikasi yang disetujui. Akses dibatasi dan semua perubahan tetap dilakukan di sistem baru.
+
+## MIG-001 — jalur migrasi yang sudah ada (implemented, 2026-11-13)
+
+MIG-001 tidak dibangun sebagai satu alat migrasi tunggal. Jalur yang repeatable adalah kumpulan alat per domain di bawah ini. Setiap alat dimiliki domainnya sendiri, punya dry-run, idempoten atau aman diulang, mencetak laporan berupa hitungan dan kode isu (bukan data pribadi), dan sudah dipakai di production. Keputusan ini `DRAFT` (default agent): orkestrasi satu tombol tidak menambah keamanan bagi yayasan seukuran YSQ (±330 pegawai), sedangkan alat per domain dapat diuji dan di-rollback sendiri-sendiri.
+
+| Urutan | Domain | Alat | Sifat | Bukti production |
+|---|---|---|---|---|
+| 1 | Pegawai (master) | EMP-004: impor XLSX di layar Admin dan CLI `employees:import` | pratinjau dulu; upsert per NIP; menyimpan snapshot klasifikasi sumber; baris di luar pengelolaan HCIS dilewati | impor master berkala sejak MVP (EMP-004 `verified`) |
+| 2 | Struktur organisasi | ORG-004/ORG-008 change set di HCIS | ditulis di HCIS, bukan dimigrasikan; diterbitkan berversi | struktur terbit dipakai AUTH-015 |
+| 3 | Riwayat kepegawaian | `employment:baseline` (EMP-005 §8.2) | dry-run default; `--apply`; `--cutoff`; ulang per pegawai dengan `--rerun`; koreksi kategori `--reclassify`; tidak pernah mengarang tanggal | 2026-11-03: 326 employment (96 aktif); 2026-11-04: 3 reklasifikasi |
+| 4 | Data payroll awal | `payroll:initial-load` (PAY-003-MIG, `docs/domain/payroll-initial-data-load.md`) | dry-run default; `--apply` dengan `--actor-account`; menolak bila periode sudah dihitung; penanda `[PAY-003-MIG]` untuk rollback | 2026-11-03: 12 kebijakan, 96 profil |
+| 5 | Slip gaji historis | PAY-001 impor batch | validasi baris, publikasi terpisah PAY-002 | jalur slip resmi sampai PAY-003 lulus uji paralel |
+| 6 | Dokumen pegawai | EMP-011 unggah per pegawai | manual oleh HC; tidak ada impor massal berkas | — |
+
+Tidak dimigrasikan (`DRAFT`, keputusan default yang dicatat):
+
+- **Kehadiran sebelum HCIS:** tetap di sistem lama/ADMS sebagai arsip; HCIS menghitung kehadiran dari data mesin dan HP sejak dipakai.
+- **Riwayat cuti lama:** tidak diimpor; saldo cuti tahunan dihitung oleh kebijakan LEAVE-001 dari TMT. Bila HC perlu memasukkan cuti yang sudah terpakai di tahun berjalan, itu dicatat sebagai keputusan owner tersendiri.
+- **Pinjaman lama (kasbon legacy):** arsip saja (LOAN-001 D5). Saldo kasbon berjalan dimuat ke register PAY-003 lewat `payroll:initial-load` langkah 2 oleh akun Keuangan yang memegang `payroll.loans.manage`.
+
+Rekonsiliasi per domain mengikuti §3 di atas dan dicatat sebagai hitungan di catatan verifikasi rilis (`docs/development/production-release-verification-*.md`), misalnya uji paralel payroll Oktober 2026 (`pay003-parallel-run-2026-10.md`). Sisa pekerjaan cutover (pegawai baru Agustus–Oktober 2026, kasbon, tanggal akhir 110 mantan pegawai) adalah kegiatan data owner, bukan pekerjaan alat.
 
 ## Tool requirements
 

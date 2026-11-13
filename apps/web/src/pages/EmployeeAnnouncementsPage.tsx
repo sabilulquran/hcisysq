@@ -2,8 +2,10 @@
 // Spec: docs/domain/announcements-and-reminders.md.
 
 import { Loader2, Megaphone, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
 import { getEmployeeLeaveSummary, type EmployeeLeaveSummary } from "@/lib/employeeLeave";
@@ -23,7 +25,9 @@ export function EmployeeAnnouncementsPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [items, setItems] = useState<EmployeeAnnouncement[]>([]);
   const [pending, setPending] = useState(0);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // The open announcement shows as a pop-up named in the URL (?pengumuman=<id>).
+  const [openId, showAnnouncement, closeAnnouncement] = useDialogParam("pengumuman");
+  const markedRead = useRef(new Set<string>());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,19 +57,21 @@ export function EmployeeAnnouncementsPage() {
 
   useEffect(() => { void load(); }, []);
 
-  const open = async (item: EmployeeAnnouncement) => {
-    setOpenId(openId === item.id ? null : item.id);
-    if (!item.readAt && openId !== item.id) {
-      try {
-        await markAnnouncementRead(item.id);
-        setItems((current) => current.map((row) => (
-          row.id === item.id ? { ...row, readAt: new Date().toISOString() } : row
-        )));
-      } catch {
+  const opened = items.find((item) => item.id === openId) ?? null;
+
+  // Opening an unread announcement, from the list or from a link, marks it read once.
+  useEffect(() => {
+    if (!opened || opened.readAt || markedRead.current.has(opened.id)) return;
+    const id = opened.id;
+    markedRead.current.add(id);
+    void markAnnouncementRead(id)
+      .then(() => setItems((current) => current.map((row) => (
+        row.id === id ? { ...row, readAt: new Date().toISOString() } : row
+      ))))
+      .catch(() => {
         // Reading is a convenience signal; a failure here must not hide the announcement.
-      }
-    }
-  };
+      });
+  }, [opened]);
 
   const confirm = async (item: EmployeeAnnouncement) => {
     setBusy(true);
@@ -83,7 +89,7 @@ export function EmployeeAnnouncementsPage() {
     <li key={item.id} className="py-4">
       <button
         type="button"
-        onClick={() => void open(item)}
+        onClick={() => showAnnouncement(item.id)}
         className="w-full text-left"
       >
         <span className="flex flex-wrap items-center gap-2">
@@ -101,32 +107,6 @@ export function EmployeeAnnouncementsPage() {
           {item.visibility === "ARCHIVED" ? " · arsip" : ""}
         </span>
       </button>
-      {openId === item.id ? (
-        <div className="mt-3 rounded-2xl bg-surface p-4">
-          {/* N-09: plain text with paragraphs, rendered as text. */}
-          {item.body.split(/\n{2,}/).map((paragraph, index) => (
-            <p key={index} className="mt-2 whitespace-pre-line text-sm leading-6 text-brand-heading first:mt-0">
-              {paragraph}
-            </p>
-          ))}
-          {item.level === "PENTING" ? (
-            item.acknowledgedAt ? (
-              <p className="mt-3 text-[11px] font-semibold text-muted-foreground">
-                Dikonfirmasi {formatDate(item.acknowledgedAt)}
-              </p>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void confirm(item)}
-                className="mt-3 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
-              >
-                Saya sudah membaca
-              </button>
-            )
-          ) : null}
-        </div>
-      ) : null}
     </li>
   );
 
@@ -145,7 +125,7 @@ export function EmployeeAnnouncementsPage() {
             <span>{pending} pengumuman penting menunggu konfirmasi Anda.</span>
           </div>
         ) : null}
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {error && !openId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
 
         {loading ? (
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat pengumuman...</div>
@@ -173,6 +153,51 @@ export function EmployeeAnnouncementsPage() {
             <p className="mt-1 text-sm text-muted-foreground">Pengumuman untuk Anda akan muncul di sini.</p>
           </div>
         )}
+
+        {openId ? (
+          <DetailDialog
+            title={opened ? opened.title : "Pengumuman"}
+            description={opened ? (
+              <>
+                {formatDate(opened.publishedAt)}
+                {opened.level === "PENTING" ? " · Penting" : ""}
+                {opened.visibility === "SUPERSEDED" ? " · sudah diralat" : ""}
+                {opened.visibility === "ARCHIVED" ? " · arsip" : ""}
+              </>
+            ) : undefined}
+            onClose={closeAnnouncement}
+          >
+            <DialogMessages error={error} />
+            {opened ? (
+              <>
+                {/* N-09: plain text with paragraphs, rendered as text. */}
+                {opened.body.split(/\n{2,}/).map((paragraph, index) => (
+                  <p key={index} className="mt-2 whitespace-pre-line text-sm leading-6 text-brand-heading first:mt-0">
+                    {paragraph}
+                  </p>
+                ))}
+                {opened.level === "PENTING" ? (
+                  opened.acknowledgedAt ? (
+                    <p className="mt-4 text-[11px] font-semibold text-muted-foreground">
+                      Dikonfirmasi {formatDate(opened.acknowledgedAt)}
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void confirm(opened)}
+                      className="mt-4 min-h-11 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50"
+                    >
+                      Saya sudah membaca
+                    </button>
+                  )
+                ) : null}
+              </>
+            ) : loading ? <DialogLoading /> : error ? null : (
+              <p className="text-sm text-muted-foreground">Pengumuman ini tidak ditemukan atau tidak ditujukan kepada Anda.</p>
+            )}
+          </DetailDialog>
+        ) : null}
       </section>
     </AppShell>
   );

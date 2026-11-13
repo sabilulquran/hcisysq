@@ -1,9 +1,12 @@
 // REIMB-001 employee surface: build a draft claim, upload receipts, check the approvers, submit,
 // follow approval, verification and payment, discard or withdraw. Spec: docs/domain/reimbursement.md.
 
-import { Loader2, Plus, Receipt, Trash2, Upload, X } from "lucide-react";
+import { Loader2, Plus, Receipt, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
+import { replaceDialogParam } from "@/lib/detailDialogParam";
 import { PaginationBar } from "@/components/PaginationBar";
 import { ReimbursementDetailPanel } from "@/components/reimbursements/ReimbursementDetailPanel";
 import { AppShell } from "@/layouts/AppShell";
@@ -50,6 +53,8 @@ interface Editor {
 
 const emptyRow = (): ItemRow => ({ category: "TRANSPORT", expenseDate: todayInJakarta(), description: "", amount: "" });
 const emptyEditor = (): Editor => ({ id: null, title: "", businessTripId: "", linkedTrip: null, items: [emptyRow()] });
+/** `?claim=baru` opens the form for a new claim; any other value is a claim id. */
+const NEW_CLAIM = "baru";
 
 export function EmployeeReimbursementsPage() {
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
@@ -61,6 +66,9 @@ export function EmployeeReimbursementsPage() {
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<ClaimDetail | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
+  // The open claim (or the new-claim form) lives in ?claim=<id|baru> and shows as one pop-up;
+  // notification links use ?claim=<id>. Editing a draft swaps the pop-up's content to the form.
+  const [claimParam, showClaim, closeClaim] = useDialogParam("claim");
   // One key per new draft form: a double click or a retry replays instead of creating two drafts.
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [trips, setTrips] = useState<LinkableTrip[]>([]);
@@ -103,17 +111,25 @@ export function EmployeeReimbursementsPage() {
     void loadList(page)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Reimbursement tidak dapat dimuat."))
       .finally(() => setLoading(false));
-    // A notification links here with ?claim=<id>.
-    const linked = new URLSearchParams(window.location.search).get("claim");
-    if (linked) void open(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (claimParam === NEW_CLAIM) startEditor(null);
+    else if (claimParam) void open(claimParam);
+    else {
+      setSelected(null);
+      setEditor(null);
+      setApprovers(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimParam]);
 
   const changePage = (next: number) => {
     setPage(next);
     const params = new URLSearchParams(window.location.search);
     params.set("page", String(next));
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}`);
     void loadList(next).catch((cause) => setError(cause instanceof Error ? cause.message : "Halaman tidak dapat dimuat."));
   };
 
@@ -153,6 +169,8 @@ export function EmployeeReimbursementsPage() {
     setEditor((current) => current && ({ ...current, items: current.items.map((row, at) => (at === index ? { ...row, ...patch } : row)) }));
   };
 
+  // The form shows when it belongs to the pop-up in the URL: the new-claim form, or the draft being edited.
+  const editing = editor !== null && (editor.id ?? NEW_CLAIM) === claimParam;
   const parsed = editor?.items.map((row) => parseRupiahInput(row.amount)) ?? [];
   const editorValid = Boolean(editor && editor.title.trim().length >= 5 && editor.items.length > 0
     && editor.items.every((row, index) => parsed[index] !== null && row.description.trim().length >= 3 && row.expenseDate));
@@ -176,7 +194,9 @@ export function EmployeeReimbursementsPage() {
       setNotice("Draf tersimpan. Unggah bukti pembayaran, lalu kirim klaim.");
       setPage(1);
       await loadList(1);
-      await open(id);
+      // A new draft takes the place of the empty form in the URL, so Back closes the pop-up.
+      if (editor.id) await open(id);
+      else replaceDialogParam("claim", id);
     }, "Draf tidak dapat disimpan.");
   };
 
@@ -225,7 +245,7 @@ export function EmployeeReimbursementsPage() {
       await cancelMyClaim(claim.id, reason?.trim() ?? null);
       setNotice(draft ? "Draf dibuang." : "Klaim dibatalkan.");
       await loadList();
-      if (draft) setSelected(null); else await open(claim.id);
+      if (draft) closeClaim(); else await open(claim.id);
     }, "Klaim tidak dapat dibatalkan.");
   };
 
@@ -242,17 +262,17 @@ export function EmployeeReimbursementsPage() {
           Keuangan memeriksa bukti dan membayar secara tunai atau transfer, di luar slip gaji.
         </p>
 
-        {error ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div role="status" className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !claimParam ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !claimParam ? <div role="status" className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={() => startEditor(null)}
+          <button type="button" disabled={busy} onClick={() => showClaim(NEW_CLAIM)}
             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
             <Plus className="h-4 w-4" aria-hidden="true" /> Buat klaim
           </button>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        <div className="mt-6">
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
             <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Klaim saya</h2>
             {loading ? (
@@ -263,8 +283,8 @@ export function EmployeeReimbursementsPage() {
               <ul className="mt-3 divide-y divide-border/70">
                 {items.map((claim) => (
                   <li key={claim.id}>
-                    <button type="button" onClick={() => void open(claim.id)}
-                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === claim.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => showClaim(claim.id)}
+                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${claimParam === claim.id ? "bg-muted/60" : ""}`}>
                       <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{claim.title}</span>
@@ -286,105 +306,102 @@ export function EmployeeReimbursementsPage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {editor ? (
-              <form onSubmit={save} className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-bold text-brand-heading">{editor.id ? "Ubah draf" : "Klaim baru"}</h2>
-                  <button type="button" aria-label="Tutup formulir" onClick={() => setEditor(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <label className="block text-sm font-semibold text-brand-heading">
-                  Judul klaim
-                  <input required minLength={5} maxLength={200} value={editor.title} placeholder="Contoh: Rapat koordinasi di Bandung"
-                    onChange={(event) => setEditor({ ...editor, title: event.target.value })} className={input} />
-                </label>
-                <label className="block text-sm font-semibold text-brand-heading">
-                  Perjalanan dinas (opsional)
-                  <select value={editor.businessTripId} onChange={(event) => setEditor({ ...editor, businessTripId: event.target.value })} className={input}>
-                    <option value="">Tidak terkait perjalanan dinas</option>
-                    {editor.linkedTrip && !trips.some((trip) => trip.id === editor.linkedTrip!.id) ? (
-                      <option value={editor.linkedTrip.id}>{editor.linkedTrip.destination} · {formatClaimDate(editor.linkedTrip.startOn)}</option>
+          {claimParam ? (
+            <DetailDialog title={editing ? (editor.id ? "Ubah draf" : "Klaim baru") : "Detail klaim"} onClose={closeClaim}>
+              <DialogMessages error={error} notice={notice} />
+              {editing ? (
+                <form onSubmit={save} className="space-y-4">
+                  <label className="block text-sm font-semibold text-brand-heading">
+                    Judul klaim
+                    <input required minLength={5} maxLength={200} value={editor.title} placeholder="Contoh: Rapat koordinasi di Bandung"
+                      onChange={(event) => setEditor({ ...editor, title: event.target.value })} className={input} />
+                  </label>
+                  <label className="block text-sm font-semibold text-brand-heading">
+                    Perjalanan dinas (opsional)
+                    <select value={editor.businessTripId} onChange={(event) => setEditor({ ...editor, businessTripId: event.target.value })} className={input}>
+                      <option value="">Tidak terkait perjalanan dinas</option>
+                      {editor.linkedTrip && !trips.some((trip) => trip.id === editor.linkedTrip!.id) ? (
+                        <option value={editor.linkedTrip.id}>{editor.linkedTrip.destination} · {formatClaimDate(editor.linkedTrip.startOn)}</option>
+                      ) : null}
+                      {trips.map((trip) => (
+                        <option key={trip.id} value={trip.id}>{trip.destination} · {formatClaimDate(trip.startOn)}</option>
+                      ))}
+                    </select>
+                    {tripPaging && trips.length < tripPaging.total ? (
+                      <button type="button" onClick={() => void loadTrips(tripPaging.page + 1)} className="mt-1 text-xs font-semibold text-brand-primary-deep underline">
+                        Tampilkan perjalanan lebih lama ({tripPaging.total - trips.length} lagi)
+                      </button>
                     ) : null}
-                    {trips.map((trip) => (
-                      <option key={trip.id} value={trip.id}>{trip.destination} · {formatClaimDate(trip.startOn)}</option>
-                    ))}
-                  </select>
-                  {tripPaging && trips.length < tripPaging.total ? (
-                    <button type="button" onClick={() => void loadTrips(tripPaging.page + 1)} className="mt-1 text-xs font-semibold text-brand-primary-deep underline">
-                      Tampilkan perjalanan lebih lama ({tripPaging.total - trips.length} lagi)
-                    </button>
-                  ) : null}
-                </label>
+                  </label>
 
-                <div className="space-y-3">
-                  {editor.items.map((row, index) => {
-                    const category = categoryLabel(row.category);
-                    return (
-                      <fieldset key={index} className="rounded-2xl border border-border/70 bg-surface p-3">
-                        <legend className="px-1 text-xs font-bold text-muted-foreground">Biaya {index + 1}</legend>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="text-xs font-semibold text-muted-foreground">Kategori
-                            <select value={row.category} onChange={(event) => updateRow(index, { category: event.target.value as CategoryKey })} className={input}>
-                              {categories.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-                            </select>
-                            {category ? <span className="mt-1 block font-normal">Batas {formatRupiah(category.maxPerItem)} per baris</span> : null}
-                          </label>
-                          <label className="text-xs font-semibold text-muted-foreground">Tanggal
-                            <input type="date" required max={todayInJakarta()} value={row.expenseDate}
-                              onChange={(event) => updateRow(index, { expenseDate: event.target.value })} className={input} />
-                          </label>
-                          <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">Uraian
-                            <input required minLength={3} maxLength={300} value={row.description} placeholder="Contoh: tiket kereta Jakarta–Bandung"
-                              onChange={(event) => updateRow(index, { description: event.target.value })} className={input} />
-                          </label>
-                          <label className="text-xs font-semibold text-muted-foreground">Nominal (Rp)
-                            <input required inputMode="numeric" autoComplete="off" value={row.amount} placeholder="Contoh: 150.000"
-                              onChange={(event) => updateRow(index, { amount: event.target.value })} className={input} />
-                            {row.amount && parsed[index] === null ? (
-                              <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
+                  <div className="space-y-3">
+                    {editor.items.map((row, index) => {
+                      const category = categoryLabel(row.category);
+                      return (
+                        <fieldset key={index} className="rounded-2xl border border-border/70 bg-surface p-3">
+                          <legend className="px-1 text-xs font-bold text-muted-foreground">Biaya {index + 1}</legend>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="text-xs font-semibold text-muted-foreground">Kategori
+                              <select value={row.category} onChange={(event) => updateRow(index, { category: event.target.value as CategoryKey })} className={input}>
+                                {categories.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+                              </select>
+                              {category ? <span className="mt-1 block font-normal">Batas {formatRupiah(category.maxPerItem)} per baris</span> : null}
+                            </label>
+                            <label className="text-xs font-semibold text-muted-foreground">Tanggal
+                              <input type="date" required max={todayInJakarta()} value={row.expenseDate}
+                                onChange={(event) => updateRow(index, { expenseDate: event.target.value })} className={input} />
+                            </label>
+                            <label className="text-xs font-semibold text-muted-foreground sm:col-span-2">Uraian
+                              <input required minLength={3} maxLength={300} value={row.description} placeholder="Contoh: tiket kereta Jakarta–Bandung"
+                                onChange={(event) => updateRow(index, { description: event.target.value })} className={input} />
+                            </label>
+                            <label className="text-xs font-semibold text-muted-foreground">Nominal (Rp)
+                              <input required inputMode="numeric" autoComplete="off" value={row.amount} placeholder="Contoh: 150.000"
+                                onChange={(event) => updateRow(index, { amount: event.target.value })} className={input} />
+                              {row.amount && parsed[index] === null ? (
+                                <span className="mt-1 block font-normal text-danger-ink">Hanya angka dan titik ribuan, tanpa koma.</span>
+                              ) : null}
+                            </label>
+                            {editor.items.length > 1 ? (
+                              <div className="flex items-end">
+                                <button type="button" onClick={() => setEditor({ ...editor, items: editor.items.filter((_, at) => at !== index) })}
+                                  className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-3 text-xs font-bold text-danger-ink">
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus baris
+                                </button>
+                              </div>
                             ) : null}
-                          </label>
-                          {editor.items.length > 1 ? (
-                            <div className="flex items-end">
-                              <button type="button" onClick={() => setEditor({ ...editor, items: editor.items.filter((_, at) => at !== index) })}
-                                className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-3 text-xs font-bold text-danger-ink">
-                                <Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus baris
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      </fieldset>
-                    );
-                  })}
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <button type="button" disabled={editor.items.length >= (policy?.maxItems ?? 10)}
-                    onClick={() => setEditor({ ...editor, items: [...editor.items, emptyRow()] })}
-                    className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
-                    <Plus className="h-4 w-4" aria-hidden="true" /> Tambah baris
-                  </button>
-                  <p className="text-sm font-semibold tabular-nums text-brand-heading">Total {formatRupiah(editorTotal)}</p>
-                </div>
-                {policy ? (
-                  <p className="text-xs text-muted-foreground">
-                    Paling banyak {policy.maxItems} baris, total {formatRupiah(policy.maxClaimTotal)}. Tanggal biaya paling lama {policy.maxExpenseAgeDays} hari
-                    sebelum klaim dikirim.
-                  </p>
-                ) : null}
-                <button type="submit" disabled={busy || !editorValid}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null} Simpan draf
-                </button>
-              </form>
-            ) : selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+                          </div>
+                        </fieldset>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button type="button" disabled={editor.items.length >= (policy?.maxItems ?? 10)}
+                      onClick={() => setEditor({ ...editor, items: [...editor.items, emptyRow()] })}
+                      className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50">
+                      <Plus className="h-4 w-4" aria-hidden="true" /> Tambah baris
+                    </button>
+                    <p className="text-sm font-semibold tabular-nums text-brand-heading">Total {formatRupiah(editorTotal)}</p>
+                  </div>
+                  {policy ? (
+                    <p className="text-xs text-muted-foreground">
+                      Paling banyak {policy.maxItems} baris, total {formatRupiah(policy.maxClaimTotal)}. Tanggal biaya paling lama {policy.maxExpenseAgeDays} hari
+                      sebelum klaim dikirim.
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" disabled={busy || !editorValid}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null} Simpan draf
+                    </button>
+                    {/* Editing a draft goes back to its detail; the form for a new claim closes the pop-up. */}
+                    <button type="button" disabled={busy} onClick={() => (editor.id ? setEditor(null) : closeClaim())}
+                      className="min-h-11 rounded-xl border border-border px-4 text-sm font-bold text-brand-heading disabled:opacity-50">
+                      Batal
+                    </button>
+                  </div>
+                </form>
+              ) : selected?.id === claimParam ? (
                 <ReimbursementDetailPanel
                   claim={selected}
                   receiptHref={(receipt) => myReceiptHref(selected.id, receipt.id)}
@@ -441,11 +458,9 @@ export function EmployeeReimbursementsPage() {
                     </div>
                   )}
                 />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih klaim untuk melihat rincian, bukti, persetujuan, dan pembayarannya.</p>
-            )}
-          </section>
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

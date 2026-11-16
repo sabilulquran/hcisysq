@@ -19,6 +19,9 @@ import type { TrainingPermission } from "../auth/permissions.js";
 import { AUTH_COOKIE_NAME, AuthService, readCookie, type AuthPrincipal } from "../auth/service.js";
 import { jakartaDate } from "../documents/service.js";
 import { notifyEmployee } from "../notifications/service.js";
+import { EvaluationPolicyError } from "./evaluation-domain.js";
+import { assignSupervisorAssessors, registerTrainingEvaluationRoutes } from "./evaluation-routes.js";
+import { audit, loadSelf, send, TrainingError, type Queryable } from "./shared.js";
 import {
   ATTENDANCE_STATUSES,
   CERTIFICATE_CONTENT_TYPES,
@@ -44,7 +47,6 @@ import {
   type ProgramStatus,
 } from "./domain.js";
 
-type Queryable = Pool | PoolClient;
 
 /** A 2 MB certificate grows by a third as base64 inside JSON; same limit as leave evidence. */
 const CERTIFICATE_BODY_LIMIT = 3_500_000;
@@ -133,30 +135,13 @@ const hoursQuery = pageQuerySchema.extend({ year: yearSchema.optional(), q: z.st
 const yearQuery = z.object({ year: yearSchema.optional() });
 const optionsQuery = z.object({ q: z.string().trim().min(2).max(100) });
 
-class TrainingError extends Error {
-  constructor(
-    readonly statusCode: number,
-    readonly code: string,
-    message: string,
-    readonly details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "TrainingError";
-  }
-}
-
-function send(reply: FastifyReply, status: number, body: unknown) {
-  reply.header("Cache-Control", "no-store");
-  return reply.status(status).send(body);
-}
-
 function currentYear(): number {
   return Number(jakartaDate(new Date()).slice(0, 4));
 }
 
 function knownError(error: unknown): TrainingError | null {
   if (error instanceof TrainingError) return error;
-  if (error instanceof TrainingPolicyError || error instanceof CertificateError) {
+  if (error instanceof TrainingPolicyError || error instanceof CertificateError || error instanceof EvaluationPolicyError) {
     return new TrainingError(error.statusCode, error.code, error.message);
   }
   return null;
@@ -170,48 +155,6 @@ function contentDisposition(fileName: string) {
 
 const notFound = () => new TrainingError(404, "TRAINING_PROGRAM_NOT_FOUND", "Program pelatihan tidak ditemukan.");
 const recordNotFound = () => new TrainingError(404, "TRAINING_RECORD_NOT_FOUND", "Catatan pelatihan tidak ditemukan.");
-
-async function audit(
-  db: Queryable,
-  input: {
-    eventType: string;
-    actorAccountId: string | null;
-    programId?: string | null;
-    sessionId?: string | null;
-    recordId?: string | null;
-    employeeId?: string | null;
-    note?: string | null;
-    metadata?: Record<string, unknown>;
-  },
-) {
-  // clock_timestamp(), not now(): events written in one transaction keep their order.
-  await db.query(
-    `INSERT INTO training_audit_events
-       (id, event_type, program_id, session_id, record_id, employee_id, actor_account_id, note, metadata, occurred_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, clock_timestamp())`,
-    [
-      randomUUID(), input.eventType, input.programId ?? null, input.sessionId ?? null, input.recordId ?? null,
-      input.employeeId ?? null, input.actorAccountId, input.note ?? null, JSON.stringify(input.metadata ?? {}),
-    ],
-  );
-}
-
-async function loadSelf(db: Queryable, accountId: string, lock = false): Promise<{ id: string; fullName: string }> {
-  const result = await db.query<{ id: string; fullName: string; status: string }>(
-    `SELECT employee.id, employee.full_name AS "fullName", employee.status
-       FROM accounts account
-       JOIN employees employee ON employee.id = account.employee_id
-      WHERE account.id = $1 AND account.principal_type = 'EMPLOYEE' AND account.status = 'active'
-        AND employee.removed_at IS NULL
-      ${lock ? "FOR UPDATE OF employee" : ""}`,
-    [accountId],
-  );
-  const employee = result.rows[0];
-  if (!employee || employee.status !== "active") {
-    throw new TrainingError(403, "EMPLOYEE_NOT_ACTIVE", "Akun tidak terhubung ke pegawai aktif.");
-  }
-  return employee;
-}
 
 interface ProgramRow {
   id: string;
@@ -437,6 +380,7 @@ const wib = new Intl.DateTimeFormat("id-ID", {
 const PROGRAM_COLUMNS = `
   program.id, program.title, program.category, program.description, program.organizer, program.capacity,
   program.min_attendance_percent AS "minAttendancePercent", program.status, program.cancel_reason AS "cancelReason",
+  program.evaluation_passing_score AS "evaluationPassingScore",
   program.created_at AS "createdAt", program.closed_at AS "closedAt",
   (SELECT count(*)::int FROM training_participants participant
     WHERE participant.program_id = program.id AND participant.status <> 'WITHDRAWN') AS "participantCount",
@@ -1206,6 +1150,8 @@ export async function registerTrainingRoutes(
         );
         await audit(client, { eventType: "training.participant.enrolled", programId: program.id, employeeId, actorAccountId: principal.id });
       }
+      // R3 E-14: a new participant gets their line manager as assessor on SUPERVISOR components.
+      await assignSupervisorAssessors(client, { programId: program.id, employeeIds: toEnroll, actorAccountId: principal.id });
       const stamp = Date.now();
       await notifyMany(client, toEnroll, {
         eventKey: (employeeId) => `training.program.${program.id}.enrolled.${employeeId}.${stamp}`,
@@ -1537,4 +1483,6 @@ export async function registerTrainingRoutes(
     );
     return send(reply, 200, { items: result.rows });
   });
+
+  registerTrainingEvaluationRoutes(app, { pool, requireEmployee, requirePermission, handle, transact, invalid });
 }

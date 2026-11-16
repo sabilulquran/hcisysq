@@ -1396,6 +1396,59 @@
       "url": "/me/reminders/preferences",
       "list": "bounded",
       "reason": "NOTIF-003 §6: katalog aturan pengingat di kode (sepuluh aturan) dengan preferensi WhatsApp akun itu."
+    },
+    {
+      "url": "/training/me/evaluation/tasks",
+      "list": "paged"
+    },
+    {
+      "url": "/training/me/evaluation/components/:id/form",
+      "list": "single",
+      "reason": "Satu formulir evaluasi; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/training/me/evaluation/results",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/instruments",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/instruments/:id",
+      "list": "single",
+      "reason": "Satu instrumen; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/components",
+      "list": "bounded",
+      "reason": "Komponen evaluasi satu program; aktif dibatasi 20 (E-18), seluruhnya termasuk arsip dibatasi 100."
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/assessors",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/form",
+      "list": "single",
+      "reason": "Satu formulir evaluasi; butir dibatasi 50 (E-02)."
+    },
+    {
+      "url": "/admin/training/evaluation/components/:id/comments",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/summary",
+      "list": "aggregate",
+      "reason": "Agregat per komponen evaluasi satu program (≤ 20 komponen aktif)."
+    },
+    {
+      "url": "/admin/training/programs/:id/evaluation/results",
+      "list": "paged"
+    },
+    {
+      "url": "/admin/training/employees/:employeeId/evaluation",
+      "list": "paged"
     }
   ]
 }

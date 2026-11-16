@@ -2020,6 +2020,16 @@
   },
   {
     "file": "apps/api/src/modules/attendance/workforce-routes.ts",
+    "method": "GET",
+    "url": "/attendance/me/transactions",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/attendance/workforce-routes.ts",
     "method": "POST",
     "url": "/attendance/mobile/clock",
     "access": "self-service",
@@ -2839,6 +2849,14 @@
     "file": "apps/api/src/modules/documents/routes.ts",
     "method": "GET",
     "url": "/admin/documents/register",
+    "permissions": [
+      "documents.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/documents/routes.ts",
+    "method": "GET",
+    "url": "/admin/documents/issued/:id",
     "permissions": [
       "documents.read"
     ]

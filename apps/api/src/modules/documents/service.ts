@@ -127,7 +127,8 @@ export async function loadEmployeeFacts(db: QueryTarget, employeeId: string): Pr
 
 /**
  * D-15: only these facts reach a letter. Salary, bank account, full identity
- * numbers, medical data and home address are never copied into a snapshot.
+ * numbers, medical data and home address are never copied into a snapshot. The one
+ * exception is the income letter's own figures, added by the caller (D-15 revision, D-24).
  */
 export function buildContentSnapshot(employee: EmployeeFacts, extra: Record<string, unknown> = {}) {
   return {
@@ -211,9 +212,11 @@ export async function issueDocument(
     contentSnapshot: Record<string, unknown>;
     /** ORG-012 D-09: a signer the caller resolved itself; otherwise the DOC-001 D-05 rule. */
     signer?: { title: SignerTitle; name: string };
+    /** DOC-001 Package 2: the instant the caller already derived the snapshot from (income window). */
+    issuedAt?: Date;
   },
 ): Promise<IssuedDocument> {
-  const issuedAt = new Date();
+  const issuedAt = input.issuedAt ?? new Date();
   const signer = input.signer ?? await resolveDocumentSigner(client, input.employee.id);
   if (!signer.name) {
     // DOC-001-F: no eligible incumbent means no letter; the HC decision survives.

@@ -937,7 +937,13 @@ features:
     risk: high
     notes: >-
       Package 1 implemented 2026-10-27 (docs/domain/hr-documents.md): request,
-      HC decision, numbered issuance, register. Income certificate waits for PAY-003.
+      HC decision, numbered issuance, register. Package 2 implemented 2026-11-17: the income
+      certificate (KETERANGAN_PENGHASILAN, number code SKP) states per-month gross and net and
+      their average from the official published payslips of the three full months before issue
+      (DRAFT D-21..D-24), frozen in the snapshot, never recalculated; 409 when no slip was
+      published in the window. HC reads an issued certificate through the audited
+      GET /admin/documents/issued/:id; an income letter's content needs documents.manage (D-25).
+      Migration 0154 activates the type.
 
   - id: DOC-002
     module: documents

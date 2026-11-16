@@ -110,10 +110,9 @@ describe.skipIf(!allowed)("PAY-003 payslip publication against PostgreSQL", () =
     // Only this suite's own rows: test files run in parallel against one database.
     await clearOwnPeriods(pool, ownedPeriodIds);
     ownedPeriodIds = [];
-    const accounts = await pool.query<{ id: string }>("SELECT id FROM accounts LIMIT 1");
-    if (accounts.rows[0]) {
-      actorAccountId = accounts.rows[0].id;
-    } else {
+    // Always a fresh actor: borrowing "any account" could pick another suite's actor running in
+    // parallel (payroll-initial-load counts the audit events of its own actor).
+    {
       const employeeId = randomUUID();
       actorAccountId = randomUUID();
       await pool.query(

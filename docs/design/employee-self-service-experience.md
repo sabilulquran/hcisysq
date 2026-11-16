@@ -162,6 +162,40 @@ Desktop retains the employee sidebar. Verified services remain primary, and **Se
 
 Role/capability-specific Human Capital navigation remains capability-gated and is not mixed with planned self-service items.
 
+## Item detail as a pop-up
+
+SQ Core app-shell rule "Detail views open as a pop-up" (owner decision 2026-11-13; SQ Hub
+`docs/design/sq-core-app-shell.md`). Opening one item, or a form to create or change one item, never
+changes the page layout: lists keep the full width and the item opens in `DetailDialog`
+(`apps/web/src/components/DetailDialog.tsx`), a centred dialog of at most 720 px (960 px for wide content)
+from 768 px and a full-screen sheet below. Escape, the close button and the backdrop close it, focus
+returns to the opener, and the page behind does not scroll. The open item is in the URL, so a link opens
+the same pop-up and Back closes it. Parameter names that notification links already used are kept.
+
+| Screen | Pop-up | URL parameter |
+| --- | --- | --- |
+| Pinjaman `/app/loans` | Loan detail | `?loan=<id>` |
+| Reimbursement `/app/reimbursements` | Claim detail; new-claim and edit-draft form in the same pop-up | `?claim=<id>`, `?claim=baru` (with `?page=`) |
+| Perjalanan Dinas `/app/trips` | Trip detail with the printable surat tugas (wide) | `?trip=<id>` |
+| Pelatihan `/app/training` | Program sessions and my attendance | `?program=<id>` |
+| Tugas Luar & WFH `/app/attendance/arrangements` | Request detail | `?arrangement=<id>` |
+| Penilaian Kinerja `/app/performance` | Review detail and score form (wide) | `?review=<id>`, `?tab=team` for raters |
+| Kepanitiaan Saya `/app/committees` | Committee line-up and SK (wide) | `?committee=<id>` |
+| Kalender & Rapat `/app/calendar` | Meeting detail; invitation and edit form in the same pop-up | `?meeting=<id>`, `?meeting=baru` |
+| Dokumen Kepegawaian `/app/documents` | Issued letter with Cetak / Simpan PDF (wide) | `?surat=<id>` |
+| Pengumuman `/app/announcements` | Announcement text and confirmation | `?pengumuman=<id>` |
+| Persetujuan `/app/approvals` | Reimbursement claim with receipts, Tolak / Setujui | `?klaim=<stepId>` |
+| Persetujuan `/app/approvals` (and the board approvals queue) | Usulkan tanggal lain | `?usul-tanggal=<stepId>` |
+| Kehadiran `/app/attendance` | Clarification form for one day | `?klarifikasi=<YYYY-MM-DD>` |
+| Data Saya `/app/my-data` | Address or contact change request; document upload | `?usulan=alamat`, `?usulan=kontak`, `?dokumen=unggah` |
+| Lembur Tim `/app/attendance/team-overtime` | Order overtime | `?perintah=baru` |
+
+Printing from a pop-up prints only the letter: the surat tugas and SK panitia keep their own print rules,
+and `styles.css` prints the dialog as normal flow without the backdrop.
+
+Not pop-ups: the Validasi Cuti work queue, the help FAQ accordion, single-field and confirmation prompts,
+the payslip viewer, the leave application pages, and the dialogs that already existed.
+
 ## Visual direction
 
 Follow the existing YSQ brand guideline.

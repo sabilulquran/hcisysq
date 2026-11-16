@@ -2,9 +2,11 @@
 // my attendance, my training history, and an external training with its certificate.
 // Spec: docs/domain/training.md.
 
-import { GraduationCap, Loader2, X } from "lucide-react";
+import { GraduationCap, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import { employeeShellUser } from "@/lib/employeeIdentity";
@@ -49,6 +51,8 @@ export function EmployeeTrainingPage() {
   const [records, setRecords] = useState<TrainingRecord[]>([]);
   const [recordPaging, setRecordPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<ProgramDetail | null>(null);
+  // The open program lives in ?program=<id> (notification links use it too) and shows as a pop-up.
+  const [programId, showProgram, closeProgram] = useDialogParam("program");
   const [form, setForm] = useState(emptyForm);
   const [file, setFile] = useState<File | null>(null);
   // One key per filled-in form: a retry after a lost response replays the same record.
@@ -73,6 +77,7 @@ export function EmployeeTrainingPage() {
   const loadAll = () => Promise.all([getMyTrainingSummary().then(setSummary), loadPrograms(), loadRecords()]);
 
   const open = async (id: string) => {
+    setError(null);
     try {
       setSelected(await getMyProgram(id));
     } catch (cause) {
@@ -85,11 +90,13 @@ export function EmployeeTrainingPage() {
     void loadAll()
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Data pelatihan tidak dapat dimuat."))
       .finally(() => setLoading(false));
-    // A notification links here with ?program=<id>.
-    const linked = new URLSearchParams(window.location.search).get("program");
-    if (linked) void open(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (programId) void open(programId);
+    else setSelected(null);
+  }, [programId]);
 
   const run = async (action: () => Promise<void>, fallback: string) => {
     setBusy(true);
@@ -142,8 +149,8 @@ export function EmployeeTrainingPage() {
           Anda catat sendiri lalu diverifikasi Human Capital.
         </p>
 
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !programId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !programId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {[
@@ -158,7 +165,7 @@ export function EmployeeTrainingPage() {
           ))}
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="mt-6">
           <section className={`${card} overflow-hidden`}>
             <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Program yang saya ikuti</h2>
             {loading ? (
@@ -169,8 +176,8 @@ export function EmployeeTrainingPage() {
               <ul className="mt-3 divide-y divide-border/70">
                 {programs.map((program) => (
                   <li key={program.id}>
-                    <button type="button" onClick={() => void open(program.id)}
-                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === program.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => showProgram(program.id)}
+                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${programId === program.id ? "bg-muted/60" : ""}`}>
                       <GraduationCap className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{program.title}</span>
@@ -193,39 +200,35 @@ export function EmployeeTrainingPage() {
             ) : null}
           </section>
 
-          <section className={`${card} p-5`}>
-            {selected ? (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-bold text-brand-heading">{selected.title}</h2>
-                    <p className="text-xs text-muted-foreground">{CATEGORY_LABELS[selected.category]} · {selected.organizer}</p>
-                  </div>
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {selected.description ? <p className="mt-3 text-sm text-muted-foreground">{selected.description}</p> : null}
-                <ol className="mt-4 space-y-2">
-                  {selected.sessions.map((session) => (
-                    <li key={session.id} className="rounded-2xl border border-border/70 p-3 text-sm">
-                      <p className={`font-semibold ${session.status === "CANCELLED" ? "text-muted-foreground line-through" : "text-brand-heading"}`}>{session.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatSessionTime(session.startAt, session.endAt)}
-                        {session.location ? ` · ${session.location}` : ""}
-                        {session.speakerName ? ` · ${session.speakerName}` : ""}
-                      </p>
-                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
-                        {session.status === "CANCELLED" ? "Dibatalkan" : session.myAttendance ? ATTENDANCE_LABELS[session.myAttendance] : "Kehadiran belum dicatat"}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih program untuk melihat jadwal sesi dan kehadiran Anda.</p>
-            )}
-          </section>
+          {programId ? (
+            <DetailDialog
+              title={selected?.id === programId ? selected.title : "Program pelatihan"}
+              description={selected?.id === programId ? `${CATEGORY_LABELS[selected.category]} · ${selected.organizer}` : undefined}
+              onClose={closeProgram}
+            >
+              <DialogMessages error={error} />
+              {selected?.id === programId ? (
+                <>
+                  {selected.description ? <p className="text-sm text-muted-foreground">{selected.description}</p> : null}
+                  <ol className={`${selected.description ? "mt-4 " : ""}space-y-2`}>
+                    {selected.sessions.map((session) => (
+                      <li key={session.id} className="rounded-2xl border border-border/70 p-3 text-sm">
+                        <p className={`font-semibold ${session.status === "CANCELLED" ? "text-muted-foreground line-through" : "text-brand-heading"}`}>{session.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatSessionTime(session.startAt, session.endAt)}
+                          {session.location ? ` · ${session.location}` : ""}
+                          {session.speakerName ? ` · ${session.speakerName}` : ""}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                          {session.status === "CANCELLED" ? "Dibatalkan" : session.myAttendance ? ATTENDANCE_LABELS[session.myAttendance] : "Kehadiran belum dicatat"}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
 
         <section className={`${card} mt-6 overflow-hidden`}>

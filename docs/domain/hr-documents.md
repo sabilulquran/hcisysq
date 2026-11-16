@@ -248,7 +248,7 @@ Ditambahkan 2026-11-03.
 | --- | --- |
 | Aktor | Pegawai aktif dengan akun aktif, atas suratnya sendiri. |
 | Prasyarat | Surat keterangan (`CERTIFICATE`) milik pegawai itu berstatus `ISSUED`. |
-| Layar | `/app/documents`, bagian **Surat yang sudah terbit**: tombol **Lihat & cetak** pada surat yang terbit membuka lembar surat A4 dengan tombol **Cetak / Simpan PDF**. Saat dicetak hanya lembar surat yang ikut. |
+| Layar | `/app/documents`, bagian **Surat yang sudah terbit**: tombol **Lihat & cetak** pada surat yang terbit membuka lembar surat A4 dalam pop-up (`?surat=<id>`) dengan tombol **Cetak / Simpan PDF**. Saat dicetak hanya lembar surat yang ikut. |
 | Input | Tidak ada. |
 | Transisi | Tidak ada; status surat tidak berubah. |
 | Permission | Kepemilikan lewat endpoint self; tidak ada izin baru. |

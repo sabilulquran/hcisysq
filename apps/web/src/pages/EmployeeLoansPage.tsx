@@ -1,9 +1,11 @@
 // LOAN-001 employee surface: request a loan, follow its approval, watch the schedule and the
 // balance, cancel before disbursement. Spec: docs/domain/employee-loans.md.
 
-import { HandCoins, Loader2, X } from "lucide-react";
+import { HandCoins, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { LoanDetailPanel } from "@/components/loans/LoanDetailPanel";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
@@ -35,6 +37,8 @@ export function EmployeeLoansPage() {
   const [page, setPage] = useState(1);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<LoanDetail | null>(null);
+  // The open loan lives in ?loan=<id> (notification links use it too) and shows as a pop-up.
+  const [loanId, showLoan, closeLoan] = useDialogParam("loan");
   const [form, setForm] = useState(emptyForm);
   // One key per filled-in form: a double click or a retry after a lost response replays
   // the same submission instead of creating a second loan.
@@ -68,11 +72,13 @@ export function EmployeeLoansPage() {
     void loadList(1)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "Pinjaman tidak dapat dimuat."))
       .finally(() => setLoading(false));
-    // A notification links here with ?loan=<id>.
-    const linked = new URLSearchParams(window.location.search).get("loan");
-    if (linked) void open(linked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (loanId) void open(loanId);
+    else setSelected(null);
+  }, [loanId]);
 
   const changePage = (next: number) => {
     setPage(next);
@@ -117,7 +123,7 @@ export function EmployeeLoansPage() {
       setNotice("Pinjaman diajukan dan sedang menunggu persetujuan.");
       setPage(1);
       await loadList(1);
-      await open(created.id);
+      showLoan(created.id);
     }, "Pinjaman tidak dapat diajukan.");
   };
 
@@ -143,8 +149,8 @@ export function EmployeeLoansPage() {
           menetapkan jadwal cicilan. Cicilan belum dipotong otomatis dari gaji; Keuangan mencatat setiap pembayaran di sini.
         </p>
 
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !loanId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !loanId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
         <form onSubmit={submit} className="mt-6 rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
           <h2 className="text-sm font-bold text-brand-heading">Ajukan pinjaman</h2>
@@ -204,62 +210,54 @@ export function EmployeeLoansPage() {
           </div>
         </form>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
-            <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Pinjaman saya</h2>
-            {loading ? (
-              <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
-            ) : items.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada pinjaman.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-border/70">
-                {items.map((loan) => (
-                  <li key={loan.id}>
-                    <button type="button" onClick={() => void open(loan.id)}
-                      className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === loan.id ? "bg-muted/60" : ""}`}>
-                      <HandCoins className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="block font-semibold tabular-nums text-brand-heading">{formatRupiah(loan.principal)} · {loan.tenorMonths} bulan</span>
-                        <span className="block truncate text-xs text-muted-foreground">{loan.purpose}</span>
-                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
-                          {loanStatusLabel(loan.status)}
-                          {loan.currentApproverName ? ` · menunggu ${loan.currentApproverName}` : ""}
-                          {loan.status === "DISBURSED" ? ` · sisa ${formatRupiah(loan.outstanding)}` : ""}
-                        </span>
+        <section className="mt-6 overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
+          <h2 className="px-5 pt-5 text-sm font-bold text-brand-heading">Pinjaman saya</h2>
+          {loading ? (
+            <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
+          ) : items.length === 0 ? (
+            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada pinjaman.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-border/70">
+              {items.map((loan) => (
+                <li key={loan.id}>
+                  <button type="button" onClick={() => showLoan(loan.id)}
+                    className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50 ${loanId === loan.id ? "bg-muted/60" : ""}`}>
+                    <HandCoins className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
+                    <span className="min-w-0">
+                      <span className="block font-semibold tabular-nums text-brand-heading">{formatRupiah(loan.principal)} · {loan.tenorMonths} bulan</span>
+                      <span className="block truncate text-xs text-muted-foreground">{loan.purpose}</span>
+                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                        {loanStatusLabel(loan.status)}
+                        {loan.currentApproverName ? ` · menunggu ${loan.currentApproverName}` : ""}
+                        {loan.status === "DISBURSED" ? ` · sisa ${formatRupiah(loan.outstanding)}` : ""}
                       </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {paging && paging.total > 0 ? (
-              <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={changePage} />
-            ) : null}
-          </section>
-
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
+                    </span>
                   </button>
-                </div>
-                <LoanDetailPanel
-                  loan={selected}
-                  actions={selected.status === "IN_REVIEW" || selected.status === "APPROVED" ? (
-                    <button type="button" disabled={busy} onClick={() => cancel(selected)}
-                      className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
-                      Batalkan pengajuan
-                    </button>
-                  ) : null}
-                />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih pinjaman untuk melihat persetujuan, jadwal cicilan, pembayaran, dan riwayatnya.</p>
-            )}
-          </section>
-        </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {paging && paging.total > 0 ? (
+            <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={changePage} />
+          ) : null}
+        </section>
+
+        {loanId ? (
+          <DetailDialog title="Detail pinjaman" onClose={closeLoan}>
+            <DialogMessages error={error} notice={notice} />
+            {selected?.id === loanId ? (
+              <LoanDetailPanel
+                loan={selected}
+                actions={selected.status === "IN_REVIEW" || selected.status === "APPROVED" ? (
+                  <button type="button" disabled={busy} onClick={() => cancel(selected)}
+                    className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
+                    Batalkan pengajuan
+                  </button>
+                ) : null}
+              />
+            ) : error ? null : <DialogLoading />}
+          </DetailDialog>
+        ) : null}
       </section>
     </AppShell>
   );

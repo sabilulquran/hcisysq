@@ -54,8 +54,14 @@ paths:
       description: >-
         Requires payroll.periods.manage. The cutoff window defaults to the 23rd of
         the previous month through the 22nd of the pay month, and the pay date to
-        the 25th; both may be given explicitly. One period per month per legal
-        entity is enforced by the database.
+        the 25th; both may be given explicitly. One period per month per kind per
+        legal entity is enforced by the database. PAY-003-THR
+        (docs/domain/payroll-thr.md): kind THR needs payDate, holidayDate and
+        holidayName, with payDate before holidayDate; the THR policy's deadline in
+        days before the holiday is checked when calculating
+        (409 PAYROLL_THR_PAY_DATE_LATE). A THR period accepts only the ADJUSTMENT
+        input (409 PAYROLL_INPUT_NOT_FOR_THR), offers no attendance resolve
+        (409 PAYROLL_OPERATION_NOT_FOR_THR), and its slips are kind THR.
       requestBody:
         required: true
         content:
@@ -75,6 +81,9 @@ paths:
                   type: [string, 'null']
                   format: uuid
                   description: Reserved for ORG-007; null is the implicit YSQ default.
+                kind: { type: string, enum: [REGULAR, THR], default: REGULAR }
+                holidayDate: { type: string, format: date, description: 'THR only: the holiday service is counted to.' }
+                holidayName: { type: string, maxLength: 120, description: 'THR only, e.g. Idul Fitri 1448 H.' }
       responses:
         '201':
           description: Period created
@@ -450,7 +459,11 @@ paths:
         period with no employment continuing past it; the TER figure is shown but
         is not final), NON_PERMANENT_TERMS (KONTRAK_HONORER or LEPAS on the pay
         date; still monthly TER under 21-100-01 pending the process owner's
-        decision). The masa pajak is the period month. Requires
+        decision), INCLUDES_THR (the month's gross includes an approved THR
+        period of the same month, PAY-003-THR T10). The masa pajak is the period
+        month, and the report reads every approved period of that month and legal
+        entity, salary and THR together; `periods` names them and
+        `pendingPeriodCount` the ones not yet approved. Requires
         payroll.results.read.organization, payroll.calculate or payroll.inputs.manage (section 7.3);
         payroll.periods.manage or payroll.reports.read.organization alone is refused. Available
         only once the period is approved (DRAFT), because it is built from final
@@ -1192,6 +1205,16 @@ components:
       required: [taxPeriod, objectCode, policy, totals, rows]
       properties:
         taxPeriod: { type: string, description: 'Masa pajak, YYYY-MM.' }
+        periods:
+          type: array
+          description: The approved periods of the month the report combines (PAY-003-THR T10).
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              kind: { type: string, enum: [REGULAR, THR] }
+              state: { type: string }
+        pendingPeriodCount: { type: integer, description: Periods of the month not yet approved and therefore not included. }
         objectCode: { type: string, example: '21-100-01' }
         policy:
           type: object
@@ -1235,7 +1258,7 @@ components:
         tax: { type: [string, 'null'] }
         flags:
           type: array
-          items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS, DAILY_DAYS_MISSING, DAILY_ABOVE_CEILING, MIXED_TERMS] }
+          items: { type: string, enum: [PTKP_MISSING, PTKP_CONFLICT, EXCLUDED, ANNUAL_CALCULATION_REQUIRED, NON_PERMANENT_TERMS, DAILY_DAYS_MISSING, DAILY_ABOVE_CEILING, MIXED_TERMS, INCLUDES_THR] }
         objectCode: { type: string, description: "21-100-01, or 21-100-03 when taxed with daily TER (PAY-003 §7.5, PPH21_SETTINGS.nonPermanentDailyTer)." }
         attendanceDays: { type: [number, 'null'], description: "Attendance days daily TER averaged over; null on monthly TER." }
         exclusionReason: { type: [string, 'null'] }
@@ -1273,6 +1296,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         legalEntityKey: { type: [string, 'null'], format: uuid }
+        kind: { type: string, enum: [REGULAR, THR] }
+        holidayDate: { type: [string, 'null'], format: date }
+        holidayName: { type: [string, 'null'] }
         periodMonth: { type: string, format: date }
         payDate: { type: string, format: date }
         periodStart: { type: string, format: date }

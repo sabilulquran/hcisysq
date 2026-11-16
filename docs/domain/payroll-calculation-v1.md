@@ -29,7 +29,9 @@ Spesifikasi ini mendefinisikan versi pertama perhitungan payroll di HCIS. Nilai 
 
 ### 1.2 Di luar v1
 
-Penerima non-pegawai/pengabdian/honor lain, THR, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement (kecuali penyerahan REIMB-001 di balik saklar mati, §3.6), integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
+THR kini dibangun sebagai jenis periode tersendiri: spesifikasi **PAY-003-THR** `docs/domain/payroll-thr.md` (2026-11-17, keputusan T1–T14 `DRAFT`). Lifecycle, izin, laporan, daftar transfer, dan jalur slip bab ini berlaku untuknya tanpa perubahan.
+
+Penerima non-pegawai/pengabdian/honor lain, modul laporan konten Pj. Media (v1 hanya menerima rekap), reimbursement (kecuali penyerahan REIMB-001 di balik saklar mati, §3.6), integrasi transfer bank, multi legal entity (ORG-007), akuntansi.
 
 ## 2. Aktor dan permission
 
@@ -460,7 +462,7 @@ Hasil yang masih memiliki blocker tidak dibayar, sehingga tidak dilaporkan (`ski
 - ~~aturan PPh21 pegawai tidak tetap (21-100-03, TER harian)~~ — **dibangun** di balik saklar mati (§7.5); aturan Pasal 17 atas 50% bruto di atas plafon harian tetap di luar v1;
 - ~~baris `PPH21_EMPLOYER` dan ringkasan biaya yayasan yang memuat PPh21 (P6)~~ — **dibangun** di balik saklar mati (§7.5);
 - ~~NIK/NPWP~~ (disimpan tersegel sejak §7.4); berkas unggah e-Bupot/SPT Masa PPh21 dalam format DJP tetap di luar HCIS — rekap CSV §7.4 adalah bahan pengisiannya;
-- THR;
+- THR — dibangun di luar v1 sebagai PAY-003-THR (`payroll-thr.md`); laporan PPh21 menggabungkan THR dengan gaji bulan pembayarannya (T10);
 - integrasi transfer bank (daftar transfer tetap CSV, §10 butir 7);
 - penerima non-pegawai, reimbursement, multi legal entity, akuntansi.
 

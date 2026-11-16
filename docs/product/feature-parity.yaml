@@ -781,8 +781,12 @@ features:
       1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
       sealed per employee (spec §7.4, migration 0157). PPh21 borne by the yayasan (PPH21_EMPLOYER line
       and the employer-cost summary) and daily TER 21-100-03 for honorer/lepas are built behind
-      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0161). Out of v1 by the spec (§1.2):
-      THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
+      PPH21_SETTINGS, both switched off by default (spec §7.5, migration 0161). THR is built as its
+      own period kind PAY-003-THR (docs/domain/payroll-thr.md, migration 0162, DRAFT T1-T14):
+      Permenaker 6/2016 one month of wages (basic + fixed allowances flagged is_thr_wage),
+      proportional below 12 months, paid at least 7 days before the holiday, same lifecycle, THR
+      slips beside the salary slip, PPh21 TER on the month's combined gross. Out of v1 by the spec (§1.2):
+      bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
       Open owner items: load the verified TER table (PPH21_TER) and the PPH21_ANNUAL policy

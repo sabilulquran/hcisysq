@@ -162,7 +162,7 @@ export function assertRoleGrantor(actor: AuthPrincipal, channel: GrantChannel): 
   // The channel resolves a human account from the assertion; a machine or a governance account is
   // never a grantor, and SUPER_ADMIN does not reach HCIS through SQ Hub.
   if (actor.principalType !== "EMPLOYEE") {
-    throw new AuthError(403, "ROLE_GRANT_ACTOR_INVALID", "Pemberi peran lewat SQ Hub harus akun pegawai yang aktif.");
+    throw new AuthError(403, "ROLE_GRANT_ACTOR_INVALID", "Pemberi peran lewat Admin SQ harus akun pegawai yang aktif.");
   }
 }
 

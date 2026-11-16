@@ -66,7 +66,7 @@ Two consequences drive the design:
   running `hcis` process uses — on exactly 4 and 2 lines. Anything else is drift: stop.
 - `BIOMETRIC_COLLECTION_ENABLED` in `final.env` is absent or `0`.
 - Ports 3391 (candidate API) and 3291 (candidate web) are free; at least 1 GiB free on `/data`.
-- **One release operator per window.** No other operator is changing Mi8 (any SQ Core app, the
+- **One release operator per window.** No other operator is changing Mi8 (any SQ Suite application, the
   launcher, the worker, or `start-services.sh`). Before `--apply`, announce the release (app,
   SHA, window, session) in the shared operator notes. The script enforces this with the
   device-wide release lock (§4.10); the announcement covers releases of other apps whose
@@ -381,7 +381,7 @@ health results. Never record `final.env` values, tokens, cookies or employee dat
 ## 9. Known limits and follow-ups
 
 - Resolved 2026-10-15/16 by OPS-MI8-BAK-001 (`mi8vps-sq-core-production-backup-plan.md`):
-  `sqcore_hcis` and the other SQ Core production databases are backed up daily at 19 UTC (02:00 WIB)
+  `sqcore_hcis` and the other SQ Suite production databases are backed up daily at 19 UTC (02:00 WIB)
   with an encrypted Google Drive copy and a weekly restore check. Releases must not run during the
   19 UTC hour; `preflight` and `cutover` refuse it.
 - First `--apply` run findings (fixed in the script): the remote `PATH` lacked the chroot's

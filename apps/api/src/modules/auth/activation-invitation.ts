@@ -86,7 +86,7 @@ const HUB_REFUSAL_MESSAGES: Record<string, string> = {
   DUPLICATE_EMAIL: "Email pegawai ini sudah dipakai Akun SQ lain. Periksa email pegawai atau minta Admin Platform memeriksanya.",
   STAFF_IDENTITY_DISABLED: "Akun SQ pegawai ini dinonaktifkan di Admin SQ. Admin Platform perlu mengaktifkannya kembali.",
   ORGAN_IDENTITY_LINK_REQUIRES_ADMIN:
-    "Email pegawai ini dipakai Akun SQ Organ Yayasan. Menghubungkannya ke data pegawai dilakukan Admin Platform di Admin SQ.",
+    "Email pegawai ini dipakai Akun SQ Organ Yayasan. Menghubungkannya ke data pegawai dilakukan admin di Admin SQ.",
 };
 
 function refusal(code: string, message: string, statusCode = 409) {

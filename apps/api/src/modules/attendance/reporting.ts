@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { resolveSchedule } from "./engine.js";
 import { overtimeExcludedSql } from "./overtime-rules.js";
 
@@ -195,26 +196,26 @@ export async function workArrangementDisposition(
   employeeId: string,
   workDate: string,
 ): Promise<"business_trip" | "field_assignment" | "remote_work" | null> {
-  const trip = await pool.query(
-    `SELECT 1
-     FROM business_trip_requests
-     WHERE employee_id = $1
-       AND status IN ('ISSUED', 'COMPLETED')
-       AND $2::date BETWEEN start_on AND end_on
+  // One round trip per employee-day: the trip ranks first (D-15), then the earliest arrangement.
+  const result = await pool.query<{ disposition: "business_trip" | "field_assignment" | "remote_work" }>(
+    `SELECT disposition FROM (
+       SELECT 'business_trip'::text AS disposition, 1 AS priority, submitted_at, id
+       FROM business_trip_requests
+       WHERE employee_id = $1
+         AND status = ANY($3::text[])
+         AND $2::date BETWEEN start_on AND end_on
+       UNION ALL
+       SELECT CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END,
+              2, submitted_at, id
+       FROM attendance_work_arrangement_requests
+       WHERE employee_id = $1
+         AND status = 'APPROVED'
+         AND arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
+         AND $2::date BETWEEN start_on AND end_on
+     ) candidates
+     ORDER BY priority, submitted_at, id
      LIMIT 1`,
-    [employeeId, workDate],
-  );
-  if (trip.rows[0]) return "business_trip";
-  const result = await pool.query<{ disposition: "field_assignment" | "remote_work" }>(
-    `SELECT CASE arrangement_type WHEN 'FIELD_ASSIGNMENT' THEN 'field_assignment' ELSE 'remote_work' END AS disposition
-     FROM attendance_work_arrangement_requests
-     WHERE employee_id = $1
-       AND status = 'APPROVED'
-       AND arrangement_type IN ('FIELD_ASSIGNMENT', 'REMOTE_WORK')
-       AND $2::date BETWEEN start_on AND end_on
-     ORDER BY submitted_at, id
-     LIMIT 1`,
-    [employeeId, workDate],
+    [employeeId, workDate, [...TRIP_ATTENDANCE_STATUSES]],
   );
   return result.rows[0]?.disposition ?? null;
 }

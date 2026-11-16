@@ -9,7 +9,8 @@ import {
   type ResolvedSchedule,
 } from "../src/modules/attendance/engine.js";
 import { daySymbol, SYMBOL_LEGEND } from "../src/modules/attendance/report-models.js";
-import { tripDatesToRecompute } from "../src/modules/trips/domain.js";
+import { datesToRecompute } from "../src/modules/attendance/work-arrangements.js";
+import { TRIP_ATTENDANCE_STATUSES } from "../src/modules/trips/domain.js";
 
 // TRIP-001 Paket 2 (docs/domain/business-travel.md §9.2): an issued business trip as an attendance
 // disposition. Synthetic times, Asia/Jakarta.
@@ -74,7 +75,8 @@ describe("TRIP-001 Paket 2 engine disposition", () => {
 
   it("an incomplete punch is replaced by business_trip while the recorded check-in is kept", () => {
     const result = evaluateSessions({ ...base, sessions: [{ checkInAt: at("07:30"), checkOutAt: null }], businessTrip: true });
-    expect(result).toMatchObject({ status: "business_trip", firstCheckInAt: at("07:30"), lastCheckOutAt: null, incompleteSession: true });
+    expect(result).toMatchObject({ status: "business_trip", firstCheckInAt: at("07:30"), lastCheckOutAt: null, incompleteSession: false });
+    expect(result.sessions).toEqual([{ checkInAt: at("07:30"), checkOutAt: null }]);
   });
 
   it("approved leave, absence decisions, rest days and broken schedules are decided before the trip", () => {
@@ -140,8 +142,11 @@ describe("TRIP-001 Paket 2 reporting and recalculation", () => {
   });
 
   it("recalculates only the dates already begun", () => {
-    expect(tripDatesToRecompute("2026-11-01", "2026-11-05", "2026-11-03")).toEqual(["2026-11-01", "2026-11-02", "2026-11-03"]);
-    expect(tripDatesToRecompute("2026-11-04", "2026-11-05", "2026-11-03")).toEqual([]);
-    expect(tripDatesToRecompute("2026-10-30", "2026-11-01", "2026-11-03")).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+    expect(datesToRecompute("2026-10-30", "2026-11-05", "2026-11-01")).toEqual(["2026-10-30", "2026-10-31", "2026-11-01"]);
+    expect(datesToRecompute("2026-11-04", "2026-11-05", "2026-11-03")).toEqual([]);
+  });
+
+  it("only an issued or completed trip decides attendance (D-15)", () => {
+    expect([...TRIP_ATTENDANCE_STATUSES]).toEqual(["ISSUED", "COMPLETED"]);
   });
 });

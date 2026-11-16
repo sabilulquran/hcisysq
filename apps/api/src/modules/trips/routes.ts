@@ -25,6 +25,7 @@ import {
   writeDocumentAudit,
 } from "../documents/service.js";
 import { materializeAttendanceResult } from "../attendance/engine.js";
+import { datesToRecompute } from "../attendance/work-arrangements.js";
 import { LeaveApprovalConfigurationError } from "../leave/domain/approval-chain.js";
 import {
   decideLeaveApprovalStep,
@@ -40,7 +41,6 @@ import {
   OCCUPYING_TRIP_STATUSES,
   TRIP_STATUSES,
   TripPolicyError,
-  tripDatesToRecompute,
   validateTripDates,
   type TripCanceller,
   type TripStatus,
@@ -474,7 +474,7 @@ export async function registerTripRoutes(
     }
     // Paket 2: an issued trip stops explaining the days it covered.
     const recompute: Recompute | undefined = trip.status === "ISSUED"
-      ? { employeeId: trip.employeeId, dates: tripDatesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())) }
+      ? { employeeId: trip.employeeId, dates: datesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())) }
       : undefined;
     return { result: { id: input.id, status: "CANCELLED" as const }, recompute };
   }
@@ -608,11 +608,13 @@ export async function registerTripRoutes(
     if (!body.success) return send(reply, 400, { code: "INVALID_TRIP_CANCEL", message: "Alasan pembatalan minimal 5 karakter." });
     return transact(reply, async (client) => {
       const employee = await loadEmployeeContext(client, principal.id);
-      const { result } = await cancelTrip(client, {
+      // D-08 keeps an employee from cancelling an issued trip, so `recompute` is empty today; it is passed
+      // on anyway so that relaxing D-08 cannot leave stale Dinas days behind.
+      const { result, recompute } = await cancelTrip(client, {
         id: params.data.id, ownerEmployeeId: employee.id, by: "employee",
         actorAccountId: principal.id, reason: body.data.reason,
       });
-      return [200, result];
+      return [200, result, recompute];
     });
   });
 
@@ -902,7 +904,7 @@ export async function registerTripRoutes(
       }, {
         // Paket 2: a letter issued after the trip began decides the days already passed.
         employeeId: trip.employeeId,
-        dates: tripDatesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())),
+        dates: datesToRecompute(trip.startOn, trip.endOn, jakartaDate(new Date())),
       }];
     });
   });

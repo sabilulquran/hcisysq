@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Pool } from "pg";
 
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { ATTENDANCE_INPUT_KEYS, ownEmploymentIds } from "./inputs-store.js";
 import { writeAudit } from "./store.js";
 
@@ -157,7 +158,7 @@ async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
            latest.status = 'business_trip'
            AND EXISTS (
              SELECT 1 FROM business_trip_requests t
-             WHERE t.id = latest.source_business_trip_id AND t.status IN ('ISSUED', 'COMPLETED')
+             WHERE t.id = latest.source_business_trip_id AND t.status = ANY($5::text[])
            )
          )
        )
@@ -171,7 +172,7 @@ async function resolveAttendanceDays(pool: Pool, window: AttendanceWindow) {
        AND (e.ended_on IS NULL OR e.ended_on >= latest.work_date)
        AND ${TERM_CATEGORY_ON_DAY}
      GROUP BY e.id`,
-    [window.cutoffStart, window.cutoffEnd, window.legalEntityKey, TRANSPORT_CATEGORIES],
+    [window.cutoffStart, window.cutoffEnd, window.legalEntityKey, TRANSPORT_CATEGORIES, [...TRIP_ATTENDANCE_STATUSES]],
   );
   return rows.map((row) => ({ employmentId: row.employmentId, days: Number(row.days) }));
 }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { overtimeExclusionFor } from "./overtime-rules.js";
 
 type ScheduleRow = {
@@ -339,6 +340,8 @@ export function applyBusinessTrip(computed: AttendanceComputation): AttendanceCo
   return {
     ...computed,
     status,
+    // The open session stays in `sessions`; the day itself is decided, so it is not flagged incomplete.
+    incompleteSession: status === "business_trip" ? false : computed.incompleteSession,
     lateMinutes: 0,
     earlyLeaveMinutes: 0,
     justified: true,
@@ -795,11 +798,11 @@ export async function materializeAttendanceResult(
       `SELECT id
        FROM business_trip_requests
        WHERE employee_id = $1
-         AND status IN ('ISSUED', 'COMPLETED')
+         AND status = ANY($3::text[])
          AND $2::date BETWEEN start_on AND end_on
        ORDER BY submitted_at, id
        LIMIT 1`,
-      [employeeId, workDate],
+      [employeeId, workDate, [...TRIP_ATTENDANCE_STATUSES]],
     );
     const trip = tripResult?.rows[0] ?? null;
 
@@ -891,9 +894,13 @@ export async function materializeAttendanceResult(
         overtimeMinutes,
         now,
       });
-      // TRIP-001 Paket 2: the day's rollup and its blocks follow the same rule as a single-block day.
+      // TRIP-001 Paket 2: the day's rollup and its blocks follow the same rule as a single-block day. A
+      // day the trip decides (business_trip) keeps its punches in the sessions but stores no block rows,
+      // as a day without punches does, so no block reads "Tidak hadir" under a credited Dinas day.
       computed = trip ? applyBusinessTrip(multi.computation) : multi.computation;
-      blockResults = trip ? multi.blocks.map(applyBusinessTripToBlock) : multi.blocks;
+      blockResults = !trip ? multi.blocks
+        : computed.status === "business_trip" ? []
+        : multi.blocks.map(applyBusinessTripToBlock);
     }
     const input = {
       schedule: {

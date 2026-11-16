@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { calculationPairs, type CalculationScope } from "./calculation-runner.js";
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { jakartaWorkDate } from "./engine.js";
 
 // ATT-014-2 detail rows (docs/domain/attendance-report-calculation.md §6.2, §6.5). This read model
@@ -187,6 +188,17 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
              AND checked.work_date BETWEEN arrangement.start_on AND arrangement.end_on
          )
          OR EXISTS (
+           -- TRIP-001 Paket 2: a trip issued (or completed) after the day was calculated, or an issued trip
+           -- cancelled since (a cancelled trip keeps issued_document_id), when its recompute did not run.
+           SELECT 1
+           FROM business_trip_requests trip
+           WHERE trip.employee_id = checked.employee_id
+             AND (trip.status = ANY($4::text[])
+               OR (trip.status = 'CANCELLED' AND trip.issued_document_id IS NOT NULL))
+             AND trip.updated_at > checked.calculated_at
+             AND checked.work_date BETWEEN trip.start_on AND trip.end_on
+         )
+         OR EXISTS (
            -- §20.10: a shift whose start was moved earlier now gives a schedule to dates it did not cover.
            SELECT 1
            FROM access_audit_events audit
@@ -199,7 +211,7 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
          )
        ) AS changed
      FROM checked`,
-    [employeeIds, from, to],
+    [employeeIds, from, to, [...TRIP_ATTENDANCE_STATUSES]],
   );
   return result.rows;
 }

@@ -115,7 +115,7 @@ NOTIF-003:
 - `trip_advance.settlement_overdue` (pegawai, 07.00 WIB setiap hari, sekali per minggu keterlambatan per uang muka, WhatsApp bawaan nyala): "uang muka dinas belum dipertanggungjawabkan", tautan `/app/trip-advances`;
 - `trip_advance.finance_queue_digest` (pemegang `trip_advances.manage`, Senin–Sabtu 07.00 WIB): jumlah yang menunggu pencairan, penyelesaian, pembayaran selisih, pengembalian, dan yang terlambat; tautan `/admin/trip-advances`.
 
-## 9. Penyimpanan (migrasi `0151`)
+## 9. Penyimpanan (migrasi `0153`)
 
 ```text
 trip_per_diem_rates             versi tarif, append-only

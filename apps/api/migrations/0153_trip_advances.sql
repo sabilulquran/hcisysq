@@ -26,7 +26,7 @@
 --     CHECK (method IN ('CASH', 'TRANSFER', 'PAYROLL'));
 --   DELETE FROM role_permissions WHERE permission_key IN ('trip_advances.read', 'trip_advances.manage', 'trip_per_diem.manage');
 --   DELETE FROM permissions WHERE permission_key IN ('trip_advances.read', 'trip_advances.manage', 'trip_per_diem.manage');
---   DELETE FROM schema_migrations WHERE name = '0151_trip_advances.sql';
+--   DELETE FROM schema_migrations WHERE name = '0153_trip_advances.sql';
 
 CREATE OR REPLACE FUNCTION trip_advance_refuse_change() RETURNS trigger
 LANGUAGE plpgsql AS $$

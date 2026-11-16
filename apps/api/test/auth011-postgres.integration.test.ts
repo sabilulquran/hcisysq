@@ -714,7 +714,7 @@ describe.skipIf(!databaseUrl)("AUTH-011 isolated PostgreSQL authorization", () =
       `SELECT rp.permission_key AS key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id
         WHERE r.role_key = 'finance_officer' ORDER BY 1`,
     )).rows.map((row) => row.key);
-    // REIMB-001 (migration 0149) added the reimbursement register to the role; TRIP-002 (0151) the trip advances.
+    // REIMB-001 (migration 0149) added the reimbursement register to the role; TRIP-002 (0153) the trip advances.
     expect(finance).toEqual([
       "loans.manage", "loans.read", "payroll.loans.manage", "reimbursements.manage", "reimbursements.read",
       "trip_advances.manage", "trip_advances.read", "trip_per_diem.manage",

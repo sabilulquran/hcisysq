@@ -1,10 +1,12 @@
 // TRIP-001 Human Capital surface: the business travel register, the surat tugas, and
 // cancellation. Spec: docs/domain/business-travel.md. The API authorizes every call.
 
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DIALOG_PRINT_CSS } from "@/components/detailDialogUrl";
 import { PaginationBar } from "@/components/PaginationBar";
 import { TripDetailPanel } from "@/components/trips/TripDetailPanel";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -32,7 +34,10 @@ export function AdminTripsPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<TripStatus | "">("APPROVED");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
+  // The open trip lives in the URL (`?perjalanan=<id>`), so a link opens it and Back closes it.
+  const [tripId, openTrip, closeTrip] = useDialogParam("perjalanan");
   const [selected, setSelected] = useState<TripDetail | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -73,10 +78,17 @@ export function AdminTripsPage() {
   const open = async (id: string) => {
     try {
       setSelected(await getAdminTrip(id));
+      setOpenError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Perjalanan dinas tidak dapat dibuka.");
+      setOpenError(cause instanceof Error ? cause.message : "Perjalanan dinas tidak dapat dibuka.");
     }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setOpenError(null);
+    if (tripId) void open(tripId);
+  }, [tripId]);
 
   const run = async (action: () => Promise<string>, trip: TripDetail) => {
     setBusy(true);
@@ -114,7 +126,7 @@ export function AdminTripsPage() {
       {notice ? <div className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading print:hidden">{notice}</div> : null}
 
       {forbidden ? null : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div>
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)] print:hidden">
             <div className="grid gap-3 p-5 sm:grid-cols-2">
               <label className="text-xs font-semibold text-muted-foreground">
@@ -138,8 +150,8 @@ export function AdminTripsPage() {
               <ul className="divide-y divide-border/70 border-t border-border/70">
                 {items.map((trip) => (
                   <li key={trip.id}>
-                    <button type="button" onClick={() => void open(trip.id)}
-                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === trip.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => { setNotice(null); openTrip(trip.id); }}
+                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${tripId === trip.id ? "bg-muted/60" : ""}`}>
                       <span className="block font-semibold text-brand-heading">{trip.employeeName} · {trip.destination}</span>
                       <span className="block text-xs text-muted-foreground">
                         {trip.employeeNumber}{trip.unitName ? ` · ${trip.unitName}` : ""} · {formatTripRange(trip.startOn, trip.endOn)}
@@ -158,44 +170,42 @@ export function AdminTripsPage() {
               <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} />
             ) : null}
           </section>
-
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)] print:border-0 print:shadow-none">
-            {selected ? (
-              <>
-                <div className="flex justify-end print:hidden">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <TripDetailPanel
-                  trip={selected}
-                  actions={canManage ? (
-                    <>
-                      {selected.status === "APPROVED" ? (
-                        <button type="button" disabled={busy} onClick={() => issue(selected)}
-                          className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                          Terbitkan surat tugas
-                        </button>
-                      ) : null}
-                      {["IN_REVIEW", "APPROVED", "ISSUED"].includes(selected.status) ? (
-                        <button type="button" disabled={busy} onClick={() => cancel(selected)}
-                          className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
-                          Batalkan perjalanan
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Pilih perjalanan untuk melihat tahap persetujuan dan riwayatnya. Perjalanan yang sudah disetujui
-                menunggu surat tugas dari Human Capital.
-              </p>
-            )}
-          </section>
         </div>
       )}
+
+      {!forbidden && tripId ? (
+        <DetailDialog title="Detail perjalanan dinas" description={selected ? `${selected.employeeName} · ${selected.destination}` : undefined} onClose={closeTrip}>
+          {/* The surat tugas prints from inside the pop-up; this keeps the pop-up from clipping it. */}
+          <style>{DIALOG_PRINT_CSS}</style>
+          {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink print:hidden">{error}</div> : null}
+          {notice ? <div className="mb-4 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading print:hidden">{notice}</div> : null}
+          {openError ? (
+            <p className="text-sm text-danger-ink">{openError}</p>
+          ) : selected?.id === tripId ? (
+            <TripDetailPanel
+              trip={selected}
+              actions={canManage ? (
+                <>
+                  {selected.status === "APPROVED" ? (
+                    <button type="button" disabled={busy} onClick={() => issue(selected)}
+                      className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                      Terbitkan surat tugas
+                    </button>
+                  ) : null}
+                  {["IN_REVIEW", "APPROVED", "ISSUED"].includes(selected.status) ? (
+                    <button type="button" disabled={busy} onClick={() => cancel(selected)}
+                      className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
+                      Batalkan perjalanan
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat perjalanan dinas...</div>
+          )}
+        </DetailDialog>
+      ) : null}
     </AdminShell>
   );
 }

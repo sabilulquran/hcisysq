@@ -5,6 +5,7 @@
 import { CalendarClock, Loader2 } from "lucide-react";
 import { useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { CriticalPeriodNotice } from "@/components/leave/CriticalPeriodNotice";
 
 import {
@@ -24,7 +25,9 @@ export function ProposeAlternativeDates({
   disabled?: boolean;
   onDone: (outcome: { ok: true; message: string } | { ok: false; message: string }) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // The form opens as a small pop-up named in the URL (?usul-tanggal=<stepId>); the button stays in the card.
+  const [proposing, showForm, closeForm] = useDialogParam("usul-tanggal");
+  const open = proposing === stepId;
   const [startOn, setStartOn] = useState("");
   const [endOn, setEndOn] = useState("");
   const [note, setNote] = useState("");
@@ -62,7 +65,7 @@ export function ProposeAlternativeDates({
     setError(null);
     try {
       const result = await postponeLeaveApproval(stepId, { startOn, endOn, note: note.trim() });
-      setOpen(false);
+      closeForm();
       onDone({
         ok: true,
         message: `Usulan ${formatLeaveRange(result.proposedStartOn, result.proposedEndOn)} terkirim. Pegawai akan menerima atau menolaknya.`,
@@ -78,94 +81,98 @@ export function ProposeAlternativeDates({
     }
   };
 
-  if (!open) {
-    return (
+  const cancel = () => {
+    closeForm();
+    reset();
+  };
+
+  return (
+    <>
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        onClick={() => showForm(stepId)}
         className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-surface-raised px-4 text-sm font-semibold text-brand-heading hover:bg-muted/50 disabled:opacity-60"
       >
         <CalendarClock className="h-4 w-4" aria-hidden="true" /> Usulkan tanggal lain
       </button>
-    );
-  }
-
-  return (
-    <div className="w-full rounded-2xl border border-border bg-surface p-3 lg:max-w-md">
-      <p className="text-xs font-bold text-brand-heading">Usulkan tanggal lain</p>
-      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-        Pengajuan ini tidak disetujui atau ditolak. Pegawai memilih menerima tanggal usulan (pengajuan baru, persetujuan dari awal) atau menolaknya.
-      </p>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <label className="text-xs font-semibold text-brand-heading">
-          Mulai
-          <input
-            type="date"
-            value={startOn}
-            onChange={(event) => { setStartOn(event.target.value); reset(); }}
-            className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
-          />
-        </label>
-        <label className="text-xs font-semibold text-brand-heading">
-          Selesai
-          <input
-            type="date"
-            value={endOn}
-            onChange={(event) => { setEndOn(event.target.value); reset(); }}
-            className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
-          />
-        </label>
-      </div>
-      <label className="mt-2 block text-xs font-semibold text-brand-heading">
-        Catatan untuk pegawai
-        <textarea
-          value={note}
-          rows={2}
-          maxLength={1000}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder="Mengapa tanggal semula belum dapat diberikan"
-          className="mt-1 w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm font-normal"
-        />
-      </label>
-      {error ? <p className="mt-2 text-xs font-semibold text-danger-ink" role="alert">{error}</p> : null}
-      {preview ? (
-        <div className="mt-2 rounded-xl bg-brand-primary-pale/45 p-2 text-xs text-brand-heading">
-          {formatLeaveRange(preview.proposedStartOn, preview.proposedEndOn)} · <b>{preview.workingDays} hari kerja</b>. Tanggal ini memenuhi aturan cuti pegawai.
-          {preview.criticalReviewRequired ? <CriticalPeriodNotice periods={preview.criticalPeriods} /> : null}
-        </div>
-      ) : null}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {preview ? (
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void send()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
-          >
-            {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            Kirim usulan
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void check()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold text-brand-heading disabled:opacity-50"
-          >
-            {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            Periksa tanggal
-          </button>
-        )}
-        <button
-          type="button"
-          disabled={busy !== null}
-          onClick={() => { setOpen(false); reset(); }}
-          className="min-h-11 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold text-brand-heading disabled:opacity-50"
+      {open ? (
+        <DetailDialog
+          title="Usulkan tanggal lain"
+          description="Pengajuan ini tidak disetujui atau ditolak. Pegawai memilih menerima tanggal usulan (pengajuan baru, persetujuan dari awal) atau menolaknya."
+          onClose={cancel}
         >
-          Batal
-        </button>
-      </div>
-    </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs font-semibold text-brand-heading">
+              Mulai
+              <input
+                type="date"
+                value={startOn}
+                onChange={(event) => { setStartOn(event.target.value); reset(); }}
+                className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
+              />
+            </label>
+            <label className="text-xs font-semibold text-brand-heading">
+              Selesai
+              <input
+                type="date"
+                value={endOn}
+                onChange={(event) => { setEndOn(event.target.value); reset(); }}
+                className="mt-1 h-11 w-full rounded-xl border border-border bg-surface-raised px-2 text-sm font-normal"
+              />
+            </label>
+          </div>
+          <label className="mt-2 block text-xs font-semibold text-brand-heading">
+            Catatan untuk pegawai
+            <textarea
+              value={note}
+              rows={2}
+              maxLength={1000}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Mengapa tanggal semula belum dapat diberikan"
+              className="mt-1 w-full rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm font-normal"
+            />
+          </label>
+          {error ? <p className="mt-2 text-xs font-semibold text-danger-ink" role="alert">{error}</p> : null}
+          {preview ? (
+            <div className="mt-2 rounded-xl bg-brand-primary-pale/45 p-2 text-xs text-brand-heading">
+              {formatLeaveRange(preview.proposedStartOn, preview.proposedEndOn)} · <b>{preview.workingDays} hari kerja</b>. Tanggal ini memenuhi aturan cuti pegawai.
+              {preview.criticalReviewRequired ? <CriticalPeriodNotice periods={preview.criticalPeriods} /> : null}
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {preview ? (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void send()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-brand-foreground disabled:opacity-50"
+              >
+                {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Kirim usulan
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void check()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold text-brand-heading disabled:opacity-50"
+              >
+                {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Periksa tanggal
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={cancel}
+              className="min-h-11 rounded-xl border border-border bg-surface-raised px-3 text-xs font-bold text-brand-heading disabled:opacity-50"
+            >
+              Batal
+            </button>
+          </div>
+        </DetailDialog>
+      ) : null}
+    </>
   );
 }

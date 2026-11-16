@@ -5,6 +5,7 @@
 import { Download, FileText, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { DocumentForm } from "@/components/employee-documents/DocumentForm";
 import { formatDate } from "@/lib/employment";
@@ -27,7 +28,9 @@ const primaryButton = "inline-flex min-h-11 items-center gap-2 rounded-xl bg-bra
 export function MyDocumentsSection() {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [page, setPage] = useState(1);
-  const [proposing, setProposing] = useState(false);
+  // "Unggah dokumen" opens the upload form as a pop-up named in the URL (?dokumen=unggah).
+  const [documentParam, showUpload, closeUpload] = useDialogParam("dokumen");
+  const proposing = documentParam === "unggah";
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,8 +51,8 @@ export function MyDocumentsSection() {
             KTP, KK, ijazah, sertifikat, dan dokumen lain yang tersimpan di HC. Hanya Anda dan petugas HC yang berwenang dapat membukanya.
           </p>
         </div>
-        {view.kind === "ready" && view.data.canPropose && !proposing ? (
-          <button type="button" className={primaryButton} onClick={() => { setNotice(null); setProposing(true); }}>
+        {view.kind === "ready" && view.data.canPropose ? (
+          <button type="button" className={primaryButton} onClick={() => { setNotice(null); showUpload("unggah"); }}>
             <Upload className="h-4 w-4" aria-hidden="true" /> Unggah dokumen
           </button>
         ) : null}
@@ -60,24 +63,25 @@ export function MyDocumentsSection() {
       {view.kind === "loading" ? <p className="text-sm text-muted-foreground">Memuat dokumen…</p> : null}
       {view.kind === "error" ? <p role="alert" className="text-sm text-danger-ink">{view.message}</p> : null}
 
-      {view.kind === "ready" && proposing ? (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Dokumen yang Anda unggah menunggu verifikasi HC sebelum tercatat. Paling banyak {view.data.maxPending} usulan menunggu sekaligus.
-          </p>
+      {view.kind === "ready" && view.data.canPropose && proposing ? (
+        <DetailDialog
+          title="Unggah dokumen"
+          description={`Dokumen yang Anda unggah menunggu verifikasi HC sebelum tercatat. Paling banyak ${view.data.maxPending} usulan menunggu sekaligus.`}
+          onClose={closeUpload}
+        >
           <DocumentForm
             mode="self-upload"
             types={view.data.types}
             replaceable={view.data.items}
-            onCancel={() => setProposing(false)}
+            onCancel={closeUpload}
             onSubmit={async (draft, file) => {
               await proposeMyDocument(draft, file!);
-              setProposing(false);
+              closeUpload();
               setNotice("Dokumen terkirim dan menunggu verifikasi HC.");
               load();
             }}
           />
-        </>
+        </DetailDialog>
       ) : null}
 
       {view.kind === "ready" ? (

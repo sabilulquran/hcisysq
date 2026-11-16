@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AttendanceDayPanel } from "@/components/attendance/AttendanceDayPanel";
 import { CorrectionEntryForm } from "@/components/attendance/CorrectionEntryForm";
 import { MobileEvidencePanel } from "@/components/attendance/MobileEvidencePanel";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { CalculationDialog, ExceptionsTab, OvertimeTab, SummaryTab } from "@/components/attendance/reports/ReportExtraTabs";
 import { UnscheduledTab } from "@/components/attendance/reports/UnscheduledTab";
 import { AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
@@ -63,6 +64,11 @@ function minutes(value: number | null) {
   return value ? `${value} mnt` : "—";
 }
 
+/** One transaction row; a punch can appear twice (check-in and check-out boundary). */
+function punchRowKey(item: AttendanceTransaction) {
+  return `${item.source}:${item.id}:${item.boundary ?? ""}`;
+}
+
 function Pager({ page, totalPages, total, loading, onPage }: { page: number; totalPages: number; total: number; loading: boolean; onPage: (page: number) => void }) {
   return (
     <footer className="flex items-center justify-between gap-3 border-t p-3 text-xs text-muted-foreground">
@@ -108,7 +114,8 @@ export function AdminAttendanceReportsPage() {
     SOURCE_FILTERS.some((item) => item.value === initialSearch.get("source")) ? initialSearch.get("source") as AttendanceTransactionSource : "",
   );
   const [needsReview, setNeedsReview] = useState(false);
-  const [selectedPunch, setSelectedPunch] = useState<AttendanceTransaction | null>(null);
+  // The open punch lives in the URL (`?absen=<source>:<id>:<boundary>`) and shows as a pop-up.
+  const [punchKey, openPunch, closePunch] = useDialogParam("absen");
   const [correcting, setCorrecting] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
   const [detailPage, setDetailPage] = useState(1);
@@ -119,6 +126,8 @@ export function AdminAttendanceReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [requesting, setRequesting] = useState(false);
+
+  const selectedPunch = punchKey ? transactions?.items.find((item) => punchRowKey(item) === punchKey) ?? null : null;
 
   const employeeId = employee?.id ?? "";
   const scope = { from: range.from, to: range.to, ...(unitId ? { unitId } : {}), ...(employeeId ? { employeeId } : {}) };
@@ -207,7 +216,7 @@ export function AdminAttendanceReportsPage() {
   };
 
   // Changing the scope clears the previous run and starts both tables from page 1.
-  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setUnscheduledPage(1); setPinPage(1); setRun(null); setSelectedPunch(null); };
+  const resetPages = () => { setDetailPage(1); setTransactionPage(1); setUnscheduledPage(1); setPinPage(1); setRun(null); };
   const changeRange = (next: { from: string; to: string }) => { setRange(next); resetPages(); };
   const active = isCalculationActive(run);
   const pending = rows ? (rows.summary.not_calculated ?? 0) : 0;
@@ -329,12 +338,12 @@ export function AdminAttendanceReportsPage() {
           {tab === "transactions" ? (
             <div role="tabpanel">
               <div className="flex flex-wrap items-center gap-3 p-3">
-                <select aria-label="Filter sumber" className="h-9 rounded-xl border px-3 text-sm" value={source} onChange={(event) => { setSource(event.target.value as AttendanceTransactionSource | ""); setTransactionPage(1); setSelectedPunch(null); }}>
+                <select aria-label="Filter sumber" className="h-9 rounded-xl border px-3 text-sm" value={source} onChange={(event) => { setSource(event.target.value as AttendanceTransactionSource | ""); setTransactionPage(1); }}>
                   <option value="">Semua sumber</option>
                   {SOURCE_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
                 {(transactions?.needsReviewTotal ?? 0) > 0 || needsReview ? (
-                  <button type="button" aria-pressed={needsReview} onClick={() => { setNeedsReview(!needsReview); setTransactionPage(1); setSelectedPunch(null); }}
+                  <button type="button" aria-pressed={needsReview} onClick={() => { setNeedsReview(!needsReview); setTransactionPage(1); }}
                     className={`h-9 rounded-xl border px-3 text-xs font-bold ${needsReview ? "border-warning-line bg-warning-soft text-warning-ink" : "text-warning-ink"}`}>
                     Perlu ditinjau ({transactions?.needsReviewTotal ?? 0})
                   </button>
@@ -348,8 +357,8 @@ export function AdminAttendanceReportsPage() {
                   </thead>
                   <tbody className="divide-y">
                     {transactions?.items.map((item) => (
-                      <tr key={`${item.source}:${item.id}:${item.boundary ?? ""}`} onClick={() => { setSelectedPunch(item); setCorrecting(false); }}
-                        className={`cursor-pointer hover:bg-surface ${selectedPunch?.id === item.id && selectedPunch.boundary === item.boundary ? "bg-brand-primary-pale" : ""}`}>
+                      <tr key={punchRowKey(item)} onClick={() => { setCorrecting(false); openPunch(punchRowKey(item)); }}
+                        className={`cursor-pointer hover:bg-surface ${punchKey === punchRowKey(item) ? "bg-brand-primary-pale" : ""}`}>
                         <td className="p-3 tabular-nums">{time(item.occurredAt)}{item.boundary ? <span className="ml-1 text-xs text-muted-foreground">({item.boundary === "check_in" ? "masuk" : "pulang"})</span> : null}</td>
                         <td className="p-3"><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{item.employeeNumber}</p></td>
                         <td className="p-3">{item.unitName ?? "—"}</td>
@@ -367,7 +376,7 @@ export function AdminAttendanceReportsPage() {
               </div>
               <ul className="divide-y md:hidden">
                 {transactions?.items.map((item) => (
-                  <li key={`${item.source}:${item.id}:${item.boundary ?? ""}`} className="cursor-pointer p-4" onClick={() => { setSelectedPunch(item); setCorrecting(false); }}>
+                  <li key={punchRowKey(item)} className="cursor-pointer p-4" onClick={() => { setCorrecting(false); openPunch(punchRowKey(item)); }}>
                     <div className="flex items-start justify-between gap-3">
                       <div><p className="font-semibold">{item.employeeName}</p><p className="text-xs text-muted-foreground">{shortDate(item.workDate)} · {time(item.occurredAt)}</p></div>
                       <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{transactionSourceLabel(item)}</span>
@@ -377,33 +386,34 @@ export function AdminAttendanceReportsPage() {
                 ))}
                 {transactions && transactions.items.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada absen pada lingkup ini.</li> : null}
               </ul>
-              {transactions ? <Pager page={transactions.page} totalPages={transactions.totalPages} total={transactions.total} loading={loading} onPage={(next) => { setTransactionPage(next); setSelectedPunch(null); }} /> : null}
-              {selectedPunch ? (
-                <div className="border-t bg-surface/50 p-4 text-sm" aria-label="Detail absen">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-brand-heading">{selectedPunch.employeeName} · {time(selectedPunch.occurredAt)}</p>
-                      <p className="text-xs text-muted-foreground">{shortDate(selectedPunch.workDate)} · {transactionSourceLabel(selectedPunch)} · {selectedPunch.usedInResult ? "dipakai pada hasil terakhir" : "belum dipakai pada hasil"}</p>
+              {transactions ? <Pager page={transactions.page} totalPages={transactions.totalPages} total={transactions.total} loading={loading} onPage={setTransactionPage} /> : null}
+              {punchKey && transactions ? (
+                <DetailDialog
+                  title={selectedPunch ? `${selectedPunch.employeeName} · ${time(selectedPunch.occurredAt)}` : "Detail absen"}
+                  description={selectedPunch ? `${shortDate(selectedPunch.workDate)} · ${transactionSourceLabel(selectedPunch)} · ${selectedPunch.usedInResult ? "dipakai pada hasil terakhir" : "belum dipakai pada hasil"}` : undefined}
+                  onClose={closePunch}
+                >
+                  {selectedPunch ? (
+                    <div className="text-sm">
+                      {selectedPunch.reviewState === "needs_review" ? <p className="text-xs font-semibold text-warning-ink">Perlu ditinjau: absen HP di luar lokasi kerja atau dengan GPS kurang akurat. Absen tetap tersimpan; perbaikan dilakukan lewat koreksi beralasan.</p> : null}
+                      {selectedPunch.evidence ? <div className="mt-3 max-w-md"><MobileEvidencePanel evidence={selectedPunch.evidence} /></div> : null}
+                      {canEnterCorrection ? (
+                        correcting ? (
+                          <div className="mt-3 rounded-xl border bg-surface-raised p-3">
+                            <CorrectionEntryForm
+                              employee={{ id: selectedPunch.employeeId, fullName: selectedPunch.employeeName, employeeNumber: selectedPunch.employeeNumber }}
+                              initialDate={selectedPunch.workDate}
+                              onSaved={() => void loadRows()}
+                              onCancel={() => setCorrecting(false)}
+                            />
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setCorrecting(true)} className="mt-3 h-9 rounded-xl border px-3 text-xs font-bold">Buat koreksi</button>
+                        )
+                      ) : null}
                     </div>
-                    <button type="button" onClick={() => setSelectedPunch(null)} className="rounded-lg border px-2 py-1 text-xs">Tutup</button>
-                  </div>
-                  {selectedPunch.reviewState === "needs_review" ? <p className="mt-2 text-xs font-semibold text-warning-ink">Perlu ditinjau: absen HP di luar lokasi kerja atau dengan GPS kurang akurat. Absen tetap tersimpan; perbaikan dilakukan lewat koreksi beralasan.</p> : null}
-                  {selectedPunch.evidence ? <div className="mt-3 max-w-md"><MobileEvidencePanel evidence={selectedPunch.evidence} /></div> : null}
-                  {canEnterCorrection ? (
-                    correcting ? (
-                      <div className="mt-3 max-w-xl rounded-xl border bg-surface-raised p-3">
-                        <CorrectionEntryForm
-                          employee={{ id: selectedPunch.employeeId, fullName: selectedPunch.employeeName, employeeNumber: selectedPunch.employeeNumber }}
-                          initialDate={selectedPunch.workDate}
-                          onSaved={() => void loadRows()}
-                          onCancel={() => setCorrecting(false)}
-                        />
-                      </div>
-                    ) : (
-                      <button type="button" onClick={() => setCorrecting(true)} className="mt-3 h-9 rounded-xl border px-3 text-xs font-bold">Buat koreksi</button>
-                    )
-                  ) : null}
-                </div>
+                  ) : <p className="text-sm text-muted-foreground">Absen ini tidak ada di daftar yang ditampilkan. Ubah periode, sumber, atau halaman, lalu pilih barisnya lagi.</p>}
+                </DetailDialog>
               ) : null}
             </div>
           ) : tab === "detail" ? (

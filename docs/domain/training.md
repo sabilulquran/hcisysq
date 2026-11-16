@@ -236,7 +236,7 @@ Kontrak lengkap: `docs/api/training.openapi.yaml`, tag `Training`. Daftar mengik
 ## 14. Layar
 
 - Pegawai: `/app/training` — ringkasan jam tahun berjalan, program yang diikuti dengan jadwal dan kehadiran, riwayat pelatihan berhalaman, formulir pelatihan eksternal dengan unggah sertifikat.
-- HC: `/admin/training` — tab Program (daftar, buat, detail dengan sesi, peserta, kehadiran per sesi, tutup/batalkan), tab Catatan (antrean verifikasi eksternal, register catatan), tab Rekap jam (per pegawai per tahun).
+- HC: `/admin/training` — tab Program (daftar selebar halaman; formulir buat dan detail dengan sesi, peserta, kehadiran per sesi, tutup/batalkan terbuka sebagai pop-up `?program=baru` / `?program=<id>`), tab Catatan (antrean verifikasi eksternal, register catatan; detail catatan dalam pop-up `?catatan=<id>`), tab Rekap jam (per pegawai per tahun).
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada.
 

@@ -3,7 +3,7 @@
 // (`canEdit`, `canCancel`, `canRespond`); the flags shown only to the organizer arrive as null
 // for everyone else.
 
-import { CalendarClock, Lock, MapPin, UserRound, X } from "lucide-react";
+import { CalendarClock, Lock, MapPin, UserRound } from "lucide-react";
 
 import {
   formatMeetingRange,
@@ -27,7 +27,6 @@ export function MeetingDetailPanel({
   meeting,
   busy,
   whatsappActive,
-  onClose,
   onRespond,
   onEdit,
   onCancel,
@@ -35,7 +34,6 @@ export function MeetingDetailPanel({
   meeting: MeetingDetail;
   busy: boolean;
   whatsappActive: boolean;
-  onClose: () => void;
   onRespond: (response: "ACCEPTED" | "DECLINED") => void;
   onEdit: () => void;
   onCancel: () => void;
@@ -48,25 +46,20 @@ export function MeetingDetailPanel({
   );
 
   return (
-    <article className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            {cancelled ? <span className="rounded-full border border-danger-line bg-danger-soft px-2 py-0.5 text-[11px] font-bold text-danger-ink">Dibatalkan</span> : null}
-            {meeting.confidential ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
-                <Lock className="h-3 w-3" aria-hidden="true" />Rahasia
-              </span>
-            ) : null}
-          </div>
-          <h2 className={`mt-1 text-lg font-bold text-brand-heading ${cancelled ? "line-through" : ""}`}>{meeting.title}</h2>
+    // Shown inside a DetailDialog whose header carries the meeting title and the close button.
+    <article>
+      {cancelled || meeting.confidential ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {cancelled ? <span className="rounded-full border border-danger-line bg-danger-soft px-2 py-0.5 text-[11px] font-bold text-danger-ink">Dibatalkan</span> : null}
+          {meeting.confidential ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-bold text-muted-foreground">
+              <Lock className="h-3 w-3" aria-hidden="true" />Rahasia
+            </span>
+          ) : null}
         </div>
-        <button type="button" aria-label="Tutup detail" onClick={onClose} className="rounded-lg p-1 hover:bg-muted">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      ) : null}
 
-      <dl className="mt-3 space-y-2 text-sm text-brand-heading">
+      <dl className="space-y-2 text-sm text-brand-heading">
         <div className="flex gap-2"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" /><dd>{formatMeetingRange(meeting.startAt, meeting.endAt)}</dd></div>
         {meeting.location ? <div className="flex gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" /><dd>{meeting.location}</dd></div> : null}
         <div className="flex gap-2"><UserRound className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" /><dd>Penyelenggara: {meeting.organizerName}</dd></div>

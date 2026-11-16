@@ -632,7 +632,7 @@ Daftar pegawai dengan masa kontrak berakhir dalam 30/60/90 hari, plus "Sudah lew
 
 ### 13.5 Menu **Kepegawaian → Perjanjian Kerja & SK**
 
-Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis baru/perpanjangan, tahun, status kepegawaian) dan **Surat Keputusan** (cari nomor/perihal, filter jenis SK dan tahun). Detail dokumen memperlihatkan tindakan yang memakainya. Dokumen yang sudah dipakai ditandai "Terkunci".
+Dua tab terpisah: **Perjanjian Kerja** (cari nomor/nama pegawai, filter jenis baru/perpanjangan, tahun, status kepegawaian) dan **Surat Keputusan** (cari nomor/perihal, filter jenis SK dan tahun). Detail dokumen memperlihatkan tindakan yang memakainya. Detail serta formulir catat/ubah/koreksi terbuka sebagai pop-up di atas daftar (`?dokumen=<id>` atau `?dokumen=baru`, `?kind=` tetap; aturan app-shell 2026-11-13). Dokumen yang sudah dipakai ditandai "Terkunci".
 
 ### 13.6 Menu **Pegawai → Kecocokan Data** (halaman "Periksa Kecocokan Data"; SHADOW dan sesudahnya)
 

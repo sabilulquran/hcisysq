@@ -564,7 +564,8 @@ Urutan diperbarui: P0 → ATT-011-1 → ATT-011-2 → (ATT-011-3 ∥ ATT-011-4 �
   Menunggu), dan **Riwayat 30 hari** dengan tombol **Ajukan klarifikasi** pada hari Terlambat, Belum
   lengkap, atau Tidak hadir, hari ini sampai 7 hari ke belakang. Riwayat tampil sebagai kartu di HP.
 - Form klarifikasi menjadi satu komponen (`ClarificationForm`) yang dipakai Clock In/Out (hari ini) dan
-  Riwayat (tanggal lalu).
+  Riwayat (tanggal lalu). Dari Riwayat, form terbuka sebagai pop-up (`?klarifikasi=<tanggal>`), tidak
+  menggeser daftar.
 - `POST /attendance/clarifications` menolak tanggal depan dan tanggal lebih lama dari 7 hari dengan `422
   CLARIFICATION_DATE_OUT_OF_RANGE`, sebelum query apa pun.
 - Keputusan HC atas klarifikasi **pegawai** mengirim notifikasi in-app ("Klarifikasi disetujui/ditolak",

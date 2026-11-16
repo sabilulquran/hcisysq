@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, MapPin, Pencil, Plus, Save, X } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { AttendanceAdvancedNotice, AttendanceWorkforceShell } from "@/components/attendance/workforce/AttendanceWorkforceShell";
 import {
   backdateAttendanceSchedule,
@@ -84,12 +85,45 @@ function scheduleChanges(item: ScheduleItem, form: ScheduleEditForm) {
   };
 }
 
+type LocationItem = { id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean; usage?: WorkLocationUsage };
+type LocationEditFields = { name: string; latitude: string; longitude: string; radiusMeters: string; active: boolean };
+
+/** The "Edit" pop-up of one work location; its fields start from the saved values. */
+function LocationEditForm({ item, busy, onSave, onCancel }: { item: LocationItem; busy: boolean; onSave: (form: LocationEditFields) => void; onCancel: () => void }) {
+  const [editForm, setEditForm] = useState<LocationEditFields>(() => ({ name: item.name, latitude: String(item.latitude), longitude: String(item.longitude), radiusMeters: String(item.radiusMeters), active: item.active }));
+  return (
+    <div className="grid gap-3 text-sm">
+      <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Nama lokasi
+        <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Latitude
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="number" step="any" value={editForm.latitude} onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Longitude
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="number" step="any" value={editForm.longitude} onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Radius (meter)
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="number" min="10" value={editForm.radiusMeters} onChange={(e) => setEditForm({ ...editForm, radiusMeters: e.target.value })} />
+        </label>
+      </div>
+      <div className="grid gap-1 text-xs"><span className="font-semibold text-muted-foreground">Dipakai oleh</span><LocationUsage usage={item.usage} active={item.active} /></div>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label>
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        <button type="button" disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50" onClick={() => onSave(editForm)}><Save className="h-4 w-4" /> Simpan</button>
+        <button type="button" className="h-10 rounded-xl border px-4 text-xs font-bold" onClick={onCancel}>Batal</button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminAttendanceLocationsPage() {
-  const [items, setItems] = useState<Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number; active: boolean; usage?: WorkLocationUsage }>>([]);
+  const [items, setItems] = useState<LocationItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState({ name: "", latitude: "", longitude: "", radiusMeters: "150" });
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", latitude: "", longitude: "", radiusMeters: "150", active: true });
+  // The location being edited opens as a pop-up kept in the URL (`?lokasi=<id>`).
+  const [editing, openEditing, closeEditing] = useDialogParam("lokasi");
+  const editItem = editing ? items.find((item) => item.id === editing) ?? null : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -147,25 +181,10 @@ export function AdminAttendanceLocationsPage() {
           <table className="min-w-[980px] w-full text-left text-sm">
             <thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Nama</th><th className="p-3">Latitude</th><th className="p-3">Longitude</th><th className="p-3">Radius</th><th className="p-3">Dipakai oleh</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead>
             <tbody className="divide-y divide-border/70">
-              {items.map((item) => editing === item.id ? (
-                <tr key={item.id}>
-                  <td className="p-3"><input className="h-9 w-full rounded-lg border px-2" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></td>
-                  <td className="p-3"><input className="h-9 w-36 rounded-lg border px-2" type="number" step="any" value={editForm.latitude} onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value })} /></td>
-                  <td className="p-3"><input className="h-9 w-36 rounded-lg border px-2" type="number" step="any" value={editForm.longitude} onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value })} /></td>
-                  <td className="p-3"><input className="h-9 w-24 rounded-lg border px-2" type="number" min="10" value={editForm.radiusMeters} onChange={(e) => setEditForm({ ...editForm, radiusMeters: e.target.value })} /></td>
-                  <td className="p-3"><LocationUsage usage={item.usage} active={item.active} /></td>
-                  <td className="p-3"><label className="flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label></td>
-                  <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => {
-                    await updateAttendanceWorkLocation(item.id, {
-                      name: editForm.name, latitude: Number(editForm.latitude), longitude: Number(editForm.longitude),
-                      radiusMeters: Number(editForm.radiusMeters), active: editForm.active,
-                    }); setEditing(null);
-                  }, "Lokasi diperbarui.")}><Save className="h-4 w-4" /></button><button className="rounded-lg border p-2" onClick={() => setEditing(null)}><X className="h-4 w-4" /></button></div></td>
-                </tr>
-              ) : (
+              {items.map((item) => (
                 <tr key={item.id}>
                   <td className="p-3 font-semibold">{item.name}</td><td className="p-3 font-mono text-xs">{item.latitude}</td><td className="p-3 font-mono text-xs">{item.longitude}</td><td className="p-3">{item.radiusMeters} m</td><td className="p-3"><LocationUsage usage={item.usage} active={item.active} /></td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td>
-                  <td className="p-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm({ name: item.name, latitude: String(item.latitude), longitude: String(item.longitude), radiusMeters: String(item.radiusMeters), active: item.active }); }}><Pencil className="h-3.5 w-3.5" /> Edit</button></td>
+                  <td className="p-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => openEditing(item.id)}><Pencil className="h-3.5 w-3.5" /> Edit</button></td>
                 </tr>
               ))}
             </tbody>
@@ -173,6 +192,20 @@ export function AdminAttendanceLocationsPage() {
         </div>
         )}
       </section>
+
+      {editing && loaded ? (
+        <DetailDialog title={editItem ? `Edit lokasi ${editItem.name}` : "Edit lokasi"} onClose={closeEditing}>
+          <Notice error={error} notice={null} />
+          {editItem ? (
+            <LocationEditForm item={editItem} busy={busy} onCancel={closeEditing} onSave={(editForm) => void run(async () => {
+              await updateAttendanceWorkLocation(editItem.id, {
+                name: editForm.name, latitude: Number(editForm.latitude), longitude: Number(editForm.longitude),
+                radiusMeters: Number(editForm.radiusMeters), active: editForm.active,
+              }); closeEditing();
+            }, "Lokasi diperbarui.")} />
+          ) : <p className="text-sm text-muted-foreground">Lokasi ini tidak ada di daftar yang ditampilkan.</p>}
+        </DetailDialog>
+      ) : null}
     </AttendanceWorkforceShell>
   );
 }
@@ -212,6 +245,56 @@ export function LocationUsage({ usage, active }: { usage: WorkLocationUsage | un
   );
 }
 
+/** The "Edit" pop-up of one shift; its fields start from the saved values or the scheduled change. */
+function ShiftEditForm({ item, locations, busy, onSave, onCancel }: {
+  item: ScheduleItem;
+  locations: Array<{ id: string; name: string; active: boolean }>;
+  busy: boolean;
+  onSave: (form: ScheduleEditForm) => void;
+  onCancel: () => void;
+}) {
+  const [editForm, setEditForm] = useState<ScheduleEditForm>(() => scheduleEditForm(item));
+  return (
+    <div className="grid gap-3 text-sm">
+      <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Nama shift
+        <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Jam mulai
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="time" value={editForm.startTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Jam selesai
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="time" value={editForm.endTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Selesai
+          <select className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" value={editForm.endDayOffset} onChange={(e) => setEditForm({ ...editForm, endDayOffset: e.target.value })}><option value="0">Hari sama</option><option value="1">+1 hari</option></select>
+        </label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Toleransi terlambat (menit)
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="number" value={editForm.lateGraceMinutes} onChange={(e) => setEditForm({ ...editForm, lateGraceMinutes: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Toleransi pulang cepat (menit)
+          <input className="h-10 rounded-xl border px-3 text-sm font-normal text-foreground" type="number" value={editForm.earlyLeaveToleranceMinutes} onChange={(e) => setEditForm({ ...editForm, earlyLeaveToleranceMinutes: e.target.value })} />
+        </label>
+      </div>
+      <label className="grid gap-1 text-xs font-semibold text-brand-heading">Lokasi kerja (absen HP)
+        <select className="h-10 rounded-xl border border-brand-primary/40 px-3 text-sm font-normal text-foreground" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi (pakai lokasi unit)</option>{locations.filter((loc) => loc.active || loc.id === editForm.workLocationId).map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select>
+        <span className="text-[11px] font-normal leading-4 text-muted-foreground">Berlaku mulai tanggal di bawah. Kosong = lokasi unit pegawai.</span>
+      </label>
+      <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Berlaku mulai
+        <input className="h-10 w-full max-w-xs rounded-xl border px-3 text-sm font-normal text-foreground" type="date" min={todayJakarta()} value={editForm.effectiveFrom} onChange={(e) => setEditForm({ ...editForm, effectiveFrom: e.target.value })} />
+        <span className="font-normal text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai; jadwal sebelum tanggal ini tidak berubah.</span>
+      </label>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label>
+      <div className="flex flex-wrap gap-2 border-t pt-3">
+        <button type="button" disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-brand-foreground disabled:opacity-50" onClick={() => onSave(editForm)}><Save className="h-4 w-4" /> Simpan</button>
+        <button type="button" className="h-10 rounded-xl border px-4 text-xs font-bold" onClick={onCancel}>Batal</button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminAttendanceSchedulesPage() {
   const [locations, setLocations] = useState<Array<{ id: string; name: string; active: boolean }>>([]);
   const [items, setItems] = useState<Awaited<ReturnType<typeof listAttendanceSchedules>>["items"]>([]);
@@ -222,22 +305,21 @@ export function AdminAttendanceSchedulesPage() {
   const [firstWeight, setFirstWeight] = useState("");
   // ATT-014 §20.10 "Mundurkan awal berlaku": one shift at a time, date + reason, audited by the API.
   const [backdating, setBackdating] = useState<{ id: string; effectiveFrom: string; reason: string } | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<ScheduleEditForm>({ name: "", startTime: "08:00", endTime: "16:00", endDayOffset: "0", lateGraceMinutes: "0", earlyLeaveToleranceMinutes: "0", workLocationId: "", active: true, effectiveFrom: "" });
+  // The shift being edited opens as a pop-up kept in the URL (`?shift=<id>`).
+  const [editing, openEditing, closeEditing] = useDialogParam("shift");
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
   const [mobileOn, setMobileOn] = useState(false);
 
   const load = async () => {
     const [scheduleResult, locationResult] = await Promise.all([listAttendanceSchedules(), listAttendanceWorkLocations()]);
-    setItems(scheduleResult.items); setLocations(locationResult.items); setMobileOn(Boolean(scheduleResult.mobileAttendanceEnabled));
+    setItems(scheduleResult.items); setLocations(locationResult.items); setMobileOn(Boolean(scheduleResult.mobileAttendanceEnabled)); setLoaded(true);
   };
+  const editItem = editing ? items.find((item) => item.id === editing) ?? null : null;
   // ORG-005-3: an active shift without a location is worth a warning only while HP attendance is on.
   const activeLocations = locations.filter((item) => item.active);
   const unlocated = unlocatedShifts(items, mobileOn, new Set(locations.filter((item) => !item.active).map((item) => item.id)));
-  const startLocating = (item: ScheduleItem) => {
-    setEditing(item.id); setEditForm(scheduleEditForm(item));
-    window.setTimeout(() => document.getElementById(`shift-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
-  };
+  const startLocating = (item: ScheduleItem) => openEditing(item.id);
   useEffect(() => { void load().catch((cause) => setError(cause instanceof Error ? cause.message : "Shift tidak dapat dimuat.")); }, []);
   const run = async (action: () => Promise<unknown>, message: string) => { setBusy(true); setError(null); setNotice(null); try { await action(); await load(); setNotice(message); } catch (cause) { setError(cause instanceof Error ? cause.message : "Shift gagal disimpan."); } finally { setBusy(false); } };
 
@@ -300,18 +382,7 @@ export function AdminAttendanceSchedulesPage() {
       <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="border-b p-4"><h2 className="font-bold text-brand-heading">Daftar shift</h2></div>
         <div className="overflow-x-auto"><table className="min-w-[950px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Shift</th><th className="p-3">Jam</th><th className="p-3">Toleransi terlambat</th><th className="p-3">Toleransi pulang cepat</th><th className="p-3">Lokasi</th><th className="p-3">Berlaku sejak</th><th className="p-3">Status</th><th className="p-3">Aksi</th></tr></thead><tbody className="divide-y">
-          {items.map((item) => editing === item.id ? (
-            <tr key={item.id} id={`shift-${item.id}`}>
-              <td className="p-3"><input className="h-9 w-full rounded-lg border px-2" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></td>
-              <td className="p-3"><div className="flex gap-1"><input className="h-9 rounded-lg border px-2" type="time" value={editForm.startTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })} /><input className="h-9 rounded-lg border px-2" type="time" value={editForm.endTime.slice(0,5)} onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })} /></div></td>
-              <td className="p-3"><div className="grid gap-1"><select className="h-9 rounded-lg border px-2 text-xs" value={editForm.endDayOffset} onChange={(e) => setEditForm({ ...editForm, endDayOffset: e.target.value })}><option value="0">Hari sama</option><option value="1">+1 hari</option></select><input className="h-9 w-20 rounded-lg border px-2" type="number" value={editForm.lateGraceMinutes} onChange={(e) => setEditForm({ ...editForm, lateGraceMinutes: e.target.value })} /></div></td>
-              <td className="p-3"><input className="h-9 w-20 rounded-lg border px-2" type="number" value={editForm.earlyLeaveToleranceMinutes} onChange={(e) => setEditForm({ ...editForm, earlyLeaveToleranceMinutes: e.target.value })} /></td>
-              <td className="p-3"><label className="grid gap-1 text-xs font-semibold text-brand-heading">Lokasi kerja (absen HP)<select className="h-9 rounded-lg border border-brand-primary/40 px-2 text-sm font-normal" value={editForm.workLocationId} onChange={(e) => setEditForm({ ...editForm, workLocationId: e.target.value })}><option value="">Tanpa lokasi (pakai lokasi unit)</option>{locations.filter((loc) => loc.active || loc.id === editForm.workLocationId).map((loc) => <option key={loc.id} value={loc.id}>{loc.name}</option>)}</select></label><span className="mt-1 block max-w-[14rem] text-[11px] leading-4 text-muted-foreground">Berlaku mulai tanggal di kolom sebelah. Kosong = lokasi unit pegawai.</span></td>
-              <td className="p-3 text-xs"><label className="grid gap-1">Berlaku mulai<input className="h-9 rounded-lg border px-2" type="date" min={todayJakarta()} value={editForm.effectiveFrom} onChange={(e) => setEditForm({ ...editForm, effectiveFrom: e.target.value })} /></label><span className="mt-1 block text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai; jadwal sebelum tanggal ini tidak berubah.</span></td>
-              <td className="p-3"><label className="flex gap-2"><input type="checkbox" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} /> Aktif</label></td>
-              <td className="p-3"><div className="flex gap-2"><button className="rounded-lg bg-brand-primary p-2 text-brand-foreground" onClick={() => void run(async () => { const changes = scheduleChanges(item, editForm); if (Object.keys(changes).length) await updateAttendanceSchedule(item.id, changes); setEditing(null); }, editForm.effectiveFrom > todayJakarta() && hoursChanged(item, editForm) ? `Shift diperbarui mulai ${editForm.effectiveFrom}.` : "Shift diperbarui.")}><Save className="h-4 w-4" /></button><button className="rounded-lg border p-2" onClick={() => setEditing(null)}><X className="h-4 w-4" /></button></div></td>
-            </tr>
-          ) : (
+          {items.map((item) => (
             <Fragment key={item.id}>
             <tr id={`shift-${item.id}`}><td className="p-3 font-semibold">{item.name}</td><td className="p-3">{shiftHoursText(item)}{item.pendingVersion ? <span className="block text-xs text-warning-ink">Mulai {item.pendingVersion.effectiveFrom}: {item.pendingVersion.startTime.slice(0, 5)}–{item.pendingVersion.endTime.slice(0, 5)}</span> : null}<span className="block text-xs text-muted-foreground">Dipakai {item.employeeCount ?? 0} pegawai</span></td><td className="p-3">{item.lateGraceMinutes} mnt</td><td className="p-3">{item.earlyLeaveToleranceMinutes} mnt</td><td className="p-3">{unlocated.includes(item) ? (
               <span className="grid gap-1">
@@ -319,7 +390,7 @@ export function AdminAttendanceSchedulesPage() {
                 <span className="inline-flex w-fit items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="h-3 w-3" /> {item.workLocationName ? "Lokasi nonaktif — absen HP tidak memakainya" : NO_LOCATION_WARNING}</span>
                 {activeLocations.length ? <button type="button" className="w-fit text-xs font-bold text-brand-primary-deep" onClick={() => startLocating(item)}>Atur lokasi</button> : null}
               </span>
-            ) : (item.workLocationName ?? "—")}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => { setEditing(item.id); setEditForm(scheduleEditForm(item)); }}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
+            ) : (item.workLocationName ?? "—")}</td><td className="p-3 tabular-nums">{item.effectiveFrom ?? "—"}</td><td className="p-3">{item.active ? "Aktif" : "Nonaktif"}</td><td className="p-3"><div className="flex flex-wrap gap-3"><button className="inline-flex items-center gap-1 text-xs font-bold text-brand-primary-deep" onClick={() => openEditing(item.id)}><Pencil className="h-3.5 w-3.5" /> Edit</button><button className="text-xs font-bold text-brand-primary-deep" onClick={() => setBackdating({ id: item.id, effectiveFrom: "", reason: "" })}>Mundurkan awal berlaku</button></div></td></tr>
             {backdating?.id === item.id ? (
               <tr><td colSpan={8} className="bg-surface p-3">
                 <div className="flex flex-wrap items-end gap-3 text-sm">
@@ -339,6 +410,15 @@ export function AdminAttendanceSchedulesPage() {
           ))}
         </tbody></table></div>
       </section>
+
+      {editing && loaded ? (
+        <DetailDialog title={editItem ? `Edit shift ${editItem.name}` : "Edit shift"} onClose={closeEditing}>
+          <Notice error={error} notice={null} />
+          {editItem ? (
+            <ShiftEditForm item={editItem} locations={locations} busy={busy} onCancel={closeEditing} onSave={(editForm) => void run(async () => { const changes = scheduleChanges(editItem, editForm); if (Object.keys(changes).length) await updateAttendanceSchedule(editItem.id, changes); closeEditing(); }, editForm.effectiveFrom > todayJakarta() && hoursChanged(editItem, editForm) ? `Shift diperbarui mulai ${editForm.effectiveFrom}.` : "Shift diperbarui.")} />
+          ) : <p className="text-sm text-muted-foreground">Shift ini tidak ada di daftar yang ditampilkan.</p>}
+        </DetailDialog>
+      ) : null}
     </AttendanceWorkforceShell>
   );
 }

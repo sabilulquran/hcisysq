@@ -248,7 +248,7 @@ Kontrak lengkap: `docs/api/employee-loans.openapi.yaml`, tag `Employee Loans`. D
 
 - Pegawai: `/app/loans` di Keuangan Saya — formulir dengan input rupiah tanpa pecahan, pilihan tenor, pratinjau cicilan dan penyetuju; daftar berhalaman; detail dengan sisa, jadwal, pembayaran, tahap, riwayat; tombol batal sebelum cair.
 - Approver: bagian "Pinjaman" di halaman Persetujuan, menampilkan pokok dan tenor.
-- Keuangan/HC: `/admin/loans` — register berhalaman dengan filter status dan typeahead peminjam; detail; formulir pencairan; formulir pembayaran dengan tombol isi sisa untuk pelunasan; koreksi per pembayaran; batalkan sebelum cair. Pemegang `loans.read` saja tidak melihat tombol tindakan.
+- Keuangan/HC: `/admin/loans` — register berhalaman selebar halaman dengan filter status dan typeahead peminjam; detail sebagai pop-up (`?pinjaman=<id>`) (aturan app-shell "Detail views open as a pop-up", 2026-11-13); formulir pencairan; formulir pembayaran dengan tombol isi sisa untuk pelunasan; koreksi per pembayaran; batalkan sebelum cair. Pemegang `loans.read` saja tidak melihat tombol tindakan.
 
 State loading, kosong, galat, terlarang (403), dan mobile wajib ada di ketiga layar.
 

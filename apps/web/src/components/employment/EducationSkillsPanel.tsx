@@ -11,6 +11,8 @@
 import { BookOpen, BadgeCheck, CircleSlash, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+
 import { EmploymentApiError, formatDate, type EmploymentView } from "@/lib/employment";
 import {
   COMPLETION_STATUS_LABEL,
@@ -251,7 +253,9 @@ export const EMPTY_SKILL: SkillInput = {
   notes: "",
 };
 
-export function EducationForm({ draft, editing, busy, onChange, onSubmit, onCancel }: {
+export function EducationForm({ draft, editing, busy, onChange, onSubmit, onCancel, bare = false }: {
+  /** Inside a pop-up: no card, and the pop-up carries the heading. */
+  bare?: boolean;
   draft: EducationInput;
   editing: boolean;
   busy: boolean;
@@ -260,10 +264,12 @@ export function EducationForm({ draft, editing, busy, onChange, onSubmit, onCanc
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-      <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
-        {editing ? "Ubah catatan pendidikan" : "Catatan pendidikan baru"}
-      </h3>
+    <form onSubmit={onSubmit} className={bare ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2"}>
+      {bare ? null : (
+        <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
+          {editing ? "Ubah catatan pendidikan" : "Catatan pendidikan baru"}
+        </h3>
+      )}
       <Labelled label="Jenjang">
         <select className={field} value={draft.level} onChange={(event) => onChange({ ...draft, level: event.target.value as EducationLevel })}>
           {Object.entries(EDUCATION_LEVEL_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -307,7 +313,9 @@ export function EducationForm({ draft, editing, busy, onChange, onSubmit, onCanc
   );
 }
 
-export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel }: {
+export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel, bare = false }: {
+  /** Inside a pop-up: no card, and the pop-up carries the heading. */
+  bare?: boolean;
   draft: SkillInput;
   editing: boolean;
   busy: boolean;
@@ -316,10 +324,12 @@ export function SkillForm({ draft, editing, busy, onChange, onSubmit, onCancel }
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2">
-      <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
-        {editing ? "Ubah catatan keahlian" : "Catatan keahlian baru"}
-      </h3>
+    <form onSubmit={onSubmit} className={bare ? "grid gap-3 sm:grid-cols-2" : "grid gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:grid-cols-2"}>
+      {bare ? null : (
+        <h3 className="sm:col-span-2 text-sm font-bold text-brand-heading">
+          {editing ? "Ubah catatan keahlian" : "Catatan keahlian baru"}
+        </h3>
+      )}
       <Labelled label="Jenis">
         <select className={field} value={draft.kind} onChange={(event) => onChange({ ...draft, kind: event.target.value as SkillKind })}>
           {Object.entries(SKILL_KIND_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -478,9 +488,12 @@ export function EducationSkillsPanel({ employeeId, canManage, askReason }: Educa
   const [skillView, setSkillView] = useState<EmploymentView<SkillList>>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
   const [educationDraft, setEducationDraft] = useState<EducationInput | null>(null);
-  const [educationEditing, setEducationEditing] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState<SkillInput | null>(null);
-  const [skillEditing, setSkillEditing] = useState<string | null>(null);
+  // The add/edit forms open as pop-ups kept in the URL: `?pendidikan=baru|<id>` and `?keahlian=baru|<id>`.
+  const [educationParam, openEducation, closeEducation] = useDialogParam("pendidikan");
+  const [skillParam, openSkill, closeSkill] = useDialogParam("keahlian");
+  const educationEditing = educationParam && educationParam !== "baru" ? educationParam : null;
+  const skillEditing = skillParam && skillParam !== "baru" ? skillParam : null;
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -498,13 +511,27 @@ export function EducationSkillsPanel({ employeeId, canManage, askReason }: Educa
     return () => { mounted = false; };
   }, [employeeId, reloadToken]);
 
+  // The form starts from an empty draft (`baru`) or from the saved record once the list has loaded.
+  useEffect(() => {
+    if (!educationParam) { setEducationDraft(null); return; }
+    if (educationParam === "baru") { setEducationDraft({ ...EMPTY_EDUCATION }); return; }
+    const row = educationView.kind === "ready" ? educationView.data.rows.find((item) => item.id === educationParam) : undefined;
+    setEducationDraft(row ? draftFromEducation(row) : null);
+  }, [educationParam, educationView]);
+
+  // The form starts from an empty draft (`baru`) or from the saved record once the list has loaded.
+  useEffect(() => {
+    if (!skillParam) { setSkillDraft(null); return; }
+    if (skillParam === "baru") { setSkillDraft({ ...EMPTY_SKILL }); return; }
+    const row = skillView.kind === "ready" ? skillView.data.rows.find((item) => item.id === skillParam) : undefined;
+    setSkillDraft(row ? draftFromSkill(row) : null);
+  }, [skillParam, skillView]);
+
   const refresh = (message: string) => {
     setNotice(message);
     setError(null);
-    setEducationDraft(null);
-    setEducationEditing(null);
-    setSkillDraft(null);
-    setSkillEditing(null);
+    if (educationParam) closeEducation();
+    if (skillParam) closeSkill();
     setReloadToken((token) => token + 1);
   };
 
@@ -587,46 +614,54 @@ export function EducationSkillsPanel({ employeeId, canManage, askReason }: Educa
 
       <EducationRecords
         view={educationView}
-        onAdd={() => { setEducationEditing(null); setEducationDraft({ ...EMPTY_EDUCATION }); }}
-        actions={actionsFor("education", (recordId) => {
-          const row = educationView.kind === "ready"
-            ? educationView.data.rows.find((item) => item.id === recordId)
-            : undefined;
-          if (!row) return;
-          setEducationEditing(recordId);
-          setEducationDraft(draftFromEducation(row));
-        })}
+        onAdd={() => openEducation("baru")}
+        actions={actionsFor("education", openEducation)}
       />
-      {educationDraft ? (
-        <EducationForm
-          draft={educationDraft}
-          editing={educationEditing !== null}
-          busy={busy}
-          onChange={setEducationDraft}
-          onSubmit={submitEducation}
-          onCancel={() => { setEducationDraft(null); setEducationEditing(null); }}
-        />
+      {canManage && educationParam ? (
+        <DetailDialog title={educationEditing ? "Ubah catatan pendidikan" : "Catatan pendidikan baru"} onClose={closeEducation}>
+          {error ? <p role="alert" className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
+          {educationDraft ? (
+            <EducationForm
+              bare
+              draft={educationDraft}
+              editing={educationEditing !== null}
+              busy={busy}
+              onChange={setEducationDraft}
+              onSubmit={submitEducation}
+              onCancel={closeEducation}
+            />
+          ) : educationView.kind === "loading" ? (
+            <p className="text-sm text-muted-foreground">Memuat…</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Catatan pendidikan ini tidak ada di daftar yang ditampilkan.</p>
+          )}
+        </DetailDialog>
       ) : null}
 
       <SkillRecords
         view={skillView}
-        onAdd={() => { setSkillEditing(null); setSkillDraft({ ...EMPTY_SKILL }); }}
-        actions={actionsFor("skill", (recordId) => {
-          const row = skillView.kind === "ready" ? skillView.data.rows.find((item) => item.id === recordId) : undefined;
-          if (!row) return;
-          setSkillEditing(recordId);
-          setSkillDraft(draftFromSkill(row));
-        })}
+        onAdd={() => openSkill("baru")}
+        actions={actionsFor("skill", openSkill)}
       />
-      {skillDraft ? (
-        <SkillForm
-          draft={skillDraft}
-          editing={skillEditing !== null}
-          busy={busy}
-          onChange={setSkillDraft}
-          onSubmit={submitSkill}
-          onCancel={() => { setSkillDraft(null); setSkillEditing(null); }}
-        />
+      {canManage && skillParam ? (
+        <DetailDialog title={skillEditing ? "Ubah catatan keahlian" : "Catatan keahlian baru"} onClose={closeSkill}>
+          {error ? <p role="alert" className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</p> : null}
+          {skillDraft ? (
+            <SkillForm
+              bare
+              draft={skillDraft}
+              editing={skillEditing !== null}
+              busy={busy}
+              onChange={setSkillDraft}
+              onSubmit={submitSkill}
+              onCancel={closeSkill}
+            />
+          ) : skillView.kind === "loading" ? (
+            <p className="text-sm text-muted-foreground">Memuat…</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Catatan keahlian ini tidak ada di daftar yang ditampilkan.</p>
+          )}
+        </DetailDialog>
       ) : null}
     </section>
   );

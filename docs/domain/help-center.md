@@ -146,7 +146,7 @@ Semua jawaban `Cache-Control: no-store`. Tanpa sesi 401 `UNAUTHENTICATED`; sesi 
 ## 10. Layar
 
 - **Pegawai `/app/help` ("Bantuan")**, di navigasi "Saya" dan katalog Semua Layanan: kotak pencarian, pilihan topik, panduan topik terpilih, FAQ sebagai daftar buka-tutup, tombol "Buka layanan", dan kartu "Hubungi HC". Keadaan memuat, gagal (dengan coba lagi), kosong (belum ada artikel terbit / pencarian tanpa hasil / kontak belum diisi) dan tampilan ponsel satu kolom.
-- **Admin `/admin/help` ("Pusat Bantuan")**, kartu di katalog layanan admin: tab Artikel (filter status/topik/jenis, pencarian, jumlah per status, pagination), formulir buat/edit, terbitkan, arsipkan, pulihkan, riwayat revisi per artikel; tab Kontak; tab Riwayat (audit). Tanpa `help.manage` rute ditolak oleh guard admin.
+- **Admin `/admin/help` ("Pusat Bantuan")**, kartu di katalog layanan admin: tab Artikel (filter status/topik/jenis, pencarian, jumlah per status, pagination), formulir buat/edit (pop-up `?artikel=baru|<id>`), terbitkan, arsipkan, pulihkan, riwayat revisi per artikel (pop-up `?revisi=<id>`); tab Kontak; tab Riwayat (audit). Tanpa `help.manage` rute ditolak oleh guard admin.
 
 ## 11. Acceptance criteria
 

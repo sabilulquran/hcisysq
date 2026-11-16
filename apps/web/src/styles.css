@@ -258,3 +258,26 @@
 }
 
 ::selection { background: var(--brand-primary-pale); color: var(--brand-primary-deep); }
+
+/*
+ * Printing from a pop-up (components/DetailDialog.tsx). The dialog layer and its scroll box print
+ * as normal flow, so a letter printed from inside it (surat tugas, SK panitia) is neither clipped
+ * to the window nor shifted by how far the pop-up was scrolled, and the dimmed backdrop never prints.
+ */
+@media print {
+  [role="presentation"]:has(> [role="dialog"][aria-modal="true"]) {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+  }
+  [role="presentation"]:has(> [role="dialog"][aria-modal="true"]) > :not([role="dialog"]) {
+    display: none !important;
+  }
+  [role="presentation"] > [role="dialog"][aria-modal="true"] {
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+}

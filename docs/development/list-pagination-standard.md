@@ -1,7 +1,7 @@
-# ENG-LIST-001 — Standar daftar panjang dan pagination SQ Core
+# ENG-LIST-001 — Standar daftar panjang dan pagination SQ Suite
 
 **Status:** BERLAKU untuk HCIS sejak 26 Oktober 2026 (diusulkan 24 Oktober, di-merge lewat
-sabilulquran/hcisysq#162). Penerapan ke repository SQ Core lain (SQ Hub, Aset SQ, Karir SQ, SPMB SQ,
+sabilulquran/hcisysq#162). Penerapan ke repository SQ Suite lain (platform SQ Hub, Aset SQ, Karir SQ, SPMB SQ,
 Keluarga SQ) memerlukan PR terpisah di repository masing-masing.
 
 **Dasar:** audit [list-pagination-audit-2026-10-24.md](list-pagination-audit-2026-10-24.md). Owner menemukan
@@ -84,7 +84,7 @@ GET /admin/employees?page=2&pageSize=25&q=...&status=active
   komponen OpenAPI `Page`, `PageSize`, dan schema `Pagination`.
 - `total` dihitung dengan query `count(*)` yang memakai filter yang sama.
 - `page` di atas `pageCount` mengembalikan `items: []` dengan `pagination` yang benar, bukan error.
-- Nama parameter memakai bahasa Inggris (`page`, `pageSize`) di semua aplikasi SQ Core, termasuk yang saat ini
+- Nama parameter memakai bahasa Inggris (`page`, `pageSize`) di semua aplikasi SQ Suite, termasuk yang saat ini
   memakai `batas`/`setelah`; migrasi parameter lama dilakukan per paket perbaikan.
 
 ### 3.2 Kursor/keyset (untuk log bervolume tinggi yang append-only)

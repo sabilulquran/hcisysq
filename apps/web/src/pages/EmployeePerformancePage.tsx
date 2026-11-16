@@ -2,9 +2,11 @@
 // and, for raters, the team queue. Spec: docs/domain/performance-review.md. The API authorizes
 // every call and says which actions are open through `allowedActions`.
 
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { ReviewDetailPanel, ScoreForm } from "@/components/performance/ReviewDetailPanel";
 import { AppShell } from "@/layouts/AppShell";
@@ -31,14 +33,16 @@ import {
 type Tab = "mine" | "team";
 
 export function EmployeePerformancePage() {
-  const params = new URLSearchParams(window.location.search);
   const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
-  const [tab, setTab] = useState<Tab>(params.get("tab") === "team" ? "team" : "mine");
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get("tab") === "team" ? "team" : "mine"));
   const [items, setItems] = useState<ReviewSummary[]>([]);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ReviewStatus | "">("");
   const [selected, setSelected] = useState<ReviewDetail | null>(null);
+  // The open review lives in ?review=<id> (with ?tab=team for raters); notification links use the
+  // same parameters. It shows as a pop-up.
+  const [reviewId, showReview, closeReview] = useDialogParam("review");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +75,13 @@ export function EmployeePerformancePage() {
 
   useEffect(() => {
     void getEmployeeLeaveSummary().then((summary) => setEmployee(summary.employee)).catch(() => undefined);
-    // A notification links here with ?review=<id> (and tab=team for raters).
-    const linked = params.get("review");
-    if (linked) void open(linked, tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (reviewId) void open(reviewId);
+    else setSelected(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewId]);
 
   useEffect(() => {
     void load();
@@ -83,6 +89,11 @@ export function EmployeePerformancePage() {
   }, [tab, page, status]);
 
   const switchTab = (next: Tab) => {
+    // The tab is part of a review's link: a rater's review opens from the team queue.
+    const url = new URL(window.location.href);
+    if (next === "team") url.searchParams.set("tab", "team");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(window.history.state, "", url);
     setTab(next);
     setPage(1);
     setStatus("");
@@ -130,10 +141,10 @@ export function EmployeePerformancePage() {
           <button type="button" role="tab" aria-selected={tab === "team"} className={tabClass(tab === "team")} onClick={() => switchTab("team")}>Tim yang saya nilai</button>
         </div>
 
-        {error ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
-        {notice ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+        {error && !reviewId ? <div className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {notice && !reviewId ? <div className="mt-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="mt-6">
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
             {tab === "team" ? (
               <div className="p-5 pb-0">
@@ -158,8 +169,8 @@ export function EmployeePerformancePage() {
               <ul className="mt-3 divide-y divide-border/70">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <button type="button" onClick={() => void open(item.id)}
-                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === item.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => showReview(item.id)}
+                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${reviewId === item.id ? "bg-muted/60" : ""}`}>
                       <span className="block font-semibold text-brand-heading">{tab === "team" ? item.employeeName : item.cycleName}</span>
                       <span className="block text-xs text-muted-foreground">
                         {tab === "team" ? `${item.cycleName} · ` : ""}{formatPeriod(item.periodStart, item.periodEnd)}
@@ -178,47 +189,43 @@ export function EmployeePerformancePage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <ReviewDetailPanel
-                  review={selected}
-                  form={selected.allowedActions.includes("self-assessment") ? (
-                    <ScoreForm key={`self-${selected.id}`} kind="self" rubric={selected.rubric} busy={busy}
-                      onSubmit={(input) => void run(async () => {
-                        await submitSelfAssessment(selected.id, input.scores, input.note);
-                        return "Penilaian diri terkirim ke penilai.";
-                      }, selected)} />
-                  ) : selected.allowedActions.includes("rate") ? (
-                    <ScoreForm key={`rate-${selected.id}-${selected.status}`} kind="rating" rubric={selected.rubric}
-                      initial={selected.rating?.scores ?? null} initialText={selected.rating} busy={busy}
-                      onSubmit={(input) => void run(async () => {
-                        const result = await submitRating(selected.id, input);
-                        return `Nilai terkirim: ${formatScore(result.finalScore)} · ${result.predicateLabel}. Menunggu pengesahan Human Capital.`;
-                      }, selected)} />
+          {reviewId ? (
+            <DetailDialog title="Detail penilaian kinerja" onClose={closeReview} wide>
+              <DialogMessages error={error} notice={notice} />
+              {selected?.id === reviewId ? (
+                <>
+                  <ReviewDetailPanel
+                    review={selected}
+                    form={selected.allowedActions.includes("self-assessment") ? (
+                      <ScoreForm key={`self-${selected.id}`} kind="self" rubric={selected.rubric} busy={busy}
+                        onSubmit={(input) => void run(async () => {
+                          await submitSelfAssessment(selected.id, input.scores, input.note);
+                          return "Penilaian diri terkirim ke penilai.";
+                        }, selected)} />
+                    ) : selected.allowedActions.includes("rate") ? (
+                      <ScoreForm key={`rate-${selected.id}-${selected.status}`} kind="rating" rubric={selected.rubric}
+                        initial={selected.rating?.scores ?? null} initialText={selected.rating} busy={busy}
+                        onSubmit={(input) => void run(async () => {
+                          const result = await submitRating(selected.id, input);
+                          return `Nilai terkirim: ${formatScore(result.finalScore)} · ${result.predicateLabel}. Menunggu pengesahan Human Capital.`;
+                        }, selected)} />
+                    ) : null}
+                    actions={selected.allowedActions.includes("acknowledge") ? (
+                      <button type="button" disabled={busy} onClick={() => acknowledge(selected)}
+                        className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                        Tandai sudah dibaca
+                      </button>
+                    ) : null}
+                  />
+                  {tab === "team" && selected.status === "SELF_ASSESSMENT" && !selected.allowedActions.includes("rate") ? (
+                    <p className="mt-4 text-xs text-muted-foreground">
+                      Anda dapat menilai setelah pegawai mengirim penilaian diri atau setelah {selected.selfDueOn}.
+                    </p>
                   ) : null}
-                  actions={selected.allowedActions.includes("acknowledge") ? (
-                    <button type="button" disabled={busy} onClick={() => acknowledge(selected)}
-                      className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                      Tandai sudah dibaca
-                    </button>
-                  ) : null}
-                />
-                {tab === "team" && selected.status === "SELF_ASSESSMENT" && !selected.allowedActions.includes("rate") ? (
-                  <p className="mt-4 text-xs text-muted-foreground">
-                    Anda dapat menilai setelah pegawai mengirim penilaian diri atau setelah {selected.selfDueOn}.
-                  </p>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih penilaian untuk melihat indikator, nilai, dan riwayatnya.</p>
-            )}
-          </section>
+                </>
+              ) : error ? null : <DialogLoading />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

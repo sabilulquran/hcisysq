@@ -418,7 +418,7 @@ export function AdminAccessWorkspace({ session, data, onDataChange }: {
             </li>
             {invitationResult.result.hubAccess === "revoked" ? (
               <li className="font-semibold text-danger-ink">
-                Akses HCIS orang ini di SQ Hub pernah dicabut. Admin Platform perlu memberi akses lagi sebelum ia bisa masuk.
+                Akses HCIS orang ini di Admin SQ pernah dicabut. Admin Platform perlu memberi akses lagi sebelum ia bisa masuk.
               </li>
             ) : null}
           </ul>

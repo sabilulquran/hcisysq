@@ -29,7 +29,35 @@ paths:
         - { name: from, in: query, required: true, schema: { type: string, format: date } }
         - { name: to, in: query, required: true, schema: { type: string, format: date } }
       responses:
-        '200': { description: Own schedule and current results for up to 31 days }
+        '200':
+          description: >-
+            Own schedule and current results for up to 31 days. ATT-014 6.5b (DRAFT): a day with no
+            result version carries pendingScans (firstScanAt, lastScanAt, scanCount) for ADMS scans
+            already mapped to the employee, so an uncalculated day is not shown as "no scan";
+            pendingScans is null once the day has a calculated result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [workDate, schedule, result, pendingScans]
+                      properties:
+                        workDate: { type: string, format: date }
+                        schedule: { type: object }
+                        result: { type: object, nullable: true }
+                        pendingScans:
+                          type: object
+                          nullable: true
+                          required: [firstScanAt, lastScanAt, scanCount]
+                          properties:
+                            firstScanAt: { type: string, format: date-time }
+                            lastScanAt: { type: string, format: date-time, nullable: true }
+                            scanCount: { type: integer, minimum: 1 }
 
   /attendance/mobile/clock:
     post:

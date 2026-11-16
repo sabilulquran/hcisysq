@@ -2,6 +2,8 @@ import { AlertTriangle, CalendarDays, CalendarRange, CheckCircle2, ClipboardChec
 import { useEffect, useMemo, useState } from "react";
 
 import { ClarificationForm } from "@/components/attendance/ClarificationForm";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogMessages } from "@/components/DetailDialogParts";
 import { AppShell } from "@/layouts/AppShell";
 import { OvertimeWarnings } from "@/components/attendance/OvertimeWarnings";
 import { clarificationKindLabel, clarificationModeLabel, requestStatusLabel } from "@/lib/attendanceLabels";
@@ -17,6 +19,7 @@ import {
   submitAttendanceOvertime,
   type OvertimeWarning,
   type MyAttendanceClarification,
+  type PendingScans,
   type WorkforceResult,
   type WorkforceSnapshot,
 } from "@/lib/workforceAttendance";
@@ -34,6 +37,32 @@ function statusLabel(value: string | undefined) {
   const labels: Record<string,string> = { scheduled:"Terjadwal",pending:"Belum check-in",present:"Hadir",late:"Terlambat",incomplete:"Belum lengkap",leave:"Cuti / Izin",absent:"Tidak hadir",off:"Libur",configuration_error:"Jadwal perlu diperiksa",field_assignment:"Tugas luar",remote_work:"WFH/WFA",submitted:"Menunggu",approved:"Disetujui",rejected:"Ditolak",cancelled:"Dibatalkan" };
   return value ? labels[value] ?? value : "Belum dievaluasi";
 }
+export interface HistoryRow {
+  workDate: string;
+  schedule: WorkforceSnapshot["schedule"];
+  result: WorkforceResult | null;
+  pendingScans: PendingScans | null;
+}
+
+/**
+ * ATT-014 §6.5b (DRAFT): kehadiran tidak dihitung otomatis (keputusan owner 2026-10-24), jadi
+ * tanggal yang belum dikalkulasi tidak punya hasil. Scan yang sudah diterima tetap ditampilkan apa
+ * adanya, bukan "—", supaya pegawai tahu scannya sampai. Menit kerja, telat dan lembur tetap
+ * "—": angka itu hanya sah dari Kalkulasi, bukan 0 yang terbaca sebagai fakta.
+ */
+export function historyCells(item: HistoryRow) {
+  const pending = item.pendingScans;
+  return {
+    pending: pending !== null,
+    status: pending ? "Belum dihitung" : statusLabel(item.result?.status ?? item.schedule.state),
+    checkIn: formatTime(pending ? pending.firstScanAt : item.result?.firstCheckInAt),
+    checkOut: formatTime(pending ? pending.lastScanAt : item.result?.lastCheckOutAt),
+    worked: pending ? "—" : `${item.result?.workedMinutes ?? 0} mnt`,
+    late: pending ? "—" : `${item.result?.lateMinutes ?? 0} mnt`,
+    overtime: pending ? "—" : `${item.result?.overtimeMinutes ?? 0} mnt`,
+  };
+}
+
 function ResultFacts({ result }: { result: WorkforceResult | null }) {
   if (!result) return <span className="text-xs text-muted-foreground">Belum ada hasil materialized.</span>;
   return <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -89,7 +118,7 @@ export function OvertimeRequestCard({ item, busy, cancelling, onCancel, onRespon
 export function EmployeeAttendancePage() {
   const today = jakartaToday();
   const [snapshot,setSnapshot]=useState<WorkforceSnapshot|null>(null);
-  const [history,setHistory]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"];result:WorkforceResult|null}>>([]);
+  const [history,setHistory]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"];result:WorkforceResult|null;pendingScans:PendingScans|null}>>([]);
   const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const [notice,setNotice]=useState<string|null>(null);
   const [overtime,setOvertimeForm]=useState({workDate:today,requestedMinutes:"60",note:""}); const [submitting,setSubmitting]=useState(false);
   const [overtimeWarnings,setOvertimeWarnings]=useState<OvertimeWarning[]|null>(null);
@@ -98,7 +127,8 @@ export function EmployeeAttendancePage() {
   const [cancellingOvertimeId,setCancellingOvertimeId]=useState<string|null>(null);
   const [upcoming,setUpcoming]=useState<Array<{workDate:string;schedule:WorkforceSnapshot["schedule"]}>>([]);
   const [clarifications,setClarifications]=useState<MyAttendanceClarification[]>([]);
-  const [clarifyingDate,setClarifyingDate]=useState<{workDate:string;kind:string}|null>(null);
+  // "Ajukan klarifikasi" opens the form for one day as a pop-up named in the URL (?klarifikasi=<tanggal>).
+  const [clarifyDate,showClarification,closeClarification]=useDialogParam("klarifikasi");
   const [cancellingClarificationId,setCancellingClarificationId]=useState<string|null>(null);
   // This week and next week (§8 "Jadwal saya"), 14 days within the 31-day range limit.
   const weekStart=mondayOf(today);
@@ -128,6 +158,9 @@ export function EmployeeAttendancePage() {
     }catch(cause){setError(cause instanceof Error?cause.message:"Klarifikasi tidak dapat dibatalkan.");}
     finally{setCancellingClarificationId(null);}
   };
+
+  const clarifyRow=clarifyDate?history.find(item=>item.workDate===clarifyDate)??null:null;
+  const clarifiable=clarifyRow!==null&&canClarifyDate(clarifyRow.workDate,today,clarifyRow.result?.status);
 
   const user=useMemo(()=>({name:snapshot?.employee.fullName??"Pegawai",initials:initials(snapshot?.employee.fullName??"P"),position:"Pegawai",unit:"Yayasan Sabilul Qur'an"}),[snapshot?.employee.fullName]);
   const currentStatus=snapshot?.result?.status ?? snapshot?.schedule.state;
@@ -181,8 +214,8 @@ export function EmployeeAttendancePage() {
       <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Jadwal, scan fingerprint, presensi HP, koreksi, cuti/izin, dan lembur dibaca dari satu hasil kehadiran canonical.</p>
       <a href="/app/attendance/clock" className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-brand-foreground">Buka Clock In / Out</a>
     </section>
-    {error?<div className="mt-5 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4"/>{error}</div>:null}
-    {notice?<div className="mt-5 flex gap-2 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4"/>{notice}</div>:null}
+    {error&&!clarifyDate?<div className="mt-5 flex gap-2 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink"><AlertTriangle className="h-4 w-4"/>{error}</div>:null}
+    {notice&&!clarifyDate?<div className="mt-5 flex gap-2 rounded-2xl border border-success-line bg-success-soft p-4 text-sm text-success-ink"><CheckCircle2 className="h-4 w-4"/>{notice}</div>:null}
     {loading?<div className="mt-6 flex items-center gap-2 rounded-3xl border bg-surface-raised p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/>Memuat kehadiran…</div>:snapshot?<>
       <section className="mt-6 grid gap-4 lg:grid-cols-2">
         <article className="rounded-[2rem] border border-border/80 bg-surface-raised p-5 shadow-[var(--shadow-raised)]">
@@ -224,18 +257,20 @@ export function EmployeeAttendancePage() {
       </section>
       <section className="mt-5 overflow-hidden rounded-[2rem] border border-border/80 bg-surface-raised shadow-[var(--shadow-soft)]">
         <header className="flex items-center gap-2 border-b px-5 py-4"><CalendarDays className="h-5 w-5"/><div><h2 className="font-bold text-brand-heading">Riwayat 30 hari</h2><p className="text-xs text-muted-foreground">Hasil kehadiran dan jadwal yang berlaku pada tanggalnya.</p></div></header>
-        {clarifyingDate?<div className="border-b bg-surface/60 p-5">
-          <p className="mb-3 text-sm font-bold text-brand-heading">Klarifikasi untuk {formatDate(clarifyingDate.workDate)}</p>
-          <ClarificationForm key={clarifyingDate.workDate} workDate={clarifyingDate.workDate} defaultKind={clarifyingDate.kind}
-            onError={(message)=>{setNotice(null);setError(message);}} onCancel={()=>setClarifyingDate(null)}
-            onSubmitted={async(message)=>{setClarifyingDate(null);setError(null);setNotice(message);await load();}}/>
-        </div>:null}
-        <div className="hidden overflow-x-auto md:block"><table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Tanggal</th><th className="p-3">Status</th><th className="p-3">Jadwal</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Kerja</th><th className="p-3">Telat</th><th className="p-3">Lembur</th><th className="p-3"/></tr></thead><tbody className="divide-y">{history.map(item=><tr key={item.workDate}><td className="p-3 font-semibold">{formatDate(item.workDate)}</td><td className="p-3">{statusLabel(item.result?.status??item.schedule.state)}</td><td className="p-3">{formatTime(item.schedule.scheduledStartAt)}–{formatTime(item.schedule.scheduledEndAt)}</td><td className="p-3">{formatTime(item.result?.firstCheckInAt)}</td><td className="p-3">{formatTime(item.result?.lastCheckOutAt)}</td><td className="p-3">{item.result?.workedMinutes??0} mnt</td><td className="p-3">{item.result?.lateMinutes??0} mnt</td><td className="p-3">{item.result?.overtimeMinutes??0} mnt</td><td className="p-3">{canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>setClarifyingDate({workDate:item.workDate,kind:kindFor(item.result?.status)})} className="rounded-lg border px-2.5 py-1.5 text-[11px] font-bold">Ajukan klarifikasi</button>:null}</td></tr>)}</tbody></table></div>
+        <div className="hidden overflow-x-auto md:block"><table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-surface text-xs text-muted-foreground"><tr><th className="p-3">Tanggal</th><th className="p-3">Status</th><th className="p-3">Jadwal</th><th className="p-3">Masuk</th><th className="p-3">Keluar</th><th className="p-3">Kerja</th><th className="p-3">Telat</th><th className="p-3">Lembur</th><th className="p-3"/></tr></thead><tbody className="divide-y">{history.map(item=>{const cells=historyCells(item);return <tr key={item.workDate}><td className="p-3 font-semibold">{formatDate(item.workDate)}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.status}</td><td className="p-3">{formatTime(item.schedule.scheduledStartAt)}–{formatTime(item.schedule.scheduledEndAt)}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.checkIn}</td><td className={cells.pending?"p-3 text-muted-foreground":"p-3"}>{cells.checkOut}</td><td className="p-3">{cells.worked}</td><td className="p-3">{cells.late}</td><td className="p-3">{cells.overtime}</td><td className="p-3">{canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="rounded-lg border px-2.5 py-1.5 text-[11px] font-bold">Ajukan klarifikasi</button>:null}</td></tr>;})}</tbody></table></div>
         <ul className="divide-y md:hidden">{history.map(item=><li key={item.workDate} className="p-4 text-sm">
-          <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{formatDate(item.workDate)}</p><p className="text-xs text-muted-foreground">{formatTime(item.result?.firstCheckInAt)} → {formatTime(item.result?.lastCheckOutAt)}</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{statusLabel(item.result?.status??item.schedule.state)}</span></div>
-          {canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>setClarifyingDate({workDate:item.workDate,kind:kindFor(item.result?.status)})} className="mt-2 min-h-10 rounded-lg border px-3 text-xs font-bold">Ajukan klarifikasi</button>:null}
+          <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{formatDate(item.workDate)}</p><p className="text-xs text-muted-foreground">{historyCells(item).checkIn} → {historyCells(item).checkOut}</p></div><span className="rounded-full bg-surface px-2.5 py-1 text-xs font-bold">{historyCells(item).status}</span></div>
+          {canClarifyDate(item.workDate,today,item.result?.status)?<button type="button" onClick={()=>showClarification(item.workDate)} className="mt-2 min-h-10 rounded-lg border px-3 text-xs font-bold">Ajukan klarifikasi</button>:null}
         </li>)}</ul>
+        {history.some(item=>item.pendingScans)?<p className="border-t px-5 py-3 text-xs text-muted-foreground">Baris <b>Belum dihitung</b> berarti scan Anda sudah diterima tetapi tanggalnya belum dikalkulasi oleh Human Capital, sehingga menit kerja, telat dan lembur belum keluar.</p>:null}
       </section>
+      {clarifyDate?<DetailDialog title={clarifyRow?`Klarifikasi untuk ${formatDate(clarifyRow.workDate)}`:"Klarifikasi kehadiran"} onClose={closeClarification}>
+        <DialogMessages error={error}/>
+        {clarifyRow&&clarifiable?<ClarificationForm key={clarifyRow.workDate} workDate={clarifyRow.workDate} defaultKind={kindFor(clarifyRow.result?.status)}
+          onError={(message)=>{setNotice(null);setError(message);}} onCancel={closeClarification}
+          onSubmitted={async(message)=>{closeClarification();setError(null);setNotice(message);await load();}}/>
+          :<p className="text-sm text-muted-foreground">Tanggal ini tidak dapat diklarifikasi. Ajukan dari Riwayat untuk tanggal hingga 7 hari ke belakang.</p>}
+      </DetailDialog>:null}
     </>:null}
   </AppShell>;
 }

@@ -2,7 +2,7 @@
 
 ## Permanent production-VPS staging retirement
 
-HCIS/SQ Hub staging on the production VPS was permanently retired by owner decision on 2 October 2026. Production-only is the intended topology. Do not recreate, deploy, enable, or infer a requirement for staging from historical files, backups, Docker resources, workflows, or documentation. Reintroduction requires a new explicit owner decision and a new deployment plan.
+Staging of HCIS and of the SQ Hub platform on the production VPS was permanently retired by owner decision on 2 October 2026. Production-only is the intended topology. Do not recreate, deploy, enable, or infer a requirement for staging from historical files, backups, Docker resources, workflows, or documentation. Reintroduction requires a new explicit owner decision and a new deployment plan.
 
 Operational source of truth: `docs/operations/permanent-staging-retirement-2026-10-02.md`.
 
@@ -104,3 +104,21 @@ Jangan menyatakan quality gate lulus hanya berdasarkan inspeksi statis.
 - Jangan mencampur refactor besar dengan perubahan perilaku tanpa alasan kuat.
 - Jangan menonaktifkan test untuk meloloskan perubahan.
 - Jangan force push ke `main`.
+
+## 10. Istilah dan struktur
+
+Istilah dan struktur ekosistem ditetapkan di repository `sabilulquran/SQ-Hub`: [ADR-0014](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/architecture/adr/0014-sq-suite-ecosystem-structure.md) (ACCEPTED 2026-11-16) dan peta hidupnya [`docs/product/struktur-sq-suite.md`](https://github.com/sabilulquran/SQ-Hub/blob/main/docs/product/struktur-sq-suite.md) (STRUKTUR-001). Lima istilah, satu arti:
+
+- **SQ Suite** — seluruh ekosistem aplikasi Yayasan Sabilul Qur'an. Istilah "SQ Core" tidak dipakai lagi.
+- **SQ Hub** — halaman awal dan peluncur aplikasi di `hub.sabilulquran.or.id`; bukan nama keseluruhan.
+- **Portal** — pintu masuk satu kelompok pengguna: Portal Admin, Portal Pegawai, Portal Organ, Portal Keluarga, Portal Pelamar, Situs publik.
+- **Aplikasi** — sistem yang mengurus satu bidang dan memegang data serta aturannya: HCIS, Aset SQ, Karir SQ, Kirim SQ, dan lainnya. Aplikasi lain tidak pernah disebut "modul".
+- **Modul** — bagian di dalam satu aplikasi, misalnya Cuti dan Payroll di dalam HCIS.
+
+Aturan pakai:
+
+- "Platform SQ Hub" hanya dipakai di dokumen teknis untuk layanan bersama di repository `SQ-Hub`: SQ Hub (halaman awal dan peluncur), Akun SQ, Admin SQ, Direktori Organisasi. Sebut bagiannya dengan namanya bila yang dimaksud hanya salah satunya, dan jangan menulis "SQ Hub" untuk keseluruhan ekosistem.
+- Daftar aplikasi SQ Suite dan statusnya hanya ada di STRUKTUR-001. Dokumen HCIS menautkan ke sana dan tidak menyimpan salinan. Modul HCIS dicatat di `docs/product/hcis-capability-map.md`.
+- Nama teknis tidak berubah: nama repository, skrip server (`sq-core-launch.sh`, `sq-core-worker.sh`), nama database (`sqcore_*`), client ID, env key, ID spesifikasi, nama berkas, dan identifier kode.
+- ADR dan spesifikasi berstatus ACCEPTED, catatan verifikasi release, dan log operasi adalah catatan lama dan tidak ditulis ulang. Saat membacanya, "SQ Core" berarti SQ Suite, dan "Ringkasan Yayasan" berarti wajah Laporan di Portal Organ (ADR-0014 D8).
+- Dokumen hidup (README, AGENTS, `docs/product/`, glossary, overview) dan teks yang dilihat pengguna memakai istilah baru.

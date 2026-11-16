@@ -83,6 +83,7 @@ Kegagalan tetap fail-closed. Tidak ada fallback diam-diam ke `LEGACY`.
   - test 401 ORG-010 diperbarui dan menyebut satu-satunya pengecualian.
 - **Batas data (amandemen terbatas ORG-003-C).** Data pengajuan bernama hanya dikembalikan untuk langkah yang dimiliki principal itu. Isinya jenis pengajuan, nama dan jabatan pengaju, periode, dan alasan pengajuan. Riwayat langkah hanya memuat status, waktu, dan jabatan approver, tanpa `decision_note` approver lain dan tanpa lampiran. Dasbor `/board` tetap agregat.
 - Tampilan v1 (`DRAFT`): sampai Portal Organ Yayasan tersedia, kotak persetujuan tampil di `/board` memakai route di atas.
+- **Amandemen 2026-11-13 (permintaan owner, ORG-010-P).** Bila HCIS mengisi `ORGAN_PORTAL_URL`, `/board` untuk akun Organ Yayasan hanya berisi "Persetujuan Organ Yayasan" (kotak persetujuan ini, tanpa perubahan) dan tautan ke Portal Organ Yayasan; dasbor agregat menjawab `403 ORGAN_PORTAL_ONLY`. Route `/leave/approvals` dan keputusan tidak berubah, dan `decisions[].href` tetap `/board`. Di ORGAN-IMPL-001 R2 kotak persetujuan pindah ke portal.
 
 ### ORG-013-4 Notifikasi oversight
 

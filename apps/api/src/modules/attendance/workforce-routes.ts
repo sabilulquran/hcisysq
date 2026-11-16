@@ -516,6 +516,41 @@ function mapResult(row: Record<string, unknown> | null | undefined) {
   return mapped;
 }
 
+/**
+ * ATT-014 §6.5b (DRAFT): scan yang sudah diterima untuk tanggal yang hasilnya belum pernah
+ * dikalkulasi. Riwayat pegawai memakainya agar scan yang sudah masuk tidak tampil seolah pegawai
+ * tidak scan; angka resmi (telat, kerja, lembur) tetap kosong sampai Kalkulasi dijalankan, sesuai
+ * keputusan owner 2026-10-24 bahwa kehadiran tidak dihitung otomatis.
+ */
+async function pendingScansInRange(
+  db: Pool | PoolClient,
+  employeeId: string,
+  from: string,
+  to: string,
+) {
+  const rows = await db.query<{ workDate: string; firstScanAt: Date; lastScanAt: Date; scanCount: string }>(
+    `SELECT ((event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date)::text AS "workDate",
+       min(event.occurred_at) AS "firstScanAt",
+       max(event.occurred_at) AS "lastScanAt",
+       count(*)::text AS "scanCount"
+     FROM attendance_adms_events event
+     JOIN attendance_adms_employee_mappings mapping
+       ON mapping.device_id = event.device_id
+      AND mapping.pin = event.pin
+      AND event.occurred_at >= mapping.effective_from
+      AND (mapping.effective_to IS NULL OR event.occurred_at < mapping.effective_to)
+     WHERE mapping.employee_id = $1
+       AND (event.occurred_at AT TIME ZONE 'Asia/Jakarta')::date BETWEEN $2::date AND $3::date
+     GROUP BY 1`,
+    [employeeId, from, to],
+  );
+  return new Map(rows.rows.map((row) => [row.workDate, {
+    firstScanAt: row.firstScanAt.toISOString(),
+    lastScanAt: row.lastScanAt.getTime() === row.firstScanAt.getTime() ? null : row.lastScanAt.toISOString(),
+    scanCount: Number(row.scanCount),
+  }]));
+}
+
 async function latestResult(db: Pool | PoolClient, employeeId: string, workDate: string) {
   const result = await db.query<Record<string, unknown>>(
     `SELECT
@@ -791,11 +826,17 @@ export async function registerAttendanceWorkforceRoutes(
       if (!query.success) throw new WorkforceAttendanceError(400, "INVALID_DATE_RANGE", "Rentang jadwal tidak valid.");
       const employee = await employeeForAccount(pool, principal.id);
       const dates = datesBetween(query.data.from, query.data.to, 31);
-      const items = await Promise.all(dates.map(async (workDate) => ({
-        workDate,
-        schedule: scheduleResponse(await resolveSchedule(pool, employee.id, workDate)),
-        result: await latestResult(pool, employee.id, workDate),
-      })));
+      // ATT-014 §6.5b (DRAFT): satu kueri untuk seluruh rentang, bukan per tanggal, demi beban Mi8VPS.
+      const pending = await pendingScansInRange(pool, employee.id, query.data.from, query.data.to);
+      const items = await Promise.all(dates.map(async (workDate) => {
+        const result = await latestResult(pool, employee.id, workDate);
+        return {
+          workDate,
+          schedule: scheduleResponse(await resolveSchedule(pool, employee.id, workDate)),
+          result,
+          pendingScans: result ? null : pending.get(workDate) ?? null,
+        };
+      }));
       reply.header("Cache-Control", "no-store");
       return reply.send({ items });
     } catch (error) {

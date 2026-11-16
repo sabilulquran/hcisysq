@@ -234,6 +234,42 @@ describe.skipIf(!databaseUrl)("ORG-010 board view and governance summary (Postgr
     });
   });
 
+  describe("ORG-010 amendment 2026-11-13: ORGAN_PORTAL_URL", () => {
+    const PORTAL = "https://organ.example.invalid";
+
+    it("refuses the dashboard to an organ account only, and keeps its leave approvals", async () => {
+      const organ = await addActor("organ_approver", "FOUNDATION_BOARD");
+      const governanceRole = await pool.query<{ id: string }>("SELECT id FROM roles WHERE role_key='governance_leave_approver'");
+      await pool.query(`INSERT INTO account_role_assignments(id,account_id,role_id,scope_type,ends_on,reason)
+        VALUES($1,$2,$3,'organization','2030-12-31','Synthetic SK 001/2026')`, [randomUUID(), organ.principal.id, governanceRole.rows[0]!.id]);
+      const before = await app.inject({ method: "GET", url: "/leave/approvals", headers: { cookie: organ.cookie } });
+
+      const flagged = await createApp({ ...baseConfig, ORGAN_PORTAL_URL: PORTAL }, pool);
+      try {
+        const as = (name: string, url: string) => flagged.inject({ method: "GET", url, headers: { cookie: actors.get(name)!.cookie } });
+        for (const name of ["board", "organ_approver"]) {
+          const refused = await as(name, "/board/dashboard");
+          expect(refused.statusCode, name).toBe(403);
+          expect(refused.json(), name).toEqual({ code: "ORGAN_PORTAL_ONLY", message: expect.any(String), organPortalUrl: PORTAL });
+          expect((await as(name, "/auth/me")).json().organPortalUrl, name).toBe(PORTAL);
+        }
+        expect((await as("viewer", "/board/dashboard")).statusCode).toBe(200);
+        expect((await as("viewer", "/auth/me")).json()).not.toHaveProperty("organPortalUrl");
+        for (const name of ["plain", "hc"]) expect((await as(name, "/board/dashboard")).statusCode, name).toBe(403);
+        expect((await as("plain", "/board/dashboard")).json().code).toBe("FORBIDDEN");
+
+        const inbox = await as("organ_approver", "/leave/approvals");
+        expect(before.statusCode).toBe(200);
+        expect(inbox.statusCode).toBe(200);
+        expect(inbox.json()).toEqual(before.json());
+      } finally {
+        await flagged.close();
+      }
+      expect((await get("board", "/board/dashboard")).statusCode).toBe(200);
+      expect((await get("board", "/auth/me")).json()).not.toHaveProperty("organPortalUrl");
+    });
+  });
+
   describe("ENG-LIST-001 account paging on /admin/access", () => {
     it("pages and searches accounts in SQL and keeps the summary global", async () => {
       const first = await get("super", "/admin/access?pageSize=1");

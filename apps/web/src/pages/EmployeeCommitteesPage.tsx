@@ -6,6 +6,8 @@ import { Loader2, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { CommitteeDetailPanel } from "@/components/committees/CommitteeDetailPanel";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
+import { DialogLoading, DialogMessages } from "@/components/DetailDialogParts";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AppShell } from "@/layouts/AppShell";
 import {
@@ -32,6 +34,8 @@ export function EmployeeCommitteesPage() {
   const [items, setItems] = useState<MyCommittee[]>([]);
   const [paging, setPaging] = useState<Pagination | null>(null);
   const [selected, setSelected] = useState<CommitteeDetail | null>(null);
+  // The open committee lives in ?committee=<id> (notification links use it too) and shows as a pop-up.
+  const [committeeId, showCommittee, closeCommittee] = useDialogParam("committee");
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +60,7 @@ export function EmployeeCommitteesPage() {
 
   const open = async (id: string) => {
     setOpening(true);
+    setError(null);
     try {
       setSelected(await getMyCommittee(id));
     } catch (cause) {
@@ -68,10 +73,12 @@ export function EmployeeCommitteesPage() {
   useEffect(() => {
     void getEmployeeLeaveSummary().then((value) => setEmployee(value.employee)).catch(() => undefined);
     void load("current");
-    // A notification links here with ?committee=<id>.
-    const linked = new URLSearchParams(window.location.search).get("committee");
-    if (linked) void open(linked);
   }, []);
+
+  useEffect(() => {
+    if (committeeId) void open(committeeId);
+    else setSelected(null);
+  }, [committeeId]);
 
   const switchScope = (next: Scope) => {
     setScope(next);
@@ -95,7 +102,7 @@ export function EmployeeCommitteesPage() {
             Akun Anda belum terhubung ke data pegawai aktif, jadi kepanitiaan belum dapat ditampilkan.
           </div>
         ) : null}
-        {error ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+        {error && !committeeId ? <div role="alert" className="mt-5 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
 
         <div className="mt-6 flex gap-2" role="group" aria-label="Pilih daftar kepanitiaan">
           {([["current", "Berjalan"], ["history", "Riwayat"]] as const).map(([key, label]) => (
@@ -107,7 +114,7 @@ export function EmployeeCommitteesPage() {
           ))}
         </div>
 
-        <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="mt-4">
           <section className={`${card} overflow-hidden`} aria-busy={loading}>
             {loading ? (
               <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat...</div>
@@ -119,8 +126,8 @@ export function EmployeeCommitteesPage() {
               <ul className="divide-y divide-border/70">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <button type="button" onClick={() => void open(item.id)}
-                      className={cn("flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50", selected?.id === item.id && "bg-muted/60")}>
+                    <button type="button" onClick={() => showCommittee(item.id)}
+                      className={cn("flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-muted/50", committeeId === item.id && "bg-muted/60")}>
                       <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary-deep" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-brand-heading">{item.name}</span>
@@ -142,15 +149,14 @@ export function EmployeeCommitteesPage() {
             ) : null}
           </section>
 
-          <section className={`${card} p-5`}>
-            {opening ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Membuka...</div>
-            ) : selected ? (
-              <CommitteeDetailPanel detail={selected} />
-            ) : (
-              <p className="text-sm text-muted-foreground">Pilih kepanitiaan untuk melihat susunan panitia dan SK-nya.</p>
-            )}
-          </section>
+          {committeeId ? (
+            <DetailDialog title="Detail kepanitiaan" onClose={closeCommittee} wide>
+              <DialogMessages error={error} />
+              {selected?.id === committeeId && !opening ? (
+                <CommitteeDetailPanel detail={selected} />
+              ) : error ? null : <DialogLoading label="Membuka..." />}
+            </DetailDialog>
+          ) : null}
         </div>
       </section>
     </AppShell>

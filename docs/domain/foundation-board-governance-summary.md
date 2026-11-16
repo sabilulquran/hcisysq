@@ -322,6 +322,7 @@ Hub caches a summary for up to 60 seconds per session, so `served` volume stays 
 | `GOVERNANCE_SUMMARY_ALLOWED_CLIENTS` | comma-separated; the SQ Hub client and, from ORGAN-IMPL-001 R1, `sq-organ` (`sq-hub,sq-organ`) |
 | `GOVERNANCE_EMPLOYEES_ALLOWED_CLIENTS` | ORG-014: comma-separated subset allowed on `/governance/employees`; default `sq-organ` |
 | `GOVERNANCE_SUMMARY_APPLICATION_KEY` | registry key returned as `applicationKey` |
+| `ORGAN_PORTAL_URL` | amendment 2026-11-13: optional https URL of the Portal Organ Yayasan; when set, `/board` is approvals only for organ accounts |
 | issuer | reuses `OIDC_ISSUER` |
 
 ## 10. Database changes
@@ -448,6 +449,20 @@ SQ Hub ADR-0012 and ORGAN-IMPL-001 (ACCEPTED 2026-11-12) move the organs to `org
 
 - ORG-010-N: `sq-organ` tokens are accepted on `/governance/summary` exactly as `sq-hub` tokens are, once allowlisted.
 - ORG-010-O: `decisions` holds only the caller's own pending leave steps, as a count, an age in days, and a link; no personal data.
+
+## Amendment 2026-11-13: `/board` for organ accounts is approvals only (owner request)
+
+The Portal Organ Yayasan (`organ.sabilulquran.or.id`) now shows the foundation summary and the employee list (ORG-014). The owner asked on 2026-11-13 that organ accounts no longer use HCIS `/board` as a dashboard. In ORGAN-IMPL-001 R1 they still decide their leave steps on `/board` (ORG-013-3), and `decisions[].href` for an organ account stays `/board`, so `/board` stays reachable for approvals only. R2 moves the approvals into the portal; this amendment is then revisited.
+
+1. **Configuration.** New optional `ORGAN_PORTAL_URL`: an absolute `https` URL without query, fragment or credentials (for example `https://organ.sabilulquran.or.id`). Unset (the code default) keeps every rule above unchanged. Rollback is unsetting it.
+2. **API.** When set, `GET /board/dashboard` answers a `FOUNDATION_BOARD` principal that passes the ORG-010-A guard with `403 { code: "ORGAN_PORTAL_ONLY", message, organPortalUrl }` and `Cache-Control: no-store`, before any aggregate query. `401` and the guard's `403 FORBIDDEN` keep precedence and never carry the URL. An `EMPLOYEE` with `board.read` is unaffected. No audit event is written, like every other `/board` read or refusal (D10).
+3. **Session.** `GET /auth/me` adds `organPortalUrl` only for a `FOUNDATION_BOARD` session while the variable is set; it is omitted otherwise. The web bundle never hardcodes the URL.
+4. **Web.** For an organ account with `organPortalUrl`, `/board` does not request the dashboard. It shows the title "Persetujuan Organ Yayasan", the unchanged approvals section (ORG-013-3), and a quiet link "Ringkasan dan data pegawai ada di Portal Organ Yayasan" to the portal. A `403 ORGAN_PORTAL_ONLY` from the API leads to the same view, so a disagreement between session and route still renders correctly. Landing and navigation are unchanged: an organ account still lands on `/board`.
+5. **Unchanged.** The summary's `detailUrl` (also used by SQ Hub Ringkasan Yayasan for staff), `decisions[].href` = `/board` for organ accounts, and `/leave/approvals` with its decision route.
+
+- ORG-010-P: with `ORGAN_PORTAL_URL` set, `GET /board/dashboard` answers `403 ORGAN_PORTAL_ONLY` with the portal URL to a `FOUNDATION_BOARD` principal without loading data, and `200` to an `EMPLOYEE` with board access; unset, behaviour is as before. The organ account's leave approval routes are unaffected.
+
+Tests: `apps/api/test/org010-board-organ-portal.test.ts` (route and configuration), the ORGAN_PORTAL_URL block in `apps/api/test/org010-board-governance.postgres.test.ts` (live guard, `/auth/me`, `/leave/approvals`), and `apps/web/src/pages/FoundationBoardPage.test.tsx`.
 
 ## Product Owner decisions (2026-10-17)
 

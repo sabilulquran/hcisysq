@@ -6,6 +6,8 @@
 
 > **ORG-010 (ACCEPTED 2026-10-17, implemented; the summary endpoint is off by default)** adds two extensions: an `EMPLOYEE` account with the board-view role (`board.read`) may also open `/board` (amends ORG-003-A), and HCIS publishes these aggregates to SQ Hub Ringkasan Yayasan through a bearer-only governance summary. It also removes `actor.email` from the `GET /board/dashboard` response (owner decision D7, 2026-10-17). The privacy, attendance and payroll boundaries below are unchanged. See [ORG-010](foundation-board-governance-summary.md).
 
+> **Amendment 2026-11-13 (owner request, ORG-010-P).** When HCIS sets `ORGAN_PORTAL_URL`, a `FOUNDATION_BOARD` account no longer sees this dashboard: `GET /board/dashboard` answers `403 ORGAN_PORTAL_ONLY` and `/board` shows only "Persetujuan Organ Yayasan" (the approvals section below) with a link to the Portal Organ Yayasan. Employees with `board.read` keep the dashboard. Unset, nothing changes. See [ORG-010](foundation-board-governance-summary.md#amendment-2026-11-13-board-for-organ-accounts-is-approvals-only-owner-request).
+
 ## Purpose
 
 `/board` is a governance-level dashboard for the Yayasan organ principal. It is not an employee self-service page and it is not the Super Admin configuration area.

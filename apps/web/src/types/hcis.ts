@@ -17,4 +17,6 @@ export interface AuthSession {
   expiresAt: string;
   /** unitPermissions (RPT-001 D-15): report permissions held through a unit-scoped role. */
   authorization?: { organizationPermissions: string[]; unitPermissions?: string[] };
+  /** ORG-010 amendment 2026-11-13: present only for an organ account when HCIS sets ORGAN_PORTAL_URL. */
+  organPortalUrl?: string;
 }

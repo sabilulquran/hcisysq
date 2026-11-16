@@ -2,11 +2,12 @@
 // approved schedule change, and cancellation. Spec: docs/domain/attendance-remote-and-schedule-requests.md.
 // The API authorizes every call.
 
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ArrangementDetailPanel } from "@/components/arrangements/ArrangementDetailPanel";
 import { EmployeeSearchField, type PickedEmployee } from "@/components/attendance/workforce/EmployeeSearchField";
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { AdminShell } from "@/layouts/AdminShell";
 import { getCurrentSession } from "@/lib/auth";
@@ -37,7 +38,10 @@ export function AdminWorkArrangementsPage() {
   const [status, setStatus] = useState<ArrangementStatus | "">("");
   const [type, setType] = useState<ArrangementType | "">("");
   const [employee, setEmployee] = useState<PickedEmployee | null>(null);
+  // The open request lives in the URL (`?pengajuan=<id>`), so a link opens it and Back closes it.
+  const [arrangementId, openArrangement, closeArrangement] = useDialogParam("pengajuan");
   const [selected, setSelected] = useState<ArrangementDetail | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -78,10 +82,17 @@ export function AdminWorkArrangementsPage() {
   const open = async (id: string) => {
     try {
       setSelected(await getAdminArrangement(id));
+      setOpenError(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Pengajuan tidak dapat dibuka.");
+      setOpenError(cause instanceof Error ? cause.message : "Pengajuan tidak dapat dibuka.");
     }
   };
+
+  useEffect(() => {
+    setSelected(null);
+    setOpenError(null);
+    if (arrangementId) void open(arrangementId);
+  }, [arrangementId]);
 
   const run = async (action: () => Promise<string>, item: ArrangementDetail) => {
     setBusy(true);
@@ -122,7 +133,7 @@ export function AdminWorkArrangementsPage() {
       {notice ? <div className="mb-5 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
 
       {forbidden ? null : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div>
           <section className="overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
             <div className="grid gap-3 p-5 sm:grid-cols-3">
               <label className="text-xs font-semibold text-muted-foreground">
@@ -152,8 +163,8 @@ export function AdminWorkArrangementsPage() {
               <ul className="divide-y divide-border/70 border-t border-border/70">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <button type="button" onClick={() => void open(item.id)}
-                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${selected?.id === item.id ? "bg-muted/60" : ""}`}>
+                    <button type="button" onClick={() => { setNotice(null); openArrangement(item.id); }}
+                      className={`w-full px-5 py-3 text-left hover:bg-muted/50 ${arrangementId === item.id ? "bg-muted/60" : ""}`}>
                       <span className="block font-semibold text-brand-heading">
                         {item.employeeName} · {ARRANGEMENT_TYPE_LABELS[item.type]}: {arrangementSubject(item)}
                       </span>
@@ -173,44 +184,41 @@ export function AdminWorkArrangementsPage() {
               <PaginationBar page={paging.page} pageSize={paging.pageSize} total={paging.total} onPageChange={setPage} />
             ) : null}
           </section>
-
-          <section className="rounded-3xl border border-border/75 bg-surface-raised p-5 shadow-[var(--shadow-soft)]">
-            {selected ? (
-              <>
-                <div className="flex justify-end">
-                  <button type="button" aria-label="Tutup detail" onClick={() => setSelected(null)} className="rounded-lg p-1 hover:bg-muted">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <ArrangementDetailPanel
-                  item={selected}
-                  actions={canManage ? (
-                    <>
-                      {selected.type === "SCHEDULE_CHANGE" && selected.status === "APPROVED" ? (
-                        <button type="button" disabled={busy} onClick={() => apply(selected)}
-                          className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
-                          Terapkan ke jadwal
-                        </button>
-                      ) : null}
-                      {["IN_REVIEW", "APPROVED"].includes(selected.status) ? (
-                        <button type="button" disabled={busy} onClick={() => cancel(selected)}
-                          className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
-                          Batalkan pengajuan
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                />
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Pilih pengajuan untuk melihat tahap persetujuan dan riwayatnya. Ubah jadwal yang sudah disetujui menunggu
-                diterapkan Human Capital; tugas luar dan WFH berlaku begitu disetujui.
-              </p>
-            )}
-          </section>
         </div>
       )}
+
+      {!forbidden && arrangementId ? (
+        <DetailDialog title="Detail pengajuan"
+          description={selected ? `${selected.employeeName} · ${ARRANGEMENT_TYPE_LABELS[selected.type]}` : undefined} onClose={closeArrangement}>
+          {error ? <div className="mb-4 rounded-2xl border border-danger-line bg-danger-soft p-4 text-sm text-danger-ink">{error}</div> : null}
+          {notice ? <div className="mb-4 rounded-2xl border border-border bg-surface p-4 text-sm text-brand-heading">{notice}</div> : null}
+          {openError ? (
+            <p className="text-sm text-danger-ink">{openError}</p>
+          ) : selected?.id === arrangementId ? (
+            <ArrangementDetailPanel
+              item={selected}
+              actions={canManage ? (
+                <>
+                  {selected.type === "SCHEDULE_CHANGE" && selected.status === "APPROVED" ? (
+                    <button type="button" disabled={busy} onClick={() => apply(selected)}
+                      className="min-h-11 rounded-xl bg-brand-primary px-3 text-sm font-bold text-brand-foreground disabled:opacity-50">
+                      Terapkan ke jadwal
+                    </button>
+                  ) : null}
+                  {["IN_REVIEW", "APPROVED"].includes(selected.status) ? (
+                    <button type="button" disabled={busy} onClick={() => cancel(selected)}
+                      className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50">
+                      Batalkan pengajuan
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+            />
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Memuat pengajuan...</div>
+          )}
+        </DetailDialog>
+      ) : null}
     </AdminShell>
   );
 }

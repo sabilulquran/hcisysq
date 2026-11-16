@@ -4,6 +4,7 @@
 import { AlertTriangle, ImageUp, Loader2, Printer, RotateCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { DetailDialog, useDialogParam } from "@/components/DetailDialog";
 import { PaginationBar } from "@/components/PaginationBar";
 import { EmployeeIdCardFront } from "@/components/employee-card/EmployeeIdCard";
 import { AdminShell } from "@/layouts/AdminShell";
@@ -124,7 +125,7 @@ function EmployeePanel({ employeeId, onChanged }: { employeeId: string; onChange
 
   if (!detail) {
     return (
-      <div className="p-5 text-sm text-muted-foreground" role={error ? "alert" : "status"}>
+      <div className="text-sm text-muted-foreground" role={error ? "alert" : "status"}>
         {error ?? <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat…</span>}
       </div>
     );
@@ -137,7 +138,7 @@ function EmployeePanel({ employeeId, onChanged }: { employeeId: string; onChange
   const canIssue = employee.active && photo !== null;
 
   return (
-    <div className="grid gap-5 p-5">
+    <div className="grid gap-5">
       <div>
         <p className="text-base font-bold text-brand-heading">{employee.fullName}</p>
         <p className="text-xs text-muted-foreground">
@@ -307,7 +308,8 @@ function EmployeesTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  // One employee's photo and cards open in a pop-up; the employee lives in the URL (`?pegawai=<id>`).
+  const [selectedEmployee, openEmployee, closeEmployee] = useDialogParam("pegawai");
   const [printSelection, setPrintSelection] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -336,7 +338,7 @@ function EmployeesTab() {
   const overLimit = printSelection.size > MAX_BATCH;
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div>
       <section className="min-w-0 overflow-hidden rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-end gap-2 p-4">
           <label className="relative min-w-48 flex-1">
@@ -398,7 +400,7 @@ function EmployeesTab() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2">
-                      <button type="button" onClick={() => setSelectedEmployee(item.employeeId)}
+                      <button type="button" onClick={() => openEmployee(item.employeeId)}
                         className="min-h-11 text-left font-semibold text-brand-heading underline-offset-2 hover:underline">
                         {item.fullName}
                         <span className="block text-[11px] font-normal text-muted-foreground">
@@ -427,11 +429,11 @@ function EmployeesTab() {
             onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
         ) : null}
       </section>
-      <section className="min-w-0 rounded-3xl border border-border/75 bg-surface-raised shadow-[var(--shadow-soft)]">
-        {selectedEmployee
-          ? <EmployeePanel key={selectedEmployee} employeeId={selectedEmployee} onChanged={refresh} />
-          : <p className="p-5 text-sm text-muted-foreground">Pilih pegawai untuk mengunggah foto, menerbitkan, atau mencetak kartu.</p>}
-      </section>
+      {selectedEmployee ? (
+        <DetailDialog title="Kartu pegawai" description={items.find((item) => item.employeeId === selectedEmployee)?.fullName} onClose={closeEmployee}>
+          <EmployeePanel key={selectedEmployee} employeeId={selectedEmployee} onChanged={refresh} />
+        </DetailDialog>
+      ) : null}
     </div>
   );
 }

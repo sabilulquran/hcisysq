@@ -38,6 +38,8 @@ export interface ProgramSummary {
   firstSessionAt: string | null;
   lastSessionEndAt: string | null;
   evaluationPassingScore?: number;
+  /** R4: ONLINE programs have modules instead of sessions. */
+  delivery?: "CLASSROOM" | "ONLINE";
   participantStatus?: ParticipantStatus;
   attendedHours?: number | null;
   nextSessionAt?: string | null;
@@ -211,7 +213,7 @@ export const getPrograms = (filter: { page?: number; status?: ProgramStatus | ""
 export const getProgram = (id: string) => get<ProgramDetail>(`/admin/training/programs/${id}`);
 export const createProgram = (input: {
   title: string; category: TrainingCategory; organizer: string | null; description: string | null;
-  capacity: number | null; minAttendancePercent: number;
+  capacity: number | null; minAttendancePercent: number; delivery?: "CLASSROOM" | "ONLINE";
 }) => send<{ id: string }>("POST", "/admin/training/programs", input);
 export const cancelProgram = (id: string, reason: string) => send("POST", `/admin/training/programs/${id}/cancel`, { reason });
 export const completeProgram = (id: string) =>

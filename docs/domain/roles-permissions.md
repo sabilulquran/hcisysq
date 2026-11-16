@@ -108,7 +108,7 @@ activity_logs.read
 
 ## Permission payroll (PAY-003 v1)
 
-Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Seluruhnya berscope organisasi.
+Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`, ditambah `0151_payroll_results_reader.sql`. Seluruhnya berscope organisasi. `payroll.periods.manage` (juga dipegang HCIS Module Admin) hanya menjalankan lifecycle dan tidak membuka angka per orang.
 
 | Permission | Pemegang | Catatan |
 |---|---|---|
@@ -122,7 +122,8 @@ Daftar final yang diimplementasikan migration `0069_payroll_foundation.sql`. Sel
 | `payroll.reopen.approve` | Direktur | `payroll.reopen` adalah resource, `approve` adalah action |
 | `payroll.loans.manage` | Keuangan | terpisah dari konfirmasi bayar; kasbon terkunci di `CALCULATED` |
 | `payroll.payments.confirm` | Kepala Keuangan | |
-| `payroll.reports.read.organization` | Kepala Keuangan, Direktur | laporan rekap, tanpa nomor rekening |
+| `payroll.reports.read.organization` | Kepala Keuangan, Direktur | laporan rekap per unit dan per komponen, tanpa nomor rekening; tidak membuka angka per orang |
+| `payroll.results.read.organization` | Kepala Keuangan, Direktur (migration `0151`, `DRAFT`) | angka per orang: hasil, input periode, perbandingan, laporan PPh21; baru terbuka setelah periode disahkan (`payroll-calculation-v1.md` §7.3) |
 | `payroll.transfers.read.organization` | Kepala Keuangan | daftar transfer berisi rekening; setiap baca dan ekspor dicatat |
 
 Role baru: `finance_officer` (Keuangan), `finance_lead` (Kepala Keuangan), `director` (Direktur).

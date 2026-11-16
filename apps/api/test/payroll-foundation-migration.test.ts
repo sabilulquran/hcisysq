@@ -579,6 +579,7 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
         "payroll.profiles.manage",
         "payroll.reopen.approve",
         "payroll.reports.read.organization",
+        "payroll.results.read.organization",
         "payroll.submit",
         "payroll.transfers.read.organization",
       ]);
@@ -634,6 +635,16 @@ describe.skipIf(!allowed)("0069 payroll foundation migration", () => {
          WHERE r.role_key = 'foundation_board_viewer' AND rp.permission_key LIKE 'payroll.%'`,
       );
       expect(rows).toEqual([]);
+    });
+
+    it("gives the per-person read to the director and the finance lead only (migration 0151)", async () => {
+      const { rows } = await client.query<{ role_key: string }>(
+        `SELECT r.role_key FROM role_permissions rp
+         JOIN roles r ON r.id = rp.role_id
+         WHERE rp.permission_key = 'payroll.results.read.organization'
+         ORDER BY r.role_key`,
+      );
+      expect(rows.map((row) => row.role_key)).toEqual(["director", "finance_lead"]);
     });
 
     it("gives only finance the transfer list with bank accounts", async () => {

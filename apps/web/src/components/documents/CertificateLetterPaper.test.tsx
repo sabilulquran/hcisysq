@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { CertificateLetterPaper } from "@/components/documents/CertificateLetterPaper";
-import type { IssuedDocumentSummary } from "@/lib/hrDocuments";
+import { formatRupiahAmount, type IssuedDocumentSummary } from "@/lib/hrDocuments";
 
 function letter(overrides: Partial<IssuedDocumentSummary> = {}): IssuedDocumentSummary {
   return {
@@ -49,5 +49,58 @@ describe("DOC-001 D-20 certificate letter", () => {
     expect(html).toContain("sejak 6 Januari 2020 sampai dengan 30 Juni 2026");
     expect(html).not.toContain("masih aktif");
     expect(html).not.toContain("untuk keperluan");
+  });
+
+  it("prints the income letter's frozen slip figures and averages as stored, without calculating", () => {
+    const html = renderToStaticMarkup(<CertificateLetterPaper document={letter({
+      documentCode: "KETERANGAN_PENGHASILAN",
+      documentNumber: "001/SKP/YSQ/XI/2026",
+      contentSnapshot: {
+        ...letter().contentSnapshot,
+        documentLabel: "Surat Keterangan Penghasilan",
+        purpose: "Pengajuan kredit rumah",
+        income: {
+          months: [
+            { period: "2026-08", gross: "5000000", net: "4500000" },
+            { period: "2026-09", gross: "5250000", net: "4700000" },
+            { period: "2026-10", gross: "5100000.50", net: "4600001" },
+          ],
+          monthCount: 3,
+          averageGross: "5116667",
+          averageNet: "4600000",
+          windowFrom: "2026-08",
+          windowTo: "2026-10",
+        },
+      },
+    })} />);
+    expect(html).toContain("SURAT KETERANGAN PENGHASILAN");
+    expect(html).toContain("penghasilan menurut slip gaji resmi");
+    expect(html).toContain("Agustus 2026");
+    expect(html).toContain("Rp5.250.000");
+    expect(html).toContain("Rp5.100.000,50");
+    expect(html).toContain("Rp5.116.667");
+    expect(html).toContain("Rp4.600.000");
+    expect(html).toContain("periode Agustus 2026 sampai dengan Oktober 2026.");
+    expect(html).not.toContain("rata-rata dihitung dari");
+  });
+
+  it("says when fewer months than the window had an official slip", () => {
+    const html = renderToStaticMarkup(<CertificateLetterPaper document={letter({
+      documentCode: "KETERANGAN_PENGHASILAN",
+      contentSnapshot: {
+        ...letter().contentSnapshot,
+        income: {
+          months: [{ period: "2026-10", gross: "3000000", net: "2800000" }],
+          monthCount: 1, averageGross: "3000000", averageNet: "2800000", windowFrom: "2026-08", windowTo: "2026-10",
+        },
+      },
+    })} />);
+    expect(html).toContain("rata-rata dihitung dari 1 bulan yang memiliki slip gaji resmi.");
+  });
+
+  it("formats rupiah strings without floating point", () => {
+    expect(formatRupiahAmount("5116667")).toBe("Rp5.116.667");
+    expect(formatRupiahAmount("999")).toBe("Rp999");
+    expect(formatRupiahAmount("1234567890123.05")).toBe("Rp1.234.567.890.123,05");
   });
 });

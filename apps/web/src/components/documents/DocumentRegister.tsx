@@ -44,13 +44,19 @@ export function RegisterRow({
   canRevoke,
   busy,
   onRevoke,
+  canView,
+  onView,
 }: {
   entry: RegisterEntry;
   canRevoke: boolean;
   busy: boolean;
   onRevoke: (entry: RegisterEntry) => void;
+  /** D-25: whether to offer "Lihat surat"; the API still decides on every read. */
+  canView?: (entry: RegisterEntry) => boolean;
+  onView?: (entry: RegisterEntry) => void;
 }) {
   const revoked = entry.status === "REVOKED";
+  const viewable = entry.documentKind === "CERTIFICATE" && Boolean(onView) && (canView?.(entry) ?? false);
   return (
     <li className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
@@ -76,15 +82,29 @@ export function RegisterRow({
           </p>
         ) : null}
       </div>
-      {!revoked && canRevoke ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onRevoke(entry)}
-          className="min-h-11 shrink-0 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50"
-        >
-          Batalkan
-        </button>
+      {viewable || (!revoked && canRevoke) ? (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {viewable ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onView?.(entry)}
+              className="min-h-11 rounded-xl border border-border px-3 text-sm font-bold text-brand-heading disabled:opacity-50"
+            >
+              Lihat surat
+            </button>
+          ) : null}
+          {!revoked && canRevoke ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRevoke(entry)}
+              className="min-h-11 rounded-xl border border-danger-line px-3 text-sm font-bold text-danger-ink disabled:opacity-50"
+            >
+              Batalkan
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </li>
   );
@@ -98,6 +118,8 @@ export function DocumentRegisterSection({
   onFilterChange,
   onRevoke,
   onRetry,
+  canView,
+  onView,
 }: {
   filter: RegisterFilter;
   view: RegisterView;
@@ -106,6 +128,8 @@ export function DocumentRegisterSection({
   onFilterChange: (filter: RegisterFilter) => void;
   onRevoke: (entry: RegisterEntry) => void;
   onRetry: () => void;
+  canView?: (entry: RegisterEntry) => boolean;
+  onView?: (entry: RegisterEntry) => void;
 }) {
   // ENG-LIST-001-J: a new tab or status filter starts again at page 1.
   const change = (patch: Partial<RegisterFilter>) => onFilterChange({ ...filter, page: 1, ...patch });
@@ -171,7 +195,10 @@ export function DocumentRegisterSection({
         {view.kind === "ready" && view.items.length ? (
           <ul className="mt-3 divide-y divide-border/70">
             {view.items.map((entry) => (
-              <RegisterRow key={entry.id} entry={entry} canRevoke={canRevoke} busy={busy} onRevoke={onRevoke} />
+              <RegisterRow
+                key={entry.id} entry={entry} canRevoke={canRevoke} busy={busy} onRevoke={onRevoke}
+                canView={canView} onView={onView}
+              />
             ))}
           </ul>
         ) : null}

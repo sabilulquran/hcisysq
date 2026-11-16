@@ -431,6 +431,11 @@
       "list": "paged"
     },
     {
+      "url": "/admin/documents/issued/:id",
+      "list": "single",
+      "reason": "DOC-001 D-25: satu surat keterangan terbit dibaca HC; surat keterangan penghasilan butuh documents.manage."
+    },
+    {
       "url": "/admin/documents/register",
       "list": "paged"
     },

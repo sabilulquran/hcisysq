@@ -154,13 +154,13 @@ Sumber yang bermasalah **tidak pernah** dijawab 5xx (pola ASSET-001): spesifikas
 | (jalur R-09) | Memutuskan kandidat yang merupakan Kepala HCM, hanya kandidat itu | `human_capital_admin` |
 | `reward.manage` | Menyusun ulang, menetapkan, menerbitkan, membatalkan, mencabut, kirim ulang | `human_capital_lead` (Kepala HCM) (DRAFT) |
 
-- Migration `0152_reward_permissions.sql`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy.
+- Migration `0154_reward_permissions.sql`, berscope organisasi. Super Admin tidak menerimanya lewat kompatibilitas legacy.
 - Setiap permission punya tes otomatis, termasuk 403 untuk pegawai biasa dan untuk keputusan atas diri sendiri.
 - Pegawai biasa hanya melihat daftar penerima yang sudah terbit dan riwayat miliknya sendiri.
 
 ## 8. Data
 
-Migration `0151_rewards.sql`, tabel baru saja.
+Migration `0153_rewards.sql`, tabel baru saja.
 
 | Tabel | Isi |
 | --- | --- |
@@ -284,5 +284,5 @@ Aturan yang diperiksa HCIS:
 
 - API: `apps/api/src/modules/rewards/` (`domain.ts` aturan murni, `quran-scoreboard-client.ts` port dan adaptor, `service.ts` penyusunan putaran, outbox, penjadwal, `certificate-pdf.ts` PDF tanpa dependensi, `routes.ts`).
 - Web: `apps/web/src/pages/AdminRewardsPage.tsx`, `EmployeeRewardsPage.tsx`, `PublicRewardVerifyPage.tsx`, `apps/web/src/lib/rewards.ts`; menu Al-Qur'an di `layouts/AppShell.tsx` dan `lib/employeeServices.ts`.
-- Migration `0151_rewards.sql`, `0152_reward_permissions.sql`; manifest `docs/domain/AUTH-011-admin-route-permissions.json`.
+- Migration `0153_rewards.sql`, `0154_reward_permissions.sql`; manifest `docs/domain/AUTH-011-admin-route-permissions.json`.
 - Rilis: tanpa `QURAN_*` di `final.env`, fitur berjalan dengan sumber "belum tersedia" dan jalur CSV. Mengaktifkan sumber cukup mengisi tiga nilai itu sesudah client `hcis-quran-scoreboard` dibuat di realm `sq-staff` dan QURAN-IMPL-001 R1 hidup.

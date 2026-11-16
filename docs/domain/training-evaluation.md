@@ -175,7 +175,7 @@ Respons anonim **tidak** diaudit (E-11). Audit respons non-anonim memuat id komp
 
 Idempoten per `eventKey`: `training.evaluation.<componentId>.<employeeId>` untuk peserta; untuk penilai, per penetapan (penambahan peserta atau penggantian penilai memberi tahu lagi).
 
-## 10. Penyimpanan (migrasi `0153`)
+## 10. Penyimpanan (migrasi `0154`)
 
 ```text
 training_programs.evaluation_passing_score   kolom baru, bawaan 75

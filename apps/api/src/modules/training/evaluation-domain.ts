@@ -12,7 +12,7 @@ export const STAGES = ["SINGLE", "PRE", "POST"] as const;
 export type Stage = (typeof STAGES)[number];
 export type OutcomeStatus = "PASSED" | "FAILED" | "INCOMPLETE" | "NOT_GRADED";
 
-/** E-10: the seeded standard reaction questionnaire (migration 0153). */
+/** E-10: the seeded standard reaction questionnaire (migration 0154). */
 export const STANDARD_REACTION_INSTRUMENT_ID = "00000000-0000-4000-8000-0000000000e1";
 /** E-02 DRAFT. */
 export const MAX_ITEMS = 50;

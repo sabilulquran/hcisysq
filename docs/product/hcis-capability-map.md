@@ -59,7 +59,7 @@ Approved leave/permission may feed attendance/payroll as a resolved fact. Submis
 
 - Payslip import/validation — PAY-001.
 - Employee read-only payslip — PAY-002.
-- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
+- Payroll calculation, review, reconciliation, finalization, payment handoff, and publication — PAY-003. v1 is implemented (engine, lifecycle, screens, transfer list CSV as payment handoff, PPh21 TER report, annual PPh21 Pasal 17 with bukti potong 1721-A1 and the e-Bupot recap, initial-load CLI); THR and bank transfer integration are outside v1. PAY-001/PAY-002 stay the official slip path until the owner closes the parallel run.
 - Reimbursement — REIMB-001. Package 1 (draft claims with encrypted receipts, optional link to a business trip, APR-001 approval, Finance verification per item, payment outside payroll, register, summary and CSV export) is implemented; see `docs/domain/reimbursement.md`. Payroll handoff stays behind a DRAFT switch that is off; advances and per diem are not included.
 - Employee loans and installments — LOAN-001. Package 1 (request, APR-001 approval, Finance disbursement, interest-free schedule, repayments, payoff, reversal) is implemented; see `docs/domain/employee-loans.md`. Automatic payroll deduction (Package 2) is deferred until the owner makes PAY-003 the official slip path (`employee-loans.md` §9.2).
 

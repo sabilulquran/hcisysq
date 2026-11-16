@@ -756,11 +756,15 @@ features:
       CSV as the payment handoff to Finance, PPh21 TER report #323), publication of period
       payslips through payslips.publish, and the initial-load CLI. Per-person figures (results,
       inputs, variance, PPh21) have their own read permission payroll.results.read.organization
-      since 2026-11-17 (spec §7.3, migration 0151), so payroll.periods.manage alone opens none. Out of v1 by the spec (§1.2):
+      since 2026-11-17 (spec §7.3, migration 0151), so payroll.periods.manage alone opens none.
+      Annual PPh21 for the final masa pajak (Pasal 17, PP 58/2023, PMK 168/2023), bukti potong
+      1721-A1 for HC and for the employee (print/PDF), the e-Bupot recap CSV, and NIK/NPWP
+      sealed per employee (spec §7.4, migration 0153). Out of v1 by the spec (§1.2):
       THR, bank transfer integration, non-employee recipients. Parallel run round 1 (October 2026)
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
-      Open owner items: load the verified TER table (PPH21_TER), kasbon balances, and the
+      Open owner items: load the verified TER table (PPH21_TER) and the PPH21_ANNUAL policy
+      (PTKP, biaya jabatan, Pasal 17), enter NIK/NPWP, kasbon balances, and the
       remaining profiles.
     docs:
       - docs/domain/payroll-engine-discovery.md

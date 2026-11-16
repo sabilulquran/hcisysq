@@ -627,6 +627,42 @@ paths:
     $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1evaluation~1results'
   /admin/training/employees/{employeeId}/evaluation:
     $ref: './training-evaluation.openapi.yaml#/paths/~1admin~1training~1employees~1{employeeId}~1evaluation'
+  /admin/training/online/storage:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1online~1storage'
+  /admin/training/programs/{id}/modules:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1modules'
+  /admin/training/modules/{id}:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1modules~1{id}'
+  /admin/training/modules/{id}/publish:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1modules~1{id}~1publish'
+  /admin/training/modules/{id}/archive:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1modules~1{id}~1archive'
+  /admin/training/modules/{id}/materials:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1modules~1{id}~1materials'
+  /admin/training/materials/{id}/remove:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1materials~1{id}~1remove'
+  /admin/training/materials/{id}/video:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1materials~1{id}~1video'
+  /admin/training/materials/{id}/stream:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1materials~1{id}~1stream'
+  /admin/training/programs/{id}/online-progress:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1programs~1{id}~1online-progress'
+  /admin/training/materials/{id}/progress/{employeeId}/complete:
+    $ref: './training-online.openapi.yaml#/paths/~1admin~1training~1materials~1{id}~1progress~1{employeeId}~1complete'
+  /training/me/programs/{id}/modules:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1programs~1{id}~1modules'
+  /training/me/materials/{id}/playbacks:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1materials~1{id}~1playbacks'
+  /training/me/playbacks/{id}/heartbeat:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1playbacks~1{id}~1heartbeat'
+  /training/me/materials/{id}/stream:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1materials~1{id}~1stream'
+  /training/me/materials/{id}/read:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1materials~1{id}~1read'
+  /training/me/modules/{id}/quiz:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1modules~1{id}~1quiz'
+  /training/me/modules/{id}/quiz/attempts:
+    $ref: './training-online.openapi.yaml#/paths/~1training~1me~1modules~1{id}~1quiz~1attempts'
   /admin/reports/hr/access:
     $ref: './hr-reports.openapi.yaml#/paths/~1admin~1reports~1hr~1access'
   /admin/reports/hr/{report}:

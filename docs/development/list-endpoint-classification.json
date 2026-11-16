@@ -1468,6 +1468,40 @@
     {
       "url": "/admin/training/employees/:employeeId/evaluation",
       "list": "paged"
+    },
+    {
+      "url": "/training/me/programs/:id/modules",
+      "list": "bounded",
+      "reason": "Modul terbit satu program daring; M-02 membatasi 20 modul × 20 materi."
+    },
+    {
+      "url": "/training/me/materials/:id/stream",
+      "list": "single",
+      "reason": "Satu rentang byte video (maks 4 MB per respons, M-09)."
+    },
+    {
+      "url": "/training/me/modules/:id/quiz",
+      "list": "single",
+      "reason": "Satu kuis modul; butir dibatasi 50 (R3 E-02)."
+    },
+    {
+      "url": "/admin/training/online/storage",
+      "list": "aggregate",
+      "reason": "Pemakaian dan batas penyimpanan media pelatihan."
+    },
+    {
+      "url": "/admin/training/programs/:id/modules",
+      "list": "bounded",
+      "reason": "Modul satu program daring; M-02 membatasi 20 modul aktif × 20 materi, seluruhnya termasuk arsip dibatasi 100."
+    },
+    {
+      "url": "/admin/training/materials/:id/stream",
+      "list": "single",
+      "reason": "Pratinjau satu rentang byte video (maks 4 MB per respons)."
+    },
+    {
+      "url": "/admin/training/programs/:id/online-progress",
+      "list": "paged"
     }
   ]
 }

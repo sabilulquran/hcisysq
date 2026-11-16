@@ -1,0 +1,375 @@
+openapi: 3.1.0
+info:
+  title: HCIS Training Online Modules (TRAIN-001 R4)
+  version: 1.0.0
+  description: |
+    Online modules with server-hosted video, as implemented in
+    apps/api/src/modules/training/online-routes.ts. Spec: docs/domain/training-online-modules.md.
+    Behind TRAINING_ONLINE_ENABLED (default 0): while off, every route answers 404
+    TRAINING_ONLINE_DISABLED. Video bytes go through the ObjectStorage port; responses never carry
+    a storage path. /training/me/* is EMPLOYEE enrolment (anything else 404); /admin/training/*
+    needs training.read (reads) or training.manage (writes). Errors are { code, message }.
+paths:
+  /admin/training/online/storage:
+    get:
+      tags: [Training]
+      operationId: getTrainingMediaStorage
+      summary: Whether online modules are on, and media limits and usage (M-04)
+      responses:
+        '200':
+          description: Storage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  videoMaxBytes: { type: integer }
+                  quotaBytes: { type: integer }
+                  usedBytes: { type: integer }
+  /admin/training/programs/{id}/modules:
+    get:
+      tags: [Training]
+      operationId: listTrainingModules
+      summary: Modules of an online program with their materials (bounded, M-02)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Items' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Training]
+      operationId: createTrainingModule
+      summary: Add a draft module to an online program
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, creditHours]
+              properties:
+                title: { type: string, minLength: 3, maxLength: 200 }
+                description: { type: [string, 'null'], maxLength: 2000 }
+                creditHours: { type: number, minimum: 0.25, maximum: 40, multipleOf: 0.25 }
+      responses:
+        '201': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/modules/{id}:
+    patch:
+      tags: [Training]
+      operationId: updateTrainingModule
+      summary: Change a draft module, including its quiz (copy of a TEST instrument, M-13)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: [string, 'null'] }
+                creditHours: { type: number }
+                quizInstrumentId: { type: [string, 'null'], format: uuid }
+                quizPassingScore: { type: integer, minimum: 0, maximum: 100 }
+                quizMaxAttempts: { type: integer, minimum: 1, maximum: 10 }
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/modules/{id}/publish:
+    post:
+      tags: [Training]
+      operationId: publishTrainingModule
+      summary: Publish a draft module; it locks (M-07)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/modules/{id}/archive:
+    post:
+      tags: [Training]
+      operationId: archiveTrainingModule
+      summary: Archive a draft module with a reason
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/modules/{id}/materials:
+    post:
+      tags: [Training]
+      operationId: createTrainingMaterial
+      summary: Add a VIDEO (upload follows) or TEXT material to a draft module
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, title]
+              properties:
+                kind: { type: string, enum: [VIDEO, TEXT] }
+                title: { type: string, minLength: 3, maxLength: 200 }
+                body: { type: string, maxLength: 20000, description: Required for TEXT, absent for VIDEO. }
+      responses:
+        '201': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/materials/{id}/remove:
+    post:
+      tags: [Training]
+      operationId: removeTrainingMaterial
+      summary: Remove a material of a draft module (its video object is deleted after commit)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /admin/training/materials/{id}/video:
+    put:
+      tags: [Training]
+      operationId: uploadTrainingVideo
+      summary: Upload the MP4 of a draft video material, streamed to ObjectStorage (M-04)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          video/mp4:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  byteSize: { type: integer }
+                  durationSeconds: { type: number }
+        '400': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '415': { $ref: '#/components/responses/Problem' }
+        '507': { $ref: '#/components/responses/Problem' }
+  /admin/training/materials/{id}/stream:
+    get:
+      tags: [Training]
+      operationId: previewTrainingVideo
+      summary: HC preview of a video, by range only (M-09)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - $ref: '#/components/parameters/Range'
+      responses:
+        '206': { $ref: '#/components/responses/Partial' }
+        '416': { $ref: '#/components/responses/Problem' }
+  /admin/training/programs/{id}/online-progress:
+    get:
+      tags: [Training]
+      operationId: listTrainingOnlineProgress
+      summary: Progress per participant (paged)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        employeeId: { type: string, format: uuid }
+                        fullName: { type: string }
+                        employeeNumber: { type: string }
+                        participantStatus: { type: string }
+                        materialCount: { type: integer }
+                        completedMaterials: { type: integer }
+                        passedQuizzes: { type: integer }
+                  pagination: { type: object }
+  /admin/training/materials/{id}/progress/{employeeId}/complete:
+    post:
+      tags: [Training]
+      operationId: completeTrainingMaterialManually
+      summary: Mark a material complete for one participant with a reason (M-12)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: employeeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /training/me/programs/{id}/modules:
+    get:
+      tags: [Training]
+      operationId: listMyTrainingModules
+      summary: Published modules of my online program with my progress (bounded, M-02)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Items' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /training/me/materials/{id}/playbacks:
+    post:
+      tags: [Training]
+      operationId: startTrainingPlayback
+      summary: Start a watch session; any other session for the material ends (M-08)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '201':
+          description: Watch session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playbackId: { type: string, format: uuid }
+                  durationSeconds: { type: number }
+                  creditedSeconds: { type: number }
+                  completed: { type: boolean }
+                  streamUrl: { type: string }
+        '404': { $ref: '#/components/responses/Problem' }
+  /training/me/playbacks/{id}/heartbeat:
+    post:
+      tags: [Training]
+      operationId: trainingPlaybackHeartbeat
+      summary: Report the play position; the server credits only real-time contiguous progress (M-10)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [position]
+              properties:
+                position: { type: number, minimum: 0 }
+      responses:
+        '200':
+          description: Credit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  creditedSeconds: { type: number }
+                  completed: { type: boolean }
+                  programCompleted: { type: boolean }
+        '409': { $ref: '#/components/responses/Problem' }
+  /training/me/materials/{id}/stream:
+    get:
+      tags: [Training]
+      operationId: streamTrainingVideo
+      summary: Video bytes by range for the holder of an active watch session (M-08, M-09)
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - { name: playback, in: query, required: true, schema: { type: string, format: uuid } }
+        - $ref: '#/components/parameters/Range'
+      responses:
+        '206': { $ref: '#/components/responses/Partial' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '416': { $ref: '#/components/responses/Problem' }
+  /training/me/materials/{id}/read:
+    post:
+      tags: [Training]
+      operationId: confirmTrainingReading
+      summary: Confirm a TEXT material as read
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+  /training/me/modules/{id}/quiz:
+    get:
+      tags: [Training]
+      operationId: getMyTrainingQuiz
+      summary: The module quiz without answer keys, once every material is complete (M-13)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Saved' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /training/me/modules/{id}/quiz/attempts:
+    post:
+      tags: [Training]
+      operationId: submitMyTrainingQuiz
+      summary: Submit a quiz attempt; scored on the server, highest counts (M-13, M-14)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers: { type: object, additionalProperties: true }
+      responses:
+        '201':
+          description: Attempt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score: { type: number }
+                  passed: { type: boolean }
+                  best: { type: number }
+                  attemptsLeft: { type: integer }
+                  programCompleted: { type: boolean }
+        '409': { $ref: '#/components/responses/Problem' }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Range:
+      name: Range
+      in: header
+      required: true
+      description: One range `bytes=start-end`; at most 4 MB are returned per response.
+      schema: { type: string }
+  requestBodies:
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 5, maxLength: 500 }
+  schemas:
+    Problem:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Saved:
+      description: Result
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    Items:
+      description: Bounded list
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              items: { type: array, items: { type: object, additionalProperties: true } }
+    Partial:
+      description: One byte range of the MP4 (Cache-Control private, no-store; Content-Disposition inline)
+      content:
+        video/mp4:
+          schema: { type: string, format: binary }

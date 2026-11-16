@@ -91,6 +91,7 @@ function attendanceStatusLabel(status: string) {
     configuration_error: "Jadwal perlu diperiksa",
     field_assignment: "Tugas luar",
     remote_work: "WFH/WFA",
+    business_trip: "Dinas",
   };
   return labels[status] ?? status;
 }

@@ -150,6 +150,9 @@ export const PAYROLL_PERMISSIONS = [
   "payroll.payments.confirm",
   "payroll.reports.read.organization",
   "payroll.transfers.read.organization",
+  // Migration 0151: per-person figures (results, inputs, variance, PPh21), apart from the
+  // aggregate report and from running the lifecycle.
+  "payroll.results.read.organization",
 ] as const;
 
 export const PAYROLL_ROLE_KEYS = ["finance_officer", "finance_lead", "director"] as const;

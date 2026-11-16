@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 
 import { calculationPairs, type CalculationScope } from "./calculation-runner.js";
+import { TRIP_ATTENDANCE_STATUSES } from "../trips/domain.js";
 import { jakartaWorkDate } from "./engine.js";
 
 // ATT-014-2 detail rows (docs/domain/attendance-report-calculation.md §6.2, §6.5). This read model
@@ -9,7 +10,7 @@ import { jakartaWorkDate } from "./engine.js";
 
 export type CalculationRowStatus =
   | "scheduled" | "pending" | "present" | "late" | "incomplete" | "leave" | "absent" | "off" | "configuration_error"
-  | "field_assignment" | "remote_work"
+  | "field_assignment" | "remote_work" | "business_trip"
   | "unscheduled" | "not_captured" | "not_calculated";
 
 type EmployeeRow = { employeeId: string; employeeNumber: string; employeeName: string; unitId: string | null; unitName: string | null };
@@ -65,8 +66,10 @@ export function normalActual(status: CalculationRowStatus, blocks?: { count: num
   if (blocks && blocks.count > 1 && ["present", "late", "incomplete", "absent"].includes(status)) {
     return { normal: 1, actual: blocks.credited === null ? null : Math.round(blocks.credited * 100) / 100 };
   }
-  // ATT-015 D-06: an approved tugas luar or WFH/WFA without a punch is a worked day.
-  if (status === "present" || status === "late" || status === "field_assignment" || status === "remote_work") return { normal: 1, actual: 1 };
+  // ATT-015 D-06: an approved tugas luar or WFH/WFA without a punch is a worked day; so is a day covered by
+  // an issued business trip (TRIP-001 Paket 2, business-travel.md §9.2).
+  if (status === "present" || status === "late" || status === "field_assignment" || status === "remote_work"
+    || status === "business_trip") return { normal: 1, actual: 1 };
   if (status === "absent") return { normal: 1, actual: 0 };
   if (["incomplete", "leave", "scheduled", "pending"].includes(status)) return { normal: 1, actual: null };
   return { normal: null, actual: null };
@@ -106,7 +109,7 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
        checked.early_leave_minutes AS "earlyLeaveMinutes", checked.overtime_minutes AS "overtimeMinutes",
        checked.incomplete_session AS "incompleteSession",
        (checked.source_leave_request_id IS NOT NULL OR checked.source_attendance_resolution_case_id IS NOT NULL
-         OR checked.source_work_arrangement_id IS NOT NULL) AS "hasDisposition",
+         OR checked.source_work_arrangement_id IS NOT NULL OR checked.source_business_trip_id IS NOT NULL) AS "hasDisposition",
        (
          EXISTS (
            SELECT 1 FROM attendance_schedule_assignments assignment
@@ -185,6 +188,17 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
              AND checked.work_date BETWEEN arrangement.start_on AND arrangement.end_on
          )
          OR EXISTS (
+           -- TRIP-001 Paket 2: a trip issued (or completed) after the day was calculated, or an issued trip
+           -- cancelled since (a cancelled trip keeps issued_document_id), when its recompute did not run.
+           SELECT 1
+           FROM business_trip_requests trip
+           WHERE trip.employee_id = checked.employee_id
+             AND (trip.status = ANY($4::text[])
+               OR (trip.status = 'CANCELLED' AND trip.issued_document_id IS NOT NULL))
+             AND trip.updated_at > checked.calculated_at
+             AND checked.work_date BETWEEN trip.start_on AND trip.end_on
+         )
+         OR EXISTS (
            -- §20.10: a shift whose start was moved earlier now gives a schedule to dates it did not cover.
            SELECT 1
            FROM access_audit_events audit
@@ -197,7 +211,7 @@ async function storedResults(pool: Pick<Pool, "query">, employeeIds: string[], f
          )
        ) AS changed
      FROM checked`,
-    [employeeIds, from, to],
+    [employeeIds, from, to, [...TRIP_ATTENDANCE_STATUSES]],
   );
   return result.rows;
 }

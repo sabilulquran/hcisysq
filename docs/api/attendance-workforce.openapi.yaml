@@ -788,7 +788,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, unscheduled, not_captured, not_calculated]
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, field_assignment, remote_work, business_trip, unscheduled, not_captured, not_calculated]
         - { name: changedOnly, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
         - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
         - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 10, maximum: 100, default: 50 } }
@@ -853,7 +853,7 @@ paths:
           description: Applies to detail report only.
           schema:
             type: string
-            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
+            enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, field_assignment, remote_work, business_trip]
       responses:
         '200':
           description: Canonical detail, period, unit, session, scan, schedule, or overtime report; unsupported filter/type combinations are not exposed by the GUI.
@@ -1583,7 +1583,7 @@ components:
         version: { type: integer, minimum: 1 }
         status:
           type: string
-          enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error]
+          enum: [scheduled, pending, present, late, incomplete, leave, absent, off, configuration_error, field_assignment, remote_work, business_trip]
         scheduledStartAt: { type: [string, 'null'], format: date-time }
         scheduledEndAt: { type: [string, 'null'], format: date-time }
         firstCheckInAt: { type: [string, 'null'], format: date-time }

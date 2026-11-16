@@ -130,6 +130,12 @@ paths:
       tags: [Payroll]
       operationId: listPayrollPeriodInputs
       summary: Read the period's inputs
+      description: >-
+        One input row is one person's rapel, penyesuaian or other income, so it is
+        a per-person figure (specification section 7.3). Requires
+        payroll.results.read.organization, payroll.calculate or payroll.inputs.manage; payroll.periods.manage alone is refused.
+        Before approval only payroll.calculate or payroll.inputs.manage holders
+        read it. Every read is recorded (scope period_inputs).
       parameters:
         - name: periodId
           in: path
@@ -307,9 +313,12 @@ paths:
       summary: Read the latest calculation of every employee in the period
       description: >-
         Per-person pay, so every read is recorded as a sensitive access
-        (payroll.report.read). Same read permissions as the period itself, with
-        one gate: report readers see the figures only once the period is
-        approved, while the people running it see them throughout
+        (payroll.report.read). Requires payroll.results.read.organization, payroll.calculate or payroll.inputs.manage
+        (specification section 7.3); payroll.periods.manage,
+        payroll.reports.read.organization, payroll.approve and
+        payroll.payments.confirm alone are refused. payroll.results.read.organization
+        holders see the figures only once the period is approved, while
+        payroll.calculate and payroll.inputs.manage holders see them throughout
         (specification section 6).
       parameters:
         - name: periodId
@@ -348,9 +357,11 @@ paths:
       description: >-
         The payroll report. It carries no bank account anywhere: the accounts live
         in the transfer list, which has its own permission (specification section
-        7). Requires payroll.reports.read.organization, or one of the permissions
-        that run a period. Report readers see it once the period is approved; the
-        people running the period see it throughout. Every read is recorded.
+        7). Requires payroll.reports.read.organization or one of the per-person
+        read permissions (payroll.results.read.organization, payroll.calculate or payroll.inputs.manage); payroll.periods.manage
+        alone is refused (section 7.3). Report readers see it once the period is
+        approved; payroll.calculate and payroll.inputs.manage holders see it
+        throughout. Every read is recorded.
       parameters:
         - name: periodId
           in: path
@@ -440,8 +451,8 @@ paths:
         is not final), NON_PERMANENT_TERMS (KONTRAK_HONORER or LEPAS on the pay
         date; still monthly TER under 21-100-01 pending the process owner's
         decision). The masa pajak is the period month. Requires
-        payroll.reports.read.organization, payroll.calculate or
-        payroll.inputs.manage; payroll.periods.manage alone is refused. Available
+        payroll.results.read.organization, payroll.calculate or payroll.inputs.manage (section 7.3);
+        payroll.periods.manage or payroll.reports.read.organization alone is refused. Available
         only once the period is approved (DRAFT), because it is built from final
         results. No NIK or NPWP. Every read and every export is
         recorded as sensitive access (scope pph21_report / pph21_report_csv). With
@@ -498,6 +509,9 @@ paths:
         threshold comes from policy and falls back to the specification's default.
         An employee who appears or leaves is reported once, not once per component.
         The first period answers with an empty comparison rather than an error.
+        Names people and their amounts, so it requires payroll.results.read.organization, payroll.calculate or payroll.inputs.manage
+        (section 7.3); before approval only payroll.calculate or
+        payroll.inputs.manage holders read it.
       parameters:
         - name: periodId
           in: path
@@ -1005,6 +1019,23 @@ components:
             decisionRequired:
               type: array
               items: { type: string }
+        readAccess:
+          type: object
+          description: >-
+            Which figure panels this actor may open at all (specification section
+            7.3), so a screen hides a panel that would always answer 403. The state
+            gate still applies per request.
+          required: [report, perPerson, transfers]
+          properties:
+            report:
+              description: The aggregate report (GET .../report).
+              type: boolean
+            perPerson:
+              description: Results, inputs, variance and the PPh21 report.
+              type: boolean
+            transfers:
+              description: The transfer list with bank accounts.
+              type: boolean
 
   responses:
     PayrollUnauthenticated:

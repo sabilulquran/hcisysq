@@ -87,6 +87,14 @@ export async function syncEmployeeLoanDeductions(
     );
     return { proposed: 0, mirrored: 0 };
   }
+  // Every proposal is derived afresh. A proposal left over from an earlier run
+  // (the employee has since left the run, or the loan was paid off in cash)
+  // would otherwise survive with no slip line behind it and be settled on
+  // approval, or block the period against a zero balance.
+  await client.query(
+    "DELETE FROM payroll_loan_deductions WHERE period_id = $1 AND origin = 'PROPOSED'",
+    [period.id],
+  );
   if (employeeIds.length === 0) return { proposed: 0, mirrored: 0 };
 
   // Lock the LOAN-001 loans first, in id order, so a manual payment recorded
@@ -177,6 +185,7 @@ type SettlementRow = {
   paidTotal: string;
   status: string;
   existingPaymentId: string | null;
+  approverIsBorrower: boolean | null;
 };
 
 async function addLoanEvent(
@@ -210,14 +219,21 @@ export async function settleEmployeeLoanDeductions(
     `SELECT loan.id AS "employeeLoanId", loan.employee_id AS "employeeId", d.amount::text AS amount,
             loan.principal_amount::text AS principal, loan.paid_total::text AS "paidTotal", loan.status,
             (SELECT p.id FROM employee_loan_payments p
-             WHERE p.loan_id = loan.id AND p.source_payroll_period_id = $1 AND p.status = 'ACTIVE') AS "existingPaymentId"
+             WHERE p.loan_id = loan.id AND p.source_payroll_period_id = $1 AND p.status = 'ACTIVE') AS "existingPaymentId",
+            loan.employee_id = (SELECT a.employee_id FROM accounts a WHERE a.id = $2) AS "approverIsBorrower"
      FROM payroll_loan_deductions d
      JOIN payroll_loans mirror ON mirror.id = d.loan_id AND mirror.employee_loan_id IS NOT NULL
      JOIN employee_loans loan ON loan.id = mirror.employee_loan_id
      WHERE d.period_id = $1
+       -- Only what a slip of this period actually deducted: the employee has a
+       -- result in the period. A deduction for someone the period does not pay
+       -- produced no LOAN line, so it must not become a loan payment either.
+       AND EXISTS (
+         SELECT 1 FROM payroll_results r JOIN employments e ON e.id = r.employment_id
+         WHERE r.period_id = $1 AND e.employee_id = loan.employee_id)
      ORDER BY loan.id
      FOR UPDATE OF loan`,
-    [period.id],
+    [period.id, actorAccountId],
   );
 
   const month = period.periodMonth.slice(0, 7);
@@ -242,7 +258,10 @@ export async function settleEmployeeLoanDeductions(
       `INSERT INTO employee_loan_payments (
          id, loan_id, amount, paid_on, method, reference, note, idempotency_key,
          recorded_by_account_id, recorded_at, source_payroll_period_id)
-       VALUES ($1, $2, $3::bigint, $4::date, 'PAYROLL_DEDUCTION', $5, $6, $7, $8, clock_timestamp(), $9)`,
+       -- The pay date, but never a future date: approval can come before payday,
+       -- and LOAN-001 never records a payment ahead of today (D-10).
+       VALUES ($1, $2, $3::bigint, LEAST($4::date, (now() AT TIME ZONE 'Asia/Jakarta')::date),
+               'PAYROLL_DEDUCTION', $5, $6, $7, $8, clock_timestamp(), $9)`,
       [
         paymentId,
         row.employeeLoanId,
@@ -268,6 +287,9 @@ export async function settleEmployeeLoanDeductions(
       paidOn: period.payDate,
       source: "payroll",
       payrollPeriodId: period.id,
+      // D-14 cannot apply (the payment follows an approved slip), so the case
+      // where the approving director settles their own loan is marked instead.
+      approverIsBorrower: row.approverIsBorrower ? 1 : 0,
     });
     if (status === "PAID_OFF") {
       await addLoanEvent(client, row.employeeLoanId, actorAccountId, "loan.paid_off", null, {});
@@ -304,14 +326,22 @@ export async function reverseEmployeeLoanSettlements(
     paidTotal: string;
     status: string;
   }>(
-    `SELECT p.id AS "paymentId", loan.id AS "loanId", loan.employee_id AS "employeeId",
+    // Loans before payments, the order the LOAN-001 routes lock in.
+    `WITH locked AS (
+       SELECT loan.id FROM employee_loans loan
+       WHERE loan.id IN (SELECT p.loan_id FROM employee_loan_payments p
+                         WHERE p.source_payroll_period_id = $1 AND p.status = 'ACTIVE')
+       ORDER BY loan.id FOR UPDATE
+     )
+     SELECT p.id AS "paymentId", loan.id AS "loanId", loan.employee_id AS "employeeId",
             p.amount::text AS amount,
             loan.paid_total::text AS "paidTotal", loan.status
      FROM employee_loan_payments p
      JOIN employee_loans loan ON loan.id = p.loan_id
      WHERE p.source_payroll_period_id = $1 AND p.status = 'ACTIVE'
+       AND loan.id IN (SELECT id FROM locked)
      ORDER BY loan.id
-     FOR UPDATE OF loan, p`,
+     FOR UPDATE OF p`,
     [period.id],
   );
   const month = period.periodMonth.slice(0, 7);

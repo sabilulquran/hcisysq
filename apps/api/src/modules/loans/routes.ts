@@ -991,7 +991,12 @@ export async function registerLoanRoutes(
       }
       // Package 2: while payroll deducts instalments itself, a hand-recorded
       // PAYROLL_DEDUCTION would count the same slip twice (employee-loans.md §9.2).
-      if (body.data.method === "PAYROLL_DEDUCTION" && config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1") {
+      // A loan payroll already mirrors is refused too while the switch is off:
+      // a deduction set on the mirror would be recorded on approval as well.
+      const mirrored = body.data.method === "PAYROLL_DEDUCTION" && config.LOAN_PAYROLL_DEDUCTION_ENABLED !== "1"
+        ? (await client.query("SELECT 1 FROM payroll_loans WHERE employee_loan_id = $1", [params.data.id])).rows.length > 0
+        : false;
+      if (body.data.method === "PAYROLL_DEDUCTION" && (config.LOAN_PAYROLL_DEDUCTION_ENABLED === "1" || mirrored)) {
         throw new LoanError(409, "LOAN_PAYROLL_DEDUCTION_AUTOMATIC",
           "Potongan gaji dicatat otomatis saat periode payroll disahkan; catat tunai atau transfer saja.");
       }

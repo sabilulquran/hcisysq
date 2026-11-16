@@ -873,6 +873,32 @@ describe.skipIf(!allowed)("PAY-003 calculation against PostgreSQL", () => {
       expect((await loanState(loanId)).payments.map((payment) => payment.method)).toEqual(["CASH"]);
     });
 
+    it("re-derives proposals: one left behind by an earlier run is neither settled nor blocking", async () => {
+      const leaver = await newEmployment({ category: "TETAP" });
+      const leaverLoan = await disbursedLoan(leaver.employeeId);
+      const prepaid = await newEmployment({ category: "TETAP" });
+      const prepaidLoan = await disbursedLoan(prepaid.employeeId);
+      await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(await loanLine(leaver.employmentId)).toBe(333_000);
+
+      // The leaver drops out of the run; the other repays in cash after the calculation.
+      await pool.query("UPDATE employments SET legal_entity_key = $2 WHERE id = $1", [leaver.employmentId, randomUUID()]);
+      await cashPayment(prepaidLoan, 700_000);
+      const outcome = await calculatePeriod(pool, loanPeriod(), actorAccountId, 0, { employeeLoanDeduction: true });
+      expect(outcome.blockerCount).toBe(0);
+      expect(await loanLine(prepaid.employmentId)).toBe(0);
+      const left = await pool.query(
+        "SELECT 1 FROM payroll_loan_deductions WHERE period_id = $1 AND origin = 'PROPOSED'",
+        [loanPeriodId],
+      );
+      expect(left.rows).toHaveLength(0);
+
+      await moveTo("SUBMITTED");
+      expect((await transition("approve", "APPROVED")).applied).toBe(true);
+      expect((await loanState(leaverLoan)).payments).toEqual([]);
+      expect((await loanState(prepaidLoan)).payments.map((payment) => payment.method)).toEqual(["CASH"]);
+    });
+
     it("drops its own proposals when the switch is turned off again", async () => {
       const { employmentId, employeeId } = await newEmployment({ category: "TETAP" });
       await disbursedLoan(employeeId);

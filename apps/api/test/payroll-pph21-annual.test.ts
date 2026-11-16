@@ -12,13 +12,14 @@ import {
   a1LinesOf,
   annualMonthsOfPeriod,
   buildAnnualSegments,
+  flagPendingPeriods,
   emptyA1Lines,
   pasal17Tax,
   positionCost,
   ptkpAmount,
   type AnnualMonth,
 } from "../src/modules/payroll/pph21-annual.js";
-import { annualRecapToCsv } from "../src/modules/payroll/pph21-annual-store.js";
+import { annualRecapToCsv, openedTaxIdentity } from "../src/modules/payroll/pph21-annual-store.js";
 import type { Pph21SourceRow } from "../src/modules/payroll/pph21.js";
 import { parsePph21AnnualPolicy, validatePolicyPayload, type Pph21AnnualPolicy } from "../src/modules/payroll/policy.js";
 import {
@@ -287,6 +288,52 @@ describe("months from one period", () => {
     expect(annualMonthsOfPeriod({ period, rows: [row({ excluded: true })], terTaxByEmployee: null, policy: policy() })).toEqual([]);
     expect(annualMonthsOfPeriod({ period, rows: [row({ blockerCount: 1 })], terTaxByEmployee: null, policy: policy() })).toEqual([]);
     expect(annualMonthsOfPeriod({ period, rows: [row()], terTaxByEmployee: null, policy: policy() })[0]!.terTax).toBeNull();
+  });
+});
+
+describe("review fixes", () => {
+  it("scales the pension contribution by the pay factor: JHT 100.001 × 0,8 → 80.000", () => {
+    const [m] = annualMonthsOfPeriod({
+      period: { periodMonth: "2026-06-01", periodStart: "2026-06-01", periodEnd: "2026-06-30" },
+      rows: [{
+        employmentId: "e1", employeeId: "p1", employeeNumber: "1", fullName: "Uji", ptkpStatus: "TK/0",
+        excluded: false, exclusionReason: null, payFactor: 0.8, blockerCount: 0, serviceEndDate: null,
+        hasContinuingEmployment: true, termCategory: "TETAP",
+        earnings: [{ code: "BASIC", amount: 5_000_000 }],
+        deductions: [{ code: "JHT_EMPLOYEE", amount: 100_001 }],
+      }],
+      terTaxByEmployee: null,
+      policy: policy(),
+    });
+    expect(m!.pensionContribution).toBe(80_000);
+    expect(m!.gross).toBe(4_000_000);
+  });
+
+  it("flags a closed span when a month of the year up to its end is not final", () => {
+    const segments = buildAnnualSegments(policy(), [month("2026-01"), month("2026-02", { final: true }), month("2026-07"), month("2026-12")]);
+    const flagged = flagPendingPeriods(segments, ["2026-05"]);
+    expect(flagged.map((s) => s.flags.includes("PERIOD_PENDING"))).toEqual([false, true]);
+    expect(flagPendingPeriods(segments, [])).toEqual(segments);
+  });
+
+  it("answers null and names the field when a sealed number does not open", () => {
+    const row = {
+      employeeId: "p1",
+      nikSealed: sealTaxIdentity("11".repeat(32), "p1", "nik", "3209010101900001"),
+      nikLast4: "0001",
+      npwpSealed: "v1.bad.bad.bad",
+      npwpLast4: "1234",
+      updatedAt: null,
+    };
+    expect(openedTaxIdentity("11".repeat(32), row)).toEqual({ nik: "3209010101900001", npwp: null, unreadable: ["npwp"] });
+    expect(openedTaxIdentity("22".repeat(32), row)).toEqual({ nik: null, npwp: null, unreadable: ["nik", "npwp"] });
+  });
+
+  it("refuses a sealed value with a truncated tag", () => {
+    const sealed = sealTaxIdentity("11".repeat(32), "p1", "nik", "3209010101900001");
+    const [v, iv, tag, ct] = sealed.split(".");
+    const short = [v, iv, Buffer.from(tag!, "base64url").subarray(0, 4).toString("base64url"), ct].join(".");
+    expect(() => openTaxIdentity("11".repeat(32), "p1", "nik", short)).toThrow();
   });
 });
 

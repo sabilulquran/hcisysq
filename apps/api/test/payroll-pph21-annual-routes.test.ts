@@ -73,6 +73,8 @@ type Options = {
   /** Month of the single period; November keeps the span open. */
   month?: string;
   annualPolicy?: boolean;
+  /** A month of the year reopened back to COLLECTING. */
+  reopenedMonth?: string;
   /** The employee the signed-in account is linked to. */
   linkedEmployeeId?: string;
   body?: unknown;
@@ -128,7 +130,14 @@ async function call(persona: Persona | "anonymous", url: string, options: Option
           periodEnd: `${month}-28`,
           payDate: `${month}-25`,
           state,
-        }],
+        }, ...(options.reopenedMonth ? [{
+          id: "50000000-0000-4000-8000-000000000005",
+          periodMonth: `${options.reopenedMonth}-01`,
+          periodStart: `${options.reopenedMonth}-01`,
+          periodEnd: `${options.reopenedMonth}-28`,
+          payDate: `${options.reopenedMonth}-25`,
+          state: "COLLECTING",
+        }] : [])],
         rowCount: 1,
       };
     }
@@ -269,6 +278,19 @@ describe("1721-A1 for HC", () => {
     expect((await call("hc", A1.replace(/\/1$/, "/2"))).response.statusCode).toBe(404);
     expect((await call("module_admin", A1)).response.statusCode).toBe(403);
     expect((await call("employee", A1)).response.statusCode).toBe(403);
+  });
+});
+
+describe("1721-A1 with a period of the year not final", () => {
+  it("refuses HC and hides it from the employee while an earlier month is reopened", async () => {
+    const hc = await call("hc", A1, { reopenedMonth: "2026-05" });
+    expect(hc.response.statusCode).toBe(409);
+    expect(hc.response.json().code).toBe("PPH21_A1_PERIOD_PENDING");
+    expect(hc.audits).toEqual([]);
+    expect((await call("employee", "/payroll/me/a1", { reopenedMonth: "2026-05" })).response.json().items).toEqual([]);
+    expect((await call("employee", "/payroll/me/a1/2026/1", { reopenedMonth: "2026-05" })).response.statusCode).toBe(404);
+    const recap = await call("director", RECAP, { reopenedMonth: "2026-05" });
+    expect(recap.response.json().annual.rows[0].flags).toContain("PERIOD_PENDING");
   });
 });
 

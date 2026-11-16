@@ -577,7 +577,7 @@ paths:
         '403': { $ref: '#/components/responses/PayrollForbidden' }
         '404': { $ref: '#/components/responses/PayrollNotFound' }
         '409':
-          description: PPH21_A1_NOT_FINAL, or the PPH21_ANNUAL policy is missing or invalid.
+          description: PPH21_A1_NOT_FINAL, PPH21_A1_PERIOD_PENDING (a period of the year up to the end of the span is not final), or the PPH21_ANNUAL policy is missing or invalid.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PayrollError' }
@@ -1090,7 +1090,7 @@ components:
         finalMasaTax: { type: string, nullable: true }
         flags:
           type: array
-          items: { type: string, enum: [OPEN, PTKP_MISSING, PRIOR_TAX_INCOMPLETE] }
+          items: { type: string, enum: [OPEN, PTKP_MISSING, PRIOR_TAX_INCOMPLETE, PERIOD_PENDING] }
         note: { type: string }
     PayrollPph21Annual:
       type: object

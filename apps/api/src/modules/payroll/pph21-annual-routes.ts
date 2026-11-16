@@ -148,6 +148,8 @@ export async function registerPph21AnnualRoutes(app: FastifyInstance, pool: Pool
         position: header?.position ?? null,
         nik: identity.nik,
         npwp: identity.npwp,
+        // Which number is on file but could not be opened (corrupt row or rotated key); never the value.
+        unreadable: identity.unreadable,
       },
       policy: { versionId: lookup.versionId, effectiveFrom: lookup.effectiveFrom, source: lookup.policy.source },
       segment: segmentToJson(segment),
@@ -177,6 +179,7 @@ export async function registerPph21AnnualRoutes(app: FastifyInstance, pool: Pool
         tax_year: query.data.year,
         row_count: annual.segments.length,
         includes_tax_identity: true,
+        unreadable_count: [...opened.values()].filter((identity) => identity.unreadable.length > 0).length,
       });
       reply.header("Cache-Control", "no-store");
       reply.header("Content-Type", "text/csv; charset=utf-8");
@@ -233,6 +236,12 @@ export async function registerPph21AnnualRoutes(app: FastifyInstance, pool: Pool
       return send(reply, 409, {
         code: "PPH21_A1_NOT_FINAL",
         message: "Masa pajak terakhir belum disahkan; bukti potong 1721-A1 belum dapat dibuat.",
+      });
+    }
+    if (segment.flags.includes("PERIOD_PENDING")) {
+      return send(reply, 409, {
+        code: "PPH21_A1_PERIOD_PENDING",
+        message: "Ada periode tahun ini yang belum disahkan atau sedang dibuka ulang; bukti potong menunggu periode itu final.",
       });
     }
     await audit(actor.accountId, "payroll.a1.read", {
@@ -307,7 +316,9 @@ export async function registerPph21AnnualRoutes(app: FastifyInstance, pool: Pool
       [year, SELF_VISIBLE_STATE],
     );
     const published = new Set(rows.map((row) => row.month));
-    return annual.segments.filter((segment) => segment.closed && published.has(segment.endPeriod));
+    return annual.segments.filter(
+      (segment) => segment.closed && !segment.flags.includes("PERIOD_PENDING") && published.has(segment.endPeriod),
+    );
   }
 
   // HC: whether NIK/NPWP are on file, masked.

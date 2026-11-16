@@ -10,6 +10,7 @@ import { buildPph21Report } from "./pph21.js";
 import {
   annualMonthsOfPeriod,
   buildAnnualSegments,
+  flagPendingPeriods,
   type AnnualMonth,
   type AnnualSegment,
 } from "./pph21-annual.js";
@@ -104,8 +105,8 @@ export async function loadAnnualYear(
       pendingPeriods.push({ periodMonth: period.periodMonth.slice(0, 7), state: period.state });
       continue;
     }
-    const all = await loadPph21SourceRows(pool, period.id);
-    const rows = employeeId === undefined ? all : all.filter((row) => row.employeeId === employeeId);
+    // Filtered in SQL: a self read never loads the whole organisation's rows.
+    const rows = await loadPph21SourceRows(pool, period.id, employeeId);
     if (rows.length === 0) continue;
     const ter = await findPph21Policy(pool, period.payDate);
     let terTaxByEmployee: Map<string, number | null> | null = null;
@@ -117,7 +118,11 @@ export async function loadAnnualYear(
     }
     months.push(...annualMonthsOfPeriod({ period, rows, terTaxByEmployee, policy }));
   }
-  return { year, segments: buildAnnualSegments(policy, months), pendingPeriods, periodsWithoutTer };
+  const segments = flagPendingPeriods(
+    buildAnnualSegments(policy, months),
+    pendingPeriods.map((period) => period.periodMonth),
+  );
+  return { year, segments, pendingPeriods, periodsWithoutTer };
 }
 
 export type TaxIdentityRow = {
@@ -142,16 +147,27 @@ export async function loadTaxIdentities(pool: Pool, employeeIds: readonly string
   return new Map(rows.map((row) => [row.employeeId, row]));
 }
 
-/** The opened numbers, for a document that must print them. Never log the result. */
+/**
+ * The opened numbers, for a document that must print them. Never log the result.
+ * A value that does not open (corrupt row, rotated server key) is null and named
+ * in `unreadable`, so one bad row never fails a whole year's recap.
+ */
 export function openedTaxIdentity(
   serverKeyHex: string,
   row: TaxIdentityRow | undefined,
-): { nik: string | null; npwp: string | null } {
-  if (!row) return { nik: null, npwp: null };
-  return {
-    nik: row.nikSealed === null ? null : openTaxIdentity(serverKeyHex, row.employeeId, "nik", row.nikSealed),
-    npwp: row.npwpSealed === null ? null : openTaxIdentity(serverKeyHex, row.employeeId, "npwp", row.npwpSealed),
+): { nik: string | null; npwp: string | null; unreadable: Array<"nik" | "npwp"> } {
+  const unreadable: Array<"nik" | "npwp"> = [];
+  if (!row) return { nik: null, npwp: null, unreadable };
+  const open = (field: "nik" | "npwp", sealed: string | null): string | null => {
+    if (sealed === null) return null;
+    try {
+      return openTaxIdentity(serverKeyHex, row.employeeId, field, sealed);
+    } catch {
+      unreadable.push(field);
+      return null;
+    }
   };
+  return { nik: open("nik", row.nikSealed), npwp: open("npwp", row.npwpSealed), unreadable };
 }
 
 export function maskedTaxIdentity(row: TaxIdentityRow | undefined) {
@@ -187,6 +203,9 @@ export function annualSegmentNote(segment: AnnualSegment): string {
   }
   if (segment.flags.includes("PRIOR_TAX_INCOMPLETE")) {
     notes.push("PPh21 TER salah satu bulan sebelumnya belum dapat dihitung; PPh21 masa terakhir belum dapat ditetapkan");
+  }
+  if (segment.flags.includes("PERIOD_PENDING")) {
+    notes.push("Ada periode tahun ini yang belum disahkan atau sedang dibuka ulang; bukti potong menunggu periode itu final");
   }
   if (segment.finalMasaTax !== null && segment.finalMasaTax < 0) {
     notes.push("Lebih potong: dikembalikan kepada pegawai");

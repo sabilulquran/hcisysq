@@ -356,7 +356,7 @@ export async function previousPeriodId(pool: Pool, periodId: string): Promise<st
  * with the same employer past the period (so ending one of two is not a final
  * masa pajak).
  */
-export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise<Pph21SourceRow[]> {
+export async function loadPph21SourceRows(pool: Pool, periodId: string, employeeId?: string): Promise<Pph21SourceRow[]> {
   const { rows } = await pool.query<Omit<Pph21SourceRow, "payFactor" | "earnings" | "deductions"> & {
     payFactor: string;
     earnings: Array<{ code: string; amount: string | number }>;
@@ -403,14 +403,15 @@ export async function loadPph21SourceRows(pool: Pool, periodId: string): Promise
      JOIN employees emp ON emp.id = e.employee_id
      JOIN payroll_periods period ON period.id = latest.period_id
      ${RESULT_PROFILE}
+     WHERE ($2::uuid IS NULL OR emp.id = $2::uuid)
      ORDER BY emp.employee_number, latest.employment_id`,
-    [periodId],
+    [periodId, employeeId ?? null],
   );
   return rows.map((row) => ({
     ...row,
     payFactor: Number(row.payFactor),
     earnings: row.earnings.map((line) => ({ code: line.code, amount: Number(line.amount) })),
-    deductions: row.deductions.map((line) => ({ code: line.code, amount: Number(line.amount) })),
+    deductions: (row.deductions ?? []).map((line) => ({ code: line.code, amount: Number(line.amount) })),
   }));
 }
 

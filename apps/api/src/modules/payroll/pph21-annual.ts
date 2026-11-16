@@ -68,12 +68,18 @@ export function a1LinesOf(
   return lines;
 }
 
-/** The employee's own pension / JHT contribution on one employment, through the pay factor. */
+/**
+ * The employee's own pension / JHT contribution on one employment. The pay factor
+ * scales net pay (engine.finalize), so the deduction actually taken is the stored
+ * amount times the factor; it is rounded down, never deducting more than was taken (DRAFT).
+ */
 export function pensionContributionOf(
   deductions: ReadonlyArray<{ code: string; amount: number }>,
   components: readonly string[],
+  payFactor = 1,
 ): number {
-  return deductions.filter((line) => components.includes(line.code)).reduce((total, line) => total + line.amount, 0);
+  const total = deductions.filter((line) => components.includes(line.code)).reduce((sum, line) => sum + line.amount, 0);
+  return payFactor === 1 ? total : Math.floor(clean(total * payFactor));
 }
 
 /**
@@ -118,7 +124,23 @@ export type AnnualFlag =
   /** No PTKP for the status at the start of the span. */
   | "PTKP_MISSING"
   /** An earlier month's TER tax is unknown (no TER policy, or no PTKP that month). */
-  | "PRIOR_TAX_INCOMPLETE";
+  | "PRIOR_TAX_INCOMPLETE"
+  /** A period of the year up to the end of the span is not final: its month is missing, so no bukti potong. */
+  | "PERIOD_PENDING";
+
+/**
+ * A period of the year that is not final (never approved, or reopened) leaves its
+ * month out of every span. A span ending on or after such a month may be missing
+ * pay and TER, so it is flagged and no bukti potong is made from it until the
+ * period is final again (review 2026-11-17).
+ */
+export function flagPendingPeriods(segments: readonly AnnualSegment[], pendingMonths: readonly string[]): AnnualSegment[] {
+  return segments.map((segment) =>
+    pendingMonths.some((month) => month <= segment.endPeriod) && !segment.flags.includes("PERIOD_PENDING")
+      ? { ...segment, flags: [...segment.flags, "PERIOD_PENDING" as const] }
+      : segment,
+  );
+}
 
 /** One person in one masa pajak, as the annual calculation needs it. */
 export type AnnualMonth = {
@@ -280,7 +302,7 @@ export function annualMonthsOfPeriod(input: {
       const own = a1LinesOf(row, input.policy.lineByComponent);
       for (const key of A1_LINE_KEYS) lines[key] += own[key];
       gross += reportableGross(row);
-      pension += pensionContributionOf(row.deductions ?? [], input.policy.pensionContributionComponents);
+      pension += pensionContributionOf(row.deductions ?? [], input.policy.pensionContributionComponents, row.payFactor);
     }
     const statuses = new Set(
       paid.map((row) => row.ptkpStatus).filter((status): status is string => status !== null && status.trim().length > 0),

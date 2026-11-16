@@ -51,7 +51,7 @@ export function Pph21A1Paper({ a1 }: { a1: Pph21A1Document }) {
           <dt className="text-slate-600">NPWP</dt>
           <dd>{a1.employee.npwp ?? "-"}</dd>
           <dt className="text-slate-600">NIK</dt>
-          <dd>{a1.employee.nik ?? "belum tercatat di HCIS"}</dd>
+          <dd>{a1.employee.nik ?? (a1.employee.unreadable?.includes("nik") ? "tidak dapat dibuka — hubungi HC" : "belum tercatat di HCIS")}</dd>
           <dt className="text-slate-600">Nama</dt>
           <dd className="font-medium">{a1.employee.fullName}</dd>
           <dt className="text-slate-600">NIP</dt>

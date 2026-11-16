@@ -13,7 +13,7 @@ export type A1LineKey =
   | "inKind"
   | "bonusThr";
 
-export type Pph21AnnualFlag = "OPEN" | "PTKP_MISSING" | "PRIOR_TAX_INCOMPLETE";
+export type Pph21AnnualFlag = "OPEN" | "PTKP_MISSING" | "PRIOR_TAX_INCOMPLETE" | "PERIOD_PENDING";
 
 export interface Pph21AnnualSegment {
   employeeId: string;
@@ -56,7 +56,14 @@ export interface Pph21A1Document {
   reference: string;
   issuedOn: string;
   withholder: { name: string; taxNumber: string | null };
-  employee: { employeeNumber: string; fullName: string; position: string | null; nik: string | null; npwp: string | null };
+  employee: {
+    employeeNumber: string;
+    fullName: string;
+    position: string | null;
+    nik: string | null;
+    npwp: string | null;
+    unreadable?: Array<"nik" | "npwp">;
+  };
   policy: { versionId: string; effectiveFrom: string; source: string };
   segment: Pph21AnnualSegment;
   signer: { title: string; name: string | null };
@@ -139,4 +146,5 @@ export const ANNUAL_FLAG_LABELS: Record<Pph21AnnualFlag, string> = {
   OPEN: "Belum masa pajak terakhir",
   PTKP_MISSING: "PTKP belum dapat ditentukan",
   PRIOR_TAX_INCOMPLETE: "TER bulan sebelumnya belum lengkap",
+  PERIOD_PENDING: "Ada periode tahun ini yang belum final",
 };

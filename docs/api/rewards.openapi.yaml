@@ -1,0 +1,289 @@
+openapi: 3.1.0
+info:
+  title: HCIS Employee Awards (REWARD-001)
+  version: 1.0.0
+  description: >-
+    Monthly award rounds whose candidates come only from the Al-Qur'an monthly scoreboard
+    snapshot (SQ Hub QURAN-001 §11.3), or, while that source is not configured, from a CSV
+    snapshot imported by HC (R-14 DRAFT). The outbound contract HCIS expects from the Al-Qur'an
+    application is written in docs/domain/rewards.md §12; it is not an HCIS route.
+    Spec: docs/domain/rewards.md. Invalid input answers 400 INVALID_REWARD_REQUEST.
+paths:
+  /admin/rewards/source:
+    get:
+      tags: [Rewards]
+      summary: State of the Al-Qur'an source for the latest final month
+      description: Requires reward.read. Never 5xx for a source problem; the status says it.
+      responses:
+        '200':
+          description: Source state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceState' }
+        '401': { description: Authentication required }
+        '403': { description: REWARD_FORBIDDEN }
+  /admin/rewards/rounds:
+    get:
+      tags: [Rewards]
+      summary: Award rounds, newest month first (ENG-LIST-001)
+      description: Requires reward.read.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/RoundStatus' } }
+        - { name: month, in: query, schema: { $ref: '#/components/schemas/Month' } }
+      responses:
+        '200':
+          description: One page of rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RoundSummary' } }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+        '400': { description: INVALID_REWARD_REQUEST }
+        '401': { description: Authentication required }
+        '403': { description: REWARD_FORBIDDEN }
+    post:
+      tags: [Rewards]
+      summary: Build ("Susun ulang") the round of a final month from the Al-Qur'an source
+      description: Requires reward.manage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [month]
+              properties: { month: { $ref: '#/components/schemas/Month' } }
+      responses:
+        '201': { description: Round created with its candidates }
+        '400': { description: INVALID_REWARD_REQUEST }
+        '403': { description: REWARD_FORBIDDEN }
+        '409':
+          description: >-
+            REWARD_ROUND_EXISTS, REWARD_PERIOD_NOT_FINAL, REWARD_SOURCE_NOT_CONFIGURED,
+            REWARD_SOURCE_UNAVAILABLE (no half-built round is left behind)
+  /admin/rewards/rounds/{id}:
+    get:
+      tags: [Rewards]
+      summary: One round with candidates, awards, delivery state and the viewer's allowed decisions
+      description: Requires reward.read. Candidates are bounded by the round's seats; not paged.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Round detail }
+        '403': { description: REWARD_FORBIDDEN }
+        '404': { description: REWARD_ROUND_NOT_FOUND }
+  /admin/rewards/rounds/{id}/events:
+    get:
+      tags: [Rewards]
+      summary: Audit trail of one round, newest first (ENG-LIST-001)
+      description: Requires reward.read.
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200': { description: One page of audit events }
+        '403': { description: REWARD_FORBIDDEN }
+  /admin/rewards/imports:
+    post:
+      tags: [Rewards]
+      summary: Import a monthly scoreboard snapshot from CSV (R-14 DRAFT)
+      description: >-
+        Requires reward.import. Open only while the Al-Qur'an source is not configured. The whole
+        file is refused on any problem, with line numbers; people are matched by NIP, units by
+        hcis:org-node ref, stable key, or exact name in today's published structure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [month, note, csv]
+              properties:
+                month: { $ref: '#/components/schemas/Month' }
+                note: { type: string, minLength: 5, maxLength: 500 }
+                csv: { type: string, description: 'Header cakupan,peringkat,nip,halaman,hari_aktif,khatam,label' }
+      responses:
+        '201': { description: Import recorded and round created }
+        '400': { description: 'INVALID_REWARD_REQUEST, or INVALID_REWARD_IMPORT with a problems list' }
+        '403': { description: REWARD_FORBIDDEN }
+        '409': { description: REWARD_MANUAL_IMPORT_CLOSED, REWARD_PERIOD_NOT_FINAL, REWARD_ROUND_EXISTS }
+  /admin/rewards/candidates/{id}/award:
+    post:
+      tags: [Rewards]
+      summary: Award a candidate
+      description: reward.manage, or the R-09 path (human_capital_admin on the Kepala HCM's own candidacy).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Candidate AWARDED }
+        '403': { description: REWARD_FORBIDDEN, REWARD_SELF_DECISION, REWARD_IMPORTER_DECISION }
+        '404': { description: REWARD_CANDIDATE_NOT_FOUND }
+        '409': { description: REWARD_CANDIDATE_LOCKED, REWARD_CANDIDATE_UNRESOLVED }
+  /admin/rewards/candidates/{id}/decline:
+    post:
+      tags: [Rewards]
+      summary: Decline a candidate with a reason
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { description: Candidate DECLINED }
+        '403': { description: REWARD_FORBIDDEN, REWARD_SELF_DECISION, REWARD_IMPORTER_DECISION }
+        '409': { description: REWARD_CANDIDATE_LOCKED, REWARD_CANDIDATE_UNRESOLVED }
+  /admin/rewards/candidates/{id}/next-rank:
+    post:
+      tags: [Rewards]
+      summary: Fill a vacated seat with the next rank of the same snapshot (R-08)
+      description: Requires reward.manage. Ties come in together (R-11).
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '201': { description: Candidates added }
+        '403': { description: REWARD_FORBIDDEN }
+        '409': { description: REWARD_CANDIDATE_LOCKED, REWARD_NO_NEXT_RANK }
+  /admin/rewards/rounds/{id}/publish:
+    post:
+      tags: [Rewards]
+      summary: Publish a round; notifications, the announcement and certificates follow from the outbox
+      description: Requires reward.manage.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Round PUBLISHED }
+        '403': { description: REWARD_FORBIDDEN }
+        '409': { description: REWARD_ROUND_NOT_READY }
+  /admin/rewards/rounds/{id}/cancel:
+    post:
+      tags: [Rewards]
+      summary: Cancel a pending round
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { description: Round CANCELLED }
+        '403': { description: REWARD_FORBIDDEN }
+        '409': { description: REWARD_ROUND_NOT_CANCELLABLE }
+  /admin/rewards/awards/{id}/revoke:
+    post:
+      tags: [Rewards]
+      summary: Revoke one published award
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses:
+        '200': { description: Award REVOKED; its certificate no longer verifies }
+        '403': { description: REWARD_FORBIDDEN, REWARD_SELF_DECISION }
+        '409': { description: REWARD_AWARD_ALREADY_REVOKED }
+  /admin/rewards/outbox/{id}/retry:
+    post:
+      tags: [Rewards]
+      summary: Retry an undelivered publication effect
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Effect retried; status DONE, PENDING or FAILED }
+        '403': { description: REWARD_FORBIDDEN }
+        '409': { description: REWARD_EFFECT_DONE }
+  /rewards/recipients:
+    get:
+      tags: [Rewards]
+      summary: Recipients of published rounds, without scores (any active employee)
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: month, in: query, schema: { $ref: '#/components/schemas/Month' } }
+      responses:
+        '200': { description: One page of recipients }
+        '401': { description: Authentication required }
+        '403': { description: FORBIDDEN — not an active employee }
+  /me/rewards:
+    get:
+      tags: [Rewards]
+      summary: The signed-in employee's own awards
+      responses:
+        '200': { description: One page of own awards }
+        '403': { description: FORBIDDEN — not an active employee }
+  /me/rewards/{id}/certificate:
+    get:
+      tags: [Rewards]
+      summary: Download one's own certificate (PDF)
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200':
+          description: The certificate
+          content: { application/pdf: { schema: { type: string, format: binary } } }
+        '404': { description: REWARD_AWARD_NOT_FOUND — someone else's, revoked, or unknown }
+        '409': { description: REWARD_CERTIFICATE_NOT_READY }
+  /public/rewards/verify/{code}:
+    get:
+      tags: [Rewards]
+      summary: Public certificate check; name, category, month and validity only
+      description: No session. Limited to 30 requests per minute per address (DRAFT).
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The certificate's state
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, recipientName, categoryLabel, month, monthLabel]
+                properties:
+                  status: { type: string, enum: [VALID, REVOKED] }
+                  recipientName: { type: string }
+                  categoryLabel: { type: string }
+                  month: { $ref: '#/components/schemas/Month' }
+                  monthLabel: { type: string }
+        '404': { description: REWARD_CERTIFICATE_NOT_FOUND }
+        '429': { description: RATE_LIMITED }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  requestBodies:
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties: { reason: { type: string, minLength: 5, maxLength: 500 } }
+  schemas:
+    Month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
+    RoundStatus: { type: string, enum: [PENDING_DECISION, PUBLISHED, CANCELLED] }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, pageCount]
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        pageCount: { type: integer }
+    SourceState:
+      type: object
+      required: [status, latestFinalMonth, manualImportOpen]
+      properties:
+        status:
+          type: string
+          enum: [NOT_CONFIGURED, UNAVAILABLE, NOT_FINAL, AVAILABLE]
+          description: NOT_CONFIGURED until the QURAN_* client exists; the screen then says "Sumber belum tersedia".
+        latestFinalMonth: { $ref: '#/components/schemas/Month' }
+        manualImportOpen: { type: boolean }
+        fetch:
+          type: [object, 'null']
+          description: The scheduler's attempts for latestFinalMonth.
+    RoundSummary:
+      type: object
+      required: [id, month, status, sourceKind, candidateCount, awardedCount]
+      properties:
+        id: { type: string, format: uuid }
+        month: { $ref: '#/components/schemas/Month' }
+        status: { $ref: '#/components/schemas/RoundStatus' }
+        sourceKind: { type: string, enum: [QURAN_API, MANUAL_IMPORT] }
+        directoryStale: { type: boolean }
+        candidateCount: { type: integer }
+        awardedCount: { type: integer }

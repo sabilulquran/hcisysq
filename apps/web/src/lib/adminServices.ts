@@ -177,6 +177,21 @@ export const adminServices: AdminServiceDefinition[] = [
     ],
   },
   {
+    key: "rewards",
+    label: "Penghargaan",
+    description: "Penghargaan tilawah bulanan dari papan skor aplikasi Al-Qur'an.",
+    featureIds: ["REWARD-001"],
+    stage: "available",
+    category: "talent",
+    href: "/admin/rewards",
+    accessRoles: ["Kepala Human Capital", "Administrator Human Capital"],
+    details: [
+      "Kandidat 3 teratas yayasan dan 1 teratas tiap unit dari snapshot bulanan",
+      "Kepala HCM menetapkan; pengumuman, notifikasi, dan sertifikat saat terbit",
+      "Bukan masukan penilaian kinerja dan bukan komponen payroll",
+    ],
+  },
+  {
     key: "learning",
     label: "Pelatihan",
     description: "Program pelatihan, jadwal, peserta, kehadiran, catatan, dan rekap jam pelatihan pegawai.",

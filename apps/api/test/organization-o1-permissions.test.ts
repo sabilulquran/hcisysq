@@ -185,6 +185,9 @@ describe("ORG-008-8 the Kepala HC role", () => {
       "payroll.policies.manage",
       "payroll.profiles.manage",
       "payroll.submit",
+      // REWARD-001 §7 (DRAFT): the Kepala HCM decides employee awards; no money, no authority.
+      "reward.manage",
+      "reward.read",
     ]);
   });
 

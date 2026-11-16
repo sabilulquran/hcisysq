@@ -1,3 +1,5 @@
+import { QURAN_APP_URL } from "@/lib/sqCore";
+
 export type EmployeeServiceStage = "available" | "discovery" | "planned" | "deferred";
 
 export type EmployeeServiceCategory =
@@ -114,6 +116,16 @@ export const employeeServices: EmployeeServiceDefinition[] = [
     key: "training", label: "Pelatihan",
     description: "Jadwal pelatihan, riwayat, sertifikat, dan jam pelatihan Anda.",
     featureIds: ["TRAIN-001"], stage: "available", category: "development", href: "/app/training",
+  },
+  {
+    key: "rewards", label: "Penghargaan",
+    description: "Penerima penghargaan tilawah bulanan, riwayat penghargaan, dan sertifikat Anda.",
+    featureIds: ["REWARD-001"], stage: "available", category: "development", href: "/app/rewards",
+  },
+  {
+    key: "quran", label: "Al-Qur'an",
+    description: "Buka aplikasi Al-Qur'an untuk membaca, menandai bacaan, dan melihat papan skor.",
+    featureIds: ["REWARD-001"], stage: "available", category: "development", href: QURAN_APP_URL,
   },
   {
     key: "committees", label: "Kepanitiaan Saya",

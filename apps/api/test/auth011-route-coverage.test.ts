@@ -11,6 +11,7 @@ import {
   HC_ADMIN_PERMISSIONS,
   LOAN_PERMISSIONS,
   REIMBURSEMENT_PERMISSIONS,
+  REWARD_PERMISSIONS,
   PAYROLL_PERMISSIONS,
   REPORT_PERMISSIONS,
 } from "../src/modules/auth/permissions.js";
@@ -79,6 +80,8 @@ const EXPECTED_PUBLIC_URLS = [
   // EMP-012 §5.3: the employee card check page opened from a printed QR; rate limited, no session.
   "/public/employee-cards/:code",
   "/public/employee-cards/:code/photo",
+  // REWARD-001 §9: the award certificate check; rate limited, no session.
+  "/public/rewards/verify/:code",
   "/ready",
 ];
 
@@ -193,6 +196,8 @@ describe("AUTH-011 route manifest coverage", () => {
       ...LOAN_PERMISSIONS,
       // REIMB-001: reimbursements.manage belongs to finance_officer, outside both bundles.
       ...REIMBURSEMENT_PERMISSIONS,
+      // REWARD-001: reward.manage belongs to human_capital_lead, outside both bundles.
+      ...REWARD_PERMISSIONS,
       // RPT-001: the report roles' keys, outside both bundles and honoured from unit scope too.
       ...REPORT_PERMISSIONS,
       ACCESS_REACTIVATION_PERMISSION,

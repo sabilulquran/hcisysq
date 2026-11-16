@@ -33,6 +33,9 @@ export const HC_ADMIN_PERMISSIONS = [
   "reimbursements.read",
   // TRAIN-001: migration 0119 grants both to human_capital_admin.
   "training.read", "training.manage",
+  // REWARD-001: migration 0152 grants reward.read and reward.import to human_capital_admin.
+  // reward.manage stays with human_capital_lead (Kepala HCM), who decides.
+  "reward.read", "reward.import",
   // HELP-001 D-08: migration 0131 grants help.manage to human_capital_admin.
   "help.manage",
   // EMP-012: migration 0133 grants employee_cards.manage to human_capital_admin.
@@ -80,6 +83,11 @@ export type LoanPermission = (typeof LOAN_PERMISSIONS)[number];
  * Migration 0149 grants both to finance_officer and reimbursements.read to human_capital_admin. */
 export const REIMBURSEMENT_PERMISSIONS = ["reimbursements.read", "reimbursements.manage"] as const;
 export type ReimbursementPermission = (typeof REIMBURSEMENT_PERMISSIONS)[number];
+/** REWARD-001: HC-only; never granted through legacy Super Admin compatibility. Migration 0152
+ * grants reward.read and reward.import to human_capital_admin, reward.read and reward.manage to
+ * human_capital_lead. Seeing the recipients list and one's own awards needs no permission. */
+export const REWARD_PERMISSIONS = ["reward.read", "reward.manage", "reward.import"] as const;
+export type RewardPermission = (typeof REWARD_PERMISSIONS)[number];
 /** TRAIN-001: HC-only; never granted through legacy Super Admin compatibility. */
 export const TRAINING_PERMISSIONS = ["training.read", "training.manage"] as const;
 export type TrainingPermission = (typeof TRAINING_PERMISSIONS)[number];
@@ -165,6 +173,10 @@ export const HC_LEAD_PERMISSIONS = [
   // catalogs too. Migration 0113 grants both. The catalog carries no money and no authority
   // (ADR-0004), so this widens nothing Kepala HC can approve or publish.
   ...JOB_CLASSIFICATION_PERMISSIONS,
+  // REWARD-001 §7 (DRAFT): the Kepala HCM decides and publishes employee awards. Migration 0152
+  // grants both. An award carries no money and no authority (R-05), and reward.import stays with
+  // the HC administrator, so the Kepala HCM never both supplies and picks the candidates.
+  "reward.read", "reward.manage",
 ] as const;
 
 /** EMP-005/EMP-006: HC-only; never granted through legacy Super Admin compatibility. */

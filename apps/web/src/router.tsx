@@ -69,6 +69,7 @@ import { AdminWorkArrangementsPage } from "@/pages/AdminWorkArrangementsPage";
 import { AdminPerformancePage } from "@/pages/AdminPerformancePage";
 import { AdminLoansPage } from "@/pages/AdminLoansPage";
 import { AdminReimbursementsPage } from "@/pages/AdminReimbursementsPage";
+import { AdminRewardsPage } from "@/pages/AdminRewardsPage";
 import { AdminTrainingPage } from "@/pages/AdminTrainingPage";
 import { AdminHrReportsPage } from "@/pages/AdminHrReportsPage";
 import { AdminHelpPage } from "@/pages/AdminHelpPage";
@@ -92,10 +93,12 @@ import { EmployeeWorkArrangementsPage } from "@/pages/EmployeeWorkArrangementsPa
 import { EmployeePerformancePage } from "@/pages/EmployeePerformancePage";
 import { EmployeeLoansPage } from "@/pages/EmployeeLoansPage";
 import { EmployeeReimbursementsPage } from "@/pages/EmployeeReimbursementsPage";
+import { EmployeeRewardsPage } from "@/pages/EmployeeRewardsPage";
 import { EmployeeTrainingPage } from "@/pages/EmployeeTrainingPage";
 import { EmployeeHelpPage } from "@/pages/EmployeeHelpPage";
 import { EmployeeCardPage } from "@/pages/EmployeeCardPage";
 import { PublicCardCheckPage } from "@/pages/PublicCardCheckPage";
+import { PublicRewardVerifyPage } from "@/pages/PublicRewardVerifyPage";
 import { EmployeeCommitteesPage } from "@/pages/EmployeeCommitteesPage";
 import { EmployeeLettersPage } from "@/pages/EmployeeLettersPage";
 import { AdminLettersPage } from "@/pages/AdminLettersPage";
@@ -181,6 +184,16 @@ const publicCardCheckRoute = createRoute({
   component: function PublicCardCheckRouteComponent() {
     const { code } = publicCardCheckRoute.useParams();
     return <PublicCardCheckPage code={code} />;
+  },
+});
+
+// REWARD-001 §9: the check link printed on an award certificate; public, no session required.
+const publicRewardVerifyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/verifikasi/penghargaan/$code",
+  component: function PublicRewardVerifyRouteComponent() {
+    const { code } = publicRewardVerifyRoute.useParams();
+    return <PublicRewardVerifyPage code={code} />;
   },
 });
 
@@ -274,6 +287,14 @@ const employeeReimbursementsRoute = createRoute({
   path: "/app/reimbursements",
   beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
   component: EmployeeReimbursementsPage,
+});
+
+// REWARD-001 §9: recipients, one's own awards and certificates, and the Al-Qur'an link.
+const employeeRewardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/rewards",
+  beforeLoad: ({ location }) => requirePrincipal(location, "EMPLOYEE"),
+  component: EmployeeRewardsPage,
 });
 
 // HELP-001: any employee session reads the help center (D-07).
@@ -826,6 +847,13 @@ const adminReimbursementsRoute = createRoute({
   component: AdminReimbursementsPage,
 });
 
+const adminRewardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/rewards",
+  beforeLoad: ({ location }) => requireAdminPath(location, "/admin/rewards"),
+  component: AdminRewardsPage,
+});
+
 const adminHelpRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/help",
@@ -916,6 +944,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   activationRoute,
   publicCardCheckRoute,
+  publicRewardVerifyRoute,
   appRoute,
   employeeAttendanceRoute,
   employeeMobileAttendanceRoute,
@@ -929,6 +958,7 @@ const routeTree = rootRoute.addChildren([
   employeePerformanceRoute,
   employeeLoansRoute,
   employeeReimbursementsRoute,
+  employeeRewardsRoute,
   employeeTrainingRoute,
   employeeCommitteesRoute,
   employeeHelpRoute,
@@ -1006,6 +1036,7 @@ const routeTree = rootRoute.addChildren([
   adminPerformanceRoute,
   adminLoansRoute,
   adminReimbursementsRoute,
+  adminRewardsRoute,
   adminTrainingRoute,
   adminCommitteesRoute,
   adminHrReportsRoute,

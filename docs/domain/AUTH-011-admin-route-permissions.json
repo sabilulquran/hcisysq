@@ -5436,5 +5436,139 @@
       "EMPLOYEE"
     ],
     "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/admin/rewards/source",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/admin/rewards/rounds",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/admin/rewards/rounds/:id",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/admin/rewards/rounds/:id/events",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/rounds",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/imports",
+    "permissions": [
+      "reward.import"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/candidates/:id/award",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/candidates/:id/decline",
+    "permissions": [
+      "reward.read"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/candidates/:id/next-rank",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/rounds/:id/publish",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/rounds/:id/cancel",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/awards/:id/revoke",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "POST",
+    "url": "/admin/rewards/outbox/:id/retry",
+    "permissions": [
+      "reward.manage"
+    ]
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/rewards/recipients",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/me/rewards",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
+  },
+  {
+    "file": "apps/api/src/modules/rewards/routes.ts",
+    "method": "GET",
+    "url": "/me/rewards/:id/certificate",
+    "access": "self-service",
+    "principals": [
+      "EMPLOYEE"
+    ],
+    "permissions": []
   }
 ]

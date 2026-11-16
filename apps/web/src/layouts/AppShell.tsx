@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { AuthSession } from "@/types/hcis";
 import {
   ArrowLeftRight,
+  BookOpen,
   CalendarDays,
   CalendarRange,
   Camera,
@@ -25,6 +26,7 @@ import { EmployeeAttendanceNavigation } from "@/components/attendance/EmployeeAt
 import { boardNavigationFor } from "@/layouts/boardNavigation";
 import { CoreShell, type ShellNavGroup, type ShellNavItem, type ShellPreviewMode } from "@/layouts/CoreShell";
 import { categoryTileClass, type ServiceCategoryTone } from "@/lib/serviceCategory";
+import { QURAN_APP_URL } from "@/lib/sqCore";
 import { cn } from "@/lib/utils";
 import { getTeamOvertimeStatus } from "@/lib/workforceAttendance";
 
@@ -56,6 +58,8 @@ const employeeNavigation: { label: string; href: string; icon: typeof Home; cate
   // EMP-012: every employee session sees its own card.
   { label: "Kartu Pegawai", href: "/app/employee-card", icon: IdCard, category: "service" },
   { label: "Semua Layanan", href: "/app/services", icon: Grid2X2, category: "service" },
+  // REWARD-001 / QURAN-001 K-01: opens the Al-Qur'an application; a link, never its data.
+  { label: "Al-Qur'an", href: QURAN_APP_URL, icon: BookOpen, category: "service" },
   // HELP-001: every employee session reads the help center.
   { label: "Bantuan", href: "/app/help", icon: LifeBuoy, category: "service" },
 ];

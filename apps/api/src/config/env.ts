@@ -97,6 +97,18 @@ const envSchema = z
       (value) => value === "" ? undefined : value,
       z.string().url().refine((value) => ["https:", "http:"].includes(new URL(value).protocol)).optional(),
     ),
+    // REWARD-001 §12: the Al-Qur'an monthly scoreboard (SQ Hub QURAN-001 §11.3), read with a dedicated
+    // machine client. All three or none; absent means "sumber belum tersedia" and the manual CSV path.
+    QURAN_SCOREBOARD_URL: z.preprocess(
+      (value) => value === "" ? undefined : value,
+      z.string().url().refine((value) => {
+        const url = new URL(value);
+        return ["https:", "http:"].includes(url.protocol) && !url.search && !url.hash;
+      }).optional(),
+    ),
+    QURAN_MACHINE_CLIENT_ID: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).optional()),
+    QURAN_MACHINE_CLIENT_SECRET: z.preprocess((value) => value === "" ? undefined : value, z.string().min(1).optional()),
+    QURAN_SCOREBOARD_AUDIENCE: z.preprocess((value) => value === "" ? undefined : value, z.string().trim().min(1).default("sq-hub-quran")),
     // ORG-010 amendment 2026-11-13 (ORGAN-IMPL-001 R1): when set, organ accounts use /board for
     // approvals only and the dashboard points them here. An https origin or base path, no query or fragment.
     ORGAN_PORTAL_URL: z.preprocess(
@@ -321,6 +333,34 @@ const envSchema = z
           code: z.ZodIssueCode.custom,
           path: ["ASET_SQ_MACHINE_CLIENT_ID"],
           message: "ASET_SQ_MACHINE_CLIENT_ID must be a dedicated client, not one HCIS or SQ Hub already uses",
+        });
+      }
+    }
+
+    // REWARD-001 §12: all or nothing, the staff realm as issuer, and a client of its own.
+    const quranKeys = ["QURAN_SCOREBOARD_URL", "QURAN_MACHINE_CLIENT_ID", "QURAN_MACHINE_CLIENT_SECRET"] as const;
+    if (quranKeys.some((key) => value[key])) {
+      for (const key of quranKeys) {
+        if (value[key]) continue;
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} is required when any QURAN_* client setting is set` });
+      }
+      if (value.AUTH_MODE !== "oidc") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["QURAN_MACHINE_CLIENT_ID"],
+          message: "The Al-Qur'an scoreboard client requires AUTH_MODE=oidc",
+        });
+      }
+      if (value.QURAN_MACHINE_CLIENT_ID && [
+        value.SQ_HUB_MACHINE_CLIENT_ID,
+        value.OIDC_CLIENT_ID,
+        value.ASET_SQ_MACHINE_CLIENT_ID,
+        "sq-hub-identity-management",
+      ].includes(value.QURAN_MACHINE_CLIENT_ID)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["QURAN_MACHINE_CLIENT_ID"],
+          message: "QURAN_MACHINE_CLIENT_ID must be a dedicated client, not one HCIS or SQ Hub already uses",
         });
       }
     }

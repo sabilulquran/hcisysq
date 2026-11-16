@@ -185,6 +185,26 @@ features:
       - docs/domain/dynamic-organization-structure.md
       - docs/domain/organization-mapping.md
 
+  - id: ORG-011
+    module: organization
+    name: Job classification and grade catalog
+    legacy_evidence: legacy matched functional and positional allowances by free-text position labels; roadmap C asked for a stable class-of-work key separate from ORG-004 seats
+    target_status: implemented
+    priority: post-mvp-payroll-foundation
+    risk: high
+    planning_note: >-
+      Packages 1-4 implemented: effective-dated classification and optional grade catalogs (no money, no
+      authority), seat and placement binding, two-slot resolver for PAY-003, HC screen with CSV export and
+      audited CSV import, change history, and read views in the employee profile and the designer. The
+      production catalog is left empty for HC to fill. Payroll does not read classifications yet: PAY-003
+      has no connection point, so the contract (default-OFF switch, parallel run first) is documented in
+      spec §4.1 and payroll results are unchanged. Open decisions in spec §8 are DRAFT pending the owner.
+    docs:
+      - docs/domain/job-classification-grade.md
+      - docs/architecture/adr/0004-job-classification-separate-from-structure.md
+      - docs/api/job-classifications.openapi.yaml
+      - docs/domain/payroll-calculation-v1.md
+
   - id: ORG-008
     module: organization
     name: Organization structure designer UX simplification
@@ -956,10 +976,16 @@ features:
       Package 1 implemented 2026-11-02 (docs/domain/business-travel.md): employee request,
       APR-001 approval (direct manager then unit approver), numbered surat tugas from the
       DOC-001 register, cancellation, completion and history. Approved trips are visible in
-      the ATT-014 exceptions tab. Attendance disposition is Package 2; trip costs are claimed
-      through REIMB-001 (linked trip); advances are not built.
+      the ATT-014 exceptions tab. Package 2 implemented 2026-11-17 (business-travel.md §9.2):
+      a scheduled working day covered by an ISSUED/COMPLETED trip is the attendance status
+      business_trip ("Dinas", symbol PD) below approved leave; punches stand and lateness/early
+      leave are not counted; PAY-003 counts the day as present like field_assignment, with no
+      cost component (DRAFT D-15..D-17). Trip costs are claimed through REIMB-001 (linked trip);
+      advances are not built.
     docs:
       - docs/domain/business-travel.md
+      - docs/domain/attendance-report-calculation.md
+      - docs/domain/payroll-calculation-v1.md
       - docs/product/hcis-capability-map.md
 
   - id: ASSET-001

@@ -115,13 +115,14 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
       holidayScheduledWork?: boolean | null;
       status?: string;
       sourceWorkArrangementId?: string | null;
+      sourceBusinessTripId?: string | null;
     } = {},
   ) {
     await pool.query(
       `INSERT INTO attendance_result_versions(
          id, employee_id, work_date, version, status, first_check_in_at, input_hash,
-         day_type, holiday_scheduled_work, source_work_arrangement_id)
-       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10)`,
+         day_type, holiday_scheduled_work, source_work_arrangement_id, source_business_trip_id)
+       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         randomUUID(),
         employeeId,
@@ -133,8 +134,39 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
         options.dayType === undefined ? "working_day" : options.dayType,
         options.holidayScheduledWork ?? null,
         options.sourceWorkArrangementId ?? null,
+        options.sourceBusinessTripId ?? null,
       ],
     );
+  }
+
+  /**
+   * A TRIP-001 trip, so a day's result can point at it as the engine does (Paket 2). An issued or
+   * completed trip carries its surat tugas, as the schema requires; the synthetic number is unique.
+   */
+  async function businessTrip(
+    employeeId: string,
+    workDate: string,
+    status: "ISSUED" | "COMPLETED" | "CANCELLED",
+  ) {
+    const id = randomUUID();
+    let documentId: string | null = null;
+    if (status !== "CANCELLED") {
+      documentId = randomUUID();
+      await pool.query(
+        `INSERT INTO hr_issued_documents(
+           id, document_kind, document_code, employee_id, number_code, number_year, number_sequence,
+           document_number, issued_by_account_id)
+         VALUES ($1, 'ASSIGNMENT', 'SURAT_TUGAS', $2, $3, 2026, 1, $3, $4)`,
+        [documentId, employeeId, `ST-TEST-${documentId}`, actorAccountId],
+      );
+    }
+    await pool.query(
+      `INSERT INTO business_trip_requests(
+         id, employee_id, destination, purpose, start_on, end_on, status, idempotency_key, issued_document_id)
+       VALUES ($1, $2, 'Yayasan Mitra Sintetis', 'Rapat koordinasi kurikulum', $3::date, $3::date, $4, $5, $6)`,
+      [id, employeeId, workDate, status, randomUUID(), documentId],
+    );
+    return id;
   }
 
   /** An ATT-015 request, so a day's result can point at it as the engine does. */
@@ -322,6 +354,49 @@ describe.skipIf(!allowed)("PAY-003 attendance inputs against PostgreSQL", () => 
     await attendanceDay(employeeId, "2026-09-02", true, { sourceWorkArrangementId: withPunch });
     const resolved = await resolveAttendanceInputs(pool, window());
     expect(resolved.attendanceDays).toEqual([{ employmentId, days: 2 }]);
+  });
+
+  it("reads an issued business trip day like a field assignment: present, counted once (TRIP-001 Paket 2)", async () => {
+    const { employmentId, employeeId } = await newEmployment("KONTRAK_HONORER");
+    const issued = await businessTrip(employeeId, "2026-09-01", "ISSUED");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "business_trip", sourceBusinessTripId: issued });
+    const completed = await businessTrip(employeeId, "2026-09-02", "COMPLETED");
+    await attendanceDay(employeeId, "2026-09-02", false, { status: "business_trip", sourceBusinessTripId: completed });
+    // An incomplete punch on a trip day is stored as business_trip with its check-in kept: still one day.
+    const punched = await businessTrip(employeeId, "2026-09-03", "ISSUED");
+    await attendanceDay(employeeId, "2026-09-03", true, { status: "business_trip", sourceBusinessTripId: punched });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([{ employmentId, days: 3 }]);
+    // No cost component: the trip adds no overtime and nothing but the day.
+    expect(resolved.overtime).toEqual([]);
+  });
+
+  it("earns no transport on a business trip day that falls on a rest day", async () => {
+    const { employeeId } = await newEmployment("LEPAS");
+    const trip = await businessTrip(employeeId, "2026-09-01", "ISSUED");
+    await attendanceDay(employeeId, "2026-09-01", false, {
+      status: "business_trip",
+      dayType: "rest_day",
+      sourceBusinessTripId: trip,
+    });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("pays no transport for a cancelled business trip whose recompute has not run yet", async () => {
+    const { employeeId } = await newEmployment("KONTRAK_HONORER");
+    const trip = await businessTrip(employeeId, "2026-09-01", "CANCELLED");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "business_trip", sourceBusinessTripId: trip });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
+  });
+
+  it("gives a salaried employee on a business trip no transport day", async () => {
+    const { employeeId } = await newEmployment("TETAP");
+    const trip = await businessTrip(employeeId, "2026-09-01", "ISSUED");
+    await attendanceDay(employeeId, "2026-09-01", false, { status: "business_trip", sourceBusinessTripId: trip });
+    const resolved = await resolveAttendanceInputs(pool, window());
+    expect(resolved.attendanceDays).toEqual([]);
   });
 
   it("earns no transport on remote work without a check-in", async () => {

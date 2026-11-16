@@ -7,6 +7,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { ApiConfig } from "../src/config/env.js";
+import { materializeAttendanceResult } from "../src/modules/attendance/engine.js";
 import { attendanceExceptions } from "../src/modules/attendance/exceptions.js";
 import type { AuthPrincipal } from "../src/modules/auth/service.js";
 import { registerDocumentRoutes } from "../src/modules/documents/routes.js";
@@ -420,6 +421,139 @@ describe.skipIf(!allowed)("TRIP-001 business travel", () => {
     })]);
     const after = await client.query<{ count: number }>("SELECT count(*)::int AS count FROM attendance_daily_records");
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+  });
+
+  describe("Paket 2: an issued trip is the attendance disposition business_trip", () => {
+    async function scheduleEveryDay() {
+      const templateId = randomUUID();
+      await client.query(
+        `INSERT INTO attendance_schedule_templates (id, name, start_time, end_time, created_by_account_id)
+         VALUES ($1, 'Shift Pagi Dinas Sintetis', '07:00', '16:00', $2)`,
+        [templateId, people.other.accountId],
+      );
+      await client.query(
+        `INSERT INTO attendance_schedule_versions (id, schedule_template_id, version, name, start_time, end_time, end_day_offset, effective_from, created_by_account_id)
+         VALUES ($1, $2, 1, 'Shift Pagi Dinas Sintetis', '07:00', '16:00', 0, '2000-01-01T00:00:00Z', $3)`,
+        [randomUUID(), templateId, people.other.accountId],
+      );
+      await client.query(
+        `INSERT INTO attendance_schedule_assignments (id, employee_id, schedule_template_id, weekday_mask, effective_from, created_by_account_id)
+         VALUES ($1, $2, $3, 127, '2020-01-01', $4)`,
+        [randomUUID(), people.requester.employeeId, templateId, people.other.accountId],
+      );
+    }
+
+    async function latestResult(workDate: string) {
+      const result = await client.query<{
+        status: string; lateMinutes: number; earlyLeaveMinutes: number; lateJustified: boolean;
+        firstCheckInAt: Date | null; sourceBusinessTripId: string | null;
+      }>(
+        `SELECT status, late_minutes AS "lateMinutes", early_leave_minutes AS "earlyLeaveMinutes",
+                late_justified AS "lateJustified", first_check_in_at AS "firstCheckInAt",
+                source_business_trip_id AS "sourceBusinessTripId"
+           FROM attendance_result_versions
+          WHERE employee_id = $1 AND work_date = $2::date
+          ORDER BY version DESC LIMIT 1`,
+        [people.requester.employeeId, workDate],
+      );
+      return result.rows[0];
+    }
+
+    async function eventCount() {
+      const result = await client.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM attendance_events WHERE employee_id = $1", [people.requester.employeeId],
+      );
+      return result.rows[0]!.count;
+    }
+
+    async function punch(workDate: string, checkIn: string, checkOut: string | null) {
+      await client.query(
+        `INSERT INTO attendance_events (id, employee_id, source, event_kind, occurred_at, source_reference)
+         VALUES ($1, $2, 'manual', 'check_in', $3, $4)`,
+        [randomUUID(), people.requester.employeeId, `${workDate}T${checkIn}:00+07:00`, `test:${randomUUID()}`],
+      );
+      if (checkOut) {
+        await client.query(
+          `INSERT INTO attendance_events (id, employee_id, source, event_kind, occurred_at, source_reference)
+           VALUES ($1, $2, 'manual', 'check_out', $3, $4)`,
+          [randomUUID(), people.requester.employeeId, `${workDate}T${checkOut}:00+07:00`, `test:${randomUUID()}`],
+        );
+      }
+    }
+
+    it("an approved trip changes nothing; issuing it recalculates the days begun, and HC cancel restores them", async () => {
+      await addSigner();
+      await scheduleEveryDay();
+      const trip = await approvedTrip({ startOn: today, endOn: addDays(today, 1) });
+      // D-04 forbids a past start; the trip is moved back so that finished days exist.
+      const first = addDays(today, -3);
+      const late = addDays(today, -2);
+      const incomplete = addDays(today, -1);
+      await client.query(
+        "UPDATE business_trip_requests SET start_on = $2::date, end_on = $3::date WHERE id = $1",
+        [trip.id, first, addDays(today, 1)],
+      );
+      await punch(late, "10:00", "15:00");
+      await punch(incomplete, "07:30", null);
+      for (const day of [first, late, incomplete]) {
+        await materializeAttendanceResult(savepointPool(client), people.requester.employeeId, day);
+      }
+      // Paket 1 behaviour still holds while the trip is only APPROVED.
+      expect((await latestResult(first))?.status).toBe("absent");
+      expect((await latestResult(late))?.status).toBe("late");
+      expect((await latestResult(incomplete))?.status).toBe("incomplete");
+      const eventsBefore = await eventCount();
+
+      const issued = await issue(trip.id);
+      expect(issued.statusCode, issued.body).toBe(200);
+      // first .. today: four dates already begun; tomorrow is calculated when it comes.
+      expect(issued.json().recalculatedDates).toBe(4);
+      expect(await latestResult(first)).toMatchObject({ status: "business_trip", firstCheckInAt: null, sourceBusinessTripId: trip.id });
+      expect(await latestResult(late)).toMatchObject({
+        status: "present", lateMinutes: 0, earlyLeaveMinutes: 0, lateJustified: true, sourceBusinessTripId: trip.id,
+      });
+      const kept = await latestResult(incomplete);
+      expect(kept).toMatchObject({ status: "business_trip", sourceBusinessTripId: trip.id });
+      expect(kept?.firstCheckInAt?.toISOString()).toBe(new Date(`${incomplete}T07:30:00+07:00`).toISOString());
+      expect((await latestResult(today))?.status).toBe("business_trip");
+      // No punch is ever made from the schedule.
+      expect(await eventCount()).toBe(eventsBefore);
+
+      // Completion keeps the disposition: the input hash names the trip, not its status.
+      await client.query("UPDATE business_trip_requests SET status = 'COMPLETED' WHERE id = $1", [trip.id]);
+      await materializeAttendanceResult(savepointPool(client), people.requester.employeeId, first);
+      expect((await latestResult(first))?.status).toBe("business_trip");
+      await client.query("UPDATE business_trip_requests SET status = 'ISSUED' WHERE id = $1", [trip.id]);
+
+      actAs("other", ["trips.read", "trips.manage"]);
+      const cancelled = await app.inject({
+        method: "POST", url: `/admin/trips/${trip.id}/cancel`, payload: { reason: "Acara mitra dibatalkan panitia" },
+      });
+      expect(cancelled.statusCode, cancelled.body).toBe(200);
+      expect(cancelled.json()).toMatchObject({ status: "CANCELLED", recalculatedDates: 4 });
+      expect(await latestResult(first)).toMatchObject({ status: "absent", sourceBusinessTripId: null });
+      expect(await latestResult(late)).toMatchObject({ status: "late", lateJustified: false, sourceBusinessTripId: null });
+      expect((await latestResult(incomplete))?.status).toBe("incomplete");
+    });
+
+    it("approved leave on a trip day wins over the trip", async () => {
+      await addSigner();
+      await scheduleEveryDay();
+      const trip = await approvedTrip({ startOn: today, endOn: today });
+      const yesterday = addDays(today, -1);
+      await client.query(
+        "UPDATE business_trip_requests SET start_on = $2::date WHERE id = $1",
+        [trip.id, yesterday],
+      );
+      await client.query(
+        `INSERT INTO leave_requests(id, employee_id, policy_key, status, start_on, end_on, working_days, hc_handling, idempotency_key)
+         VALUES ($1,$2,'annual','approved',$3,$3,1,'none',$4)`,
+        [randomUUID(), people.requester.employeeId, yesterday, randomUUID()],
+      );
+      expect((await issue(trip.id)).statusCode).toBe(200);
+      expect(await latestResult(yesterday)).toMatchObject({ status: "leave", sourceBusinessTripId: null });
+      expect((await latestResult(today))?.status).toBe("business_trip");
+    });
   });
 
   it("TRIP-001-M: no money column exists in the trip schema", async () => {

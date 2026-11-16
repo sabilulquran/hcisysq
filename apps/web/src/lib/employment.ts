@@ -43,6 +43,8 @@ export interface Placement {
   unitName: string | null;
   positionName: string | null;
   jobTitleLabel: string;
+  /** ORG-011: the placement's own classification; null means the seat's default (or none). */
+  jobClassificationCode?: string | null;
   effectiveFrom: string;
   effectiveTo: string | null;
   effectiveFromBasis: "RECORDED" | "BASELINE_ASSUMED";

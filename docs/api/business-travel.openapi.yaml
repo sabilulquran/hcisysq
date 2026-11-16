@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: HCIS Business Travel (TRIP-001 Package 1)
+  title: HCIS Business Travel (TRIP-001 Packages 1 and 2)
   version: 1.0.0
   description: |
     Employee business-travel requests, the APR-001 approver inbox and the Human Capital
@@ -9,6 +9,9 @@ info:
     All routes use the session cookie and answer with Cache-Control: no-store.
     Errors use { code, message }. No field holds money: advances, costs and reimbursement
     are out of scope (REIMB-001).
+    Package 2 (business-travel.md §9.2): an ISSUED or COMPLETED trip is the attendance disposition
+    business_trip. Issuing a letter, and HC cancelling an issued trip, recalculate the trip's dates
+    already begun after COMMIT; recalculatedDates counts the dates that succeeded.
 paths:
   /trips/me:
     get:
@@ -325,7 +328,8 @@ paths:
       description: |
         Requires organization permission trips.manage. The number is allocated from the DOC-001
         register (code ST) only when issuing succeeds; without an eligible signer the answer is
-        409 DOCUMENT_SIGNER_UNAVAILABLE and the trip stays APPROVED.
+        409 DOCUMENT_SIGNER_UNAVAILABLE and the trip stays APPROVED. Package 2: the trip's dates
+        up to today are recalculated as business_trip afterwards (recalculatedDates).
       responses:
         '200':
           description: Letter issued
@@ -338,6 +342,7 @@ paths:
                   status: { type: string, const: ISSUED }
                   documentId: { type: string, format: uuid }
                   documentNumber: { type: string, examples: ['001/ST/YSQ/XI/2026'] }
+                  recalculatedDates: { type: integer, minimum: 0, description: Present when the trip has already begun }
                   signer:
                     type: object
                     properties:
@@ -356,7 +361,9 @@ paths:
       tags: [Business Travel]
       operationId: cancelTripAdmin
       summary: Cancel a trip in review, approved or issued; an issued letter is revoked and keeps its number
-      description: Requires organization permission trips.manage.
+      description: |
+        Requires organization permission trips.manage. Package 2: cancelling an ISSUED trip that has
+        already begun recalculates its dates up to today, and the answer carries recalculatedDates.
       requestBody:
         required: true
         content:
@@ -528,3 +535,4 @@ components:
             properties:
               id: { type: string, format: uuid }
               status: { $ref: '#/components/schemas/TripStatus' }
+              recalculatedDates: { type: integer, minimum: 0, description: Only when HC cancelled an issued trip that has begun }

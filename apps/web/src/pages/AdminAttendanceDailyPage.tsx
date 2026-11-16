@@ -128,7 +128,7 @@ export function AdminAttendanceDailyPage() {
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{todayScheduleLabel(item, scheduleTime(item))}</p>
               <p className="mt-1 text-sm tabular-nums">{scanText(item)}{item.startDeltaMinutes !== null ? ` · ${todayDeltaLabel(item.startDeltaMinutes)}` : ""}</p>
-              {item.workArrangement ? <p className="mt-1 text-xs font-bold text-brand-heading">{attendanceStatusLabel(item.workArrangement)} (disetujui)</p> : null}
+              {item.workArrangement ? <p className="mt-1 text-xs font-bold text-brand-heading">{attendanceStatusLabel(item.workArrangement)} ({item.workArrangement === "business_trip" ? "surat tugas terbit" : "disetujui"})</p> : null}
             </li>
           ))}
           {loaded && filtered.length === 0 ? <li className="p-8 text-center text-sm text-muted-foreground">Tidak ada pegawai yang cocok dengan filter.</li> : null}

@@ -759,7 +759,8 @@ features:
       found 0 unexplained calculation differences; round 2 and the decision to make PAY-003 the
       official slip path are the owner's process. Until then PAY-001/PAY-002 stay authoritative.
       Open owner items: load the verified TER table (PPH21_TER), kasbon balances, and the
-      remaining profiles.
+      remaining profiles. The PERF-001 link (§5.5, PERFORMANCE_PERCENT) is built and switched
+      off by default.
     docs:
       - docs/domain/payroll-engine-discovery.md
       - docs/domain/payroll-legacy-flow-audit.md
@@ -857,9 +858,17 @@ features:
       Package 1 implemented 2026-11-02 (docs/domain/performance-review.md): monthly and annual
       cycles with a per-cycle rubric, self-assessment, rating by the line manager from the
       structure, HC validation or return, A-D predicate, acknowledgement, history and HC recap.
-      The tunjangan kinerja link to PAY-003 is specified as a contract (spec §11) and not built.
+      The tunjangan kinerja link to PAY-003 (spec §11) is built 2026-11-17 behind the versioned
+      payroll policy PERFORMANCE_PERCENT, which is absent (switched off) by default: payroll then
+      reads the compensation profile exactly as before. Switched on, PAY-003 reads only FINALIZED
+      reviews of CLOSED cycles (MONTHLY of month M-1, last ANNUAL closed by the pay date), maps the
+      predicate through the policy (DRAFT A 100 %, B 90 %, C 75 %, D 50 %), falls back to the
+      profile without a review, and stores review, cycle and predicate in the result snapshot
+      (payroll-calculation-v1.md §5.5). Switching it on is an owner decision after PAY-003 becomes
+      the official slip path.
     docs:
       - docs/domain/performance-review.md
+      - docs/domain/payroll-calculation-v1.md
 
   - id: TRAIN-001
     module: training

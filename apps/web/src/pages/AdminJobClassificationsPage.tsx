@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
+import { JobCatalogAuditList } from "@/components/job-classifications/JobCatalogAuditList";
+import { JobCatalogImportPanel } from "@/components/job-classifications/JobCatalogImportPanel";
 import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import { getCurrentSession } from "@/lib/auth";
@@ -8,6 +10,7 @@ import { hasPermission } from "@/lib/authorization";
 import {
   amendJobClassification,
   amendJobGrade,
+  catalogExportUrl,
   createJobClassification,
   createJobGrade,
   deactivateJobClassification,
@@ -29,7 +32,7 @@ function today(): string {
   }).format(new Date());
 }
 
-export type JobCatalogTab = "classifications" | "grades";
+export type JobCatalogTab = "classifications" | "grades" | "history";
 type Tab = JobCatalogTab;
 
 /**
@@ -128,6 +131,8 @@ export function AdminJobClassificationsPage() {
   }, []);
 
   const reload = useCallback(async () => {
+    // The history tab pages its own list; the catalog request would only be thrown away.
+    if (tab === "history") { setLoading(false); return; }
     const ticket = ++requestId.current;
     setLoading(true);
     setError(null);
@@ -260,7 +265,7 @@ export function AdminJobClassificationsPage() {
     >
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-2">
-          {(["classifications", "grades"] as Tab[]).map((value) => (
+          {(["classifications", "grades", "history"] as Tab[]).map((value) => (
             <button
               key={value}
               type="button"
@@ -269,11 +274,12 @@ export function AdminJobClassificationsPage() {
                 tab === value ? "bg-brand-soft text-brand-heading" : "bg-muted text-muted-foreground"
               }`}
             >
-              {value === "classifications" ? "Klasifikasi jabatan" : "Golongan"}
+              {value === "classifications" ? "Klasifikasi jabatan" : value === "grades" ? "Golongan" : "Riwayat perubahan"}
             </button>
           ))}
         </div>
 
+        {tab === "history" ? <JobCatalogAuditList /> : (<>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs font-semibold text-muted-foreground">
             Berlaku pada
@@ -293,6 +299,12 @@ export function AdminJobClassificationsPage() {
             />
             Tampilkan seluruh versi
           </label>
+          <a
+            href={catalogExportUrl(tab === "classifications" ? "CLASSIFICATION" : "GRADE", { onDate, includeHistory })}
+            className="pb-2 text-xs font-bold text-brand-primary"
+          >
+            Ekspor CSV
+          </a>
         </div>
 
         {error ? <p role="alert" className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger-ink">{error}</p> : null}
@@ -418,6 +430,15 @@ export function AdminJobClassificationsPage() {
             Anda dapat membaca katalog ini. Perubahan dilakukan Human Capital Administrator atau Kepala Human Capital.
           </p>
         )}
+
+        {canManage ? (
+          <JobCatalogImportPanel
+            key={tab}
+            kind={tab === "classifications" ? "CLASSIFICATION" : "GRADE"}
+            onApplied={() => { setNotice("Impor diterapkan. Versi lama tetap tersimpan."); void reload(); }}
+          />
+        ) : null}
+        </>)}
       </div>
     </AdminShell>
   );

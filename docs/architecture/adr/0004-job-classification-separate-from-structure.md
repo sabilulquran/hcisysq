@@ -3,6 +3,7 @@
 - **Status:** ACCEPTED
 - **Date:** 2026-10-27
 - **Accepted:** 2026-10-30 (owner instruction to build ORG-011; contract confirmed by PAY-003 in PR #218)
+- **Catatan 2026-11-17 (Package 4):** status tetap ACCEPTED. Butir yang ditandai DRAFT di `docs/domain/job-classification-grade.md` §8 adalah default sementara dan **menunggu konfirmasi owner**; keputusan di ADR ini sendiri tidak bergantung padanya.
 - **Related:** ORG-004, ORG-006, ORG-007, EMP-005, EMP-006, PAY-003, AUTH-011; ADR-0001, ADR-0003
 - **Evidence:** `docs/domain/job-classification-grade.md`, `docs/domain/payroll-calculation-v1.md`, `apps/api/migrations/0019_dynamic_organization.sql`, `apps/api/migrations/0056_employment_history_foundation.sql`
 
@@ -65,3 +66,5 @@ Negatif atau biaya:
 - Peralihan payroll dari referensi kursi ke kode klasifikasi hanya setelah parallel run menunjukkan nominal identik.
 - Migration ORG-011 dibuat setelah ADR ini `ACCEPTED` (migration 0110, 2026-10-30).
 - Peralihan payroll ke kode klasifikasi tetap menunggu parallel run; Package 1 tidak mengubah perhitungan apa pun.
+- Impor CSV (Package 4) wajib memakai fungsi create/amend yang sama dengan layar, sehingga berkas tidak dapat melewati aturan kode permanen dan aturan versi; setiap baris yang tertulis dan setiap batch beraudit.
+- Sambungan payroll hanya boleh ditambahkan sesi PAY-003 di berkas payroll, di balik sakelar default OFF (spec §4.1); ORG-011 tidak menyentuh berkas payroll.

@@ -469,7 +469,7 @@ describe.skipIf(!allowed)("LOAN-001 employee loans", () => {
       });
       expect(reverse.statusCode).toBe(409);
       expect(reverse.json().code).toBe("LOAN_PAYMENT_FROM_PAYROLL");
-      // The source of a payroll payment cannot be moved either (trigger, migration 0154).
+      // The source of a payroll payment cannot be moved either (trigger, migration 0155).
       await client.query("SAVEPOINT move_source");
       await expect(
         client.query("UPDATE employee_loan_payments SET source_payroll_period_id = NULL WHERE id = $1", [paymentId]),
